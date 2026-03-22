@@ -3666,11 +3666,11 @@ impl DataSellerPaneState {
         self.upsert_published_grant_inventory(grant.clone());
         self.last_error = None;
         self.last_action = Some(format!(
-            "Reconciled AccessGrant {} state from kernel authority",
+            "Reconciled AccessGrant {} state from relay-backed compatibility inventory",
             grant.grant_id
         ));
         self.status_line = format!(
-            "Grant {} reconciled from kernel authority with status {}.",
+            "Grant {} reconciled from relay-backed compatibility state with status {}.",
             grant.grant_id,
             grant.status.label()
         );
@@ -3685,11 +3685,11 @@ impl DataSellerPaneState {
         self.last_delivery_publish_receipt_id = receipt_id;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Issued DeliveryBundle {} and read it back from kernel authority",
+            "Issued DeliveryBundle {} into relay-backed compatibility state",
             delivery.delivery_bundle_id
         ));
         self.status_line = format!(
-            "Issued delivery {} and confirmed kernel read-back.",
+            "Issued delivery {} and updated relay-backed compatibility state.",
             delivery.delivery_bundle_id
         );
     }
@@ -5289,7 +5289,7 @@ impl DataMarketPaneState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Reflected published asset {} into the Data Market pane from kernel read-back",
+            "Reflected published asset {} into the Data Market pane from the relay-backed local replica",
             asset.asset_id
         ));
     }
@@ -5314,7 +5314,7 @@ impl DataMarketPaneState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Reflected published grant {} into the Data Market pane from kernel read-back",
+            "Reflected published grant {} into the Data Market pane from the relay-backed local replica",
             grant.grant_id
         ));
     }

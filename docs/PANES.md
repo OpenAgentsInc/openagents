@@ -97,7 +97,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Data Market`
   - Read-only market snapshot and operator-facing lifecycle pane for the current Data Market starter slice.
-  - Shows canonical kernel-backed `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt` rows plus recent lifecycle summaries, receipt context, and DS-backed publication posture.
+  - Shows relay-backed compatibility `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt` rows plus recent lifecycle summaries and DS-backed publication posture.
   - Asset rows now surface packaging posture, visibility/sensitivity posture, and redacted Codex-export markers when present so shell-first publication is still legible in the UI.
   - This is the observability/control surface, not the primary seller authoring surface; DS listings and offers are the public market-facing publication layer, while DS-DVM request/result traffic is only the targeted fulfillment layer.
   - Action: refresh market snapshot.
@@ -106,7 +106,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Owns the seller transcript, structured draft, exact preview, confirm-before-publish flow, published inventory summary, DS listing/offer-backed publication flow, incoming targeted request evaluation, payment-required issuance, delivery preparation/publication, and revoke/expire controls.
   - The pane is still mutation-capable, but it now doubles as the read-only visualization surface for shell/headless publication by showing package metadata, preview state, relay/kind/request flow, payment, delivery, and revocation truth from the same app-owned state machine.
   - Auto-provisions the first-party `autopilot-data-seller` and `autopilot-data-market-control` skills into the lane and uses typed `openagents.data_market.*` tools rather than generic pane poking.
-  - Product truth remains kernel-backed: publication mutates authority objects, and the pane immediately reads the canonical asset/grant/delivery/revocation state back into the seller model.
+  - Product truth is now relay-first: publication emits DS objects to relays, and the pane immediately reads the relay-backed local replica and compatibility lifecycle state back into the seller model.
   - Shell/headless parity is intentional: the same seller flow is also exposed through `autopilotctl data-market ...` and `autopilot_headless_data_market`.
   - Actions: seller draft/preview/confirm/publish, request payment, prepare delivery, issue delivery, revoke access.
 - `Data Buyer`

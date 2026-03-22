@@ -19,7 +19,7 @@ use nostr::{Event, EventTemplate, NostrIdentity};
 use nostr_client::{PoolConfig, RelayMessage, RelayPool};
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, CreateAccessGrantRequest, IssueDeliveryBundleRequest,
-    KernelAuthority, RegisterDataAssetRequest, RevokeAccessGrantRequest,
+    RegisterDataAssetRequest, RevokeAccessGrantRequest,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -67,10 +67,6 @@ fn current_epoch_seconds() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
-}
-
-fn is_kernel_idempotency_conflict(error: &str) -> bool {
-    error.contains("kernel_idempotency_conflict")
 }
 
 fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
@@ -3886,168 +3882,37 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     }
 
     let published_asset = request.asset.clone();
-    let authority_client = crate::kernel_control::remote_authority_client_for_state(state).ok();
-    if authority_client.is_none() {
-        state
-            .data_seller
-            .note_asset_published(published_asset.clone(), None);
-        record_data_market_lifecycle_entry(
-            state,
-            published_asset.created_at_ms,
-            "asset_published",
-            published_asset.status.label(),
-            published_asset.asset_id.clone(),
-            Some(published_asset.provider_id.clone()),
-            published_asset
-                .default_policy
-                .as_ref()
-                .map(|policy| policy.policy_id.clone()),
-            None,
-            format!(
-                "Published asset {} to DS relays without kernel authority.",
-                published_asset.title
-            ),
-        );
-        if let Some(warning) = optional_publication_warning {
-            state.data_seller.status_line = format!(
-                "Published asset {} to DS relays. {}",
-                published_asset.asset_id, warning
-            );
-        } else {
-            state.data_seller.status_line = format!(
-                "Published asset {} to DS relays without kernel authority.",
-                published_asset.asset_id
-            );
-        }
-        sync_data_seller_nip90_profile(state);
-        return true;
-    }
-    let client = authority_client.expect("authority client already checked");
-
-    let expected_asset_id = request.asset.asset_id.clone();
-    let response = match crate::kernel_control::run_kernel_call(client.register_data_asset(request))
-    {
-        Ok(response) => response,
-        Err(error) => {
-            if is_kernel_idempotency_conflict(error.as_str()) {
-                let readback_asset = match crate::kernel_control::run_kernel_call(
-                    client.get_data_asset(expected_asset_id.as_str()),
-                ) {
-                    Ok(asset) => asset,
-                    Err(readback_error) => {
-                        state
-                            .data_seller
-                            .note_asset_published(published_asset.clone(), None);
-                        state.data_seller.status_line = format!(
-                            "Published asset {} to DS relays; kernel authority replay read-back failed: {readback_error}",
-                            published_asset.asset_id
-                        );
-                        return true;
-                    }
-                };
-                state
-                    .data_seller
-                    .note_asset_published(readback_asset.clone(), None);
-                state
-                    .data_market
-                    .note_published_asset(readback_asset, current_epoch_ms());
-                state.data_buyer.sync_selection(&state.data_market);
-                if let Some(asset) = state.data_seller.last_published_asset.clone() {
-                    record_data_market_lifecycle_entry(
-                        state,
-                        asset.created_at_ms,
-                        "asset_published",
-                        asset.status.label(),
-                        asset.asset_id.clone(),
-                        Some(asset.provider_id.clone()),
-                        asset
-                            .default_policy
-                            .as_ref()
-                            .map(|policy| policy.policy_id.clone()),
-                        None,
-                        format!(
-                            "Re-synced existing asset {} from kernel after idempotent replay.",
-                            asset.title
-                        ),
-                    );
-                }
-                sync_data_seller_nip90_profile(state);
-                return true;
-            }
-            state
-                .data_seller
-                .note_asset_published(published_asset.clone(), None);
-            state.data_seller.status_line = format!(
-                "Published asset {} to DS relays; kernel authority sync failed: {error}",
-                published_asset.asset_id
-            );
-            return true;
-        }
-    };
-    let asset_id = response.asset.asset_id.clone();
-    let receipt_id = Some(response.receipt.receipt_id.clone());
-    let readback_asset =
-        match crate::kernel_control::run_kernel_call(client.get_data_asset(asset_id.as_str())) {
-            Ok(asset) => asset,
-            Err(error) => {
-                let fallback_asset = response.asset.clone();
-                state
-                    .data_seller
-                    .note_asset_published(response.asset, receipt_id);
-                if let Some(asset) = state.data_seller.last_published_asset.clone() {
-                    state
-                        .data_market
-                        .note_published_asset(asset, current_epoch_ms());
-                    state.data_buyer.sync_selection(&state.data_market);
-                }
-                record_data_market_lifecycle_entry(
-                    state,
-                    current_epoch_ms(),
-                    "asset_published",
-                    "published",
-                    asset_id,
-                    Some(fallback_asset.provider_id.clone()),
-                    fallback_asset
-                        .default_policy
-                        .as_ref()
-                        .map(|policy| policy.policy_id.clone()),
-                    state.data_seller.last_publish_receipt_id.clone(),
-                    format!("Published asset {} from seller lane.", fallback_asset.title),
-                );
-                sync_data_seller_nip90_profile(state);
-                state.data_seller.status_line = format!(
-                    "Published asset {} to DS relays; kernel read-back failed: {error}",
-                    fallback_asset.asset_id
-                );
-                return true;
-            }
-        };
-
     state
         .data_seller
-        .note_asset_published(readback_asset.clone(), receipt_id);
+        .note_asset_published(published_asset.clone(), None);
     state
         .data_market
-        .note_published_asset(readback_asset, current_epoch_ms());
+        .note_published_asset(published_asset.clone(), current_epoch_ms());
     state.data_buyer.sync_selection(&state.data_market);
-    if let Some(asset) = state.data_seller.last_published_asset.clone() {
-        record_data_market_lifecycle_entry(
-            state,
-            asset.created_at_ms,
-            "asset_published",
-            asset.status.label(),
-            asset.asset_id.clone(),
-            Some(asset.provider_id.clone()),
-            asset
-                .default_policy
-                .as_ref()
-                .map(|policy| policy.policy_id.clone()),
-            state.data_seller.last_publish_receipt_id.clone(),
-            format!("Published asset {} from seller lane.", asset.title),
-        );
-    }
+    record_data_market_lifecycle_entry(
+        state,
+        published_asset.created_at_ms,
+        "asset_published",
+        published_asset.status.label(),
+        published_asset.asset_id.clone(),
+        Some(published_asset.provider_id.clone()),
+        published_asset
+            .default_policy
+            .as_ref()
+            .map(|policy| policy.policy_id.clone()),
+        None,
+        format!("Published asset {} to DS relays.", published_asset.title),
+    );
     if let Some(warning) = optional_publication_warning {
-        state.data_seller.status_line = format!("{} {}", state.data_seller.status_line, warning);
+        state.data_seller.status_line = format!(
+            "Published asset {} to DS relays. {}",
+            published_asset.asset_id, warning
+        );
+    } else {
+        state.data_seller.status_line = format!(
+            "Published asset {} to DS relays.",
+            published_asset.asset_id
+        );
     }
     sync_data_seller_nip90_profile(state);
     true
@@ -4095,24 +3960,15 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     let relay_urls = state.configured_provider_relay_urls();
     let mut request = request;
     let mut optional_publication_warning = None::<String>;
-    let authority_client = crate::kernel_control::remote_authority_client_for_state(state).ok();
     let asset_for_offer = state
         .data_seller
         .published_assets_for_display()
         .into_iter()
         .find(|asset| asset.asset_id == request.grant.asset_id)
-        .cloned()
-        .or_else(|| {
-            authority_client.as_ref().and_then(|client| {
-                crate::kernel_control::run_kernel_call(
-                    client.get_data_asset(request.grant.asset_id.as_str()),
-                )
-                .ok()
-            })
-        });
+        .cloned();
     let Some(asset_for_offer) = asset_for_offer else {
         state.data_seller.last_error = Some(
-            "Grant publish requires the seller asset to be present in local relay inventory or readable from authority."
+            "Grant publish requires the seller asset to be present in local relay inventory."
                 .to_string(),
         );
         state.data_seller.status_line =
@@ -4202,161 +4058,37 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     }
 
     let published_grant = request.grant.clone();
-    if authority_client.is_none() {
-        state
-            .data_seller
-            .note_grant_published(published_grant.clone(), None);
-        record_data_market_lifecycle_entry(
-            state,
-            published_grant.created_at_ms,
-            "grant_published",
-            published_grant.status.label(),
-            published_grant.grant_id.clone(),
-            published_grant.consumer_id.clone(),
-            Some(published_grant.permission_policy.policy_id.clone()),
-            None,
-            format!(
-                "Published grant {} to DS relays without kernel authority.",
-                published_grant.grant_id
-            ),
-        );
-        if let Some(warning) = optional_publication_warning {
-            state.data_seller.status_line = format!(
-                "Published grant {} to DS relays. {}",
-                published_grant.grant_id, warning
-            );
-        } else {
-            state.data_seller.status_line = format!(
-                "Published grant {} to DS relays without kernel authority.",
-                published_grant.grant_id
-            );
-        }
-        sync_data_seller_nip90_profile(state);
-        return true;
-    }
-    let client = authority_client.expect("authority client already checked");
-
-    let expected_grant_id = request.grant.grant_id.clone();
-    let response = match crate::kernel_control::run_kernel_call(client.create_access_grant(request))
-    {
-        Ok(response) => response,
-        Err(error) => {
-            if is_kernel_idempotency_conflict(error.as_str()) {
-                let readback_grant = match crate::kernel_control::run_kernel_call(
-                    client.get_access_grant(expected_grant_id.as_str()),
-                ) {
-                    Ok(grant) => grant,
-                    Err(readback_error) => {
-                        state
-                            .data_seller
-                            .note_grant_published(published_grant.clone(), None);
-                        state.data_seller.status_line = format!(
-                            "Published grant {} to DS relays; kernel authority replay read-back failed: {readback_error}",
-                            published_grant.grant_id
-                        );
-                        return true;
-                    }
-                };
-                state
-                    .data_seller
-                    .note_grant_published(readback_grant.clone(), None);
-                state
-                    .data_market
-                    .note_published_grant(readback_grant, current_epoch_ms());
-                state.data_buyer.sync_selection(&state.data_market);
-                if let Some(grant) = state.data_seller.last_published_grant.clone() {
-                    record_data_market_lifecycle_entry(
-                        state,
-                        grant.created_at_ms,
-                        "grant_published",
-                        grant.status.label(),
-                        grant.grant_id.clone(),
-                        grant.consumer_id.clone(),
-                        Some(grant.permission_policy.policy_id.clone()),
-                        None,
-                        format!(
-                            "Re-synced existing grant {} from kernel after idempotent replay.",
-                            grant.grant_id
-                        ),
-                    );
-                }
-                sync_data_seller_nip90_profile(state);
-                return true;
-            }
-            state
-                .data_seller
-                .note_grant_published(published_grant.clone(), None);
-            state.data_seller.status_line = format!(
-                "Published grant {} to DS relays; kernel authority sync failed: {error}",
-                published_grant.grant_id
-            );
-            return true;
-        }
-    };
-    let grant_id = response.grant.grant_id.clone();
-    let receipt_id = Some(response.receipt.receipt_id.clone());
-    let readback_grant =
-        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
-            Ok(grant) => grant,
-            Err(error) => {
-                let fallback_grant = response.grant.clone();
-                state
-                    .data_seller
-                    .note_grant_published(response.grant, receipt_id);
-                if let Some(grant) = state.data_seller.last_published_grant.clone() {
-                    state
-                        .data_market
-                        .note_published_grant(grant, current_epoch_ms());
-                    state.data_buyer.sync_selection(&state.data_market);
-                }
-                record_data_market_lifecycle_entry(
-                    state,
-                    current_epoch_ms(),
-                    "grant_published",
-                    fallback_grant.status.label(),
-                    grant_id,
-                    fallback_grant.consumer_id.clone(),
-                    Some(fallback_grant.permission_policy.policy_id.clone()),
-                    state.data_seller.last_grant_publish_receipt_id.clone(),
-                    format!(
-                        "Published grant for asset {} with expiry {}.",
-                        fallback_grant.asset_id, fallback_grant.expires_at_ms
-                    ),
-                );
-                sync_data_seller_nip90_profile(state);
-                state.data_seller.status_line = format!(
-                    "Published grant {} to DS relays; kernel read-back failed: {error}",
-                    fallback_grant.grant_id
-                );
-                return true;
-            }
-        };
-
     state
         .data_seller
-        .note_grant_published(readback_grant.clone(), receipt_id);
+        .note_grant_published(published_grant.clone(), None);
     state
         .data_market
-        .note_published_grant(readback_grant, current_epoch_ms());
+        .note_published_grant(published_grant.clone(), current_epoch_ms());
     state.data_buyer.sync_selection(&state.data_market);
-    if let Some(grant) = state.data_seller.last_published_grant.clone() {
-        record_data_market_lifecycle_entry(
-            state,
-            grant.created_at_ms,
-            "grant_published",
-            grant.status.label(),
-            grant.grant_id.clone(),
-            grant.consumer_id.clone(),
-            Some(grant.permission_policy.policy_id.clone()),
-            state.data_seller.last_grant_publish_receipt_id.clone(),
-            format!(
-                "Published grant for asset {} with expiry {}.",
-                grant.asset_id, grant.expires_at_ms
-            ),
-        );
-    }
+    record_data_market_lifecycle_entry(
+        state,
+        published_grant.created_at_ms,
+        "grant_published",
+        published_grant.status.label(),
+        published_grant.grant_id.clone(),
+        published_grant.consumer_id.clone(),
+        Some(published_grant.permission_policy.policy_id.clone()),
+        None,
+        format!(
+            "Published grant for asset {} with expiry {}.",
+            published_grant.asset_id, published_grant.expires_at_ms
+        ),
+    );
     if let Some(warning) = optional_publication_warning {
-        state.data_seller.status_line = format!("{} {}", state.data_seller.status_line, warning);
+        state.data_seller.status_line = format!(
+            "Published grant {} to DS relays. {}",
+            published_grant.grant_id, warning
+        );
+    } else {
+        state.data_seller.status_line = format!(
+            "Published grant {} to DS relays.",
+            published_grant.grant_id
+        );
     }
     sync_data_seller_nip90_profile(state);
     true
@@ -4589,16 +4321,6 @@ mod tests {
                 "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
             ),
         }
-    }
-
-    #[test]
-    fn detects_kernel_idempotency_conflicts() {
-        assert!(is_kernel_idempotency_conflict(
-            "kernel authority call failed: status=409 error=kernel_error reason=kernel_idempotency_conflict"
-        ));
-        assert!(!is_kernel_idempotency_conflict(
-            "kernel authority call failed: status=500 error=kernel_error reason=storage_unavailable"
-        ));
     }
 
     #[test]

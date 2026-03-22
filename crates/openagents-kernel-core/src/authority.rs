@@ -17,7 +17,6 @@ use crate::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DataMarketSnapshot, DeliveryBundle,
     DeliveryBundleStatus, RevocationReceipt, RevocationStatus,
 };
-use crate::data_contracts;
 use crate::labor::{ClaimHook, Contract, SettlementLink, Submission, Verdict, WorkUnit};
 use crate::liquidity::{Envelope, Quote, ReservePartition, RoutePlan, SettlementIntent};
 use crate::receipts::{EvidenceRef, PolicyContext, Receipt, ReceiptHints, TraceContext};
@@ -27,7 +26,6 @@ use crate::risk::{
 use crate::snapshots::EconomySnapshot;
 use anyhow::{Result, anyhow};
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
-use openagents_kernel_proto::openagents::data::v1 as proto_data;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1434,6 +1432,12 @@ impl HttpKernelAuthorityClient {
     }
 }
 
+fn retired_data_market_authority_error(operation: &str) -> anyhow::Error {
+    anyhow!(
+        "legacy Data Market authority surface retired for `{operation}`; use the relay-native DS catalog and DS-DVM fulfillment flow instead"
+    )
+}
+
 fn join_query_pairs(path: &str, pairs: &[(&str, Option<String>)]) -> String {
     let parts = pairs
         .iter()
@@ -2335,22 +2339,13 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         asset_kind: Option<&str>,
         status: Option<DataAssetStatus>,
     ) -> Result<Vec<DataAsset>> {
-        let path = join_query_pairs(
-            "/v1/kernel/data/assets",
-            &[
-                ("provider_id", provider_id.map(ToOwned::to_owned)),
-                ("asset_kind", asset_kind.map(ToOwned::to_owned)),
-                ("status", status.map(|value| value.label().to_string())),
-            ],
-        );
-        let response: proto_data::ListDataAssetsResponse = self.get_json(path.as_str()).await?;
-        data_contracts::list_data_assets_response_from_proto(&response)
+        let _ = (provider_id, asset_kind, status);
+        Err(retired_data_market_authority_error("list_data_assets"))
     }
 
     async fn get_data_asset(&self, asset_id: &str) -> Result<DataAsset> {
-        let path = format!("/v1/kernel/data/assets/{asset_id}");
-        let response: proto_data::GetDataAssetResponse = self.get_json(path.as_str()).await?;
-        data_contracts::get_data_asset_response_from_proto(&response)
+        let _ = asset_id;
+        Err(retired_data_market_authority_error("get_data_asset"))
     }
 
     async fn list_access_grants(
@@ -2360,23 +2355,13 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         consumer_id: Option<&str>,
         status: Option<AccessGrantStatus>,
     ) -> Result<Vec<AccessGrant>> {
-        let path = join_query_pairs(
-            "/v1/kernel/data/grants",
-            &[
-                ("asset_id", asset_id.map(ToOwned::to_owned)),
-                ("provider_id", provider_id.map(ToOwned::to_owned)),
-                ("consumer_id", consumer_id.map(ToOwned::to_owned)),
-                ("status", status.map(|value| value.label().to_string())),
-            ],
-        );
-        let response: proto_data::ListAccessGrantsResponse = self.get_json(path.as_str()).await?;
-        data_contracts::list_access_grants_response_from_proto(&response)
+        let _ = (asset_id, provider_id, consumer_id, status);
+        Err(retired_data_market_authority_error("list_access_grants"))
     }
 
     async fn get_access_grant(&self, grant_id: &str) -> Result<AccessGrant> {
-        let path = format!("/v1/kernel/data/grants/{grant_id}");
-        let response: proto_data::GetAccessGrantResponse = self.get_json(path.as_str()).await?;
-        data_contracts::get_access_grant_response_from_proto(&response)
+        let _ = grant_id;
+        Err(retired_data_market_authority_error("get_access_grant"))
     }
 
     async fn list_delivery_bundles(
@@ -2387,25 +2372,13 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         consumer_id: Option<&str>,
         status: Option<DeliveryBundleStatus>,
     ) -> Result<Vec<DeliveryBundle>> {
-        let path = join_query_pairs(
-            "/v1/kernel/data/deliveries",
-            &[
-                ("asset_id", asset_id.map(ToOwned::to_owned)),
-                ("grant_id", grant_id.map(ToOwned::to_owned)),
-                ("provider_id", provider_id.map(ToOwned::to_owned)),
-                ("consumer_id", consumer_id.map(ToOwned::to_owned)),
-                ("status", status.map(|value| value.label().to_string())),
-            ],
-        );
-        let response: proto_data::ListDeliveryBundlesResponse =
-            self.get_json(path.as_str()).await?;
-        data_contracts::list_delivery_bundles_response_from_proto(&response)
+        let _ = (asset_id, grant_id, provider_id, consumer_id, status);
+        Err(retired_data_market_authority_error("list_delivery_bundles"))
     }
 
     async fn get_delivery_bundle(&self, delivery_bundle_id: &str) -> Result<DeliveryBundle> {
-        let path = format!("/v1/kernel/data/deliveries/{delivery_bundle_id}");
-        let response: proto_data::GetDeliveryBundleResponse = self.get_json(path.as_str()).await?;
-        data_contracts::get_delivery_bundle_response_from_proto(&response)
+        let _ = delivery_bundle_id;
+        Err(retired_data_market_authority_error("get_delivery_bundle"))
     }
 
     async fn list_revocations(
@@ -2416,89 +2389,57 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         consumer_id: Option<&str>,
         status: Option<RevocationStatus>,
     ) -> Result<Vec<RevocationReceipt>> {
-        let path = join_query_pairs(
-            "/v1/kernel/data/revocations",
-            &[
-                ("asset_id", asset_id.map(ToOwned::to_owned)),
-                ("grant_id", grant_id.map(ToOwned::to_owned)),
-                ("provider_id", provider_id.map(ToOwned::to_owned)),
-                ("consumer_id", consumer_id.map(ToOwned::to_owned)),
-                ("status", status.map(|value| value.label().to_string())),
-            ],
-        );
-        let response: proto_data::ListRevocationsResponse = self.get_json(path.as_str()).await?;
-        data_contracts::list_revocations_response_from_proto(&response)
+        let _ = (asset_id, grant_id, provider_id, consumer_id, status);
+        Err(retired_data_market_authority_error("list_revocations"))
     }
 
     async fn get_revocation(&self, revocation_id: &str) -> Result<RevocationReceipt> {
-        let path = format!("/v1/kernel/data/revocations/{revocation_id}");
-        let response: proto_data::GetRevocationResponse = self.get_json(path.as_str()).await?;
-        data_contracts::get_revocation_response_from_proto(&response)
+        let _ = revocation_id;
+        Err(retired_data_market_authority_error("get_revocation"))
     }
 
     async fn get_data_market_snapshot(&self) -> Result<DataMarketSnapshot> {
-        let response: proto_data::GetDataMarketSnapshotResponse =
-            self.get_json("/v1/kernel/data/snapshot").await?;
-        data_contracts::get_data_market_snapshot_response_from_proto(&response)
+        Err(retired_data_market_authority_error("get_data_market_snapshot"))
     }
 
     async fn register_data_asset(
         &self,
         req: RegisterDataAssetRequest,
     ) -> Result<RegisterDataAssetResponse> {
-        let request = data_contracts::register_data_asset_request_to_proto(&req)?;
-        let response: proto_data::RegisterDataAssetResponse =
-            self.post_json("/v1/kernel/data/assets", &request).await?;
-        data_contracts::register_data_asset_response_from_proto(&response)
+        let _ = req;
+        Err(retired_data_market_authority_error("register_data_asset"))
     }
 
     async fn create_access_grant(
         &self,
         req: CreateAccessGrantRequest,
     ) -> Result<CreateAccessGrantResponse> {
-        let request = data_contracts::create_access_grant_request_to_proto(&req)?;
-        let response: proto_data::CreateAccessGrantResponse =
-            self.post_json("/v1/kernel/data/grants", &request).await?;
-        data_contracts::create_access_grant_response_from_proto(&response)
+        let _ = req;
+        Err(retired_data_market_authority_error("create_access_grant"))
     }
 
     async fn accept_access_grant(
         &self,
         req: AcceptAccessGrantRequest,
     ) -> Result<AcceptAccessGrantResponse> {
-        let path = format!("/v1/kernel/data/grants/{}/accept", req.grant_id.trim());
-        let request = data_contracts::accept_access_grant_request_to_proto(&req)?;
-        let response: proto_data::AcceptAccessGrantResponse =
-            self.post_json(path.as_str(), &request).await?;
-        data_contracts::accept_access_grant_response_from_proto(&response)
+        let _ = req;
+        Err(retired_data_market_authority_error("accept_access_grant"))
     }
 
     async fn issue_delivery_bundle(
         &self,
         req: IssueDeliveryBundleRequest,
     ) -> Result<IssueDeliveryBundleResponse> {
-        let path = format!(
-            "/v1/kernel/data/grants/{}/deliveries",
-            req.delivery_bundle.grant_id.trim()
-        );
-        let request = data_contracts::issue_delivery_bundle_request_to_proto(&req)?;
-        let response: proto_data::IssueDeliveryBundleResponse =
-            self.post_json(path.as_str(), &request).await?;
-        data_contracts::issue_delivery_bundle_response_from_proto(&response)
+        let _ = req;
+        Err(retired_data_market_authority_error("issue_delivery_bundle"))
     }
 
     async fn revoke_access_grant(
         &self,
         req: RevokeAccessGrantRequest,
     ) -> Result<RevokeAccessGrantResponse> {
-        let path = format!(
-            "/v1/kernel/data/grants/{}/revoke",
-            req.revocation.grant_id.trim()
-        );
-        let request = data_contracts::revoke_access_grant_request_to_proto(&req)?;
-        let response: proto_data::RevokeAccessGrantResponse =
-            self.post_json(path.as_str(), &request).await?;
-        data_contracts::revoke_access_grant_response_from_proto(&response)
+        let _ = req;
+        Err(retired_data_market_authority_error("revoke_access_grant"))
     }
 
     async fn create_liquidity_quote(
@@ -2727,4 +2668,5 @@ mod tests {
             "unexpected error: {error}"
         );
     }
+
 }
