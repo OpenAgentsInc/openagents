@@ -10,7 +10,7 @@ use nostr::nip90::{
     DataVendingDeliveryMode, DataVendingFeedback, DataVendingPreviewPosture, DataVendingResult,
     JobStatus, create_data_vending_feedback_event, create_data_vending_result_event,
 };
-use nostr::nip99::Price;
+use nostr::nip99::{ClassifiedListing, ListingStatus, Price};
 use nostr::{Event, EventTemplate, NostrIdentity};
 use nostr_client::{PoolConfig, RelayPool};
 use openagents_kernel_core::authority::{
@@ -181,10 +181,10 @@ fn build_data_seller_payment_required_feedback_event(
     .with_listing_ref(request_listing_ref_for_event(request)?)
     .with_status_extra("lightning settlement required")
     .with_content("Pay the attached Lightning invoice before delivery can proceed.".to_string())
-        .with_amount(
-            quoted_price_sats.saturating_mul(1000),
-            Some(bolt11.to_string()),
-        );
+    .with_amount(
+        quoted_price_sats.saturating_mul(1000),
+        Some(bolt11.to_string()),
+    );
     if let Some(offer_ref) = request_offer_ref_for_event(request)? {
         feedback = feedback.with_offer_ref(offer_ref);
     }
@@ -374,6 +374,15 @@ fn metadata_u64(metadata: &serde_json::Value, key: &str) -> Option<u64> {
     })
 }
 
+fn ensure_metadata_object(
+    metadata: &mut serde_json::Value,
+) -> &mut serde_json::Map<String, serde_json::Value> {
+    if !metadata.is_object() {
+        *metadata = json!({});
+    }
+    metadata.as_object_mut().expect("metadata object")
+}
+
 fn metadata_string_array(metadata: &serde_json::Value, key: &str) -> Vec<String> {
     metadata
         .get(key)
@@ -428,6 +437,28 @@ fn ds_price_from_money(money: Option<&Money>) -> Option<Price> {
         MoneyAmount::AmountMsats(amount) => amount.to_string(),
     };
     Some(Price::one_time(amount, currency))
+}
+
+fn asset_public_catalog_visibility(asset: &DataAsset) -> bool {
+    metadata_string(&asset.metadata, "visibility_posture").as_deref() == Some("public_catalog")
+}
+
+fn grant_public_catalog_visibility(grant: &AccessGrant) -> bool {
+    metadata_string(&grant.metadata, "visibility_posture").as_deref() == Some("public_catalog")
+}
+
+fn record_nip99_classified_metadata(
+    metadata: &mut serde_json::Value,
+    publication_ref: &NostrPublicationRef,
+) {
+    ensure_metadata_object(metadata).insert(
+        "nip99_classified".to_string(),
+        json!({
+            "coordinate": publication_ref.coordinate,
+            "event_id": publication_ref.event_id,
+            "relay_url": publication_ref.relay_url,
+        }),
+    );
 }
 
 fn maybe_targeted_buyer(consumer_id: Option<&str>) -> Option<String> {
@@ -511,6 +542,59 @@ fn build_dataset_listing(
     ))
 }
 
+fn build_dataset_classified_listing(
+    asset: &DataAsset,
+    seller_pubkey: &str,
+) -> Result<(ClassifiedListing, NostrPublicationRef), String> {
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_listing(
+                seller_pubkey.to_string(),
+                asset.asset_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })
+        .ok_or_else(|| "Cannot derive DS listing coordinate for NIP-99 wrapper.".to_string())?;
+    let mut listing = ClassifiedListing::new(
+        format!("catalog.{}", asset.asset_id),
+        asset.description.clone().unwrap_or_else(|| {
+            format!(
+                "Public catalog wrapper for dataset {} ({})",
+                asset.title, asset.asset_kind
+            )
+        }),
+        asset.title.clone(),
+    )
+    .with_published_at(ds_created_at_seconds(asset.created_at_ms))
+    .with_status(ListingStatus::Active);
+    if let Some(summary) = asset.description.as_deref() {
+        listing = listing.with_summary(summary.to_string());
+    }
+    if let Some(price) = ds_price_from_money(asset.price_hint.as_ref()) {
+        listing = listing.with_price(price);
+    }
+    listing.add_tag("dataset");
+    listing.add_tag("nip-ds");
+    listing.add_tag(asset.asset_kind.clone());
+    listing.add_address_ref(listing_coordinate);
+    let coordinate = listing
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive NIP-99 classified coordinate: {error}"))?;
+    Ok((
+        listing,
+        NostrPublicationRef {
+            coordinate: Some(coordinate),
+            event_id: None,
+            relay_url: None,
+        },
+    ))
+}
+
 fn publish_dataset_listing(
     identity: &NostrIdentity,
     relay_urls: &[String],
@@ -528,6 +612,24 @@ fn publish_dataset_listing(
     Ok(publication_ref)
 }
 
+fn publish_dataset_classified_listing(
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+    asset: &DataAsset,
+) -> Result<NostrPublicationRef, String> {
+    let (listing, mut publication_ref) =
+        build_dataset_classified_listing(asset, identity.public_key_hex.as_str())?;
+    let template = listing
+        .to_event_template(ds_created_at_seconds(asset.created_at_ms))
+        .map_err(|error| format!("Cannot build NIP-99 classified listing event: {error}"))?;
+    let event = sign_event_template(identity, &template)?;
+    let accepted_relays =
+        publish_event_to_relays(relay_urls, &event, "NIP-99 dataset classified listing")?;
+    publication_ref.event_id = Some(event.id);
+    publication_ref.relay_url = accepted_relays.first().cloned();
+    Ok(publication_ref)
+}
+
 fn grant_offer_status(grant: &AccessGrant) -> DatasetOfferStatus {
     match grant.status {
         AccessGrantStatus::Offered | AccessGrantStatus::Accepted | AccessGrantStatus::Delivered => {
@@ -535,6 +637,17 @@ fn grant_offer_status(grant: &AccessGrant) -> DatasetOfferStatus {
         }
         AccessGrantStatus::Revoked | AccessGrantStatus::Refunded => DatasetOfferStatus::Revoked,
         AccessGrantStatus::Expired => DatasetOfferStatus::Expired,
+    }
+}
+
+fn grant_listing_status(grant: &AccessGrant) -> ListingStatus {
+    match grant.status {
+        AccessGrantStatus::Offered | AccessGrantStatus::Accepted | AccessGrantStatus::Delivered => {
+            ListingStatus::Active
+        }
+        AccessGrantStatus::Revoked | AccessGrantStatus::Refunded | AccessGrantStatus::Expired => {
+            ListingStatus::Sold
+        }
     }
 }
 
@@ -605,6 +718,79 @@ fn build_dataset_offer(
     ))
 }
 
+fn build_dataset_offer_classified_listing(
+    grant: &AccessGrant,
+    asset: &DataAsset,
+    seller_pubkey: &str,
+) -> Result<(ClassifiedListing, NostrPublicationRef), String> {
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_listing(
+                seller_pubkey.to_string(),
+                asset.asset_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })
+        .ok_or_else(|| {
+            "Cannot derive DS listing coordinate for NIP-99 offer wrapper.".to_string()
+        })?;
+    let offer_coordinate = grant
+        .nostr_publications
+        .ds_offer
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_offer(
+                seller_pubkey.to_string(),
+                grant.grant_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })
+        .ok_or_else(|| "Cannot derive DS offer coordinate for NIP-99 offer wrapper.".to_string())?;
+    let mut listing = ClassifiedListing::new(
+        format!("catalog-offer.{}", grant.grant_id),
+        format!(
+            "Public access offer for dataset {} under policy {}.",
+            asset.title, grant.permission_policy.policy_id
+        ),
+        format!("{} access", asset.title),
+    )
+    .with_published_at(ds_created_at_seconds(grant.created_at_ms))
+    .with_status(grant_listing_status(grant));
+    if let Some(price) =
+        ds_price_from_money(grant.offer_price.as_ref().or(asset.price_hint.as_ref()))
+    {
+        listing = listing.with_price(price);
+    }
+    listing = listing.with_summary(format!(
+        "{} // {}",
+        asset.asset_kind, grant.permission_policy.policy_id
+    ));
+    listing.add_tag("dataset");
+    listing.add_tag("nip-ds");
+    listing.add_tag("access-offer");
+    listing.add_tag(asset.asset_kind.clone());
+    listing.add_address_ref(listing_coordinate);
+    listing.add_address_ref(offer_coordinate);
+    let coordinate = listing
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive NIP-99 offer classified coordinate: {error}"))?;
+    Ok((
+        listing,
+        NostrPublicationRef {
+            coordinate: Some(coordinate),
+            event_id: None,
+            relay_url: None,
+        },
+    ))
+}
+
 fn publish_dataset_offer(
     identity: &NostrIdentity,
     relay_urls: &[String],
@@ -618,6 +804,28 @@ fn publish_dataset_offer(
         .map_err(|error| format!("Cannot build DS offer event: {error}"))?;
     let event = sign_event_template(identity, &template)?;
     let accepted_relays = publish_event_to_relays(relay_urls, &event, "DS offer")?;
+    publication_ref.event_id = Some(event.id);
+    publication_ref.relay_url = accepted_relays.first().cloned();
+    Ok(publication_ref)
+}
+
+fn publish_dataset_offer_classified_listing(
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+    grant: &AccessGrant,
+    asset: &DataAsset,
+) -> Result<NostrPublicationRef, String> {
+    let (listing, mut publication_ref) =
+        build_dataset_offer_classified_listing(grant, asset, identity.public_key_hex.as_str())?;
+    let template = listing
+        .to_event_template(ds_created_at_seconds(grant.created_at_ms))
+        .map_err(|error| format!("Cannot build NIP-99 offer classified listing: {error}"))?;
+    let event = sign_event_template(identity, &template)?;
+    let accepted_relays = publish_event_to_relays(
+        relay_urls,
+        &event,
+        "NIP-99 dataset offer classified listing",
+    )?;
     publication_ref.event_id = Some(event.id);
     publication_ref.relay_url = accepted_relays.first().cloned();
     Ok(publication_ref)
@@ -651,7 +859,7 @@ fn preview_posture_for_request(request: &DataSellerIncomingRequest) -> DataVendi
 fn build_delivery_result_content(
     request: &DataSellerIncomingRequest,
     delivery: &DeliveryBundle,
-    ) -> String {
+) -> String {
     if let Some(preview_text) = request
         .delivery_draft
         .preview_text
@@ -2206,6 +2414,22 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
         }
     };
     request.asset.nostr_publications.ds_listing = Some(listing_ref);
+    if asset_public_catalog_visibility(&request.asset) {
+        let classified_ref = match publish_dataset_classified_listing(
+            identity,
+            relay_urls.as_slice(),
+            &request.asset,
+        ) {
+            Ok(reference) => reference,
+            Err(error) => {
+                state.data_seller.last_error = Some(error);
+                state.data_seller.status_line =
+                    "Asset publish blocked because NIP-99 catalog publication failed.".to_string();
+                return true;
+            }
+        };
+        record_nip99_classified_metadata(&mut request.asset.metadata, &classified_ref);
+    }
 
     let client = match crate::kernel_control::remote_authority_client_for_state(state) {
         Ok(client) => client,
@@ -2418,6 +2642,23 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
         }
     };
     request.grant.nostr_publications.ds_offer = Some(offer_ref);
+    if grant_public_catalog_visibility(&request.grant) && request.grant.consumer_id.is_none() {
+        let classified_ref = match publish_dataset_offer_classified_listing(
+            identity,
+            relay_urls.as_slice(),
+            &request.grant,
+            &asset_for_offer,
+        ) {
+            Ok(reference) => reference,
+            Err(error) => {
+                state.data_seller.last_error = Some(error);
+                state.data_seller.status_line =
+                    "Grant publish blocked because NIP-99 catalog publication failed.".to_string();
+                return true;
+            }
+        };
+        record_nip99_classified_metadata(&mut request.grant.metadata, &classified_ref);
+    }
 
     let expected_grant_id = request.grant.grant_id.clone();
     let response = match crate::kernel_control::run_kernel_call(client.create_access_grant(request))
@@ -2617,7 +2858,9 @@ mod tests {
             source_relay_url: Some("wss://relay.example".to_string()),
             request_kind: 5960,
             profile_id: Some(nostr::nip90::OPENAGENTS_DATA_VENDING_PROFILE.to_string()),
-            asset_ref: Some(format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001")),
+            asset_ref: Some(format!(
+                "30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"
+            )),
             permission_scopes: vec!["read.context".to_string()],
             delivery_mode: Some("encrypted_pointer".to_string()),
             preview_posture: Some("metadata_only".to_string()),
@@ -2785,6 +3028,84 @@ mod tests {
     }
 
     #[test]
+    fn builds_nip99_classified_listing_from_public_asset() {
+        let mut asset = fixture_asset();
+        asset.metadata["visibility_posture"] = json!("public_catalog");
+        let (classified, publication_ref) =
+            build_dataset_classified_listing(&asset, SELLER_PUBKEY).expect("classified listing");
+
+        assert_eq!(
+            classified.identifier,
+            "catalog.data_asset.example.corpus.001"
+        );
+        assert_eq!(classified.title, "Example corpus");
+        assert_eq!(
+            classified.summary.as_deref(),
+            Some("Example dataset for DS seller publication.")
+        );
+        assert_eq!(
+            classified.price.as_ref().map(|price| price.amount.as_str()),
+            Some("5")
+        );
+        assert!(classified.tags.iter().any(|tag| tag == "dataset"));
+        assert!(classified.tags.iter().any(|tag| tag == "nip-ds"));
+        assert_eq!(
+            classified.address_refs,
+            vec![format!(
+                "30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"
+            )]
+        );
+        assert_eq!(
+            publication_ref.coordinate.as_deref(),
+            Some(
+                "30402:1111111111111111111111111111111111111111111111111111111111111111:catalog.data_asset.example.corpus.001"
+            )
+        );
+    }
+
+    #[test]
+    fn builds_nip99_classified_offer_from_open_grant() {
+        let mut asset = fixture_asset();
+        asset.nostr_publications.ds_listing = Some(NostrPublicationRef {
+            coordinate: Some(format!("30404:{SELLER_PUBKEY}:{}", asset.asset_id)),
+            event_id: None,
+            relay_url: None,
+        });
+        let mut grant = fixture_grant(asset.asset_id.as_str());
+        grant.consumer_id = None;
+        grant.metadata["visibility_posture"] = json!("public_catalog");
+        grant.nostr_publications.ds_offer = Some(NostrPublicationRef {
+            coordinate: Some(format!("30406:{SELLER_PUBKEY}:{}", grant.grant_id)),
+            event_id: None,
+            relay_url: None,
+        });
+
+        let (classified, publication_ref) =
+            build_dataset_offer_classified_listing(&grant, &asset, SELLER_PUBKEY)
+                .expect("classified offer listing");
+
+        assert_eq!(
+            classified.identifier,
+            "catalog-offer.grant.example.corpus.001"
+        );
+        assert_eq!(classified.title, "Example corpus access");
+        assert_eq!(classified.status, Some(ListingStatus::Active));
+        assert_eq!(
+            classified.address_refs,
+            vec![
+                format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"),
+                format!("30406:{SELLER_PUBKEY}:grant.example.corpus.001"),
+            ]
+        );
+        assert_eq!(
+            publication_ref.coordinate.as_deref(),
+            Some(
+                "30402:1111111111111111111111111111111111111111111111111111111111111111:catalog-offer.grant.example.corpus.001"
+            )
+        );
+    }
+
+    #[test]
     fn payment_feedback_event_carries_ds_refs() {
         let identity = nostr::regenerate_identity().expect("identity");
         let event = build_data_seller_payment_required_feedback_event(
@@ -2803,7 +3124,9 @@ mod tests {
                 .as_ref()
                 .map(|reference| reference.coordinate.to_string())
                 .as_deref(),
-            Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001")
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001"
+            )
         );
         assert_eq!(
             feedback
@@ -2811,10 +3134,18 @@ mod tests {
                 .as_ref()
                 .map(|reference| reference.coordinate.to_string())
                 .as_deref(),
-            Some("30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001")
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001"
+            )
         );
-        assert_eq!(feedback.asset_id.as_deref(), Some("data_asset.example.corpus.001"));
-        assert_eq!(feedback.grant_id.as_deref(), Some("grant.example.corpus.001"));
+        assert_eq!(
+            feedback.asset_id.as_deref(),
+            Some("data_asset.example.corpus.001")
+        );
+        assert_eq!(
+            feedback.grant_id.as_deref(),
+            Some("grant.example.corpus.001")
+        );
     }
 
     #[test]
@@ -2834,7 +3165,9 @@ mod tests {
                 .as_ref()
                 .map(|reference| reference.coordinate.to_string())
                 .as_deref(),
-            Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001")
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001"
+            )
         );
         assert_eq!(
             result
@@ -2842,9 +3175,14 @@ mod tests {
                 .as_ref()
                 .map(|reference| reference.coordinate.to_string())
                 .as_deref(),
-            Some("30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001")
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001"
+            )
         );
-        assert_eq!(result.asset_id.as_deref(), Some("data_asset.example.corpus.001"));
+        assert_eq!(
+            result.asset_id.as_deref(),
+            Some("data_asset.example.corpus.001")
+        );
         assert_eq!(result.grant_id.as_deref(), Some("grant.example.corpus.001"));
         assert_eq!(
             result.delivery_digest.as_deref(),
@@ -2891,7 +3229,9 @@ mod tests {
                 .as_ref()
                 .map(|reference| reference.coordinate.to_string())
                 .as_deref(),
-            Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001")
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001"
+            )
         );
     }
 }
