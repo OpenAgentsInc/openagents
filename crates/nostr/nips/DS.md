@@ -119,8 +119,10 @@ DS core is normative and defines:
 - `kind:30404` dataset listings
 - `kind:30405` draft/inactive dataset listings
 - `kind:30406` dataset offers
+- `kind:30407` dataset access contracts
 - baseline discovery
-- linkage to previews, manifests, offers, and discussion channels
+- linkage to previews, manifests, offers, access contracts, and discussion
+  channels
 
 ### Optional Profiles
 
@@ -151,6 +153,7 @@ This NIP reserves:
 | 30404 | Addressable | Dataset Listing |
 | 30405 | Addressable | Draft / Inactive Dataset Listing |
 | 30406 | Addressable | Dataset Offer |
+| 30407 | Addressable | Dataset Access Contract |
 | 5960  | Regular     | Dataset Access Request (optional DS-DVM profile) |
 | 6960  | Regular     | Dataset Access Result (optional DS-DVM profile) |
 
@@ -437,6 +440,113 @@ Listings and offers MAY reference `kind:1063` NIP-94 file metadata events for:
 
 When doing so, clients SHOULD still verify the DS listing or delivery digest
 before treating the payload as authentic.
+
+## 5.4 Dataset Access Contract (`kind:30407`)
+
+An addressable event keyed by `d` that represents the durable lifecycle of a
+specific buyer's access to a dataset.
+
+This event exists to make post-sale state relay-native. It is the DS object
+that bridges:
+
+- the public listing identity
+- the chosen offer
+- the concrete buyer request
+- payment-required and paid state
+- delivered pointer metadata
+- revocation, expiry, or refund outcomes
+
+The seller SHOULD publish the current access-contract head for a
+buyer-and-sale-specific `d` tag. Clients SHOULD treat it as the canonical relay
+object for lifecycle state after a DS listing or DS offer has moved beyond
+mere discovery.
+
+### 5.4.1 Required Tags
+
+A valid `kind:30407` dataset access contract MUST include:
+
+- `d`: stable contract identifier
+- `a`: the referenced dataset listing address, marked `listing`
+- `e`: the referenced DS-DVM request event, marked `request`
+- `status`: one of `payment-required`, `paid`, `delivered`, `revoked`,
+  `expired`, `refunded`
+- `p`: the buyer pubkey
+
+### 5.4.2 Recommended Tags
+
+- `a`: optional dataset offer address, marked `offer`
+- `e`: optional DS-DVM result event, marked `result`
+- `e`: repeated settlement evidence refs, marked `payment`
+- `payment`: selected rail for this contract
+- `amount`: settled or requested amount in millisats, with optional BOLT11
+  invoice in the third field
+- `delivery`: selected delivery mode
+- `delivery_ref`: delivery pointer, receipt URL, gift-wrapped event id, or
+  other seller-defined locator
+- `m`: MIME type of the delivered payload or manifest
+- `x`: delivered payload or manifest digest
+- `expires_at`: unix timestamp after which the contract should be treated as
+  expired
+- `reason_code`: seller-defined revocation, refund, or expiry reason
+- `a`: additional DS-linked refs for replacement chains, discussion, or local
+  policy metadata
+
+### 5.4.3 Marker Rules
+
+This event uses canonical markers so clients can project lifecycle state
+without ambiguous tag guessing.
+
+Recommended markers are:
+
+- `listing` on the canonical dataset listing `a` tag
+- `offer` on the chosen dataset offer `a` tag
+- `request` on the DS-DVM request `e` tag
+- `result` on the DS-DVM result `e` tag
+- `payment` on settlement-evidence `e` tags
+
+### 5.4.4 Status Meaning
+
+- `payment-required`: the seller matched the request and has published payment
+  terms or an invoice, but settlement is not yet observed
+- `paid`: the seller observed settlement and access is now active, even if
+  delivery has not yet completed
+- `delivered`: the seller has published or transmitted delivery metadata and
+  the buyer can fetch or consume the payload
+- `revoked`: previously granted access has been revoked
+- `expired`: the access window expired without continued validity
+- `refunded`: the seller or market considers the contract settled in the
+  buyer's favor without continuing access
+
+### 5.4.5 Example
+
+```json
+{
+  "kind": 30407,
+  "content": "Paid access contract for the full corpus. Delivery is available through an encrypted pointer after Lightning settlement.",
+  "tags": [
+    ["d", "buyer-1-q1-2026-access"],
+    ["a", "30404:<seller-pubkey>:bitcoin-policy-transcripts-q1-2026", "<relay>", "listing"],
+    ["a", "30406:<seller-pubkey>:targeted-offer-buyer-1", "<relay>", "offer"],
+    ["e", "<5960-request-event-id>", "<relay>", "request"],
+    ["e", "<6960-result-event-id>", "<relay>", "result"],
+    ["e", "<payment-evidence-event-id>", "<relay>", "payment"],
+    ["status", "delivered"],
+    ["p", "<buyer-pubkey>", "<relay>"],
+    ["payment", "ln"],
+    ["amount", "5000", "lnbc50n1..."],
+    ["delivery", "encrypted_pointer"],
+    ["delivery_ref", "https://delivery.example/contracts/abc123"],
+    ["m", "application/x-ndjson"],
+    ["x", "<sha256-bundle-digest>"],
+    ["expires_at", "1774166400"]
+  ],
+  "pubkey": "<seller-pubkey>"
+}
+```
+
+Clients that support DS-DVM SHOULD use the access contract as the durable
+post-sale state object and treat `5960`, `7000`, and `6960` as the request,
+feedback, and fulfillment transport around it.
 
 ## 6. DS-Market Profiles
 
