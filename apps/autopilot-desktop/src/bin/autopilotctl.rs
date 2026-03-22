@@ -3128,10 +3128,12 @@ fn print_data_market_snapshot_text(payload: &Value) {
     }
     if let Some(buyer) = payload.get("buyer") {
         println!(
-            "buyer: load_state={} buyer_id={} selected_asset={} status={}",
+            "buyer: load_state={} buyer_id={} selected_asset={} selected_listing={} selected_offer={} status={}",
             json_str(buyer.get("load_state")).unwrap_or("-"),
             json_str(buyer.get("local_buyer_id")).unwrap_or("-"),
             json_str(buyer.get("selected_asset_id")).unwrap_or("-"),
+            json_str(buyer.get("selected_listing_coordinate")).unwrap_or("-"),
+            json_str(buyer.get("selected_offer_coordinate")).unwrap_or("-"),
             json_str(buyer.get("status_line")).unwrap_or("-"),
         );
         if let Some(last_action) = json_str(buyer.get("last_action")) {
@@ -3143,8 +3145,11 @@ fn print_data_market_snapshot_text(payload: &Value) {
         if let Some(draft) = buyer.get("derived_request_draft") {
             if !draft.is_null() {
                 println!(
-                    "buyer draft: asset_id={} provider={} grant={} bid_sats={} delivery_mode={} preview_posture={}",
+                    "buyer draft: asset_ref={} asset_id={} listing={} offer={} provider={} grant={} bid_sats={} delivery_mode={} preview_posture={}",
+                    json_str(draft.get("asset_ref")).unwrap_or("-"),
                     json_str(draft.get("asset_id")).unwrap_or("-"),
+                    json_str(draft.get("listing_coordinate")).unwrap_or("-"),
+                    json_str(draft.get("offer_coordinate")).unwrap_or("-"),
                     json_str(draft.get("provider_id")).unwrap_or("-"),
                     json_str(draft.get("offer_grant_id")).unwrap_or("-"),
                     draft
@@ -3178,7 +3183,7 @@ fn print_data_market_snapshot_text(payload: &Value) {
     }
     if let Some(market) = payload.get("market") {
         println!(
-            "market: load_state={} assets={} grants={} deliveries={} revocations={} refreshed_at_ms={}",
+            "market: load_state={} assets={} grants={} relay_listings={} relay_offers={} deliveries={} revocations={} refreshed_at_ms={}",
             json_str(market.get("load_state")).unwrap_or("-"),
             market
                 .get("asset_count")
@@ -3186,6 +3191,14 @@ fn print_data_market_snapshot_text(payload: &Value) {
                 .unwrap_or(0),
             market
                 .get("grant_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            market
+                .get("relay_listing_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            market
+                .get("relay_offer_count")
                 .and_then(Value::as_u64)
                 .unwrap_or(0),
             market
@@ -3206,6 +3219,36 @@ fn print_data_market_snapshot_text(payload: &Value) {
         }
         if let Some(last_error) = json_str(market.get("last_error")) {
             println!("market last error: {last_error}");
+        }
+        for listing in market
+            .get("relay_listings")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .take(3)
+        {
+            println!(
+                "relay listing: coordinate={} title={} draft={} linked_asset={}",
+                json_str(listing.get("coordinate")).unwrap_or("-"),
+                json_str(listing.get("title")).unwrap_or("-"),
+                json_bool(listing.get("draft")),
+                json_str(listing.get("linked_asset_id")).unwrap_or("-"),
+            );
+        }
+        for offer in market
+            .get("relay_offers")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .take(3)
+        {
+            println!(
+                "relay offer: coordinate={} listing={} status={} linked_grant={}",
+                json_str(offer.get("coordinate")).unwrap_or("-"),
+                json_str(offer.get("listing_coordinate")).unwrap_or("-"),
+                json_str(offer.get("status")).unwrap_or("-"),
+                json_str(offer.get("linked_grant_id")).unwrap_or("-"),
+            );
         }
     }
 }

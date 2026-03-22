@@ -42,9 +42,12 @@ fn build_data_buyer_request_payload(
 ) -> String {
     json!({
         "request_type": DATA_MARKET_BUYER_REQUEST_TYPE,
+        "asset_ref": draft.asset_ref,
         "asset_id": draft.asset_id,
+        "ds_listing_coordinate": draft.listing_coordinate,
         "target_provider_pubkey": draft.provider_id,
         "grant_id": draft.offer_grant_id,
+        "ds_offer_coordinate": draft.offer_coordinate,
         "permission_scopes": draft.permission_scopes,
         "delivery_mode": draft.delivery_mode,
         "preview_posture": draft.preview_posture,
@@ -69,7 +72,7 @@ fn build_data_buyer_request_event(
         .unwrap_or_else(|| "targeted_request".to_string());
     let mut request = DataVendingRequest::new(
         OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
-        draft.asset_id.as_str(),
+        draft.asset_ref.as_str(),
         first_scope,
     )
     .map_err(|error| format!("Cannot build data-vending request: {error}"))?
@@ -221,9 +224,20 @@ mod tests {
 
     fn fixture_draft() -> DataBuyerRequestDraft {
         DataBuyerRequestDraft {
+            asset_ref:
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+                    .to_string(),
             asset_id: "data_asset.npub1seller.document.context.sha256_abc".to_string(),
             provider_id: "npub1seller".to_string(),
             offer_grant_id: Some("grant.data.offer.001".to_string()),
+            listing_coordinate: Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+                    .to_string(),
+            ),
+            offer_coordinate: Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.data.offer.001"
+                    .to_string(),
+            ),
             permission_scopes: vec![
                 "encrypted_pointer".to_string(),
                 "targeted_request".to_string(),
@@ -248,6 +262,12 @@ mod tests {
             payload["target_provider_pubkey"].as_str(),
             Some("npub1seller")
         );
+        assert_eq!(
+            payload["asset_ref"].as_str(),
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+            )
+        );
         assert_eq!(payload["bid_sats"].as_u64(), Some(42));
         assert_eq!(payload["buyer_id"].as_str(), Some("npub1buyer"));
     }
@@ -266,7 +286,7 @@ mod tests {
         let request = DataVendingRequest::from_event(&event).expect("data-vending request");
         assert_eq!(
             request.asset_ref,
-            "data_asset.npub1seller.document.context.sha256_abc"
+            "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
         );
         assert_eq!(request.bid, Some(42_000));
         assert_eq!(request.service_providers, vec!["npub1seller".to_string()]);

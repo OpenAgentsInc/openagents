@@ -6,7 +6,10 @@ use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
 use serde_json::Value;
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
-use crate::app_state::{DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState};
+use crate::app_state::{
+    DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState, RelayDatasetListingProjection,
+    RelayDatasetOfferProjection,
+};
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
 use crate::pane_system::data_market_refresh_button_bounds;
 
@@ -32,7 +35,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
     );
 
     paint.scene.draw_text(paint.text.layout(
-        "Read-only Nexus kernel snapshot for data assets, grants, deliveries, and revocations.",
+        "Combined Data Market view: Nexus settlement truth plus relay-discovered DS listings and offers.",
         Point::new(
             content_bounds.origin.x + PADDING,
             content_bounds.origin.y + 42.0,
@@ -89,12 +92,21 @@ fn paint_metric_cards(
 ) {
     let card_width =
         ((content_bounds.size.width - PADDING * 2.0 - METRIC_GAP * 3.0) / 4.0).max(100.0);
-    let metrics = [
-        ("Assets", pane_state.assets.len()),
-        ("Grants", pane_state.grants.len()),
-        ("Deliveries", pane_state.deliveries.len()),
-        ("Revocations", pane_state.revocations.len()),
-    ];
+    let metrics = if pane_state.relay_listings.is_empty() && pane_state.relay_offers.is_empty() {
+        [
+            ("Assets", pane_state.assets.len()),
+            ("Grants", pane_state.grants.len()),
+            ("Deliveries", pane_state.deliveries.len()),
+            ("Revocations", pane_state.revocations.len()),
+        ]
+    } else {
+        [
+            ("Assets", pane_state.assets.len()),
+            ("Grants", pane_state.grants.len()),
+            ("Listings", pane_state.relay_listings.len()),
+            ("Offers", pane_state.relay_offers.len()),
+        ]
+    };
     for (index, (label, count)) in metrics.iter().enumerate() {
         let bounds = Bounds::new(
             content_bounds.origin.x + PADDING + index as f32 * (card_width + METRIC_GAP),
@@ -136,8 +148,90 @@ fn paint_panels(
     let top_y = content_bounds.origin.y + PANELS_TOP;
     let bottom_y = top_y + panel_height + PANEL_GAP;
 
+    if pane_state.relay_listings.is_empty() && pane_state.relay_offers.is_empty() {
+        paint_panel(
+            Bounds::new(left_x, top_y, panel_width, panel_height),
+            "Assets",
+            pane_state.load_state,
+            pane_state.assets.len(),
+            pane_state
+                .assets
+                .iter()
+                .take(MAX_ROWS_PER_PANEL)
+                .map(asset_row_summary)
+                .collect::<Vec<_>>(),
+            paint,
+        );
+        paint_panel(
+            Bounds::new(right_x, top_y, panel_width, panel_height),
+            "Grants",
+            pane_state.load_state,
+            pane_state.grants.len(),
+            pane_state
+                .grants
+                .iter()
+                .take(MAX_ROWS_PER_PANEL)
+                .map(grant_row_summary)
+                .collect::<Vec<_>>(),
+            paint,
+        );
+        paint_panel(
+            Bounds::new(left_x, bottom_y, panel_width, panel_height),
+            "Deliveries",
+            pane_state.load_state,
+            pane_state.deliveries.len(),
+            pane_state
+                .deliveries
+                .iter()
+                .take(MAX_ROWS_PER_PANEL)
+                .map(delivery_row_summary)
+                .collect::<Vec<_>>(),
+            paint,
+        );
+        paint_panel(
+            Bounds::new(right_x, bottom_y, panel_width, panel_height),
+            "Revocations",
+            pane_state.load_state,
+            pane_state.revocations.len(),
+            pane_state
+                .revocations
+                .iter()
+                .take(MAX_ROWS_PER_PANEL)
+                .map(revocation_row_summary)
+                .collect::<Vec<_>>(),
+            paint,
+        );
+        return;
+    }
+
     paint_panel(
         Bounds::new(left_x, top_y, panel_width, panel_height),
+        "Relay Listings",
+        pane_state.load_state,
+        pane_state.relay_listings.len(),
+        pane_state
+            .relay_listings
+            .iter()
+            .take(MAX_ROWS_PER_PANEL)
+            .map(relay_listing_row_summary)
+            .collect::<Vec<_>>(),
+        paint,
+    );
+    paint_panel(
+        Bounds::new(right_x, top_y, panel_width, panel_height),
+        "Relay Offers",
+        pane_state.load_state,
+        pane_state.relay_offers.len(),
+        pane_state
+            .relay_offers
+            .iter()
+            .take(MAX_ROWS_PER_PANEL)
+            .map(relay_offer_row_summary)
+            .collect::<Vec<_>>(),
+        paint,
+    );
+    paint_panel(
+        Bounds::new(left_x, bottom_y, panel_width, panel_height),
         "Assets",
         pane_state.load_state,
         pane_state.assets.len(),
@@ -150,7 +244,7 @@ fn paint_panels(
         paint,
     );
     paint_panel(
-        Bounds::new(right_x, top_y, panel_width, panel_height),
+        Bounds::new(right_x, bottom_y, panel_width, panel_height),
         "Grants",
         pane_state.load_state,
         pane_state.grants.len(),
@@ -159,32 +253,6 @@ fn paint_panels(
             .iter()
             .take(MAX_ROWS_PER_PANEL)
             .map(grant_row_summary)
-            .collect::<Vec<_>>(),
-        paint,
-    );
-    paint_panel(
-        Bounds::new(left_x, bottom_y, panel_width, panel_height),
-        "Deliveries",
-        pane_state.load_state,
-        pane_state.deliveries.len(),
-        pane_state
-            .deliveries
-            .iter()
-            .take(MAX_ROWS_PER_PANEL)
-            .map(delivery_row_summary)
-            .collect::<Vec<_>>(),
-        paint,
-    );
-    paint_panel(
-        Bounds::new(right_x, bottom_y, panel_width, panel_height),
-        "Revocations",
-        pane_state.load_state,
-        pane_state.revocations.len(),
-        pane_state
-            .revocations
-            .iter()
-            .take(MAX_ROWS_PER_PANEL)
-            .map(revocation_row_summary)
             .collect::<Vec<_>>(),
         paint,
     );
@@ -326,6 +394,13 @@ fn paint_panel(
 fn asset_row_summary(asset: &DataAsset) -> (String, String) {
     let packaging = asset_packaging_summary(asset);
     let market_posture = asset_market_posture(asset);
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.as_deref())
+        .map(short_id)
+        .unwrap_or_else(|| "no-ds".to_string());
     let primary = compact_text(
         if packaging.is_some() {
             format!(
@@ -346,8 +421,9 @@ fn asset_row_summary(asset: &DataAsset) -> (String, String) {
     );
     let secondary = compact_text(
         format!(
-            "{} // {}{} // {} // provider {}",
+            "{} // listing {} // {}{} // {} // provider {}",
             short_id(asset.asset_id.as_str()),
+            listing_coordinate,
             market_posture,
             packaging
                 .map(|summary| format!(" // {summary}"))
@@ -362,6 +438,13 @@ fn asset_row_summary(asset: &DataAsset) -> (String, String) {
 }
 
 fn grant_row_summary(grant: &AccessGrant) -> (String, String) {
+    let offer_coordinate = grant
+        .nostr_publications
+        .ds_offer
+        .as_ref()
+        .and_then(|reference| reference.coordinate.as_deref())
+        .map(short_id)
+        .unwrap_or_else(|| "no-ds".to_string());
     let primary = compact_text(
         format!(
             "{} // {} // {}",
@@ -374,7 +457,8 @@ fn grant_row_summary(grant: &AccessGrant) -> (String, String) {
     );
     let secondary = compact_text(
         format!(
-            "consumer {} // policy {} // expires {}",
+            "offer {} // consumer {} // policy {} // expires {}",
+            offer_coordinate,
             grant
                 .consumer_id
                 .as_deref()
@@ -385,6 +469,67 @@ fn grant_row_summary(grant: &AccessGrant) -> (String, String) {
         )
         .as_str(),
         76,
+    );
+    (primary, secondary)
+}
+
+fn relay_listing_row_summary(listing: &RelayDatasetListingProjection) -> (String, String) {
+    let primary = compact_text(
+        format!(
+            "{} // {} // {}",
+            listing.title,
+            listing.dataset_kind.as_deref().unwrap_or("dataset"),
+            if listing.draft { "draft" } else { "active" }
+        )
+        .as_str(),
+        58,
+    );
+    let secondary = compact_text(
+        format!(
+            "{} // access {} // asset {}",
+            short_id(listing.coordinate.as_str()),
+            listing.access.as_deref().unwrap_or("unspecified"),
+            listing
+                .linked_asset_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "unlinked".to_string()),
+        )
+        .as_str(),
+        92,
+    );
+    (primary, secondary)
+}
+
+fn relay_offer_row_summary(offer: &RelayDatasetOfferProjection) -> (String, String) {
+    let primary = compact_text(
+        format!(
+            "{} // {} // {}",
+            short_id(offer.coordinate.as_str()),
+            short_id(offer.listing_coordinate.as_str()),
+            offer.status
+        )
+        .as_str(),
+        58,
+    );
+    let secondary = compact_text(
+        format!(
+            "price {} {} // grant {} // asset {}",
+            offer.price_amount.as_deref().unwrap_or("-"),
+            offer.price_currency.as_deref().unwrap_or("-"),
+            offer
+                .linked_grant_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "unlinked".to_string()),
+            offer
+                .linked_asset_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "unlinked".to_string()),
+        )
+        .as_str(),
+        92,
     );
     (primary, secondary)
 }
