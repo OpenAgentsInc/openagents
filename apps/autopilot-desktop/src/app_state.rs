@@ -14896,6 +14896,7 @@ pub struct RenderState {
     pub desktop_control: DesktopControlState,
     pub codex_remote: CodexRemoteState,
     pub codex_diagnostics: CodexDiagnosticsPaneState,
+    pub codex_disabled: bool,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_config: crate::codex_lane::CodexLaneConfig,
     pub codex_lane_worker: CodexLaneWorker,
@@ -15092,11 +15093,19 @@ impl RenderState {
     }
 
     pub fn queue_codex_command(&mut self, command: CodexLaneCommand) -> Result<u64, String> {
+        if self.codex_disabled {
+            return Err("Codex lane disabled for this desktop session".to_string());
+        }
         let seq = self.allocate_codex_command_seq();
         self.codex_lane_worker.enqueue(seq, command).map(|()| seq)
     }
 
     pub fn restart_codex_lane(&mut self) {
+        if self.codex_disabled {
+            self.codex_lane = CodexLaneSnapshot::idle();
+            self.autopilot_chat.set_connection_status("idle");
+            return;
+        }
         tracing::info!("codex lane restart requested");
         let replacement = CodexLaneWorker::spawn(self.codex_lane_config.clone());
         let mut previous = std::mem::replace(&mut self.codex_lane_worker, replacement);
@@ -15122,19 +15131,21 @@ impl RenderState {
         let spark_scope = crate::credentials::CREDENTIAL_SCOPE_SPARK
             | crate::credentials::CREDENTIAL_SCOPE_GLOBAL;
 
-        match self.credentials.resolve_env_for_scope(codex_scope) {
-            Ok(codex_env) => {
-                let changed = self.codex_lane_config.env != codex_env;
-                self.codex_lane_config.env = codex_env;
-                if restart_codex && changed {
-                    self.restart_codex_lane();
-                    self.autopilot_chat
-                        .set_connection_status("restarting (credential env updated)");
+        if !self.codex_disabled {
+            match self.credentials.resolve_env_for_scope(codex_scope) {
+                Ok(codex_env) => {
+                    let changed = self.codex_lane_config.env != codex_env;
+                    self.codex_lane_config.env = codex_env;
+                    if restart_codex && changed {
+                        self.restart_codex_lane();
+                        self.autopilot_chat
+                            .set_connection_status("restarting (credential env updated)");
+                    }
                 }
-            }
-            Err(error) => {
-                self.credentials.last_error = Some(error);
-                self.credentials.load_state = PaneLoadState::Error;
+                Err(error) => {
+                    self.credentials.last_error = Some(error);
+                    self.credentials.load_state = PaneLoadState::Error;
+                }
             }
         }
 

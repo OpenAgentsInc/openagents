@@ -41,7 +41,12 @@ fn main() -> Result<()> {
         "starting autopilot-headless-data-market; manifest will be written to {}",
         manifest_path.display()
     );
+    let disable_codex = std::env::var("OPENAGENTS_DISABLE_CODEX")
+        .ok()
+        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "True"))
+        .unwrap_or(false);
     run_desktop_app_with_options(DesktopAppOptions {
         window_visible: false,
+        disable_codex,
     })
 }

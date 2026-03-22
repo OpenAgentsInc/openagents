@@ -19,11 +19,13 @@ The buyer-side consume step now also has a semantic CLI path:
 
 - `autopilotctl data-market consume-delivery ...`
 
-For the current targeted NIP-90 flow, seller and buyer online posture is now
-split cleanly:
+For the current DS-first market shape, seller and buyer posture is split
+cleanly:
 
-- the seller goes online for request intake and result publication
-- the buyer goes online in a relay-only posture for result tracking
+- the seller publishes DS listings and DS offers first
+- the buyer discovers those DS objects through the relay-backed catalog
+- the seller goes online for DS-DVM request intake and result publication
+- the buyer goes online in a relay-only posture for DS-DVM result tracking
 - neither path requires a compute-ready GPT-OSS or Apple FM runtime for the
   Data Market headless MVP
 
@@ -175,6 +177,8 @@ That harness verifies:
 - deterministic packaging output can be drafted into seller state
 - asset preview and publish work without opening the UI window
 - grant preview and publish work without opening the UI window
+- authority read-back records DS listing and DS offer publication refs after
+  publish
 
 ## Real local E2E harness
 
@@ -191,14 +195,34 @@ That harness does a real local loop:
 - creates isolated seller and buyer homes + identities
 - launches two no-window Data Market runtimes
 - packages a dummy dataset
-- publishes an asset and a zero-price targeted grant
-- publishes a buyer-side targeted request
+- publishes a DS listing-backed asset and a DS offer-backed targeted grant
+- refreshes the buyer-side relay catalog against the published DS objects
+- publishes a buyer-side targeted DS-DVM request that references those DS
+  coordinates
 - brings the buyer online in relay-only mode for response tracking
 - waits for seller intake
 - issues a real `DeliveryBundle`
-- waits for the buyer-side NIP-90 result
+- waits for the buyer-side DS-DVM result
 - consumes the delivered local payload into a buyer output directory
 - verifies the consumed files match the original dummy dataset
+- asserts buyer-side DS listing and DS offer selection against the authority
+  publication refs
+- asserts seller-side request matching against the same DS coordinates
+- asserts local relay publication of `30404`, `30406`, `5960`, and `6960`
+
+For priced local runs, the harness also supports an explicit prefund payer:
+
+```bash
+OPENAGENTS_HEADLESS_DATA_MARKET_BUYER_PREFUND_SATS=20 \
+OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_IDENTITY_PATH=/path/to/payer/identity.mnemonic \
+OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_STORAGE_DIR=/path/to/payer/spark/mainnet \
+scripts/autopilot/headless-data-market-e2e.sh
+```
+
+The repo-owned harnesses now launch the no-window runtime with
+`OPENAGENTS_DISABLE_CODEX=true` because those verification paths do not use the
+conversational seller lane. Normal operator runs keep Codex enabled by default,
+which preserves `autopilotctl data-market seller-prompt ...`.
 
 The verified runtime path also now handles the two identity-normalization edges
 that mattered in practice:
@@ -221,12 +245,17 @@ By default it targets:
 - `wss://relay.damus.io`
 - `wss://relay.primal.net`
 
-The current verified public-relay truth is:
+The public harness is a live operator probe, not a portable CI gate.
 
-- the buyer publishes the targeted Data Market request as NIP-90 kind `5960`
-  to the configured public relays
-- the seller publishes the delivery result as NIP-90 kind `6960` back to the
-  same configured public relays
+The current DS-first public harness is designed to prove:
+
+- the seller publishes DS listings (`30404`) and DS offers (`30406`) to the
+  configured public relays before any buyer request is sent
+- the buyer discovers those DS objects through the relay-backed catalog
+- the buyer publishes the targeted DS-DVM request as NIP-90 kind `5960` to the
+  configured public relays
+- the seller publishes the DS-DVM delivery result as NIP-90 kind `6960` back
+  to the same configured public relays
 - seller and buyer NIP-89 handler/capability events remain kind `31990`
 - seller-side request intake worked live in the verified strict run
 - buyer-side result intake also worked live in the verified strict run
@@ -234,6 +263,15 @@ The current verified public-relay truth is:
   verified strict run
 - the buyer tracked the result on both configured relays in the verified
   strict run
+
+Relay health is external, so current operator truth is:
+
+- keep the defaults for manual Damus + Primal probing when they are healthy
+- override `OPENAGENTS_HEADLESS_DATA_MARKET_RELAY_URLS` when a specific public
+  relay is degraded
+- treat the local verifier bundle as the portable launch gate
+- use the fresh DS-first audit for current status:
+  `docs/audits/2026-03-21-ds-first-headless-data-market-paid-e2e-audit.md`
 
 The strict public verification command is:
 
@@ -261,8 +299,9 @@ cargo run -p autopilot-desktop --bin autopilotctl -- \
   --relay-url wss://relay.primal.net
 ```
 
-The verified public run summary now records:
+When the public harness succeeds, its summary records:
 
+- DS listing and DS offer coordinates
 - configured relay URLs
 - request kind
 - result kind
@@ -285,6 +324,9 @@ That verification bundle currently proves:
 
 - the headless CLI path can package, preview, publish, request, deliver, and
   consume a local dummy dataset end to end
+- the portable local E2E gate runs at `OPENAGENTS_HEADLESS_DATA_MARKET_PRICE_SATS=0`,
+  so it does not require a funded payer wallet on the machine running the
+  verifier
 - the seller state machine has a mechanical payment -> delivery -> revocation
   lifecycle test
 - the Nexus authority slice still proves the canonical asset -> grant ->

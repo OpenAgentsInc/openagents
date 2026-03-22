@@ -466,7 +466,11 @@ fn configure_event_context_clipboard(event_context: &mut wgpui::EventContext) {
     });
 }
 
-pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<RenderState> {
+pub fn init_state(
+    event_loop: &ActiveEventLoop,
+    window_visible: bool,
+    disable_codex: bool,
+) -> Result<RenderState> {
     let window_attrs = Window::default_attributes()
         .with_title(WINDOW_TITLE)
         .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -676,6 +680,7 @@ pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<
             desktop_control: crate::app_state::DesktopControlState::default(),
             codex_remote: crate::app_state::CodexRemoteState::default(),
             codex_diagnostics: crate::app_state::CodexDiagnosticsPaneState::default(),
+            codex_disabled: disable_codex,
             codex_lane: CodexLaneSnapshot::idle(),
             codex_lane_config,
             codex_lane_worker,
