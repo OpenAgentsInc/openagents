@@ -4,11 +4,12 @@
 //! - `kind:30404` dataset listings
 //! - `kind:30405` draft / inactive dataset listings
 //! - `kind:30406` dataset offers
+//! - `kind:30407` dataset access contracts
 //!
 //! It intentionally stops at the canonical listing / offer layer. The optional
 //! DS-DVM request/result profile remains separate work.
 
-use crate::nip01::{Event, EventTemplate, is_addressable_kind};
+use crate::nip01::{is_addressable_kind, Event, EventTemplate};
 use crate::nip99::Price;
 use crate::tag_parsing::{
     collect_tag_values, find_tag_value, parse_tag_value, tag_field, tag_name,
@@ -24,6 +25,9 @@ pub const KIND_DRAFT_DATASET_LISTING: u16 = 30405;
 
 /// Dataset offer kind.
 pub const KIND_DATASET_OFFER: u16 = 30406;
+
+/// Dataset access contract kind.
+pub const KIND_DATASET_ACCESS_CONTRACT: u16 = 30407;
 
 /// Optional DS-DVM access-request kind.
 pub const KIND_DATASET_ACCESS_REQUEST: u16 = 5960;
@@ -61,6 +65,9 @@ pub enum NipDsError {
     #[error("invalid offer status: {0}")]
     InvalidOfferStatus(String),
 
+    #[error("invalid access contract status: {0}")]
+    InvalidAccessContractStatus(String),
+
     #[error("missing delivery tag")]
     MissingDelivery,
 }
@@ -69,7 +76,10 @@ pub enum NipDsError {
 pub fn is_nip_ds_kind(kind: u16) -> bool {
     matches!(
         kind,
-        KIND_DATASET_LISTING | KIND_DRAFT_DATASET_LISTING | KIND_DATASET_OFFER
+        KIND_DATASET_LISTING
+            | KIND_DRAFT_DATASET_LISTING
+            | KIND_DATASET_OFFER
+            | KIND_DATASET_ACCESS_CONTRACT
     )
 }
 
@@ -86,6 +96,11 @@ pub fn is_draft_dataset_listing_kind(kind: u16) -> bool {
 /// Check whether a kind is a dataset offer.
 pub fn is_dataset_offer_kind(kind: u16) -> bool {
     kind == KIND_DATASET_OFFER
+}
+
+/// Check whether a kind is a dataset access contract.
+pub fn is_dataset_access_contract_kind(kind: u16) -> bool {
+    kind == KIND_DATASET_ACCESS_CONTRACT
 }
 
 /// Parsed NIP-01 addressable-event coordinate.
@@ -127,6 +142,14 @@ impl AddressableEventCoordinate {
         identifier: impl Into<String>,
     ) -> Result<Self, NipDsError> {
         Self::new(KIND_DATASET_OFFER, pubkey, identifier)
+    }
+
+    /// Create a dataset-access-contract coordinate.
+    pub fn dataset_access_contract(
+        pubkey: impl Into<String>,
+        identifier: impl Into<String>,
+    ) -> Result<Self, NipDsError> {
+        Self::new(KIND_DATASET_ACCESS_CONTRACT, pubkey, identifier)
     }
 
     /// Parse a `<kind>:<pubkey>:<d-tag>` coordinate.
@@ -388,6 +411,43 @@ impl DatasetOfferStatus {
             "revoked" => Ok(Self::Revoked),
             "expired" => Ok(Self::Expired),
             _ => Err(NipDsError::InvalidOfferStatus(value.to_string())),
+        }
+    }
+}
+
+/// Dataset-access-contract lifecycle status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DatasetAccessContractStatus {
+    PaymentRequired,
+    Paid,
+    Delivered,
+    Revoked,
+    Expired,
+    Refunded,
+}
+
+impl DatasetAccessContractStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::PaymentRequired => "payment-required",
+            Self::Paid => "paid",
+            Self::Delivered => "delivered",
+            Self::Revoked => "revoked",
+            Self::Expired => "expired",
+            Self::Refunded => "refunded",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, NipDsError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "payment-required" | "payment_required" => Ok(Self::PaymentRequired),
+            "paid" => Ok(Self::Paid),
+            "delivered" => Ok(Self::Delivered),
+            "revoked" => Ok(Self::Revoked),
+            "expired" => Ok(Self::Expired),
+            "refunded" => Ok(Self::Refunded),
+            _ => Err(NipDsError::InvalidAccessContractStatus(value.to_string())),
         }
     }
 }
@@ -879,15 +939,15 @@ impl DatasetOffer {
         }
 
         let identifier = required_tag_value(&event.tags, "d")?;
-        let mut address_refs = event
+        let address_refs = event
             .tags
             .iter()
             .filter(|tag| tag_name(tag) == Some("a"))
             .map(|tag| AddressableEventReference::from_tag(tag))
             .collect::<Result<Vec<_>, _>>()?;
         let listing_ref = address_refs
-            .drain(..1)
-            .next()
+            .first()
+            .cloned()
             .ok_or(NipDsError::MissingRequiredTag("a"))?;
         let status = DatasetOfferStatus::parse(&required_tag_value(&event.tags, "status")?)?;
         let policy = find_tag_value(&event.tags, "policy").map(str::to_owned);
@@ -927,7 +987,7 @@ impl DatasetOffer {
             targeted_buyers,
             expiration,
             topics,
-            related_refs: address_refs,
+            related_refs: address_refs.into_iter().skip(1).collect(),
         };
         offer.validate()?;
         Ok(offer)
@@ -943,6 +1003,363 @@ impl TryFrom<&Event> for DatasetOffer {
 }
 
 impl TryFrom<Event> for DatasetOffer {
+    type Error = NipDsError;
+
+    fn try_from(event: Event) -> Result<Self, Self::Error> {
+        Self::from_event(&event)
+    }
+}
+
+/// Relay-native dataset access lifecycle state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatasetAccessContract {
+    pub identifier: String,
+    pub content: String,
+    pub listing_ref: AddressableEventReference,
+    pub offer_ref: Option<AddressableEventReference>,
+    pub request_ref: EventReference,
+    pub result_ref: Option<EventReference>,
+    pub status: DatasetAccessContractStatus,
+    pub buyer: PublicKeyReference,
+    pub payment_method: Option<PaymentMethod>,
+    pub amount_msats: Option<u64>,
+    pub bolt11: Option<String>,
+    pub payment_evidence_refs: Vec<EventReference>,
+    pub delivery_mode: Option<String>,
+    pub delivery_ref: Option<String>,
+    pub delivery_mime_type: Option<String>,
+    pub delivery_digest: Option<String>,
+    pub expires_at: Option<u64>,
+    pub reason_code: Option<String>,
+    pub related_refs: Vec<AddressableEventReference>,
+}
+
+impl DatasetAccessContract {
+    pub fn new(
+        identifier: impl Into<String>,
+        content: impl Into<String>,
+        listing_ref: AddressableEventReference,
+        request_ref: EventReference,
+        buyer: PublicKeyReference,
+    ) -> Self {
+        Self {
+            identifier: identifier.into(),
+            content: content.into(),
+            listing_ref: canonical_address_ref(listing_ref, "listing"),
+            offer_ref: None,
+            request_ref: canonical_event_ref(request_ref, "request"),
+            result_ref: None,
+            status: DatasetAccessContractStatus::PaymentRequired,
+            buyer,
+            payment_method: None,
+            amount_msats: None,
+            bolt11: None,
+            payment_evidence_refs: Vec::new(),
+            delivery_mode: None,
+            delivery_ref: None,
+            delivery_mime_type: None,
+            delivery_digest: None,
+            expires_at: None,
+            reason_code: None,
+            related_refs: Vec::new(),
+        }
+    }
+
+    pub fn with_status(mut self, status: DatasetAccessContractStatus) -> Self {
+        self.status = status;
+        self
+    }
+
+    pub fn with_offer_ref(mut self, offer_ref: AddressableEventReference) -> Self {
+        self.offer_ref = Some(canonical_address_ref(offer_ref, "offer"));
+        self
+    }
+
+    pub fn with_result_ref(mut self, result_ref: EventReference) -> Self {
+        self.result_ref = Some(canonical_event_ref(result_ref, "result"));
+        self
+    }
+
+    pub fn with_payment_method(mut self, payment_method: PaymentMethod) -> Self {
+        self.payment_method = Some(payment_method);
+        self
+    }
+
+    pub fn with_amount_msats(mut self, amount_msats: u64, bolt11: Option<String>) -> Self {
+        self.amount_msats = Some(amount_msats);
+        self.bolt11 = bolt11;
+        self
+    }
+
+    pub fn add_payment_evidence_ref(mut self, payment_evidence_ref: EventReference) -> Self {
+        self.payment_evidence_refs
+            .push(canonical_event_ref(payment_evidence_ref, "payment"));
+        self
+    }
+
+    pub fn with_delivery_mode(mut self, delivery_mode: impl Into<String>) -> Self {
+        self.delivery_mode = Some(delivery_mode.into());
+        self
+    }
+
+    pub fn with_delivery_ref(mut self, delivery_ref: impl Into<String>) -> Self {
+        self.delivery_ref = Some(delivery_ref.into());
+        self
+    }
+
+    pub fn with_delivery_mime_type(mut self, delivery_mime_type: impl Into<String>) -> Self {
+        self.delivery_mime_type = Some(delivery_mime_type.into());
+        self
+    }
+
+    pub fn with_delivery_digest(mut self, delivery_digest: impl Into<String>) -> Self {
+        self.delivery_digest = Some(delivery_digest.into());
+        self
+    }
+
+    pub fn with_expires_at(mut self, expires_at: u64) -> Self {
+        self.expires_at = Some(expires_at);
+        self
+    }
+
+    pub fn with_reason_code(mut self, reason_code: impl Into<String>) -> Self {
+        self.reason_code = Some(reason_code.into());
+        self
+    }
+
+    pub fn add_related_ref(mut self, related_ref: AddressableEventReference) -> Self {
+        self.related_refs.push(related_ref);
+        self
+    }
+
+    pub fn coordinate(
+        &self,
+        publisher_pubkey: impl Into<String>,
+    ) -> Result<AddressableEventCoordinate, NipDsError> {
+        AddressableEventCoordinate::dataset_access_contract(
+            publisher_pubkey,
+            self.identifier.clone(),
+        )
+    }
+
+    pub fn validate(&self) -> Result<(), NipDsError> {
+        if self.identifier.trim().is_empty() {
+            return Err(NipDsError::MissingRequiredTag("d"));
+        }
+        if self.listing_ref.coordinate.kind != KIND_DATASET_LISTING {
+            return Err(NipDsError::InvalidListingReferenceKind(
+                self.listing_ref.coordinate.kind,
+            ));
+        }
+        validate_addressable_coordinate_parts(
+            self.listing_ref.coordinate.kind,
+            &self.listing_ref.coordinate.pubkey,
+            &self.listing_ref.coordinate.identifier,
+        )?;
+        if let Some(offer_ref) = &self.offer_ref {
+            validate_addressable_coordinate_parts(
+                offer_ref.coordinate.kind,
+                &offer_ref.coordinate.pubkey,
+                &offer_ref.coordinate.identifier,
+            )?;
+            if offer_ref.coordinate.kind != KIND_DATASET_OFFER {
+                return Err(NipDsError::InvalidListingReferenceKind(
+                    offer_ref.coordinate.kind,
+                ));
+            }
+        }
+        validate_lower_hex("e", &self.request_ref.event_id)?;
+        validate_lower_hex("p", &self.buyer.pubkey)?;
+        if let Some(result_ref) = &self.result_ref {
+            validate_lower_hex("e", &result_ref.event_id)?;
+        }
+        for payment_evidence_ref in &self.payment_evidence_refs {
+            validate_lower_hex("e", &payment_evidence_ref.event_id)?;
+        }
+        if let Some(delivery_digest) = &self.delivery_digest {
+            validate_sha256_hex(delivery_digest).map_err(|_| NipDsError::InvalidDigest)?;
+        }
+        for related_ref in &self.related_refs {
+            validate_addressable_coordinate_parts(
+                related_ref.coordinate.kind,
+                &related_ref.coordinate.pubkey,
+                &related_ref.coordinate.identifier,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn to_tags(&self) -> Result<Vec<Vec<String>>, NipDsError> {
+        self.validate()?;
+
+        let mut tags = vec![
+            vec!["d".to_string(), self.identifier.clone()],
+            self.listing_ref.to_tag(),
+            self.request_ref.to_tag(),
+            vec!["status".to_string(), self.status.as_str().to_string()],
+            self.buyer.to_tag(),
+        ];
+
+        if let Some(offer_ref) = &self.offer_ref {
+            tags.push(offer_ref.to_tag());
+        }
+        if let Some(result_ref) = &self.result_ref {
+            tags.push(result_ref.to_tag());
+        }
+        if let Some(payment_method) = &self.payment_method {
+            tags.push(payment_method.to_tag());
+        }
+        if let Some(amount_msats) = self.amount_msats {
+            let mut amount_tag = vec!["amount".to_string(), amount_msats.to_string()];
+            if let Some(bolt11) = &self.bolt11 {
+                amount_tag.push(bolt11.clone());
+            }
+            tags.push(amount_tag);
+        }
+        for payment_evidence_ref in &self.payment_evidence_refs {
+            tags.push(payment_evidence_ref.to_tag());
+        }
+        if let Some(delivery_mode) = &self.delivery_mode {
+            tags.push(vec!["delivery".to_string(), delivery_mode.clone()]);
+        }
+        if let Some(delivery_ref) = &self.delivery_ref {
+            tags.push(vec!["delivery_ref".to_string(), delivery_ref.clone()]);
+        }
+        if let Some(delivery_mime_type) = &self.delivery_mime_type {
+            tags.push(vec!["m".to_string(), delivery_mime_type.clone()]);
+        }
+        if let Some(delivery_digest) = &self.delivery_digest {
+            tags.push(vec!["x".to_string(), delivery_digest.clone()]);
+        }
+        if let Some(expires_at) = self.expires_at {
+            tags.push(vec!["expires_at".to_string(), expires_at.to_string()]);
+        }
+        if let Some(reason_code) = &self.reason_code {
+            tags.push(vec!["reason_code".to_string(), reason_code.clone()]);
+        }
+        for related_ref in &self.related_refs {
+            tags.push(related_ref.to_tag());
+        }
+
+        Ok(tags)
+    }
+
+    pub fn to_event_template(&self, created_at: u64) -> Result<EventTemplate, NipDsError> {
+        Ok(EventTemplate {
+            created_at,
+            kind: KIND_DATASET_ACCESS_CONTRACT,
+            tags: self.to_tags()?,
+            content: self.content.clone(),
+        })
+    }
+
+    pub fn from_event(event: &Event) -> Result<Self, NipDsError> {
+        if event.kind != KIND_DATASET_ACCESS_CONTRACT {
+            return Err(NipDsError::InvalidKind {
+                expected: KIND_DATASET_ACCESS_CONTRACT,
+                actual: event.kind,
+            });
+        }
+
+        let identifier = required_tag_value(&event.tags, "d")?;
+        let status =
+            DatasetAccessContractStatus::parse(&required_tag_value(&event.tags, "status")?)?;
+        let mut listing_ref = None;
+        let mut offer_ref = None;
+        let mut related_refs = Vec::new();
+        for address_ref in event
+            .tags
+            .iter()
+            .filter(|tag| tag_name(tag) == Some("a"))
+            .map(|tag| AddressableEventReference::from_tag(tag))
+            .collect::<Result<Vec<_>, _>>()?
+        {
+            match address_ref.marker.as_deref() {
+                Some("listing") if listing_ref.is_none() => listing_ref = Some(address_ref),
+                Some("offer") if offer_ref.is_none() => offer_ref = Some(address_ref),
+                _ if address_ref.coordinate.kind == KIND_DATASET_LISTING
+                    && listing_ref.is_none() =>
+                {
+                    listing_ref = Some(address_ref);
+                }
+                _ if address_ref.coordinate.kind == KIND_DATASET_OFFER && offer_ref.is_none() => {
+                    offer_ref = Some(address_ref);
+                }
+                _ => related_refs.push(address_ref),
+            }
+        }
+
+        let mut request_ref = None;
+        let mut result_ref = None;
+        let mut payment_evidence_refs = Vec::new();
+        for event_ref in event
+            .tags
+            .iter()
+            .filter(|tag| tag_name(tag) == Some("e"))
+            .map(|tag| EventReference::from_tag(tag))
+            .collect::<Result<Vec<_>, _>>()?
+        {
+            match event_ref.marker.as_deref() {
+                Some("request") if request_ref.is_none() => request_ref = Some(event_ref),
+                Some("result") if result_ref.is_none() => result_ref = Some(event_ref),
+                Some("payment") => payment_evidence_refs.push(event_ref),
+                _ if request_ref.is_none() => request_ref = Some(event_ref),
+                _ => {}
+            }
+        }
+
+        let amount_tag = event
+            .tags
+            .iter()
+            .find(|tag| tag_name(tag) == Some("amount"));
+
+        let contract = Self {
+            identifier,
+            content: event.content.clone(),
+            listing_ref: listing_ref.ok_or(NipDsError::MissingRequiredTag("a"))?,
+            offer_ref,
+            request_ref: request_ref.ok_or(NipDsError::MissingRequiredTag("e"))?,
+            result_ref,
+            status,
+            buyer: event
+                .tags
+                .iter()
+                .find(|tag| tag_name(tag) == Some("p"))
+                .ok_or(NipDsError::MissingRequiredTag("p"))
+                .and_then(|tag| PublicKeyReference::from_tag(tag))?,
+            payment_method: event
+                .tags
+                .iter()
+                .find(|tag| tag_name(tag) == Some("payment"))
+                .map(|tag| PaymentMethod::from_tag(tag))
+                .transpose()?,
+            amount_msats: amount_tag.and_then(|tag| tag_field(tag, 1)?.parse::<u64>().ok()),
+            bolt11: amount_tag
+                .and_then(|tag| tag_field(tag, 2))
+                .map(str::to_owned),
+            payment_evidence_refs,
+            delivery_mode: find_tag_value(&event.tags, "delivery").map(str::to_owned),
+            delivery_ref: find_tag_value(&event.tags, "delivery_ref").map(str::to_owned),
+            delivery_mime_type: find_tag_value(&event.tags, "m").map(str::to_owned),
+            delivery_digest: find_tag_value(&event.tags, "x").map(str::to_owned),
+            expires_at: parse_tag_value::<u64>(&event.tags, "expires_at"),
+            reason_code: find_tag_value(&event.tags, "reason_code").map(str::to_owned),
+            related_refs,
+        };
+        contract.validate()?;
+        Ok(contract)
+    }
+}
+
+impl TryFrom<&Event> for DatasetAccessContract {
+    type Error = NipDsError;
+
+    fn try_from(event: &Event) -> Result<Self, Self::Error> {
+        Self::from_event(event)
+    }
+}
+
+impl TryFrom<Event> for DatasetAccessContract {
     type Error = NipDsError;
 
     fn try_from(event: Event) -> Result<Self, Self::Error> {
@@ -1024,6 +1441,19 @@ fn validate_addressable_coordinate_parts(
 
 fn validate_sha256_hex(value: &str) -> Result<(), NipDsError> {
     validate_lower_hex("x", value)
+}
+
+fn canonical_event_ref(mut reference: EventReference, marker: &str) -> EventReference {
+    reference.marker = Some(marker.to_string());
+    reference
+}
+
+fn canonical_address_ref(
+    mut reference: AddressableEventReference,
+    marker: &str,
+) -> AddressableEventReference {
+    reference.marker = Some(marker.to_string());
+    reference
 }
 
 fn validate_lower_hex(field: &'static str, value: &str) -> Result<(), NipDsError> {
@@ -1188,6 +1618,112 @@ mod tests {
         .unwrap();
 
         assert_eq!(parsed, offer);
+    }
+
+    #[test]
+    fn dataset_offer_without_listing_reference_returns_missing_required_tag() {
+        let event = build_event(
+            SELLER_PUBKEY,
+            EventTemplate {
+                created_at: 1_774_080_200,
+                kind: KIND_DATASET_OFFER,
+                tags: vec![
+                    vec!["d".to_string(), "missing-listing-ref".to_string()],
+                    vec!["status".to_string(), "active".to_string()],
+                ],
+                content: "broken".to_string(),
+            },
+        );
+
+        assert!(matches!(
+            DatasetOffer::try_from(event),
+            Err(NipDsError::MissingRequiredTag("a"))
+        ));
+    }
+
+    #[test]
+    fn dataset_access_contract_roundtrips_through_event() {
+        let listing_ref = AddressableEventReference::new(
+            AddressableEventCoordinate::dataset_listing(
+                SELLER_PUBKEY,
+                "bitcoin-policy-transcripts-q1-2026",
+            )
+            .unwrap(),
+        )
+        .with_relay("wss://relay.example");
+        let offer_ref = AddressableEventReference::new(
+            AddressableEventCoordinate::dataset_offer(SELLER_PUBKEY, "targeted-offer-buyer-1")
+                .unwrap(),
+        )
+        .with_relay("wss://relay.example");
+        let request_ref = EventReference::new(PREVIEW_EVENT_ID)
+            .unwrap()
+            .with_relay("wss://relay.example");
+        let result_ref = EventReference::new(DISCUSSION_EVENT_ID)
+            .unwrap()
+            .with_relay("wss://relay.example");
+        let payment_ref = EventReference::new(FAKE_EVENT_ID)
+            .unwrap()
+            .with_relay("wss://relay.example");
+        let contract = DatasetAccessContract::new(
+            "buyer-1-q1-2026-access",
+            "Paid access to the full corpus with encrypted pointer delivery.",
+            listing_ref,
+            request_ref,
+            PublicKeyReference::new(BUYER_PUBKEY)
+                .unwrap()
+                .with_relay("wss://relay.example"),
+        )
+        .with_offer_ref(offer_ref)
+        .with_result_ref(result_ref)
+        .with_status(DatasetAccessContractStatus::Delivered)
+        .with_payment_method(PaymentMethod::new("ln"))
+        .with_amount_msats(5_000, Some("lnbc50n1datasetcontract".to_string()))
+        .add_payment_evidence_ref(payment_ref)
+        .with_delivery_mode("encrypted_pointer")
+        .with_delivery_ref("https://delivery.example/contracts/abc123")
+        .with_delivery_mime_type("application/x-ndjson")
+        .with_delivery_digest(DIGEST)
+        .with_expires_at(1_774_166_400)
+        .with_reason_code("seller-delivered")
+        .add_related_ref(
+            AddressableEventReference::new(
+                AddressableEventCoordinate::dataset_access_contract(
+                    SELLER_PUBKEY,
+                    "contract-history",
+                )
+                .unwrap(),
+            )
+            .with_relay("wss://relay.example")
+            .with_marker("history"),
+        );
+
+        let parsed = DatasetAccessContract::try_from(build_event(
+            SELLER_PUBKEY,
+            contract.to_event_template(1_774_080_300).unwrap(),
+        ))
+        .unwrap();
+
+        assert_eq!(parsed, contract);
+    }
+
+    #[test]
+    fn dataset_access_contract_status_accepts_all_lifecycle_variants() {
+        let statuses = [
+            (
+                "payment-required",
+                DatasetAccessContractStatus::PaymentRequired,
+            ),
+            ("paid", DatasetAccessContractStatus::Paid),
+            ("delivered", DatasetAccessContractStatus::Delivered),
+            ("revoked", DatasetAccessContractStatus::Revoked),
+            ("expired", DatasetAccessContractStatus::Expired),
+            ("refunded", DatasetAccessContractStatus::Refunded),
+        ];
+
+        for (value, expected) in statuses {
+            assert_eq!(DatasetAccessContractStatus::parse(value).unwrap(), expected);
+        }
     }
 
     #[test]
