@@ -1147,6 +1147,14 @@ pub struct RelayDatasetListingProjection {
     pub draft: bool,
     #[serde(default)]
     pub linked_asset_id: Option<String>,
+    #[serde(default)]
+    pub classified_coordinate: Option<String>,
+    #[serde(default)]
+    pub classified_event_id: Option<String>,
+    #[serde(default)]
+    pub classified_price_amount: Option<String>,
+    #[serde(default)]
+    pub classified_price_currency: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1172,6 +1180,10 @@ pub struct RelayDatasetOfferProjection {
     pub linked_asset_id: Option<String>,
     #[serde(default)]
     pub linked_grant_id: Option<String>,
+    #[serde(default)]
+    pub classified_coordinate: Option<String>,
+    #[serde(default)]
+    pub classified_event_id: Option<String>,
 }
 
 pub const DATA_MARKET_BUYER_REQUEST_TYPE: &str = "openagents.data_market.access_request.v1";
@@ -15750,6 +15762,10 @@ mod tests {
                 created_at_seconds: 1_762_700_000,
                 draft: false,
                 linked_asset_id: Some("data_asset.npub1seller.bundle".to_string()),
+                classified_coordinate: None,
+                classified_event_id: None,
+                classified_price_amount: None,
+                classified_price_currency: None,
             }],
             vec![super::RelayDatasetOfferProjection {
                 coordinate:
@@ -15771,6 +15787,8 @@ mod tests {
                 created_at_seconds: 1_762_700_010,
                 linked_asset_id: Some("data_asset.npub1seller.bundle".to_string()),
                 linked_grant_id: Some("grant.data.offer.001".to_string()),
+                classified_coordinate: None,
+                classified_event_id: None,
             }],
             1_762_700_020_000,
         );

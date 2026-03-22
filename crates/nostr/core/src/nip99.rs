@@ -1,46 +1,28 @@
 //! NIP-99: Classified Listings
 //!
-//! This NIP defines kind 30402 for classified listings - marketplace ads for products,
-//! services, rentals, job opportunities, and other offerings. Kind 30403 is used for
-//! draft or inactive listings.
-//!
-//! ## Features
-//!
-//! - Structured metadata (title, summary, price, location)
-//! - Flexible price format with currency and frequency
-//! - Status tracking (active, sold)
-//! - Image support (NIP-58 format)
-//! - Categories/tags and geohash location
-//!
-//! ## Examples
-//!
-//! ```
-//! use nostr::nip99::{ClassifiedListing, Price, ListingStatus};
-//!
-//! // Create a listing for a physical product
-//! let listing = ClassifiedListing::new(
-//!     "unique-listing-id",
-//!     "Premium headphones in excellent condition",
-//!     "Premium Headphones"
-//! )
-//! .with_summary("High-quality wireless headphones")
-//! .with_price(Price::one_time("100", "USD"))
-//! .with_location("NYC")
-//! .with_status(ListingStatus::Active);
-//! ```
+//! This module implements kind `30402` classified listings and kind `30403`
+//! draft listings. OpenAgents uses this surface as an optional public catalog
+//! wrapper around canonical DS listings and offers.
 
+use crate::nip01::{Event, EventTemplate, is_addressable_kind};
+use crate::tag_parsing::{
+    collect_tag_values, find_tag_value, parse_tag_value, tag_field, tag_name,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Kind number for active classified listings.
-pub const KIND_CLASSIFIED_LISTING: u64 = 30402;
+pub const KIND_CLASSIFIED_LISTING: u16 = 30402;
 
 /// Kind number for draft/inactive classified listings.
-pub const KIND_DRAFT_LISTING: u64 = 30403;
+pub const KIND_DRAFT_LISTING: u16 = 30403;
 
 /// Errors that can occur during NIP-99 operations.
 #[derive(Debug, Error)]
 pub enum Nip99Error {
+    #[error("invalid event kind: expected {expected}, got {actual}")]
+    InvalidKind { expected: u16, actual: u16 },
+
     #[error("listing must have a title")]
     MissingTitle,
 
@@ -52,20 +34,26 @@ pub enum Nip99Error {
 
     #[error("invalid status: {0}")]
     InvalidStatus(String),
+
+    #[error("invalid coordinate kind: {0}")]
+    InvalidCoordinateKind(u16),
+
+    #[error("invalid lowercase hex field `{field}`: {value}")]
+    InvalidHexField { field: &'static str, value: String },
 }
 
 /// Check if a kind is a NIP-99 classified listing kind.
-pub fn is_nip99_kind(kind: u64) -> bool {
+pub fn is_nip99_kind(kind: u16) -> bool {
     kind == KIND_CLASSIFIED_LISTING || kind == KIND_DRAFT_LISTING
 }
 
 /// Check if a kind is an active classified listing.
-pub fn is_classified_listing_kind(kind: u64) -> bool {
+pub fn is_classified_listing_kind(kind: u16) -> bool {
     kind == KIND_CLASSIFIED_LISTING
 }
 
 /// Check if a kind is a draft listing.
-pub fn is_draft_listing_kind(kind: u64) -> bool {
+pub fn is_draft_listing_kind(kind: u16) -> bool {
     kind == KIND_DRAFT_LISTING
 }
 
@@ -91,7 +79,7 @@ impl std::str::FromStr for ListingStatus {
     type Err = Nip99Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        match s.to_ascii_lowercase().as_str() {
             "active" => Ok(Self::Active),
             "sold" => Ok(Self::Sold),
             _ => Err(Nip99Error::InvalidStatus(s.to_string())),
@@ -101,12 +89,12 @@ impl std::str::FromStr for ListingStatus {
 
 /// Price information for a listing.
 ///
-/// Format: ["price", amount, currency, frequency?]
+/// Format: `["price", amount, currency, frequency?]`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Price {
     /// Amount as a string (numeric format)
     pub amount: String,
-    /// Currency code (ISO 4217 or crypto like "btc")
+    /// Currency code (ISO 4217 or crypto like `SAT`)
     pub currency: String,
     /// Optional frequency for recurring payments (hour, day, week, month, year)
     pub frequency: Option<String>,
@@ -114,17 +102,6 @@ pub struct Price {
 
 impl Price {
     /// Create a one-time price.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use nostr::nip99::Price;
-    ///
-    /// let price = Price::one_time("50", "USD");
-    /// assert_eq!(price.amount, "50");
-    /// assert_eq!(price.currency, "USD");
-    /// assert_eq!(price.frequency, None);
-    /// ```
     pub fn one_time(amount: impl Into<String>, currency: impl Into<String>) -> Self {
         Self {
             amount: amount.into(),
@@ -134,17 +111,6 @@ impl Price {
     }
 
     /// Create a recurring price.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use nostr::nip99::Price;
-    ///
-    /// let price = Price::recurring("15", "EUR", "month");
-    /// assert_eq!(price.amount, "15");
-    /// assert_eq!(price.currency, "EUR");
-    /// assert_eq!(price.frequency, Some("month".to_string()));
-    /// ```
     pub fn recurring(
         amount: impl Into<String>,
         currency: impl Into<String>,
@@ -158,8 +124,6 @@ impl Price {
     }
 
     /// Convert to tag format.
-    ///
-    /// Returns: ["price", amount, currency] or ["price", amount, currency, frequency]
     pub fn to_tag(&self) -> Vec<String> {
         let mut tag = vec![
             "price".to_string(),
@@ -174,7 +138,7 @@ impl Price {
 
     /// Parse from tag format.
     pub fn from_tag(tag: &[String]) -> Result<Self, Nip99Error> {
-        if tag.len() < 3 || tag[0] != "price" {
+        if tag.len() < 3 || tag_name(tag) != Some("price") {
             return Err(Nip99Error::InvalidPrice);
         }
 
@@ -191,7 +155,7 @@ impl Price {
 pub struct ListingImage {
     /// Image URL
     pub url: String,
-    /// Optional dimensions (e.g., "256x256")
+    /// Optional dimensions (e.g. `256x256`)
     pub dimensions: Option<String>,
 }
 
@@ -220,61 +184,59 @@ impl ListingImage {
         }
         tag
     }
+
+    /// Parse from tag format.
+    pub fn from_tag(tag: &[String]) -> Option<Self> {
+        if tag_name(tag) != Some("image") {
+            return None;
+        }
+        let url = tag_field(tag, 1)?.trim();
+        if url.is_empty() {
+            return None;
+        }
+        Some(Self {
+            url: url.to_string(),
+            dimensions: tag_field(tag, 2)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        })
+    }
 }
 
-/// A classified listing (kind 30402).
-///
-/// Used for active marketplace listings of products, services, rentals, etc.
+/// A classified listing (kind `30402`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClassifiedListing {
-    /// The "d" tag identifier (required for addressable events)
+    /// The `d` tag identifier (required for addressable events)
     pub identifier: String,
-
     /// Markdown description of what is being offered
     pub content: String,
-
     /// Title of the listing
     pub title: String,
-
     /// Short summary or tagline
     pub summary: Option<String>,
-
     /// Published timestamp (unix seconds)
     pub published_at: Option<u64>,
-
     /// Location (free-form text)
     pub location: Option<String>,
-
     /// Geohash for precise location
     pub geohash: Option<String>,
-
     /// Price information
     pub price: Option<Price>,
-
     /// Status (active or sold)
     pub status: Option<ListingStatus>,
-
     /// Images
     pub images: Vec<ListingImage>,
-
-    /// Categories/tags
+    /// Categories / `t` tags
     pub tags: Vec<String>,
+    /// Related addressable-event references from `a` tags
+    pub address_refs: Vec<String>,
+    /// Related event references from `e` tags
+    pub event_refs: Vec<String>,
 }
 
 impl ClassifiedListing {
     /// Create a new classified listing.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use nostr::nip99::ClassifiedListing;
-    ///
-    /// let listing = ClassifiedListing::new(
-    ///     "premium-headphones",
-    ///     "Premium wireless headphones in excellent condition. Barely used.",
-    ///     "Premium Headphones"
-    /// );
-    /// ```
     pub fn new(
         identifier: impl Into<String>,
         content: impl Into<String>,
@@ -292,6 +254,8 @@ impl ClassifiedListing {
             status: None,
             images: Vec::new(),
             tags: Vec::new(),
+            address_refs: Vec::new(),
+            event_refs: Vec::new(),
         }
     }
 
@@ -341,74 +305,120 @@ impl ClassifiedListing {
         self.tags.push(tag.into());
     }
 
+    /// Add an `a`-tag reference.
+    pub fn add_address_ref(&mut self, coordinate: impl Into<String>) {
+        self.address_refs.push(coordinate.into());
+    }
+
+    /// Add an `e`-tag reference.
+    pub fn add_event_ref(&mut self, event_id: impl Into<String>) {
+        self.event_refs.push(event_id.into());
+    }
+
     /// Validate the listing.
     pub fn validate(&self) -> Result<(), Nip99Error> {
-        if self.title.is_empty() {
+        if self.title.trim().is_empty() {
             return Err(Nip99Error::MissingTitle);
         }
-        if self.identifier.is_empty() {
+        if self.identifier.trim().is_empty() {
             return Err(Nip99Error::MissingDTag);
         }
+        for event_id in &self.event_refs {
+            validate_lower_hex("e", event_id)?;
+        }
         Ok(())
+    }
+
+    /// Derive the addressable coordinate string for this listing.
+    pub fn coordinate(&self, publisher_pubkey: impl Into<String>) -> Result<String, Nip99Error> {
+        coordinate_for_kind(
+            KIND_CLASSIFIED_LISTING,
+            publisher_pubkey.into().as_str(),
+            self.identifier.as_str(),
+        )
     }
 
     /// Convert to Nostr event tags.
     pub fn to_tags(&self) -> Vec<Vec<String>> {
         let mut tags = Vec::new();
 
-        // d tag (required for addressable events)
         tags.push(vec!["d".to_string(), self.identifier.clone()]);
-
-        // title
         tags.push(vec!["title".to_string(), self.title.clone()]);
 
-        // summary
         if let Some(summary) = &self.summary {
             tags.push(vec!["summary".to_string(), summary.clone()]);
         }
-
-        // published_at
         if let Some(published_at) = self.published_at {
             tags.push(vec!["published_at".to_string(), published_at.to_string()]);
         }
-
-        // location
         if let Some(location) = &self.location {
             tags.push(vec!["location".to_string(), location.clone()]);
         }
-
-        // geohash
         if let Some(geohash) = &self.geohash {
             tags.push(vec!["g".to_string(), geohash.clone()]);
         }
-
-        // price
         if let Some(price) = &self.price {
             tags.push(price.to_tag());
         }
-
-        // status
         if let Some(status) = &self.status {
             tags.push(vec!["status".to_string(), status.as_str().to_string()]);
         }
-
-        // images
         for image in &self.images {
             tags.push(image.to_tag());
         }
-
-        // tags/categories
         for tag in &self.tags {
             tags.push(vec!["t".to_string(), tag.clone()]);
+        }
+        for address_ref in &self.address_refs {
+            tags.push(vec!["a".to_string(), address_ref.clone()]);
+        }
+        for event_ref in &self.event_refs {
+            tags.push(vec!["e".to_string(), event_ref.clone()]);
         }
 
         tags
     }
+
+    /// Convert into an active kind `30402` event template.
+    pub fn to_event_template(&self, created_at: u64) -> Result<EventTemplate, Nip99Error> {
+        self.validate()?;
+        Ok(EventTemplate {
+            created_at,
+            kind: KIND_CLASSIFIED_LISTING,
+            tags: self.to_tags(),
+            content: self.content.clone(),
+        })
+    }
+
+    /// Parse an active kind `30402` event.
+    pub fn from_event(event: &Event) -> Result<Self, Nip99Error> {
+        if event.kind != KIND_CLASSIFIED_LISTING {
+            return Err(Nip99Error::InvalidKind {
+                expected: KIND_CLASSIFIED_LISTING,
+                actual: event.kind,
+            });
+        }
+        parse_classified_listing(event)
+    }
 }
 
-/// A draft or inactive listing (kind 30403).
-///
-/// Same structure as ClassifiedListing but used for drafts or inactive listings.
+impl TryFrom<&Event> for ClassifiedListing {
+    type Error = Nip99Error;
+
+    fn try_from(event: &Event) -> Result<Self, Self::Error> {
+        Self::from_event(event)
+    }
+}
+
+impl TryFrom<Event> for ClassifiedListing {
+    type Error = Nip99Error;
+
+    fn try_from(event: Event) -> Result<Self, Self::Error> {
+        Self::from_event(&event)
+    }
+}
+
+/// A draft or inactive listing (kind `30403`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DraftListing {
     /// The underlying listing data
@@ -431,16 +441,155 @@ impl DraftListing {
         self.listing.validate()
     }
 
+    /// Derive the addressable coordinate string for this draft.
+    pub fn coordinate(&self, publisher_pubkey: impl Into<String>) -> Result<String, Nip99Error> {
+        coordinate_for_kind(
+            KIND_DRAFT_LISTING,
+            publisher_pubkey.into().as_str(),
+            self.listing.identifier.as_str(),
+        )
+    }
+
     /// Convert to Nostr event tags.
     pub fn to_tags(&self) -> Vec<Vec<String>> {
         self.listing.to_tags()
     }
+
+    /// Convert into a kind `30403` event template.
+    pub fn to_event_template(&self, created_at: u64) -> Result<EventTemplate, Nip99Error> {
+        self.validate()?;
+        Ok(EventTemplate {
+            created_at,
+            kind: KIND_DRAFT_LISTING,
+            tags: self.listing.to_tags(),
+            content: self.listing.content.clone(),
+        })
+    }
+
+    /// Parse a draft kind `30403` event.
+    pub fn from_event(event: &Event) -> Result<Self, Nip99Error> {
+        if event.kind != KIND_DRAFT_LISTING {
+            return Err(Nip99Error::InvalidKind {
+                expected: KIND_DRAFT_LISTING,
+                actual: event.kind,
+            });
+        }
+        Ok(Self {
+            listing: parse_classified_listing(event)?,
+        })
+    }
+}
+
+impl TryFrom<&Event> for DraftListing {
+    type Error = Nip99Error;
+
+    fn try_from(event: &Event) -> Result<Self, Self::Error> {
+        Self::from_event(event)
+    }
+}
+
+impl TryFrom<Event> for DraftListing {
+    type Error = Nip99Error;
+
+    fn try_from(event: Event) -> Result<Self, Self::Error> {
+        Self::from_event(&event)
+    }
+}
+
+fn parse_classified_listing(event: &Event) -> Result<ClassifiedListing, Nip99Error> {
+    let identifier = find_tag_value(&event.tags, "d")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(Nip99Error::MissingDTag)?
+        .to_string();
+    let title = find_tag_value(&event.tags, "title")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(Nip99Error::MissingTitle)?
+        .to_string();
+    let price = event
+        .tags
+        .iter()
+        .find(|tag| tag_name(tag) == Some("price"))
+        .map(|tag| Price::from_tag(tag))
+        .transpose()?;
+    let status = find_tag_value(&event.tags, "status")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::parse::<ListingStatus>)
+        .transpose()?;
+    let images = event
+        .tags
+        .iter()
+        .filter_map(|tag| ListingImage::from_tag(tag))
+        .collect();
+    let event_refs = collect_tag_values(&event.tags, "e");
+    for event_id in &event_refs {
+        validate_lower_hex("e", event_id)?;
+    }
+
+    Ok(ClassifiedListing {
+        identifier,
+        content: event.content.clone(),
+        title,
+        summary: find_tag_value(&event.tags, "summary")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        published_at: parse_tag_value(&event.tags, "published_at"),
+        location: find_tag_value(&event.tags, "location")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        geohash: find_tag_value(&event.tags, "g")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        price,
+        status,
+        images,
+        tags: collect_tag_values(&event.tags, "t"),
+        address_refs: collect_tag_values(&event.tags, "a"),
+        event_refs,
+    })
+}
+
+fn coordinate_for_kind(kind: u16, pubkey: &str, identifier: &str) -> Result<String, Nip99Error> {
+    if !is_addressable_kind(kind) {
+        return Err(Nip99Error::InvalidCoordinateKind(kind));
+    }
+    validate_lower_hex("pubkey", pubkey)?;
+    if identifier.trim().is_empty() {
+        return Err(Nip99Error::MissingDTag);
+    }
+    Ok(format!("{kind}:{pubkey}:{identifier}"))
+}
+
+fn validate_lower_hex(field: &'static str, value: &str) -> Result<(), Nip99Error> {
+    let trimmed = value.trim();
+    if trimmed.len() != 64
+        || !trimmed
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return Err(Nip99Error::InvalidHexField {
+            field,
+            value: value.to_string(),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
+
+    fn sign_template(identity: &crate::NostrIdentity, template: &EventTemplate) -> Event {
+        let key_bytes = hex::decode(identity.private_key_hex.as_str()).expect("private key hex");
+        let mut private_key = [0_u8; 32];
+        private_key.copy_from_slice(key_bytes.as_slice());
+        crate::finalize_event(template, &private_key).expect("sign event")
+    }
 
     #[test]
     fn test_is_nip99_kind() {
@@ -468,14 +617,14 @@ mod tests {
         assert_eq!(ListingStatus::Sold.as_str(), "sold");
 
         assert!(matches!(
-            ListingStatus::from_str("active"),
+            "active".parse::<ListingStatus>(),
             Ok(ListingStatus::Active)
         ));
         assert!(matches!(
-            ListingStatus::from_str("SOLD"),
+            "SOLD".parse::<ListingStatus>(),
             Ok(ListingStatus::Sold)
         ));
-        assert!(ListingStatus::from_str("invalid").is_err());
+        assert!("invalid".parse::<ListingStatus>().is_err());
     }
 
     #[test]
@@ -484,9 +633,7 @@ mod tests {
         assert_eq!(price.amount, "50");
         assert_eq!(price.currency, "USD");
         assert_eq!(price.frequency, None);
-
-        let tag = price.to_tag();
-        assert_eq!(tag, vec!["price", "50", "USD"]);
+        assert_eq!(price.to_tag(), vec!["price", "50", "USD"]);
     }
 
     #[test]
@@ -495,9 +642,7 @@ mod tests {
         assert_eq!(price.amount, "15");
         assert_eq!(price.currency, "EUR");
         assert_eq!(price.frequency, Some("month".to_string()));
-
-        let tag = price.to_tag();
-        assert_eq!(tag, vec!["price", "15", "EUR", "month"]);
+        assert_eq!(price.to_tag(), vec!["price", "15", "EUR", "month"]);
     }
 
     #[test]
@@ -534,9 +679,7 @@ mod tests {
         let image = ListingImage::new("https://example.com/img.jpg");
         assert_eq!(image.url, "https://example.com/img.jpg");
         assert_eq!(image.dimensions, None);
-
-        let tag = image.to_tag();
-        assert_eq!(tag, vec!["image", "https://example.com/img.jpg"]);
+        assert_eq!(image.to_tag(), vec!["image", "https://example.com/img.jpg"]);
     }
 
     #[test]
@@ -544,9 +687,10 @@ mod tests {
         let image = ListingImage::with_dimensions("https://example.com/img.jpg", "256x256");
         assert_eq!(image.url, "https://example.com/img.jpg");
         assert_eq!(image.dimensions, Some("256x256".to_string()));
-
-        let tag = image.to_tag();
-        assert_eq!(tag, vec!["image", "https://example.com/img.jpg", "256x256"]);
+        assert_eq!(
+            image.to_tag(),
+            vec!["image", "https://example.com/img.jpg", "256x256"]
+        );
     }
 
     #[test]
@@ -584,28 +728,24 @@ mod tests {
     }
 
     #[test]
-    fn test_classified_listing_add_image() {
+    fn test_classified_listing_add_image_and_refs() {
         let mut listing = ClassifiedListing::new("id", "content", "title");
         listing.add_image(ListingImage::new("https://example.com/img1.jpg"));
         listing.add_image(ListingImage::with_dimensions(
             "https://example.com/img2.jpg",
             "512x512",
         ));
-
-        assert_eq!(listing.images.len(), 2);
-        assert_eq!(listing.images[0].url, "https://example.com/img1.jpg");
-        assert_eq!(listing.images[1].dimensions, Some("512x512".to_string()));
-    }
-
-    #[test]
-    fn test_classified_listing_add_tag() {
-        let mut listing = ClassifiedListing::new("id", "content", "title");
         listing.add_tag("electronics");
         listing.add_tag("headphones");
+        listing.add_address_ref(
+            "30404:1111111111111111111111111111111111111111111111111111111111111111:dataset-1",
+        );
+        listing.add_event_ref("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
+        assert_eq!(listing.images.len(), 2);
         assert_eq!(listing.tags.len(), 2);
-        assert_eq!(listing.tags[0], "electronics");
-        assert_eq!(listing.tags[1], "headphones");
+        assert_eq!(listing.address_refs.len(), 1);
+        assert_eq!(listing.event_refs.len(), 1);
     }
 
     #[test]
@@ -635,10 +775,13 @@ mod tests {
             "256x256",
         ));
         listing.add_tag("electronics");
+        listing.add_address_ref(
+            "30404:1111111111111111111111111111111111111111111111111111111111111111:dataset-1",
+        );
+        listing.add_event_ref("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
         let tags = listing.to_tags();
 
-        // Check for required tags
         assert!(tags.iter().any(|tag| tag[0] == "d" && tag[1] == "test-id"));
         assert!(
             tags.iter()
@@ -675,6 +818,50 @@ mod tests {
             tags.iter()
                 .any(|tag| tag[0] == "t" && tag[1] == "electronics")
         );
+        assert!(
+            tags.iter().any(|tag| tag[0] == "a"
+                && tag[1]
+                    == "30404:1111111111111111111111111111111111111111111111111111111111111111:dataset-1")
+        );
+        assert!(tags.iter().any(|tag| tag[0] == "e"
+            && tag[1] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+    }
+
+    #[test]
+    fn test_classified_listing_round_trip_from_event_preserves_ds_refs() {
+        let identity = crate::regenerate_identity().expect("identity");
+        let mut listing = ClassifiedListing::new(
+            "dataset-alpha-classified",
+            "Public market wrapper for a dataset.",
+            "Dataset Alpha",
+        )
+        .with_summary("Catalog wrapper")
+        .with_published_at(1_774_160_000)
+        .with_price(Price::one_time("42", "SAT"))
+        .with_status(ListingStatus::Active);
+        listing.add_tag("dataset");
+        listing.add_address_ref(format!("30404:{}:dataset-alpha", identity.public_key_hex));
+        listing.add_address_ref(format!(
+            "30406:{}:dataset-alpha-offer",
+            identity.public_key_hex
+        ));
+        listing.add_event_ref("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+        let template = listing.to_event_template(1_774_160_001).expect("template");
+        let event = sign_template(&identity, &template);
+        let parsed = ClassifiedListing::from_event(&event).expect("parsed");
+
+        assert_eq!(parsed.identifier, listing.identifier);
+        assert_eq!(parsed.title, listing.title);
+        assert_eq!(parsed.summary, listing.summary);
+        assert_eq!(parsed.price, listing.price);
+        assert_eq!(parsed.tags, listing.tags);
+        assert_eq!(parsed.address_refs, listing.address_refs);
+        assert_eq!(parsed.event_refs, listing.event_refs);
+        assert_eq!(
+            parsed.coordinate(identity.public_key_hex.clone()).unwrap(),
+            format!("30402:{}:dataset-alpha-classified", identity.public_key_hex)
+        );
     }
 
     #[test]
@@ -690,10 +877,19 @@ mod tests {
     }
 
     #[test]
-    fn test_draft_listing_to_tags() {
-        let listing = ClassifiedListing::new("id", "content", "title");
+    fn test_draft_listing_round_trip_from_event() {
+        let identity = crate::regenerate_identity().expect("identity");
+        let listing = ClassifiedListing::new("draft-id", "draft content", "Draft Title");
         let draft = DraftListing::new(listing.clone());
+        let template = draft.to_event_template(1_774_160_100).expect("template");
+        let event = sign_template(&identity, &template);
+        let parsed = DraftListing::from_event(&event).expect("parsed draft");
 
-        assert_eq!(draft.to_tags(), listing.to_tags());
+        assert_eq!(parsed.listing.identifier, "draft-id");
+        assert_eq!(parsed.listing.title, "Draft Title");
+        assert_eq!(
+            parsed.coordinate(identity.public_key_hex.clone()).unwrap(),
+            format!("30403:{}:draft-id", identity.public_key_hex)
+        );
     }
 }

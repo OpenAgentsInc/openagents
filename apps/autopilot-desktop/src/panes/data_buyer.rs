@@ -233,6 +233,15 @@ fn paint_asset_card(
                 )
             })
         })
+        .or_else(|| {
+            listing.and_then(|listing| {
+                listing
+                    .classified_price_amount
+                    .as_deref()
+                    .zip(listing.classified_price_currency.as_deref())
+                    .map(|(amount, currency)| format!("{amount} {currency}"))
+            })
+        })
         .or_else(|| asset.and_then(|asset| asset.price_hint.as_ref().map(format_money)))
         .unwrap_or_else(|| "none".to_string());
     for (label, value) in [
@@ -257,6 +266,19 @@ fn paint_asset_card(
             row_y,
             "relay_offer",
             compact_text(offer.coordinate.as_str(), 44).as_str(),
+            paint,
+        );
+    }
+    if let Some(listing) = listing {
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "catalog",
+            compact_text(
+                listing.classified_coordinate.as_deref().unwrap_or("none"),
+                44,
+            )
+            .as_str(),
             paint,
         );
     }
