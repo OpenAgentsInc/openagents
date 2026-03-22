@@ -1362,6 +1362,8 @@ fn data_buyer_request_tool_snapshot(
 }
 
 fn data_buyer_tool_snapshot(state: &RenderState) -> Value {
+    let selected_listing = state.data_buyer.selected_listing(&state.data_market);
+    let selected_catalog_offer = state.data_buyer.selected_catalog_offer(&state.data_market);
     let selected_asset = state.data_buyer.selected_asset(&state.data_market);
     let selected_grant = state.data_buyer.selected_offer_grant(&state.data_market);
     let selected_revocation = state.data_buyer.selected_revocation(&state.data_market);
@@ -1383,11 +1385,37 @@ fn data_buyer_tool_snapshot(state: &RenderState) -> Value {
             "load_state": state.data_buyer.load_state.label(),
             "local_buyer_id": state.data_buyer.local_buyer_id,
             "selected_asset_id": state.data_buyer.selected_asset_id,
+            "selected_listing_coordinate": state.data_buyer.selected_listing_coordinate,
+            "selected_offer_coordinate": state.data_buyer.selected_offer_coordinate,
             "status_line": state.data_buyer.status_line,
             "last_action": state.data_buyer.last_action,
             "last_error": state.data_buyer.last_error,
             "last_published_request_id": state.data_buyer.last_published_request_id,
             "last_published_request_event_id": state.data_buyer.last_published_request_event_id,
+            "selected_listing": selected_listing.map(|listing| {
+                json!({
+                    "coordinate": listing.coordinate,
+                    "publisher_pubkey": listing.publisher_pubkey,
+                    "title": listing.title,
+                    "dataset_kind": listing.dataset_kind,
+                    "access": listing.access,
+                    "relay_url": listing.relay_url,
+                    "linked_asset_id": listing.linked_asset_id,
+                })
+            }),
+            "selected_catalog_offer": selected_catalog_offer.map(|offer| {
+                json!({
+                    "coordinate": offer.coordinate,
+                    "listing_coordinate": offer.listing_coordinate,
+                    "status": offer.status,
+                    "policy": offer.policy,
+                    "price_amount": offer.price_amount,
+                    "price_currency": offer.price_currency,
+                    "relay_url": offer.relay_url,
+                    "linked_asset_id": offer.linked_asset_id,
+                    "linked_grant_id": offer.linked_grant_id,
+                })
+            }),
             "selected_asset": selected_asset.map(|asset| {
                 json!({
                     "asset_id": asset.asset_id,
@@ -1425,9 +1453,12 @@ fn data_buyer_tool_snapshot(state: &RenderState) -> Value {
             }),
             "derived_request_draft": derived_draft.map(|draft| {
                 json!({
+                    "asset_ref": draft.asset_ref,
                     "asset_id": draft.asset_id,
                     "provider_id": draft.provider_id,
                     "offer_grant_id": draft.offer_grant_id,
+                    "listing_coordinate": draft.listing_coordinate,
+                    "offer_coordinate": draft.offer_coordinate,
                     "permission_scopes": draft.permission_scopes,
                     "delivery_mode": draft.delivery_mode,
                     "preview_posture": draft.preview_posture,
@@ -2221,9 +2252,50 @@ pub(crate) fn execute_data_market_snapshot_tool(
                 "grant_count": state.data_market.grants.len(),
                 "delivery_count": state.data_market.deliveries.len(),
                 "revocation_count": state.data_market.revocations.len(),
+                "relay_listing_count": state.data_market.relay_listings.len(),
+                "relay_offer_count": state.data_market.relay_offers.len(),
                 "last_refreshed_at_ms": state.data_market.last_refreshed_at_ms,
                 "last_action": state.data_market.last_action,
                 "last_error": state.data_market.last_error,
+                "relay_listings": state
+                    .data_market
+                    .relay_listings
+                    .iter()
+                    .take(8)
+                    .map(|listing| {
+                        json!({
+                            "coordinate": listing.coordinate,
+                            "publisher_pubkey": listing.publisher_pubkey,
+                            "relay_url": listing.relay_url,
+                            "title": listing.title,
+                            "summary": listing.summary,
+                            "dataset_kind": listing.dataset_kind,
+                            "access": listing.access,
+                            "draft": listing.draft,
+                            "linked_asset_id": listing.linked_asset_id,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                "relay_offers": state
+                    .data_market
+                    .relay_offers
+                    .iter()
+                    .take(8)
+                    .map(|offer| {
+                        json!({
+                            "coordinate": offer.coordinate,
+                            "listing_coordinate": offer.listing_coordinate,
+                            "publisher_pubkey": offer.publisher_pubkey,
+                            "relay_url": offer.relay_url,
+                            "status": offer.status,
+                            "policy": offer.policy,
+                            "price_amount": offer.price_amount,
+                            "price_currency": offer.price_currency,
+                            "linked_asset_id": offer.linked_asset_id,
+                            "linked_grant_id": offer.linked_grant_id,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
                 "lifecycle_entries": state
                     .data_market
                     .lifecycle_entries
