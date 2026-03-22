@@ -128,6 +128,7 @@ fn build_data_buyer_request_event(
 pub(crate) fn open_data_buyer_pane(state: &mut RenderState) -> bool {
     let buyer_id = crate::kernel_control::provider_id_for_state(state);
     state.data_buyer.configure_local_buyer_id(buyer_id);
+    crate::data_market_control::hydrate_data_market_relay_replica(state);
     state.data_buyer.mark_opened();
     if state.data_market.has_snapshot() {
         state.data_buyer.sync_selection(&state.data_market);
