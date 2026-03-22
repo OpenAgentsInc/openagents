@@ -178,7 +178,7 @@ pub(crate) fn publish_data_buyer_request(state: &mut RenderState) -> bool {
 
     let Some(draft) = state.data_buyer.derived_request_draft(&state.data_market) else {
         state.data_buyer.record_publish_error(
-            "No active data asset is selected for buyer request publication.",
+            "No relay dataset listing is selected for buyer request publication.",
         );
         return true;
     };
@@ -219,7 +219,10 @@ pub(crate) fn publish_data_buyer_request(state: &mut RenderState) -> bool {
                 request_id,
                 published_event_id,
                 draft.provider_id,
-                draft.asset_id,
+                draft
+                    .listing_coordinate
+                    .clone()
+                    .unwrap_or_else(|| draft.asset_ref.clone()),
             );
             true
         }
