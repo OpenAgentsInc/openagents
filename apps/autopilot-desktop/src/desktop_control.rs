@@ -1174,6 +1174,8 @@ pub struct DesktopControlManifest {
     pub listen_addr: String,
     pub base_url: String,
     pub auth_token: String,
+    #[serde(default)]
+    pub identity_path: Option<String>,
     pub latest_session_log_path: String,
 }
 
@@ -1850,6 +1852,7 @@ pub fn enable_runtime(
         listen_addr: listen_addr.to_string(),
         base_url: base_url.clone(),
         auth_token: auth_token.clone(),
+        identity_path: Some(state.settings.document.identity_path.clone()),
         latest_session_log_path: crate::runtime_log::latest_session_log_path()
             .display()
             .to_string(),

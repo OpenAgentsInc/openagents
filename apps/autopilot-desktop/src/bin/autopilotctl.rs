@@ -4,6 +4,7 @@
 )]
 
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -28,6 +29,7 @@ use autopilot_desktop::{
     local_runtime_device_inventory_label, local_runtime_execution_posture_label,
     local_runtime_scheduler_posture_label,
 };
+use bitcoin::hashes::{Hash, sha256};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Datelike, Local, LocalResult, NaiveDate, TimeZone};
@@ -35,7 +37,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use nostr_client::{RelayConnection, RelayMessage};
 use psionic_sandbox::ProviderSandboxEntrypointType;
 use reqwest::blocking::Client;
-use serde::{Serialize, de::DeserializeOwned};
+use reqwest::Url;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 const DEFAULT_EVENTS_LIMIT: usize = 64;
@@ -1391,6 +1394,7 @@ struct ResolvedTarget {
     base_url: String,
     auth_token: String,
     manifest_path: Option<PathBuf>,
+    identity_path: Option<PathBuf>,
     latest_session_log_path: Option<PathBuf>,
 }
 
@@ -1456,6 +1460,45 @@ struct RelayFetchedEventEnvelope {
     kind: u16,
     pubkey: String,
     event_json: Value,
+}
+
+#[derive(Clone, Debug)]
+struct DataMarketResolvedDeliveryLocator {
+    delivery_ref: String,
+    delivery_digest: Option<String>,
+    manifest_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+enum DataMarketResolvedPayloadSource {
+    LocalPath(PathBuf),
+    RemoteFile {
+        source_ref: String,
+        suggested_name: String,
+        bytes: Vec<u8>,
+    },
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct DataMarketDeliveryPointerEnvelope {
+    #[serde(default)]
+    schema_version: Option<String>,
+    #[serde(default)]
+    delivery_ref: Option<String>,
+    #[serde(default, alias = "ref")]
+    ref_value: Option<String>,
+    #[serde(default, alias = "url")]
+    url: Option<String>,
+    #[serde(default)]
+    delivery_digest: Option<String>,
+    #[serde(default, alias = "x")]
+    digest: Option<String>,
+    #[serde(default)]
+    manifest_refs: Vec<String>,
+    #[serde(default)]
+    sender_pubkey: Option<String>,
+    #[serde(default)]
+    ciphertext: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -2134,6 +2177,7 @@ fn main() -> Result<()> {
                 } = &command
                 {
                     let consumed = materialize_data_market_delivery(
+                        &client,
                         payload,
                         output_dir.as_path(),
                         *overwrite,
@@ -2699,6 +2743,11 @@ fn resolve_target(cli: &Cli) -> Result<ResolvedTarget> {
             base_url: base_url.trim().trim_end_matches('/').to_string(),
             auth_token: auth_token.trim().to_string(),
             manifest_path: cli.manifest.clone(),
+            identity_path: cli
+                .manifest
+                .as_ref()
+                .and_then(|path| load_manifest_from_path(path).ok())
+                .and_then(|manifest| manifest.identity_path.map(PathBuf::from)),
             latest_session_log_path: cli
                 .manifest
                 .as_ref()
@@ -2715,6 +2764,7 @@ fn resolve_target(cli: &Cli) -> Result<ResolvedTarget> {
                 base_url: manifest.base_url.trim().trim_end_matches('/').to_string(),
                 auth_token: manifest.auth_token,
                 manifest_path: Some(manifest_path),
+                identity_path: manifest.identity_path.map(PathBuf::from),
                 latest_session_log_path: Some(PathBuf::from(manifest.latest_session_log_path)),
             })
         }
@@ -3308,6 +3358,406 @@ fn resolve_local_data_market_ref(value: &str) -> Result<PathBuf> {
     }
 }
 
+fn is_local_data_market_ref(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.starts_with("file://localhost/")
+        || trimmed.starts_with("file:///")
+        || !trimmed.contains("://")
+}
+
+fn normalize_delivery_digest(value: Option<&str>) -> Result<Option<String>> {
+    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let normalized = raw.strip_prefix("sha256:").unwrap_or(raw);
+    if normalized.len() != 64 || !normalized.chars().all(|character| character.is_ascii_hexdigit())
+    {
+        bail!("delivery digest must be a sha256 hex string, got {raw}");
+    }
+    Ok(Some(normalized.to_ascii_lowercase()))
+}
+
+fn data_market_sha256_hex(bytes: &[u8]) -> String {
+    sha256::Hash::hash(bytes).to_string()
+}
+
+fn verify_delivery_bytes_digest(
+    bytes: &[u8],
+    expected_digest: Option<&str>,
+    source_ref: &str,
+) -> Result<Option<String>> {
+    let expected = normalize_delivery_digest(expected_digest)?;
+    let Some(expected) = expected else {
+        return Ok(None);
+    };
+    let calculated = data_market_sha256_hex(bytes);
+    if calculated != expected {
+        bail!(
+            "delivery digest mismatch for {source_ref}: expected sha256:{expected}, got sha256:{calculated}"
+        );
+    }
+    Ok(Some(format!("sha256:{calculated}")))
+}
+
+fn private_key_bytes(identity: &nostr::NostrIdentity) -> Result<[u8; 32]> {
+    let decoded = hex::decode(identity.private_key_hex.as_str())
+        .with_context(|| "decode buyer private key hex for delivery decryption")?;
+    decoded
+        .try_into()
+        .map_err(|_| anyhow!("buyer private key has invalid length"))
+}
+
+fn compressed_pubkey_from_xonly_hex(pubkey: &str) -> Result<Vec<u8>> {
+    let decoded = hex::decode(pubkey.trim())
+        .with_context(|| format!("decode sender pubkey hex {pubkey}"))?;
+    if decoded.len() != 32 {
+        bail!("sender pubkey must be 32-byte hex, got {}", decoded.len());
+    }
+    let mut compressed = Vec::with_capacity(33);
+    compressed.push(0x02);
+    compressed.extend_from_slice(decoded.as_slice());
+    Ok(compressed)
+}
+
+fn infer_remote_file_name(reference: &str, content_type: Option<&str>) -> String {
+    let from_url = Url::parse(reference).ok().and_then(|url| {
+        url.path_segments().and_then(|segments| {
+            segments
+                .filter(|segment| !segment.is_empty())
+                .next_back()
+                .map(str::to_string)
+        })
+    });
+    from_url
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| match content_type.unwrap_or_default() {
+            value if value.contains("json") => "payload.json".to_string(),
+            value if value.contains("text/plain") => "payload.txt".to_string(),
+            _ => "payload.bin".to_string(),
+        })
+}
+
+fn load_target_identity(target: &ResolvedTarget) -> Result<nostr::NostrIdentity> {
+    let identity_path = target
+        .identity_path
+        .clone()
+        .or_else(|| nostr::identity_mnemonic_path().ok())
+        .ok_or_else(|| anyhow!("could not resolve an identity mnemonic path for remote delivery decryption"))?;
+    nostr::load_identity_from_path(identity_path.as_path()).with_context(|| {
+        format!(
+            "load buyer identity mnemonic for remote delivery decryption from {}",
+            identity_path.display()
+        )
+    })
+}
+
+fn is_probable_delivery_ref(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && !trimmed.contains('\n')
+        && (trimmed.contains("://")
+            || trimmed.starts_with('/')
+            || trimmed.starts_with("./")
+            || trimmed.starts_with("../"))
+}
+
+fn parse_delivery_pointer_text(
+    raw: &str,
+    target: &ResolvedTarget,
+    inherited_digest: Option<&str>,
+    inherited_manifest_refs: &[String],
+) -> Result<Option<DataMarketResolvedDeliveryLocator>> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if let Ok(envelope) = serde_json::from_str::<DataMarketDeliveryPointerEnvelope>(trimmed) {
+        let schema = envelope.schema_version.as_deref().unwrap_or_default();
+        if envelope.ciphertext.is_some() || schema.eq_ignore_ascii_case("oa.data_market.encrypted_pointer.v1") {
+            let sender_pubkey = envelope
+                .sender_pubkey
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| anyhow!("encrypted delivery pointer is missing sender_pubkey"))?;
+            let ciphertext = envelope
+                .ciphertext
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| anyhow!("encrypted delivery pointer is missing ciphertext"))?;
+            let identity = load_target_identity(target)?;
+            let private_key = private_key_bytes(&identity)?;
+            let sender_pubkey = compressed_pubkey_from_xonly_hex(sender_pubkey)?;
+            let plaintext = nostr::nip44::decrypt(
+                &private_key,
+                sender_pubkey.as_slice(),
+                ciphertext,
+            )
+            .map_err(|error| anyhow!("decrypt encrypted delivery pointer: {error}"))?;
+            let nested_digest = envelope
+                .delivery_digest
+                .as_deref()
+                .or(envelope.digest.as_deref())
+                .or(inherited_digest);
+            let nested_manifest_refs = if envelope.manifest_refs.is_empty() {
+                inherited_manifest_refs.to_vec()
+            } else {
+                envelope.manifest_refs
+            };
+            return parse_delivery_pointer_text(
+                plaintext.as_str(),
+                target,
+                nested_digest,
+                nested_manifest_refs.as_slice(),
+            );
+        }
+
+        let delivery_ref = envelope
+            .delivery_ref
+            .as_deref()
+            .or(envelope.ref_value.as_deref())
+            .or(envelope.url.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(delivery_ref) = delivery_ref {
+            let delivery_digest = envelope
+                .delivery_digest
+                .as_deref()
+                .or(envelope.digest.as_deref())
+                .or(inherited_digest)
+                .map(str::to_string);
+            let manifest_refs = if envelope.manifest_refs.is_empty() {
+                inherited_manifest_refs.to_vec()
+            } else {
+                envelope.manifest_refs
+            };
+            return Ok(Some(DataMarketResolvedDeliveryLocator {
+                delivery_ref: delivery_ref.to_string(),
+                delivery_digest,
+                manifest_refs,
+            }));
+        }
+    }
+
+    if is_probable_delivery_ref(trimmed) {
+        return Ok(Some(DataMarketResolvedDeliveryLocator {
+            delivery_ref: trimmed.to_string(),
+            delivery_digest: inherited_digest.map(str::to_string),
+            manifest_refs: inherited_manifest_refs.to_vec(),
+        }));
+    }
+
+    Ok(None)
+}
+
+fn parse_giftwrap_delivery_ref(value: &str) -> Result<(String, Vec<String>)> {
+    let trimmed = value.trim();
+    let parsed = Url::parse(trimmed)
+        .with_context(|| format!("parse giftwrap delivery reference {trimmed}"))?;
+    match parsed.scheme() {
+        "giftwrap" | "nostr+giftwrap" => {}
+        scheme => bail!("unsupported giftwrap delivery scheme {scheme}"),
+    }
+    let event_id = parsed
+        .host_str()
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            let path = parsed.path().trim_matches('/');
+            (!path.is_empty()).then_some(path)
+        })
+        .ok_or_else(|| anyhow!("giftwrap delivery ref is missing an event id"))?
+        .to_string();
+    if event_id.len() != 64 || !event_id.chars().all(|character| character.is_ascii_hexdigit()) {
+        bail!("giftwrap delivery ref must carry a 64-character event id");
+    }
+    let relay_urls = parsed
+        .query_pairs()
+        .filter(|(key, _)| key == "relay")
+        .map(|(_, value)| value.to_string())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>();
+    Ok((event_id, relay_urls))
+}
+
+fn parse_giftwrapped_delivery_pointer(
+    event: &nostr::Event,
+    target: &ResolvedTarget,
+    inherited_digest: Option<&str>,
+    inherited_manifest_refs: &[String],
+) -> Result<DataMarketResolvedDeliveryLocator> {
+    let identity = load_target_identity(target)?;
+    let private_key = private_key_bytes(&identity)?;
+    let rumor = nostr::nip59::unwrap_gift_wrap_full(event, &private_key)
+        .map_err(|error| anyhow!("decrypt giftwrapped delivery pointer {}: {error}", event.id))?;
+    parse_delivery_pointer_text(
+        rumor.content.as_str(),
+        target,
+        inherited_digest,
+        inherited_manifest_refs,
+    )?
+    .ok_or_else(|| {
+        anyhow!(
+            "giftwrapped delivery pointer {} did not contain a supported delivery ref or pointer envelope",
+            event.id
+        )
+    })
+}
+
+fn fetch_remote_delivery_bytes(
+    http: &Client,
+    url: &str,
+) -> Result<(Vec<u8>, Option<String>)> {
+    let mut response = http
+        .get(url)
+        .send()
+        .with_context(|| format!("download remote delivery ref {url}"))?;
+    if !response.status().is_success() {
+        bail!(
+            "remote delivery download failed for {url}: status {}",
+            response.status()
+        );
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let mut bytes = Vec::new();
+    response
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read remote delivery body from {url}"))?;
+    Ok((bytes, content_type))
+}
+
+fn resolve_delivery_source(
+    client: &DesktopControlClient,
+    locator: DataMarketResolvedDeliveryLocator,
+    require_remote_digest: bool,
+    depth_remaining: usize,
+) -> Result<(DataMarketResolvedPayloadSource, DataMarketResolvedDeliveryLocator)> {
+    if depth_remaining == 0 {
+        bail!("delivery pointer resolution exceeded the maximum recursion depth");
+    }
+    let delivery_ref = locator.delivery_ref.trim().to_string();
+    if delivery_ref.is_empty() {
+        bail!("delivery reference cannot be empty");
+    }
+    if is_local_data_market_ref(delivery_ref.as_str()) {
+        let path = resolve_local_data_market_ref(delivery_ref.as_str())?;
+        return Ok((DataMarketResolvedPayloadSource::LocalPath(path), locator));
+    }
+    if delivery_ref.starts_with("http://") || delivery_ref.starts_with("https://") {
+        let (bytes, content_type) = fetch_remote_delivery_bytes(&client.http, delivery_ref.as_str())?;
+        if let Ok(text) = std::str::from_utf8(bytes.as_slice())
+            && let Some(nested) = parse_delivery_pointer_text(
+                text,
+                &client.target,
+                locator.delivery_digest.as_deref(),
+                locator.manifest_refs.as_slice(),
+            )?
+        {
+            return resolve_delivery_source(
+                client,
+                nested,
+                require_remote_digest,
+                depth_remaining.saturating_sub(1),
+            );
+        }
+        if require_remote_digest && normalize_delivery_digest(locator.delivery_digest.as_deref())?.is_none()
+        {
+            bail!(
+                "remote delivery ref {} requires delivery_digest so the payload can be verified before materialization",
+                delivery_ref
+            );
+        }
+        let verified_digest =
+            verify_delivery_bytes_digest(bytes.as_slice(), locator.delivery_digest.as_deref(), delivery_ref.as_str())?;
+        return Ok((
+            DataMarketResolvedPayloadSource::RemoteFile {
+                source_ref: delivery_ref.clone(),
+                suggested_name: infer_remote_file_name(
+                    delivery_ref.as_str(),
+                    content_type.as_deref(),
+                ),
+                bytes,
+            },
+            DataMarketResolvedDeliveryLocator {
+                delivery_ref,
+                delivery_digest: verified_digest.or(locator.delivery_digest),
+                manifest_refs: locator.manifest_refs,
+            },
+        ));
+    }
+    if delivery_ref.starts_with("giftwrap:") || delivery_ref.starts_with("nostr+giftwrap:") {
+        let (event_id, relay_urls) = parse_giftwrap_delivery_ref(delivery_ref.as_str())?;
+        let relay_urls = resolve_data_market_relay_urls(client, relay_urls.as_slice())?;
+        let fetched = fetch_relay_event_by_id(event_id.as_str(), relay_urls.as_slice(), 15_000)?;
+        let event: nostr::Event = serde_json::from_value(fetched.event_json.clone())
+            .with_context(|| format!("decode giftwrap event {}", fetched.event_id))?;
+        let nested = parse_giftwrapped_delivery_pointer(
+            &event,
+            &client.target,
+            locator.delivery_digest.as_deref(),
+            locator.manifest_refs.as_slice(),
+        )?;
+        return resolve_delivery_source(
+            client,
+            nested,
+            require_remote_digest,
+            depth_remaining.saturating_sub(1),
+        );
+    }
+    bail!(
+        "unsupported delivery reference scheme in {}; supported remote refs are http(s) payloads, encrypted pointer documents, and giftwrap:// event ids",
+        delivery_ref
+    )
+}
+
+fn copy_manifest_ref_to_output(
+    client: &DesktopControlClient,
+    manifest_ref: &str,
+    target_path: &Path,
+) -> Result<()> {
+    let locator = DataMarketResolvedDeliveryLocator {
+        delivery_ref: manifest_ref.to_string(),
+        delivery_digest: None,
+        manifest_refs: Vec::new(),
+    };
+    let (source, _) = resolve_delivery_source(client, locator, false, 4)?;
+    match source {
+        DataMarketResolvedPayloadSource::LocalPath(path) => {
+            if path.is_dir() {
+                copy_dir_recursive(path.as_path(), target_path)?;
+            } else if path.is_file() {
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("create parent {}", parent.display()))?;
+                }
+                fs::copy(path.as_path(), target_path).with_context(|| {
+                    format!("copy manifest {} -> {}", path.display(), target_path.display())
+                })?;
+            } else {
+                bail!(
+                    "manifest source {} is neither a regular file nor a directory",
+                    path.display()
+                );
+            }
+        }
+        DataMarketResolvedPayloadSource::RemoteFile { bytes, .. } => {
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("create parent {}", parent.display()))?;
+            }
+            let mut handle = fs::File::create(target_path)
+                .with_context(|| format!("create manifest {}", target_path.display()))?;
+            handle
+                .write_all(bytes.as_slice())
+                .with_context(|| format!("write manifest {}", target_path.display()))?;
+        }
+    }
+    Ok(())
+}
+
 fn ensure_clean_output_dir(path: &Path, overwrite: bool) -> Result<()> {
     match fs::metadata(path) {
         Ok(metadata) => {
@@ -3369,6 +3819,7 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
 }
 
 fn materialize_data_market_delivery(
+    client: &DesktopControlClient,
     payload: &Value,
     output_dir: &Path,
     overwrite: bool,
@@ -3409,76 +3860,101 @@ fn materialize_data_market_delivery(
 
     ensure_clean_output_dir(output_dir, overwrite)?;
 
-    let source_path = resolve_local_data_market_ref(delivery_ref.as_str())?;
-    if !source_path.exists() {
-        bail!(
-            "delivery source {} does not exist locally",
-            source_path.display()
-        );
-    }
     let payload_root = output_dir.join("payload");
-    let (payload_source_kind, payload_output_path) = if source_path.is_dir() {
-        copy_dir_recursive(source_path.as_path(), payload_root.as_path())?;
-        ("directory".to_string(), payload_root.display().to_string())
-    } else if source_path.is_file() {
-        fs::create_dir_all(payload_root.as_path())
-            .with_context(|| format!("create payload dir {}", payload_root.display()))?;
-        let file_name = source_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| anyhow!("delivery source file has no usable basename"))?;
-        let target_path = payload_root.join(file_name);
-        fs::copy(source_path.as_path(), target_path.as_path()).with_context(|| {
-            format!(
-                "copy {} -> {}",
-                source_path.display(),
-                target_path.display()
+    let locator = DataMarketResolvedDeliveryLocator {
+        delivery_ref: delivery_ref.clone(),
+        delivery_digest: delivery_digest.clone(),
+        manifest_refs: manifest_refs.clone(),
+    };
+    let (payload_source, resolved_locator) = resolve_delivery_source(client, locator, true, 8)?;
+    let (payload_source_kind, payload_output_path) = match payload_source {
+        DataMarketResolvedPayloadSource::LocalPath(source_path) => {
+            if !source_path.exists() {
+                bail!(
+                    "delivery source {} does not exist locally",
+                    source_path.display()
+                );
+            }
+            if source_path.is_dir() {
+                copy_dir_recursive(source_path.as_path(), payload_root.as_path())?;
+                ("directory".to_string(), payload_root.display().to_string())
+            } else if source_path.is_file() {
+                if let Some(expected_digest) = resolved_locator.delivery_digest.as_deref() {
+                    let bytes = fs::read(source_path.as_path()).with_context(|| {
+                        format!("read local delivery file {}", source_path.display())
+                    })?;
+                    let _ = verify_delivery_bytes_digest(
+                        bytes.as_slice(),
+                        Some(expected_digest),
+                        source_path.display().to_string().as_str(),
+                    )?;
+                }
+                fs::create_dir_all(payload_root.as_path())
+                    .with_context(|| format!("create payload dir {}", payload_root.display()))?;
+                let file_name = source_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| anyhow!("delivery source file has no usable basename"))?;
+                let target_path = payload_root.join(file_name);
+                fs::copy(source_path.as_path(), target_path.as_path()).with_context(|| {
+                    format!(
+                        "copy {} -> {}",
+                        source_path.display(),
+                        target_path.display()
+                    )
+                })?;
+                ("file".to_string(), target_path.display().to_string())
+            } else {
+                bail!(
+                    "delivery source {} is neither a regular file nor a directory",
+                    source_path.display()
+                );
+            }
+        }
+        DataMarketResolvedPayloadSource::RemoteFile {
+            source_ref,
+            suggested_name,
+            bytes,
+        } => {
+            fs::create_dir_all(payload_root.as_path())
+                .with_context(|| format!("create payload dir {}", payload_root.display()))?;
+            let target_path = payload_root.join(suggested_name);
+            let mut handle = fs::File::create(target_path.as_path())
+                .with_context(|| format!("create payload file {}", target_path.display()))?;
+            handle
+                .write_all(bytes.as_slice())
+                .with_context(|| format!("write payload file {}", target_path.display()))?;
+            (
+                format!("remote_file:{source_ref}"),
+                target_path.display().to_string(),
             )
-        })?;
-        ("file".to_string(), target_path.display().to_string())
-    } else {
-        bail!(
-            "delivery source {} is neither a regular file nor a directory",
-            source_path.display()
-        );
+        }
     };
 
     let manifests_root = output_dir.join("manifests");
     let mut copied_manifest_paths = Vec::new();
     let mut unresolved_manifest_refs = Vec::new();
-    for (index, manifest_ref) in manifest_refs.iter().enumerate() {
-        let manifest_path = match resolve_local_data_market_ref(manifest_ref.as_str()) {
-            Ok(path) => path,
-            Err(_) => {
-                unresolved_manifest_refs.push(manifest_ref.clone());
-                continue;
-            }
-        };
-        if !manifest_path.exists() {
-            unresolved_manifest_refs.push(manifest_ref.clone());
-            continue;
-        }
+    for (index, manifest_ref) in resolved_locator.manifest_refs.iter().enumerate() {
         fs::create_dir_all(manifests_root.as_path())
             .with_context(|| format!("create manifests dir {}", manifests_root.display()))?;
-        let base_name = manifest_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .filter(|value| !value.is_empty())
-            .unwrap_or("manifest");
-        let target_path = manifests_root.join(format!("{index:02}-{base_name}"));
-        if manifest_path.is_dir() {
-            copy_dir_recursive(manifest_path.as_path(), target_path.as_path())?;
-        } else if manifest_path.is_file() {
-            fs::copy(manifest_path.as_path(), target_path.as_path()).with_context(|| {
-                format!(
-                    "copy manifest {} -> {}",
-                    manifest_path.display(),
-                    target_path.display()
-                )
-            })?;
+        let base_name = if is_local_data_market_ref(manifest_ref.as_str()) {
+            resolve_local_data_market_ref(manifest_ref.as_str())
+                .ok()
+                .and_then(|path| {
+                    path.file_name()
+                        .and_then(|value| value.to_str())
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| "manifest".to_string())
         } else {
+            infer_remote_file_name(manifest_ref.as_str(), None)
+        };
+        let target_path = manifests_root.join(format!("{index:02}-{base_name}"));
+        if let Err(error) = copy_manifest_ref_to_output(client, manifest_ref.as_str(), target_path.as_path()) {
             unresolved_manifest_refs.push(manifest_ref.clone());
+            let _ = error;
             continue;
         }
         copied_manifest_paths.push(target_path.display().to_string());
@@ -3494,13 +3970,13 @@ fn materialize_data_market_delivery(
         provider_id,
         consumer_id,
         delivery_ref,
-        delivery_digest,
+        delivery_digest: resolved_locator.delivery_digest.clone(),
         output_dir: output_dir.display().to_string(),
         payload_source_kind,
         payload_output_path,
         copied_manifest_paths,
         unresolved_manifest_refs,
-        manifest_refs,
+        manifest_refs: resolved_locator.manifest_refs,
     };
     fs::write(
         output_dir.join("consumed-delivery.json"),
@@ -3797,6 +4273,7 @@ fn print_action(
                     base_url: String::new(),
                     auth_token: String::new(),
                     manifest_path: None,
+                    identity_path: None,
                     latest_session_log_path: None,
                 },
                 snapshot,
@@ -6753,13 +7230,16 @@ mod tests {
     use super::{
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
-        DataMarketCommand, DataMarketRevocationActionArg, GptOssCommand, LocalRuntimeCommand,
-        ProofCommand, ProviderCommand, ResearchCommand, SandboxCommand, SandboxEntrypointTypeArg,
-        TassadarCommand, TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
-        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
-        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, GptOssCommand,
+        LocalRuntimeCommand, ProofCommand, ProviderCommand, ResearchCommand, ResolvedTarget,
+        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
+        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
+        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
+        WaitCondition, WaitConditionArg, WalletCommand,
         buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        compressed_pubkey_from_xonly_hex, data_market_sha256_hex, materialize_data_market_delivery,
         ensure_buy_mode_budget_ack, inventory_status_lines, nip90_sent_payments_report_lines,
+        parse_giftwrapped_delivery_pointer, private_key_bytes,
         parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
         request_has_failed, request_has_paid, request_has_payment_required, training_status_lines,
     };
@@ -6779,6 +7259,7 @@ mod tests {
         LocalRuntimeCompileFailure, LocalRuntimeDiagnostics, LocalRuntimeExecutionPosture,
     };
     use clap::Parser;
+    use reqwest::blocking::Client;
     use psionic_runtime::{
         AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendRuntimeResources,
         CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
@@ -6787,13 +7268,99 @@ mod tests {
         KernelCachePolicy, KernelCacheReport, KernelCacheState, LocalRuntimeObservability,
     };
     use psionic_sandbox::ProviderSandboxEntrypointType;
+    use std::collections::BTreeMap;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
     use std::path::PathBuf;
-    use tempfile::NamedTempFile;
+    use std::thread;
+    use serde_json::{Value, json};
+    use tempfile::{NamedTempFile, TempDir};
 
     fn write_temp_json(raw: &str) -> NamedTempFile {
         let file = NamedTempFile::new().expect("temp json file");
         std::fs::write(file.path(), raw).expect("write temp json");
         file
+    }
+
+    fn write_identity(temp_dir: &TempDir, name: &str, mnemonic: &str) -> PathBuf {
+        let path = temp_dir.path().join(format!("{name}.mnemonic"));
+        std::fs::write(&path, format!("{mnemonic}\n")).expect("write identity mnemonic");
+        path
+    }
+
+    fn make_client(identity_path: PathBuf) -> DesktopControlClient {
+        DesktopControlClient {
+            http: Client::new(),
+            target: ResolvedTarget {
+                base_url: "http://127.0.0.1:1".to_string(),
+                auth_token: "test-token".to_string(),
+                manifest_path: None,
+                identity_path: Some(identity_path),
+                latest_session_log_path: None,
+            },
+        }
+    }
+
+    fn spawn_http_server(
+        routes: BTreeMap<String, (Vec<u8>, &'static str)>,
+        expected_connections: usize,
+    ) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test http listener");
+        let base_url = format!("http://{}", listener.local_addr().expect("listener addr"));
+        let handle = thread::spawn(move || {
+            for _ in 0..expected_connections {
+                let (mut stream, _) = listener.accept().expect("accept http connection");
+                let mut buffer = [0_u8; 8192];
+                let read = stream.read(&mut buffer).expect("read request");
+                let request = String::from_utf8_lossy(&buffer[..read]);
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .expect("request path")
+                    .to_string();
+                let (body, content_type) = routes
+                    .get(path.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| (b"not found".to_vec(), "text/plain"));
+                let status = if routes.contains_key(path.as_str()) {
+                    "HTTP/1.1 200 OK"
+                } else {
+                    "HTTP/1.1 404 Not Found"
+                };
+                let response = format!(
+                    "{status}\r\nContent-Length: {}\r\nContent-Type: {content_type}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .expect("write response head");
+                stream.write_all(body.as_slice()).expect("write response body");
+            }
+        });
+        (base_url, handle)
+    }
+
+    fn sample_delivery_payload(
+        delivery_ref: &str,
+        delivery_digest: Option<&str>,
+        provider_id: &str,
+        consumer_id: &str,
+    ) -> Value {
+        json!({
+            "selection_reason": "explicit_selector",
+            "resolved_request_id": "request.alpha",
+            "delivery": {
+                "delivery_bundle_id": "delivery.alpha",
+                "grant_id": "grant.alpha",
+                "asset_id": "asset.alpha",
+                "provider_id": provider_id,
+                "consumer_id": consumer_id,
+                "delivery_ref": delivery_ref,
+                "delivery_digest": delivery_digest,
+                "manifest_refs": [],
+            }
+        })
     }
 
     fn sample_snapshot() -> DesktopControlSnapshot {
@@ -8431,5 +8998,197 @@ mod tests {
         snapshot.gpt_oss.ready = false;
         snapshot.gpt_oss.loaded = false;
         assert!(WaitCondition::GptOssUnloaded.matches(&snapshot));
+    }
+
+    #[test]
+    fn materialize_data_market_delivery_downloads_remote_payload_and_verifies_digest() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let buyer_path = write_identity(
+            &temp_dir,
+            "buyer",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        );
+        let buyer = nostr::load_identity_from_path(buyer_path.as_path()).expect("buyer identity");
+        let client = make_client(buyer_path);
+        let payload_bytes = b"alpha dataset payload".to_vec();
+        let digest = format!("sha256:{}", data_market_sha256_hex(payload_bytes.as_slice()));
+        let (base_url, handle) = spawn_http_server(
+            BTreeMap::from([(
+                "/payload.bin".to_string(),
+                (payload_bytes.clone(), "application/octet-stream"),
+            )]),
+            1,
+        );
+        let payload = sample_delivery_payload(
+            format!("{base_url}/payload.bin").as_str(),
+            Some(digest.as_str()),
+            buyer.public_key_hex.as_str(),
+            buyer.public_key_hex.as_str(),
+        );
+        let output_dir = temp_dir.path().join("remote-consume");
+        let summary =
+            materialize_data_market_delivery(&client, &payload, output_dir.as_path(), true)
+                .expect("materialize remote delivery");
+        handle.join().expect("http server thread");
+
+        let written = std::fs::read(output_dir.join("payload").join("payload.bin"))
+            .expect("written payload");
+        assert_eq!(written, payload_bytes);
+        assert_eq!(summary.delivery_digest.as_deref(), Some(digest.as_str()));
+        assert!(summary.payload_source_kind.starts_with("remote_file:http://"));
+    }
+
+    #[test]
+    fn materialize_data_market_delivery_resolves_encrypted_pointer_documents() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let buyer_path = write_identity(
+            &temp_dir,
+            "buyer",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        );
+        let seller_path = write_identity(
+            &temp_dir,
+            "seller",
+            "legal winner thank year wave sausage worth useful legal winner thank yellow",
+        );
+        let buyer = nostr::load_identity_from_path(buyer_path.as_path()).expect("buyer identity");
+        let seller = nostr::load_identity_from_path(seller_path.as_path()).expect("seller identity");
+        let client = make_client(buyer_path);
+        let payload_bytes = b"encrypted pointer payload".to_vec();
+        let digest = format!("sha256:{}", data_market_sha256_hex(payload_bytes.as_slice()));
+        let seller_private_key = private_key_bytes(&seller).expect("seller private key");
+        let buyer_public_key =
+            compressed_pubkey_from_xonly_hex(buyer.public_key_hex.as_str()).expect("buyer pubkey");
+
+        let (payload_base_url, payload_handle) = spawn_http_server(
+            BTreeMap::from([(
+                "/payload.bin".to_string(),
+                (payload_bytes.clone(), "application/octet-stream"),
+            )]),
+            1,
+        );
+        let pointer_plaintext = json!({
+            "schema_version": "oa.data_market.delivery_pointer.v1",
+            "delivery_ref": format!("{payload_base_url}/payload.bin"),
+        })
+        .to_string();
+        let pointer_ciphertext = nostr::nip44::encrypt(
+            &seller_private_key,
+            buyer_public_key.as_slice(),
+            pointer_plaintext.as_str(),
+        )
+        .expect("encrypt pointer");
+        let pointer_document = json!({
+            "schema_version": "oa.data_market.encrypted_pointer.v1",
+            "sender_pubkey": seller.public_key_hex,
+            "ciphertext": pointer_ciphertext,
+        })
+        .to_string();
+        let (pointer_base_url, pointer_handle) = spawn_http_server(
+            BTreeMap::from([(
+                "/pointer.json".to_string(),
+                (pointer_document.into_bytes(), "application/json"),
+            )]),
+            1,
+        );
+
+        let payload = sample_delivery_payload(
+            format!("{pointer_base_url}/pointer.json").as_str(),
+            Some(digest.as_str()),
+            seller.public_key_hex.as_str(),
+            buyer.public_key_hex.as_str(),
+        );
+        let output_dir = temp_dir.path().join("encrypted-pointer-consume");
+        let summary =
+            materialize_data_market_delivery(&client, &payload, output_dir.as_path(), true)
+                .expect("materialize encrypted pointer delivery");
+        pointer_handle.join().expect("pointer http server thread");
+        payload_handle.join().expect("payload http server thread");
+
+        let written = std::fs::read(output_dir.join("payload").join("payload.bin"))
+            .expect("written payload");
+        assert_eq!(written, payload_bytes);
+        assert_eq!(summary.delivery_digest.as_deref(), Some(digest.as_str()));
+    }
+
+    #[test]
+    fn parse_giftwrapped_delivery_pointer_decrypts_nested_pointer_content() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let buyer_path = write_identity(
+            &temp_dir,
+            "buyer",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        );
+        let seller_path = write_identity(
+            &temp_dir,
+            "seller",
+            "legal winner thank year wave sausage worth useful legal winner thank yellow",
+        );
+        let buyer = nostr::load_identity_from_path(buyer_path.as_path()).expect("buyer identity");
+        let seller = nostr::load_identity_from_path(seller_path.as_path()).expect("seller identity");
+        let client = make_client(buyer_path);
+        let payload_bytes = b"giftwrap payload".to_vec();
+        let digest = format!("sha256:{}", data_market_sha256_hex(payload_bytes.as_slice()));
+        let pointer_json = json!({
+            "schema_version": "oa.data_market.delivery_pointer.v1",
+            "delivery_ref": "https://download.example/dataset.bin",
+        })
+        .to_string();
+        let seller_private_key = private_key_bytes(&seller).expect("seller private key");
+        let wrap = nostr::nip59::gift_wrap(
+            nostr::UnsignedEvent {
+                pubkey: seller.public_key_hex.clone(),
+                created_at: 1,
+                kind: 14,
+                tags: vec![],
+                content: pointer_json,
+            },
+            &seller_private_key,
+            buyer.public_key_hex.as_str(),
+        )
+        .expect("giftwrap event");
+
+        let parsed = parse_giftwrapped_delivery_pointer(
+            &wrap,
+            &client.target,
+            Some(digest.as_str()),
+            &[],
+        )
+        .expect("parse giftwrapped pointer");
+
+        assert_eq!(parsed.delivery_ref, "https://download.example/dataset.bin");
+        assert_eq!(parsed.delivery_digest.as_deref(), Some(digest.as_str()));
+    }
+
+    #[test]
+    fn materialize_data_market_delivery_rejects_remote_payload_without_digest() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let buyer_path = write_identity(
+            &temp_dir,
+            "buyer",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        );
+        let buyer = nostr::load_identity_from_path(buyer_path.as_path()).expect("buyer identity");
+        let client = make_client(buyer_path);
+        let (base_url, handle) = spawn_http_server(
+            BTreeMap::from([(
+                "/payload.bin".to_string(),
+                (b"digestless payload".to_vec(), "application/octet-stream"),
+            )]),
+            1,
+        );
+        let payload = sample_delivery_payload(
+            format!("{base_url}/payload.bin").as_str(),
+            None,
+            buyer.public_key_hex.as_str(),
+            buyer.public_key_hex.as_str(),
+        );
+        let output_dir = temp_dir.path().join("missing-digest");
+        let error = materialize_data_market_delivery(&client, &payload, output_dir.as_path(), true)
+            .expect_err("missing digest should fail");
+        handle.join().expect("http server thread");
+        assert!(error
+            .to_string()
+            .contains("requires delivery_digest so the payload can be verified"));
     }
 }
