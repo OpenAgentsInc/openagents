@@ -2,17 +2,24 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
+use nostr::nip_ds::{
+    AddressableEventCoordinate, AddressableEventReference, DatasetListing, DatasetOffer,
+    DatasetOfferStatus, PaymentMethod,
+};
 use nostr::nip90::{
     DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingResult, JobFeedback, JobStatus,
     create_data_vending_result_event, create_job_feedback_event,
 };
+use nostr::nip99::Price;
 use nostr::{Event, EventTemplate, NostrIdentity};
+use nostr_client::{PoolConfig, RelayPool};
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, CreateAccessGrantRequest, IssueDeliveryBundleRequest,
     KernelAuthority, RegisterDataAssetRequest, RevokeAccessGrantRequest,
 };
 use openagents_kernel_core::data::{
-    AccessGrantStatus, DeliveryBundle, DeliveryBundleStatus, RevocationReceipt,
+    AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
+    NostrPublicationRef, RevocationReceipt,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{
@@ -79,7 +86,7 @@ fn sign_event_template(
 ) -> Result<Event, String> {
     let private_key = parse_private_key_hex(identity.private_key_hex.as_str())?;
     nostr::finalize_event(template, &private_key)
-        .map_err(|error| format!("Cannot sign NIP-90 event template: {error}"))
+        .map_err(|error| format!("Cannot sign Nostr event template: {error}"))
 }
 
 fn sync_data_seller_nip90_profile(state: &mut RenderState) {
@@ -120,6 +127,74 @@ fn build_data_seller_payment_required_feedback_event(
     sign_event_template(identity, &template)
 }
 
+fn normalize_relay_urls(relay_urls: &[String]) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    relay_urls
+        .iter()
+        .map(|relay| relay.trim().to_string())
+        .filter(|relay| !relay.is_empty())
+        .filter(|relay| seen.insert(relay.clone()))
+        .collect()
+}
+
+fn publish_event_to_relays(
+    relay_urls: &[String],
+    event: &Event,
+    label: &str,
+) -> Result<Vec<String>, String> {
+    let relay_urls = normalize_relay_urls(relay_urls);
+    if relay_urls.is_empty() {
+        return Err(format!(
+            "Cannot publish {label}: no relay URLs configured for seller publication."
+        ));
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("Cannot start temporary relay runtime: {error}"))?;
+    runtime.block_on(async move {
+        let pool = RelayPool::new(PoolConfig::default());
+        let mut connected_relays = Vec::new();
+        let mut connection_errors = Vec::new();
+        for relay_url in relay_urls {
+            if let Err(error) = pool.add_relay(relay_url.as_str()).await {
+                connection_errors.push(format!("{relay_url}: add relay failed: {error}"));
+                continue;
+            }
+            match pool.connect_relay(relay_url.as_str()).await {
+                Ok(()) => connected_relays.push(relay_url),
+                Err(error) => {
+                    connection_errors.push(format!("{relay_url}: connect failed: {error}"))
+                }
+            }
+        }
+        if connected_relays.is_empty() {
+            let detail = connection_errors.join(" | ");
+            return Err(format!("Cannot publish {label}: {detail}"));
+        }
+        let confirmations = pool
+            .publish(event)
+            .await
+            .map_err(|error| format!("Cannot publish {label}: {error}"))?;
+        let _ = pool.disconnect_all().await;
+        let accepted_relays = confirmations
+            .into_iter()
+            .filter(|confirmation| confirmation.accepted)
+            .map(|confirmation| confirmation.relay_url)
+            .collect::<Vec<_>>();
+        if accepted_relays.is_empty() {
+            let detail = connection_errors.join(" | ");
+            let fallback = if detail.is_empty() {
+                "all relays rejected the event".to_string()
+            } else {
+                detail
+            };
+            return Err(format!("Cannot publish {label}: {fallback}"));
+        }
+        Ok(normalize_relay_urls(&accepted_relays))
+    })
+}
+
 fn canonical_component(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -142,6 +217,302 @@ fn sats_money(amount_sats: u64) -> Money {
         asset: Asset::Btc,
         amount: MoneyAmount::AmountSats(amount_sats),
     }
+}
+
+fn ds_created_at_seconds(created_at_ms: i64) -> u64 {
+    if created_at_ms > 0 {
+        (created_at_ms as u64) / 1000
+    } else {
+        current_epoch_seconds()
+    }
+}
+
+fn strip_sha256_prefix(value: Option<&str>) -> Result<String, String> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Err("Dataset publication requires a content digest.".to_string());
+    };
+    let digest = value
+        .strip_prefix("sha256:")
+        .or_else(|| value.strip_prefix("SHA256:"))
+        .unwrap_or(value)
+        .trim()
+        .to_ascii_lowercase();
+    if digest.len() != 64
+        || !digest
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return Err(format!(
+            "Dataset publication requires a SHA-256 hex digest, got `{value}`."
+        ));
+    }
+    Ok(digest)
+}
+
+fn metadata_string(metadata: &serde_json::Value, key: &str) -> Option<String> {
+    metadata
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn metadata_u64(metadata: &serde_json::Value, key: &str) -> Option<u64> {
+    metadata.get(key).and_then(|value| {
+        value
+            .as_u64()
+            .or_else(|| value.as_str()?.parse::<u64>().ok())
+    })
+}
+
+fn metadata_string_array(metadata: &serde_json::Value, key: &str) -> Vec<String> {
+    metadata
+        .get(key)
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn ds_delivery_modes(metadata: &serde_json::Value) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mapped = metadata_string_array(metadata, "delivery_modes")
+        .into_iter()
+        .map(|mode| match mode.trim().to_ascii_lowercase().as_str() {
+            "encrypted_pointer" | "delivery_bundle_ref" | "inline_preview" => "nip90".to_string(),
+            other => other.to_string(),
+        })
+        .collect::<Vec<_>>();
+    let mut delivery_modes = mapped
+        .into_iter()
+        .filter(|mode| seen.insert(mode.clone()))
+        .collect::<Vec<_>>();
+    if delivery_modes.is_empty() {
+        delivery_modes.push("nip90".to_string());
+    }
+    delivery_modes
+}
+
+fn ds_price_from_money(money: Option<&Money>) -> Option<Price> {
+    let money = money?;
+    let currency = match money.asset {
+        Asset::Btc => match money.amount {
+            MoneyAmount::AmountSats(amount) => {
+                return Some(Price::one_time(amount.to_string(), "SAT"));
+            }
+            MoneyAmount::AmountMsats(amount) => {
+                return Some(Price::one_time(amount.to_string(), "MSAT"));
+            }
+        },
+        Asset::UsdCents => "USD_CENTS",
+        Asset::AssetUnspecified => return None,
+    };
+    let amount = match money.amount {
+        MoneyAmount::AmountSats(amount) => amount.to_string(),
+        MoneyAmount::AmountMsats(amount) => amount.to_string(),
+    };
+    Some(Price::one_time(amount, currency))
+}
+
+fn maybe_targeted_buyer(consumer_id: Option<&str>) -> Option<String> {
+    let value = consumer_id?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let normalized = crate::nip90_compute_semantics::normalize_pubkey(value);
+    if normalized.len() == 64
+        && normalized
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        Some(normalized)
+    } else {
+        None
+    }
+}
+
+fn build_dataset_listing(
+    asset: &DataAsset,
+    seller_pubkey: &str,
+) -> Result<(DatasetListing, NostrPublicationRef), String> {
+    let digest = strip_sha256_prefix(asset.content_digest.as_deref())?;
+    let mut listing = DatasetListing::new(
+        asset.asset_id.clone(),
+        asset.description.clone().unwrap_or_else(|| {
+            format!(
+                "Dataset listing for {} ({})",
+                asset.title.trim(),
+                asset.asset_kind.trim()
+            )
+        }),
+        asset.title.clone(),
+        digest,
+    )
+    .with_published_at(ds_created_at_seconds(asset.created_at_ms))
+    .with_dataset_kind(asset.asset_kind.clone());
+
+    if let Some(summary) = asset.description.as_deref() {
+        listing = listing.with_summary(summary.to_string());
+    }
+    if let Some(size_bytes) = metadata_u64(&asset.metadata, "packaging_total_bytes") {
+        listing = listing.with_size_bytes(size_bytes);
+    }
+    if let Some(records) = metadata_u64(&asset.metadata, "packaging_file_count") {
+        listing = listing.with_records(records);
+    }
+    if let Some(license) = asset
+        .default_policy
+        .as_ref()
+        .map(|policy| policy.policy_id.clone())
+        .filter(|value| !value.trim().is_empty())
+    {
+        listing = listing.with_license(license);
+    }
+    if let Some(access) = asset
+        .price_hint
+        .as_ref()
+        .map(|_| "paid".to_string())
+        .or_else(|| Some("targeted".to_string()))
+    {
+        listing = listing.with_access(access);
+    }
+    for delivery_mode in ds_delivery_modes(&asset.metadata) {
+        listing = listing.add_delivery_mode(delivery_mode);
+    }
+    listing = listing
+        .add_topic("dataset")
+        .add_topic(asset.asset_kind.clone());
+    let coordinate = listing
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive DS listing coordinate: {error}"))?;
+    Ok((
+        listing,
+        NostrPublicationRef {
+            coordinate: Some(coordinate.to_string()),
+            event_id: None,
+            relay_url: None,
+        },
+    ))
+}
+
+fn publish_dataset_listing(
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+    asset: &DataAsset,
+) -> Result<NostrPublicationRef, String> {
+    let (listing, mut publication_ref) =
+        build_dataset_listing(asset, identity.public_key_hex.as_str())?;
+    let template = listing
+        .to_event_template(ds_created_at_seconds(asset.created_at_ms))
+        .map_err(|error| format!("Cannot build DS listing event: {error}"))?;
+    let event = sign_event_template(identity, &template)?;
+    let accepted_relays = publish_event_to_relays(relay_urls, &event, "DS listing")?;
+    publication_ref.event_id = Some(event.id);
+    publication_ref.relay_url = accepted_relays.first().cloned();
+    Ok(publication_ref)
+}
+
+fn grant_offer_status(grant: &AccessGrant) -> DatasetOfferStatus {
+    match grant.status {
+        AccessGrantStatus::Offered | AccessGrantStatus::Accepted | AccessGrantStatus::Delivered => {
+            DatasetOfferStatus::Active
+        }
+        AccessGrantStatus::Revoked | AccessGrantStatus::Refunded => DatasetOfferStatus::Revoked,
+        AccessGrantStatus::Expired => DatasetOfferStatus::Expired,
+    }
+}
+
+fn build_dataset_offer(
+    grant: &AccessGrant,
+    asset: &DataAsset,
+    seller_pubkey: &str,
+) -> Result<(DatasetOffer, NostrPublicationRef), String> {
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_listing(
+                seller_pubkey.to_string(),
+                asset.asset_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })
+        .ok_or_else(|| "Cannot derive DS offer listing reference.".to_string())?;
+    let listing_ref = AddressableEventReference::new(
+        listing_coordinate
+            .parse::<AddressableEventCoordinate>()
+            .map_err(|error| format!("Cannot parse DS listing coordinate: {error}"))?,
+    );
+    let mut offer = DatasetOffer::new(
+        grant.grant_id.clone(),
+        format!(
+            "Access offer for asset {} under policy {}.",
+            grant.asset_id, grant.permission_policy.policy_id
+        ),
+        listing_ref,
+    )
+    .with_status(grant_offer_status(grant))
+    .with_policy(if grant.consumer_id.is_some() {
+        "targeted_request"
+    } else {
+        "licensed_bundle"
+    })
+    .with_license(grant.permission_policy.policy_id.clone())
+    .with_expiration((grant.expires_at_ms / 1000).to_string())
+    .add_payment_method(PaymentMethod::new("ln"))
+    .add_topic("dataset");
+    if let Some(price) = ds_price_from_money(grant.offer_price.as_ref()) {
+        offer = offer.with_price(price);
+    }
+    for delivery_mode in ds_delivery_modes(&grant.metadata) {
+        offer = offer.add_delivery_mode(delivery_mode);
+    }
+    if let Some(targeted_buyer) = maybe_targeted_buyer(grant.consumer_id.as_deref()) {
+        offer = offer.add_targeted_buyer(
+            nostr::nip_ds::PublicKeyReference::new(targeted_buyer)
+                .map_err(|error| format!("Cannot build DS targeted buyer tag: {error}"))?,
+        );
+    }
+    let coordinate = offer
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive DS offer coordinate: {error}"))?;
+    Ok((
+        offer,
+        NostrPublicationRef {
+            coordinate: Some(coordinate.to_string()),
+            event_id: None,
+            relay_url: None,
+        },
+    ))
+}
+
+fn publish_dataset_offer(
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+    grant: &AccessGrant,
+    asset: &DataAsset,
+) -> Result<NostrPublicationRef, String> {
+    let (offer, mut publication_ref) =
+        build_dataset_offer(grant, asset, identity.public_key_hex.as_str())?;
+    let template = offer
+        .to_event_template(ds_created_at_seconds(grant.created_at_ms))
+        .map_err(|error| format!("Cannot build DS offer event: {error}"))?;
+    let event = sign_event_template(identity, &template)?;
+    let accepted_relays = publish_event_to_relays(relay_urls, &event, "DS offer")?;
+    publication_ref.event_id = Some(event.id);
+    publication_ref.relay_url = accepted_relays.first().cloned();
+    Ok(publication_ref)
 }
 
 fn delivery_mode_for_request(request: &DataSellerIncomingRequest) -> DataVendingDeliveryMode {
@@ -1606,6 +1977,26 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
             return true;
         }
     };
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        state.data_seller.last_error =
+            Some("Asset publish requires a Nostr identity for DS publication.".to_string());
+        state.data_seller.status_line =
+            "Asset publish blocked because Nostr identity is unavailable.".to_string();
+        return true;
+    };
+    let relay_urls = state.configured_provider_relay_urls();
+    let mut request = request;
+    let listing_ref = match publish_dataset_listing(identity, relay_urls.as_slice(), &request.asset)
+    {
+        Ok(reference) => reference,
+        Err(error) => {
+            state.data_seller.last_error = Some(error);
+            state.data_seller.status_line =
+                "Asset publish blocked because DS listing publication failed.".to_string();
+            return true;
+        }
+    };
+    request.asset.nostr_publications.ds_listing = Some(listing_ref);
 
     let client = match crate::kernel_control::remote_authority_client_for_state(state) {
         Ok(client) => client,
@@ -1770,6 +2161,15 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
             return true;
         }
     };
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        state.data_seller.last_error =
+            Some("Grant publish requires a Nostr identity for DS publication.".to_string());
+        state.data_seller.status_line =
+            "Grant publish blocked because Nostr identity is unavailable.".to_string();
+        return true;
+    };
+    let relay_urls = state.configured_provider_relay_urls();
+    let mut request = request;
 
     let client = match crate::kernel_control::remote_authority_client_for_state(state) {
         Ok(client) => client,
@@ -1780,6 +2180,35 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
             return true;
         }
     };
+    let asset_for_offer = match crate::kernel_control::run_kernel_call(
+        client.get_data_asset(request.grant.asset_id.as_str()),
+    ) {
+        Ok(asset) => asset,
+        Err(error) => {
+            state.data_seller.last_error = Some(format!(
+                "Grant publish requires the seller asset to be readable from authority: {error}"
+            ));
+            state.data_seller.status_line =
+                "Grant publish blocked because the published asset could not be read back."
+                    .to_string();
+            return true;
+        }
+    };
+    let offer_ref = match publish_dataset_offer(
+        identity,
+        relay_urls.as_slice(),
+        &request.grant,
+        &asset_for_offer,
+    ) {
+        Ok(reference) => reference,
+        Err(error) => {
+            state.data_seller.last_error = Some(error);
+            state.data_seller.status_line =
+                "Grant publish blocked because DS offer publication failed.".to_string();
+            return true;
+        }
+    };
+    request.grant.nostr_publications.ds_offer = Some(offer_ref);
 
     let expected_grant_id = request.grant.grant_id.clone();
     let response = match crate::kernel_control::run_kernel_call(client.create_access_grant(request))
@@ -1902,7 +2331,69 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_kernel_idempotency_conflict;
+    use super::*;
+    use openagents_kernel_core::data::PermissionPolicy;
+
+    const SELLER_PUBKEY: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+    const BUYER_PUBKEY: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn fixture_policy() -> PermissionPolicy {
+        PermissionPolicy {
+            policy_id: "seller-license-v1".to_string(),
+            export_allowed: true,
+            derived_outputs_allowed: true,
+            ..Default::default()
+        }
+    }
+
+    fn fixture_asset() -> DataAsset {
+        DataAsset {
+            asset_id: "data_asset.example.corpus.001".to_string(),
+            provider_id: SELLER_PUBKEY.to_string(),
+            asset_kind: "corpus".to_string(),
+            title: "Example corpus".to_string(),
+            description: Some("Example dataset for DS seller publication.".to_string()),
+            content_digest: Some(format!("sha256:{DIGEST}")),
+            provenance_ref: None,
+            default_policy: Some(fixture_policy()),
+            price_hint: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(5),
+            }),
+            created_at_ms: 1_774_080_000_000,
+            status: Default::default(),
+            nostr_publications: Default::default(),
+            metadata: json!({
+                "packaging_total_bytes": 2048,
+                "packaging_file_count": 7,
+                "delivery_modes": ["encrypted_pointer", "inline_preview"],
+            }),
+        }
+    }
+
+    fn fixture_grant(asset_id: &str) -> AccessGrant {
+        AccessGrant {
+            grant_id: "grant.example.corpus.001".to_string(),
+            asset_id: asset_id.to_string(),
+            provider_id: SELLER_PUBKEY.to_string(),
+            consumer_id: Some(BUYER_PUBKEY.to_string()),
+            permission_policy: fixture_policy(),
+            offer_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(5),
+            }),
+            warranty_window_ms: Some(60_000),
+            created_at_ms: 1_774_080_010_000,
+            expires_at_ms: 1_774_080_130_000,
+            accepted_at_ms: None,
+            status: AccessGrantStatus::Offered,
+            nostr_publications: Default::default(),
+            metadata: json!({
+                "delivery_modes": ["encrypted_pointer", "giftwrap"],
+            }),
+        }
+    }
 
     #[test]
     fn detects_kernel_idempotency_conflicts() {
@@ -1912,5 +2403,89 @@ mod tests {
         assert!(!is_kernel_idempotency_conflict(
             "kernel authority call failed: status=500 error=kernel_error reason=storage_unavailable"
         ));
+    }
+
+    #[test]
+    fn strips_sha256_prefix_for_dataset_publication() {
+        assert_eq!(
+            strip_sha256_prefix(Some(&format!("sha256:{DIGEST}"))).unwrap(),
+            DIGEST
+        );
+        assert_eq!(strip_sha256_prefix(Some(DIGEST)).unwrap(), DIGEST);
+        assert!(strip_sha256_prefix(Some("not-a-digest")).is_err());
+    }
+
+    #[test]
+    fn builds_dataset_listing_from_asset_metadata() {
+        let asset = fixture_asset();
+        let (listing, publication_ref) =
+            build_dataset_listing(&asset, SELLER_PUBKEY).expect("dataset listing");
+
+        assert_eq!(listing.identifier, "data_asset.example.corpus.001");
+        assert_eq!(listing.title, "Example corpus");
+        assert_eq!(listing.summary.as_deref(), asset.description.as_deref());
+        assert_eq!(listing.digest, DIGEST);
+        assert_eq!(listing.published_at, Some(1_774_080_000));
+        assert_eq!(listing.dataset_kind.as_deref(), Some("corpus"));
+        assert_eq!(listing.size_bytes, Some(2048));
+        assert_eq!(listing.records, Some(7));
+        assert_eq!(listing.license.as_deref(), Some("seller-license-v1"));
+        assert_eq!(listing.access.as_deref(), Some("paid"));
+        assert_eq!(listing.delivery_modes, vec!["nip90".to_string()]);
+        assert_eq!(
+            listing.topics,
+            vec!["dataset".to_string(), "corpus".to_string()]
+        );
+        assert_eq!(
+            publication_ref.coordinate.as_deref(),
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001"
+            )
+        );
+        assert!(publication_ref.event_id.is_none());
+        assert!(publication_ref.relay_url.is_none());
+    }
+
+    #[test]
+    fn builds_dataset_offer_from_grant_and_listing_reference() {
+        let mut asset = fixture_asset();
+        asset.nostr_publications.ds_listing = Some(NostrPublicationRef {
+            coordinate: Some(format!("30404:{SELLER_PUBKEY}:{}", asset.asset_id)),
+            event_id: Some(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            ),
+            relay_url: Some("wss://relay.example".to_string()),
+        });
+        let grant = fixture_grant(asset.asset_id.as_str());
+        let (offer, publication_ref) =
+            build_dataset_offer(&grant, &asset, SELLER_PUBKEY).expect("dataset offer");
+
+        assert_eq!(offer.identifier, "grant.example.corpus.001");
+        assert_eq!(
+            offer.listing_ref.coordinate.to_string(),
+            format!("30404:{SELLER_PUBKEY}:{}", asset.asset_id)
+        );
+        assert_eq!(offer.status, DatasetOfferStatus::Active);
+        assert_eq!(offer.policy.as_deref(), Some("targeted_request"));
+        assert_eq!(offer.license.as_deref(), Some("seller-license-v1"));
+        assert_eq!(offer.expiration.as_deref(), Some("1774080130"));
+        assert_eq!(
+            offer.delivery_modes,
+            vec!["nip90".to_string(), "giftwrap".to_string()]
+        );
+        assert_eq!(offer.payment_methods, vec![PaymentMethod::new("ln")]);
+        assert_eq!(offer.targeted_buyers.len(), 1);
+        assert_eq!(offer.targeted_buyers[0].pubkey, BUYER_PUBKEY);
+        let price = offer.price.expect("offer price");
+        assert_eq!(price.amount, "5");
+        assert_eq!(price.currency, "SAT");
+        assert_eq!(
+            publication_ref.coordinate.as_deref(),
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001"
+            )
+        );
+        assert!(publication_ref.event_id.is_none());
+        assert!(publication_ref.relay_url.is_none());
     }
 }

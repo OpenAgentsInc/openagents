@@ -16226,7 +16226,6 @@ mod tests {
                 manifest_refs: vec!["oa://deliveries/revocation-flow/manifest".to_string()],
                 expires_at_ms: Some(1_762_786_600_000),
                 status: openagents_kernel_core::data::DeliveryBundleStatus::Revoked,
-                nostr_publications: Default::default(),
                 metadata: json!({
                     "request_id": "revocation-flow",
                 }),
@@ -16435,7 +16434,6 @@ mod tests {
                 manifest_refs: vec!["oa://deliveries/lifecycle-flow/manifest".to_string()],
                 expires_at_ms: Some(1_762_786_600_000),
                 status: openagents_kernel_core::data::DeliveryBundleStatus::Revoked,
-                nostr_publications: Default::default(),
                 metadata: json!({
                     "request_id": "lifecycle-flow",
                 }),
