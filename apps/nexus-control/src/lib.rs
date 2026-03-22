@@ -8151,6 +8151,21 @@ mod tests {
                 }),
                 created_at_ms,
                 status: DataAssetStatus::Active,
+                nostr_publications: openagents_kernel_core::data::DataAssetNostrPublications {
+                    ds_listing: Some(openagents_kernel_core::data::NostrPublicationRef {
+                        coordinate: Some(format!(
+                            "30404:{}:{}",
+                            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            asset_id
+                        )),
+                        event_id: Some(
+                            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                .to_string(),
+                        ),
+                        relay_url: Some("wss://relay.example".to_string()),
+                    }),
+                    ds_draft_listing: None,
+                },
                 metadata: json!({
                     "source": "desktop"
                 }),
@@ -8197,6 +8212,22 @@ mod tests {
                 expires_at_ms: created_at_ms + 300_000,
                 accepted_at_ms: None,
                 status: AccessGrantStatus::Offered,
+                nostr_publications: openagents_kernel_core::data::AccessGrantNostrPublications {
+                    ds_offer: Some(openagents_kernel_core::data::NostrPublicationRef {
+                        coordinate: Some(format!(
+                            "30406:{}:{}",
+                            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            grant_id
+                        )),
+                        event_id: Some(
+                            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                                .to_string(),
+                        ),
+                        relay_url: Some("wss://relay.example".to_string()),
+                    }),
+                    ds_access_request: None,
+                    ds_access_result: None,
+                },
                 metadata: json!({
                     "channel": "marketplace"
                 }),
@@ -12435,6 +12466,17 @@ mod tests {
             asset_payload.receipt.receipt_type,
             "kernel.data.asset.register.v1"
         );
+        assert_eq!(
+            asset_payload
+                .asset
+                .nostr_publications
+                .ds_listing
+                .as_ref()
+                .and_then(|value| value.coordinate.as_deref()),
+            Some(
+                "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:asset.data.alpha"
+            )
+        );
 
         let grant = app
             .clone()
@@ -12467,6 +12509,17 @@ mod tests {
         assert_eq!(
             grant_payload.grant.permission_policy.policy_id,
             "policy.grant.grant.data.alpha"
+        );
+        assert_eq!(
+            grant_payload
+                .grant
+                .nostr_publications
+                .ds_offer
+                .as_ref()
+                .and_then(|value| value.coordinate.as_deref()),
+            Some(
+                "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:grant.data.alpha"
+            )
         );
 
         let accepted = app
@@ -12737,6 +12790,26 @@ mod tests {
         assert_eq!(snapshot_payload.summary.total_grants, 1);
         assert_eq!(snapshot_payload.summary.total_deliveries, 1);
         assert_eq!(snapshot_payload.summary.total_revocations, 1);
+        assert_eq!(
+            snapshot_payload.assets[0]
+                .nostr_publications
+                .ds_listing
+                .as_ref()
+                .and_then(|value| value.coordinate.as_deref()),
+            Some(
+                "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:asset.data.alpha"
+            )
+        );
+        assert_eq!(
+            snapshot_payload.grants[0]
+                .nostr_publications
+                .ds_offer
+                .as_ref()
+                .and_then(|value| value.coordinate.as_deref()),
+            Some(
+                "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:grant.data.alpha"
+            )
+        );
 
         let stats_response = app
             .clone()

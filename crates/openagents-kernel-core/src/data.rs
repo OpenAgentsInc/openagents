@@ -105,6 +105,34 @@ pub struct PermissionPolicy {
     pub metadata: Value,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NostrPublicationRef {
+    #[serde(default)]
+    pub coordinate: Option<String>,
+    #[serde(default)]
+    pub event_id: Option<String>,
+    #[serde(default)]
+    pub relay_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DataAssetNostrPublications {
+    #[serde(default)]
+    pub ds_listing: Option<NostrPublicationRef>,
+    #[serde(default)]
+    pub ds_draft_listing: Option<NostrPublicationRef>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccessGrantNostrPublications {
+    #[serde(default)]
+    pub ds_offer: Option<NostrPublicationRef>,
+    #[serde(default)]
+    pub ds_access_request: Option<NostrPublicationRef>,
+    #[serde(default)]
+    pub ds_access_result: Option<NostrPublicationRef>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct DataAsset {
     pub asset_id: String,
@@ -124,6 +152,8 @@ pub struct DataAsset {
     pub created_at_ms: i64,
     #[serde(default)]
     pub status: DataAssetStatus,
+    #[serde(default)]
+    pub nostr_publications: DataAssetNostrPublications,
     #[serde(default)]
     pub metadata: Value,
 }
@@ -146,6 +176,8 @@ pub struct AccessGrant {
     pub accepted_at_ms: Option<i64>,
     #[serde(default)]
     pub status: AccessGrantStatus,
+    #[serde(default)]
+    pub nostr_publications: AccessGrantNostrPublications,
     #[serde(default)]
     pub metadata: Value,
 }
