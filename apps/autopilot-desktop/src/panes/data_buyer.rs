@@ -281,6 +281,21 @@ fn paint_asset_card(
             .as_str(),
             paint,
         );
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "discussion",
+            compact_text(
+                listing
+                    .discussion_channel_id
+                    .as_deref()
+                    .or(listing.discussion_channel_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
     }
     if let Some(grant) = grant {
         row_y = paint_row(bounds, row_y, "offer_grant", grant.grant_id.as_str(), paint);
@@ -307,6 +322,23 @@ fn paint_asset_card(
         );
     } else {
         row_y = paint_row(bounds, row_y, "offer", "none", paint);
+    }
+    if let Some(offer) = catalog_offer {
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "offer_chat",
+            compact_text(
+                offer
+                    .discussion_channel_id
+                    .as_deref()
+                    .or(offer.discussion_channel_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
     }
     let revocation_label = revocation
         .map(|revocation| {

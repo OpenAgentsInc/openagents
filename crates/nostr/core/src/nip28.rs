@@ -10,6 +10,9 @@
 //! - 43: Hide message (moderation)
 //! - 44: Mute user (moderation)
 
+use crate::nip_ds::{AddressableEventReference, KIND_DATASET_LISTING, KIND_DATASET_OFFER};
+use crate::nip01::Event;
+use crate::tag_parsing::{tag_field, tag_name};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -23,6 +26,10 @@ pub const KIND_CHANNEL_MESSAGE: u16 = 42;
 pub const KIND_CHANNEL_HIDE_MESSAGE: u16 = 43;
 /// Kind for muting a user
 pub const KIND_CHANNEL_MUTE_USER: u16 = 44;
+/// Recommended `t` tag for dataset-linked discussion channels.
+pub const TAG_DATASET_DISCUSSION: &str = "dataset";
+/// Recommended `t` tag for DS-linked discussion channels.
+pub const TAG_NIP_DS_DISCUSSION: &str = "nip-ds";
 
 /// Errors that can occur during NIP-28 operations.
 #[derive(Debug, Error)]
@@ -35,6 +42,9 @@ pub enum Nip28Error {
 
     #[error("serialization error: {0}")]
     Serialization(String),
+
+    #[error("invalid event kind: {0}")]
+    InvalidKind(u16),
 }
 
 /// Channel metadata (name, about, picture, relays).
@@ -198,6 +208,33 @@ impl ChannelMetadataEvent {
         self
     }
 
+    /// Attach DS listing / offer linkage to this metadata update.
+    pub fn with_dataset_discussion_refs(
+        mut self,
+        listing_ref: AddressableEventReference,
+        offer_ref: Option<AddressableEventReference>,
+    ) -> Self {
+        if !self
+            .categories
+            .iter()
+            .any(|value| value.eq_ignore_ascii_case(TAG_DATASET_DISCUSSION))
+        {
+            self.categories.push(TAG_DATASET_DISCUSSION.to_string());
+        }
+        if !self
+            .categories
+            .iter()
+            .any(|value| value.eq_ignore_ascii_case(TAG_NIP_DS_DISCUSSION))
+        {
+            self.categories.push(TAG_NIP_DS_DISCUSSION.to_string());
+        }
+        self.tags.push(listing_ref.to_tag());
+        if let Some(offer_ref) = offer_ref {
+            self.tags.push(offer_ref.to_tag());
+        }
+        self
+    }
+
     /// Get the content (JSON-serialized metadata).
     pub fn content(&self) -> Result<String, Nip28Error> {
         self.metadata.to_json()
@@ -225,6 +262,92 @@ impl ChannelMetadataEvent {
 
         tags
     }
+}
+
+/// DS-linked public discussion metadata extracted from a standard kind-41 event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatasetDiscussionChannelLink {
+    pub channel_create_event_id: String,
+    pub relay_url: Option<String>,
+    pub metadata: ChannelMetadata,
+    pub listing_refs: Vec<AddressableEventReference>,
+    pub offer_refs: Vec<AddressableEventReference>,
+}
+
+/// Check whether tags mark a channel as DS-linked discussion.
+pub fn is_dataset_discussion_tagged(tags: &[Vec<String>]) -> bool {
+    let mut has_dataset = false;
+    let mut has_nip_ds = false;
+    for tag in tags {
+        if tag_name(tag) != Some("t") {
+            continue;
+        }
+        if let Some(value) = tag_field(tag, 1) {
+            if value.eq_ignore_ascii_case(TAG_DATASET_DISCUSSION) {
+                has_dataset = true;
+            }
+            if value.eq_ignore_ascii_case(TAG_NIP_DS_DISCUSSION) {
+                has_nip_ds = true;
+            }
+        }
+    }
+    has_dataset && has_nip_ds
+}
+
+/// Parse a standard kind-41 dataset discussion metadata event.
+pub fn parse_dataset_discussion_channel_link(
+    event: &Event,
+) -> Result<DatasetDiscussionChannelLink, Nip28Error> {
+    if event.kind != KIND_CHANNEL_METADATA {
+        return Err(Nip28Error::InvalidKind(event.kind));
+    }
+    if !is_dataset_discussion_tagged(&event.tags) {
+        return Err(Nip28Error::MissingField(
+            "dataset discussion tags".to_string(),
+        ));
+    }
+
+    let metadata = ChannelMetadata::from_json(&event.content)?;
+    let root_tag = event
+        .tags
+        .iter()
+        .find(|tag| {
+            tag_name(tag) == Some("e") && tag_field(tag, 3).is_some_and(|marker| marker == "root")
+        })
+        .or_else(|| event.tags.iter().find(|tag| tag_name(tag) == Some("e")))
+        .ok_or_else(|| Nip28Error::MissingField("e".to_string()))?;
+    let channel_create_event_id = tag_field(root_tag, 1)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| Nip28Error::MissingField("e".to_string()))?
+        .to_string();
+    let relay_url = tag_field(root_tag, 2)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let mut listing_refs = Vec::new();
+    let mut offer_refs = Vec::new();
+    for tag in event.tags.iter().filter(|tag| tag_name(tag) == Some("a")) {
+        let reference = AddressableEventReference::from_tag(tag)
+            .map_err(|error| Nip28Error::InvalidMetadata(error.to_string()))?;
+        match reference.coordinate.kind {
+            KIND_DATASET_LISTING => listing_refs.push(reference),
+            KIND_DATASET_OFFER => offer_refs.push(reference),
+            _ => {}
+        }
+    }
+    if listing_refs.is_empty() && offer_refs.is_empty() {
+        return Err(Nip28Error::MissingField("a".to_string()));
+    }
+
+    Ok(DatasetDiscussionChannelLink {
+        channel_create_event_id,
+        relay_url,
+        metadata,
+        listing_refs,
+        offer_refs,
+    })
 }
 
 /// Template for a channel message (kind 42).
@@ -471,6 +594,7 @@ pub fn is_moderation_kind(kind: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nip_ds::{AddressableEventCoordinate, AddressableEventReference};
 
     // =========================================================================
     // Kind validation tests
@@ -682,6 +806,73 @@ mod tests {
 
         assert!(tags.iter().any(|t| t == &vec!["t", "bitcoin"]));
         assert!(tags.iter().any(|t| t == &vec!["t", "nostr"]));
+    }
+
+    #[test]
+    fn test_channel_metadata_event_with_dataset_discussion_refs() {
+        let metadata = ChannelMetadata::new("Dataset Q&A", "Public discussion", "");
+        let listing_ref = AddressableEventReference::new(
+            AddressableEventCoordinate::dataset_listing(
+                "1111111111111111111111111111111111111111111111111111111111111111",
+                "dataset-alpha",
+            )
+            .unwrap(),
+        );
+        let offer_ref = AddressableEventReference::new(
+            AddressableEventCoordinate::dataset_offer(
+                "1111111111111111111111111111111111111111111111111111111111111111",
+                "offer-alpha",
+            )
+            .unwrap(),
+        );
+
+        let event = ChannelMetadataEvent::new("channel_id", metadata, 1617932115)
+            .with_dataset_discussion_refs(listing_ref.clone(), Some(offer_ref.clone()))
+            .with_relay_url("wss://relay.example.com");
+        let tags = event.to_tags();
+
+        assert!(is_dataset_discussion_tagged(&tags));
+        assert!(tags.iter().any(|t| t == &listing_ref.to_tag()));
+        assert!(tags.iter().any(|t| t == &offer_ref.to_tag()));
+    }
+
+    #[test]
+    fn test_parse_dataset_discussion_channel_link() {
+        let metadata = ChannelMetadata::new("Dataset Q&A", "Public discussion", "");
+        let listing_ref = AddressableEventReference::new(
+            AddressableEventCoordinate::dataset_listing(
+                "1111111111111111111111111111111111111111111111111111111111111111",
+                "dataset-alpha",
+            )
+            .unwrap(),
+        );
+        let offer_ref = AddressableEventReference::new(
+            AddressableEventCoordinate::dataset_offer(
+                "1111111111111111111111111111111111111111111111111111111111111111",
+                "offer-alpha",
+            )
+            .unwrap(),
+        );
+        let template = ChannelMetadataEvent::new("channel_create_id", metadata.clone(), 1617932115)
+            .with_relay_url("wss://relay.example.com")
+            .with_dataset_discussion_refs(listing_ref.clone(), Some(offer_ref.clone()));
+        let event = Event {
+            id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            pubkey: "1111111111111111111111111111111111111111111111111111111111111111"
+                .to_string(),
+            created_at: 1617932115,
+            kind: KIND_CHANNEL_METADATA,
+            tags: template.to_tags(),
+            content: metadata.to_json().unwrap(),
+            sig: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+        };
+
+        let parsed = parse_dataset_discussion_channel_link(&event).unwrap();
+        assert_eq!(parsed.channel_create_event_id, "channel_create_id");
+        assert_eq!(parsed.relay_url.as_deref(), Some("wss://relay.example.com"));
+        assert_eq!(parsed.metadata.name, "Dataset Q&A");
+        assert_eq!(parsed.listing_refs, vec![listing_ref]);
+        assert_eq!(parsed.offer_refs, vec![offer_ref]);
     }
 
     // =========================================================================

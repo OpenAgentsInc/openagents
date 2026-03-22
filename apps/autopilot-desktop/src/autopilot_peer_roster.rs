@@ -703,6 +703,8 @@ mod tests {
             metadata: ChannelMetadata::new("main", "", ""),
             hints: ManagedChannelHints::default(),
             relay_url: Some("wss://relay.openagents.test".to_string()),
+            dataset_listing_coordinates: Vec::new(),
+            dataset_offer_coordinates: Vec::new(),
             message_ids: messages
                 .iter()
                 .filter(|message| message.channel_id == channel_id)
@@ -787,6 +789,8 @@ mod tests {
                 metadata: ChannelMetadata::new("other", "", ""),
                 hints: ManagedChannelHints::default(),
                 relay_url: Some("wss://relay.openagents.test".to_string()),
+                dataset_listing_coordinates: Vec::new(),
+                dataset_offer_coordinates: Vec::new(),
                 message_ids: vec!["m2".to_string()],
                 root_message_ids: vec!["m2".to_string()],
                 unread_count: 0,

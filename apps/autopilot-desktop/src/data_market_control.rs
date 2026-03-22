@@ -6,6 +6,7 @@ use nostr::nip_ds::{
     AddressableEventCoordinate, DatasetListing, DatasetOffer, DraftDatasetListing,
     KIND_DATASET_LISTING, KIND_DATASET_OFFER,
 };
+use nostr::nip28::{KIND_CHANNEL_METADATA, parse_dataset_discussion_channel_link};
 use nostr::nip99::{ClassifiedListing, KIND_CLASSIFIED_LISTING};
 use nostr_client::{RelayConnection, RelayMessage};
 use openagents_kernel_core::authority::KernelAuthority;
@@ -49,6 +50,14 @@ struct ClassifiedOfferWrapperProjection {
     listing_coordinate: Option<String>,
     price_amount: Option<String>,
     price_currency: Option<String>,
+    created_at_seconds: u64,
+}
+
+#[derive(Clone, Debug)]
+struct DatasetDiscussionChannelProjection {
+    channel_id: String,
+    relay_url: Option<String>,
+    name: String,
     created_at_seconds: u64,
 }
 
@@ -164,10 +173,17 @@ async fn query_ds_events_from_relay(relay_url: &str) -> Result<Vec<(String, Even
     connection
         .subscribe_filters(
             subscription_id.as_str(),
-            vec![serde_json::json!({
-                "kinds": [30402, 30404, 30405, 30406],
-                "limit": DS_CATALOG_LIMIT,
-            })],
+            vec![
+                serde_json::json!({
+                    "kinds": [30402, 30404, 30405, 30406],
+                    "limit": DS_CATALOG_LIMIT,
+                }),
+                serde_json::json!({
+                    "kinds": [41],
+                    "#t": ["dataset", "nip-ds"],
+                    "limit": DS_CATALOG_LIMIT,
+                }),
+            ],
         )
         .await
         .map_err(|error| format!("subscribe failed: {error}"))?;
@@ -183,7 +199,11 @@ async fn query_ds_events_from_relay(relay_url: &str) -> Result<Vec<(String, Even
             Ok(Ok(Some(RelayMessage::Event(_, event)))) => {
                 if matches!(
                     event.kind,
-                    KIND_CLASSIFIED_LISTING | KIND_DATASET_LISTING | KIND_DATASET_OFFER | 30405
+                    KIND_CHANNEL_METADATA
+                        | KIND_CLASSIFIED_LISTING
+                        | KIND_DATASET_LISTING
+                        | KIND_DATASET_OFFER
+                        | 30405
                 ) {
                     events.push((relay_url.to_string(), event));
                 }
@@ -214,6 +234,8 @@ fn project_relay_catalog(
     let mut offers = BTreeMap::<String, RelayDatasetOfferProjection>::new();
     let mut listing_wrappers = BTreeMap::<String, ClassifiedListingWrapperProjection>::new();
     let mut offer_wrappers = BTreeMap::<String, ClassifiedOfferWrapperProjection>::new();
+    let mut listing_discussions = BTreeMap::<String, DatasetDiscussionChannelProjection>::new();
+    let mut offer_discussions = BTreeMap::<String, DatasetDiscussionChannelProjection>::new();
 
     for (relay_url, event) in events {
         match event.kind {
@@ -247,6 +269,9 @@ fn project_relay_catalog(
                         classified_event_id: None,
                         classified_price_amount: None,
                         classified_price_currency: None,
+                        discussion_channel_id: None,
+                        discussion_channel_name: None,
+                        discussion_channel_relay_url: None,
                     };
                     if listings
                         .get(coordinate.as_str())
@@ -286,6 +311,9 @@ fn project_relay_catalog(
                         classified_event_id: None,
                         classified_price_amount: None,
                         classified_price_currency: None,
+                        discussion_channel_id: None,
+                        discussion_channel_name: None,
+                        discussion_channel_relay_url: None,
                     };
                     if listings
                         .get(coordinate.as_str())
@@ -351,12 +379,47 @@ fn project_relay_catalog(
                         linked_grant_id,
                         classified_coordinate: None,
                         classified_event_id: None,
+                        discussion_channel_id: None,
+                        discussion_channel_name: None,
+                        discussion_channel_relay_url: None,
                     };
                     if offers
                         .get(coordinate.as_str())
                         .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
                     {
                         offers.insert(coordinate, projection);
+                    }
+                }
+            }
+            KIND_CHANNEL_METADATA => {
+                if let Ok(link) = parse_dataset_discussion_channel_link(&event) {
+                    let discussion = DatasetDiscussionChannelProjection {
+                        channel_id: link.channel_create_event_id.clone(),
+                        relay_url: link.relay_url.clone(),
+                        name: if link.metadata.name.trim().is_empty() {
+                            "Dataset discussion".to_string()
+                        } else {
+                            link.metadata.name
+                        },
+                        created_at_seconds: event.created_at,
+                    };
+                    for listing_ref in link.listing_refs {
+                        let listing_coordinate = listing_ref.coordinate.to_string();
+                        if listing_discussions
+                            .get(listing_coordinate.as_str())
+                            .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
+                        {
+                            listing_discussions.insert(listing_coordinate, discussion.clone());
+                        }
+                    }
+                    for offer_ref in link.offer_refs {
+                        let offer_coordinate = offer_ref.coordinate.to_string();
+                        if offer_discussions
+                            .get(offer_coordinate.as_str())
+                            .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
+                        {
+                            offer_discussions.insert(offer_coordinate, discussion.clone());
+                        }
                     }
                 }
             }
@@ -464,6 +527,9 @@ fn project_relay_catalog(
                     classified_event_id: Some(wrapper.event_id),
                     classified_price_amount: wrapper.price_amount,
                     classified_price_currency: wrapper.price_currency,
+                    discussion_channel_id: None,
+                    discussion_channel_name: None,
+                    discussion_channel_relay_url: None,
                 });
             }
         }
@@ -537,8 +603,25 @@ fn project_relay_catalog(
                     linked_grant_id,
                     classified_coordinate: Some(wrapper.coordinate),
                     classified_event_id: Some(wrapper.event_id),
+                    discussion_channel_id: None,
+                    discussion_channel_name: None,
+                    discussion_channel_relay_url: None,
                 });
             }
+        }
+    }
+    for (listing_coordinate, discussion) in listing_discussions {
+        if let Some(projection) = listings.get_mut(listing_coordinate.as_str()) {
+            projection.discussion_channel_id = Some(discussion.channel_id.clone());
+            projection.discussion_channel_name = Some(discussion.name.clone());
+            projection.discussion_channel_relay_url = discussion.relay_url.clone();
+        }
+    }
+    for (offer_coordinate, discussion) in offer_discussions {
+        if let Some(projection) = offers.get_mut(offer_coordinate.as_str()) {
+            projection.discussion_channel_id = Some(discussion.channel_id.clone());
+            projection.discussion_channel_name = Some(discussion.name.clone());
+            projection.discussion_channel_relay_url = discussion.relay_url.clone();
         }
     }
 
@@ -595,7 +678,10 @@ fn linked_asset_id_for_offer_coordinate(
 #[cfg(test)]
 mod tests {
     use super::project_relay_catalog;
-    use nostr::nip_ds::{AddressableEventReference, DatasetListing, DatasetOffer, PaymentMethod};
+    use nostr::nip_ds::{
+        AddressableEventCoordinate, AddressableEventReference, DatasetListing, DatasetOffer,
+        PaymentMethod,
+    };
     use nostr::nip99::{ClassifiedListing, ListingStatus, Price};
     use openagents_kernel_core::data::{
         AccessGrant, AccessGrantNostrPublications, AccessGrantStatus, DataAsset,
@@ -847,5 +933,158 @@ mod tests {
             Some("grant.data.offer.001")
         );
         assert_eq!(snapshot.offers[0].listing_coordinate, listing_coordinate);
+    }
+
+    #[test]
+    fn relay_catalog_projection_links_dataset_discussion_channels_to_ds_entries() {
+        let identity = nostr::regenerate_identity().expect("identity");
+        let listing = DatasetListing::new(
+            "data_asset.provider.alpha.bundle",
+            "Example dataset listing.",
+            "Seller bundle",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .with_published_at(1_762_700_000)
+        .with_dataset_kind("conversation_bundle")
+        .with_access("paid")
+        .add_delivery_mode("encrypted_pointer");
+        let listing_coordinate = listing
+            .coordinate(identity.public_key_hex.clone())
+            .expect("listing coordinate")
+            .to_string();
+        let listing_event = sign_template(
+            &identity,
+            &listing
+                .to_event_template(1_762_700_000)
+                .expect("listing template"),
+        );
+        let offer = DatasetOffer::new(
+            "grant.data.offer.001",
+            "Targeted access",
+            AddressableEventReference::new(
+                listing
+                    .coordinate(identity.public_key_hex.clone())
+                    .expect("listing coordinate"),
+            ),
+        )
+        .with_policy("targeted_request")
+        .with_price(Price::one_time("42", "SAT"))
+        .add_payment_method(PaymentMethod::new("ln"))
+        .add_delivery_mode("encrypted_pointer");
+        let offer_coordinate = offer
+            .coordinate(identity.public_key_hex.clone())
+            .expect("offer coordinate")
+            .to_string();
+        let offer_event = sign_template(
+            &identity,
+            &offer
+                .to_event_template(1_762_700_010)
+                .expect("offer template"),
+        );
+        let channel_create_id = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        let channel_metadata =
+            nostr::ChannelMetadata::new("Corpus Q&A", "Public dataset discussion", "");
+        let discussion_template = nostr::EventTemplate {
+            created_at: 1_762_700_020,
+            kind: nostr::KIND_CHANNEL_METADATA,
+            tags: nostr::ChannelMetadataEvent::new(
+                channel_create_id,
+                channel_metadata.clone(),
+                1_762_700_020,
+            )
+            .with_relay_url("wss://relay.example")
+            .with_dataset_discussion_refs(
+                AddressableEventReference::new(
+                    AddressableEventCoordinate::parse(listing_coordinate.as_str())
+                        .expect("listing coordinate parse"),
+                ),
+                Some(AddressableEventReference::new(
+                    AddressableEventCoordinate::parse(offer_coordinate.as_str())
+                        .expect("offer coordinate parse"),
+                )),
+            )
+            .to_tags(),
+            content: channel_metadata.to_json().expect("channel metadata json"),
+        };
+        let discussion_event = sign_template(&identity, &discussion_template);
+
+        let asset = DataAsset {
+            asset_id: "data_asset.provider.alpha.bundle".to_string(),
+            provider_id: identity.public_key_hex.clone(),
+            asset_kind: "conversation_bundle".to_string(),
+            title: "Seller bundle".to_string(),
+            description: None,
+            content_digest: None,
+            provenance_ref: None,
+            default_policy: Some(PermissionPolicy::default()),
+            price_hint: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(42),
+            }),
+            created_at_ms: 1_762_700_000_000,
+            status: Default::default(),
+            nostr_publications: DataAssetNostrPublications {
+                ds_listing: Some(NostrPublicationRef {
+                    coordinate: Some(listing_coordinate.clone()),
+                    event_id: None,
+                    relay_url: None,
+                }),
+                ds_draft_listing: None,
+            },
+            metadata: serde_json::json!({}),
+        };
+        let grant = AccessGrant {
+            grant_id: "grant.data.offer.001".to_string(),
+            asset_id: asset.asset_id.clone(),
+            provider_id: identity.public_key_hex.clone(),
+            consumer_id: None,
+            permission_policy: PermissionPolicy::default(),
+            offer_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(42),
+            }),
+            warranty_window_ms: None,
+            created_at_ms: 1_762_700_010_000,
+            expires_at_ms: 1_762_786_410_000,
+            accepted_at_ms: None,
+            status: AccessGrantStatus::Offered,
+            nostr_publications: AccessGrantNostrPublications {
+                ds_offer: Some(NostrPublicationRef {
+                    coordinate: Some(offer_coordinate.clone()),
+                    event_id: None,
+                    relay_url: None,
+                }),
+                ds_access_request: None,
+                ds_access_result: None,
+            },
+            metadata: serde_json::json!({}),
+        };
+
+        let snapshot = project_relay_catalog(
+            vec![
+                ("wss://relay.example".to_string(), listing_event),
+                ("wss://relay.example".to_string(), offer_event),
+                ("wss://relay.example".to_string(), discussion_event),
+            ],
+            &[asset],
+            &[grant],
+        );
+
+        assert_eq!(
+            snapshot.listings[0].discussion_channel_id.as_deref(),
+            Some(channel_create_id)
+        );
+        assert_eq!(
+            snapshot.listings[0].discussion_channel_name.as_deref(),
+            Some("Corpus Q&A")
+        );
+        assert_eq!(
+            snapshot.offers[0].discussion_channel_id.as_deref(),
+            Some(channel_create_id)
+        );
+        assert_eq!(
+            snapshot.offers[0].discussion_channel_name.as_deref(),
+            Some("Corpus Q&A")
+        );
     }
 }

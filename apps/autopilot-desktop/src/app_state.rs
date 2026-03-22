@@ -1155,6 +1155,12 @@ pub struct RelayDatasetListingProjection {
     pub classified_price_amount: Option<String>,
     #[serde(default)]
     pub classified_price_currency: Option<String>,
+    #[serde(default)]
+    pub discussion_channel_id: Option<String>,
+    #[serde(default)]
+    pub discussion_channel_name: Option<String>,
+    #[serde(default)]
+    pub discussion_channel_relay_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1184,6 +1190,12 @@ pub struct RelayDatasetOfferProjection {
     pub classified_coordinate: Option<String>,
     #[serde(default)]
     pub classified_event_id: Option<String>,
+    #[serde(default)]
+    pub discussion_channel_id: Option<String>,
+    #[serde(default)]
+    pub discussion_channel_name: Option<String>,
+    #[serde(default)]
+    pub discussion_channel_relay_url: Option<String>,
 }
 
 pub const DATA_MARKET_BUYER_REQUEST_TYPE: &str = "openagents.data_market.access_request.v1";
@@ -15766,6 +15778,9 @@ mod tests {
                 classified_event_id: None,
                 classified_price_amount: None,
                 classified_price_currency: None,
+                discussion_channel_id: None,
+                discussion_channel_name: None,
+                discussion_channel_relay_url: None,
             }],
             vec![super::RelayDatasetOfferProjection {
                 coordinate:
@@ -15789,6 +15804,9 @@ mod tests {
                 linked_grant_id: Some("grant.data.offer.001".to_string()),
                 classified_coordinate: None,
                 classified_event_id: None,
+                discussion_channel_id: None,
+                discussion_channel_name: None,
+                discussion_channel_relay_url: None,
             }],
             1_762_700_020_000,
         );
