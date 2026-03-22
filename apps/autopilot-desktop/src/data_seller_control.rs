@@ -1647,11 +1647,7 @@ pub(crate) fn revoke_data_seller_access(
                 .clone()
                 .unwrap_or_else(|| format!("revocation_for_{request_id}")),
             request.requester.clone(),
-            state
-                .data_seller
-                .last_published_grant
-                .as_ref()
-                .map(|grant| grant.permission_policy.policy_id.clone()),
+            state.data_seller.policy_id_for_request(request_id),
             request.revocation_receipt_id.clone(),
             request
                 .matched_grant_id
@@ -1823,11 +1819,7 @@ pub(crate) fn reconcile_data_seller_wallet_update(
                         request.request_id.clone(),
                         request.requester.clone(),
                         request.payment_state,
-                        state
-                            .data_seller
-                            .last_published_grant
-                            .as_ref()
-                            .map(|grant| grant.permission_policy.policy_id.clone()),
+                        state.data_seller.policy_id_for_request(request_id.as_str()),
                     )
                 })
             {
@@ -1889,9 +1881,7 @@ pub(crate) fn apply_data_seller_publish_outcome(
                                 request.payment_state,
                                 state
                                     .data_seller
-                                    .last_published_grant
-                                    .as_ref()
-                                    .map(|grant| grant.permission_policy.policy_id.clone()),
+                                    .policy_id_for_request(outcome.request_id.as_str()),
                                 request.required_price_sats.unwrap_or(request.price_sats),
                             )
                         })

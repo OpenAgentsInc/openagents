@@ -2975,6 +2975,17 @@ fn print_data_market_snapshot_text(payload: &Value) {
             .and_then(Value::as_u64)
             .unwrap_or(0)
     );
+    println!(
+        "seller inventory: assets={} grants={}",
+        seller
+            .get("published_asset_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        seller
+            .get("published_grant_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+    );
     if let Some(thread_id) = json_str(seller.get("codex_thread_id")) {
         println!("seller thread: {thread_id}");
     }
@@ -3063,6 +3074,36 @@ fn print_data_market_snapshot_text(payload: &Value) {
                     .and_then(|value| value.get("relay_url"))
             )
             .unwrap_or("-"),
+        );
+    }
+    for asset in seller
+        .get("published_assets")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(3)
+    {
+        println!(
+            "inventory asset: id={} kind={} status={} listing={}",
+            json_str(asset.get("asset_id")).unwrap_or("-"),
+            json_str(asset.get("asset_kind")).unwrap_or("-"),
+            json_str(asset.get("status")).unwrap_or("-"),
+            json_str(asset.get("ds_listing_coordinate")).unwrap_or("-"),
+        );
+    }
+    for grant in seller
+        .get("published_grants")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(3)
+    {
+        println!(
+            "inventory grant: id={} asset={} status={} offer={}",
+            json_str(grant.get("grant_id")).unwrap_or("-"),
+            json_str(grant.get("asset_id")).unwrap_or("-"),
+            json_str(grant.get("status")).unwrap_or("-"),
+            json_str(grant.get("ds_offer_coordinate")).unwrap_or("-"),
         );
     }
     let blockers = draft
@@ -3171,12 +3212,14 @@ fn print_data_market_snapshot_text(payload: &Value) {
 
 fn print_data_market_request_summary(label: &str, request: &Value) {
     println!(
-        "{label}: id={} requester={} eval={} matched_asset={} matched_grant={} price_sats={}",
+        "{label}: id={} requester={} eval={} matched_asset={} matched_grant={} listing={} offer={} price_sats={}",
         json_str(request.get("request_id")).unwrap_or("-"),
         json_str(request.get("requester")).unwrap_or("-"),
         json_str(request.get("evaluation_disposition")).unwrap_or("-"),
         json_str(request.get("matched_asset_id")).unwrap_or("-"),
         json_str(request.get("matched_grant_id")).unwrap_or("-"),
+        json_str(request.get("matched_listing_coordinate")).unwrap_or("-"),
+        json_str(request.get("matched_offer_coordinate")).unwrap_or("-"),
         request
             .get("required_price_sats")
             .and_then(Value::as_u64)

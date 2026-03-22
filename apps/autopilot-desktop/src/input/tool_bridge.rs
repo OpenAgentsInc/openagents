@@ -1117,6 +1117,46 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "last_revocation_publish_receipt_id": state.data_seller.last_revocation_publish_receipt_id,
         "last_published_revocation": state.data_seller.last_published_revocation,
     });
+    let published_assets = state
+        .data_seller
+        .published_assets_for_display()
+        .into_iter()
+        .take(8)
+        .map(|asset| {
+            json!({
+                "asset_id": asset.asset_id.clone(),
+                "provider_id": asset.provider_id.clone(),
+                "asset_kind": asset.asset_kind.clone(),
+                "title": asset.title.clone(),
+                "status": asset.status.label(),
+                "ds_listing_coordinate": asset
+                    .nostr_publications
+                    .ds_listing
+                    .as_ref()
+                    .and_then(|reference| reference.coordinate.as_deref()),
+            })
+        })
+        .collect::<Vec<_>>();
+    let published_grants = state
+        .data_seller
+        .published_grants_for_display()
+        .into_iter()
+        .take(8)
+        .map(|grant| {
+            json!({
+                "grant_id": grant.grant_id.clone(),
+                "asset_id": grant.asset_id.clone(),
+                "consumer_id": grant.consumer_id.clone(),
+                "status": grant.status.label(),
+                "policy_id": grant.permission_policy.policy_id.clone(),
+                "ds_offer_coordinate": grant
+                    .nostr_publications
+                    .ds_offer
+                    .as_ref()
+                    .and_then(|reference| reference.coordinate.as_deref()),
+            })
+        })
+        .collect::<Vec<_>>();
     let incoming_requests = state
         .data_seller
         .incoming_requests
@@ -1179,6 +1219,8 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                 "content_preview": request.content_preview,
                 "matched_asset_id": request.matched_asset_id,
                 "matched_grant_id": request.matched_grant_id,
+                "matched_listing_coordinate": request.matched_listing_coordinate,
+                "matched_offer_coordinate": request.matched_offer_coordinate,
                 "asset_match_posture": request.asset_match_posture,
                 "required_price_sats": request.required_price_sats,
                 "evaluation_disposition": request.evaluation_disposition.label(),
@@ -1231,6 +1273,8 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
             "evaluation_summary": request.evaluation_summary,
             "matched_asset_id": request.matched_asset_id,
             "matched_grant_id": request.matched_grant_id,
+            "matched_listing_coordinate": request.matched_listing_coordinate,
+            "matched_offer_coordinate": request.matched_offer_coordinate,
             "required_price_sats": request.required_price_sats,
             "payment": payment,
             "delivery": delivery,
@@ -1245,6 +1289,10 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "asset_preview_confirmed": state.data_seller.asset_preview_confirmed,
         "grant_preview_confirmed": state.data_seller.grant_preview_confirmed,
         "inventory_warnings": state.data_seller.inventory_warnings(),
+        "published_asset_count": state.data_seller.published_asset_count(),
+        "published_grant_count": state.data_seller.published_grant_count(),
+        "published_assets": published_assets,
+        "published_grants": published_grants,
         "incoming_request_count": state.data_seller.incoming_requests.len(),
         "latest_incoming_request": latest_request,
         "incoming_requests": incoming_requests,
