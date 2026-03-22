@@ -65,6 +65,10 @@ fn build_data_buyer_request_event(
     draft: &DataBuyerRequestDraft,
     buyer_id: Option<&str>,
 ) -> Result<Event, String> {
+    let listing_coordinate = draft.listing_coordinate.as_deref().ok_or_else(|| {
+        "Cannot publish data-access request: selected dataset is missing a DS listing coordinate."
+            .to_string()
+    })?;
     let first_scope = draft
         .permission_scopes
         .first()
@@ -72,10 +76,13 @@ fn build_data_buyer_request_event(
         .unwrap_or_else(|| "targeted_request".to_string());
     let mut request = DataVendingRequest::new(
         OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
-        draft.asset_ref.as_str(),
+        listing_coordinate,
         first_scope,
     )
     .map_err(|error| format!("Cannot build data-vending request: {error}"))?
+    .with_listing_coordinate(listing_coordinate)
+    .map_err(|error| format!("Cannot encode DS listing reference: {error}"))?
+    .with_asset_id(draft.asset_id.clone())
     .with_delivery_mode(
         DataVendingDeliveryMode::from_str(draft.delivery_mode.as_str()).unwrap_or_default(),
     )
@@ -85,6 +92,14 @@ fn build_data_buyer_request_event(
     )
     .with_bid(draft.bid_sats.saturating_mul(1000))
     .with_content(build_data_buyer_request_payload(draft, buyer_id));
+    if let Some(offer_coordinate) = draft.offer_coordinate.as_deref() {
+        request = request
+            .with_offer_coordinate(offer_coordinate)
+            .map_err(|error| format!("Cannot encode DS offer reference: {error}"))?;
+    }
+    if let Some(grant_id) = draft.offer_grant_id.as_deref() {
+        request = request.with_grant_id(grant_id.to_string());
+    }
     for scope in draft.permission_scopes.iter().skip(1) {
         request = request.add_scope(scope.clone());
     }
@@ -287,6 +302,28 @@ mod tests {
         assert_eq!(
             request.asset_ref,
             "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+        );
+        assert_eq!(request.asset_id.as_deref(), Some("data_asset.npub1seller.document.context.sha256_abc"));
+        assert_eq!(request.grant_id.as_deref(), Some("grant.data.offer.001"));
+        assert_eq!(
+            request
+                .listing_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+            )
+        );
+        assert_eq!(
+            request
+                .offer_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.data.offer.001"
+            )
         );
         assert_eq!(request.bid, Some(42_000));
         assert_eq!(request.service_providers, vec!["npub1seller".to_string()]);

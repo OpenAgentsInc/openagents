@@ -7,8 +7,8 @@ use nostr::nip_ds::{
     DatasetOfferStatus, PaymentMethod,
 };
 use nostr::nip90::{
-    DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingResult, JobFeedback, JobStatus,
-    create_data_vending_result_event, create_job_feedback_event,
+    DataVendingDeliveryMode, DataVendingFeedback, DataVendingPreviewPosture, DataVendingResult,
+    JobStatus, create_data_vending_feedback_event, create_data_vending_result_event,
 };
 use nostr::nip99::Price;
 use nostr::{Event, EventTemplate, NostrIdentity};
@@ -109,21 +109,129 @@ fn sync_data_seller_nip90_profile(state: &mut RenderState) {
     );
 }
 
+fn request_asset_ref_for_event(request: &DataSellerIncomingRequest) -> Result<String, String> {
+    request
+        .matched_listing_coordinate
+        .clone()
+        .or_else(|| request.asset_ref.clone())
+        .or_else(|| request.matched_asset_id.clone())
+        .ok_or_else(|| {
+            format!(
+                "Request {} is missing both DS listing linkage and asset bridge metadata",
+                request.request_id
+            )
+        })
+}
+
+fn request_listing_ref_for_event(
+    request: &DataSellerIncomingRequest,
+) -> Result<AddressableEventReference, String> {
+    let coordinate = request
+        .matched_listing_coordinate
+        .as_deref()
+        .or(request.asset_ref.as_deref())
+        .ok_or_else(|| {
+            format!(
+                "Request {} is missing a DS listing coordinate for seller publication",
+                request.request_id
+            )
+        })?;
+    let coordinate = AddressableEventCoordinate::parse(coordinate)
+        .map_err(|error| format!("Invalid DS listing coordinate `{coordinate}`: {error}"))?;
+    if coordinate.kind != nostr::KIND_DATASET_LISTING {
+        return Err(format!(
+            "Expected DS listing coordinate kind {}, got {}",
+            nostr::KIND_DATASET_LISTING,
+            coordinate.kind
+        ));
+    }
+    Ok(AddressableEventReference::new(coordinate))
+}
+
+fn request_offer_ref_for_event(
+    request: &DataSellerIncomingRequest,
+) -> Result<Option<AddressableEventReference>, String> {
+    let Some(coordinate) = request.matched_offer_coordinate.as_deref() else {
+        return Ok(None);
+    };
+    let coordinate = AddressableEventCoordinate::parse(coordinate)
+        .map_err(|error| format!("Invalid DS offer coordinate `{coordinate}`: {error}"))?;
+    if coordinate.kind != nostr::KIND_DATASET_OFFER {
+        return Err(format!(
+            "Expected DS offer coordinate kind {}, got {}",
+            nostr::KIND_DATASET_OFFER,
+            coordinate.kind
+        ));
+    }
+    Ok(Some(AddressableEventReference::new(coordinate)))
+}
+
 fn build_data_seller_payment_required_feedback_event(
     identity: &NostrIdentity,
-    request_id: &str,
-    requester: &str,
+    request: &DataSellerIncomingRequest,
     quoted_price_sats: u64,
     bolt11: &str,
 ) -> Result<Event, String> {
-    let feedback = JobFeedback::new(JobStatus::PaymentRequired, request_id, requester)
-        .with_status_extra("lightning settlement required")
-        .with_content("Pay the attached Lightning invoice before delivery can proceed.".to_string())
+    let mut feedback = DataVendingFeedback::new(
+        JobStatus::PaymentRequired,
+        request.request_id.as_str(),
+        request.requester.as_str(),
+        request_asset_ref_for_event(request)?,
+    )
+    .with_listing_ref(request_listing_ref_for_event(request)?)
+    .with_status_extra("lightning settlement required")
+    .with_content("Pay the attached Lightning invoice before delivery can proceed.".to_string())
         .with_amount(
             quoted_price_sats.saturating_mul(1000),
             Some(bolt11.to_string()),
         );
-    let template = create_job_feedback_event(&feedback);
+    if let Some(offer_ref) = request_offer_ref_for_event(request)? {
+        feedback = feedback.with_offer_ref(offer_ref);
+    }
+    if let Some(asset_id) = request.matched_asset_id.as_deref() {
+        feedback = feedback.with_asset_id(asset_id.to_string());
+    }
+    if let Some(grant_id) = request.matched_grant_id.as_deref() {
+        feedback = feedback.with_grant_id(grant_id.to_string());
+    }
+    let template = create_data_vending_feedback_event(&feedback)
+        .map_err(|error| format!("Cannot build DS-DVM payment-required feedback: {error}"))?;
+    sign_event_template(identity, &template)
+}
+
+fn build_data_seller_revocation_feedback_event(
+    identity: &NostrIdentity,
+    request: &DataSellerIncomingRequest,
+    revocation: &RevocationReceipt,
+) -> Result<Event, String> {
+    let mut feedback = DataVendingFeedback::new(
+        JobStatus::Error,
+        request.request_id.as_str(),
+        request.requester.as_str(),
+        request_asset_ref_for_event(request)?,
+    )
+    .with_listing_ref(request_listing_ref_for_event(request)?)
+    .with_status_extra("offer-revoked")
+    .with_content(format!(
+        "Access for dataset request {} has been revoked.",
+        request.request_id
+    ))
+    .with_reason_code(revocation.reason_code.clone())
+    .with_revocation_id(revocation.revocation_id.clone());
+    if let Some(offer_ref) = request_offer_ref_for_event(request)? {
+        feedback = feedback.with_offer_ref(offer_ref);
+    }
+    if let Some(asset_id) = request.matched_asset_id.as_deref() {
+        feedback = feedback.with_asset_id(asset_id.to_string());
+    }
+    if let Some(grant_id) = request.matched_grant_id.as_deref() {
+        feedback = feedback.with_grant_id(grant_id.to_string());
+    }
+    if let Some(delivery_bundle_id) = request.delivery_bundle_id.as_deref() {
+        feedback = feedback.with_delivery_bundle_id(delivery_bundle_id.to_string());
+    }
+    let template = create_data_vending_feedback_event(&feedback)
+        .map_err(|error| format!("Cannot build DS-DVM revocation feedback: {error}"))?;
     sign_event_template(identity, &template)
 }
 
@@ -543,7 +651,7 @@ fn preview_posture_for_request(request: &DataSellerIncomingRequest) -> DataVendi
 fn build_delivery_result_content(
     request: &DataSellerIncomingRequest,
     delivery: &DeliveryBundle,
-) -> String {
+    ) -> String {
     if let Some(preview_text) = request
         .delivery_draft
         .preview_text
@@ -553,6 +661,8 @@ fn build_delivery_result_content(
         preview_text.to_string()
     } else {
         json!({
+            "dataset": request.matched_listing_coordinate,
+            "offer": request.matched_offer_coordinate,
             "delivery_bundle_id": delivery.delivery_bundle_id,
             "delivery_ref": delivery.delivery_ref,
             "delivery_digest": delivery.delivery_digest,
@@ -568,11 +678,7 @@ fn build_data_seller_delivery_result_event(
     request: &DataSellerIncomingRequest,
     delivery: &DeliveryBundle,
 ) -> Result<Event, String> {
-    let asset_ref = request
-        .asset_ref
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(delivery.asset_id.as_str());
+    let asset_ref = request_asset_ref_for_event(request)?;
     let mut result = DataVendingResult::new(
         request.request_kind,
         request.request_id.as_str(),
@@ -582,10 +688,18 @@ fn build_data_seller_delivery_result_event(
         build_delivery_result_content(request, delivery),
     )
     .map_err(|error| format!("Cannot build data-vending result: {error}"))?
+    .with_listing_ref(request_listing_ref_for_event(request)?)
     .with_delivery_mode(delivery_mode_for_request(request))
     .with_preview_posture(preview_posture_for_request(request))
+    .with_asset_id(delivery.asset_id.clone())
     .with_grant_id(delivery.grant_id.clone())
     .with_delivery_ref(delivery.delivery_ref.clone());
+    if let Some(offer_ref) = request_offer_ref_for_event(request)? {
+        result = result.with_offer_ref(offer_ref);
+    }
+    if let Some(delivery_digest) = delivery.delivery_digest.as_deref() {
+        result = result.with_delivery_digest(delivery_digest.to_string());
+    }
     if request.encrypted
         || matches!(
             delivery_mode_for_request(request),
@@ -648,6 +762,9 @@ fn build_accept_access_grant_request(
             "payment_feedback_event_id": request.payment_feedback_event_id,
             "payment_pointer": request.payment_pointer,
             "payment_amount_sats": request.payment_amount_sats,
+            "ds_listing_coordinate": request.matched_listing_coordinate,
+            "ds_offer_coordinate": request.matched_offer_coordinate,
+            "asset_ref": request.asset_ref,
         }),
         evidence: {
             let mut evidence = vec![EvidenceRef::new(
@@ -655,6 +772,28 @@ fn build_accept_access_grant_request(
                 format!("nostr:event:{}", request.request_id),
                 request.request_id.as_str(),
             )];
+            if let Some(listing_coordinate) = request
+                .matched_listing_coordinate
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "ds_listing",
+                    format!("nostr:a:{listing_coordinate}"),
+                    listing_coordinate,
+                ));
+            }
+            if let Some(offer_coordinate) = request
+                .matched_offer_coordinate
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "ds_offer",
+                    format!("nostr:a:{offer_coordinate}"),
+                    offer_coordinate,
+                ));
+            }
             if let Some(payment_pointer) = request
                 .payment_pointer
                 .as_deref()
@@ -760,6 +899,8 @@ fn build_issue_delivery_bundle_request(
                 "delivery_mode": request.delivery_mode,
                 "preview_posture": request.preview_posture,
                 "preview_text": request.delivery_draft.preview_text,
+                "ds_listing_coordinate": request.matched_listing_coordinate,
+                "ds_offer_coordinate": request.matched_offer_coordinate,
             }),
         },
         evidence: {
@@ -768,6 +909,28 @@ fn build_issue_delivery_bundle_request(
                 format!("nostr:event:{}", request.request_id),
                 request.request_id.as_str(),
             )];
+            if let Some(listing_coordinate) = request
+                .matched_listing_coordinate
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "ds_listing",
+                    format!("nostr:a:{listing_coordinate}"),
+                    listing_coordinate,
+                ));
+            }
+            if let Some(offer_coordinate) = request
+                .matched_offer_coordinate
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "ds_offer",
+                    format!("nostr:a:{offer_coordinate}"),
+                    offer_coordinate,
+                ));
+            }
             if let Some(payment_pointer) = request
                 .payment_pointer
                 .as_deref()
@@ -886,6 +1049,8 @@ fn build_revoke_access_grant_request(
                 "delivery_bundle_ids": revoked_delivery_bundle_ids,
                 "payment_pointer": request.payment_pointer,
                 "payment_amount_sats": request.payment_amount_sats,
+                "ds_listing_coordinate": request.matched_listing_coordinate,
+                "ds_offer_coordinate": request.matched_offer_coordinate,
             }),
         },
         evidence: {
@@ -894,6 +1059,28 @@ fn build_revoke_access_grant_request(
                 format!("nostr:event:{}", request.request_id),
                 request.request_id.as_str(),
             )];
+            if let Some(listing_coordinate) = request
+                .matched_listing_coordinate
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "ds_listing",
+                    format!("nostr:a:{listing_coordinate}"),
+                    listing_coordinate,
+                ));
+            }
+            if let Some(offer_coordinate) = request
+                .matched_offer_coordinate
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "ds_offer",
+                    format!("nostr:a:{offer_coordinate}"),
+                    offer_coordinate,
+                ));
+            }
             if let Some(payment_pointer) = request
                 .payment_pointer
                 .as_deref()
@@ -1629,8 +1816,38 @@ pub(crate) fn revoke_data_seller_access(
     }
     state
         .data_market
-        .note_published_revocation(revocation, reflected_at_ms);
+        .note_published_revocation(revocation.clone(), reflected_at_ms);
     state.data_buyer.sync_selection(&state.data_market);
+    let revocation_feedback_event_id = if let Some(identity) = state.nostr_identity.as_ref() {
+        match build_data_seller_revocation_feedback_event(identity, &request, &revocation) {
+            Ok(event) => {
+                let event_id = event.id.clone();
+                match publish_event_to_relays(
+                    state.configured_provider_relay_urls().as_slice(),
+                    &event,
+                    "DS-DVM revocation feedback",
+                ) {
+                    Ok(_) => Some(event_id),
+                    Err(error) => {
+                        state.data_seller.last_action = Some(format!(
+                            "Recorded revocation for request {} but DS-DVM revocation feedback publish failed: {}",
+                            request_id, error
+                        ));
+                        None
+                    }
+                }
+            }
+            Err(error) => {
+                state.data_seller.last_action = Some(format!(
+                    "Recorded revocation for request {} but could not build DS-DVM revocation feedback: {}",
+                    request_id, error
+                ));
+                None
+            }
+        }
+    } else {
+        None
+    };
     if let Some((
         revocation_state,
         revocation_id,
@@ -1669,10 +1886,14 @@ pub(crate) fn revoke_data_seller_access(
             policy_id,
             receipt_id,
             format!(
-                "{} access for grant {} with reason {}.",
+                "{} access for grant {} with reason {}.{}",
                 action.past_tense_label(),
                 grant_id,
-                reason_code
+                reason_code,
+                revocation_feedback_event_id
+                    .as_deref()
+                    .map(|event_id| format!(" DS-DVM notice {event_id}."))
+                    .unwrap_or_default()
             ),
         );
     }
@@ -1693,7 +1914,6 @@ fn queue_data_seller_payment_required_feedback(
         .request_by_id(request_id)
         .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
     let request_id = request.request_id.clone();
-    let requester = request.requester.clone();
     let quoted_price_sats = request
         .required_price_sats
         .or((request.price_sats > 0).then_some(request.price_sats))
@@ -1718,8 +1938,7 @@ fn queue_data_seller_payment_required_feedback(
     })?;
     let event = build_data_seller_payment_required_feedback_event(
         identity,
-        request_id.as_str(),
-        requester.as_str(),
+        request,
         quoted_price_sats,
         bolt11.as_str(),
     )?;
@@ -2322,6 +2541,11 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_state::{
+        DataSellerDeliveryDraft, DataSellerDeliveryState, DataSellerPaymentState,
+        DataSellerRequestEvaluationDisposition, DataSellerRevocationState,
+    };
+    use nostr::nip90::{DataVendingFeedback, DataVendingResult};
     use openagents_kernel_core::data::PermissionPolicy;
 
     const SELLER_PUBKEY: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -2382,6 +2606,87 @@ mod tests {
             metadata: json!({
                 "delivery_modes": ["encrypted_pointer", "giftwrap"],
             }),
+        }
+    }
+
+    fn fixture_request() -> DataSellerIncomingRequest {
+        DataSellerIncomingRequest {
+            request_id: "request.example.001".to_string(),
+            requester: BUYER_PUBKEY.to_string(),
+            requested_consumer_id: Some(BUYER_PUBKEY.to_string()),
+            source_relay_url: Some("wss://relay.example".to_string()),
+            request_kind: 5960,
+            profile_id: Some(nostr::nip90::OPENAGENTS_DATA_VENDING_PROFILE.to_string()),
+            asset_ref: Some(format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001")),
+            permission_scopes: vec!["read.context".to_string()],
+            delivery_mode: Some("encrypted_pointer".to_string()),
+            preview_posture: Some("metadata_only".to_string()),
+            price_sats: 5,
+            ttl_seconds: 120,
+            created_at_epoch_seconds: Some(1_774_080_020),
+            expires_at_epoch_seconds: Some(1_774_080_140),
+            encrypted: false,
+            preview_only: false,
+            validation_label: "valid".to_string(),
+            content_preview: Some("Need access to the dataset.".to_string()),
+            matched_asset_id: Some("data_asset.example.corpus.001".to_string()),
+            matched_grant_id: Some("grant.example.corpus.001".to_string()),
+            matched_listing_coordinate: Some(format!(
+                "30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"
+            )),
+            matched_offer_coordinate: Some(format!(
+                "30406:{SELLER_PUBKEY}:grant.example.corpus.001"
+            )),
+            asset_match_posture: Some("ds_offer".to_string()),
+            required_price_sats: Some(5),
+            evaluation_disposition: DataSellerRequestEvaluationDisposition::ReadyForPaymentQuote,
+            evaluation_summary: "Matched DS listing and offer.".to_string(),
+            payment_state: DataSellerPaymentState::AwaitingPayment,
+            payment_feedback_event_id: None,
+            pending_bolt11: Some("lnbc50n1pexample".to_string()),
+            pending_bolt11_created_at_epoch_seconds: Some(1_774_080_021),
+            settlement_payment_hash: None,
+            payment_pointer: Some("spark-payment-001".to_string()),
+            payment_observed_at_epoch_seconds: Some(1_774_080_025),
+            payment_amount_sats: Some(5),
+            payment_error: None,
+            delivery_state: DataSellerDeliveryState::DraftReady,
+            delivery_draft: DataSellerDeliveryDraft {
+                delivery_ref: Some("oa://deliveries/example-001".to_string()),
+                delivery_digest: Some("sha256:delivery-example-001".to_string()),
+                manifest_refs: vec!["oa://deliveries/example-001/manifest".to_string()],
+                bundle_size_bytes: Some(2048),
+                expires_in_hours: Some(1),
+                ..Default::default()
+            },
+            delivery_bundle_id: Some("delivery_bundle.example.001".to_string()),
+            delivery_receipt_id: None,
+            delivery_result_event_id: None,
+            delivery_error: None,
+            revocation_state: DataSellerRevocationState::Idle,
+            revocation_id: None,
+            revocation_receipt_id: None,
+            revocation_reason_code: None,
+            revocation_recorded_at_ms: None,
+            revocation_error: None,
+        }
+    }
+
+    fn fixture_delivery() -> DeliveryBundle {
+        DeliveryBundle {
+            delivery_bundle_id: "delivery_bundle.example.001".to_string(),
+            asset_id: "data_asset.example.corpus.001".to_string(),
+            grant_id: "grant.example.corpus.001".to_string(),
+            provider_id: SELLER_PUBKEY.to_string(),
+            consumer_id: BUYER_PUBKEY.to_string(),
+            created_at_ms: 1_774_080_030_000,
+            delivery_ref: "oa://deliveries/example-001".to_string(),
+            delivery_digest: Some("sha256:delivery-example-001".to_string()),
+            bundle_size_bytes: Some(2048),
+            manifest_refs: vec!["oa://deliveries/example-001/manifest".to_string()],
+            expires_at_ms: Some(1_774_083_630_000),
+            status: DeliveryBundleStatus::Issued,
+            metadata: json!({}),
         }
     }
 
@@ -2477,5 +2782,116 @@ mod tests {
         );
         assert!(publication_ref.event_id.is_none());
         assert!(publication_ref.relay_url.is_none());
+    }
+
+    #[test]
+    fn payment_feedback_event_carries_ds_refs() {
+        let identity = nostr::regenerate_identity().expect("identity");
+        let event = build_data_seller_payment_required_feedback_event(
+            &identity,
+            &fixture_request(),
+            5,
+            "lnbc50n1pexample",
+        )
+        .expect("payment feedback event");
+        let feedback = DataVendingFeedback::from_event(&event).expect("parse feedback");
+
+        assert_eq!(feedback.status, JobStatus::PaymentRequired);
+        assert_eq!(
+            feedback
+                .listing_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001")
+        );
+        assert_eq!(
+            feedback
+                .offer_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some("30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001")
+        );
+        assert_eq!(feedback.asset_id.as_deref(), Some("data_asset.example.corpus.001"));
+        assert_eq!(feedback.grant_id.as_deref(), Some("grant.example.corpus.001"));
+    }
+
+    #[test]
+    fn delivery_result_event_carries_ds_refs_and_digest() {
+        let identity = nostr::regenerate_identity().expect("identity");
+        let event = build_data_seller_delivery_result_event(
+            &identity,
+            &fixture_request(),
+            &fixture_delivery(),
+        )
+        .expect("delivery result event");
+        let result = DataVendingResult::from_event(&event).expect("parse result");
+
+        assert_eq!(
+            result
+                .listing_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001")
+        );
+        assert_eq!(
+            result
+                .offer_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some("30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001")
+        );
+        assert_eq!(result.asset_id.as_deref(), Some("data_asset.example.corpus.001"));
+        assert_eq!(result.grant_id.as_deref(), Some("grant.example.corpus.001"));
+        assert_eq!(
+            result.delivery_digest.as_deref(),
+            Some("sha256:delivery-example-001")
+        );
+    }
+
+    #[test]
+    fn revocation_feedback_event_carries_ds_refs_and_reason() {
+        let identity = nostr::regenerate_identity().expect("identity");
+        let event = build_data_seller_revocation_feedback_event(
+            &identity,
+            &fixture_request(),
+            &RevocationReceipt {
+                revocation_id: "revocation.example.001".to_string(),
+                asset_id: "data_asset.example.corpus.001".to_string(),
+                grant_id: "grant.example.corpus.001".to_string(),
+                provider_id: SELLER_PUBKEY.to_string(),
+                consumer_id: Some(BUYER_PUBKEY.to_string()),
+                created_at_ms: 1_774_080_040_000,
+                reason_code: "seller_revoked_access".to_string(),
+                refund_amount: None,
+                revoked_delivery_bundle_ids: vec!["delivery_bundle.example.001".to_string()],
+                replacement_delivery_bundle_id: None,
+                status: Default::default(),
+                metadata: json!({}),
+            },
+        )
+        .expect("revocation feedback event");
+        let feedback = DataVendingFeedback::from_event(&event).expect("parse feedback");
+
+        assert_eq!(feedback.status, JobStatus::Error);
+        assert_eq!(
+            feedback.reason_code.as_deref(),
+            Some("seller_revoked_access")
+        );
+        assert_eq!(
+            feedback.revocation_id.as_deref(),
+            Some("revocation.example.001")
+        );
+        assert_eq!(
+            feedback
+                .listing_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001")
+        );
     }
 }
