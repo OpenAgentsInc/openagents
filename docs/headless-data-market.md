@@ -45,31 +45,22 @@ discipline remain unchanged:
 - asset publish still requires preview + explicit confirm
 - grant publish still requires preview + explicit confirm
 - delivery and revocation still route through the same seller logic
-- kernel read-back remains the canonical authority confirmation surface
+- seller, buyer, and market snapshots are the confirmation surface after each
+  mutation
 
 ## Publish prerequisite
 
-Preview-only seller work can run without a kernel authority endpoint, but real
-asset or grant publish needs a hosted control session:
+The current DS-first headless publication path is relay-only.
 
-- `OA_CONTROL_BASE_URL`
-- `OA_CONTROL_BEARER_TOKEN`
+That means the normal local prerequisites are now:
 
-For local work, the simplest pattern is:
+- a Nostr identity for the runtime
+- one or more configured relays
+- a Spark wallet when you need priced verification or payment settlement
 
-1. start `nexus-control`
-2. mint a desktop session at `POST /api/session/desktop`
-3. export the returned access token as `OA_CONTROL_BEARER_TOKEN`
-4. start `autopilot_headless_data_market`
-
-That local `nexus-control` session is the normal publish setup for shell-first
-seller work in this MVP. Without it, you can still preview drafts, but you do
-not have the authority path required to record real asset, grant, delivery, or
-revocation truth.
-
-The no-window smoke harness now bootstraps a temporary local `nexus-control`
-and session token automatically so publish is mechanically verified rather than
-only previewed.
+You do not need `OA_CONTROL_BASE_URL`, `OA_CONTROL_BEARER_TOKEN`, or a local
+`nexus-control` process to publish the seller asset/grant pair or to complete
+the local relay-only buyer flow.
 
 ## Start the runtime
 
@@ -186,8 +177,8 @@ That harness verifies:
 - deterministic packaging output can be drafted into seller state
 - asset preview and publish work without opening the UI window
 - grant preview and publish work without opening the UI window
-- authority read-back records DS listing and DS offer publication refs after
-  publish
+- buyer refresh can immediately discover the published DS listing and DS offer
+  through the local relay catalog
 
 ## Real local E2E harness
 
@@ -200,7 +191,6 @@ scripts/autopilot/headless-data-market-e2e.sh
 That harness does a real local loop:
 
 - starts a local relay
-- starts a local `nexus-control`
 - creates isolated seller and buyer homes + identities
 - launches two no-window Data Market runtimes
 - packages a dummy dataset
@@ -214,8 +204,8 @@ That harness does a real local loop:
 - waits for the buyer-side DS-DVM result
 - consumes the delivered local payload into a buyer output directory
 - verifies the consumed files match the original dummy dataset
-- asserts buyer-side DS listing and DS offer selection against the authority
-  publication refs
+- asserts buyer-side DS listing and DS offer selection against the published DS
+  coordinates
 - asserts seller-side request matching against the same DS coordinates
 - asserts local relay publication of `30404`, `30406`, `5960`, and `6960`
 
@@ -227,6 +217,10 @@ OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_IDENTITY_PATH=/path/to/payer/ident
 OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_STORAGE_DIR=/path/to/payer/spark/mainnet \
 scripts/autopilot/headless-data-market-e2e.sh
 ```
+
+If you already have a funded isolated Spark wallet from a prior run, point the
+prefund payer env vars at that wallet and its identity rather than assuming the
+default `~/.openagents/pylon` wallet has enough spendable sats.
 
 The repo-owned harnesses now launch the no-window runtime with
 `OPENAGENTS_DISABLE_CODEX=true` because those verification paths do not use the
@@ -279,8 +273,8 @@ Relay health is external, so current operator truth is:
 - override `OPENAGENTS_HEADLESS_DATA_MARKET_RELAY_URLS` when a specific public
   relay is degraded
 - treat the local verifier bundle as the portable launch gate
-- use the fresh DS-first audit for current status:
-  `docs/audits/2026-03-21-ds-first-headless-data-market-paid-e2e-audit.md`
+- use the fresh relay-only DS-first audit for current status:
+  `docs/audits/2026-03-22-relay-only-headless-data-market-paid-e2e-audit.md`
 
 The strict public verification command is:
 
@@ -336,10 +330,11 @@ That verification bundle currently proves:
 - the portable local E2E gate runs at `OPENAGENTS_HEADLESS_DATA_MARKET_PRICE_SATS=0`,
   so it does not require a funded payer wallet on the machine running the
   verifier
-- the seller state machine has a mechanical payment -> delivery -> revocation
-  lifecycle test
-- the Nexus authority slice still proves the canonical asset -> grant ->
-  delivery -> revocation receipt flow
+- the relay-only local verifier no longer depends on `nexus-control` or
+  `OA_CONTROL_*`
+- the buyer-side consume path now resolves delivery details from the DS relay
+  result/access-contract state when no legacy kernel `DeliveryBundle` row is
+  present
 
 ## Consume-delivery command
 
@@ -360,7 +355,8 @@ cargo run -p autopilot-desktop --bin autopilotctl -- \
 
 Current behavior:
 
-- resolves the matching `DeliveryBundle` from the app-owned Data Market state
+- resolves the matching delivery from relay-native DS result/access-contract
+  state, falling back to legacy local `DeliveryBundle` rows when present
 - supports local `file://` and plain local-path `delivery_ref` values
 - copies the payload into `output-dir/payload/`
 - copies any local manifest refs into `output-dir/manifests/`
@@ -375,9 +371,10 @@ Current limitation:
 
 - Packaging outputs are draft inputs, not published market truth.
 - `autopilotctl` drives the app-owned seller path; it does not create a second
-  authority surface.
+  publication surface.
 - Publish and revoke remain confirm-gated.
-- Kernel read-back remains the canonical confirmation surface after mutation.
+- DS listings, DS offers, DS access contracts, and DS-DVM results on the relay
+  are the current market truth for headless publish and buyer fulfillment.
 
 ## Boundary note
 
