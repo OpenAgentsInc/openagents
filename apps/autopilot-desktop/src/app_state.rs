@@ -2086,6 +2086,34 @@ fn request_json_string_field(request: &JobInboxNetworkRequest, fields: &[&str]) 
     })
 }
 
+fn seller_ds_listing_coordinate(asset: &DataAsset) -> Option<&str> {
+    asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn seller_ds_offer_coordinate(grant: &AccessGrant) -> Option<&str> {
+    grant
+        .nostr_publications
+        .ds_offer
+        .as_ref()
+        .and_then(|reference| reference.coordinate.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn seller_grant_is_active(grant: &AccessGrant) -> bool {
+    matches!(
+        grant.status,
+        openagents_kernel_core::data::AccessGrantStatus::Offered
+            | openagents_kernel_core::data::AccessGrantStatus::Accepted
+    )
+}
+
 fn json_string_array_field(value: &Value, field: &str) -> Vec<String> {
     let Some(entries) = value.get(field).and_then(Value::as_array) else {
         return Vec::new();
@@ -2527,6 +2555,10 @@ pub struct DataSellerIncomingRequest {
     pub content_preview: Option<String>,
     pub matched_asset_id: Option<String>,
     pub matched_grant_id: Option<String>,
+    #[serde(default)]
+    pub matched_listing_coordinate: Option<String>,
+    #[serde(default)]
+    pub matched_offer_coordinate: Option<String>,
     pub asset_match_posture: Option<String>,
     pub required_price_sats: Option<u64>,
     pub evaluation_disposition: DataSellerRequestEvaluationDisposition,
@@ -2615,10 +2647,12 @@ pub struct DataSellerPaneState {
     pub last_confirmed_asset_payload: Option<Value>,
     pub last_published_asset: Option<DataAsset>,
     pub last_publish_receipt_id: Option<String>,
+    pub published_assets: Vec<DataAsset>,
     pub grant_preview_confirmed: bool,
     pub last_confirmed_grant_payload: Option<Value>,
     pub last_published_grant: Option<AccessGrant>,
     pub last_grant_publish_receipt_id: Option<String>,
+    pub published_grants: Vec<AccessGrant>,
     pub last_published_delivery: Option<DeliveryBundle>,
     pub last_delivery_publish_receipt_id: Option<String>,
     pub last_published_revocation: Option<RevocationReceipt>,
@@ -2669,10 +2703,12 @@ impl Default for DataSellerPaneState {
             last_confirmed_asset_payload: None,
             last_published_asset: None,
             last_publish_receipt_id: None,
+            published_assets: Vec::new(),
             grant_preview_confirmed: false,
             last_confirmed_grant_payload: None,
             last_published_grant: None,
             last_grant_publish_receipt_id: None,
+            published_grants: Vec::new(),
             last_published_delivery: None,
             last_delivery_publish_receipt_id: None,
             last_published_revocation: None,
@@ -2690,6 +2726,139 @@ impl Default for DataSellerPaneState {
 }
 
 impl DataSellerPaneState {
+    fn sort_inventory(&mut self) {
+        self.published_assets.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.asset_id.cmp(&right.asset_id))
+        });
+        self.published_grants.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.grant_id.cmp(&right.grant_id))
+        });
+    }
+
+    fn upsert_published_asset_inventory(&mut self, asset: DataAsset) {
+        if let Some(existing) = self
+            .published_assets
+            .iter_mut()
+            .find(|existing| existing.asset_id == asset.asset_id)
+        {
+            *existing = asset;
+        } else {
+            self.published_assets.push(asset);
+        }
+        self.sort_inventory();
+    }
+
+    fn upsert_published_grant_inventory(&mut self, grant: AccessGrant) {
+        if let Some(existing) = self
+            .published_grants
+            .iter_mut()
+            .find(|existing| existing.grant_id == grant.grant_id)
+        {
+            *existing = grant;
+        } else {
+            self.published_grants.push(grant);
+        }
+        self.sort_inventory();
+    }
+
+    fn inventory_assets_for_matching(&self) -> Vec<&DataAsset> {
+        let mut assets = self.published_assets.iter().collect::<Vec<_>>();
+        if assets.is_empty()
+            && let Some(asset) = self.last_published_asset.as_ref()
+        {
+            assets.push(asset);
+        }
+        assets
+    }
+
+    fn inventory_grants_for_matching(&self) -> Vec<&AccessGrant> {
+        let mut grants = self.published_grants.iter().collect::<Vec<_>>();
+        if grants.is_empty()
+            && let Some(grant) = self.last_published_grant.as_ref()
+        {
+            grants.push(grant);
+        }
+        grants
+    }
+
+    fn active_inventory_assets(&self) -> Vec<&DataAsset> {
+        self.inventory_assets_for_matching()
+            .into_iter()
+            .filter(|asset| asset.status == openagents_kernel_core::data::DataAssetStatus::Active)
+            .collect()
+    }
+
+    fn inventory_asset_by_id(&self, asset_id: &str) -> Option<&DataAsset> {
+        self.inventory_assets_for_matching()
+            .into_iter()
+            .find(|asset| asset.asset_id.eq_ignore_ascii_case(asset_id))
+    }
+
+    fn inventory_asset_by_listing_coordinate(&self, coordinate: &str) -> Option<&DataAsset> {
+        self.inventory_assets_for_matching()
+            .into_iter()
+            .find(|asset| {
+                seller_ds_listing_coordinate(asset)
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(coordinate))
+            })
+    }
+
+    fn inventory_grant_by_id(&self, grant_id: &str) -> Option<&AccessGrant> {
+        self.inventory_grants_for_matching()
+            .into_iter()
+            .find(|grant| grant.grant_id.eq_ignore_ascii_case(grant_id))
+    }
+
+    fn inventory_grant_by_offer_coordinate(&self, coordinate: &str) -> Option<&AccessGrant> {
+        self.inventory_grants_for_matching()
+            .into_iter()
+            .find(|grant| {
+                seller_ds_offer_coordinate(grant)
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(coordinate))
+            })
+    }
+
+    fn inventory_asset_for_grant(&self, grant: &AccessGrant) -> Option<&DataAsset> {
+        self.inventory_asset_by_id(grant.asset_id.as_str())
+    }
+
+    fn active_inventory_grants_for_asset(&self, asset_id: &str) -> Vec<&AccessGrant> {
+        self.inventory_grants_for_matching()
+            .into_iter()
+            .filter(|grant| grant.asset_id == asset_id)
+            .filter(|grant| seller_grant_is_active(grant))
+            .collect()
+    }
+
+    pub fn published_asset_count(&self) -> usize {
+        self.inventory_assets_for_matching().len()
+    }
+
+    pub fn published_grant_count(&self) -> usize {
+        self.inventory_grants_for_matching().len()
+    }
+
+    pub fn published_assets_for_display(&self) -> Vec<&DataAsset> {
+        self.inventory_assets_for_matching()
+    }
+
+    pub fn published_grants_for_display(&self) -> Vec<&AccessGrant> {
+        self.inventory_grants_for_matching()
+    }
+
+    pub fn policy_id_for_request(&self, request_id: &str) -> Option<String> {
+        self.request_by_id(request_id)
+            .and_then(|request| request.matched_grant_id.as_deref())
+            .and_then(|grant_id| self.inventory_grant_by_id(grant_id))
+            .map(|grant| grant.permission_policy.policy_id.clone())
+    }
+
     pub fn derived_nip90_profile(&self) -> Option<DataSellerNip90Profile> {
         let asset_kind = self
             .last_published_asset
@@ -2966,6 +3135,7 @@ impl DataSellerPaneState {
         self.active_draft.last_published_asset_id = Some(asset.asset_id.clone());
         self.last_published_asset = Some(asset.clone());
         self.last_publish_receipt_id = receipt_id;
+        self.upsert_published_asset_inventory(asset.clone());
         self.publish_enabled = false;
         self.confirm_enabled = false;
         self.asset_preview_confirmed = false;
@@ -3022,6 +3192,7 @@ impl DataSellerPaneState {
         self.active_draft.last_published_grant_id = Some(grant.grant_id.clone());
         self.last_published_grant = Some(grant.clone());
         self.last_grant_publish_receipt_id = receipt_id;
+        self.upsert_published_grant_inventory(grant.clone());
         self.grant_preview_confirmed = false;
         self.last_error = None;
         self.last_action = Some(format!(
@@ -3037,6 +3208,7 @@ impl DataSellerPaneState {
     pub fn note_grant_state_reconciled(&mut self, grant: AccessGrant) {
         self.active_draft.last_published_grant_id = Some(grant.grant_id.clone());
         self.last_published_grant = Some(grant.clone());
+        self.upsert_published_grant_inventory(grant.clone());
         self.last_error = None;
         self.last_action = Some(format!(
             "Reconciled AccessGrant {} state from kernel authority",
@@ -3822,6 +3994,7 @@ impl DataSellerPaneState {
         if let Some(delivery) = matched_delivery {
             self.last_published_delivery = Some(delivery);
         }
+        self.upsert_published_grant_inventory(grant.clone());
         self.last_published_grant = Some(grant);
         self.last_published_revocation = Some(revocation.clone());
         self.last_revocation_publish_receipt_id = receipt_id;
@@ -3897,6 +4070,8 @@ impl DataSellerPaneState {
             content_preview,
             matched_asset_id: None,
             matched_grant_id: None,
+            matched_listing_coordinate: None,
+            matched_offer_coordinate: None,
             asset_match_posture: None,
             required_price_sats: None,
             evaluation_disposition: DataSellerRequestEvaluationDisposition::InvalidRequest,
@@ -3937,39 +4112,163 @@ impl DataSellerPaneState {
             .filter(|expires_at| now_epoch_seconds >= *expires_at)
             .map(|expires_at| now_epoch_seconds.saturating_sub(expires_at));
 
-        let Some(asset) = self.last_published_asset.as_ref() else {
+        let explicit_asset_id = request_execution_param_value(request, "oa_asset_id")
+            .map(str::to_string)
+            .or_else(|| request_json_string_field(request, &["asset_id"]));
+        let explicit_grant_id = request_execution_param_value(request, "oa_grant_id")
+            .map(str::to_string)
+            .or_else(|| request_json_string_field(request, &["grant_id"]));
+        let explicit_listing_coordinate = request_execution_param_value(request, "oa_listing_ref")
+            .map(str::to_string)
+            .or_else(|| {
+                request_json_string_field(request, &["ds_listing_coordinate", "listing_coordinate"])
+            });
+        let explicit_offer_coordinate = request_execution_param_value(request, "oa_offer_ref")
+            .map(str::to_string)
+            .or_else(|| {
+                request_json_string_field(
+                    request,
+                    &[
+                        "ds_offer_coordinate",
+                        "offer_coordinate",
+                        "grant_coordinate",
+                    ],
+                )
+            });
+        let requested_selector = explicit_offer_coordinate
+            .as_deref()
+            .or(explicit_listing_coordinate.as_deref())
+            .or(explicit_grant_id.as_deref())
+            .or(explicit_asset_id.as_deref())
+            .or(incoming.asset_ref.as_deref())
+            .unwrap_or("inventory")
+            .to_string();
+
+        if self.active_inventory_assets().is_empty() {
             incoming.evaluation_disposition =
                 DataSellerRequestEvaluationDisposition::NoPublishedAsset;
             incoming.evaluation_summary =
                 "No published asset is available yet, so the request cannot be quoted.".to_string();
             return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
-        };
+        }
 
-        let Some(asset_ref) = incoming.asset_ref.as_deref() else {
+        if incoming.asset_ref.is_none()
+            && explicit_asset_id.is_none()
+            && explicit_grant_id.is_none()
+            && explicit_listing_coordinate.is_none()
+            && explicit_offer_coordinate.is_none()
+        {
             incoming.evaluation_disposition =
                 DataSellerRequestEvaluationDisposition::InvalidRequest;
             incoming.evaluation_summary =
-                "Request is missing oa_asset_ref, so seller evaluation cannot match inventory."
+                "Request is missing oa_asset_ref and no DS listing, DS offer, asset_id, or grant_id selector is present."
                     .to_string();
-            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
-        };
-
-        if asset_ref.eq_ignore_ascii_case(asset.asset_id.as_str()) {
-            incoming.asset_match_posture = Some("exact_asset".to_string());
-            incoming.matched_asset_id = Some(asset.asset_id.clone());
-        } else if asset_ref.eq_ignore_ascii_case(asset.asset_kind.as_str()) {
-            incoming.asset_match_posture = Some("asset_family".to_string());
-            incoming.matched_asset_id = Some(asset.asset_id.clone());
-        } else {
-            incoming.evaluation_disposition = DataSellerRequestEvaluationDisposition::AssetMismatch;
-            incoming.evaluation_summary = format!(
-                "Request targets {asset_ref}, but the published seller asset is {} ({})",
-                asset.asset_id, asset.asset_kind
-            );
             return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         }
 
-        let supported_delivery_modes = self.supported_delivery_modes_for_evaluation();
+        let mut matched_asset = None;
+        let mut matched_grant = explicit_offer_coordinate
+            .as_deref()
+            .and_then(|coordinate| self.inventory_grant_by_offer_coordinate(coordinate))
+            .or_else(|| {
+                incoming
+                    .asset_ref
+                    .as_deref()
+                    .and_then(|value| self.inventory_grant_by_offer_coordinate(value))
+            })
+            .or_else(|| {
+                explicit_grant_id
+                    .as_deref()
+                    .and_then(|grant_id| self.inventory_grant_by_id(grant_id))
+            });
+
+        if let Some(grant) = matched_grant {
+            matched_asset = self.inventory_asset_for_grant(grant);
+            incoming.asset_match_posture = Some(
+                if explicit_offer_coordinate
+                    .as_deref()
+                    .is_some_and(|coordinate| {
+                        seller_ds_offer_coordinate(grant)
+                            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(coordinate))
+                    })
+                    || incoming.asset_ref.as_deref().is_some_and(|value| {
+                        seller_ds_offer_coordinate(grant)
+                            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(value))
+                    })
+                {
+                    "ds_offer"
+                } else {
+                    "exact_grant"
+                }
+                .to_string(),
+            );
+        }
+
+        if matched_asset.is_none() {
+            if let Some(coordinate) = explicit_listing_coordinate.as_deref().or_else(|| {
+                incoming
+                    .asset_ref
+                    .as_deref()
+                    .filter(|value| self.inventory_asset_by_listing_coordinate(value).is_some())
+            }) {
+                matched_asset = self.inventory_asset_by_listing_coordinate(coordinate);
+                if matched_asset.is_some() {
+                    incoming.asset_match_posture = Some("ds_listing".to_string());
+                }
+            }
+        }
+
+        if matched_asset.is_none() {
+            if let Some(asset_id) = explicit_asset_id
+                .as_deref()
+                .or(incoming.asset_ref.as_deref())
+            {
+                matched_asset = self.inventory_asset_by_id(asset_id);
+                if matched_asset.is_some() {
+                    incoming.asset_match_posture = Some("exact_asset".to_string());
+                }
+            }
+        }
+
+        if matched_asset.is_none()
+            && let Some(asset_ref) = incoming.asset_ref.as_deref()
+        {
+            let family_matches = self
+                .active_inventory_assets()
+                .into_iter()
+                .filter(|asset| asset.asset_kind.eq_ignore_ascii_case(asset_ref))
+                .collect::<Vec<_>>();
+            match family_matches.as_slice() {
+                [asset] => {
+                    matched_asset = Some(*asset);
+                    incoming.asset_match_posture = Some("asset_family".to_string());
+                }
+                [] => {}
+                _ => {
+                    incoming.evaluation_disposition =
+                        DataSellerRequestEvaluationDisposition::AssetMismatch;
+                    incoming.evaluation_summary = format!(
+                        "Request targets asset family {asset_ref}, but seller inventory has {} active matches. Use an exact asset id or DS listing coordinate.",
+                        family_matches.len()
+                    );
+                    return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
+                }
+            }
+        }
+
+        let Some(asset) = matched_asset else {
+            incoming.evaluation_disposition = DataSellerRequestEvaluationDisposition::AssetMismatch;
+            incoming.evaluation_summary = format!(
+                "Request targets {requested_selector}, but no active published asset or DS offer matches current seller inventory."
+            );
+            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
+        };
+        incoming.matched_asset_id = Some(asset.asset_id.clone());
+        incoming.matched_listing_coordinate =
+            seller_ds_listing_coordinate(asset).map(str::to_string);
+
+        let supported_delivery_modes =
+            self.supported_delivery_modes_for_evaluation(matched_grant, Some(asset));
         if let Some(delivery_mode) = incoming.delivery_mode.as_deref() {
             if !supported_delivery_modes
                 .iter()
@@ -3985,7 +4284,7 @@ impl DataSellerPaneState {
             }
         }
 
-        let allowed_scopes = self.allowed_scopes_for_evaluation();
+        let allowed_scopes = self.allowed_scopes_for_evaluation(matched_grant, Some(asset));
         let missing_scopes = incoming
             .permission_scopes
             .iter()
@@ -4006,18 +4305,85 @@ impl DataSellerPaneState {
             return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         }
 
-        let Some(grant) = self.last_published_grant.as_ref() else {
+        if matched_grant.is_none() {
+            let grants_for_asset = self
+                .inventory_grants_for_matching()
+                .into_iter()
+                .filter(|grant| grant.asset_id == asset.asset_id)
+                .collect::<Vec<_>>();
+            if grants_for_asset.is_empty() {
+                incoming.evaluation_disposition =
+                    DataSellerRequestEvaluationDisposition::GrantRequired;
+                incoming.evaluation_summary = format!(
+                    "Asset {} matched, but no published AccessGrant is available for that dataset yet.",
+                    asset.asset_id
+                );
+                return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
+            }
+            if let Some(coordinate) = explicit_offer_coordinate.as_deref()
+                && grants_for_asset.iter().all(|grant| {
+                    seller_ds_offer_coordinate(grant)
+                        .is_none_or(|candidate| !candidate.eq_ignore_ascii_case(coordinate))
+                })
+            {
+                incoming.evaluation_disposition =
+                    DataSellerRequestEvaluationDisposition::GrantRequired;
+                incoming.evaluation_summary = format!(
+                    "Request targets DS offer {coordinate}, but no published grant for asset {} matches that offer coordinate.",
+                    asset.asset_id
+                );
+                return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
+            }
+            if let Some(grant_id) = explicit_grant_id.as_deref()
+                && grants_for_asset
+                    .iter()
+                    .all(|grant| !grant.grant_id.eq_ignore_ascii_case(grant_id))
+            {
+                incoming.evaluation_disposition =
+                    DataSellerRequestEvaluationDisposition::GrantRequired;
+                incoming.evaluation_summary = format!(
+                    "Request targets grant {grant_id}, but no published grant for asset {} matches that id.",
+                    asset.asset_id
+                );
+                return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
+            }
+
+            let active_grants = self.active_inventory_grants_for_asset(asset.asset_id.as_str());
+            matched_grant = active_grants
+                .iter()
+                .copied()
+                .find(|grant| {
+                    grant.consumer_id.as_deref().is_some_and(|consumer_id| {
+                        !consumer_id.trim().is_empty() && incoming.matches_consumer_id(consumer_id)
+                    })
+                })
+                .or_else(|| {
+                    active_grants.iter().copied().find(|grant| {
+                        grant
+                            .consumer_id
+                            .as_deref()
+                            .is_none_or(|consumer_id| consumer_id.trim().is_empty())
+                    })
+                });
+
+            if matched_grant.is_none() {
+                matched_grant = active_grants
+                    .first()
+                    .copied()
+                    .or_else(|| grants_for_asset.first().copied());
+            }
+        }
+
+        let Some(grant) = matched_grant else {
             incoming.evaluation_disposition = DataSellerRequestEvaluationDisposition::GrantRequired;
             incoming.evaluation_summary = format!(
-                "Asset matched {} but no published AccessGrant is available yet.",
-                incoming
-                    .asset_match_posture
-                    .as_deref()
-                    .unwrap_or("inventory")
+                "Asset {} matched, but no published AccessGrant is currently available.",
+                asset.asset_id
             );
             return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         };
         incoming.matched_grant_id = Some(grant.grant_id.clone());
+        incoming.matched_offer_coordinate = seller_ds_offer_coordinate(grant).map(str::to_string);
 
         if let Some(consumer_id) = grant
             .consumer_id
@@ -4047,11 +4413,7 @@ impl DataSellerPaneState {
             }
         }
 
-        if !matches!(
-            grant.status,
-            openagents_kernel_core::data::AccessGrantStatus::Offered
-                | openagents_kernel_core::data::AccessGrantStatus::Accepted
-        ) {
+        if !seller_grant_is_active(grant) {
             incoming.evaluation_disposition = DataSellerRequestEvaluationDisposition::GrantRequired;
             incoming.evaluation_summary = format!(
                 "Published grant {} is {}, so a fresh grant is required before sale.",
@@ -4140,15 +4502,16 @@ fn finalize_data_seller_request_expiry(
 }
 
 impl DataSellerPaneState {
-    fn supported_delivery_modes_for_evaluation(&self) -> Vec<String> {
-        let mut delivery_modes = self
-            .last_published_grant
-            .as_ref()
+    fn supported_delivery_modes_for_evaluation(
+        &self,
+        grant: Option<&AccessGrant>,
+        asset: Option<&DataAsset>,
+    ) -> Vec<String> {
+        let mut delivery_modes = grant
             .map(|grant| json_string_array_field(&grant.metadata, "delivery_modes"))
             .filter(|modes| !modes.is_empty())
             .or_else(|| {
-                self.last_published_asset
-                    .as_ref()
+                asset
                     .map(|asset| json_string_array_field(&asset.metadata, "delivery_modes"))
                     .filter(|modes| !modes.is_empty())
             })
@@ -4158,15 +4521,16 @@ impl DataSellerPaneState {
         delivery_modes
     }
 
-    fn allowed_scopes_for_evaluation(&self) -> Vec<String> {
-        let mut scopes = self
-            .last_published_grant
-            .as_ref()
+    fn allowed_scopes_for_evaluation(
+        &self,
+        grant: Option<&AccessGrant>,
+        asset: Option<&DataAsset>,
+    ) -> Vec<String> {
+        let mut scopes = grant
             .map(|grant| grant.permission_policy.allowed_scopes.clone())
             .filter(|values| !values.is_empty())
             .or_else(|| {
-                self.last_published_asset
-                    .as_ref()
+                asset
                     .and_then(|asset| asset.default_policy.as_ref())
                     .map(|policy| policy.allowed_scopes.clone())
                     .filter(|values| !values.is_empty())
@@ -4179,6 +4543,18 @@ impl DataSellerPaneState {
 
     pub fn inventory_warnings(&self) -> Vec<String> {
         let mut warnings = Vec::new();
+        if self.published_asset_count() > 1 {
+            warnings.push(format!(
+                "Seller inventory has {} published assets; exact asset IDs or DS listing coordinates keep request routing deterministic.",
+                self.published_asset_count()
+            ));
+        }
+        if self.published_grant_count() > 1 {
+            warnings.push(format!(
+                "Seller inventory has {} published grants; DS offer coordinates or exact grant IDs are preferred for fulfillment.",
+                self.published_grant_count()
+            ));
+        }
         let Some(asset) = self.last_published_asset.as_ref() else {
             warnings.push("No published asset yet.".to_string());
             if self.last_published_grant.is_none() {
@@ -10614,16 +10990,16 @@ impl AutopilotChatState {
             return false;
         }
         self.thread_hover_preview_thread_id = thread_id;
-        self.thread_hover_preview_started_at = self.thread_hover_preview_thread_id.as_ref().map(|_| now);
+        self.thread_hover_preview_started_at =
+            self.thread_hover_preview_thread_id.as_ref().map(|_| now);
         self.thread_hover_preview_visible = false;
         true
     }
 
     pub fn refresh_thread_hover_preview_visibility(&mut self, now: Instant) -> bool {
-        let should_show = self
-            .thread_hover_preview_started_at
-            .is_some_and(|started| now.saturating_duration_since(started) >= Duration::from_secs(1))
-            && self.thread_hover_preview_thread_id.is_some();
+        let should_show = self.thread_hover_preview_started_at.is_some_and(|started| {
+            now.saturating_duration_since(started) >= Duration::from_secs(1)
+        }) && self.thread_hover_preview_thread_id.is_some();
         if self.thread_hover_preview_visible != should_show {
             self.thread_hover_preview_visible = should_show;
             return true;
@@ -15210,6 +15586,362 @@ mod tests {
             Some("access_grant.provider.alpha.bundle")
         );
         assert_eq!(incoming.required_price_sats, Some(250));
+    }
+
+    #[test]
+    fn data_seller_intake_matches_ds_listing_coordinate_across_multiple_assets() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle alpha".to_string(),
+                description: None,
+                content_digest: Some("sha256:data-bundle-alpha".to_string()),
+                provenance_ref: Some("oa://bundle/support-alpha".to_string()),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: openagents_kernel_core::data::DataAssetNostrPublications {
+                    ds_listing: Some(openagents_kernel_core::data::NostrPublicationRef {
+                        coordinate: Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.provider.alpha.bundle".to_string()),
+                        event_id: None,
+                        relay_url: None,
+                    }),
+                    ds_draft_listing: None,
+                },
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1listing-route".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_010_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.beta.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle beta".to_string(),
+                description: None,
+                content_digest: Some("sha256:data-bundle-beta".to_string()),
+                provenance_ref: Some("oa://bundle/support-beta".to_string()),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(500),
+                }),
+                created_at_ms: 1_762_700_020_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: openagents_kernel_core::data::DataAssetNostrPublications {
+                    ds_listing: Some(openagents_kernel_core::data::NostrPublicationRef {
+                        coordinate: Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.provider.beta.bundle".to_string()),
+                        event_id: None,
+                        relay_url: None,
+                    }),
+                    ds_draft_listing: None,
+                },
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.beta.bundle".to_string(),
+                asset_id: "data_asset.provider.beta.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1other-buyer".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(500),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_030_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        let request = fixture_data_access_request(
+            "listing-route",
+            "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.provider.alpha.bundle",
+            250,
+        );
+
+        pane.note_incoming_request(&request, false, 1_760_000_100);
+
+        let incoming = pane
+            .latest_incoming_request()
+            .expect("incoming request should be recorded");
+        assert_eq!(
+            incoming.evaluation_disposition,
+            super::DataSellerRequestEvaluationDisposition::ReadyForPaymentQuote
+        );
+        assert_eq!(incoming.asset_match_posture.as_deref(), Some("ds_listing"));
+        assert_eq!(
+            incoming.matched_asset_id.as_deref(),
+            Some("data_asset.provider.alpha.bundle")
+        );
+        assert_eq!(
+            incoming.matched_listing_coordinate.as_deref(),
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.provider.alpha.bundle"
+            )
+        );
+        assert_eq!(
+            incoming.matched_grant_id.as_deref(),
+            Some("access_grant.provider.alpha.bundle")
+        );
+    }
+
+    #[test]
+    fn data_seller_intake_matches_ds_offer_coordinate_across_multiple_grants() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle alpha".to_string(),
+                description: None,
+                content_digest: Some("sha256:data-bundle-alpha".to_string()),
+                provenance_ref: Some("oa://bundle/support-alpha".to_string()),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: openagents_kernel_core::data::DataAssetNostrPublications {
+                    ds_listing: Some(openagents_kernel_core::data::NostrPublicationRef {
+                        coordinate: Some("30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.provider.alpha.bundle".to_string()),
+                        event_id: None,
+                        relay_url: None,
+                    }),
+                    ds_draft_listing: None,
+                },
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1offer-route".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_010_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: openagents_kernel_core::data::AccessGrantNostrPublications {
+                    ds_offer: Some(openagents_kernel_core::data::NostrPublicationRef {
+                        coordinate: Some("30406:1111111111111111111111111111111111111111111111111111111111111111:access_grant.provider.alpha.bundle".to_string()),
+                        event_id: None,
+                        relay_url: None,
+                    }),
+                    ds_access_request: None,
+                    ds_access_result: None,
+                },
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.beta.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle beta".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.beta.bundle".to_string(),
+                asset_id: "data_asset.provider.beta.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1other-buyer".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(500),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_030_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: openagents_kernel_core::data::AccessGrantNostrPublications {
+                    ds_offer: Some(openagents_kernel_core::data::NostrPublicationRef {
+                        coordinate: Some("30406:1111111111111111111111111111111111111111111111111111111111111111:access_grant.provider.beta.bundle".to_string()),
+                        event_id: None,
+                        relay_url: None,
+                    }),
+                    ds_access_request: None,
+                    ds_access_result: None,
+                },
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        let request = fixture_data_access_request(
+            "offer-route",
+            "30406:1111111111111111111111111111111111111111111111111111111111111111:access_grant.provider.alpha.bundle",
+            250,
+        );
+
+        pane.note_incoming_request(&request, false, 1_760_000_100);
+
+        let incoming = pane
+            .latest_incoming_request()
+            .expect("incoming request should be recorded");
+        assert_eq!(
+            incoming.evaluation_disposition,
+            super::DataSellerRequestEvaluationDisposition::ReadyForPaymentQuote
+        );
+        assert_eq!(incoming.asset_match_posture.as_deref(), Some("ds_offer"));
+        assert_eq!(
+            incoming.matched_asset_id.as_deref(),
+            Some("data_asset.provider.alpha.bundle")
+        );
+        assert_eq!(
+            incoming.matched_grant_id.as_deref(),
+            Some("access_grant.provider.alpha.bundle")
+        );
+        assert_eq!(
+            incoming.matched_offer_coordinate.as_deref(),
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:access_grant.provider.alpha.bundle"
+            )
+        );
+    }
+
+    #[test]
+    fn data_seller_intake_rejects_ambiguous_asset_family_when_inventory_has_multiple_matches() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle alpha".to_string(),
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.beta.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle beta".to_string(),
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                ..Default::default()
+            },
+            None,
+        );
+        let request = fixture_data_access_request("ambiguous-family", "conversation_bundle", 250);
+
+        pane.note_incoming_request(&request, false, 1_760_000_100);
+
+        let incoming = pane
+            .latest_incoming_request()
+            .expect("incoming request should be recorded");
+        assert_eq!(
+            incoming.evaluation_disposition,
+            super::DataSellerRequestEvaluationDisposition::AssetMismatch
+        );
+        assert!(
+            incoming
+                .evaluation_summary
+                .contains("seller inventory has 2 active matches")
+        );
     }
 
     #[test]
