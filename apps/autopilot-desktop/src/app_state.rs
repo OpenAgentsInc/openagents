@@ -4107,12 +4107,12 @@ impl DataSellerPaneState {
         };
         self.last_error = None;
         self.last_action = Some(format!(
-            "Recording {} control for data request {}",
+            "Recording {} state for data request {}",
             action.label(),
             request_id_owned
         ));
         self.status_line = format!(
-            "Recording {} control against kernel authority for request {}.",
+            "Recording {} state for request {}.",
             action.label(),
             request_id_owned
         );
@@ -4278,11 +4278,11 @@ impl DataSellerPaneState {
         };
         self.last_error = None;
         self.last_action = Some(format!(
-            "Accepting grant and issuing delivery for data request {}",
+            "Preparing relay-native delivery for data request {}",
             request_id_owned
         ));
         self.status_line = format!(
-            "Accepting grant for request {} before delivery issuance.",
+            "Preparing relay-native delivery for request {}.",
             request_id_owned
         );
         Ok(())
@@ -4299,11 +4299,11 @@ impl DataSellerPaneState {
         };
         self.last_error = None;
         self.last_action = Some(format!(
-            "Issuing DeliveryBundle for data request {}",
+            "Finalizing relay-native delivery for data request {}",
             request_id_owned
         ));
         self.status_line = format!(
-            "Kernel delivery issuance in progress for request {}.",
+            "Relay-native delivery issuance in progress for request {}.",
             request_id_owned
         );
         Ok(())
@@ -4329,11 +4329,11 @@ impl DataSellerPaneState {
         self.last_delivery_publish_receipt_id = receipt_id;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Issued DeliveryBundle {} for data request {}",
+            "Prepared delivery bundle {} for data request {}",
             delivery.delivery_bundle_id, request_id_owned
         ));
         self.status_line = format!(
-            "Delivery bundle {} issued for request {}. Publishing NIP-90 result next.",
+            "Delivery bundle {} prepared for request {}. Publishing NIP-90 result next.",
             delivery.delivery_bundle_id, request_id_owned
         );
         Ok(())
@@ -4465,7 +4465,7 @@ impl DataSellerPaneState {
         self.last_revocation_publish_receipt_id = receipt_id;
         self.last_error = None;
         self.last_action = Some(format!(
-            "{} access for data request {} and read back revocation {} from kernel authority",
+            "{} access for data request {} with revocation {}",
             action.past_tense_label(),
             request_id_owned,
             revocation.revocation_id
@@ -5348,7 +5348,7 @@ impl DataMarketPaneState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Reflected issued delivery {} into the Data Market pane from kernel read-back",
+            "Reflected delivery {} into the Data Market pane",
             delivery.delivery_bundle_id
         ));
     }
@@ -5377,7 +5377,7 @@ impl DataMarketPaneState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(format!(
-            "Reflected revocation {} into the Data Market pane from kernel read-back",
+            "Reflected revocation {} into the Data Market pane",
             revocation.revocation_id
         ));
     }

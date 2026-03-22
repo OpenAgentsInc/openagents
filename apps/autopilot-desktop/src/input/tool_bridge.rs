@@ -1643,6 +1643,7 @@ pub(crate) fn execute_data_market_seller_status_tool(
     state: &mut RenderState,
 ) -> ToolBridgeResultEnvelope {
     crate::data_seller_control::hydrate_data_seller_inventory_from_relay_replica(state);
+    crate::data_seller_control::reconcile_all_data_seller_requests_from_relay_catalog(state);
     ToolBridgeResultEnvelope::ok(
         "OA-DATA-MARKET-SELLER-STATUS",
         "Loaded Data Seller status snapshot.",
@@ -2172,7 +2173,7 @@ pub(crate) fn execute_data_market_issue_delivery_tool(
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-DELIVERY-ISSUED",
-            "Accepted the grant if needed, issued the DeliveryBundle, and queued the linked NIP-90 result.",
+            "Prepared the relay-native delivery bundle and queued the linked NIP-90 result.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -2195,7 +2196,7 @@ pub(crate) fn execute_data_market_revoke_grant_tool(
     if !args.confirm {
         return ToolBridgeResultEnvelope::error(
             "OA-DATA-MARKET-CONFIRM-REQUIRED",
-            "Revocation requires confirm=true because it mutates post-sale authority state.",
+            "Revocation requires confirm=true because it mutates post-sale access state.",
             data_seller_tool_snapshot(state),
         );
     }
@@ -2215,7 +2216,7 @@ pub(crate) fn execute_data_market_revoke_grant_tool(
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-REVOCATION-RECORDED",
-            "Recorded the seller revoke/expire control and read the resulting receipt back from kernel authority.",
+            "Recorded the seller revoke/expire state and published the relay-native lifecycle update.",
             data_seller_tool_snapshot(state),
         )
     } else {
