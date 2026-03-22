@@ -1647,9 +1647,9 @@ impl DataBuyerPaneState {
             .unwrap_or(0);
         let listing_coordinate = listing.map(|listing| listing.coordinate.clone());
         let offer_coordinate = catalog_offer.map(|offer| offer.coordinate.clone());
-        let asset_ref = offer_coordinate
+        let asset_ref = listing_coordinate
             .clone()
-            .or(listing_coordinate.clone())
+            .or(offer_coordinate.clone())
             .or_else(|| asset.map(|asset| asset.asset_id.clone()))?;
 
         Some(DataBuyerRequestDraft {
@@ -15796,7 +15796,7 @@ mod tests {
         );
         assert_eq!(
             draft.asset_ref,
-            "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.data.offer.001"
+            "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.bundle"
         );
         assert_eq!(draft.asset_id, "data_asset.npub1seller.bundle");
         assert_eq!(

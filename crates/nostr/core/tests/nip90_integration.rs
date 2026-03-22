@@ -716,6 +716,16 @@ fn test_error_feedback_workflow() {
 fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
     let request = DataVendingRequest::new(5960, "asset://repo-alpha", "read.context")
         .unwrap()
+        .with_listing_coordinate(
+            "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:dataset.repo-alpha",
+        )
+        .unwrap()
+        .with_offer_coordinate(
+            "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:offer.repo-alpha",
+        )
+        .unwrap()
+        .with_asset_id("asset.repo-alpha")
+        .with_grant_id("grant.repo-alpha")
         .add_scope("derive.summary")
         .with_delivery_mode(DataVendingDeliveryMode::EncryptedPointer)
         .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
@@ -734,6 +744,18 @@ fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
     };
     let parsed_request = DataVendingRequest::from_event(&request_event).unwrap();
     assert_eq!(parsed_request.asset_ref, "asset://repo-alpha");
+    assert_eq!(parsed_request.asset_id.as_deref(), Some("asset.repo-alpha"));
+    assert_eq!(parsed_request.grant_id.as_deref(), Some("grant.repo-alpha"));
+    assert_eq!(
+        parsed_request
+            .listing_ref
+            .as_ref()
+            .map(|reference| reference.coordinate.to_string())
+            .as_deref(),
+        Some(
+            "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:dataset.repo-alpha"
+        )
+    );
     assert_eq!(
         parsed_request.permission_scopes,
         vec!["read.context".to_string(), "derive.summary".to_string()]
@@ -752,6 +774,15 @@ fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
         "{\"bundle\":\"ready\"}",
     )
     .unwrap()
+    .with_listing_coordinate(
+        "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:dataset.repo-alpha",
+    )
+    .unwrap()
+    .with_offer_coordinate(
+        "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:offer.repo-alpha",
+    )
+    .unwrap()
+    .with_asset_id("asset.repo-alpha")
     .with_grant_id("grant://repo-alpha.001")
     .with_delivery_mode(DataVendingDeliveryMode::DeliveryBundleRef)
     .with_preview_posture(DataVendingPreviewPosture::InlinePreview)
@@ -780,6 +811,7 @@ fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
         parsed_result.delivery_ref.as_deref(),
         Some("oa://deliveries/repo-alpha/001")
     );
+    assert_eq!(parsed_result.asset_id.as_deref(), Some("asset.repo-alpha"));
 
     let feedback = DataVendingFeedback::new(
         JobStatus::Error,
@@ -787,6 +819,15 @@ fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
         "buyer-pubkey",
         "asset://repo-alpha",
     )
+    .with_listing_coordinate(
+        "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:dataset.repo-alpha",
+    )
+    .unwrap()
+    .with_offer_coordinate(
+        "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:offer.repo-alpha",
+    )
+    .unwrap()
+    .with_asset_id("asset.repo-alpha")
     .with_grant_id("grant://repo-alpha.001")
     .with_reason_code("asset_policy_denied")
     .with_status_extra("provider refused export");
@@ -810,4 +851,5 @@ fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
         parsed_feedback.status_extra.as_deref(),
         Some("provider refused export")
     );
+    assert_eq!(parsed_feedback.asset_id.as_deref(), Some("asset.repo-alpha"));
 }
