@@ -365,6 +365,10 @@ fn apply_data_seller_ingressed_request(
         state
             .data_seller
             .note_incoming_request(&request, preview_only, now_epoch_seconds);
+    crate::data_seller_control::reconcile_data_seller_request_from_relay_catalog(
+        state,
+        request.request_id.as_str(),
+    );
 
     if preview_only {
         state.provider_runtime.last_result =

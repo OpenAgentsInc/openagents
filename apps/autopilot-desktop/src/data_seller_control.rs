@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
 use nostr::nip_ds::{
-    AddressableEventCoordinate, AddressableEventReference, DatasetListing, DatasetOffer,
-    DatasetOfferStatus, PaymentMethod,
+    AddressableEventCoordinate, AddressableEventReference, DatasetAccessContract,
+    DatasetAccessContractStatus, DatasetListing, DatasetOffer, DatasetOfferStatus,
+    EventReference, PaymentMethod, PublicKeyReference,
 };
 use nostr::nip15::{MarketplaceProduct, MarketplaceStall};
 use nostr::nip90::{
@@ -32,8 +33,10 @@ use openagents_spark::PaymentSummary;
 use serde_json::json;
 
 use crate::app_state::{
-    AutopilotRole, DataMarketLifecycleEntry, DataSellerCodexSessionPhase,
-    DataSellerIncomingRequest, DataSellerRevocationAction, DataSellerSkillAttachment,
+    AutopilotRole, DataMarketLifecycleEntry, DataMarketPaneState, DataSellerCodexSessionPhase,
+    DataSellerDeliveryState, DataSellerIncomingRequest, DataSellerPaymentState,
+    DataSellerRevocationAction, DataSellerRevocationState, DataSellerSkillAttachment,
+    RelayDatasetAccessContractProjection, RelayDatasetAccessResultProjection,
     RelayDatasetListingProjection, RelayDatasetOfferProjection, RenderState,
 };
 use crate::codex_lane::CodexLaneCommand;
@@ -774,6 +777,630 @@ fn upsert_relay_offer_projection(
     } else {
         relay_offers.push(projection);
     }
+}
+
+fn upsert_relay_access_contract_projection(
+    relay_access_contracts: &mut Vec<RelayDatasetAccessContractProjection>,
+    projection: RelayDatasetAccessContractProjection,
+) {
+    if let Some(existing) = relay_access_contracts.iter_mut().find(|existing| {
+        existing
+            .coordinate
+            .eq_ignore_ascii_case(projection.coordinate.as_str())
+    }) {
+        *existing = projection;
+    } else {
+        relay_access_contracts.push(projection);
+    }
+}
+
+fn upsert_relay_result_projection(
+    relay_results: &mut Vec<RelayDatasetAccessResultProjection>,
+    projection: RelayDatasetAccessResultProjection,
+) {
+    if let Some(existing) = relay_results.iter_mut().find(|existing| {
+        existing
+            .event_id
+            .eq_ignore_ascii_case(projection.event_id.as_str())
+    }) {
+        *existing = projection;
+    } else {
+        relay_results.push(projection);
+    }
+}
+
+fn request_contract_identifier(request: &DataSellerIncomingRequest) -> String {
+    request.request_id.clone()
+}
+
+fn request_buyer_pubkey_hex(request: &DataSellerIncomingRequest) -> Result<String, String> {
+    let normalized =
+        crate::nip90_compute_semantics::normalize_pubkey(request.effective_consumer_id());
+    if normalized.len() == 64
+        && normalized
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        Ok(normalized.to_ascii_lowercase())
+    } else {
+        Err(format!(
+            "Request {} is missing a valid buyer pubkey for DS access contract publication.",
+            request.request_id
+        ))
+    }
+}
+
+fn request_delivery_expiry_epoch_seconds(
+    request: &DataSellerIncomingRequest,
+    created_at_ms: i64,
+) -> Option<u64> {
+    request
+        .delivery_draft
+        .expires_in_hours
+        .map(|hours| {
+            created_at_ms.saturating_add(
+                i64::try_from(hours)
+                    .unwrap_or(i64::MAX)
+                    .saturating_mul(60)
+                    .saturating_mul(60)
+                    .saturating_mul(1000),
+            )
+        })
+        .and_then(|expires_at_ms| u64::try_from(expires_at_ms.max(0) / 1000).ok())
+        .or(request.expires_at_epoch_seconds)
+}
+
+fn optional_contract_delivery_digest(value: Option<&str>) -> Option<String> {
+    strip_sha256_prefix(value).ok()
+}
+
+fn data_seller_access_contract_content(
+    status: &DatasetAccessContractStatus,
+    request: &DataSellerIncomingRequest,
+) -> String {
+    match status {
+        DatasetAccessContractStatus::PaymentRequired => format!(
+            "Lightning settlement required before dataset request {} can proceed.",
+            request.request_id
+        ),
+        DatasetAccessContractStatus::Paid => format!(
+            "Lightning settlement observed for dataset request {}.",
+            request.request_id
+        ),
+        DatasetAccessContractStatus::Delivered => format!(
+            "Dataset request {} has been fulfilled and delivery is available.",
+            request.request_id
+        ),
+        DatasetAccessContractStatus::Revoked => format!(
+            "Dataset request {} has been revoked by the seller.",
+            request.request_id
+        ),
+        DatasetAccessContractStatus::Expired => format!(
+            "Dataset request {} expired after its delivery window elapsed.",
+            request.request_id
+        ),
+        DatasetAccessContractStatus::Refunded => format!(
+            "Dataset request {} was refunded after revocation.",
+            request.request_id
+        ),
+    }
+}
+
+fn build_data_seller_access_contract(
+    request: &DataSellerIncomingRequest,
+    seller_pubkey: &str,
+    status: DatasetAccessContractStatus,
+    result_event_id: Option<&str>,
+    reason_code: Option<&str>,
+) -> Result<DatasetAccessContract, String> {
+    let listing_ref = request_listing_ref_for_event(request)?;
+    let buyer = PublicKeyReference::new(request_buyer_pubkey_hex(request)?)
+        .map_err(|error| format!("Cannot encode DS contract buyer ref: {error}"))?;
+    let request_ref = EventReference::new(request.request_id.clone())
+        .map_err(|error| format!("Cannot encode DS contract request ref: {error}"))?;
+    let mut contract = DatasetAccessContract::new(
+        request_contract_identifier(request),
+        data_seller_access_contract_content(&status, request),
+        listing_ref,
+        request_ref,
+        buyer,
+    )
+    .with_status(status.clone());
+    if let Some(offer_ref) = request_offer_ref_for_event(request)? {
+        contract = contract.with_offer_ref(offer_ref);
+    }
+    let amount_msats = request
+        .payment_amount_sats
+        .or(request.required_price_sats)
+        .or((request.price_sats > 0).then_some(request.price_sats))
+        .map(|amount_sats| amount_sats.saturating_mul(1000));
+    if let Some(amount_msats) = amount_msats {
+        contract = contract
+            .with_payment_method(PaymentMethod::new("ln"))
+            .with_amount_msats(amount_msats, request.pending_bolt11.clone());
+    }
+    let delivery_mode = delivery_mode_for_request(request);
+    if !delivery_mode.as_str().trim().is_empty() {
+        contract = contract.with_delivery_mode(delivery_mode.as_str().to_string());
+    }
+    if let Some(delivery_ref) = request
+        .delivery_draft
+        .delivery_ref
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        contract = contract.with_delivery_ref(delivery_ref.to_string());
+    }
+    if let Some(delivery_digest) =
+        optional_contract_delivery_digest(request.delivery_draft.delivery_digest.as_deref())
+    {
+        contract = contract.with_delivery_digest(delivery_digest);
+    }
+    if matches!(
+        &status,
+        DatasetAccessContractStatus::Delivered
+            | DatasetAccessContractStatus::Revoked
+            | DatasetAccessContractStatus::Expired
+    ) && let Some(result_event_id) = result_event_id
+    {
+        contract = contract.with_result_ref(
+            EventReference::new(result_event_id.to_string())
+                .map_err(|error| format!("Cannot encode DS contract result ref: {error}"))?,
+        );
+    }
+    let expires_at = request_delivery_expiry_epoch_seconds(
+        request,
+        request
+            .payment_observed_at_epoch_seconds
+            .and_then(|epoch_seconds| i64::try_from(epoch_seconds).ok())
+            .unwrap_or_else(|| i64::try_from(current_epoch_seconds()).unwrap_or(i64::MAX))
+            .saturating_mul(1000),
+    );
+    if let Some(expires_at) = expires_at {
+        contract = contract.with_expires_at(expires_at);
+    }
+    if matches!(
+        &status,
+        DatasetAccessContractStatus::Revoked | DatasetAccessContractStatus::Expired
+    ) {
+        let reason_code = reason_code
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or(request.revocation_reason_code.as_deref())
+            .unwrap_or(match &status {
+                DatasetAccessContractStatus::Revoked => "seller_revoked_access",
+                DatasetAccessContractStatus::Expired => "access_window_expired",
+                _ => "unspecified",
+            });
+        contract = contract.with_reason_code(reason_code.to_string());
+    }
+    contract
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive DS access contract coordinate: {error}"))?;
+    Ok(contract)
+}
+
+fn local_dataset_access_contract_projection(
+    seller_pubkey: &str,
+    relay_url: Option<String>,
+    contract: &DatasetAccessContract,
+    request: &DataSellerIncomingRequest,
+    created_at_seconds: u64,
+) -> Result<RelayDatasetAccessContractProjection, String> {
+    let coordinate = contract
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive DS access contract coordinate: {error}"))?
+        .to_string();
+    Ok(RelayDatasetAccessContractProjection {
+        coordinate,
+        seller_pubkey: seller_pubkey.to_string(),
+        buyer_pubkey: contract.buyer.pubkey.clone(),
+        relay_url,
+        listing_coordinate: contract.listing_ref.coordinate.to_string(),
+        offer_coordinate: contract
+            .offer_ref
+            .as_ref()
+            .map(|reference| reference.coordinate.to_string()),
+        request_event_id: request.request_id.clone(),
+        result_event_id: contract
+            .result_ref
+            .as_ref()
+            .map(|reference| reference.event_id.clone()),
+        status: contract.status.as_str().to_string(),
+        payment_method: contract
+            .payment_method
+            .as_ref()
+            .map(|payment_method| payment_method.rail.clone()),
+        amount_msats: contract.amount_msats,
+        bolt11: contract.bolt11.clone(),
+        payment_hash: contract
+            .bolt11
+            .as_deref()
+            .and_then(decode_lightning_invoice_payment_hash)
+            .or_else(|| request.settlement_payment_hash.clone()),
+        payment_evidence_event_ids: contract
+            .payment_evidence_refs
+            .iter()
+            .map(|reference| reference.event_id.clone())
+            .collect(),
+        delivery_mode: contract.delivery_mode.clone(),
+        delivery_ref: contract.delivery_ref.clone(),
+        delivery_mime_type: contract.delivery_mime_type.clone(),
+        delivery_digest: contract.delivery_digest.clone(),
+        created_at_seconds,
+        expires_at_seconds: contract.expires_at,
+        reason_code: contract.reason_code.clone(),
+        linked_asset_id: request.matched_asset_id.clone(),
+        linked_grant_id: request.matched_grant_id.clone(),
+    })
+}
+
+fn local_dataset_access_result_projection(
+    seller_pubkey: &str,
+    relay_url: Option<String>,
+    request: &DataSellerIncomingRequest,
+    event_id: &str,
+    created_at_seconds: u64,
+) -> Result<RelayDatasetAccessResultProjection, String> {
+    Ok(RelayDatasetAccessResultProjection {
+        event_id: event_id.to_string(),
+        seller_pubkey: seller_pubkey.to_string(),
+        buyer_pubkey: request_buyer_pubkey_hex(request)?,
+        relay_url,
+        request_event_id: request.request_id.clone(),
+        listing_coordinate: request_listing_ref_for_event(request)?.coordinate.to_string(),
+        offer_coordinate: request_offer_ref_for_event(request)?
+            .map(|reference| reference.coordinate.to_string()),
+        asset_ref: request_asset_ref_for_event(request)?,
+        asset_id: request.matched_asset_id.clone(),
+        grant_id: request.matched_grant_id.clone(),
+        delivery_bundle_id: request.delivery_bundle_id.clone().unwrap_or_else(|| {
+            format!(
+                "delivery_bundle.{}",
+                canonical_component(request.request_id.as_str())
+            )
+        }),
+        delivery_mode: delivery_mode_for_request(request).as_str().to_string(),
+        preview_posture: preview_posture_for_request(request).as_str().to_string(),
+        delivery_ref: request.delivery_draft.delivery_ref.clone(),
+        delivery_digest: request.delivery_draft.delivery_digest.clone(),
+        amount_msats: request
+            .payment_amount_sats
+            .or(request.required_price_sats)
+            .or((request.price_sats > 0).then_some(request.price_sats))
+            .map(|amount_sats| amount_sats.saturating_mul(1000)),
+        bolt11: request.pending_bolt11.clone(),
+        payment_hash: request
+            .settlement_payment_hash
+            .clone()
+            .or_else(|| {
+                request
+                    .pending_bolt11
+                    .as_deref()
+                    .and_then(decode_lightning_invoice_payment_hash)
+            }),
+        created_at_seconds,
+        linked_asset_id: request.matched_asset_id.clone(),
+        linked_grant_id: request.matched_grant_id.clone(),
+    })
+}
+
+fn record_local_access_contract_projection(
+    state: &mut RenderState,
+    projection: RelayDatasetAccessContractProjection,
+) -> Result<(), String> {
+    let mut relay_access_contracts = state.data_market.relay_access_contracts.clone();
+    upsert_relay_access_contract_projection(&mut relay_access_contracts, projection);
+    state.data_market.apply_relay_catalog(
+        state.data_market.relay_listings.clone(),
+        state.data_market.relay_offers.clone(),
+        state.data_market.relay_requests.clone(),
+        relay_access_contracts,
+        state.data_market.relay_results.clone(),
+        state.data_market.relay_settlement_matches.clone(),
+        current_epoch_ms(),
+    );
+    crate::data_market_control::persist_data_market_relay_replica_from_state(state)?;
+    state.data_buyer.sync_selection(&state.data_market);
+    Ok(())
+}
+
+fn record_local_access_result_projection(
+    state: &mut RenderState,
+    projection: RelayDatasetAccessResultProjection,
+) -> Result<(), String> {
+    let mut relay_results = state.data_market.relay_results.clone();
+    upsert_relay_result_projection(&mut relay_results, projection);
+    state.data_market.apply_relay_catalog(
+        state.data_market.relay_listings.clone(),
+        state.data_market.relay_offers.clone(),
+        state.data_market.relay_requests.clone(),
+        state.data_market.relay_access_contracts.clone(),
+        relay_results,
+        state.data_market.relay_settlement_matches.clone(),
+        current_epoch_ms(),
+    );
+    crate::data_market_control::persist_data_market_relay_replica_from_state(state)?;
+    state.data_buyer.sync_selection(&state.data_market);
+    Ok(())
+}
+
+fn publish_data_seller_access_contract(
+    state: &mut RenderState,
+    request_id: &str,
+    status: DatasetAccessContractStatus,
+    result_event_id: Option<&str>,
+    reason_code: Option<&str>,
+) -> Result<String, String> {
+    let request = state
+        .data_seller
+        .request_by_id(request_id)
+        .cloned()
+        .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+    let identity = state
+        .nostr_identity
+        .clone()
+        .ok_or_else(|| "Cannot publish DS access contract: Nostr identity unavailable.".to_string())?;
+    let contract = build_data_seller_access_contract(
+        &request,
+        identity.public_key_hex.as_str(),
+        status,
+        result_event_id,
+        reason_code,
+    )?;
+    let template = contract
+        .to_event_template(current_epoch_seconds())
+        .map_err(|error| format!("Cannot build DS access contract event: {error}"))?;
+    let event = sign_event_template(&identity, &template)?;
+    let accepted_relays = publish_event_to_relays(
+        state.configured_provider_relay_urls().as_slice(),
+        &event,
+        "DS access contract",
+    )?;
+    let projection = local_dataset_access_contract_projection(
+        identity.public_key_hex.as_str(),
+        accepted_relays.first().cloned(),
+        &contract,
+        &request,
+        event.created_at,
+    )?;
+    record_local_access_contract_projection(state, projection)?;
+    Ok(event.id)
+}
+
+fn relay_only_delivery_bundle_for_request(
+    request: &DataSellerIncomingRequest,
+    provider_id: &str,
+    consumer_id: &str,
+    created_at_ms: i64,
+) -> Result<DeliveryBundle, String> {
+    let grant_id = request
+        .matched_grant_id
+        .as_deref()
+        .ok_or_else(|| format!("Request {} is missing a matched grant.", request.request_id))?;
+    let asset_id = request
+        .matched_asset_id
+        .as_deref()
+        .ok_or_else(|| format!("Request {} is missing a matched asset.", request.request_id))?;
+    Ok(
+        build_issue_delivery_bundle_request(
+            request,
+            grant_id,
+            asset_id,
+            provider_id,
+            consumer_id,
+            None,
+            created_at_ms,
+        )
+        .delivery_bundle,
+    )
+}
+
+fn relay_only_revocation_receipt_for_request(
+    request: &DataSellerIncomingRequest,
+    provider_id: &str,
+    consumer_id: Option<&str>,
+    action: DataSellerRevocationAction,
+    reason_code: Option<&str>,
+    created_at_ms: i64,
+) -> Result<RevocationReceipt, String> {
+    let grant_id = request
+        .matched_grant_id
+        .as_deref()
+        .ok_or_else(|| format!("Request {} is missing a matched grant.", request.request_id))?;
+    let asset_id = request
+        .matched_asset_id
+        .as_deref()
+        .ok_or_else(|| format!("Request {} is missing a matched asset.", request.request_id))?;
+    let revoked_delivery_bundle_ids = request
+        .delivery_bundle_id
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    Ok(
+        build_revoke_access_grant_request(
+            request,
+            grant_id,
+            asset_id,
+            provider_id,
+            consumer_id,
+            revoked_delivery_bundle_ids,
+            action,
+            reason_code,
+            None,
+            created_at_ms,
+        )
+        .revocation,
+    )
+}
+
+fn reconcile_request_from_relay_catalog(
+    request: &DataSellerIncomingRequest,
+    market: &DataMarketPaneState,
+) -> DataSellerIncomingRequest {
+    let mut reconciled = request.clone();
+    let contract = market
+        .relay_access_contract_for_request(request.request_id.as_str())
+        .cloned();
+    let result = market
+        .relay_delivery_lookup_for_request(request.request_id.as_str())
+        .cloned();
+    let settlement = market
+        .relay_settlement_matches_for_request(request.request_id.as_str())
+        .into_iter()
+        .max_by_key(|entry| (entry.observed_at_seconds, entry.payment_pointer.as_str()))
+        .cloned();
+
+    if let Some(contract) = contract.as_ref() {
+        if let Some(bolt11) = contract
+            .bolt11
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            reconciled.pending_bolt11 = Some(bolt11.to_string());
+            reconciled.pending_bolt11_created_at_epoch_seconds =
+                Some(contract.created_at_seconds);
+            reconciled.settlement_payment_hash = contract
+                .payment_hash
+                .clone()
+                .or_else(|| decode_lightning_invoice_payment_hash(bolt11));
+        }
+        if let Some(amount_msats) = contract.amount_msats {
+            reconciled.payment_amount_sats = Some(amount_msats / 1000);
+        }
+        if let Some(delivery_mode) = contract
+            .delivery_mode
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            reconciled.delivery_mode = Some(delivery_mode.to_string());
+        }
+        if let Some(delivery_ref) = contract
+            .delivery_ref
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            reconciled.delivery_draft.delivery_ref = Some(delivery_ref.to_string());
+        }
+        if let Some(delivery_digest) = contract
+            .delivery_digest
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            reconciled.delivery_draft.delivery_digest = Some(delivery_digest.to_string());
+        }
+        if let Some(result_event_id) = contract.result_event_id.as_deref() {
+            reconciled.delivery_result_event_id = Some(result_event_id.to_string());
+        }
+
+        match contract.status.to_ascii_lowercase().as_str() {
+            "payment-required" => {
+                if reconciled.payment_state != DataSellerPaymentState::Paid {
+                    reconciled.payment_state = DataSellerPaymentState::AwaitingPayment;
+                }
+            }
+            "paid" | "delivered" | "revoked" | "expired" | "refunded" => {
+                reconciled.payment_state = DataSellerPaymentState::Paid;
+            }
+            _ => {}
+        }
+
+        match contract.status.to_ascii_lowercase().as_str() {
+            "delivered" => {
+                reconciled.delivery_state = DataSellerDeliveryState::Delivered;
+            }
+            "revoked" => {
+                reconciled.delivery_state = DataSellerDeliveryState::Revoked;
+                reconciled.revocation_state = DataSellerRevocationState::Revoked;
+                reconciled.revocation_reason_code = contract.reason_code.clone();
+                reconciled.revocation_id = Some(contract.coordinate.clone());
+                reconciled.revocation_recorded_at_ms =
+                    Some(relay_projection_created_at_ms(contract.created_at_seconds));
+            }
+            "expired" => {
+                reconciled.delivery_state = DataSellerDeliveryState::Expired;
+                reconciled.revocation_state = DataSellerRevocationState::Expired;
+                reconciled.revocation_reason_code = contract.reason_code.clone();
+                reconciled.revocation_id = Some(contract.coordinate.clone());
+                reconciled.revocation_recorded_at_ms =
+                    Some(relay_projection_created_at_ms(contract.created_at_seconds));
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(settlement) = settlement.as_ref() {
+        reconciled.payment_pointer = Some(settlement.payment_pointer.clone());
+        reconciled.payment_observed_at_epoch_seconds = Some(settlement.observed_at_seconds);
+        reconciled.payment_amount_sats = Some(settlement.amount_sats);
+        reconciled.settlement_payment_hash = Some(settlement.payment_hash.clone());
+        if matches!(
+            reconciled.payment_state,
+            DataSellerPaymentState::AwaitingPayment | DataSellerPaymentState::Idle
+        ) {
+            reconciled.payment_state = DataSellerPaymentState::Paid;
+        }
+    }
+
+    if let Some(result) = result.as_ref() {
+        reconciled.delivery_bundle_id = Some(result.delivery_bundle_id.clone());
+        reconciled.delivery_result_event_id = Some(result.event_id.clone());
+        if let Some(delivery_ref) = result
+            .delivery_ref
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            reconciled.delivery_draft.delivery_ref = Some(delivery_ref.to_string());
+        }
+        if let Some(delivery_digest) = result
+            .delivery_digest
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            reconciled.delivery_draft.delivery_digest = Some(delivery_digest.to_string());
+        }
+        reconciled.delivery_state = match reconciled.revocation_state {
+            DataSellerRevocationState::Revoked => DataSellerDeliveryState::Revoked,
+            DataSellerRevocationState::Expired => DataSellerDeliveryState::Expired,
+            _ => DataSellerDeliveryState::Delivered,
+        };
+    }
+
+    reconciled
+}
+
+pub(crate) fn reconcile_data_seller_request_from_relay_catalog(
+    state: &mut RenderState,
+    request_id: &str,
+) -> bool {
+    crate::data_market_control::hydrate_data_market_relay_replica(state);
+    let Some(existing) = state.data_seller.request_by_id(request_id).cloned() else {
+        return false;
+    };
+    let reconciled = reconcile_request_from_relay_catalog(&existing, &state.data_market);
+    if reconciled == existing {
+        return false;
+    }
+    if let Some(request) = state.data_seller.request_by_id_mut(request_id) {
+        *request = reconciled;
+        return true;
+    }
+    false
+}
+
+pub(crate) fn reconcile_all_data_seller_requests_from_relay_catalog(
+    state: &mut RenderState,
+) -> usize {
+    let request_ids = state
+        .data_seller
+        .incoming_requests
+        .iter()
+        .map(|request| request.request_id.clone())
+        .collect::<Vec<_>>();
+    request_ids
+        .into_iter()
+        .filter(|request_id| reconcile_data_seller_request_from_relay_catalog(state, request_id))
+        .count()
 }
 
 fn record_local_published_asset_projection(
@@ -2441,186 +3068,55 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
         ));
         return true;
     };
-    let Some(grant_id) = request.matched_grant_id.clone() else {
+    let Some(identity) = state.nostr_identity.clone() else {
         state.data_seller.note_delivery_issue_failed(
             request_id,
-            "Matched grant is missing for delivery issuance.",
+            "Cannot publish delivery result: Nostr identity unavailable.",
         );
         return true;
     };
-
-    let client = match crate::kernel_control::remote_authority_client_for_state(state) {
-        Ok(client) => client,
+    let consumer_id = request.effective_consumer_id().to_string();
+    let created_at_ms = current_epoch_ms();
+    let delivery = match relay_only_delivery_bundle_for_request(
+        &request,
+        identity.public_key_hex.as_str(),
+        consumer_id.as_str(),
+        created_at_ms,
+    ) {
+        Ok(delivery) => delivery,
         Err(error) => {
-            state
-                .data_seller
-                .note_delivery_issue_failed(request_id, error);
+            state.data_seller.note_delivery_issue_failed(request_id, error);
             return true;
         }
     };
-
-    let mut grant =
-        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
-            Ok(grant) => grant,
-            Err(error) => {
-                state.data_seller.note_delivery_issue_failed(
-                    request_id,
-                    format!("Failed to load grant {grant_id} before delivery: {error}"),
-                );
-                return true;
-            }
-        };
-
-    if grant.status == AccessGrantStatus::Offered {
-        let accepted_at_ms = current_epoch_ms();
-        let accept_request = build_accept_access_grant_request(
-            &request,
-            grant_id.as_str(),
-            state.data_seller.codex_thread_id.as_deref(),
-            accepted_at_ms,
-        );
-        let accept_response = match crate::kernel_control::run_kernel_call(
-            client.accept_access_grant(accept_request),
-        ) {
-            Ok(response) => response,
-            Err(error) => {
-                state.data_seller.note_delivery_issue_failed(
-                    request_id,
-                    format!("Failed to accept grant {grant_id} before delivery: {error}"),
-                );
-                return true;
-            }
-        };
-        grant = match crate::kernel_control::run_kernel_call(
-            client.get_access_grant(grant_id.as_str()),
-        ) {
-            Ok(grant) => grant,
-            Err(_) => accept_response.grant,
-        };
-    } else if !matches!(
-        grant.status,
-        AccessGrantStatus::Accepted | AccessGrantStatus::Delivered
-    ) {
-        state.data_seller.note_delivery_issue_failed(
-            request_id,
-            format!(
-                "Grant {} is not ready for delivery. Current status is {}.",
-                grant_id,
-                grant.status.label()
-            ),
-        );
+    if let Err(error) =
+        state
+            .data_seller
+            .note_delivery_bundle_issued(request_id, delivery.clone(), None)
+    {
+        state.data_seller.note_delivery_issue_failed(request_id, error);
         return true;
     }
-    state.data_seller.note_grant_state_reconciled(grant.clone());
-    state
-        .data_market
-        .note_published_grant(grant.clone(), current_epoch_ms());
-    state.data_buyer.sync_selection(&state.data_market);
-
-    let delivery = if let Some(existing_delivery_bundle_id) = request.delivery_bundle_id.as_deref()
-    {
-        match crate::kernel_control::run_kernel_call(
-            client.get_delivery_bundle(existing_delivery_bundle_id),
-        ) {
-            Ok(delivery) => delivery,
-            Err(error) => {
-                state.data_seller.note_delivery_issue_failed(
-                    request_id,
-                    format!(
-                        "Failed to reload previously issued delivery {}: {error}",
-                        existing_delivery_bundle_id
-                    ),
-                );
-                return true;
-            }
-        }
-    } else {
-        if let Err(error) = state.data_seller.note_delivery_bundle_issuing(request_id) {
-            state
-                .data_seller
-                .note_delivery_issue_failed(request_id, error);
-            return true;
-        }
-        let created_at_ms = current_epoch_ms();
-        let consumer_id = grant
-            .consumer_id
-            .clone()
-            .unwrap_or_else(|| request.requester.clone());
-        let issue_request = build_issue_delivery_bundle_request(
-            &request,
-            grant.grant_id.as_str(),
-            grant.asset_id.as_str(),
-            grant.provider_id.as_str(),
-            consumer_id.as_str(),
-            state.data_seller.codex_thread_id.as_deref(),
-            created_at_ms,
-        );
-        let issue_response = match crate::kernel_control::run_kernel_call(
-            client.issue_delivery_bundle(issue_request),
-        ) {
-            Ok(response) => response,
-            Err(error) => {
-                state.data_seller.note_delivery_issue_failed(
-                    request_id,
-                    format!("Kernel authority rejected delivery issuance: {error}"),
-                );
-                return true;
-            }
-        };
-        let receipt_id = Some(issue_response.receipt.receipt_id.clone());
-        let delivery_bundle_id = issue_response.delivery_bundle.delivery_bundle_id.clone();
-        let readback_delivery = match crate::kernel_control::run_kernel_call(
-            client.get_delivery_bundle(delivery_bundle_id.as_str()),
-        ) {
-            Ok(delivery) => delivery,
-            Err(_) => issue_response.delivery_bundle,
-        };
-        if let Err(error) = state.data_seller.note_delivery_bundle_issued(
-            request_id,
-            readback_delivery.clone(),
-            receipt_id,
-        ) {
-            state
-                .data_seller
-                .note_delivery_issue_failed(request_id, error);
-            return true;
-        }
-        state
-            .data_market
-            .note_published_delivery(readback_delivery.clone(), current_epoch_ms());
-        state.data_buyer.sync_selection(&state.data_market);
-        record_data_market_lifecycle_entry(
-            state,
-            readback_delivery.created_at_ms,
-            "delivery_issued",
-            readback_delivery.status.label(),
-            readback_delivery.delivery_bundle_id.clone(),
-            Some(readback_delivery.consumer_id.clone()),
-            Some(grant.permission_policy.policy_id.clone()),
-            state.data_seller.last_delivery_publish_receipt_id.clone(),
-            format!(
-                "Issued delivery for grant {} with ref {}.",
-                readback_delivery.grant_id, readback_delivery.delivery_ref
-            ),
-        );
-        readback_delivery
-    };
     state
         .data_market
         .note_published_delivery(delivery.clone(), current_epoch_ms());
     state.data_buyer.sync_selection(&state.data_market);
+    record_data_market_lifecycle_entry(
+        state,
+        delivery.created_at_ms,
+        "delivery_issued",
+        delivery.status.label(),
+        delivery.delivery_bundle_id.clone(),
+        Some(delivery.consumer_id.clone()),
+        state.data_seller.policy_id_for_request(request_id),
+        None,
+        format!(
+            "Prepared relay-native delivery for grant {} with ref {}.",
+            delivery.grant_id, delivery.delivery_ref
+        ),
+    );
 
-    let identity = match state.nostr_identity.as_ref() {
-        Some(identity) => identity,
-        None => {
-            state.data_seller.note_delivery_issue_failed(
-                request_id,
-                "Cannot publish delivery result: Nostr identity unavailable.",
-            );
-            return true;
-        }
-    };
-    let event = match build_data_seller_delivery_result_event(identity, &request, &delivery) {
+    let event = match build_data_seller_delivery_result_event(&identity, &request, &delivery) {
         Ok(event) => event,
         Err(error) => {
             state
@@ -2681,151 +3177,168 @@ pub(crate) fn revoke_data_seller_access(
         ));
         return true;
     };
-    let Some(grant_id) = request.matched_grant_id.clone() else {
+    if request.matched_grant_id.is_none() {
         state
             .data_seller
             .note_revocation_failed(request_id, "Matched grant is missing for revocation.");
         return true;
-    };
-
-    let client = match crate::kernel_control::remote_authority_client_for_state(state) {
-        Ok(client) => client,
-        Err(error) => {
-            state.data_seller.note_revocation_failed(request_id, error);
-            return true;
-        }
-    };
-
-    let grant =
-        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
-            Ok(grant) => grant,
-            Err(error) => {
-                state.data_seller.note_revocation_failed(
-                    request_id,
-                    format!("Failed to load grant {grant_id} before revocation: {error}"),
-                );
-                return true;
-            }
-        };
-    if matches!(
-        grant.status,
-        AccessGrantStatus::Revoked | AccessGrantStatus::Refunded | AccessGrantStatus::Expired
-    ) {
-        state.data_seller.note_revocation_failed(
-            request_id,
-            format!(
-                "Grant {} is already in terminal status {}.",
-                grant_id,
-                grant.status.label()
-            ),
-        );
-        return true;
     }
-
-    let deliveries = match crate::kernel_control::run_kernel_call(client.list_delivery_bundles(
-        None,
-        Some(grant_id.as_str()),
-        None,
-        None,
-        None,
-    )) {
-        Ok(deliveries) => deliveries,
-        Err(error) => {
-            state.data_seller.note_revocation_failed(
-                request_id,
-                format!("Failed to load deliveries for grant {grant_id}: {error}"),
-            );
-            return true;
-        }
-    };
 
     let now_ms = current_epoch_ms();
     if action == DataSellerRevocationAction::Expire {
-        let grant_expired = now_ms >= grant.expires_at_ms;
-        let delivery_expired = deliveries.iter().any(|delivery| {
-            delivery
-                .expires_at_ms
-                .is_some_and(|expires_at_ms| now_ms >= expires_at_ms)
-        });
-        if !grant_expired && !delivery_expired {
+        let now_epoch_seconds = current_epoch_seconds();
+        let contract_expired = state
+            .data_market
+            .relay_access_contract_for_request(request_id)
+            .and_then(|contract| contract.expires_at_seconds)
+            .is_some_and(|expires_at_seconds| now_epoch_seconds >= expires_at_seconds);
+        let request_expired = request
+            .expires_at_epoch_seconds
+            .is_some_and(|expires_at_seconds| now_epoch_seconds >= expires_at_seconds);
+        let delivery_expired = request
+            .delivery_draft
+            .expires_in_hours
+            .and_then(|hours| {
+                request
+                    .payment_observed_at_epoch_seconds
+                    .or(request.created_at_epoch_seconds)
+                    .map(|started_at| {
+                        now_epoch_seconds
+                            >= started_at.saturating_add(hours.saturating_mul(60 * 60))
+                    })
+            })
+            .unwrap_or(false);
+        if !contract_expired && !request_expired && !delivery_expired {
             state.data_seller.note_revocation_failed(
                 request_id,
                 format!(
-                    "Request {} cannot be expired yet because neither the grant nor any delivery bundle is past its expiry window.",
+                    "Request {} cannot be expired yet because neither the relay-native contract nor the known delivery window is past expiry.",
                     request_id
                 ),
             );
             return true;
         }
     }
-
-    let revoke_request = build_revoke_access_grant_request(
+    let Some(identity) = state.nostr_identity.clone() else {
+        state.data_seller.note_revocation_failed(
+            request_id,
+            "Cannot record revocation without a Nostr identity.",
+        );
+        return true;
+    };
+    let consumer_id = request.effective_consumer_id().to_string();
+    let revocation = match relay_only_revocation_receipt_for_request(
         &request,
-        grant.grant_id.as_str(),
-        grant.asset_id.as_str(),
-        grant.provider_id.as_str(),
-        grant.consumer_id.as_deref(),
-        deliveries
-            .iter()
-            .map(|delivery| delivery.delivery_bundle_id.clone())
-            .collect(),
+        identity.public_key_hex.as_str(),
+        Some(consumer_id.as_str()),
         action,
         reason_code,
-        state.data_seller.codex_thread_id.as_deref(),
         now_ms,
-    );
-    let revoke_response =
-        match crate::kernel_control::run_kernel_call(client.revoke_access_grant(revoke_request)) {
-            Ok(response) => response,
-            Err(error) => {
-                state.data_seller.note_revocation_failed(
-                    request_id,
-                    format!("Kernel authority rejected revocation control: {error}"),
-                );
-                return true;
-            }
-        };
-
-    let revocation = match crate::kernel_control::run_kernel_call(
-        client.get_revocation(revoke_response.revocation.revocation_id.as_str()),
     ) {
         Ok(revocation) => revocation,
-        Err(_) => revoke_response.revocation,
-    };
-    let grant =
-        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
-            Ok(grant) => grant,
-            Err(error) => {
-                state.data_seller.note_revocation_failed(
-                    request_id,
-                    format!("Failed to reload grant {grant_id} after revocation: {error}"),
-                );
-                return true;
-            }
-        };
-    let deliveries = match crate::kernel_control::run_kernel_call(client.list_delivery_bundles(
-        None,
-        Some(grant_id.as_str()),
-        None,
-        None,
-        None,
-    )) {
-        Ok(deliveries) => deliveries,
         Err(error) => {
-            state.data_seller.note_revocation_failed(
-                request_id,
-                format!("Failed to reload deliveries for grant {grant_id}: {error}"),
-            );
+            state.data_seller.note_revocation_failed(request_id, error);
             return true;
         }
     };
-
+    let mut deliveries = Vec::new();
+    if request.delivery_bundle_id.is_some() || request.delivery_draft.delivery_ref.is_some() {
+        match relay_only_delivery_bundle_for_request(
+            &request,
+            identity.public_key_hex.as_str(),
+            consumer_id.as_str(),
+            request
+                .payment_observed_at_epoch_seconds
+                .and_then(|epoch_seconds| i64::try_from(epoch_seconds).ok())
+                .unwrap_or_else(|| now_ms / 1000)
+                .saturating_mul(1000),
+        ) {
+            Ok(mut delivery) => {
+                delivery.status = match action {
+                    DataSellerRevocationAction::Revoke => DeliveryBundleStatus::Revoked,
+                    DataSellerRevocationAction::Expire => DeliveryBundleStatus::Expired,
+                };
+                deliveries.push(delivery);
+            }
+            Err(error) => {
+                state.data_seller.note_revocation_failed(request_id, error);
+                return true;
+            }
+        }
+    }
+    let grant = state
+        .data_seller
+        .published_grants_for_display()
+        .into_iter()
+        .find(|grant| {
+            request
+                .matched_grant_id
+                .as_deref()
+                .is_some_and(|grant_id| grant.grant_id.eq_ignore_ascii_case(grant_id))
+        })
+        .cloned()
+        .unwrap_or_else(|| AccessGrant {
+            grant_id: request
+                .matched_grant_id
+                .clone()
+                .unwrap_or_else(|| format!("grant.{}", canonical_component(request.request_id.as_str()))),
+            asset_id: request
+                .matched_asset_id
+                .clone()
+                .unwrap_or_else(|| format!("asset.{}", canonical_component(request.request_id.as_str()))),
+            provider_id: identity.public_key_hex.clone(),
+            consumer_id: Some(consumer_id.clone()),
+            permission_policy: openagents_kernel_core::data::PermissionPolicy {
+                policy_id: state
+                    .data_seller
+                    .policy_id_for_request(request_id)
+                    .unwrap_or_else(|| "targeted_request".to_string()),
+                allowed_scopes: request.permission_scopes.clone(),
+                ..Default::default()
+            },
+            offer_price: request
+                .required_price_sats
+                .or((request.price_sats > 0).then_some(request.price_sats))
+                .map(sats_money),
+            warranty_window_ms: None,
+            created_at_ms: request
+                .created_at_epoch_seconds
+                .and_then(|epoch_seconds| i64::try_from(epoch_seconds).ok())
+                .unwrap_or(now_ms / 1000)
+                .saturating_mul(1000),
+            expires_at_ms: request
+                .expires_at_epoch_seconds
+                .and_then(|epoch_seconds| i64::try_from(epoch_seconds).ok())
+                .unwrap_or(now_ms / 1000)
+                .saturating_mul(1000),
+            accepted_at_ms: request
+                .payment_observed_at_epoch_seconds
+                .and_then(|epoch_seconds| i64::try_from(epoch_seconds).ok())
+                .map(|epoch_seconds| epoch_seconds.saturating_mul(1000)),
+            status: match action {
+                DataSellerRevocationAction::Revoke => AccessGrantStatus::Revoked,
+                DataSellerRevocationAction::Expire => AccessGrantStatus::Expired,
+            },
+            nostr_publications: openagents_kernel_core::data::AccessGrantNostrPublications {
+                ds_offer: request.matched_offer_coordinate.as_ref().map(|coordinate| NostrPublicationRef {
+                    coordinate: Some(coordinate.clone()),
+                    event_id: None,
+                    relay_url: request.source_relay_url.clone(),
+                }),
+                ds_access_request: None,
+                ds_access_result: None,
+            },
+            metadata: json!({
+                "relay_only": true,
+                "request_id": request.request_id.clone(),
+            }),
+        });
     let reflected_at_ms = current_epoch_ms();
     if let Err(error) = state.data_seller.note_revocation_recorded(
         request_id,
         action,
         revocation.clone(),
-        Some(revoke_response.receipt.receipt_id.clone()),
+        None,
         grant.clone(),
         deliveries.as_slice(),
     ) {
@@ -2846,8 +3359,8 @@ pub(crate) fn revoke_data_seller_access(
         .data_market
         .note_published_revocation(revocation.clone(), reflected_at_ms);
     state.data_buyer.sync_selection(&state.data_market);
-    let revocation_feedback_event_id = if let Some(identity) = state.nostr_identity.as_ref() {
-        match build_data_seller_revocation_feedback_event(identity, &request, &revocation) {
+    let revocation_feedback_event_id = {
+        match build_data_seller_revocation_feedback_event(&identity, &request, &revocation) {
             Ok(event) => {
                 let event_id = event.id.clone();
                 match publish_event_to_relays(
@@ -2873,9 +3386,22 @@ pub(crate) fn revoke_data_seller_access(
                 None
             }
         }
-    } else {
-        None
     };
+    if let Err(error) = publish_data_seller_access_contract(
+        state,
+        request_id,
+        match action {
+            DataSellerRevocationAction::Revoke => DatasetAccessContractStatus::Revoked,
+            DataSellerRevocationAction::Expire => DatasetAccessContractStatus::Expired,
+        },
+        request.delivery_result_event_id.as_deref(),
+        reason_code,
+    ) {
+        state.data_seller.last_error = Some(format!(
+            "Recorded relay-native revocation for request {} but DS access contract publish failed: {}",
+            request_id, error
+        ));
+    }
     if let Some((
         revocation_state,
         revocation_id,
@@ -3089,6 +3615,18 @@ pub(crate) fn reconcile_data_seller_wallet_update(
                 "seller payment settled for data request {}",
                 request_id
             ));
+            if let Err(error) = publish_data_seller_access_contract(
+                state,
+                request_id.as_str(),
+                DatasetAccessContractStatus::Paid,
+                None,
+                None,
+            ) {
+                state.data_seller.last_error = Some(format!(
+                    "Observed seller payment for request {} but failed to publish DS access contract: {}",
+                    request_id, error
+                ));
+            }
         }
     }
 }
@@ -3117,6 +3655,18 @@ pub(crate) fn apply_data_seller_publish_outcome(
                 outcome.first_error.as_deref(),
             );
             if handled && published {
+                if let Err(error) = publish_data_seller_access_contract(
+                    state,
+                    outcome.request_id.as_str(),
+                    DatasetAccessContractStatus::PaymentRequired,
+                    None,
+                    None,
+                ) {
+                    state.data_seller.last_error = Some(format!(
+                        "Published payment-required feedback for request {} but DS access contract publish failed: {}",
+                        outcome.request_id, error
+                    ));
+                }
                 if let Some((request_id_owned, requester, payment_state, policy_id, quoted_sats)) =
                     state
                         .data_seller
@@ -3166,6 +3716,48 @@ pub(crate) fn apply_data_seller_publish_outcome(
                 outcome.first_error.as_deref(),
             );
             if handled && published {
+                let seller_pubkey = state
+                    .nostr_identity
+                    .as_ref()
+                    .map(|identity| identity.public_key_hex.clone());
+                let request = state.data_seller.request_by_id(outcome.request_id.as_str()).cloned();
+                if let (Some(seller_pubkey), Some(request)) = (seller_pubkey, request) {
+                    match local_dataset_access_result_projection(
+                        seller_pubkey.as_str(),
+                        outcome.accepted_relay_urls.first().cloned(),
+                        &request,
+                        outcome.event_id.as_str(),
+                        current_epoch_seconds(),
+                    ) {
+                        Ok(projection) => {
+                            if let Err(error) = record_local_access_result_projection(state, projection)
+                            {
+                                state.data_seller.last_error = Some(format!(
+                                    "Published delivery result for request {} but failed to persist the local relay result projection: {}",
+                                    outcome.request_id, error
+                                ));
+                            }
+                        }
+                        Err(error) => {
+                            state.data_seller.last_error = Some(format!(
+                                "Published delivery result for request {} but could not encode the relay result projection: {}",
+                                outcome.request_id, error
+                            ));
+                        }
+                    }
+                }
+                if let Err(error) = publish_data_seller_access_contract(
+                    state,
+                    outcome.request_id.as_str(),
+                    DatasetAccessContractStatus::Delivered,
+                    Some(outcome.event_id.as_str()),
+                    None,
+                ) {
+                    state.data_seller.last_error = Some(format!(
+                        "Published delivery result for request {} but DS access contract publish failed: {}",
+                        outcome.request_id, error
+                    ));
+                }
                 state.provider_runtime.last_result = Some(format!(
                     "seller published delivery result for data request {}",
                     outcome.request_id
@@ -3774,8 +4366,9 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
 mod tests {
     use super::*;
     use crate::app_state::{
-        DataSellerDeliveryDraft, DataSellerDeliveryState, DataSellerPaymentState,
-        DataSellerRequestEvaluationDisposition, DataSellerRevocationState,
+        DataMarketPaneState, DataSellerDeliveryDraft, DataSellerDeliveryState,
+        DataSellerPaymentState, DataSellerRequestEvaluationDisposition,
+        DataSellerRevocationState,
     };
     use nostr::nip90::{DataVendingFeedback, DataVendingResult};
     use openagents_kernel_core::data::PermissionPolicy;
@@ -3783,6 +4376,8 @@ mod tests {
     const SELLER_PUBKEY: &str = "1111111111111111111111111111111111111111111111111111111111111111";
     const BUYER_PUBKEY: &str = "2222222222222222222222222222222222222222222222222222222222222222";
     const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const REQUEST_EVENT_ID: &str =
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     fn fixture_policy() -> PermissionPolicy {
         PermissionPolicy {
@@ -3843,7 +4438,7 @@ mod tests {
 
     fn fixture_request() -> DataSellerIncomingRequest {
         DataSellerIncomingRequest {
-            request_id: "request.example.001".to_string(),
+            request_id: REQUEST_EVENT_ID.to_string(),
             requester: BUYER_PUBKEY.to_string(),
             requested_consumer_id: Some(BUYER_PUBKEY.to_string()),
             source_relay_url: Some("wss://relay.example".to_string()),
@@ -3921,6 +4516,78 @@ mod tests {
             expires_at_ms: Some(1_774_083_630_000),
             status: DeliveryBundleStatus::Issued,
             metadata: json!({}),
+        }
+    }
+
+    fn fixture_contract_projection(
+        status: &str,
+    ) -> crate::app_state::RelayDatasetAccessContractProjection {
+        crate::app_state::RelayDatasetAccessContractProjection {
+            coordinate: format!("30407:{SELLER_PUBKEY}:{REQUEST_EVENT_ID}"),
+            seller_pubkey: SELLER_PUBKEY.to_string(),
+            buyer_pubkey: BUYER_PUBKEY.to_string(),
+            relay_url: Some("wss://relay.example".to_string()),
+            listing_coordinate: format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"),
+            offer_coordinate: Some(format!("30406:{SELLER_PUBKEY}:grant.example.corpus.001")),
+            request_event_id: REQUEST_EVENT_ID.to_string(),
+            result_event_id: Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string()),
+            status: status.to_string(),
+            payment_method: Some("ln".to_string()),
+            amount_msats: Some(5_000),
+            bolt11: Some("lnbc50n1pexample".to_string()),
+            payment_hash: Some("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string()),
+            payment_evidence_event_ids: Vec::new(),
+            delivery_mode: Some("encrypted_pointer".to_string()),
+            delivery_ref: Some("oa://deliveries/example-001".to_string()),
+            delivery_mime_type: None,
+            delivery_digest: Some(DIGEST.to_string()),
+            created_at_seconds: 1_774_080_040,
+            expires_at_seconds: Some(1_774_083_640),
+            reason_code: None,
+            linked_asset_id: Some("data_asset.example.corpus.001".to_string()),
+            linked_grant_id: Some("grant.example.corpus.001".to_string()),
+        }
+    }
+
+    fn fixture_result_projection() -> crate::app_state::RelayDatasetAccessResultProjection {
+        crate::app_state::RelayDatasetAccessResultProjection {
+            event_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+            seller_pubkey: SELLER_PUBKEY.to_string(),
+            buyer_pubkey: BUYER_PUBKEY.to_string(),
+            relay_url: Some("wss://relay.example".to_string()),
+            request_event_id: REQUEST_EVENT_ID.to_string(),
+            listing_coordinate: format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"),
+            offer_coordinate: Some(format!("30406:{SELLER_PUBKEY}:grant.example.corpus.001")),
+            asset_ref: format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"),
+            asset_id: Some("data_asset.example.corpus.001".to_string()),
+            grant_id: Some("grant.example.corpus.001".to_string()),
+            delivery_bundle_id: "delivery_bundle.example.001".to_string(),
+            delivery_mode: "encrypted_pointer".to_string(),
+            preview_posture: "metadata_only".to_string(),
+            delivery_ref: Some("oa://deliveries/example-001".to_string()),
+            delivery_digest: Some(format!("sha256:{DIGEST}")),
+            amount_msats: Some(5_000),
+            bolt11: Some("lnbc50n1pexample".to_string()),
+            payment_hash: Some("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string()),
+            created_at_seconds: 1_774_080_041,
+            linked_asset_id: Some("data_asset.example.corpus.001".to_string()),
+            linked_grant_id: Some("grant.example.corpus.001".to_string()),
+        }
+    }
+
+    fn fixture_settlement_match() -> crate::app_state::RelayDatasetSettlementMatchProjection {
+        crate::app_state::RelayDatasetSettlementMatchProjection {
+            payment_pointer: "spark-payment-001".to_string(),
+            payment_hash: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string(),
+            direction: "receive".to_string(),
+            status: "settled".to_string(),
+            amount_sats: 5,
+            observed_at_seconds: 1_774_080_042,
+            contract_coordinate: Some(format!("30407:{SELLER_PUBKEY}:{REQUEST_EVENT_ID}")),
+            request_event_id: Some(REQUEST_EVENT_ID.to_string()),
+            result_event_id: Some(
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+            ),
         }
     }
 
@@ -4421,6 +5088,151 @@ mod tests {
             Some(
                 "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.example.corpus.001"
             )
+        );
+    }
+
+    #[test]
+    fn dataset_access_contract_builder_strips_delivery_digest_and_preserves_refs() {
+        let mut request = fixture_request();
+        request.delivery_draft.delivery_digest = Some(format!("sha256:{DIGEST}"));
+        let contract = build_data_seller_access_contract(
+            &request,
+            SELLER_PUBKEY,
+            DatasetAccessContractStatus::Delivered,
+            Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+            None,
+        )
+        .expect("contract");
+
+        assert_eq!(contract.status, DatasetAccessContractStatus::Delivered);
+        assert_eq!(contract.buyer.pubkey, BUYER_PUBKEY);
+        assert_eq!(
+            contract.listing_ref.coordinate.to_string(),
+            format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001")
+        );
+        assert_eq!(
+            contract
+                .offer_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some("30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001")
+        );
+        assert_eq!(contract.amount_msats, Some(5_000));
+        assert_eq!(contract.delivery_ref.as_deref(), Some("oa://deliveries/example-001"));
+        assert_eq!(contract.delivery_digest.as_deref(), Some(DIGEST));
+        assert_eq!(
+            contract
+                .result_ref
+                .as_ref()
+                .map(|reference| reference.event_id.as_str()),
+            Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+        );
+    }
+
+    #[test]
+    fn relay_reconciled_request_restores_paid_and_delivered_state() {
+        let mut request = fixture_request();
+        request.payment_state = DataSellerPaymentState::Idle;
+        request.payment_pointer = None;
+        request.payment_observed_at_epoch_seconds = None;
+        request.payment_amount_sats = None;
+        request.delivery_state = DataSellerDeliveryState::Idle;
+        request.delivery_bundle_id = None;
+        request.delivery_result_event_id = None;
+        request.revocation_state = DataSellerRevocationState::Idle;
+
+        let mut market = DataMarketPaneState::default();
+        market.apply_relay_catalog(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![fixture_contract_projection("delivered")],
+            vec![fixture_result_projection()],
+            vec![fixture_settlement_match()],
+            1_774_080_043_000,
+        );
+
+        let reconciled = reconcile_request_from_relay_catalog(&request, &market);
+        assert_eq!(reconciled.payment_state, DataSellerPaymentState::Paid);
+        assert_eq!(reconciled.payment_pointer.as_deref(), Some("spark-payment-001"));
+        assert_eq!(reconciled.payment_amount_sats, Some(5));
+        assert_eq!(
+            reconciled.payment_observed_at_epoch_seconds,
+            Some(1_774_080_042)
+        );
+        assert_eq!(reconciled.delivery_state, DataSellerDeliveryState::Delivered);
+        assert_eq!(
+            reconciled.delivery_bundle_id.as_deref(),
+            Some("delivery_bundle.example.001")
+        );
+        assert_eq!(
+            reconciled.delivery_result_event_id.as_deref(),
+            Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+        );
+    }
+
+    #[test]
+    fn relay_reconciled_request_restores_revoked_state_from_contract() {
+        let mut request = fixture_request();
+        request.payment_state = DataSellerPaymentState::Idle;
+        request.delivery_state = DataSellerDeliveryState::Idle;
+        request.revocation_state = DataSellerRevocationState::Idle;
+        let mut contract = fixture_contract_projection("revoked");
+        contract.reason_code = Some("seller_revoked_access".to_string());
+
+        let mut market = DataMarketPaneState::default();
+        market.apply_relay_catalog(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![contract],
+            vec![fixture_result_projection()],
+            vec![fixture_settlement_match()],
+            1_774_080_043_000,
+        );
+
+        let reconciled = reconcile_request_from_relay_catalog(&request, &market);
+        assert_eq!(reconciled.payment_state, DataSellerPaymentState::Paid);
+        assert_eq!(reconciled.delivery_state, DataSellerDeliveryState::Revoked);
+        assert_eq!(reconciled.revocation_state, DataSellerRevocationState::Revoked);
+        assert_eq!(
+            reconciled.revocation_reason_code.as_deref(),
+            Some("seller_revoked_access")
+        );
+        assert_eq!(
+            reconciled.revocation_id.as_deref(),
+            Some("30407:1111111111111111111111111111111111111111111111111111111111111111:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+    }
+
+    #[test]
+    fn relay_reconciled_request_restores_expired_state_from_contract() {
+        let mut request = fixture_request();
+        request.payment_state = DataSellerPaymentState::Idle;
+        request.delivery_state = DataSellerDeliveryState::Idle;
+        request.revocation_state = DataSellerRevocationState::Idle;
+        let mut contract = fixture_contract_projection("expired");
+        contract.reason_code = Some("access_window_expired".to_string());
+
+        let mut market = DataMarketPaneState::default();
+        market.apply_relay_catalog(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![contract],
+            vec![fixture_result_projection()],
+            vec![fixture_settlement_match()],
+            1_774_080_043_000,
+        );
+
+        let reconciled = reconcile_request_from_relay_catalog(&request, &market);
+        assert_eq!(reconciled.payment_state, DataSellerPaymentState::Paid);
+        assert_eq!(reconciled.delivery_state, DataSellerDeliveryState::Expired);
+        assert_eq!(reconciled.revocation_state, DataSellerRevocationState::Expired);
+        assert_eq!(
+            reconciled.revocation_reason_code.as_deref(),
+            Some("access_window_expired")
         );
     }
 }
