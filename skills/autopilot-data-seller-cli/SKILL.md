@@ -22,9 +22,9 @@ or manage it through CLI, not through the visible `Data Seller` pane.
 
 ## Quick start
 
-- For real publish, start local `nexus-control`, mint a desktop session, and
-  export `OA_CONTROL_BASE_URL` plus `OA_CONTROL_BEARER_TOKEN` before booting
-  the headless runtime.
+- For real publish, point the headless runtime at the relays you actually want
+  to use; you do not need `nexus-control` or `OA_CONTROL_*` for the DS-first
+  seller/buyer flow.
 - Package local files or folders with
   [`scripts/package_data_asset.sh`](scripts/package_data_asset.sh).
 - Package redacted Codex conversations with
@@ -97,7 +97,7 @@ or manage it through CLI, not through the visible `Data Seller` pane.
   logic through `autopilotctl`.
 - Use the dedicated pane skill for conversational in-app seller work.
 - Do not create a parallel publication path that bypasses preview, confirm, or
-  kernel read-back.
+  relay-backed status/snapshot read-back.
 
 ## Verification truth
 

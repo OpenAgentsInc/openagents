@@ -5,15 +5,10 @@ same seller logic through `autopilotctl`.
 
 ## 1. Start or target a runtime
 
-For real publish, first start local `nexus-control`, mint a desktop session,
-and export:
-
-- `OA_CONTROL_BASE_URL`
-- `OA_CONTROL_BEARER_TOKEN`
-
-Without that local authority session you can still preview drafts, but you do
-not have the authority path required for real asset, grant, delivery, or
-revocation truth.
+For the DS-first relay-only flow, start the headless runtime with the relays
+you actually want to use. You do not need local `nexus-control` or
+`OA_CONTROL_BASE_URL` / `OA_CONTROL_BEARER_TOKEN` for publish, payment,
+delivery, revoke, or buyer consume.
 
 If no normal desktop session is serving desktop-control, start the no-window
 host:

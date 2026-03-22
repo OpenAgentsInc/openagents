@@ -11,7 +11,7 @@ This directory is the project-owned Agent Skills registry.
 | [autopilot-pane-control](./autopilot-pane-control/SKILL.md) | OpenAgents desktop pane and CAD control for Codex via `openagents.*` tool calls. |
 | [autopilot-data-seller](./autopilot-data-seller/SKILL.md) | Conversational seller-authoring policy for DS-first Data Market listings in the dedicated `Data Seller` pane. |
 | [autopilot-data-seller-cli](./autopilot-data-seller-cli/SKILL.md) | Shell-first DS-first Data Market packaging, publication, and lifecycle control through `autopilotctl` and the headless runtime. |
-| [autopilot-data-market-control](./autopilot-data-market-control/SKILL.md) | Typed OpenAgents DS-first Data Market tool contract for seller publication and authority read-back. |
+| [autopilot-data-market-control](./autopilot-data-market-control/SKILL.md) | Typed OpenAgents DS-first Data Market tool contract for seller publication and relay-backed read-back. |
 | [charms](./charms/SKILL.md) | Charms workflows for Bitcoin app contracts, spell proving, and UTXO asset operations. |
 | [cast](./cast/SKILL.md) | Charms CAST DEX workflows for order creation, cancellation/replacement, partial fulfillment, signing, and transaction verification on Bitcoin. |
 | [l402](./l402/SKILL.md) | L402 agent commerce workflows with lnd, lnget, scoped macaroons, aperture, and MCP. |
@@ -63,11 +63,11 @@ The repo currently ships three first-party Data Market skills with distinct jobs
   - governs seller drafting, exact preview, confirm-before-publish, and lifecycle discipline
 - `autopilot-data-market-control`
   - use when the agent needs the typed `openagents.data_market.*` tool contract
-  - keeps seller publication and authority read-back bounded to the app-owned data-market tools
+  - keeps seller publication and relay-backed read-back bounded to the app-owned data-market tools
 - `autopilot-data-seller-cli`
   - use for shell-first or no-window operation through `autopilotctl` and `autopilot_headless_data_market`
   - packages local files/directories for sale and drives the same seller lifecycle without bootstrapping the visible UI
-  - the deterministic publish path is local `nexus-control` plus packaged CLI flow, with `seller-prompt` reserved for intentional conversational terminal use
+  - the deterministic publish path is the relay-only packaged CLI flow, with `seller-prompt` reserved for intentional conversational terminal use
   - now also includes a dedicated redacted Codex conversation packager for selling `.codex/sessions` material without publishing raw rollout files
 
 Current supporting docs:

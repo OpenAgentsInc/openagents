@@ -23,8 +23,8 @@ smuggled through opaque prompt state.
 | Dimension | Status | Notes |
 | --- | --- | --- |
 | Product surface | seller authoring + read surface + narrow buyer request surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, seller delivery-bundle/result publication, and explicit seller revoke/expire controls with `RevocationReceipt` read-back; the panes now also surface package metadata, exact preview state, request relay/kind, and fulfillment posture so shell-first/headless publication remains visually legible; there is now also a narrow `Data Buyer` pane that selects a visible asset, shows bundle/posture context, and publishes a targeted DS-DVM fulfillment request, but broader buyer transaction UX is still incomplete |
-| Kernel authority | `legacy compatibility slice` | authority and authenticated read-model flows still exist in `openagents-kernel-core` and `apps/nexus-control`, but the DS-first launch path no longer depends on them |
-| Wire/proto | `legacy compatibility slice` | the checked-in `openagents.data.v1` package and authority routes remain in-repo, but relay-native DS publication/fulfillment is now the canonical operator path |
+| Kernel authority | `retired compatibility slice` | compatibility data types still exist in `openagents-kernel-core` and desktop app state, but the DS-first launch path no longer uses or depends on Nexus authority routes |
+| Wire/proto | `retired compatibility slice` | the checked-in `openagents.data.v1` package remains in-repo for compatibility code, but relay-native DS publication/fulfillment is the canonical operator path |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
 | Planned | yes | broader discovery, pricing, payouts, provider economics, and product-facing UX remain planned |
 
@@ -77,32 +77,14 @@ smuggled through opaque prompt state.
 - normalize targeted buyer/seller identity matching across `npub` and raw hex Nostr pubkeys for the current DS-DVM targeted request/result flow
 - import a targeted request or buyer response back from configured relays through `autopilotctl data-market seller-import-request` and `autopilotctl data-market buyer-import-response`
 
-The legacy authority slice is still present in:
+The legacy compatibility code still present in-repo is limited to:
 
 - `crates/openagents-kernel-core/src/data.rs`
 - `crates/openagents-kernel-core/src/authority.rs`
-- `apps/nexus-control/src/lib.rs`
 - `apps/nexus-control/src/kernel.rs`
 
-Those compatibility HTTP mutation routes are still live under:
-
-- `POST /v1/kernel/data/assets`
-- `POST /v1/kernel/data/grants`
-- `POST /v1/kernel/data/grants/{grant_id}/accept`
-- `POST /v1/kernel/data/grants/{grant_id}/deliveries`
-- `POST /v1/kernel/data/grants/{grant_id}/revoke`
-
-Those compatibility HTTP read routes are still live under:
-
-- `GET /v1/kernel/data/assets`
-- `GET /v1/kernel/data/assets/{asset_id}`
-- `GET /v1/kernel/data/grants`
-- `GET /v1/kernel/data/grants/{grant_id}`
-- `GET /v1/kernel/data/deliveries`
-- `GET /v1/kernel/data/deliveries/{delivery_bundle_id}`
-- `GET /v1/kernel/data/revocations`
-- `GET /v1/kernel/data/revocations/{revocation_id}`
-- `GET /v1/kernel/data/snapshot`
+The former `/v1/kernel/data/*` HTTP routes in `apps/nexus-control` are retired
+and no longer mounted.
 
 ## Local prototype or partial only
 
