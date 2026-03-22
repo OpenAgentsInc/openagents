@@ -97,24 +97,24 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Data Market`
   - Read-only market snapshot and operator-facing lifecycle pane for the current Data Market starter slice.
-  - Shows canonical kernel-backed `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt` rows plus recent lifecycle summaries and receipt context.
+  - Shows canonical kernel-backed `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt` rows plus recent lifecycle summaries, receipt context, and DS-backed publication posture.
   - Asset rows now surface packaging posture, visibility/sensitivity posture, and redacted Codex-export markers when present so shell-first publication is still legible in the UI.
-  - This is the observability/control surface, not the primary seller authoring surface.
+  - This is the observability/control surface, not the primary seller authoring surface; DS listings and offers are the public market-facing publication layer, while DS-DVM request/result traffic is only the targeted fulfillment layer.
   - Action: refresh market snapshot.
 - `Data Seller`
   - Dedicated conversational seller-authoring pane for the current Data Market MVP.
-  - Owns the seller transcript, structured draft, exact preview, confirm-before-publish flow, published inventory summary, incoming targeted request evaluation, payment-required issuance, delivery preparation/publication, and revoke/expire controls.
+  - Owns the seller transcript, structured draft, exact preview, confirm-before-publish flow, published inventory summary, DS listing/offer-backed publication flow, incoming targeted request evaluation, payment-required issuance, delivery preparation/publication, and revoke/expire controls.
   - The pane is still mutation-capable, but it now doubles as the read-only visualization surface for shell/headless publication by showing package metadata, preview state, relay/kind/request flow, payment, delivery, and revocation truth from the same app-owned state machine.
   - Auto-provisions the first-party `autopilot-data-seller` and `autopilot-data-market-control` skills into the lane and uses typed `openagents.data_market.*` tools rather than generic pane poking.
   - Product truth remains kernel-backed: publication mutates authority objects, and the pane immediately reads the canonical asset/grant/delivery/revocation state back into the seller model.
   - Shell/headless parity is intentional: the same seller flow is also exposed through `autopilotctl data-market ...` and `autopilot_headless_data_market`.
   - Actions: seller draft/preview/confirm/publish, request payment, prepare delivery, issue delivery, revoke access.
 - `Data Buyer`
-  - Narrow buyer-side Data Market pane for selecting a visible asset/default offer from the current market snapshot and publishing a targeted request.
-  - Tracks the current request, feedback/result observation, and local consume path for the delivered bundle.
+  - Narrow buyer-side Data Market pane for selecting a visible asset/default offer from the current market snapshot and publishing a targeted DS-DVM request.
+  - Tracks the current DS-DVM request, feedback/result observation, and local consume path for the delivered bundle.
   - The selected-asset card now shows bundle/posture context, including redacted Codex-export markers, so a buyer can see what kind of packaged asset is being requested before publishing.
   - This is not yet a full public discovery or procurement workstation; it is the buyer-side MVP lane needed to exercise the targeted access flow truthfully.
-  - Actions: refresh market, select asset, publish targeted request, consume delivery.
+  - Actions: refresh market, select asset, publish targeted DS-DVM request, consume delivery.
 - `Sync Health`
   - Spacetime sync diagnostics for connection state, subscription state, cursor progress, stale detection, replay count, and duplicate-drop count.
   - Source is lifecycle/apply telemetry (`spacetime.sync.lifecycle`) in current rollout phase.

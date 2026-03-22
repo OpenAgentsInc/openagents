@@ -62,6 +62,11 @@ For local work, the simplest pattern is:
 3. export the returned access token as `OA_CONTROL_BEARER_TOKEN`
 4. start `autopilot_headless_data_market`
 
+That local `nexus-control` session is the normal publish setup for shell-first
+seller work in this MVP. Without it, you can still preview drafts, but you do
+not have the authority path required to record real asset, grant, delivery, or
+revocation truth.
+
 The no-window smoke harness now bootstraps a temporary local `nexus-control`
 and session token automatically so publish is mechanically verified rather than
 only previewed.
@@ -98,6 +103,10 @@ That path still uses the same seller thread, skills, and typed Data Market
 tools as the visible `Data Seller` pane. It is intended for automation,
 testing, and terminal-driven audits of the documented conversational seller
 flow.
+
+Leave Codex enabled if you plan to use `seller-prompt`. The repo-owned smoke
+and E2E harnesses disable Codex only because they exercise the typed DS-first
+CLI flow directly instead of this conversational seller lane.
 
 If `--manifest-path` is omitted, the runtime uses the default desktop-control
 manifest location under `~/.openagents/logs/autopilot/desktop-control.json`.
