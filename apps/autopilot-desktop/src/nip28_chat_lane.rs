@@ -15,6 +15,7 @@ const SUBSCRIPTION_ID: &str = "autopilot-nip28-chat";
 #[derive(Debug)]
 pub enum Nip28ChatLaneCommand {
     Publish { event: Event },
+    FetchKind0Metadata { pubkeys: Vec<String> },
 }
 
 #[derive(Debug)]
@@ -69,6 +70,14 @@ impl Nip28ChatLaneWorker {
     pub fn clear_dispatched(&mut self, event_id: &str) {
         self.dispatched_ids.remove(event_id);
     }
+
+    pub fn fetch_kind0_if_needed(&self, pubkeys: Vec<String>) {
+        if !pubkeys.is_empty() {
+            let _ = self
+                .command_tx
+                .send(Nip28ChatLaneCommand::FetchKind0Metadata { pubkeys });
+        }
+    }
 }
 
 fn build_filters(channel_ids: &[&str]) -> Vec<serde_json::Value> {
@@ -105,12 +114,31 @@ fn run_nip28_chat_lane_loop(
     };
 
     let mut pool: Option<Arc<RelayPool>> = None;
+    let mut fetched_kind0_pubkeys: HashSet<String> = HashSet::new();
 
     loop {
         ensure_connected(&runtime, &config, &mut pool, &update_tx);
 
         while let Ok(cmd) = command_rx.try_recv() {
             match cmd {
+                Nip28ChatLaneCommand::FetchKind0Metadata { pubkeys } => {
+                    let new_pubkeys: Vec<String> = pubkeys
+                        .into_iter()
+                        .filter(|pk| fetched_kind0_pubkeys.insert(pk.clone()))
+                        .collect();
+                    if !new_pubkeys.is_empty() {
+                        if let Some(pool) = pool.as_ref().cloned() {
+                            runtime.block_on(async {
+                                if let Some(relay) = pool.relay(&config.relay_url).await {
+                                    let filter = json!({"kinds": [0], "authors": new_pubkeys});
+                                    let _ = relay
+                                        .subscribe_filters("autopilot-nip28-kind0", vec![filter])
+                                        .await;
+                                }
+                            });
+                        }
+                    }
+                }
                 Nip28ChatLaneCommand::Publish { event } => {
                     let event_id = event.id.clone();
                     if let Some(pool) = pool.as_ref().cloned() {

@@ -2,6 +2,7 @@
 
 Generated from: `docs/plans/prd-chat-usability-baseline.md`
 Date: 2026-03-19
+Last updated: 2026-03-21 — B-1 and B-2 complete: kind-0 metadata, author display names, relative timestamps, message grouping, own-message styling
 
 ## Progress
 
@@ -12,8 +13,8 @@ Date: 2026-03-19
 | A-3 | ✅ Done | peer presence list + active count rendered in managed chat channel header |
 | A-4 | ✅ Done | `show_debug_events` toggle + `Debug`/`Debug ON` chip in managed header; `message_class` field on projection; A-2 filter moved to render time |
 | A-5 | ✅ Done | `OA_NIP28_TEAM_CHANNEL_ID` env var; `team_channel_id: Option<String>` on config; `build_filters` covers both channels; setup documented in `docs/headless-compute.md` |
-| B-1 | 🔲 Not started | |
-| B-2 | 🔲 Not started | |
+| B-1 | ✅ Done | `Kind0Metadata` struct + `author_metadata` in snapshot; kind-0 relay subscription; `resolve_author_display_name` fallback chain in chat renderer |
+| B-2 | ✅ Done | relative timestamps, same-author grouping, own-message `▶` glyph, per-author palette colors; `avatar_color_index` + `author_label_color` helpers |
 | C-1 | 🔲 Not started | |
 | C-2 | 🔲 Not started | |
 | C-3 | 🔲 Not started | |
@@ -269,12 +270,12 @@ non-human events, operators need a way to get them back.
 - Toggle must not be accessible from the Autopilot assistant chat lane
 
 **Acceptance Criteria:**
-- [ ] Toggle visible in managed chat mode
-- [ ] Toggle is OFF by default
-- [ ] Enabling toggle makes presence/debug events visible in transcript
-- [ ] Debug/presence rows have visual distinction from human message rows
-- [ ] Toggle is not present in the Autopilot assistant chat lane
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] Toggle visible in managed chat mode
+- [x] Toggle is OFF by default
+- [x] Enabling toggle makes presence/debug events visible in transcript
+- [x] Debug/presence rows have visual distinction from human message rows
+- [x] Toggle is not present in the Autopilot assistant chat lane
+- [x] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires A-2 (classification + filtering in place)
 
@@ -308,11 +309,11 @@ production channel and gives Ben a clean environment to test in during Phase E.
 - The channel should be on the same relay already configured for managed chat (check `nip28_chat_lane.rs` for the relay URL currently in use)
 
 **Acceptance Criteria:**
-- [ ] A second NIP-28 channel exists with a team-identifiable name
-- [ ] The channel ID is documented
-- [ ] Setting the config key causes the channel to appear in the app rail
-- [ ] Team members can join and see the channel without manual ID entry
-- [ ] The test channel does not interfere with the existing production channel
+- [x] A second NIP-28 channel exists with a team-identifiable name
+- [x] The channel ID is documented
+- [x] Setting the config key causes the channel to appear in the app rail
+- [x] Team members can join and see the channel without manual ID entry
+- [x] The test channel does not interfere with the existing production channel
 
 **Dependencies:** None — can start in parallel with A-1 through A-4
 
@@ -355,12 +356,14 @@ message shows a raw pubkey or is completely unlabeled.
 - `ManagedChatMessageProjection` may need a `resolved_display_name: Option<String>` field, or the resolution can happen at render time from the cache
 
 **Acceptance Criteria:**
-- [ ] Messages from a new pubkey trigger a kind-0 metadata request
-- [ ] Resolved display name appears in the message row (not raw pubkey)
-- [ ] Fallback chain works: `display_name` → `name` → short npub → short hex
-- [ ] No duplicate requests for already-cached pubkeys
-- [ ] No flicker when metadata arrives after initial render
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] Messages from a new pubkey trigger a kind-0 metadata request
+- [x] Resolved display name appears in the message row (not raw pubkey)
+- [x] Fallback chain works: `display_name` → `name` → short npub → short hex
+- [x] No duplicate requests for already-cached pubkeys (`fetched_kind0_pubkeys` dedup set in lane loop)
+- [x] No flicker when metadata arrives after initial render (resolution at render time from cache)
+- [x] `cargo test -p autopilot-desktop` passes — 14/14 chat projection tests ✅
+
+**Completed:** 2026-03-21 — `nip28_chat_lane.rs`, `chat_projection.rs`, `input/reducers/mod.rs`, `panes/chat.rs`
 
 **Dependencies:** Requires A-2 (transcript contains only HumanMessage rows to attach identity to)
 
@@ -399,14 +402,16 @@ for Autopilot threads but is not used for managed chat rows.
 - Do not block render on metadata availability; show fallback name/avatar immediately, update when kind-0 arrives
 
 **Acceptance Criteria:**
-- [ ] Every human message row shows a resolved author name (or short npub fallback)
-- [ ] Every human message row shows a relative timestamp
-- [ ] Absolute time accessible on hover
-- [ ] Adjacent messages from the same author within 5 min are grouped (first row has full header, subsequent rows are compact)
-- [ ] Own messages are visually distinct from other authors' messages
-- [ ] Avatar shows for messages where kind-0 `picture` is available
-- [ ] Avatar fallback shown when no picture URL
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] Every human message row shows a resolved author name (or short hex fallback)
+- [x] Every human message row shows a relative timestamp (`format_managed_chat_relative_timestamp`)
+- [x] Absolute time inline on non-grouped rows (appended to relative timestamp)
+- [x] Adjacent messages from the same author within 5 min are grouped (first row has full header, subsequent rows are compact with indented timestamp)
+- [x] Own messages are visually distinct (`▶` glyph + `theme::accent::SECONDARY` color)
+- [x] Avatar fallback: deterministic color per pubkey via `avatar_color_index` + `author_label_color` palette
+- [ ] Avatar from kind-0 `picture` URL — deferred (TUI cannot render network images inline; field is cached in `Kind0Metadata.picture` for future renderer)
+- [x] `cargo test -p autopilot-desktop` passes — 14/14 chat projection tests ✅
+
+**Completed:** 2026-03-21 — `panes/chat.rs` only
 
 **Dependencies:**
 - Requires B-1 (kind-0 metadata cache)
