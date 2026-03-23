@@ -90,6 +90,7 @@ const DESKTOP_CONTROL_LOG_TAIL_LIMIT: usize = 64;
 const DESKTOP_CONTROL_EVENT_BUFFER_LIMIT: usize = 512;
 const DESKTOP_CONTROL_EVENT_QUERY_LIMIT: usize = 128;
 const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
+const DESKTOP_CONTROL_ACTION_TIMEOUT: Duration = Duration::from_secs(30);
 const DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS: u64 = 15_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT: usize = 8;
 
@@ -1173,6 +1174,8 @@ pub struct DesktopControlManifest {
     pub listen_addr: String,
     pub base_url: String,
     pub auth_token: String,
+    #[serde(default)]
+    pub identity_path: Option<String>,
     pub latest_session_log_path: String,
 }
 
@@ -1849,6 +1852,7 @@ pub fn enable_runtime(
         listen_addr: listen_addr.to_string(),
         base_url: base_url.clone(),
         auth_token: auth_token.clone(),
+        identity_path: Some(state.settings.document.identity_path.clone()),
         latest_session_log_path: crate::runtime_log::latest_session_log_path()
             .display()
             .to_string(),
@@ -8813,7 +8817,7 @@ async fn desktop_control_action(
         );
         return (StatusCode::SERVICE_UNAVAILABLE, Json(response));
     }
-    match tokio::time::timeout(Duration::from_secs(3), response_rx).await {
+    match tokio::time::timeout(DESKTOP_CONTROL_ACTION_TIMEOUT, response_rx).await {
         Ok(Ok(response)) => (StatusCode::OK, Json(response)),
         Ok(Err(_)) => {
             let response =

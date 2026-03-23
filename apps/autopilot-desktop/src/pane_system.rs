@@ -210,15 +210,15 @@ fn queue_chat_thread_history_refresh_for_pane_open(state: &mut RenderState) {
         .ok()
         .and_then(|value| value.into_os_string().into_string().ok());
     let params = state.autopilot_chat.build_thread_list_params(cwd);
-    let list_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(
-        params,
-    ));
-    let loaded_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadLoadedList(
-        codex_client::ThreadLoadedListParams {
-            cursor: None,
-            limit: Some(200),
-        },
-    ));
+    let list_result =
+        state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(params));
+    let loaded_result =
+        state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadLoadedList(
+            codex_client::ThreadLoadedListParams {
+                cursor: None,
+                limit: Some(200),
+            },
+        ));
     if let Err(error) = list_result {
         state.autopilot_chat.last_error = Some(error);
         state.autopilot_chat.pending_thread_history_refresh_on_ready = true;
@@ -1384,12 +1384,14 @@ impl PaneController {
         } else if kind == PaneKind::AppleAdapterTraining {
             focus_apple_adapter_training_input_for_pane_open(state);
         } else if kind == PaneKind::DataSeller {
+            crate::data_seller_control::hydrate_data_seller_inventory_from_relay_replica(state);
             state.data_seller.mark_opened();
             crate::data_seller_control::ensure_data_seller_codex_session(state);
         } else if kind == PaneKind::DataBuyer {
             crate::data_buyer_control::open_data_buyer_pane(state);
         } else if kind == PaneKind::DataMarket {
-            crate::data_market_control::refresh_data_market_snapshot(state);
+            crate::data_market_control::hydrate_data_market_relay_replica(state);
+            state.data_market.mark_opened();
         }
         id
     }
@@ -6557,7 +6559,7 @@ fn pane_hit_action_for_pane(
                     return Some(PaneHitAction::ChatToggleDebugEvents);
                 }
             }
-//             if state.autopilot_chat.chat_has_browseable_content() {
+            //             if state.autopilot_chat.chat_has_browseable_content() {
             if state.autopilot_chat.chat_has_browseable_content()
                 && !state.autopilot_chat.workspace_rail_collapsed
             {

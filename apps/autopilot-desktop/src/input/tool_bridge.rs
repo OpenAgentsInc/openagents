@@ -6,15 +6,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::DateTime;
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use nostr::Event;
-use openagents_kernel_core::data::DeliveryBundle;
+use openagents_kernel_core::data::{DeliveryBundle, DeliveryBundleStatus};
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::app_state::{
-    ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, DataSellerRevocationAction,
-    PaneKind, RenderState, SkillRegistryDiscoveredSkill,
+    ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, DataMarketPaneState,
+    DataSellerRevocationAction, PaneKind, RenderState, SkillRegistryDiscoveredSkill,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
@@ -55,6 +55,7 @@ use crate::pane_system::{
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
+use crate::state::operations::SubmittedNetworkRequest;
 use crate::state::autopilot_goals::{
     GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
 };
@@ -1117,6 +1118,46 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "last_revocation_publish_receipt_id": state.data_seller.last_revocation_publish_receipt_id,
         "last_published_revocation": state.data_seller.last_published_revocation,
     });
+    let published_assets = state
+        .data_seller
+        .published_assets_for_display()
+        .into_iter()
+        .take(8)
+        .map(|asset| {
+            json!({
+                "asset_id": asset.asset_id.clone(),
+                "provider_id": asset.provider_id.clone(),
+                "asset_kind": asset.asset_kind.clone(),
+                "title": asset.title.clone(),
+                "status": asset.status.label(),
+                "ds_listing_coordinate": asset
+                    .nostr_publications
+                    .ds_listing
+                    .as_ref()
+                    .and_then(|reference| reference.coordinate.as_deref()),
+            })
+        })
+        .collect::<Vec<_>>();
+    let published_grants = state
+        .data_seller
+        .published_grants_for_display()
+        .into_iter()
+        .take(8)
+        .map(|grant| {
+            json!({
+                "grant_id": grant.grant_id.clone(),
+                "asset_id": grant.asset_id.clone(),
+                "consumer_id": grant.consumer_id.clone(),
+                "status": grant.status.label(),
+                "policy_id": grant.permission_policy.policy_id.clone(),
+                "ds_offer_coordinate": grant
+                    .nostr_publications
+                    .ds_offer
+                    .as_ref()
+                    .and_then(|reference| reference.coordinate.as_deref()),
+            })
+        })
+        .collect::<Vec<_>>();
     let incoming_requests = state
         .data_seller
         .incoming_requests
@@ -1179,6 +1220,8 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                 "content_preview": request.content_preview,
                 "matched_asset_id": request.matched_asset_id,
                 "matched_grant_id": request.matched_grant_id,
+                "matched_listing_coordinate": request.matched_listing_coordinate,
+                "matched_offer_coordinate": request.matched_offer_coordinate,
                 "asset_match_posture": request.asset_match_posture,
                 "required_price_sats": request.required_price_sats,
                 "evaluation_disposition": request.evaluation_disposition.label(),
@@ -1231,6 +1274,8 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
             "evaluation_summary": request.evaluation_summary,
             "matched_asset_id": request.matched_asset_id,
             "matched_grant_id": request.matched_grant_id,
+            "matched_listing_coordinate": request.matched_listing_coordinate,
+            "matched_offer_coordinate": request.matched_offer_coordinate,
             "required_price_sats": request.required_price_sats,
             "payment": payment,
             "delivery": delivery,
@@ -1245,6 +1290,10 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "asset_preview_confirmed": state.data_seller.asset_preview_confirmed,
         "grant_preview_confirmed": state.data_seller.grant_preview_confirmed,
         "inventory_warnings": state.data_seller.inventory_warnings(),
+        "published_asset_count": state.data_seller.published_asset_count(),
+        "published_grant_count": state.data_seller.published_grant_count(),
+        "published_assets": published_assets,
+        "published_grants": published_grants,
         "incoming_request_count": state.data_seller.incoming_requests.len(),
         "latest_incoming_request": latest_request,
         "incoming_requests": incoming_requests,
@@ -1314,6 +1363,8 @@ fn data_buyer_request_tool_snapshot(
 }
 
 fn data_buyer_tool_snapshot(state: &RenderState) -> Value {
+    let selected_listing = state.data_buyer.selected_listing(&state.data_market);
+    let selected_catalog_offer = state.data_buyer.selected_catalog_offer(&state.data_market);
     let selected_asset = state.data_buyer.selected_asset(&state.data_market);
     let selected_grant = state.data_buyer.selected_offer_grant(&state.data_market);
     let selected_revocation = state.data_buyer.selected_revocation(&state.data_market);
@@ -1335,11 +1386,37 @@ fn data_buyer_tool_snapshot(state: &RenderState) -> Value {
             "load_state": state.data_buyer.load_state.label(),
             "local_buyer_id": state.data_buyer.local_buyer_id,
             "selected_asset_id": state.data_buyer.selected_asset_id,
+            "selected_listing_coordinate": state.data_buyer.selected_listing_coordinate,
+            "selected_offer_coordinate": state.data_buyer.selected_offer_coordinate,
             "status_line": state.data_buyer.status_line,
             "last_action": state.data_buyer.last_action,
             "last_error": state.data_buyer.last_error,
             "last_published_request_id": state.data_buyer.last_published_request_id,
             "last_published_request_event_id": state.data_buyer.last_published_request_event_id,
+            "selected_listing": selected_listing.map(|listing| {
+                json!({
+                    "coordinate": listing.coordinate,
+                    "publisher_pubkey": listing.publisher_pubkey,
+                    "title": listing.title,
+                    "dataset_kind": listing.dataset_kind,
+                    "access": listing.access,
+                    "relay_url": listing.relay_url,
+                    "linked_asset_id": listing.linked_asset_id,
+                })
+            }),
+            "selected_catalog_offer": selected_catalog_offer.map(|offer| {
+                json!({
+                    "coordinate": offer.coordinate,
+                    "listing_coordinate": offer.listing_coordinate,
+                    "status": offer.status,
+                    "policy": offer.policy,
+                    "price_amount": offer.price_amount,
+                    "price_currency": offer.price_currency,
+                    "relay_url": offer.relay_url,
+                    "linked_asset_id": offer.linked_asset_id,
+                    "linked_grant_id": offer.linked_grant_id,
+                })
+            }),
             "selected_asset": selected_asset.map(|asset| {
                 json!({
                     "asset_id": asset.asset_id,
@@ -1377,9 +1454,12 @@ fn data_buyer_tool_snapshot(state: &RenderState) -> Value {
             }),
             "derived_request_draft": derived_draft.map(|draft| {
                 json!({
+                    "asset_ref": draft.asset_ref,
                     "asset_id": draft.asset_id,
                     "provider_id": draft.provider_id,
                     "offer_grant_id": draft.offer_grant_id,
+                    "listing_coordinate": draft.listing_coordinate,
+                    "offer_coordinate": draft.offer_coordinate,
                     "permission_scopes": draft.permission_scopes,
                     "delivery_mode": draft.delivery_mode,
                     "preview_posture": draft.preview_posture,
@@ -1426,10 +1506,259 @@ fn delivery_request_id(delivery: &DeliveryBundle) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
-fn resolve_data_market_delivery<'a>(
-    state: &'a RenderState,
+fn relay_selector_matches(actual: &str, expected: &str) -> bool {
+    actual.eq_ignore_ascii_case(expected)
+}
+
+fn relay_optional_selector_matches(value: Option<&str>, expected: Option<&str>) -> bool {
+    expected.is_none_or(|expected| {
+        value.is_some_and(|value| relay_selector_matches(value, expected))
+    })
+}
+
+fn relay_request_contexts(
+    market: &DataMarketPaneState,
+    submitted_requests: &[SubmittedNetworkRequest],
+    explicit_request_id: Option<&str>,
+    inferred_request_id: Option<&str>,
+) -> Vec<(Option<String>, String)> {
+    let mut contexts = Vec::new();
+    let mut seen_request_events = BTreeSet::new();
+
+    for selector in [explicit_request_id, inferred_request_id]
+        .into_iter()
+        .flatten()
+    {
+        for request in submitted_requests.iter().filter(|request| {
+            relay_selector_matches(request.request_id.as_str(), selector)
+                || request
+                    .published_request_event_id
+                    .as_deref()
+                    .is_some_and(|event_id| relay_selector_matches(event_id, selector))
+        }) {
+            let Some(request_event_id) = request.published_request_event_id.clone() else {
+                continue;
+            };
+            let dedupe_key = request_event_id.to_ascii_lowercase();
+            if seen_request_events.insert(dedupe_key) {
+                contexts.push((Some(request.request_id.clone()), request_event_id));
+            }
+        }
+
+        let selector_matches_relay_request = market
+            .relay_requests
+            .iter()
+            .any(|request| relay_selector_matches(request.event_id.as_str(), selector))
+            || market
+                .relay_access_contracts
+                .iter()
+                .any(|contract| relay_selector_matches(contract.request_event_id.as_str(), selector))
+            || market
+                .relay_results
+                .iter()
+                .any(|result| relay_selector_matches(result.request_event_id.as_str(), selector));
+        if selector_matches_relay_request {
+            let dedupe_key = selector.to_ascii_lowercase();
+            if seen_request_events.insert(dedupe_key) {
+                contexts.push((None, selector.to_string()));
+            }
+        }
+    }
+
+    contexts
+}
+
+fn synthesize_relay_delivery_bundle(
+    market: &DataMarketPaneState,
+    submitted_requests: &[SubmittedNetworkRequest],
+    explicit_delivery_bundle_id: Option<&str>,
+    explicit_request_id: Option<&str>,
+    explicit_grant_id: Option<&str>,
+    explicit_asset_id: Option<&str>,
+    inferred_request_id: Option<&str>,
+    inferred_grant_id: Option<&str>,
+) -> Option<(DeliveryBundle, &'static str, Option<String>)> {
+    let grant_selector = explicit_grant_id.or(inferred_grant_id);
+    let request_contexts = relay_request_contexts(
+        market,
+        submitted_requests,
+        explicit_request_id,
+        inferred_request_id,
+    );
+    let request_event_ids = request_contexts
+        .iter()
+        .map(|(_, request_event_id)| request_event_id.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let resolved_request_id = request_contexts
+        .iter()
+        .find_map(|(request_id, _)| request_id.clone());
+
+    let result = market
+        .relay_results
+        .iter()
+        .filter(|result| {
+            explicit_delivery_bundle_id.is_none_or(|expected| {
+                relay_selector_matches(result.delivery_bundle_id.as_str(), expected)
+            })
+        })
+        .filter(|result| {
+            request_event_ids.is_empty()
+                || request_event_ids.contains(&result.request_event_id.to_ascii_lowercase())
+        })
+        .filter(|result| {
+            grant_selector.is_none_or(|expected| {
+                relay_optional_selector_matches(result.grant_id.as_deref(), Some(expected))
+                    || relay_optional_selector_matches(result.linked_grant_id.as_deref(), Some(expected))
+            })
+        })
+        .filter(|result| {
+            explicit_asset_id.is_none_or(|expected| {
+                relay_optional_selector_matches(result.asset_id.as_deref(), Some(expected))
+                    || relay_optional_selector_matches(result.linked_asset_id.as_deref(), Some(expected))
+                    || relay_selector_matches(result.asset_ref.as_str(), expected)
+            })
+        })
+        .max_by_key(|result| (result.created_at_seconds, result.event_id.as_str()));
+
+    if let Some(result) = result {
+        let contract = market.relay_access_contract_for_request(result.request_event_id.as_str());
+        let delivery_ref = result
+            .delivery_ref
+            .clone()
+            .or_else(|| contract.and_then(|contract| contract.delivery_ref.clone()))?;
+        let delivery_digest = result
+            .delivery_digest
+            .clone()
+            .or_else(|| contract.and_then(|contract| contract.delivery_digest.clone()));
+        let grant_id = result
+            .grant_id
+            .clone()
+            .or_else(|| result.linked_grant_id.clone())
+            .or_else(|| contract.and_then(|contract| contract.linked_grant_id.clone()))
+            .or_else(|| grant_selector.map(str::to_string))
+            .or_else(|| result.offer_coordinate.clone())
+            .unwrap_or_else(|| "relay_offer.unknown".to_string());
+        let asset_id = result
+            .asset_id
+            .clone()
+            .or_else(|| result.linked_asset_id.clone())
+            .or_else(|| contract.and_then(|contract| contract.linked_asset_id.clone()))
+            .or_else(|| explicit_asset_id.map(str::to_string))
+            .unwrap_or_else(|| result.asset_ref.clone());
+        let expires_at_ms = contract
+            .and_then(|contract| contract.expires_at_seconds)
+            .and_then(|seconds| i64::try_from(seconds).ok())
+            .and_then(|seconds| seconds.checked_mul(1000));
+        let created_at_ms = i64::try_from(result.created_at_seconds)
+            .ok()
+            .and_then(|seconds| seconds.checked_mul(1000))
+            .unwrap_or(i64::MAX);
+        return Some((
+            DeliveryBundle {
+                delivery_bundle_id: result.delivery_bundle_id.clone(),
+                asset_id,
+                grant_id,
+                provider_id: result.seller_pubkey.clone(),
+                consumer_id: result.buyer_pubkey.clone(),
+                created_at_ms,
+                delivery_ref,
+                delivery_digest,
+                bundle_size_bytes: None,
+                manifest_refs: Vec::new(),
+                expires_at_ms,
+                status: DeliveryBundleStatus::Issued,
+                metadata: json!({
+                    "request_id": resolved_request_id.clone(),
+                    "request_event_id": result.request_event_id.clone(),
+                    "relay_result_event_id": result.event_id.clone(),
+                    "relay_access_contract_coordinate": contract.map(|contract| contract.coordinate.clone()),
+                    "listing_coordinate": result.listing_coordinate.clone(),
+                    "offer_coordinate": result.offer_coordinate.clone(),
+                }),
+            },
+            "relay_result_projection",
+            resolved_request_id,
+        ));
+    }
+
+    let contract = market
+        .relay_access_contracts
+        .iter()
+        .filter(|contract| {
+            explicit_delivery_bundle_id
+                .is_none_or(|expected| relay_selector_matches(contract.coordinate.as_str(), expected))
+        })
+        .filter(|contract| {
+            request_event_ids.is_empty()
+                || request_event_ids.contains(&contract.request_event_id.to_ascii_lowercase())
+        })
+        .filter(|contract| {
+            grant_selector.is_none_or(|expected| {
+                relay_optional_selector_matches(contract.linked_grant_id.as_deref(), Some(expected))
+                    || relay_optional_selector_matches(contract.offer_coordinate.as_deref(), Some(expected))
+            })
+        })
+        .filter(|contract| {
+            explicit_asset_id.is_none_or(|expected| {
+                relay_optional_selector_matches(contract.linked_asset_id.as_deref(), Some(expected))
+                    || relay_selector_matches(contract.listing_coordinate.as_str(), expected)
+            })
+        })
+        .filter(|contract| contract.delivery_ref.is_some())
+        .max_by_key(|contract| (contract.created_at_seconds, contract.coordinate.as_str()));
+
+    contract.map(|contract| {
+        let created_at_ms = i64::try_from(contract.created_at_seconds)
+            .ok()
+            .and_then(|seconds| seconds.checked_mul(1000))
+            .unwrap_or(i64::MAX);
+        let expires_at_ms = contract
+            .expires_at_seconds
+            .and_then(|seconds| i64::try_from(seconds).ok())
+            .and_then(|seconds| seconds.checked_mul(1000));
+        (
+            DeliveryBundle {
+                delivery_bundle_id: explicit_delivery_bundle_id
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("relay_contract:{}", contract.coordinate)),
+                asset_id: contract
+                    .linked_asset_id
+                    .clone()
+                    .or_else(|| explicit_asset_id.map(str::to_string))
+                    .unwrap_or_else(|| contract.listing_coordinate.clone()),
+                grant_id: contract
+                    .linked_grant_id
+                    .clone()
+                    .or_else(|| grant_selector.map(str::to_string))
+                    .or_else(|| contract.offer_coordinate.clone())
+                    .unwrap_or_else(|| "relay_offer.unknown".to_string()),
+                provider_id: contract.seller_pubkey.clone(),
+                consumer_id: contract.buyer_pubkey.clone(),
+                created_at_ms,
+                delivery_ref: contract.delivery_ref.clone().unwrap_or_default(),
+                delivery_digest: contract.delivery_digest.clone(),
+                bundle_size_bytes: None,
+                manifest_refs: Vec::new(),
+                expires_at_ms,
+                status: DeliveryBundleStatus::Issued,
+                metadata: json!({
+                    "request_id": resolved_request_id.clone(),
+                    "request_event_id": contract.request_event_id.clone(),
+                    "relay_access_contract_coordinate": contract.coordinate.clone(),
+                    "listing_coordinate": contract.listing_coordinate.clone(),
+                    "offer_coordinate": contract.offer_coordinate.clone(),
+                }),
+            },
+            "relay_access_contract",
+            resolved_request_id,
+        )
+    })
+}
+
+fn resolve_data_market_delivery(
+    state: &RenderState,
     args: &DataMarketResolveDeliveryArgs,
-) -> Result<(&'a DeliveryBundle, &'static str, Option<String>), String> {
+) -> Result<(DeliveryBundle, &'static str, Option<String>), String> {
     let explicit_delivery_bundle_id =
         normalized_data_market_selector(args.delivery_bundle_id.as_deref());
     let explicit_request_id = normalized_data_market_selector(args.request_id.as_deref());
@@ -1499,7 +1828,7 @@ fn resolve_data_market_delivery<'a>(
                     })
                     .map(|delivery| {
                         (
-                            delivery,
+                            delivery.clone(),
                             "latest_buyer_request",
                             Some(request_id.to_string()),
                         )
@@ -1522,13 +1851,25 @@ fn resolve_data_market_delivery<'a>(
                     })
                     .map(|delivery| {
                         (
-                            delivery,
+                            delivery.clone(),
                             "selected_offer_grant",
                             delivery_request_id(delivery).map(str::to_string),
                         )
                     })
                     .ok_or_else(|| "No matching delivery bundles found.".to_string());
             }
+        }
+        if let Some(relay_delivery) = synthesize_relay_delivery_bundle(
+            &state.data_market,
+            state.network_requests.submitted.as_slice(),
+            explicit_delivery_bundle_id.as_deref(),
+            explicit_request_id.as_deref(),
+            explicit_grant_id.as_deref(),
+            explicit_asset_id.as_deref(),
+            inferred_request_id.as_deref(),
+            inferred_grant_id.as_deref(),
+        ) {
+            return Ok(relay_delivery);
         }
         return state
             .data_market
@@ -1537,7 +1878,7 @@ fn resolve_data_market_delivery<'a>(
             .max_by_key(|delivery| (delivery.created_at_ms, delivery.delivery_bundle_id.as_str()))
             .map(|delivery| {
                 (
-                    delivery,
+                    delivery.clone(),
                     "latest_delivery",
                     delivery_request_id(delivery).map(str::to_string),
                 )
@@ -1552,7 +1893,7 @@ fn resolve_data_market_delivery<'a>(
         .max_by_key(|delivery| (delivery.created_at_ms, delivery.delivery_bundle_id.as_str()))
         .map(|delivery| {
             (
-                delivery,
+                delivery.clone(),
                 "explicit_selector",
                 delivery_request_id(delivery).map(str::to_string),
             )
@@ -1563,6 +1904,8 @@ fn resolve_data_market_delivery<'a>(
 pub(crate) fn execute_data_market_seller_status_tool(
     state: &mut RenderState,
 ) -> ToolBridgeResultEnvelope {
+    crate::data_seller_control::hydrate_data_seller_inventory_from_relay_replica(state);
+    crate::data_seller_control::reconcile_all_data_seller_requests_from_relay_catalog(state);
     ToolBridgeResultEnvelope::ok(
         "OA-DATA-MARKET-SELLER-STATUS",
         "Loaded Data Seller status snapshot.",
@@ -1642,7 +1985,7 @@ pub(crate) fn execute_data_market_resolve_delivery_tool(
                 "schema_version": DATA_MARKET_TOOL_SCHEMA_VERSION,
                 "selection_reason": selection_reason,
                 "resolved_request_id": resolved_request_id,
-                "delivery": data_market_delivery_payload(delivery),
+                "delivery": data_market_delivery_payload(&delivery),
             }),
         ),
         Err(error) => ToolBridgeResultEnvelope::error(
@@ -1859,16 +2202,15 @@ pub(crate) fn execute_data_market_publish_asset_tool(
         );
     }
     crate::data_seller_control::publish_data_seller_asset(state);
-    if state.data_seller.last_error.is_none()
-        && state
-            .data_seller
-            .active_draft
-            .last_published_asset_id
-            .is_some()
+    if state
+        .data_seller
+        .active_draft
+        .last_published_asset_id
+        .is_some()
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-ASSET-PUBLISHED",
-            "Published the DataAsset and read it back from kernel authority.",
+            "Published the DataAsset to DS relays and updated seller inventory.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -1977,16 +2319,15 @@ pub(crate) fn execute_data_market_publish_grant_tool(
     }
     state.data_seller.confirm_grant_preview();
     crate::data_seller_control::publish_data_seller_grant(state);
-    if state.data_seller.last_error.is_none()
-        && state
-            .data_seller
-            .active_draft
-            .last_published_grant_id
-            .is_some()
+    if state
+        .data_seller
+        .active_draft
+        .last_published_grant_id
+        .is_some()
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-GRANT-PUBLISHED",
-            "Published the AccessGrant and read it back from kernel authority.",
+            "Published the AccessGrant to DS relays and updated seller inventory.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -2094,7 +2435,7 @@ pub(crate) fn execute_data_market_issue_delivery_tool(
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-DELIVERY-ISSUED",
-            "Accepted the grant if needed, issued the DeliveryBundle, and queued the linked NIP-90 result.",
+            "Prepared the relay-native delivery bundle and queued the linked NIP-90 result.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -2117,7 +2458,7 @@ pub(crate) fn execute_data_market_revoke_grant_tool(
     if !args.confirm {
         return ToolBridgeResultEnvelope::error(
             "OA-DATA-MARKET-CONFIRM-REQUIRED",
-            "Revocation requires confirm=true because it mutates post-sale authority state.",
+            "Revocation requires confirm=true because it mutates post-sale access state.",
             data_seller_tool_snapshot(state),
         );
     }
@@ -2137,7 +2478,7 @@ pub(crate) fn execute_data_market_revoke_grant_tool(
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-REVOCATION-RECORDED",
-            "Recorded the seller revoke/expire control and read the resulting receipt back from kernel authority.",
+            "Recorded the seller revoke/expire state and published the relay-native lifecycle update.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -2173,9 +2514,50 @@ pub(crate) fn execute_data_market_snapshot_tool(
                 "grant_count": state.data_market.grants.len(),
                 "delivery_count": state.data_market.deliveries.len(),
                 "revocation_count": state.data_market.revocations.len(),
+                "relay_listing_count": state.data_market.relay_listings.len(),
+                "relay_offer_count": state.data_market.relay_offers.len(),
                 "last_refreshed_at_ms": state.data_market.last_refreshed_at_ms,
                 "last_action": state.data_market.last_action,
                 "last_error": state.data_market.last_error,
+                "relay_listings": state
+                    .data_market
+                    .relay_listings
+                    .iter()
+                    .take(8)
+                    .map(|listing| {
+                        json!({
+                            "coordinate": listing.coordinate,
+                            "publisher_pubkey": listing.publisher_pubkey,
+                            "relay_url": listing.relay_url,
+                            "title": listing.title,
+                            "summary": listing.summary,
+                            "dataset_kind": listing.dataset_kind,
+                            "access": listing.access,
+                            "draft": listing.draft,
+                            "linked_asset_id": listing.linked_asset_id,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                "relay_offers": state
+                    .data_market
+                    .relay_offers
+                    .iter()
+                    .take(8)
+                    .map(|offer| {
+                        json!({
+                            "coordinate": offer.coordinate,
+                            "listing_coordinate": offer.listing_coordinate,
+                            "publisher_pubkey": offer.publisher_pubkey,
+                            "relay_url": offer.relay_url,
+                            "status": offer.status,
+                            "policy": offer.policy,
+                            "price_amount": offer.price_amount,
+                            "price_currency": offer.price_currency,
+                            "linked_asset_id": offer.linked_asset_id,
+                            "linked_grant_id": offer.linked_grant_id,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
                 "lifecycle_entries": state
                     .data_market
                     .lifecycle_entries
@@ -7990,7 +8372,8 @@ mod tests {
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
-        Nip90SentPaymentsWindowPreset, PaneKind,
+        DataMarketPaneState, Nip90SentPaymentsWindowPreset, PaneKind,
+        RelayDatasetAccessContractProjection, RelayDatasetAccessResultProjection,
     };
     use crate::pane_system::{
         CadDemoPaneAction, DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
@@ -7999,6 +8382,7 @@ mod tests {
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
+    use crate::state::operations::{BuyerResolutionMode, NetworkRequestStatus, SubmittedNetworkRequest};
     use crate::state::swap_contract::{SwapAmountUnit, SwapDirection};
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
@@ -8059,6 +8443,53 @@ mod tests {
         )
         .labor_binding
         .expect("economically meaningful turns should create labor bindings")
+    }
+
+    fn submitted_request_fixture(request_id: &str, request_event_id: &str) -> SubmittedNetworkRequest {
+        SubmittedNetworkRequest {
+            request_id: request_id.to_string(),
+            published_request_event_id: Some(request_event_id.to_string()),
+            request_published_at_epoch_seconds: Some(1_774_000_000),
+            request_publish_selected_relays: Vec::new(),
+            request_publish_accepted_relays: Vec::new(),
+            request_publish_rejected_relays: Vec::new(),
+            request_type: "openagents.data.access".to_string(),
+            payload: "{}".to_string(),
+            resolution_mode: BuyerResolutionMode::Race,
+            target_provider_pubkeys: vec!["seller-pubkey".to_string()],
+            last_provider_pubkey: Some("seller-pubkey".to_string()),
+            result_provider_pubkey: Some("seller-pubkey".to_string()),
+            invoice_provider_pubkey: Some("seller-pubkey".to_string()),
+            last_feedback_status: Some("payment-required".to_string()),
+            last_feedback_event_id: Some("feedback.alpha".to_string()),
+            last_result_event_id: Some("result.alpha".to_string()),
+            last_payment_pointer: Some("spark:payment.alpha".to_string()),
+            payment_required_at_epoch_seconds: Some(1_774_000_001),
+            payment_sent_at_epoch_seconds: Some(1_774_000_002),
+            payment_failed_at_epoch_seconds: None,
+            payment_error: None,
+            payment_notice: None,
+            pending_bolt11: None,
+            skill_scope_id: None,
+            credit_envelope_ref: None,
+            budget_sats: 5,
+            timeout_seconds: 120,
+            response_stream_id: format!("stream:{request_id}"),
+            status: NetworkRequestStatus::Completed,
+            authority_command_seq: 0,
+            authority_status: None,
+            authority_event_id: None,
+            authority_error_class: None,
+            winning_provider_pubkey: Some("seller-pubkey".to_string()),
+            winning_result_event_id: Some("result.alpha".to_string()),
+            resolution_reason_code: Some("first_valid_result".to_string()),
+            duplicate_outcomes: Vec::new(),
+            resolution_feedbacks: Vec::new(),
+            observed_buyer_event_ids: Vec::new(),
+            provider_observations: Vec::new(),
+            provider_observation_history: Vec::new(),
+            buyer_payment_attempts: Vec::new(),
+        }
     }
 
     #[test]
@@ -8248,6 +8679,90 @@ mod tests {
             .decode_arguments::<super::DataMarketRevokeGrantArgs>()
             .expect_err("request_id, action, and confirm should be required");
         assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
+    }
+
+    #[test]
+    fn relay_delivery_synthesis_uses_ds_result_when_kernel_delivery_state_is_empty() {
+        let mut market = DataMarketPaneState::default();
+        market.relay_access_contracts.push(RelayDatasetAccessContractProjection {
+            coordinate: "30407:seller-pubkey:contract.alpha".to_string(),
+            seller_pubkey: "seller-pubkey".to_string(),
+            buyer_pubkey: "buyer-pubkey".to_string(),
+            relay_url: Some("ws://127.0.0.1:7777".to_string()),
+            listing_coordinate: "30404:seller-pubkey:listing.alpha".to_string(),
+            offer_coordinate: Some("30406:seller-pubkey:offer.alpha".to_string()),
+            request_event_id: "request-event-alpha".to_string(),
+            result_event_id: Some("result.alpha".to_string()),
+            status: "fulfilled".to_string(),
+            payment_method: Some("lightning".to_string()),
+            amount_msats: Some(5_000),
+            bolt11: None,
+            payment_hash: Some("payment-hash-alpha".to_string()),
+            payment_evidence_event_ids: Vec::new(),
+            delivery_mode: Some("encrypted_pointer".to_string()),
+            delivery_ref: Some("https://delivery.example/contracts/alpha".to_string()),
+            delivery_mime_type: Some("application/octet-stream".to_string()),
+            delivery_digest: Some("sha256:alpha".to_string()),
+            created_at_seconds: 1_774_000_010,
+            expires_at_seconds: Some(1_774_003_610),
+            reason_code: None,
+            linked_asset_id: Some("asset.alpha".to_string()),
+            linked_grant_id: Some("grant.alpha".to_string()),
+        });
+        market.relay_results.push(RelayDatasetAccessResultProjection {
+            event_id: "result.alpha".to_string(),
+            seller_pubkey: "seller-pubkey".to_string(),
+            buyer_pubkey: "buyer-pubkey".to_string(),
+            relay_url: Some("ws://127.0.0.1:7777".to_string()),
+            request_event_id: "request-event-alpha".to_string(),
+            listing_coordinate: "30404:seller-pubkey:listing.alpha".to_string(),
+            offer_coordinate: Some("30406:seller-pubkey:offer.alpha".to_string()),
+            asset_ref: "30404:seller-pubkey:listing.alpha".to_string(),
+            asset_id: None,
+            grant_id: None,
+            delivery_bundle_id: "delivery.alpha".to_string(),
+            delivery_mode: "encrypted_pointer".to_string(),
+            preview_posture: "metadata_only".to_string(),
+            delivery_ref: Some("https://delivery.example/results/alpha".to_string()),
+            delivery_digest: Some("sha256:alpha".to_string()),
+            amount_msats: Some(5_000),
+            bolt11: None,
+            payment_hash: Some("payment-hash-alpha".to_string()),
+            created_at_seconds: 1_774_000_011,
+            linked_asset_id: Some("asset.alpha".to_string()),
+            linked_grant_id: Some("grant.alpha".to_string()),
+        });
+
+        let resolved = super::synthesize_relay_delivery_bundle(
+            &market,
+            &[submitted_request_fixture("request.alpha", "request-event-alpha")],
+            None,
+            Some("request.alpha"),
+            Some("grant.alpha"),
+            None,
+            None,
+            None,
+        )
+        .expect("relay-only delivery should synthesize");
+
+        assert_eq!(resolved.1, "relay_result_projection");
+        assert_eq!(resolved.2.as_deref(), Some("request.alpha"));
+        assert_eq!(resolved.0.delivery_bundle_id, "delivery.alpha");
+        assert_eq!(resolved.0.asset_id, "asset.alpha");
+        assert_eq!(resolved.0.grant_id, "grant.alpha");
+        assert_eq!(
+            resolved.0.delivery_ref,
+            "https://delivery.example/results/alpha"
+        );
+        assert_eq!(resolved.0.delivery_digest.as_deref(), Some("sha256:alpha"));
+        assert_eq!(
+            resolved
+                .0
+                .metadata
+                .get("request_event_id")
+                .and_then(serde_json::Value::as_str),
+            Some("request-event-alpha")
+        );
     }
 
     #[test]

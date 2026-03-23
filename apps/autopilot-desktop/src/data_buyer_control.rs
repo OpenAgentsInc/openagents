@@ -42,9 +42,12 @@ fn build_data_buyer_request_payload(
 ) -> String {
     json!({
         "request_type": DATA_MARKET_BUYER_REQUEST_TYPE,
+        "asset_ref": draft.asset_ref,
         "asset_id": draft.asset_id,
+        "ds_listing_coordinate": draft.listing_coordinate,
         "target_provider_pubkey": draft.provider_id,
         "grant_id": draft.offer_grant_id,
+        "ds_offer_coordinate": draft.offer_coordinate,
         "permission_scopes": draft.permission_scopes,
         "delivery_mode": draft.delivery_mode,
         "preview_posture": draft.preview_posture,
@@ -62,6 +65,10 @@ fn build_data_buyer_request_event(
     draft: &DataBuyerRequestDraft,
     buyer_id: Option<&str>,
 ) -> Result<Event, String> {
+    let listing_coordinate = draft.listing_coordinate.as_deref().ok_or_else(|| {
+        "Cannot publish data-access request: selected dataset is missing a DS listing coordinate."
+            .to_string()
+    })?;
     let first_scope = draft
         .permission_scopes
         .first()
@@ -69,10 +76,13 @@ fn build_data_buyer_request_event(
         .unwrap_or_else(|| "targeted_request".to_string());
     let mut request = DataVendingRequest::new(
         OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
-        draft.asset_id.as_str(),
+        listing_coordinate,
         first_scope,
     )
     .map_err(|error| format!("Cannot build data-vending request: {error}"))?
+    .with_listing_coordinate(listing_coordinate)
+    .map_err(|error| format!("Cannot encode DS listing reference: {error}"))?
+    .with_asset_id(draft.asset_id.clone())
     .with_delivery_mode(
         DataVendingDeliveryMode::from_str(draft.delivery_mode.as_str()).unwrap_or_default(),
     )
@@ -82,6 +92,14 @@ fn build_data_buyer_request_event(
     )
     .with_bid(draft.bid_sats.saturating_mul(1000))
     .with_content(build_data_buyer_request_payload(draft, buyer_id));
+    if let Some(offer_coordinate) = draft.offer_coordinate.as_deref() {
+        request = request
+            .with_offer_coordinate(offer_coordinate)
+            .map_err(|error| format!("Cannot encode DS offer reference: {error}"))?;
+    }
+    if let Some(grant_id) = draft.offer_grant_id.as_deref() {
+        request = request.with_grant_id(grant_id.to_string());
+    }
     for scope in draft.permission_scopes.iter().skip(1) {
         request = request.add_scope(scope.clone());
     }
@@ -110,8 +128,12 @@ fn build_data_buyer_request_event(
 pub(crate) fn open_data_buyer_pane(state: &mut RenderState) -> bool {
     let buyer_id = crate::kernel_control::provider_id_for_state(state);
     state.data_buyer.configure_local_buyer_id(buyer_id);
+    crate::data_market_control::hydrate_data_market_relay_replica(state);
     state.data_buyer.mark_opened();
-    refresh_data_buyer_market(state)
+    if state.data_market.has_snapshot() {
+        state.data_buyer.sync_selection(&state.data_market);
+    }
+    true
 }
 
 pub(crate) fn refresh_data_buyer_market(state: &mut RenderState) -> bool {
@@ -156,7 +178,7 @@ pub(crate) fn publish_data_buyer_request(state: &mut RenderState) -> bool {
 
     let Some(draft) = state.data_buyer.derived_request_draft(&state.data_market) else {
         state.data_buyer.record_publish_error(
-            "No active data asset is selected for buyer request publication.",
+            "No relay dataset listing is selected for buyer request publication.",
         );
         return true;
     };
@@ -197,7 +219,10 @@ pub(crate) fn publish_data_buyer_request(state: &mut RenderState) -> bool {
                 request_id,
                 published_event_id,
                 draft.provider_id,
-                draft.asset_id,
+                draft
+                    .listing_coordinate
+                    .clone()
+                    .unwrap_or_else(|| draft.asset_ref.clone()),
             );
             true
         }
@@ -221,9 +246,20 @@ mod tests {
 
     fn fixture_draft() -> DataBuyerRequestDraft {
         DataBuyerRequestDraft {
+            asset_ref:
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+                    .to_string(),
             asset_id: "data_asset.npub1seller.document.context.sha256_abc".to_string(),
             provider_id: "npub1seller".to_string(),
             offer_grant_id: Some("grant.data.offer.001".to_string()),
+            listing_coordinate: Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+                    .to_string(),
+            ),
+            offer_coordinate: Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.data.offer.001"
+                    .to_string(),
+            ),
             permission_scopes: vec![
                 "encrypted_pointer".to_string(),
                 "targeted_request".to_string(),
@@ -248,6 +284,12 @@ mod tests {
             payload["target_provider_pubkey"].as_str(),
             Some("npub1seller")
         );
+        assert_eq!(
+            payload["asset_ref"].as_str(),
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+            )
+        );
         assert_eq!(payload["bid_sats"].as_u64(), Some(42));
         assert_eq!(payload["buyer_id"].as_str(), Some("npub1buyer"));
     }
@@ -266,7 +308,32 @@ mod tests {
         let request = DataVendingRequest::from_event(&event).expect("data-vending request");
         assert_eq!(
             request.asset_ref,
-            "data_asset.npub1seller.document.context.sha256_abc"
+            "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+        );
+        assert_eq!(
+            request.asset_id.as_deref(),
+            Some("data_asset.npub1seller.document.context.sha256_abc")
+        );
+        assert_eq!(request.grant_id.as_deref(), Some("grant.data.offer.001"));
+        assert_eq!(
+            request
+                .listing_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some(
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
+            )
+        );
+        assert_eq!(
+            request
+                .offer_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .as_deref(),
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.data.offer.001"
+            )
         );
         assert_eq!(request.bid, Some(42_000));
         assert_eq!(request.service_providers, vec!["npub1seller".to_string()]);

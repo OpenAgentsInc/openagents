@@ -1949,7 +1949,7 @@ pub(crate) fn event_to_inbox_request(
         parsed_event_shape,
     ) = match parsed.as_ref() {
         Ok(request) => {
-            let data_vending_request = DataVendingRequest::from_job_request(request.clone()).ok();
+            let data_vending_request = DataVendingRequest::from_event(event).ok();
             let bid_msats = request.bid.unwrap_or(0);
             let price_sats = msats_to_sats_ceil(bid_msats);
             let ttl_seconds = extract_ttl_seconds(request)
@@ -1986,6 +1986,26 @@ pub(crate) fn event_to_inbox_request(
                     "oa_asset_ref",
                     data_request.asset_ref.as_str(),
                 );
+                if let Some(listing_ref) = &data_request.listing_ref {
+                    append_unique_param(
+                        &mut normalized_params,
+                        "oa_listing_ref",
+                        listing_ref.coordinate.to_string().as_str(),
+                    );
+                }
+                if let Some(offer_ref) = &data_request.offer_ref {
+                    append_unique_param(
+                        &mut normalized_params,
+                        "oa_offer_ref",
+                        offer_ref.coordinate.to_string().as_str(),
+                    );
+                }
+                if let Some(asset_id) = data_request.asset_id.as_deref() {
+                    append_unique_param(&mut normalized_params, "oa_asset_id", asset_id);
+                }
+                if let Some(grant_id) = data_request.grant_id.as_deref() {
+                    append_unique_param(&mut normalized_params, "oa_grant_id", grant_id);
+                }
                 append_unique_param(
                     &mut normalized_params,
                     "oa_delivery_mode",
@@ -2261,7 +2281,15 @@ fn validate_data_vending_request(
     target_provider_pubkeys: &[String],
     event: &Event,
 ) -> JobInboxValidation {
-    if data_request.asset_ref.trim().is_empty() {
+    if data_request
+        .listing_ref
+        .as_ref()
+        .is_none_or(|reference| reference.coordinate.identifier.trim().is_empty())
+    {
+        JobInboxValidation::Invalid(
+            "data-vending request missing DS dataset listing `a` reference".to_string(),
+        )
+    } else if data_request.asset_ref.trim().is_empty() {
         JobInboxValidation::Invalid("data-vending request missing oa_asset_ref".to_string())
     } else if data_request.permission_scopes.is_empty() {
         JobInboxValidation::Invalid("data-vending request missing oa_scope".to_string())
@@ -2615,9 +2643,21 @@ fn format_data_vending_request_shape(
     let mut base = format_nip90_request_shape(event, request, price_sats, ttl_seconds);
     base.push_str(
         format!(
-            "\nprofile={} asset_ref={} scopes=[{}] delivery_mode={} preview_posture={} targeted={} encrypted={}",
-            OPENAGENTS_DATA_VENDING_PROFILE,
+            "\nprofile={} listing_ref={} offer_ref={} asset_ref={} asset_id={} grant_id={} scopes=[{}] delivery_mode={} preview_posture={} targeted={} encrypted={}",
+            data_request.profile_id,
+            data_request
+                .listing_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            data_request
+                .offer_ref
+                .as_ref()
+                .map(|reference| reference.coordinate.to_string())
+                .unwrap_or_else(|| "none".to_string()),
             data_request.asset_ref,
+            data_request.asset_id.as_deref().unwrap_or("none"),
+            data_request.grant_id.as_deref().unwrap_or("none"),
             data_request.permission_scopes.join(","),
             data_request.delivery_mode.as_str(),
             data_request.preview_posture.as_str(),
@@ -3082,6 +3122,16 @@ mod tests {
                 "read.context",
             )
             .expect("data request")
+            .with_listing_coordinate(
+                "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:dataset.repo-alpha",
+            )
+            .expect("listing coordinate")
+            .with_offer_coordinate(
+                "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:offer.repo-alpha",
+            )
+            .expect("offer coordinate")
+            .with_asset_id("asset.repo-alpha")
+            .with_grant_id("grant.repo-alpha")
             .with_delivery_mode(DataVendingDeliveryMode::EncryptedPointer)
             .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
             .with_bid(42_000)
@@ -3117,9 +3167,33 @@ mod tests {
                 .any(|param| param.key == "oa_scope" && param.value == "read.context")
         );
         assert!(
+            row.execution_params.iter().any(|param| {
+                param.key == "oa_listing_ref"
+                    && param.value
+                        == "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:dataset.repo-alpha"
+            })
+        );
+        assert!(
+            row.execution_params.iter().any(|param| {
+                param.key == "oa_offer_ref"
+                    && param.value
+                        == "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:offer.repo-alpha"
+            })
+        );
+        assert!(
+            row.execution_params
+                .iter()
+                .any(|param| param.key == "oa_asset_id" && param.value == "asset.repo-alpha")
+        );
+        assert!(
+            row.execution_params
+                .iter()
+                .any(|param| param.key == "oa_grant_id" && param.value == "grant.repo-alpha")
+        );
+        assert!(
             row.parsed_event_shape
                 .as_deref()
-                .is_some_and(|shape| shape.contains("profile=openagents.data-vending.v1"))
+                .is_some_and(|shape| shape.contains("profile=openagents.ds-dvm.v1"))
         );
     }
 
@@ -3143,6 +3217,10 @@ mod tests {
                 "read.context",
             )
             .expect("data request")
+            .with_listing_coordinate(
+                "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:dataset.repo-alpha",
+            )
+            .expect("listing coordinate")
             .with_delivery_mode(DataVendingDeliveryMode::DeliveryBundleRef)
             .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
             .with_bid(42_000)

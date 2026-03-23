@@ -3,7 +3,12 @@ use openagents_kernel_core::data::{AccessGrant, DataAsset, RevocationReceipt};
 use serde_json::Value;
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
-use crate::app_state::{DataBuyerPaneState, DataMarketPaneState};
+use crate::app_state::{
+    DataBuyerPaneState, DataMarketPaneState, RelayDatasetAccessContractProjection,
+    RelayDatasetAccessRequestProjection, RelayDatasetAccessResultProjection,
+    RelayDatasetListingProjection, RelayDatasetOfferProjection,
+    RelayDatasetSettlementMatchProjection,
+};
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
 use crate::pane_system::{
     data_buyer_next_asset_button_bounds, data_buyer_previous_asset_button_bounds,
@@ -47,7 +52,7 @@ pub fn paint(
     );
 
     paint.scene.draw_text(paint.text.layout(
-        "Narrow buyer-side targeted request surface. This pane selects a visible asset and publishes a targeted NIP-90 data-access request without widening into public discovery.",
+        "Buyer-side DS discovery surface. This pane selects a relay-visible dataset listing, publishes a targeted DS-DVM request, and tracks relay contracts, results, and wallet settlement.",
         Point::new(
             content_bounds.origin.x + PADDING,
             content_bounds.origin.y + 42.0,
@@ -132,6 +137,8 @@ pub fn paint(
         bottom_height,
     );
 
+    let selected_listing = pane_state.selected_listing(market_state);
+    let selected_catalog_offer = pane_state.selected_catalog_offer(market_state);
     let selected_asset = pane_state.selected_asset(market_state);
     let selected_grant = pane_state.selected_offer_grant(market_state);
     let selected_revocation = pane_state.selected_revocation(market_state);
@@ -145,9 +152,15 @@ pub fn paint(
                 .iter()
                 .find(|request| request.request_id == request_id)
         });
+    let relay_request = pane_state.latest_relay_request(market_state);
+    let relay_contract = pane_state.latest_relay_access_contract(market_state);
+    let relay_result = pane_state.latest_relay_result(market_state);
+    let relay_settlement = pane_state.latest_wallet_settlement(market_state);
 
     paint_asset_card(
         asset_bounds,
+        selected_listing,
+        selected_catalog_offer,
         selected_asset,
         selected_grant,
         selected_revocation,
@@ -158,35 +171,53 @@ pub fn paint(
         truth_bounds,
         pane_state,
         latest_request,
-        selected_grant,
-        selected_revocation,
+        relay_request,
+        relay_contract,
+        relay_result,
+        relay_settlement,
         paint,
     );
 }
 
 fn paint_asset_card(
     bounds: Bounds,
+    listing: Option<&RelayDatasetListingProjection>,
+    catalog_offer: Option<&RelayDatasetOfferProjection>,
     asset: Option<&DataAsset>,
     grant: Option<&AccessGrant>,
     revocation: Option<&RevocationReceipt>,
     paint: &mut PaintContext,
 ) {
-    paint_card(bounds, "Selected Asset", "Visible market snapshot", paint);
-    let Some(asset) = asset else {
+    paint_card(
+        bounds,
+        "Selected Dataset",
+        "Relay listing with optional compatibility bridge metadata",
+        paint,
+    );
+    if listing.is_none() && asset.is_none() {
         paint.scene.draw_text(paint.text.layout(
-            "No active asset is selected yet. Refresh the market snapshot or publish a seller asset first.",
+            "No relay listing is selected yet. Refresh the relay catalog or publish a seller listing first.",
             Point::new(bounds.origin.x + 10.0, bounds.origin.y + CARD_HEADER_HEIGHT + 12.0),
             11.0,
             theme::text::MUTED,
         ));
         return;
-    };
+    }
 
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
-    for (label, value) in [
-        ("title", compact_text(asset.title.as_str(), 44)),
-        (
-            "asset",
+    let title = listing
+        .map(|listing| compact_text(listing.title.as_str(), 44))
+        .or_else(|| asset.map(|asset| compact_text(asset.title.as_str(), 44)))
+        .unwrap_or_else(|| "unavailable".to_string());
+    let listing_ref = listing
+        .map(|listing| compact_text(listing.coordinate.as_str(), 44))
+        .unwrap_or_else(|| "none".to_string());
+    let provider = listing
+        .map(|listing| compact_text(listing.publisher_pubkey.as_str(), 44))
+        .or_else(|| asset.map(|asset| compact_text(asset.provider_id.as_str(), 44)))
+        .unwrap_or_else(|| "unknown".to_string());
+    let linked_asset = asset
+        .map(|asset| {
             compact_text(
                 format!(
                     "{} // {} // {}",
@@ -196,39 +227,110 @@ fn paint_asset_card(
                 )
                 .as_str(),
                 44,
-            ),
-        ),
-        ("provider", compact_text(asset.provider_id.as_str(), 44)),
-        (
-            "pricing",
-            compact_text(
+            )
+        })
+        .unwrap_or_else(|| "none".to_string());
+    let pricing = grant
+        .and_then(|grant| grant.offer_price.as_ref().map(format_money))
+        .or_else(|| {
+            catalog_offer.map(|offer| {
                 format!(
-                    "{} // {}",
-                    asset
-                        .price_hint
-                        .as_ref()
-                        .map(format_money)
-                        .unwrap_or_else(|| "none".to_string()),
-                    asset
-                        .default_policy
-                        .as_ref()
-                        .map(|policy| policy.policy_id.clone())
-                        .unwrap_or_else(|| "policy none".to_string()),
+                    "{} {}",
+                    offer.price_amount.as_deref().unwrap_or("-"),
+                    offer.price_currency.as_deref().unwrap_or("-"),
                 )
-                .as_str(),
-                44,
-            ),
-        ),
-        ("market", asset_market_posture(asset)),
+            })
+        })
+        .or_else(|| {
+            listing.and_then(|listing| {
+                listing
+                    .classified_price_amount
+                    .as_deref()
+                    .zip(listing.classified_price_currency.as_deref())
+                    .map(|(amount, currency)| format!("{amount} {currency}"))
+            })
+        })
+        .or_else(|| {
+            listing.and_then(|listing| {
+                listing
+                    .storefront_product_price_amount
+                    .as_deref()
+                    .zip(listing.storefront_product_price_currency.as_deref())
+                    .map(|(amount, currency)| format!("{amount} {currency}"))
+            })
+        })
+        .or_else(|| asset.and_then(|asset| asset.price_hint.as_ref().map(format_money)))
+        .unwrap_or_else(|| "none".to_string());
+    for (label, value) in [
+        ("title", title),
+        ("listing", listing_ref),
+        ("provider", provider),
+        ("bridge_asset", linked_asset),
+        ("pricing", compact_text(pricing.as_str(), 44)),
         (
-            "bundle",
-            asset_bundle_summary(asset).unwrap_or_else(|| "generic package".to_string()),
+            "market",
+            asset
+                .map(asset_market_posture)
+                .or_else(|| listing.and_then(|listing| listing.access.clone()))
+                .unwrap_or_else(|| "relay_only".to_string()),
         ),
     ] {
         row_y = paint_row(bounds, row_y, label, value.as_str(), paint);
     }
+    if let Some(offer) = catalog_offer {
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "relay_offer",
+            compact_text(offer.coordinate.as_str(), 44).as_str(),
+            paint,
+        );
+    }
+    if let Some(listing) = listing {
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "catalog",
+            compact_text(
+                listing.classified_coordinate.as_deref().unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "discussion",
+            compact_text(
+                listing
+                    .discussion_channel_id
+                    .as_deref()
+                    .or(listing.discussion_channel_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "storefront",
+            compact_text(
+                listing
+                    .storefront_product_coordinate
+                    .as_deref()
+                    .or(listing.storefront_stall_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
+    }
     if let Some(grant) = grant {
-        row_y = paint_row(bounds, row_y, "offer_grant", grant.grant_id.as_str(), paint);
+        row_y = paint_row(bounds, row_y, "bridge_grant", grant.grant_id.as_str(), paint);
         row_y = paint_row(
             bounds,
             row_y,
@@ -253,6 +355,38 @@ fn paint_asset_card(
     } else {
         row_y = paint_row(bounds, row_y, "offer", "none", paint);
     }
+    if let Some(offer) = catalog_offer {
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "offer_chat",
+            compact_text(
+                offer
+                    .discussion_channel_id
+                    .as_deref()
+                    .or(offer.discussion_channel_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "offer_storefront",
+            compact_text(
+                offer
+                    .storefront_product_coordinate
+                    .as_deref()
+                    .or(offer.storefront_stall_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
+    }
     let revocation_label = revocation
         .map(|revocation| {
             format!(
@@ -265,7 +399,7 @@ fn paint_asset_card(
     let _ = paint_row(
         bounds,
         row_y,
-        "revocation",
+        "bridge_revoke",
         revocation_label.as_str(),
         paint,
     );
@@ -279,12 +413,12 @@ fn paint_draft_card(
     paint_card(
         bounds,
         "Request Draft",
-        "Derived from selected asset + offer terms",
+        "Derived from the selected relay listing and offer terms",
         paint,
     );
     let Some(draft) = draft else {
         paint.scene.draw_text(paint.text.layout(
-            "No request draft is available because there is no active asset selection.",
+            "No request draft is available because there is no relay listing selection.",
             Point::new(
                 bounds.origin.x + 10.0,
                 bounds.origin.y + CARD_HEADER_HEIGHT + 12.0,
@@ -298,11 +432,26 @@ fn paint_draft_card(
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     for (label, value) in [
         ("provider", draft.provider_id.as_str().to_string()),
-        ("asset_id", draft.asset_id.as_str().to_string()),
+        ("asset_ref", draft.asset_ref.as_str().to_string()),
+        ("bridge_asset", draft.asset_id.as_str().to_string()),
         (
-            "grant_id",
+            "listing",
+            draft
+                .listing_coordinate
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
+        ),
+        (
+            "bridge_grant",
             draft
                 .offer_grant_id
+                .clone()
+                .unwrap_or_else(|| "none".to_string()),
+        ),
+        (
+            "offer",
+            draft
+                .offer_coordinate
                 .clone()
                 .unwrap_or_else(|| "none".to_string()),
         ),
@@ -323,14 +472,16 @@ fn paint_truth_card(
     bounds: Bounds,
     pane_state: &DataBuyerPaneState,
     latest_request: Option<&SubmittedNetworkRequest>,
-    grant: Option<&AccessGrant>,
-    revocation: Option<&RevocationReceipt>,
+    relay_request: Option<&RelayDatasetAccessRequestProjection>,
+    relay_contract: Option<&RelayDatasetAccessContractProjection>,
+    relay_result: Option<&RelayDatasetAccessResultProjection>,
+    relay_settlement: Option<&RelayDatasetSettlementMatchProjection>,
     paint: &mut PaintContext,
 ) {
     paint_card(
         bounds,
         "Buyer Truth",
-        "Published request plus current grant/revocation posture",
+        "Published request plus relay contract, result, and wallet posture",
         paint,
     );
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
@@ -353,7 +504,7 @@ fn paint_truth_card(
     row_y = paint_row(
         bounds,
         row_y,
-        "request_status",
+        "local_status",
         latest_request
             .map(|request| request.status.label())
             .unwrap_or("unpublished"),
@@ -371,46 +522,67 @@ fn paint_truth_card(
     row_y = paint_row(
         bounds,
         row_y,
+        "relay_request",
+        relay_request
+            .map(|request| request.event_id.as_str())
+            .unwrap_or("none"),
+        paint,
+    );
+    row_y = paint_row(
+        bounds,
+        row_y,
+        "contract",
+        relay_contract
+            .map(|contract| contract.coordinate.as_str())
+            .unwrap_or("none"),
+        paint,
+    );
+    row_y = paint_row(
+        bounds,
+        row_y,
+        "contract_status",
+        relay_contract
+            .map(|contract| contract.status.as_str())
+            .unwrap_or("none"),
+        paint,
+    );
+    row_y = paint_row(
+        bounds,
+        row_y,
         "result_event",
-        latest_request
-            .and_then(|request| request.last_result_event_id.as_deref())
+        relay_result
+            .map(|result| result.event_id.as_str())
+            .or_else(|| latest_request.and_then(|request| request.last_result_event_id.as_deref()))
             .unwrap_or("none"),
         paint,
     );
     row_y = paint_row(
         bounds,
         row_y,
-        "payment_pointer",
-        latest_request
-            .and_then(|request| request.last_payment_pointer.as_deref())
+        "payment_hash",
+        relay_contract
+            .and_then(|contract| contract.payment_hash.as_deref())
+            .or_else(|| relay_result.and_then(|result| result.payment_hash.as_deref()))
             .unwrap_or("none"),
         paint,
     );
     row_y = paint_row(
         bounds,
         row_y,
-        "grant_duration",
-        grant
-            .map(grant_duration_label)
-            .unwrap_or_else(|| "unknown".to_string())
-            .as_str(),
+        "wallet_settle",
+        relay_settlement
+            .map(|settlement| settlement.status.as_str())
+            .unwrap_or("none"),
         paint,
     );
-    let revocation_label = revocation
-        .map(|revocation| {
-            format!(
-                "{} // reason={} // recorded={}",
-                revocation.status.label(),
-                revocation.reason_code,
-                format_epoch_ms(Some(revocation.created_at_ms))
-            )
-        })
-        .unwrap_or_else(|| "none".to_string());
     let _ = paint_row(
         bounds,
         row_y,
-        "revocation_posture",
-        revocation_label.as_str(),
+        "delivery_digest",
+        relay_result
+            .and_then(|result| result.delivery_digest.as_deref())
+            .or_else(|| relay_contract.and_then(|contract| contract.delivery_digest.as_deref()))
+            .unwrap_or("none"),
         paint,
     );
 }

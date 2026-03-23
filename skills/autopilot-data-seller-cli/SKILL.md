@@ -1,11 +1,11 @@
 ---
 name: autopilot-data-seller-cli
-description: Shell-first OpenAgents Data Market packaging and publication workflow using the deterministic packaging helper, autopilotctl, and the no-window headless runtime.
+description: Shell-first OpenAgents DS-first Data Market packaging and publication workflow using the deterministic packaging helper, autopilotctl, and the no-window headless runtime.
 metadata:
   oa:
     project: openagents
     identifier: autopilot-data-seller-cli
-    version: "0.2.0"
+    version: "0.3.0"
     expires_at_unix: 1798761600
     capabilities:
       - codex:shell
@@ -22,6 +22,9 @@ or manage it through CLI, not through the visible `Data Seller` pane.
 
 ## Quick start
 
+- For real publish, point the headless runtime at the relays you actually want
+  to use; you do not need `nexus-control` or `OA_CONTROL_*` for the DS-first
+  seller/buyer flow.
 - Package local files or folders with
   [`scripts/package_data_asset.sh`](scripts/package_data_asset.sh).
 - Package redacted Codex conversations with
@@ -33,6 +36,9 @@ or manage it through CLI, not through the visible `Data Seller` pane.
 - Follow the semantic CLI order:
   draft asset -> preview asset -> publish asset -> snapshot -> draft grant ->
   preview grant -> publish grant -> payment -> delivery -> revoke
+- Use `seller-prompt` only when you intentionally want the conversational
+  seller lane in a terminal session. Prefer the packaged CLI path for
+  deterministic DS-first publication.
 
 ## Required operating rules
 
@@ -53,6 +59,13 @@ or manage it through CLI, not through the visible `Data Seller` pane.
 10. Before publish, inspect the exported bundle for any project-specific names
     or literals that still need scrubbing and rerun packaging with `--scrub`
     when needed.
+11. Treat DS listing and DS offer publication as the public market truth, and
+    treat DS-DVM request/result traffic as the targeted fulfillment layer.
+12. Use `scripts/autopilot/verify-data-market-cli-headless.sh` as the portable
+    local launch gate. Treat the public-relay harness as an operator probe,
+    not the deterministic gate.
+13. Do not set `OPENAGENTS_DISABLE_CODEX=true` if the plan depends on
+    `seller-prompt`; that flag is for the typed repo-owned verification flows.
 
 ## When to read references
 
@@ -84,4 +97,13 @@ or manage it through CLI, not through the visible `Data Seller` pane.
   logic through `autopilotctl`.
 - Use the dedicated pane skill for conversational in-app seller work.
 - Do not create a parallel publication path that bypasses preview, confirm, or
-  kernel read-back.
+  relay-backed status/snapshot read-back.
+
+## Verification truth
+
+- Portable local verifier:
+  `scripts/autopilot/verify-data-market-cli-headless.sh`
+- Fresh paid local DS-first audit:
+  `docs/audits/2026-03-21-ds-first-headless-data-market-paid-e2e-audit.md`
+- Live public-relay probe:
+  `scripts/autopilot/headless-data-market-public-e2e.sh`

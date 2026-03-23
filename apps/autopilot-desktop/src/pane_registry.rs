@@ -727,7 +727,7 @@ const PANE_SPECS: [PaneSpec; 63] = [
         command: Some(PaneCommandSpec {
             id: "pane.data_market",
             label: "Data Market",
-            description: "Open read-only Nexus data-market assets, grants, deliveries, and revocations",
+            description: "Open the read-only relay-backed data-market catalog and lifecycle pane",
             keybinding: None,
         }),
         hotbar: None,
