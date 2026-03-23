@@ -238,6 +238,17 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             .autopilot_chat
             .managed_chat_projection
             .record_relay_events(nip28_relay_events);
+
+        // Trigger kind-0 fetch for any author pubkeys not yet requested
+        let author_pubkeys: Vec<String> = state
+            .autopilot_chat
+            .managed_chat_projection
+            .snapshot
+            .messages
+            .values()
+            .map(|m| m.author_pubkey.clone())
+            .collect();
+        state.nip28_chat_lane_worker.fetch_kind0_if_needed(author_pubkeys);
     }
 
     {

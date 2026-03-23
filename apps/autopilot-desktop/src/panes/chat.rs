@@ -1216,6 +1216,22 @@ fn truncate_line(value: &str, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
+/// Shows first `n` + "…" + last `n` chars, e.g. "2c879cab…35ajhfhf".
+/// Falls back to the full string if it is short enough to fit without truncation.
+fn compact_hex_bookend(value: &str, n: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    if chars.len() <= n * 2 + 1 {
+        return trimmed.to_string();
+    }
+    let prefix: String = chars[..n].iter().collect();
+    let suffix: String = chars[chars.len() - n..].iter().collect();
+    format!("{prefix}…{suffix}")
+}
+
 fn compact_hex_label(value: &str, prefix_chars: usize) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -1230,6 +1246,28 @@ fn compact_hex_label(value: &str, prefix_chars: usize) -> String {
     } else {
         format!("{prefix}…")
     }
+}
+
+fn resolve_author_display_name<'a>(
+    pubkey: &'a str,
+    author_metadata: &'a std::collections::HashMap<
+        String,
+        crate::app_state::Kind0Metadata,
+    >,
+) -> std::borrow::Cow<'a, str> {
+    if let Some(meta) = author_metadata.get(pubkey) {
+        if let Some(dn) = &meta.display_name {
+            if !dn.is_empty() {
+                return std::borrow::Cow::Borrowed(dn.as_str());
+            }
+        }
+        if let Some(n) = &meta.name {
+            if !n.is_empty() {
+                return std::borrow::Cow::Borrowed(n.as_str());
+            }
+        }
+    }
+    std::borrow::Cow::Owned(compact_hex_bookend(pubkey, 8))
 }
 
 fn shell_initials(value: &str) -> String {
@@ -1382,22 +1420,25 @@ fn managed_peer_presence_lines(autopilot_chat: &AutopilotChatState) -> Vec<Strin
     lines
 }
 
-fn managed_message_role_label(index: usize, message: &ManagedChatMessageProjection) -> String {
-    let base = format!(
-        "[#{}] [{}]",
-        index + 1,
-        compact_hex_label(&message.author_pubkey, 8)
-    );
-    match message.delivery_state {
-        ManagedChatDeliveryState::Confirmed => base,
-        ManagedChatDeliveryState::Publishing => {
-            format!("{base} [sending x{}]", message.attempt_count.max(1))
-        }
-        ManagedChatDeliveryState::Acked => format!("{base} [acked]"),
-        ManagedChatDeliveryState::Failed => {
-            format!("{base} [failed x{}]", message.attempt_count.max(1))
-        }
+fn managed_message_role_label(
+    message: &ManagedChatMessageProjection,
+    author_metadata: &std::collections::HashMap<String, crate::app_state::Kind0Metadata>,
+    is_grouped: bool,
+    is_own: bool,
+    now_secs: u64,
+) -> Option<String> {
+    if is_grouped {
+        return None;
     }
+    let author_label = resolve_author_display_name(&message.author_pubkey, author_metadata);
+    let glyph = if is_own { "▶" } else { "●" };
+    let ts = format_managed_chat_relative_timestamp(message.created_at, now_secs);
+    let label = if ts.is_empty() {
+        format!("{glyph} {author_label}")
+    } else {
+        format!("{glyph} {author_label}  {ts}")
+    };
+    Some(label)
 }
 
 fn managed_message_role_color(message: &ManagedChatMessageProjection) -> wgpui::Hsla {
@@ -2280,6 +2321,45 @@ fn paint_active_terminal_session(
     y
 }
 
+fn format_managed_chat_relative_timestamp(created_at: u64, now_secs: u64) -> String {
+    if created_at == 0 {
+        return String::new();
+    }
+    let age = now_secs.saturating_sub(created_at);
+    if age < 60 {
+        "just now".to_string()
+    } else if age < 3600 {
+        format!("{}m ago", age / 60)
+    } else if age < 86400 {
+        format!("{}h ago", age / 3600)
+    } else if age < 172800 {
+        "yesterday".to_string()
+    } else {
+        format_thread_timestamp(created_at as i64)
+            .unwrap_or_else(|| compact_hex_label(&created_at.to_string(), 10))
+    }
+}
+
+fn avatar_color_index(pubkey: &str) -> usize {
+    pubkey
+        .bytes()
+        .fold(0usize, |acc, b| acc.wrapping_add(b as usize))
+        % 4
+}
+
+fn author_label_color(pubkey: &str, is_own: bool) -> wgpui::Hsla {
+    if is_own {
+        theme::accent::SECONDARY
+    } else {
+        match avatar_color_index(pubkey) {
+            0 => theme::accent::PRIMARY,
+            1 => theme::accent::GREEN,
+            2 => theme::accent::PURPLE,
+            _ => theme::status::SUCCESS,
+        }
+    }
+}
+
 fn format_thread_timestamp(raw: i64) -> Option<String> {
     if raw <= 0 {
         return None;
@@ -3088,7 +3168,7 @@ fn paint_chat_shell(
         {
             let row_bounds =
                 chat_thread_row_bounds(content_bounds, index, autopilot_chat.thread_tools_expanded);
-            let is_hovered = entry.thread_id.as_deref() == hovered_thread_id;
+            let is_hovered = entry.thread_id.is_some() && entry.thread_id.as_deref() == hovered_thread_id;
             let background = if entry.is_category {
                 chat_mission_panel_header_color().with_alpha(0.5)
             } else if is_hovered {
@@ -3708,7 +3788,16 @@ pub fn paint(
                 ));
             }
 
-            for (index, message) in managed_messages.into_iter().enumerate() {
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let local_pubkey = autopilot_chat.managed_chat_projection.local_pubkey().map(|s| s.to_string());
+            let author_metadata = &autopilot_chat.managed_chat_projection.snapshot.author_metadata;
+            let mut prev_author_pubkey: Option<String> = None;
+            let mut prev_created_at: u64 = 0;
+
+            for message in managed_messages.into_iter() {
                 use crate::chat_message_classifier::ChatMessageClass;
                 if !autopilot_chat.show_debug_events
                     && matches!(
@@ -3718,13 +3807,38 @@ pub fn paint(
                 {
                     continue;
                 }
-                paint.scene.draw_text(paint.text.layout_mono(
-                    &managed_message_role_label(index, message),
-                    Point::new(transcript_scroll_clip.origin.x, y),
-                    10.0,
-                    managed_message_role_color(message),
-                ));
-                y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+
+                let is_own = local_pubkey.as_deref() == Some(message.author_pubkey.as_str());
+                let is_grouped = prev_author_pubkey.as_deref() == Some(message.author_pubkey.as_str())
+                    && message.created_at.saturating_sub(prev_created_at) < 300;
+
+                if let Some(role_label) = managed_message_role_label(
+                    message,
+                    author_metadata,
+                    is_grouped,
+                    is_own,
+                    now_secs,
+                ) {
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &role_label,
+                        Point::new(transcript_scroll_clip.origin.x, y),
+                        10.0,
+                        author_label_color(&message.author_pubkey, is_own),
+                    ));
+                    y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+                } else {
+                    // Compact grouped row: show small timestamp suffix
+                    let ts = format_managed_chat_relative_timestamp(message.created_at, now_secs);
+                    if !ts.is_empty() {
+                        paint.scene.draw_text(paint.text.layout_mono(
+                            &ts,
+                            Point::new(transcript_scroll_clip.origin.x + 12.0, y),
+                            9.0,
+                            theme::text::MUTED,
+                        ));
+                        y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+                    }
+                }
 
                 if let Some(reply_label) = managed_message_reply_label(message) {
                     paint.scene.draw_text(paint.text.layout_mono(
@@ -3776,6 +3890,9 @@ pub fn paint(
                     y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
                 y += 8.0;
+
+                prev_author_pubkey = Some(message.author_pubkey.clone());
+                prev_created_at = message.created_at;
             }
         }
         ChatBrowseMode::DirectMessages => {
