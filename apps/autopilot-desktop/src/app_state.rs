@@ -661,7 +661,12 @@ impl Default for ChatPaneInputs {
         Self {
             composer: TextInput::new()
                 .placeholder("Write a message, ask for analysis, or command your Autopilot...")
-                .border_color_focused(theme::border::FOCUS),
+                .background(theme::bg::APP.with_alpha(0.0))
+                .border_color(theme::bg::APP.with_alpha(0.0))
+                .border_color_focused(theme::bg::APP.with_alpha(0.0))
+                .placeholder_color(theme::text::MUTED.with_alpha(0.52))
+                .text_color(theme::text::PRIMARY)
+                .cursor_color(theme::text::PRIMARY),
             thread_search: TextInput::new()
                 .placeholder("Filter thread history...")
                 .font_size(wgpui::theme::font_size::SM - 3.0)
@@ -5812,6 +5817,8 @@ pub struct MissionControlPaneState {
     wallet_refresh_icon_clicked_at_epoch_ms: u64,
     wallet_balance_latched_sats: Option<u64>,
     wallet_pending_last_seen_epoch_seconds: Option<u64>,
+    load_funds_popup_open: bool,
+    buy_mode_popup_open: bool,
     sell_scroll_offset_px: f32,
     earnings_scroll_offset_px: f32,
     wallet_scroll_offset_px: f32,
@@ -5857,6 +5864,8 @@ impl Default for MissionControlPaneState {
             wallet_refresh_icon_clicked_at_epoch_ms: 0,
             wallet_balance_latched_sats: None,
             wallet_pending_last_seen_epoch_seconds: None,
+            load_funds_popup_open: false,
+            buy_mode_popup_open: false,
             sell_scroll_offset_px: 0.0,
             earnings_scroll_offset_px: 0.0,
             wallet_scroll_offset_px: 0.0,
@@ -5929,6 +5938,32 @@ impl MissionControlPaneState {
             self.wallet_refresh_icon_clicked_at_epoch_ms,
             now_epoch_ms,
         )
+    }
+
+    pub fn open_load_funds_popup(&mut self) {
+        self.load_funds_popup_open = true;
+        self.buy_mode_popup_open = false;
+    }
+
+    pub fn close_load_funds_popup(&mut self) {
+        self.load_funds_popup_open = false;
+    }
+
+    pub fn load_funds_popup_open(&self) -> bool {
+        self.load_funds_popup_open
+    }
+
+    pub fn open_buy_mode_popup(&mut self) {
+        self.buy_mode_popup_open = true;
+        self.load_funds_popup_open = false;
+    }
+
+    pub fn close_buy_mode_popup(&mut self) {
+        self.buy_mode_popup_open = false;
+    }
+
+    pub fn buy_mode_popup_open(&self) -> bool {
+        self.buy_mode_popup_open
     }
 
     fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {

@@ -9906,6 +9906,24 @@ pub(super) fn run_mission_control_action(
             }
             true
         }
+        MissionControlPaneAction::OpenLoadFundsPopup => {
+            state.mission_control.open_load_funds_popup();
+            state.mission_control.record_action("Opened load funds");
+            true
+        }
+        MissionControlPaneAction::CloseLoadFundsPopup => {
+            state.mission_control.close_load_funds_popup();
+            true
+        }
+        MissionControlPaneAction::OpenBuyModePopup => {
+            state.mission_control.open_buy_mode_popup();
+            state.mission_control.record_action("Opened buy mode");
+            true
+        }
+        MissionControlPaneAction::CloseBuyModePopup => {
+            state.mission_control.close_buy_mode_popup();
+            true
+        }
         MissionControlPaneAction::CreateLightningReceiveTarget => {
             let amount_sats = match parse_positive_amount_str(
                 state.mission_control.load_funds_amount_sats.get_value(),

@@ -6,3 +6,6 @@ autopilot-release = "run -p autopilot-desktop --bin autopilot-desktop --release 
 # Use the repo's vendored protoc resolver so transitive gRPC build scripts do
 # not require a machine-local protobuf compiler installation.
 PROTOC = { value = "scripts/dev/protocw", relative = true }
+# Keep native builds aligned with the app's deployment target on macOS so
+# C/C++ object files do not advertise a newer SDK floor than the final link.
+MACOSX_DEPLOYMENT_TARGET = "11.0"
