@@ -1496,20 +1496,19 @@ fn direct_room_label(room: &DirectMessageRoomProjection, local_pubkey: Option<&s
     if let Some(subject) = room.subject.as_deref() {
         return compact_shell_label(subject);
     }
-    let mut others = room
+    let others = room
         .participant_pubkeys
         .iter()
         .filter(|pubkey| Some(pubkey.as_str()) != local_pubkey)
         .map(|pubkey| compact_hex_label(pubkey, 8))
         .collect::<Vec<_>>();
-    if others.is_empty() {
+    let Some(primary) = others.first().cloned() else {
         return "direct".to_string();
-    }
-    let primary = others.remove(0);
-    if others.is_empty() {
+    };
+    if others.len() == 1 {
         format!("@ {primary}")
     } else {
-        format!("@ {primary} +{}", others.len())
+        format!("@ {primary} +{}", others.len().saturating_sub(1))
     }
 }
 
@@ -4564,7 +4563,7 @@ mod tests {
     use crate::app_state::{
         AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
         AutopilotProgressRow, AutopilotRole, AutopilotStructuredMessage, AutopilotToolCallRequest,
-        AutopilotTurnMetadata,
+        AutopilotTurnMetadata, DirectMessageRoomProjection,
     };
     use crate::labor_orchestrator::{
         CodexLaborBinding, CodexLaborClaimState, CodexLaborProvenanceBundle,
@@ -4754,6 +4753,26 @@ mod tests {
         assert_eq!(progress_status_color("done"), theme::status::SUCCESS);
         assert_eq!(progress_status_color("failed"), theme::status::ERROR);
         assert_eq!(progress_status_color("rebuilding"), theme::accent::PRIMARY);
+    }
+
+    #[test]
+    fn direct_room_label_handles_rooms_without_nonlocal_participants() {
+        let room = DirectMessageRoomProjection {
+            room_id: "room-1".to_string(),
+            participant_pubkeys: vec!["local-user".to_string()],
+            other_pubkeys: Vec::new(),
+            subject: None,
+            message_ids: Vec::new(),
+            latest_message_id: None,
+            unread_count: 0,
+            mention_count: 0,
+            relay_hints: Default::default(),
+        };
+
+        assert_eq!(
+            super::direct_room_label(&room, Some("local-user")),
+            "direct"
+        );
     }
 
     #[test]

@@ -6,7 +6,10 @@ use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
 use serde_json::Value;
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
-use crate::app_state::{DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState};
+use crate::app_state::{
+    DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState, RelayDatasetListingProjection,
+    RelayDatasetOfferProjection,
+};
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
 use crate::pane_system::data_market_refresh_button_bounds;
 
@@ -24,7 +27,7 @@ const MAX_ROWS_PER_PANEL: usize = 4;
 const MAX_LIFECYCLE_ROWS: usize = 3;
 
 pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &mut PaintContext) {
-    paint_source_badge(content_bounds, "kernel.data_market.v1", paint);
+    paint_source_badge(content_bounds, "relay.ds_market.v1", paint);
     paint_action_button(
         data_market_refresh_button_bounds(content_bounds),
         "Refresh",
@@ -32,7 +35,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
     );
 
     paint.scene.draw_text(paint.text.layout(
-        "Read-only Nexus kernel snapshot for data assets, grants, deliveries, and revocations.",
+        "Relay-native dataset market view: DS listings, offers, access contracts, request/result activity, and local wallet settlement matches.",
         Point::new(
             content_bounds.origin.x + PADDING,
             content_bounds.origin.y + 42.0,
@@ -90,10 +93,10 @@ fn paint_metric_cards(
     let card_width =
         ((content_bounds.size.width - PADDING * 2.0 - METRIC_GAP * 3.0) / 4.0).max(100.0);
     let metrics = [
-        ("Assets", pane_state.assets.len()),
-        ("Grants", pane_state.grants.len()),
-        ("Deliveries", pane_state.deliveries.len()),
-        ("Revocations", pane_state.revocations.len()),
+        ("Listings", pane_state.relay_listings.len()),
+        ("Offers", pane_state.relay_offers.len()),
+        ("Contracts", pane_state.relay_access_contracts.len()),
+        ("Wallet", pane_state.relay_settlement_matches.len()),
     ];
     for (index, (label, count)) in metrics.iter().enumerate() {
         let bounds = Bounds::new(
@@ -138,53 +141,53 @@ fn paint_panels(
 
     paint_panel(
         Bounds::new(left_x, top_y, panel_width, panel_height),
-        "Assets",
+        "Relay Listings",
         pane_state.load_state,
-        pane_state.assets.len(),
+        pane_state.relay_listings.len(),
         pane_state
-            .assets
+            .relay_listings
             .iter()
             .take(MAX_ROWS_PER_PANEL)
-            .map(asset_row_summary)
+            .map(relay_listing_row_summary)
             .collect::<Vec<_>>(),
         paint,
     );
     paint_panel(
         Bounds::new(right_x, top_y, panel_width, panel_height),
-        "Grants",
+        "Relay Offers",
         pane_state.load_state,
-        pane_state.grants.len(),
+        pane_state.relay_offers.len(),
         pane_state
-            .grants
+            .relay_offers
             .iter()
             .take(MAX_ROWS_PER_PANEL)
-            .map(grant_row_summary)
+            .map(relay_offer_row_summary)
             .collect::<Vec<_>>(),
         paint,
     );
     paint_panel(
         Bounds::new(left_x, bottom_y, panel_width, panel_height),
-        "Deliveries",
+        "Access Contracts",
         pane_state.load_state,
-        pane_state.deliveries.len(),
+        pane_state.relay_access_contracts.len(),
         pane_state
-            .deliveries
+            .relay_access_contracts
             .iter()
             .take(MAX_ROWS_PER_PANEL)
-            .map(delivery_row_summary)
+            .map(relay_contract_row_summary)
             .collect::<Vec<_>>(),
         paint,
     );
     paint_panel(
         Bounds::new(right_x, bottom_y, panel_width, panel_height),
-        "Revocations",
+        "Wallet Matches",
         pane_state.load_state,
-        pane_state.revocations.len(),
+        pane_state.relay_settlement_matches.len(),
         pane_state
-            .revocations
+            .relay_settlement_matches
             .iter()
             .take(MAX_ROWS_PER_PANEL)
-            .map(revocation_row_summary)
+            .map(relay_settlement_row_summary)
             .collect::<Vec<_>>(),
         paint,
     );
@@ -214,15 +217,16 @@ fn paint_lifecycle_panel(
         theme::text::SECONDARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Recent seller-side market activity with policy and receipt context.",
+        "Recent relay-native request, contract, result, and settlement activity.",
         Point::new(bounds.origin.x + 70.0, bounds.origin.y + 8.0),
         10.0,
         theme::text::MUTED,
     ));
 
-    if pane_state.lifecycle_entries.is_empty() {
+    let rows = relay_activity_row_summaries(pane_state);
+    if rows.is_empty() {
         paint.scene.draw_text(paint.text.layout(
-            "No lifecycle entries recorded yet. Publish, settle, deliver, or revoke from the seller lane to populate this activity view.",
+            "No relay activity recorded yet. Listings, requests, contracts, results, and wallet matches will appear here.",
             Point::new(bounds.origin.x + 10.0, bounds.origin.y + 32.0),
             11.0,
             theme::text::MUTED,
@@ -230,13 +234,7 @@ fn paint_lifecycle_panel(
         return;
     }
 
-    for (index, (primary, secondary)) in pane_state
-        .lifecycle_entries
-        .iter()
-        .take(MAX_LIFECYCLE_ROWS)
-        .map(lifecycle_row_summary)
-        .enumerate()
-    {
+    for (index, (primary, secondary)) in rows.into_iter().enumerate() {
         let row_y = bounds.origin.y + 30.0 + index as f32 * 20.0;
         paint.scene.draw_text(paint.text.layout(
             primary.as_str(),
@@ -283,9 +281,9 @@ fn paint_panel(
 
     if rows.is_empty() {
         let empty_label = match load_state {
-            PaneLoadState::Loading => "Refreshing from Nexus...",
-            PaneLoadState::Error => "Refresh failed or no kernel data is available.",
-            PaneLoadState::Ready => "No rows loaded yet.",
+            PaneLoadState::Loading => "Refreshing DS relay catalog...",
+            PaneLoadState::Error => "Refresh failed or no relay data is available.",
+            PaneLoadState::Ready => "No relay rows loaded yet.",
         };
         paint.scene.draw_text(paint.text.layout(
             empty_label,
@@ -326,6 +324,13 @@ fn paint_panel(
 fn asset_row_summary(asset: &DataAsset) -> (String, String) {
     let packaging = asset_packaging_summary(asset);
     let market_posture = asset_market_posture(asset);
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.as_deref())
+        .map(short_id)
+        .unwrap_or_else(|| "no-ds".to_string());
     let primary = compact_text(
         if packaging.is_some() {
             format!(
@@ -346,8 +351,9 @@ fn asset_row_summary(asset: &DataAsset) -> (String, String) {
     );
     let secondary = compact_text(
         format!(
-            "{} // {}{} // {} // provider {}",
+            "{} // listing {} // {}{} // {} // provider {}",
             short_id(asset.asset_id.as_str()),
+            listing_coordinate,
             market_posture,
             packaging
                 .map(|summary| format!(" // {summary}"))
@@ -362,6 +368,13 @@ fn asset_row_summary(asset: &DataAsset) -> (String, String) {
 }
 
 fn grant_row_summary(grant: &AccessGrant) -> (String, String) {
+    let offer_coordinate = grant
+        .nostr_publications
+        .ds_offer
+        .as_ref()
+        .and_then(|reference| reference.coordinate.as_deref())
+        .map(short_id)
+        .unwrap_or_else(|| "no-ds".to_string());
     let primary = compact_text(
         format!(
             "{} // {} // {}",
@@ -374,7 +387,8 @@ fn grant_row_summary(grant: &AccessGrant) -> (String, String) {
     );
     let secondary = compact_text(
         format!(
-            "consumer {} // policy {} // expires {}",
+            "offer {} // consumer {} // policy {} // expires {}",
+            offer_coordinate,
             grant
                 .consumer_id
                 .as_deref()
@@ -387,6 +401,310 @@ fn grant_row_summary(grant: &AccessGrant) -> (String, String) {
         76,
     );
     (primary, secondary)
+}
+
+fn relay_listing_row_summary(listing: &RelayDatasetListingProjection) -> (String, String) {
+    let primary = compact_text(
+        format!(
+            "{} // {} // {}",
+            listing.title,
+            listing.dataset_kind.as_deref().unwrap_or("dataset"),
+            if listing.draft { "draft" } else { "active" }
+        )
+        .as_str(),
+        58,
+    );
+    let secondary = compact_text(
+        format!(
+            "{} // access {} // asset {} // catalog {}{} // storefront {} // chat {}",
+            short_id(listing.coordinate.as_str()),
+            listing.access.as_deref().unwrap_or("unspecified"),
+            listing
+                .linked_asset_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "unlinked".to_string()),
+            listing
+                .classified_coordinate
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
+            listing
+                .classified_price_amount
+                .as_deref()
+                .zip(listing.classified_price_currency.as_deref())
+                .map(|(amount, currency)| format!(" // {amount} {currency}"))
+                .unwrap_or_default(),
+            listing
+                .storefront_product_coordinate
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
+            listing
+                .discussion_channel_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
+        )
+        .as_str(),
+        92,
+    );
+    (primary, secondary)
+}
+
+fn relay_offer_row_summary(offer: &RelayDatasetOfferProjection) -> (String, String) {
+    let primary = compact_text(
+        format!(
+            "{} // {} // {}",
+            short_id(offer.coordinate.as_str()),
+            short_id(offer.listing_coordinate.as_str()),
+            offer.status
+        )
+        .as_str(),
+        58,
+    );
+    let secondary = compact_text(
+        format!(
+            "price {} {} // grant {} // asset {} // catalog {} // storefront {} // chat {}",
+            offer.price_amount.as_deref().unwrap_or("-"),
+            offer.price_currency.as_deref().unwrap_or("-"),
+            offer
+                .linked_grant_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "unlinked".to_string()),
+            offer
+                .linked_asset_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "unlinked".to_string()),
+            offer
+                .classified_coordinate
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
+            offer
+                .storefront_product_coordinate
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
+            offer
+                .discussion_channel_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
+        )
+        .as_str(),
+        92,
+    );
+    (primary, secondary)
+}
+
+fn relay_contract_row_summary(
+    contract: &crate::app_state::RelayDatasetAccessContractProjection,
+) -> (String, String) {
+    let primary = compact_text(
+        format!(
+            "{} // {} // {}",
+            short_id(contract.coordinate.as_str()),
+            short_id(contract.listing_coordinate.as_str()),
+            compact_text(contract.status.as_str(), 18)
+        )
+        .as_str(),
+        58,
+    );
+    let secondary = compact_text(
+        format!(
+            "request {} // result {} // amount {} // hash {}",
+            short_id(contract.request_event_id.as_str()),
+            contract
+                .result_event_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "pending".to_string()),
+            contract
+                .amount_msats
+                .map(|amount| format!("{amount} msats"))
+                .unwrap_or_else(|| "n/a".to_string()),
+            contract
+                .payment_hash
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "n/a".to_string()),
+        )
+        .as_str(),
+        92,
+    );
+    (primary, secondary)
+}
+
+fn relay_settlement_row_summary(
+    settlement: &crate::app_state::RelayDatasetSettlementMatchProjection,
+) -> (String, String) {
+    let primary = compact_text(
+        format!(
+            "{} // {} sats // {}",
+            compact_text(settlement.status.as_str(), 18),
+            settlement.amount_sats,
+            compact_text(settlement.direction.as_str(), 12)
+        )
+        .as_str(),
+        58,
+    );
+    let secondary = compact_text(
+        format!(
+            "pointer {} // hash {} // contract {} // result {}",
+            short_id(settlement.payment_pointer.as_str()),
+            short_id(settlement.payment_hash.as_str()),
+            settlement
+                .contract_coordinate
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "n/a".to_string()),
+            settlement
+                .result_event_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "n/a".to_string()),
+        )
+        .as_str(),
+        92,
+    );
+    (primary, secondary)
+}
+
+fn relay_activity_row_summaries(pane_state: &DataMarketPaneState) -> Vec<(String, String)> {
+    let mut rows = Vec::<(u64, String, String)>::new();
+
+    for request in pane_state.relay_requests.iter().take(MAX_LIFECYCLE_ROWS) {
+        rows.push((
+            request.created_at_seconds,
+            compact_text(
+                format!(
+                    "request // {} // {}",
+                    short_id(request.event_id.as_str()),
+                    short_id(request.listing_coordinate.as_str())
+                )
+                .as_str(),
+                76,
+            ),
+            compact_text(
+                format!(
+                    "{} // provider {} // bid {}",
+                    compact_text(request.delivery_mode.as_str(), 18),
+                    request
+                        .targeted_provider_pubkeys
+                        .first()
+                        .map(|value| short_id(value.as_str()))
+                        .unwrap_or_else(|| "open".to_string()),
+                    request
+                        .bid_msats
+                        .map(|value| format!("{value} msats"))
+                        .unwrap_or_else(|| "n/a".to_string()),
+                )
+                .as_str(),
+                112,
+            ),
+        ));
+    }
+    for contract in pane_state.relay_access_contracts.iter().take(MAX_LIFECYCLE_ROWS) {
+        rows.push((
+            contract.created_at_seconds,
+            compact_text(
+                format!(
+                    "contract // {} // {}",
+                    short_id(contract.coordinate.as_str()),
+                    compact_text(contract.status.as_str(), 18)
+                )
+                .as_str(),
+                76,
+            ),
+            compact_text(
+                format!(
+                    "buyer {} // request {} // hash {}",
+                    short_id(contract.buyer_pubkey.as_str()),
+                    short_id(contract.request_event_id.as_str()),
+                    contract
+                        .payment_hash
+                        .as_deref()
+                        .map(short_id)
+                        .unwrap_or_else(|| "n/a".to_string()),
+                )
+                .as_str(),
+                112,
+            ),
+        ));
+    }
+    for result in pane_state.relay_results.iter().take(MAX_LIFECYCLE_ROWS) {
+        rows.push((
+            result.created_at_seconds,
+            compact_text(
+                format!(
+                    "result // {} // {}",
+                    short_id(result.event_id.as_str()),
+                    short_id(result.request_event_id.as_str())
+                )
+                .as_str(),
+                76,
+            ),
+            compact_text(
+                format!(
+                    "{} // digest {} // hash {}",
+                    compact_text(result.delivery_mode.as_str(), 18),
+                    result
+                        .delivery_digest
+                        .as_deref()
+                        .map(short_id)
+                        .unwrap_or_else(|| "n/a".to_string()),
+                    result
+                        .payment_hash
+                        .as_deref()
+                        .map(short_id)
+                        .unwrap_or_else(|| "n/a".to_string()),
+                )
+                .as_str(),
+                112,
+            ),
+        ));
+    }
+    for settlement in pane_state
+        .relay_settlement_matches
+        .iter()
+        .take(MAX_LIFECYCLE_ROWS)
+    {
+        rows.push((
+            settlement.observed_at_seconds,
+            compact_text(
+                format!(
+                    "wallet // {} // {} sats",
+                    compact_text(settlement.status.as_str(), 18),
+                    settlement.amount_sats
+                )
+                .as_str(),
+                76,
+            ),
+            compact_text(
+                format!(
+                    "{} // hash {} // request {}",
+                    compact_text(settlement.direction.as_str(), 18),
+                    short_id(settlement.payment_hash.as_str()),
+                    settlement
+                        .request_event_id
+                        .as_deref()
+                        .map(short_id)
+                        .unwrap_or_else(|| "n/a".to_string()),
+                )
+                .as_str(),
+                112,
+            ),
+        ));
+    }
+
+    rows.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    rows.into_iter()
+        .take(MAX_LIFECYCLE_ROWS)
+        .map(|(_, primary, secondary)| (primary, secondary))
+        .collect()
 }
 
 fn delivery_row_summary(delivery: &DeliveryBundle) -> (String, String) {
@@ -603,6 +921,7 @@ mod tests {
             asset_kind: "conversation_bundle".to_string(),
             title: "Redacted Codex Conversations".to_string(),
             status: openagents_kernel_core::data::DataAssetStatus::Active,
+            nostr_publications: Default::default(),
             metadata: json!({
                 "visibility_posture": "targeted_only",
                 "sensitivity_posture": "private",

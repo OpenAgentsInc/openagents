@@ -415,7 +415,19 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "asset",
+        "inventory",
+        format!(
+            "{} assets // {} grants",
+            pane_state.published_asset_count(),
+            pane_state.published_grant_count()
+        )
+        .as_str(),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "latest asset",
         published_asset
             .map(asset_inventory_summary)
             .unwrap_or_else(|| "pending".to_string())
@@ -425,7 +437,7 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "grant",
+        "latest grant",
         published_grant
             .map(grant_inventory_summary)
             .unwrap_or_else(|| "pending".to_string())

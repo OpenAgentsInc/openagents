@@ -6,7 +6,8 @@ use nostr::{
     ChannelMetadata, Event, GroupAdminsEvent, GroupMembersEvent, GroupMetadata, GroupMetadataEvent,
     GroupRole, GroupRolesEvent, ManagedChannelCreateEvent, ManagedChannelHints,
     ManagedChannelIndexEntry, ManagedChannelMessageEvent, ManagedChannelMetadataEvent,
-    ManagedRoomMode, ModerationAction, ModerationEvent, compare_managed_timeline_events,
+    ManagedChannelType, ManagedRoomMode, ModerationAction, ModerationEvent,
+    compare_managed_timeline_events, parse_dataset_discussion_channel_link,
     sort_managed_channel_index,
 };
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,9 @@ const MANAGED_CHAT_PROJECTION_SCHEMA_VERSION: u16 = 1;
 const MANAGED_CHAT_PROJECTION_STREAM_ID: &str = "stream.managed_chat_projection.v1";
 const MANAGED_CHAT_EVENT_LIMIT: usize = 8_192;
 pub const MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID: &str = "oa:uncategorized";
+const MANAGED_CHAT_DATASET_GROUP_ID: &str = "oa-datasets";
+const MANAGED_CHAT_DATASET_CATEGORY_ID: &str = "datasets";
+const MANAGED_CHAT_DATASET_CATEGORY_LABEL: &str = "Dataset Channels";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -111,6 +115,8 @@ pub struct ManagedChatChannelProjection {
     pub metadata: ChannelMetadata,
     pub hints: ManagedChannelHints,
     pub relay_url: Option<String>,
+    pub dataset_listing_coordinates: Vec<String>,
+    pub dataset_offer_coordinates: Vec<String>,
     pub message_ids: Vec<String>,
     pub root_message_ids: Vec<String>,
     pub unread_count: usize,
@@ -661,6 +667,8 @@ struct MutableChannelProjection {
     metadata: ChannelMetadata,
     hints: ManagedChannelHints,
     relay_url: Option<String>,
+    dataset_listing_coordinates: Vec<String>,
+    dataset_offer_coordinates: Vec<String>,
 }
 
 impl Default for MutableChannelProjection {
@@ -671,6 +679,8 @@ impl Default for MutableChannelProjection {
             metadata: ChannelMetadata::new("", "", ""),
             hints: ManagedChannelHints::default(),
             relay_url: None,
+            dataset_listing_coordinates: Vec::new(),
+            dataset_offer_coordinates: Vec::new(),
         }
     }
 }
@@ -699,6 +709,30 @@ fn normalize_managed_chat_relay_events(mut relay_events: Vec<Event>) -> Vec<Even
         relay_events = relay_events.split_off(relay_events.len() - MANAGED_CHAT_EVENT_LIMIT);
     }
     relay_events
+}
+
+fn dataset_discussion_hints() -> ManagedChannelHints {
+    ManagedChannelHints::new()
+        .with_channel_type(ManagedChannelType::Other("dataset_discussion".to_string()))
+        .with_category_id(MANAGED_CHAT_DATASET_CATEGORY_ID)
+        .with_category_label(MANAGED_CHAT_DATASET_CATEGORY_LABEL)
+}
+
+fn ensure_dataset_group(groups: &mut BTreeMap<String, MutableGroupProjection>) {
+    let group = groups
+        .entry(MANAGED_CHAT_DATASET_GROUP_ID.to_string())
+        .or_default();
+    group.deleted = false;
+    if group
+        .metadata
+        .name
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        group.metadata = GroupMetadata::new()
+            .with_name("Datasets")
+            .with_about("Public NIP-28 dataset discussion and negotiation channels.");
+    }
 }
 
 fn managed_chat_channel_category_id(channel: &ManagedChatChannelProjection) -> &str {
@@ -920,7 +954,10 @@ fn rebuild_managed_chat_projection(
                     } else {
                         event.id.clone()
                     };
-                    groups.entry(effective_group_id.clone()).or_default().deleted = false;
+                    groups
+                        .entry(effective_group_id.clone())
+                        .or_default()
+                        .deleted = false;
                     let channel = channels.entry(event.id.clone()).or_default();
                     channel.group_id = effective_group_id;
                     channel.metadata = metadata;
@@ -945,8 +982,41 @@ fn rebuild_managed_chat_projection(
                         .find(|t| t.first().map(|s| s == "e").unwrap_or(false))
                         .and_then(|t| t.get(1))
                     {
+                        let previous_group_id = channels
+                            .get(channel_create_id.as_str())
+                            .map(|channel| channel.group_id.clone());
                         let channel = channels.entry(channel_create_id.clone()).or_default();
                         channel.metadata = metadata;
+                        if let Ok(link) = parse_dataset_discussion_channel_link(event) {
+                            ensure_dataset_group(&mut groups);
+                            channel.group_id = MANAGED_CHAT_DATASET_GROUP_ID.to_string();
+                            channel.hints = dataset_discussion_hints();
+                            channel.relay_url = link.relay_url.clone();
+                            channel.dataset_listing_coordinates = link
+                                .listing_refs
+                                .iter()
+                                .map(|reference| reference.coordinate.to_string())
+                                .collect();
+                            channel.dataset_offer_coordinates = link
+                                .offer_refs
+                                .iter()
+                                .map(|reference| reference.coordinate.to_string())
+                                .collect();
+                            if let Some(previous_group_id) = previous_group_id {
+                                if previous_group_id != MANAGED_CHAT_DATASET_GROUP_ID {
+                                    if let Some(group) = groups.get_mut(previous_group_id.as_str())
+                                    {
+                                        group.deleted = true;
+                                    }
+                                    for message in messages.values_mut().filter(|message| {
+                                        message.channel_id == channel_create_id.as_str()
+                                    }) {
+                                        message.group_id =
+                                            MANAGED_CHAT_DATASET_GROUP_ID.to_string();
+                                    }
+                                }
+                            }
+                        }
                     }
                 } else {
                     tracing::warn!(event_id = %event.id, "nip28: kind-41 parse failed, content not valid ChannelMetadata JSON");
@@ -1242,6 +1312,8 @@ fn rebuild_managed_chat_projection(
                 metadata: channel.metadata.clone(),
                 hints: channel.hints.clone(),
                 relay_url: channel.relay_url.clone(),
+                dataset_listing_coordinates: channel.dataset_listing_coordinates.clone(),
+                dataset_offer_coordinates: channel.dataset_offer_coordinates.clone(),
                 message_ids,
                 root_message_ids,
                 unread_count,
@@ -1265,6 +1337,8 @@ fn rebuild_managed_chat_projection(
                 metadata: ChannelMetadata::new("Team", "", ""),
                 hints: ManagedChannelHints::new(),
                 relay_url: None,
+                dataset_listing_coordinates: Vec::new(),
+                dataset_offer_coordinates: Vec::new(),
                 message_ids: Vec::new(),
                 root_message_ids: Vec::new(),
                 unread_count: 0,
@@ -1575,13 +1649,15 @@ fn managed_chat_message_is_after_cursor(
 mod tests {
     use super::{
         ManagedChatDeliveryState, ManagedChatOutboundMessage, ManagedChatProjectionState,
-        ManagedChatReadCursor, tag_value, unread_count_for_channel,
+        ManagedChatReadCursor, rebuild_managed_chat_projection, tag_value,
+        unread_count_for_channel,
     };
     use nostr::{
-        ChannelMetadata, Event, GroupAdminsEvent, GroupMembersEvent, GroupMetadata,
-        GroupMetadataEvent, GroupRole, GroupRolesEvent, ManagedChannelCreateEvent,
-        ManagedChannelHints, ManagedChannelMessageEvent, ManagedChannelMetadataEvent,
-        ManagedChannelType, ManagedChatMention, ModerationAction, ModerationEvent, TaggedPubkey,
+        AddressableEventCoordinate, AddressableEventReference, ChannelCreateEvent, ChannelMetadata,
+        Event, GroupAdminsEvent, GroupMembersEvent, GroupMetadata, GroupMetadataEvent, GroupRole,
+        GroupRolesEvent, ManagedChannelCreateEvent, ManagedChannelHints,
+        ManagedChannelMessageEvent, ManagedChannelMetadataEvent, ManagedChannelType,
+        ManagedChatMention, ModerationAction, ModerationEvent, TaggedPubkey,
     };
     use tempfile::tempdir;
 
@@ -1747,6 +1823,52 @@ mod tests {
             42,
             template.to_tags().unwrap(),
             content.to_string(),
+        )
+    }
+
+    fn build_standard_dataset_channel_create_event(
+        id_ch: char,
+        created_at: u64,
+        name: &str,
+    ) -> Event {
+        let metadata = ChannelMetadata::new(name, "public dataset discussion", "");
+        let template = ChannelCreateEvent::new(metadata, created_at);
+        signed_event(
+            id_ch,
+            '8',
+            created_at,
+            40,
+            template.to_tags(),
+            template.content().unwrap(),
+        )
+    }
+
+    fn build_standard_dataset_channel_metadata_event(
+        id_ch: char,
+        created_at: u64,
+        channel_create_event_id: &str,
+        listing_coordinate: &str,
+        offer_coordinate: Option<&str>,
+        name: &str,
+    ) -> Event {
+        let metadata = ChannelMetadata::new(name, "public dataset discussion", "");
+        let listing_ref = AddressableEventReference::new(
+            AddressableEventCoordinate::parse(listing_coordinate).unwrap(),
+        );
+        let offer_ref = offer_coordinate.map(|coordinate| {
+            AddressableEventReference::new(AddressableEventCoordinate::parse(coordinate).unwrap())
+        });
+        let template =
+            nostr::ChannelMetadataEvent::new(channel_create_event_id, metadata, created_at)
+                .with_relay_url("wss://relay.openagents.test")
+                .with_dataset_discussion_refs(listing_ref, offer_ref);
+        signed_event(
+            id_ch,
+            '9',
+            created_at,
+            41,
+            template.to_tags(),
+            template.content().unwrap(),
         )
     }
 
@@ -2492,6 +2614,55 @@ mod tests {
         assert_eq!(
             tag_value(&[vec!["h".to_string(), "oa-main".to_string()]], "h"),
             Some("oa-main")
+        );
+    }
+
+    #[test]
+    fn standard_dataset_discussion_channels_are_grouped_under_datasets_workspace() {
+        let create = build_standard_dataset_channel_create_event('7', 10, "Corpus Q&A");
+        let metadata = build_standard_dataset_channel_metadata_event(
+            '8',
+            11,
+            create.id.as_str(),
+            "30404:1111111111111111111111111111111111111111111111111111111111111111:dataset-alpha",
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:offer-alpha",
+            ),
+            "Corpus Q&A",
+        );
+        let snapshot = rebuild_managed_chat_projection(
+            &[create, metadata],
+            &[],
+            &Default::default(),
+            None,
+            None,
+        );
+
+        assert_eq!(snapshot.groups.len(), 1);
+        assert_eq!(snapshot.groups[0].group_id, "oa-datasets");
+        assert_eq!(
+            snapshot.groups[0].metadata.name.as_deref(),
+            Some("Datasets")
+        );
+        assert_eq!(snapshot.channels.len(), 1);
+        assert_eq!(snapshot.channels[0].group_id, "oa-datasets");
+        assert_eq!(
+            snapshot.channels[0].hints.category_id.as_deref(),
+            Some("datasets")
+        );
+        assert_eq!(
+            snapshot.channels[0].dataset_listing_coordinates,
+            vec![
+                "30404:1111111111111111111111111111111111111111111111111111111111111111:dataset-alpha"
+                    .to_string()
+            ]
+        );
+        assert_eq!(
+            snapshot.channels[0].dataset_offer_coordinates,
+            vec![
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:offer-alpha"
+                    .to_string()
+            ]
         );
     }
 }

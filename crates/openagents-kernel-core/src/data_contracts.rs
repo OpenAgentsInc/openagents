@@ -5,8 +5,9 @@ use crate::authority::{
     RevokeAccessGrantResponse,
 };
 use crate::data::{
-    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DataMarketSnapshot,
-    DataMarketSummary, DeliveryBundle, DeliveryBundleStatus, PermissionPolicy, RevocationReceipt,
+    AccessGrant, AccessGrantNostrPublications, AccessGrantStatus, DataAsset,
+    DataAssetNostrPublications, DataAssetStatus, DataMarketSnapshot, DataMarketSummary,
+    DeliveryBundle, DeliveryBundleStatus, NostrPublicationRef, PermissionPolicy, RevocationReceipt,
     RevocationStatus,
 };
 use crate::receipts::{
@@ -543,6 +544,94 @@ fn permission_policy_from_proto(policy: &proto_data::PermissionPolicy) -> Result
     })
 }
 
+fn nostr_publication_ref_to_proto(
+    reference: &NostrPublicationRef,
+) -> proto_data::NostrPublicationRef {
+    proto_data::NostrPublicationRef {
+        coordinate: reference.coordinate.clone(),
+        event_id: reference.event_id.clone(),
+        relay_url: reference.relay_url.clone(),
+    }
+}
+
+fn nostr_publication_ref_from_proto(
+    reference: &proto_data::NostrPublicationRef,
+) -> NostrPublicationRef {
+    NostrPublicationRef {
+        coordinate: optional_string_as_none(reference.coordinate.clone()),
+        event_id: optional_string_as_none(reference.event_id.clone()),
+        relay_url: optional_string_as_none(reference.relay_url.clone()),
+    }
+}
+
+fn data_asset_nostr_publications_to_proto(
+    publications: &DataAssetNostrPublications,
+) -> proto_data::DataAssetNostrPublications {
+    proto_data::DataAssetNostrPublications {
+        ds_listing: publications
+            .ds_listing
+            .as_ref()
+            .map(nostr_publication_ref_to_proto),
+        ds_draft_listing: publications
+            .ds_draft_listing
+            .as_ref()
+            .map(nostr_publication_ref_to_proto),
+    }
+}
+
+fn data_asset_nostr_publications_from_proto(
+    publications: &proto_data::DataAssetNostrPublications,
+) -> DataAssetNostrPublications {
+    DataAssetNostrPublications {
+        ds_listing: publications
+            .ds_listing
+            .as_ref()
+            .map(nostr_publication_ref_from_proto),
+        ds_draft_listing: publications
+            .ds_draft_listing
+            .as_ref()
+            .map(nostr_publication_ref_from_proto),
+    }
+}
+
+fn access_grant_nostr_publications_to_proto(
+    publications: &AccessGrantNostrPublications,
+) -> proto_data::AccessGrantNostrPublications {
+    proto_data::AccessGrantNostrPublications {
+        ds_offer: publications
+            .ds_offer
+            .as_ref()
+            .map(nostr_publication_ref_to_proto),
+        ds_access_request: publications
+            .ds_access_request
+            .as_ref()
+            .map(nostr_publication_ref_to_proto),
+        ds_access_result: publications
+            .ds_access_result
+            .as_ref()
+            .map(nostr_publication_ref_to_proto),
+    }
+}
+
+fn access_grant_nostr_publications_from_proto(
+    publications: &proto_data::AccessGrantNostrPublications,
+) -> AccessGrantNostrPublications {
+    AccessGrantNostrPublications {
+        ds_offer: publications
+            .ds_offer
+            .as_ref()
+            .map(nostr_publication_ref_from_proto),
+        ds_access_request: publications
+            .ds_access_request
+            .as_ref()
+            .map(nostr_publication_ref_from_proto),
+        ds_access_result: publications
+            .ds_access_result
+            .as_ref()
+            .map(nostr_publication_ref_from_proto),
+    }
+}
+
 fn data_asset_to_proto(asset: &DataAsset) -> Result<proto_data::DataAsset> {
     Ok(proto_data::DataAsset {
         asset_id: asset.asset_id.clone(),
@@ -560,6 +649,9 @@ fn data_asset_to_proto(asset: &DataAsset) -> Result<proto_data::DataAsset> {
         price_hint: asset.price_hint.as_ref().map(money_to_proto),
         created_at_ms: asset.created_at_ms,
         status: data_asset_status_to_proto(asset.status),
+        nostr_publications: Some(data_asset_nostr_publications_to_proto(
+            &asset.nostr_publications,
+        )),
         metadata_json: json_value_to_string(&asset.metadata)?,
     })
 }
@@ -585,6 +677,11 @@ fn data_asset_from_proto(asset: &proto_data::DataAsset) -> Result<DataAsset> {
             .transpose()?,
         created_at_ms: asset.created_at_ms,
         status: data_asset_status_from_proto(asset.status),
+        nostr_publications: asset
+            .nostr_publications
+            .as_ref()
+            .map(data_asset_nostr_publications_from_proto)
+            .unwrap_or_default(),
         metadata: json_string_to_value(asset.metadata_json.as_str())?,
     })
 }
@@ -602,6 +699,9 @@ fn access_grant_to_proto(grant: &AccessGrant) -> Result<proto_data::AccessGrant>
         expires_at_ms: grant.expires_at_ms,
         accepted_at_ms: grant.accepted_at_ms,
         status: access_grant_status_to_proto(grant.status),
+        nostr_publications: Some(access_grant_nostr_publications_to_proto(
+            &grant.nostr_publications,
+        )),
         metadata_json: json_value_to_string(&grant.metadata)?,
     })
 }
@@ -628,6 +728,11 @@ fn access_grant_from_proto(grant: &proto_data::AccessGrant) -> Result<AccessGran
         expires_at_ms: grant.expires_at_ms,
         accepted_at_ms: grant.accepted_at_ms,
         status: access_grant_status_from_proto(grant.status),
+        nostr_publications: grant
+            .nostr_publications
+            .as_ref()
+            .map(access_grant_nostr_publications_from_proto)
+            .unwrap_or_default(),
         metadata: json_string_to_value(grant.metadata_json.as_str())?,
     })
 }
@@ -1406,7 +1511,8 @@ mod tests {
     };
     use crate::authority::RegisterDataAssetRequest;
     use crate::data::{
-        DataAsset, DataAssetStatus, DataMarketSnapshot, DeliveryBundle, PermissionPolicy,
+        AccessGrant, AccessGrantNostrPublications, DataAsset, DataAssetNostrPublications,
+        DataAssetStatus, DataMarketSnapshot, DeliveryBundle, NostrPublicationRef, PermissionPolicy,
         RevocationReceipt,
     };
     use crate::receipts::{PolicyContext, TraceContext};
@@ -1446,6 +1552,20 @@ mod tests {
                 price_hint: None,
                 created_at_ms: 1_710_000_000_000,
                 status: DataAssetStatus::Active,
+                nostr_publications: DataAssetNostrPublications {
+                    ds_listing: Some(NostrPublicationRef {
+                        coordinate: Some(
+                            "30404:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:contract-fixture"
+                                .to_string(),
+                        ),
+                        event_id: Some(
+                            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                .to_string(),
+                        ),
+                        relay_url: Some("wss://relay.example".to_string()),
+                    }),
+                    ds_draft_listing: None,
+                },
                 metadata: json!({"source":"contract-test"}),
             },
             evidence: Vec::new(),
@@ -1461,6 +1581,10 @@ mod tests {
         assert_eq!(decoded.idempotency_key, request.idempotency_key);
         assert_eq!(decoded.asset.asset_id, request.asset.asset_id);
         assert_eq!(decoded.asset.default_policy, request.asset.default_policy);
+        assert_eq!(
+            decoded.asset.nostr_publications,
+            request.asset.nostr_publications
+        );
     }
 
     #[test]
@@ -1481,5 +1605,74 @@ mod tests {
         assert_eq!(decoded.summary.total_assets, 1);
         assert_eq!(decoded.deliveries.len(), 1);
         assert_eq!(decoded.revocations.len(), 1);
+        assert_eq!(
+            decoded.assets[0].nostr_publications,
+            snapshot.assets[0].nostr_publications
+        );
+    }
+
+    #[test]
+    fn access_grant_publication_refs_roundtrip_proto() {
+        let grant = AccessGrant {
+            grant_id: "grant.data.contract".to_string(),
+            asset_id: "asset.data.contract".to_string(),
+            provider_id: "provider.data.contract".to_string(),
+            consumer_id: Some("consumer.data.contract".to_string()),
+            permission_policy: PermissionPolicy {
+                policy_id: "policy.data.contract".to_string(),
+                allowed_scopes: vec!["targeted_request".to_string()],
+                allowed_tool_tags: vec!["buyer.read".to_string()],
+                allowed_origins: vec!["autopilot".to_string()],
+                export_allowed: false,
+                derived_outputs_allowed: true,
+                retention_seconds: Some(3_600),
+                max_bundle_size_bytes: Some(8_192),
+                metadata: json!({"tier":"starter"}),
+            },
+            offer_price: None,
+            warranty_window_ms: Some(3_600),
+            created_at_ms: 1_710_000_000_123,
+            expires_at_ms: 1_710_000_003_723,
+            accepted_at_ms: None,
+            status: crate::data::AccessGrantStatus::Offered,
+            nostr_publications: AccessGrantNostrPublications {
+                ds_offer: Some(NostrPublicationRef {
+                    coordinate: Some(
+                        "30406:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:contract-offer"
+                            .to_string(),
+                    ),
+                    event_id: Some(
+                        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                            .to_string(),
+                    ),
+                    relay_url: Some("wss://relay.example".to_string()),
+                }),
+                ds_access_request: Some(NostrPublicationRef {
+                    coordinate: None,
+                    event_id: Some(
+                        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                            .to_string(),
+                    ),
+                    relay_url: Some("wss://relay.example".to_string()),
+                }),
+                ds_access_result: None,
+            },
+            metadata: json!({"source":"contract-test"}),
+        };
+
+        let proto = super::create_access_grant_request_to_proto(
+            &crate::authority::CreateAccessGrantRequest {
+                idempotency_key: "idemp.grant.contract".to_string(),
+                trace: TraceContext::default(),
+                policy: PolicyContext::default(),
+                grant: grant.clone(),
+                evidence: Vec::new(),
+                hints: Default::default(),
+            },
+        )
+        .expect("grant to proto");
+        let decoded =
+            super::create_access_grant_request_from_proto(&proto).expect("grant from proto");
+        assert_eq!(decoded.grant.nostr_publications, grant.nostr_publications);
     }
 }

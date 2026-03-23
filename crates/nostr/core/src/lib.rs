@@ -16,6 +16,7 @@ pub mod nip01;
 mod nip06;
 pub mod nip09;
 pub mod nip11;
+pub mod nip15;
 #[cfg(feature = "full")]
 pub mod nip17;
 pub mod nip26;
@@ -45,6 +46,7 @@ pub mod nip90;
 pub mod nip98;
 pub mod nip99;
 pub mod nip_ac;
+pub mod nip_ds;
 pub mod nip_sa;
 pub mod nip_skl;
 mod tag_parsing;
@@ -55,6 +57,7 @@ pub use identity::{
 };
 pub use managed_chat::*;
 pub use nip_ac::*;
+pub use nip_ds::*;
 pub use nip_sa::*;
 pub use nip_skl::*;
 pub use nip01::{Event, EventTemplate, KindClassification, UnsignedEvent};
@@ -67,5 +70,6 @@ pub use nip06::{
     Keypair, derive_agent_keypair, derive_keypair, derive_keypair_with_account,
     derive_skill_keypair,
 };
+pub use nip15::*;
 pub use nip28::*;
 pub use nip29::*;

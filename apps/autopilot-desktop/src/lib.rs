@@ -97,12 +97,14 @@ pub use local_inference_runtime::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DesktopAppOptions {
     pub window_visible: bool,
+    pub disable_codex: bool,
 }
 
 impl Default for DesktopAppOptions {
     fn default() -> Self {
         Self {
             window_visible: true,
+            disable_codex: false,
         }
     }
 }
@@ -135,7 +137,11 @@ impl ApplicationHandler for AppShell {
             return;
         }
 
-        match render::init_state(event_loop, self.options.window_visible) {
+        match render::init_state(
+            event_loop,
+            self.options.window_visible,
+            self.options.disable_codex,
+        ) {
             Ok(state) => {
                 state.window.request_redraw();
                 self.inner.state = Some(state);

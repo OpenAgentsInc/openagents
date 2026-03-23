@@ -48,6 +48,23 @@ message PermissionPolicy {
   string metadata_json = 9;
 }
 
+message NostrPublicationRef {
+  optional string coordinate = 1;
+  optional string event_id = 2;
+  optional string relay_url = 3;
+}
+
+message DataAssetNostrPublications {
+  optional NostrPublicationRef ds_listing = 1;
+  optional NostrPublicationRef ds_draft_listing = 2;
+}
+
+message AccessGrantNostrPublications {
+  optional NostrPublicationRef ds_offer = 1;
+  optional NostrPublicationRef ds_access_request = 2;
+  optional NostrPublicationRef ds_access_result = 3;
+}
+
 message DataAsset {
   string asset_id = 1;
   string provider_id = 2;
@@ -60,7 +77,8 @@ message DataAsset {
   optional openagents.common.v1.Money price_hint = 9;
   int64 created_at_ms = 10;
   DataAssetStatus status = 11;
-  string metadata_json = 12;
+  optional DataAssetNostrPublications nostr_publications = 12;
+  string metadata_json = 13;
 }
 
 message AccessGrant {
@@ -75,7 +93,8 @@ message AccessGrant {
   int64 expires_at_ms = 9;
   optional int64 accepted_at_ms = 10;
   AccessGrantStatus status = 11;
-  string metadata_json = 12;
+  optional AccessGrantNostrPublications nostr_publications = 12;
+  string metadata_json = 13;
 }
 
 message DeliveryBundle {

@@ -12,7 +12,8 @@ Use when:
 
 Current posture:
 
-- tool tags include `openagents.data_market` and `nostr.nip90`
+- DS-first listing/offer publication stays public while targeted fulfillment
+  still routes through DS-DVM over NIP-90
 - export disabled
 - derived outputs disabled
 - short retention window

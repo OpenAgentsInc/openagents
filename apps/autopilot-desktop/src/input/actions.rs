@@ -5693,19 +5693,18 @@ pub(super) fn run_chat_pending_thread_history_refresh_tick(
             .and_then(|value| value.into_os_string().into_string().ok())
     });
     let params = state.autopilot_chat.build_thread_list_params(cwd);
-    let list_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(
-        params,
-    ));
+    let list_result =
+        state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(params));
     if let Err(error) = list_result {
         state.autopilot_chat.last_error = Some(error);
         return false;
     }
-    let loaded_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadLoadedList(
-        ThreadLoadedListParams {
+    let loaded_result = state.queue_codex_command(
+        crate::codex_lane::CodexLaneCommand::ThreadLoadedList(ThreadLoadedListParams {
             cursor: None,
             limit: Some(200),
-        },
-    ));
+        }),
+    );
     if let Err(error) = loaded_result {
         state.autopilot_chat.last_error = Some(error);
         return false;
@@ -15313,6 +15312,8 @@ mod tests {
             metadata: nostr::ChannelMetadata::new("ops", "", ""),
             hints: nostr::ManagedChannelHints::default(),
             relay_url: Some("wss://relay.openagents.test".to_string()),
+            dataset_listing_coordinates: Vec::new(),
+            dataset_offer_coordinates: Vec::new(),
             message_ids: Vec::new(),
             root_message_ids: Vec::new(),
             unread_count: 0,
