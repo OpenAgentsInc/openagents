@@ -1,5 +1,37 @@
 # OpenAgents Agent Contract (MVP Mode)
 
+## Writing style
+
+Write directly. Prefer blunt declarative sentences over rhetorical scene-setting.
+
+Do not use contrastive metadiscourse or rhetorical throat-clearing such as:
+
+- "the interesting question is not X, it is Y"
+- "the real question is..."
+- "the point is not..., the point is..."
+- "X lives in a different neighborhood"
+- "X sits in a different orbit / layer / space"
+
+Do not use vague conceptual metaphors when a direct architectural statement will
+do.
+
+Bad:
+
+- "The HyperAgents paper lives in a different neighborhood."
+- "The interesting question is not whether this is impressive in the abstract."
+
+Good:
+
+- "HyperAgents improves worker, validator, and routing quality inside OpenAgents."
+- "This matters because it lowers cost per accepted outcome."
+
+Default to:
+
+- direct claims
+- explicit subsystem names
+- concrete causal language
+- plain statements of what is true, what changes, and why it matters
+
 ## Scope
 
 - This repository is intentionally pruned for MVP work.
