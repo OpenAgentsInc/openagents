@@ -50,15 +50,18 @@ use crate::pane_system::{
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
     job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_alert_dismiss_button_bounds,
-    mission_control_buy_mode_button_bounds, mission_control_buy_mode_history_button_bounds,
-    mission_control_copy_log_stream_button_bounds,
-    mission_control_copy_seed_button_bounds_for_scroll, mission_control_layout_for_mode,
-    mission_control_load_funds_layout_with_scroll,
-    mission_control_load_funds_scroll_viewport_bounds, mission_control_local_fm_test_button_bounds,
-    mission_control_local_model_button_bounds, mission_control_sell_scroll_viewport_bounds,
-    mission_control_send_invoice_input_bounds_for_scroll,
-    mission_control_send_lightning_button_bounds_for_scroll,
-    mission_control_wallet_refresh_button_bounds, network_requests_accept_button_bounds,
+    mission_control_buy_mode_button_bounds_for_panel,
+    mission_control_buy_mode_history_button_bounds_for_panel,
+    mission_control_buy_mode_popup_bounds, mission_control_buy_mode_popup_close_button_bounds,
+    mission_control_copy_log_stream_button_bounds, mission_control_layout_for_mode,
+    mission_control_load_funds_popup_bounds, mission_control_load_funds_popup_close_button_bounds,
+    mission_control_load_funds_popup_layout_with_scroll,
+    mission_control_load_funds_popup_scroll_viewport_bounds,
+    mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
+    mission_control_sell_scroll_viewport_bounds,
+    mission_control_wallet_buy_mode_button_bounds, mission_control_wallet_load_funds_button_bounds,
+    mission_control_wallet_refresh_button_bounds,
+    network_requests_accept_button_bounds,
     network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
     network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
     network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
@@ -94,6 +97,7 @@ use crate::panes::{
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
 use crate::state::nip90_payment_facts::Nip90PaymentFactLedgerState;
+use crate::ui_style::{self, AppButtonRole, AppInputStyle, AppTextRole, AppTextStyle};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, SvgQuad, theme};
 
 pub struct PaneRenderer;
@@ -111,12 +115,14 @@ const MISSION_CONTROL_ROW_DIVIDER_TOP_GAP: f32 = 10.0;
 const MISSION_CONTROL_ROW_DIVIDER_HEIGHT: f32 = 1.0;
 const MISSION_CONTROL_ROW_DIVIDER_BOTTOM_GAP: f32 = 10.0;
 const MISSION_CONTROL_LABEL_ROW_TRAILING_GAP: f32 = 20.0;
+const MISSION_CONTROL_FINAL_ROW_TRAILING_GAP: f32 = 4.0;
 const MISSION_CONTROL_BODY_BLOCK_LABEL_GAP: f32 = 16.0;
 const MISSION_CONTROL_BODY_BLOCK_BOTTOM_GAP: f32 = 4.0;
 const MISSION_CONTROL_BODY_BLOCK_TRAILING_GAP: f32 = 12.0;
 const MISSION_CONTROL_LOAD_FUNDS_CONTENT_BOTTOM_PADDING: f32 = 8.0;
 const MISSION_CONTROL_REFRESH_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z"/></svg>"##;
 const MISSION_CONTROL_COPY_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M480 400L288 400C279.2 400 272 392.8 272 384L272 128C272 119.2 279.2 112 288 112L421.5 112C425.7 112 429.8 113.7 432.8 116.7L491.3 175.2C494.3 178.2 496 182.3 496 186.5L496 384C496 392.8 488.8 400 480 400zM288 448L480 448C515.3 448 544 419.3 544 384L544 186.5C544 169.5 537.3 153.2 525.3 141.2L466.7 82.7C454.7 70.7 438.5 64 421.5 64L288 64C252.7 64 224 92.7 224 128L224 384C224 419.3 252.7 448 288 448zM160 192C124.7 192 96 220.7 96 256L96 512C96 547.3 124.7 576 160 576L352 576C387.3 576 416 547.3 416 512L416 496L368 496L368 512C368 520.8 360.8 528 352 528L160 528C151.2 528 144 520.8 144 512L144 256C144 247.2 151.2 240 160 240L176 240L176 192L160 192z"/></svg>"##;
+const MISSION_CONTROL_CLOSE_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M135.5 169C126.1 159.6 126.1 144.4 135.5 135.1C144.9 125.8 160.1 125.7 169.4 135.1L320.4 286.1L471.4 135.1C480.8 125.7 496 125.7 505.3 135.1C514.6 144.5 514.7 159.7 505.3 169L354.3 320L505.3 471C514.7 480.4 514.7 495.6 505.3 504.9C495.9 514.2 480.7 514.3 471.4 504.9L320.4 353.9L169.4 504.9C160 514.3 144.8 514.3 135.5 504.9C126.2 495.5 126.1 480.3 135.5 471L286.5 320L135.5 169z"/></svg>"##;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum InactivePaneRenderPolicy {
@@ -2141,14 +2147,7 @@ fn paint_go_online_pane(
     );
     paint_mission_control_section_panel(
         layout.earnings_panel,
-        "EARNINGS",
-        mission_control_green_color(),
-        false,
-        paint,
-    );
-    paint_mission_control_section_panel(
-        layout.wallet_panel,
-        "WALLET",
+        "WALLET & EARNINGS",
         mission_control_green_color(),
         false,
         paint,
@@ -2164,6 +2163,8 @@ fn paint_go_online_pane(
         wallet_refresh_clicked,
         paint,
     );
+    let load_funds_trigger_bounds = mission_control_wallet_load_funds_button_bounds(content_bounds);
+    let buy_mode_trigger_bounds = mission_control_wallet_buy_mode_button_bounds(content_bounds);
     paint_mission_control_section_panel(
         layout.actions_panel,
         "CONTROL",
@@ -2178,23 +2179,6 @@ fn paint_go_online_pane(
         false,
         paint,
     );
-    if buy_mode_enabled {
-        paint_mission_control_section_panel(
-            layout.buy_mode_panel,
-            "BUY MODE",
-            mission_control_cyan_color(),
-            false,
-            paint,
-        );
-    }
-    paint_mission_control_section_panel(
-        layout.load_funds_panel,
-        "LOAD FUNDS",
-        mission_control_cyan_color(),
-        false,
-        paint,
-    );
-
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let wants_online = matches!(
         provider_runtime.mode,
@@ -2400,14 +2384,9 @@ fn paint_go_online_pane(
         paint,
     );
 
-    let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
-    paint.scene.push_clip(earnings_clip);
     const MISSION_CONTROL_PANEL_FONT_SIZE: f32 = 12.0;
-    let earnings_content_height = 41.0 + 41.0 + 40.0 + 6.0 + 54.0;
-    let earnings_max_scroll =
-        mission_control_section_max_scroll(layout.earnings_panel, earnings_content_height);
-    let earnings_scroll = mission_control.clamp_earnings_scroll_offset(earnings_max_scroll);
-    let mut earnings_y = mission_control_section_content_y(layout.earnings_panel) - earnings_scroll;
+    let account_section_gap = 0.0;
+    let earnings_rows_height = 41.0 + 41.0 + 41.0;
     let today_display = earnings_scoreboard_amount_display(
         earnings_scoreboard.load_state,
         format_mission_control_amount(earnings_scoreboard.sats_today),
@@ -2420,49 +2399,6 @@ fn paint_go_online_pane(
         earnings_scoreboard.load_state,
         format_mission_control_amount(earnings_scoreboard.lifetime_sats),
     );
-    earnings_y = paint_mission_control_amount_line(
-        paint,
-        layout.earnings_panel.origin.x + 12.0,
-        earnings_y,
-        "Today",
-        &today_display,
-        mission_control_green_color(),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.earnings_panel.size.width - 24.0,
-        true,
-    );
-    earnings_y = paint_mission_control_amount_line(
-        paint,
-        layout.earnings_panel.origin.x + 12.0,
-        earnings_y,
-        "This Month",
-        &month_display,
-        mission_control_text_color(),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.earnings_panel.size.width - 24.0,
-        true,
-    );
-    let _ = paint_mission_control_amount_line(
-        paint,
-        layout.earnings_panel.origin.x + 12.0,
-        earnings_y,
-        "All Time",
-        &lifetime_display,
-        mission_control_cyan_color(),
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.earnings_panel.size.width - 24.0,
-        false,
-    );
-    paint.scene.pop_clip();
-    paint_mission_control_section_scrollbar(
-        layout.earnings_panel,
-        earnings_content_height,
-        earnings_scroll,
-        paint,
-    );
-
-    let wallet_clip = mission_control_section_clip_bounds(layout.wallet_panel);
-    paint.scene.push_clip(wallet_clip);
     let now_epoch_seconds = mission_control_now_epoch_seconds();
     let wallet_pending_delta_sats = crate::spark_wallet::pending_wallet_delta_sats(
         &spark_wallet.recent_payments,
@@ -2495,30 +2431,78 @@ fn paint_go_online_pane(
         .map(mask_secret)
         .unwrap_or_else(|| "NOT GENERATED".to_string());
     let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
-    let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
-    let wallet_content_height = 41.0
-        + 39.0
+    let wallet_value_chunk_len = mission_control_value_chunk_len(layout.earnings_panel);
+    let wallet_status_height =
+        mission_control_wrapped_row_height(wallet_status, wallet_value_chunk_len, true);
+    let wallet_target_height = mission_control_wrapped_row_height_with_trailing_gap(
+        &wallet_address,
+        wallet_value_chunk_len,
+        false,
+        MISSION_CONTROL_FINAL_ROW_TRAILING_GAP,
+    );
+    let wallet_rows_height = 41.0 + 41.0
         + mission_control_wrapped_row_height(&wallet_network, wallet_value_chunk_len, true)
-        + mission_control_wrapped_row_height(wallet_status, wallet_value_chunk_len, true)
-        + mission_control_wrapped_row_height(&wallet_address, wallet_value_chunk_len, false);
-    let wallet_max_scroll =
-        mission_control_section_max_scroll(layout.wallet_panel, wallet_content_height);
-    let wallet_scroll = mission_control.clamp_wallet_scroll_offset(wallet_max_scroll);
-    let mut wallet_y = mission_control_section_content_y(layout.wallet_panel) - wallet_scroll;
+        + wallet_status_height
+        + wallet_target_height;
+    let earnings_content_height = earnings_rows_height + account_section_gap + wallet_rows_height;
+    let earnings_viewport = mission_control_section_scroll_viewport_bounds_above_footer(
+        layout.earnings_panel,
+        load_funds_trigger_bounds,
+        12.0,
+    );
+    paint.scene.push_clip(earnings_viewport);
+    let earnings_max_scroll =
+        mission_control_max_scroll_for_viewport(earnings_viewport, earnings_content_height);
+    let earnings_scroll = mission_control.clamp_earnings_scroll_offset(earnings_max_scroll);
+    let mut earnings_y = earnings_viewport.origin.y - earnings_scroll;
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "Today",
+        &today_display,
+        mission_control_green_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "This Month",
+        &month_display,
+        mission_control_text_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "All Time",
+        &lifetime_display,
+        mission_control_cyan_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    let mut wallet_y = earnings_y + account_section_gap;
     wallet_y = paint_mission_control_amount_line(
         paint,
-        layout.wallet_panel.origin.x + 12.0,
+        layout.earnings_panel.origin.x + 12.0,
         wallet_y,
         "Balance (₿)",
         &wallet_balance,
         mission_control_green_color(),
         MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.wallet_panel.size.width - 24.0,
+        layout.earnings_panel.size.width - 24.0,
         true,
     );
     wallet_y = paint_mission_control_amount_line(
         paint,
-        layout.wallet_panel.origin.x + 12.0,
+        layout.earnings_panel.origin.x + 12.0,
         wallet_y,
         "Pending (₿)",
         &wallet_pending,
@@ -2528,44 +2512,59 @@ fn paint_go_online_pane(
             theme::status::WARNING
         },
         MISSION_CONTROL_PANEL_FONT_SIZE,
-        layout.wallet_panel.size.width - 24.0,
+        layout.earnings_panel.size.width - 24.0,
         true,
     );
     wallet_y = paint_wrapped_label_line_mission_control_label(
         paint,
-        layout.wallet_panel.origin.x + 12.0,
+        layout.earnings_panel.origin.x + 12.0,
         wallet_y,
         "Network",
         &wallet_network,
         wallet_value_chunk_len,
-        layout.wallet_panel.size.width - 24.0,
+        layout.earnings_panel.size.width - 24.0,
         true,
     );
     wallet_y = paint_wrapped_label_line_mission_control_label(
         paint,
-        layout.wallet_panel.origin.x + 12.0,
+        layout.earnings_panel.origin.x + 12.0,
         wallet_y,
         "Status",
         wallet_status,
         wallet_value_chunk_len,
-        layout.wallet_panel.size.width - 24.0,
+        layout.earnings_panel.size.width - 24.0,
         true,
     );
     let _ = paint_wrapped_label_line_mission_control_label(
         paint,
-        layout.wallet_panel.origin.x + 12.0,
+        layout.earnings_panel.origin.x + 12.0,
         wallet_y,
         "Target",
         &wallet_address,
         wallet_value_chunk_len,
-        layout.wallet_panel.size.width - 24.0,
+        layout.earnings_panel.size.width - 24.0,
         false,
     );
     paint.scene.pop_clip();
-    paint_mission_control_section_scrollbar(
-        layout.wallet_panel,
-        wallet_content_height,
-        wallet_scroll,
+    paint_mission_control_scrollbar_for_viewport(
+        layout.earnings_panel,
+        earnings_viewport,
+        earnings_content_height,
+        earnings_scroll,
+        paint,
+    );
+    paint_mission_control_command_button(
+        load_funds_trigger_bounds,
+        "LOAD FUNDS",
+        mission_control_cyan_color(),
+        true,
+        paint,
+    );
+    paint_mission_control_command_button(
+        buy_mode_trigger_bounds,
+        "BUY MODE",
+        mission_control_cyan_color(),
+        buy_mode_enabled,
         paint,
     );
 
@@ -2626,194 +2625,6 @@ fn paint_go_online_pane(
         );
     }
 
-    let load_funds_viewport =
-        mission_control_load_funds_scroll_viewport_bounds(content_bounds, buy_mode_enabled);
-    let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
-    let lightning_target_text = match lightning_state {
-        SparkInvoiceState::Ready => spark_wallet
-            .last_invoice
-            .as_deref()
-            .unwrap_or("Generate a Lightning invoice to fund this wallet.")
-            .to_string(),
-        SparkInvoiceState::Expired => {
-            "Previous Lightning invoice expired. Generate a fresh receive target.".to_string()
-        }
-        SparkInvoiceState::Empty => "Generate a Lightning invoice to fund this wallet.".to_string(),
-    };
-    let recent_receive_history = mission_control_recent_receive_history(spark_wallet);
-    let load_funds_measurement_layout =
-        mission_control_load_funds_layout_with_scroll(content_bounds, buy_mode_enabled, 0.0);
-    let load_funds_content_height = mission_control_load_funds_content_height(
-        &load_funds_measurement_layout,
-        &wallet_network,
-        wallet_status,
-        mission_control_lightning_receive_state_label(lightning_state),
-        &lightning_target_text,
-        &recent_receive_history,
-    );
-    let load_funds_max_scroll =
-        mission_control_max_scroll_for_viewport(load_funds_viewport, load_funds_content_height);
-    let load_funds_scroll = mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
-    let load_funds_layout = mission_control_load_funds_layout_with_scroll(
-        content_bounds,
-        buy_mode_enabled,
-        load_funds_scroll,
-    );
-    let lightning_amount_valid = mission_control
-        .load_funds_amount_sats
-        .get_value()
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .is_some_and(|value| value > 0);
-    paint.scene.push_clip(load_funds_viewport);
-    let mut lightning_sats_label = paint.text.layout_mono(
-        "LIGHTNING SATS (₿)",
-        Point::ZERO,
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        mission_control_muted_color(),
-    );
-    let lightning_sats_label_bounds = lightning_sats_label.bounds();
-    let lightning_sats_label_bottom = load_funds_layout.amount_input.origin.y - 8.0;
-    lightning_sats_label.origin = Point::new(
-        load_funds_layout.amount_input.origin.x - lightning_sats_label_bounds.origin.x,
-        lightning_sats_label_bottom
-            - lightning_sats_label_bounds.size.height
-            - lightning_sats_label_bounds.origin.y,
-    );
-    paint.scene.draw_text(lightning_sats_label);
-    mission_control
-        .load_funds_amount_sats
-        .set_max_width(load_funds_layout.amount_input.size.width);
-    mission_control
-        .load_funds_amount_sats
-        .paint(load_funds_layout.amount_input, paint);
-    paint_mission_control_command_button(
-        load_funds_layout.lightning_button,
-        "LIGHTNING RECEIVE",
-        mission_control_green_color(),
-        lightning_amount_valid,
-        paint,
-    );
-    paint_mission_control_command_button(
-        load_funds_layout.copy_lightning_button,
-        "COPY LIGHTNING",
-        mission_control_cyan_color(),
-        lightning_state == SparkInvoiceState::Ready,
-        paint,
-    );
-    let send_invoice_bounds = mission_control_send_invoice_input_bounds_for_scroll(
-        content_bounds,
-        buy_mode_enabled,
-        load_funds_scroll,
-    );
-    let mut lightning_withdraw_label = paint.text.layout_mono(
-        "LIGHTNING WITHDRAW",
-        Point::ZERO,
-        MISSION_CONTROL_PANEL_FONT_SIZE,
-        mission_control_muted_color(),
-    );
-    let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
-    let lightning_withdraw_label_bottom = send_invoice_bounds.origin.y - 8.0;
-    lightning_withdraw_label.origin = Point::new(
-        send_invoice_bounds.origin.x - lightning_withdraw_label_bounds.origin.x,
-        lightning_withdraw_label_bottom
-            - lightning_withdraw_label_bounds.size.height
-            - lightning_withdraw_label_bounds.origin.y,
-    );
-    paint.scene.draw_text(lightning_withdraw_label);
-    mission_control
-        .send_invoice
-        .set_max_width(send_invoice_bounds.size.width);
-    mission_control
-        .send_invoice
-        .paint(send_invoice_bounds, paint);
-    paint_mission_control_command_button(
-        mission_control_send_lightning_button_bounds_for_scroll(
-            content_bounds,
-            buy_mode_enabled,
-            load_funds_scroll,
-        ),
-        "LIGHTNING WITHDRAW",
-        mission_control_orange_color(),
-        !mission_control.send_invoice.get_value().trim().is_empty(),
-        paint,
-    );
-    paint_mission_control_command_button(
-        mission_control_copy_seed_button_bounds_for_scroll(
-            content_bounds,
-            buy_mode_enabled,
-            load_funds_scroll,
-        ),
-        "COPY SEED",
-        mission_control_cyan_color(),
-        nostr_identity.is_some_and(|identity| !identity.mnemonic.trim().is_empty()),
-        paint,
-    );
-    let load_funds_value_chunk_len =
-        mission_control_value_chunk_len(load_funds_layout.details_column);
-    let load_funds_body_chunk_len =
-        mission_control_body_chunk_len(load_funds_layout.details_column);
-    let mut load_funds_y = load_funds_layout.details_column.origin.y;
-    load_funds_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Network",
-        &wallet_network,
-        load_funds_value_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    load_funds_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Connection",
-        wallet_status,
-        load_funds_value_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    load_funds_y = paint_wrapped_label_line_mission_control_label(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Lightning",
-        mission_control_lightning_receive_state_label(lightning_state),
-        load_funds_value_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    load_funds_y = paint_mission_control_body_block(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Lightning target",
-        &lightning_target_text,
-        load_funds_body_chunk_len,
-        load_funds_layout.details_column.size.width,
-        true,
-    );
-    let _ = paint_mission_control_body_block(
-        paint,
-        load_funds_layout.details_column.origin.x,
-        load_funds_y,
-        "Recent receives",
-        &recent_receive_history,
-        load_funds_body_chunk_len,
-        load_funds_layout.details_column.size.width,
-        false,
-    );
-    paint.scene.pop_clip();
-    paint_mission_control_scrollbar_for_viewport(
-        layout.load_funds_panel,
-        load_funds_viewport,
-        load_funds_content_height,
-        load_funds_scroll,
-        paint,
-    );
-
     let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
     paint.scene.push_clip(active_clip);
     let active_panel_state = mission_control_active_jobs_panel_state(
@@ -2867,19 +2678,6 @@ fn paint_go_online_pane(
         paint,
     );
 
-    if buy_mode_enabled {
-        paint_mission_control_buy_mode_panel(
-            content_bounds,
-            layout.buy_mode_panel,
-            autopilot_chat,
-            buy_mode,
-            network_requests,
-            spark_wallet,
-            now,
-            paint,
-        );
-    }
-
     paint_mission_control_section_panel(
         layout.log_stream,
         "LOG STREAM",
@@ -2906,6 +2704,239 @@ fn paint_go_online_pane(
     );
     log_stream.terminal.set_title("");
     log_stream.terminal.paint(log_body_bounds, paint);
+
+    if mission_control.load_funds_popup_open() {
+        let base_layer = paint.scene.layer();
+        paint.scene.set_layer(base_layer.saturating_add(1));
+        let popup_bounds = mission_control_load_funds_popup_bounds(content_bounds);
+        let popup_viewport = mission_control_load_funds_popup_scroll_viewport_bounds(content_bounds);
+        let popup_close_bounds =
+            mission_control_load_funds_popup_close_button_bounds(content_bounds);
+        let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
+        let lightning_target_text = match lightning_state {
+            SparkInvoiceState::Ready => spark_wallet
+                .last_invoice
+                .as_deref()
+                .unwrap_or("Generate a Lightning invoice to fund this wallet.")
+                .to_string(),
+            SparkInvoiceState::Expired => {
+                "Previous Lightning invoice expired. Generate a fresh receive target.".to_string()
+            }
+            SparkInvoiceState::Empty => {
+                "Generate a Lightning invoice to fund this wallet.".to_string()
+            }
+        };
+        let recent_receive_history = mission_control_recent_receive_history(spark_wallet);
+        let load_funds_measurement_layout =
+            mission_control_load_funds_popup_layout_with_scroll(content_bounds, 0.0);
+        let load_funds_content_height = mission_control_load_funds_content_height(
+            &load_funds_measurement_layout,
+            &wallet_network,
+            wallet_status,
+            mission_control_lightning_receive_state_label(lightning_state),
+            &lightning_target_text,
+            &recent_receive_history,
+        );
+        let load_funds_max_scroll = mission_control_max_scroll_for_viewport(
+            popup_viewport,
+            load_funds_content_height,
+        );
+        let load_funds_scroll =
+            mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
+        let load_funds_layout =
+            mission_control_load_funds_popup_layout_with_scroll(content_bounds, load_funds_scroll);
+        let lightning_amount_valid = mission_control
+            .load_funds_amount_sats
+            .get_value()
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .is_some_and(|value| value > 0);
+
+        paint.scene.draw_quad(
+            Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)),
+        );
+        paint_mission_control_section_panel(
+            popup_bounds,
+            "LOAD FUNDS",
+            mission_control_cyan_color(),
+            false,
+            paint,
+        );
+        paint_mission_control_close_icon_button(
+            popup_close_bounds,
+            mission_control_text_color(),
+            paint,
+        );
+
+        paint.scene.push_clip(popup_viewport);
+        let mut lightning_sats_label = paint.text.layout_mono(
+            "LIGHTNING SATS (₿)",
+            Point::ZERO,
+            MISSION_CONTROL_PANEL_FONT_SIZE,
+            mission_control_muted_color(),
+        );
+        let lightning_sats_label_bounds = lightning_sats_label.bounds();
+        let lightning_sats_label_bottom = load_funds_layout.amount_input.origin.y - 8.0;
+        lightning_sats_label.origin = Point::new(
+            load_funds_layout.amount_input.origin.x - lightning_sats_label_bounds.origin.x,
+            lightning_sats_label_bottom
+                - lightning_sats_label_bounds.size.height
+                - lightning_sats_label_bounds.origin.y,
+        );
+        paint.scene.draw_text(lightning_sats_label);
+        mission_control
+            .load_funds_amount_sats
+            .set_max_width(load_funds_layout.amount_input.size.width);
+        mission_control
+            .load_funds_amount_sats
+            .paint(load_funds_layout.amount_input, paint);
+        paint_mission_control_command_button(
+            load_funds_layout.lightning_button,
+            "LIGHTNING RECEIVE",
+            mission_control_green_color(),
+            lightning_amount_valid,
+            paint,
+        );
+        paint_mission_control_command_button(
+            load_funds_layout.copy_lightning_button,
+            "COPY LIGHTNING",
+            mission_control_cyan_color(),
+            lightning_state == SparkInvoiceState::Ready,
+            paint,
+        );
+        let mut lightning_withdraw_label = paint.text.layout_mono(
+            "LIGHTNING WITHDRAW",
+            Point::ZERO,
+            MISSION_CONTROL_PANEL_FONT_SIZE,
+            mission_control_muted_color(),
+        );
+        let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
+        let lightning_withdraw_label_bottom = load_funds_layout.send_invoice_input.origin.y - 8.0;
+        lightning_withdraw_label.origin = Point::new(
+            load_funds_layout.send_invoice_input.origin.x - lightning_withdraw_label_bounds.origin.x,
+            lightning_withdraw_label_bottom
+                - lightning_withdraw_label_bounds.size.height
+                - lightning_withdraw_label_bounds.origin.y,
+        );
+        paint.scene.draw_text(lightning_withdraw_label);
+        mission_control
+            .send_invoice
+            .set_max_width(load_funds_layout.send_invoice_input.size.width);
+        mission_control
+            .send_invoice
+            .paint(load_funds_layout.send_invoice_input, paint);
+        paint_mission_control_command_button(
+            load_funds_layout.send_lightning_button,
+            "LIGHTNING WITHDRAW",
+            mission_control_orange_color(),
+            !mission_control.send_invoice.get_value().trim().is_empty(),
+            paint,
+        );
+        paint_mission_control_command_button(
+            load_funds_layout.copy_seed_button,
+            "COPY SEED",
+            mission_control_cyan_color(),
+            nostr_identity.is_some_and(|identity| !identity.mnemonic.trim().is_empty()),
+            paint,
+        );
+        let load_funds_value_chunk_len =
+            mission_control_value_chunk_len(load_funds_layout.details_column);
+        let load_funds_body_chunk_len =
+            mission_control_body_chunk_len(load_funds_layout.details_column);
+        let mut load_funds_y = load_funds_layout.details_column.origin.y;
+        load_funds_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Network",
+            &wallet_network,
+            load_funds_value_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        load_funds_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Connection",
+            wallet_status,
+            load_funds_value_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        load_funds_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Lightning",
+            mission_control_lightning_receive_state_label(lightning_state),
+            load_funds_value_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        load_funds_y = paint_mission_control_body_block(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Lightning target",
+            &lightning_target_text,
+            load_funds_body_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        let _ = paint_mission_control_body_block(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Recent receives",
+            &recent_receive_history,
+            load_funds_body_chunk_len,
+            load_funds_layout.details_column.size.width,
+            false,
+        );
+        paint.scene.pop_clip();
+        paint_mission_control_scrollbar_for_viewport(
+            popup_bounds,
+            popup_viewport,
+            load_funds_content_height,
+            load_funds_scroll,
+            paint,
+        );
+        paint.scene.set_layer(base_layer);
+    }
+
+    if mission_control.buy_mode_popup_open() {
+        let base_layer = paint.scene.layer();
+        paint.scene.set_layer(base_layer.saturating_add(1));
+        let popup_bounds = mission_control_buy_mode_popup_bounds(content_bounds);
+        let popup_close_bounds = mission_control_buy_mode_popup_close_button_bounds(content_bounds);
+        paint.scene.draw_quad(
+            Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)),
+        );
+        paint_mission_control_section_panel(
+            popup_bounds,
+            "BUY MODE",
+            mission_control_cyan_color(),
+            false,
+            paint,
+        );
+        paint_mission_control_close_icon_button(
+            popup_close_bounds,
+            mission_control_text_color(),
+            paint,
+        );
+        paint_mission_control_buy_mode_panel(
+            popup_bounds,
+            autopilot_chat,
+            buy_mode,
+            network_requests,
+            spark_wallet,
+            now,
+            paint,
+        );
+        paint.scene.set_layer(base_layer);
+    }
 }
 
 pub(crate) fn paint_mission_control_sell_compute_focus(
@@ -2989,46 +3020,46 @@ pub(crate) fn paint_mission_control_section_panel(
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(mission_control_panel_color())
-            .with_border(mission_control_panel_border_color(), 1.0)
+            .with_border(mission_control_panel_border_color().with_alpha(0.72), 1.0)
             .with_corner_radius(6.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x - 1.0,
-            bounds.origin.y - 1.0,
-            bounds.size.width + 2.0,
-            bounds.size.height + 2.0,
-        ))
-        .with_border(accent.with_alpha(0.04 + pulse * 0.06), 1.0)
-        .with_corner_radius(7.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
-            5.0,
+            bounds.size.width,
             bounds.size.height,
         ))
-        .with_background(accent.with_alpha(0.74 + pulse * 0.18))
+        .with_border(accent.with_alpha(0.02 + pulse * 0.03), 1.0)
         .with_corner_radius(6.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
-            bounds.origin.x + 5.0,
+            bounds.origin.x,
             bounds.origin.y,
-            (bounds.size.width - 5.0).max(0.0),
-            MISSION_CONTROL_SECTION_HEADER_HEIGHT,
+            4.0,
+            bounds.size.height,
         ))
-        .with_background(mission_control_panel_header_color().with_alpha(0.95)),
+        .with_background(accent.with_alpha(0.58 + pulse * 0.10))
+        .with_corner_radius(6.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
-            bounds.origin.x + 5.0,
+            bounds.origin.x + 4.0,
             bounds.origin.y,
-            (bounds.size.width - 5.0).max(0.0),
+            (bounds.size.width - 4.0).max(0.0),
+            MISSION_CONTROL_SECTION_HEADER_HEIGHT,
+        ))
+        .with_background(mission_control_panel_header_color().with_alpha(0.88)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 4.0,
+            bounds.origin.y,
+            (bounds.size.width - 4.0).max(0.0),
             1.0,
         ))
-        .with_background(accent.with_alpha(0.35)),
+        .with_background(accent.with_alpha(0.22)),
     );
     if show_moving_header_bar {
         let rail_top = bounds.origin.y + 2.0;
@@ -3047,25 +3078,29 @@ pub(crate) fn paint_mission_control_section_panel(
                 Quad::new(Bounds::new(
                     bounds.origin.x + 1.0,
                     shimmer_top,
-                    3.0,
+                    2.0,
                     visible_height,
                 ))
-                .with_background(Hsla::from_hex(0x1F8A44).with_alpha(0.92))
+                .with_background(Hsla::from_hex(0x1F8A44).with_alpha(0.84))
                 .with_corner_radius(2.0),
             );
         }
     }
 
     if !title.is_empty() {
+        let marker_style = app_text_style(AppTextRole::SectionHeading);
+        let title_style = app_text_style(AppTextRole::SectionHeading);
         let marker_origin = Point::new(bounds.origin.x + 14.0, bounds.origin.y + 8.0);
-        let marker = paint.text.layout_mono("\\\\", marker_origin, 10.0, accent);
+        let marker = paint
+            .text
+            .layout_mono("\\\\", marker_origin, marker_style.font_size, accent);
         let marker_width = marker.bounds().size.width;
         paint.scene.draw_text(marker);
         paint.scene.draw_text(paint.text.layout_mono(
             title,
             Point::new(marker_origin.x + marker_width + 6.0, marker_origin.y),
-            10.0,
-            mission_control_text_color(),
+            title_style.font_size,
+            title_style.color,
         ));
     }
 }
@@ -3078,15 +3113,16 @@ fn paint_mission_control_status_cell(
     value_font_size: f32,
     paint: &mut PaintContext,
 ) {
+    let label_style = app_text_style(AppTextRole::SectionHeading);
     let anim_t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f32())
         .unwrap_or(0.0);
-    let blink = ((anim_t * 9.6 + bounds.origin.x * 0.04).sin() * 0.5) + 0.5;
+    let blink = ((anim_t * 7.2 + bounds.origin.x * 0.04).sin() * 0.5) + 0.5;
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(mission_control_panel_color())
-            .with_border(mission_control_panel_border_color(), 1.0)
+            .with_background(mission_control_panel_color().with_alpha(0.96))
+            .with_border(mission_control_panel_border_color().with_alpha(0.68), 1.0)
             .with_corner_radius(6.0),
     );
     paint.scene.draw_quad(
@@ -3096,7 +3132,7 @@ fn paint_mission_control_status_cell(
             bounds.size.width,
             18.0,
         ))
-        .with_background(mission_control_panel_header_color().with_alpha(0.95)),
+        .with_background(mission_control_panel_header_color().with_alpha(0.82)),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
@@ -3105,7 +3141,7 @@ fn paint_mission_control_status_cell(
             10.0,
             10.0,
         ))
-        .with_background(value_color.with_alpha(0.10 + blink * 0.12))
+        .with_background(value_color.with_alpha(0.05 + blink * 0.08))
         .with_corner_radius(5.0),
     );
     paint.scene.draw_quad(
@@ -3115,7 +3151,7 @@ fn paint_mission_control_status_cell(
             6.0,
             6.0,
         ))
-        .with_background(value_color.with_alpha(0.55 + blink * 0.45))
+        .with_background(value_color.with_alpha(0.42 + blink * 0.28))
         .with_corner_radius(3.0),
     );
     let label_y = bounds.origin.y + 4.0;
@@ -3130,7 +3166,7 @@ fn paint_mission_control_status_cell(
     paint.scene.draw_text(paint.text.layout_mono(
         label,
         Point::new(bounds.origin.x + 22.0, label_y),
-        9.0,
+        label_style.font_size,
         mission_control_muted_color(),
     ));
     value_run.origin = Point::new(bounds.origin.x + 14.0 - value_bounds.origin.x, value_y);
@@ -3325,7 +3361,6 @@ fn mission_control_alert_message(
 }
 
 fn paint_mission_control_buy_mode_panel(
-    content_bounds: Bounds,
     panel_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
     buy_mode: &BuyModePaymentsPaneState,
@@ -3347,26 +3382,50 @@ fn paint_mission_control_buy_mode_panel(
     let clip = mission_control_section_clip_bounds(panel_bounds);
     paint.scene.push_clip(clip);
 
-    let primary_button_bounds = mission_control_buy_mode_button_bounds(content_bounds, true);
+    let primary_button_bounds = mission_control_buy_mode_button_bounds_for_panel(panel_bounds);
     let history_button_bounds =
-        mission_control_buy_mode_history_button_bounds(content_bounds, true);
+        mission_control_buy_mode_history_button_bounds_for_panel(panel_bounds);
     let content_y = mission_control_section_content_y(panel_bounds);
-    let extra_height = (panel_bounds.size.height - 120.0).max(0.0);
-    let summary_to_cells_gap = (14.0 + extra_height * 0.12).clamp(14.0, 30.0);
-    let cell_height = (34.0 + extra_height * 0.10).clamp(34.0, 44.0);
-    let min_cells_to_buttons_gap = 18.0;
-    let max_cell_y = (primary_button_bounds.origin.y - min_cells_to_buttons_gap - cell_height)
-        .max(content_y + 14.0);
-    paint.scene.draw_text(paint.text.layout_mono(
-        panel_state.summary.as_str(),
-        Point::new(panel_bounds.origin.x + 12.0, content_y),
-        11.0,
-        mission_control_text_color(),
+    let inner_x = panel_bounds.origin.x + 12.0;
+    let inner_width = (panel_bounds.size.width - 24.0).max(0.0);
+    let button_top = primary_button_bounds.origin.y.min(history_button_bounds.origin.y);
+    let summary_chunk_len = mission_control_body_chunk_len(Bounds::new(
+        inner_x,
+        content_y,
+        inner_width,
+        0.0,
     ));
+    let summary_lines = split_text_for_display(panel_state.summary.as_str(), summary_chunk_len);
+    let summary_line_height = 14.0;
+    for (index, line) in summary_lines.iter().enumerate() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(inner_x, content_y + index as f32 * summary_line_height),
+            11.0,
+            mission_control_text_color(),
+        ));
+    }
 
+    let summary_height = summary_lines.len() as f32 * summary_line_height;
+    let summary_to_cells_gap = 14.0;
     let cell_gap = 8.0;
-    let cell_width = ((panel_bounds.size.width - 24.0 - cell_gap * 4.0) / 5.0).max(0.0);
-    let cell_y = (content_y + summary_to_cells_gap).min(max_cell_y);
+    let cell_top = content_y + summary_height + summary_to_cells_gap;
+    let available_cell_height = (button_top - 18.0 - cell_top).max(34.0);
+    let columns = if inner_width >= 620.0 {
+        5
+    } else if inner_width >= 430.0 {
+        3
+    } else {
+        2
+    };
+    let rows = 5_usize.div_ceil(columns);
+    let cell_width = ((inner_width - cell_gap * (columns.saturating_sub(1) as f32))
+        / columns as f32)
+        .max(0.0);
+    let cell_height = ((available_cell_height
+        - cell_gap * (rows.saturating_sub(1) as f32))
+        / rows as f32)
+        .clamp(34.0, 44.0);
     let values = [
         ("MODE", panel_state.mode.clone()),
         ("NEXT", panel_state.next.clone()),
@@ -3375,9 +3434,12 @@ fn paint_mission_control_buy_mode_panel(
         ("PAY", panel_state.payment.clone()),
     ];
     for (index, (label, value)) in values.iter().enumerate() {
-        let x = panel_bounds.origin.x + 12.0 + index as f32 * (cell_width + cell_gap);
+        let row = index / columns;
+        let col = index % columns;
+        let x = inner_x + col as f32 * (cell_width + cell_gap);
+        let y = cell_top + row as f32 * (cell_height + cell_gap);
         paint_mission_control_status_cell(
-            Bounds::new(x, cell_y, cell_width, cell_height),
+            Bounds::new(x, y, cell_width, cell_height),
             label,
             value.as_str(),
             mission_control_cyan_color(),
@@ -3882,6 +3944,21 @@ fn mission_control_section_scroll_viewport_bounds(bounds: Bounds) -> Bounds {
     )
 }
 
+fn mission_control_section_scroll_viewport_bounds_above_footer(
+    bounds: Bounds,
+    footer_bounds: Bounds,
+    footer_gap: f32,
+) -> Bounds {
+    let origin_y = mission_control_section_content_y(bounds);
+    let max_y = (footer_bounds.origin.y - footer_gap).min(bounds.max_y());
+    Bounds::new(
+        bounds.origin.x + 8.0,
+        origin_y,
+        (bounds.size.width - 16.0).max(0.0),
+        (max_y - origin_y).max(0.0),
+    )
+}
+
 fn mission_control_section_max_scroll(bounds: Bounds, content_height: f32) -> f32 {
     mission_control_max_scroll_for_viewport(
         mission_control_section_scroll_viewport_bounds(bounds),
@@ -3971,10 +4048,11 @@ fn paint_mission_control_amount_line(
     row_width: f32,
     show_divider: bool,
 ) -> f32 {
+    let label_style = app_text_style(AppTextRole::FormLabel);
     paint.scene.draw_text(paint.text.layout_mono(
         &format!("{label}:"),
         Point::new(x, y),
-        12.0,
+        label_style.font_size,
         mission_control_muted_color(),
     ));
     let value_x = x + mission_control_value_x_offset(label);
@@ -7735,12 +7813,12 @@ fn paint_mission_control_command_button(
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(if enabled {
-                mission_control_panel_header_color().with_alpha(0.55)
+                mission_control_panel_header_color().with_alpha(0.38)
             } else {
-                mission_control_panel_color()
+                mission_control_panel_color().with_alpha(0.94)
             })
-            .with_border(border.with_alpha(if enabled { 0.85 } else { 0.5 }), 1.0)
-            .with_corner_radius(3.0),
+            .with_border(border.with_alpha(if enabled { 0.64 } else { 0.34 }), 1.0)
+            .with_corner_radius(6.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
@@ -7749,7 +7827,7 @@ fn paint_mission_control_command_button(
             bounds.size.width,
             1.0,
         ))
-        .with_background(border.with_alpha(if enabled { 0.2 } else { 0.08 })),
+        .with_background(border.with_alpha(if enabled { 0.10 } else { 0.04 })),
     );
     paint_button_label_mono(
         bounds,
@@ -7808,6 +7886,33 @@ fn paint_mission_control_wallet_refresh_icon_button(
     );
 }
 
+fn paint_mission_control_close_icon_button(
+    bounds: Bounds,
+    color: Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(mission_control_panel_header_color().with_alpha(0.88))
+            .with_border(mission_control_panel_border_color().with_alpha(1.0), 1.0)
+            .with_corner_radius(6.0),
+    );
+    let icon_size = 18.0f32
+        .min(bounds.size.width.max(0.0))
+        .min(bounds.size.height.max(0.0));
+    let icon_origin = Point::new(
+        bounds.origin.x + (bounds.size.width - icon_size).max(0.0) * 0.5,
+        bounds.origin.y + (bounds.size.height - icon_size).max(0.0) * 0.5,
+    );
+    paint.scene.draw_svg(
+        SvgQuad::new(
+            Bounds::new(icon_origin.x, icon_origin.y, icon_size, icon_size),
+            Arc::from(MISSION_CONTROL_CLOSE_ICON_SVG_RAW.as_bytes()),
+        )
+        .with_tint(color),
+    );
+}
+
 fn paint_mission_control_log_copy_icon_button(
     bounds: Bounds,
     color: Hsla,
@@ -7860,10 +7965,28 @@ enum ButtonStyle {
     Disabled,
 }
 
+pub(crate) fn app_text_style(role: AppTextRole) -> AppTextStyle {
+    ui_style::app_text_style(role)
+}
+
+pub(crate) fn app_input_style() -> AppInputStyle {
+    ui_style::app_input_style()
+}
+
+pub(crate) fn paint_standard_input_frame(bounds: Bounds, paint: &mut PaintContext) {
+    let style = app_input_style();
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(style.background)
+            .with_border(style.border, style.border_width)
+            .with_corner_radius(style.corner_radius),
+    );
+}
+
 fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut PaintContext) {
     match style {
         ButtonStyle::Primary => {
-            let glow = Hsla::from_hex(0x0891B2);
+            let glow = Hsla::from_hex(ui_style::button::PRIMARY_GLOW_COLOR);
             paint.scene.draw_quad(
                 Quad::new(Bounds::new(
                     bounds.origin.x - 4.0,
@@ -7871,15 +7994,15 @@ fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut Pai
                     bounds.size.width + 8.0,
                     bounds.size.height + 8.0,
                 ))
-                .with_background(glow.with_alpha(0.08))
+                .with_background(glow.with_alpha(ui_style::button::PRIMARY_GLOW_ALPHA))
                 .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
-                .with_corner_radius(14.0),
+                .with_corner_radius(ui_style::button::PRIMARY_OUTER_RADIUS),
             );
             paint.scene.draw_quad(
                 Quad::new(bounds)
-                    .with_background(Hsla::from_hex(0x121419).with_alpha(0.85))
-                    .with_border(Hsla::from_hex(0x0891B2), 1.0)
-                    .with_corner_radius(10.0),
+                    .with_background(Hsla::from_hex(ui_style::button::PRIMARY_BACKGROUND).with_alpha(0.85))
+                    .with_border(Hsla::from_hex(ui_style::button::PRIMARY_BORDER), 1.0)
+                    .with_corner_radius(ui_style::button::PRIMARY_CORNER_RADIUS),
             );
             paint.scene.draw_quad(
                 Quad::new(Bounds::new(
@@ -7888,23 +8011,32 @@ fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut Pai
                     (bounds.size.width - 2.0).max(0.0),
                     (bounds.size.height * 0.62).max(0.0),
                 ))
-                .with_background(Hsla::from_hex(0x03857F).with_alpha(0.34))
+                .with_background(
+                    Hsla::from_hex(ui_style::button::PRIMARY_HIGHLIGHT)
+                        .with_alpha(ui_style::button::PRIMARY_HIGHLIGHT_ALPHA),
+                )
                 .with_corner_radius(9.0),
             );
-            paint_button_label_mono(bounds, label, 18.0, Hsla::from_hex(0xFFFFFF), paint);
+            paint_button_label_mono(
+                bounds,
+                label,
+                ui_style::button::label_font_size(AppButtonRole::Primary),
+                ui_style::button::label_color(AppButtonRole::Primary),
+                paint,
+            );
         }
         ButtonStyle::Secondary => {
             paint.scene.draw_quad(
                 Quad::new(bounds)
                     .with_background(theme::bg::HOVER)
                     .with_border(theme::border::DEFAULT, 1.0)
-                    .with_corner_radius(6.0),
+                    .with_corner_radius(ui_style::button::SECONDARY_CORNER_RADIUS),
             );
             paint_button_label(
                 bounds,
                 label,
-                theme::font_size::SM,
-                theme::text::PRIMARY,
+                ui_style::button::label_font_size(AppButtonRole::Secondary),
+                ui_style::button::label_color(AppButtonRole::Secondary),
                 paint,
             );
         }
@@ -7913,13 +8045,13 @@ fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut Pai
                 Quad::new(bounds)
                     .with_background(theme::bg::APP.with_alpha(0.0))
                     .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
-                    .with_corner_radius(6.0),
+                    .with_corner_radius(ui_style::button::TERTIARY_CORNER_RADIUS),
             );
             paint_button_label(
                 bounds,
                 label,
-                theme::font_size::SM,
-                theme::text::SECONDARY,
+                ui_style::button::label_font_size(AppButtonRole::Tertiary),
+                ui_style::button::label_color(AppButtonRole::Tertiary),
                 paint,
             );
         }
@@ -7928,13 +8060,13 @@ fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut Pai
                 Quad::new(bounds)
                     .with_background(theme::bg::SURFACE.with_alpha(0.72))
                     .with_border(theme::border::DEFAULT, 1.0)
-                    .with_corner_radius(6.0),
+                    .with_corner_radius(ui_style::button::DISABLED_CORNER_RADIUS),
             );
             paint_button_label(
                 bounds,
                 label,
-                theme::font_size::SM,
-                theme::text::MUTED,
+                ui_style::button::label_font_size(AppButtonRole::Disabled),
+                ui_style::button::label_color(AppButtonRole::Disabled),
                 paint,
             );
         }
@@ -7986,17 +8118,19 @@ pub(crate) fn paint_label_line(
     label: &str,
     value: &str,
 ) -> f32 {
-    paint.scene.draw_text(paint.text.layout(
+    let label_style = app_text_style(AppTextRole::FormLabel);
+    let value_style = app_text_style(AppTextRole::FormValue);
+    paint.scene.draw_text(paint.text.layout_mono(
         &format!("{label}:"),
         Point::new(x, y),
-        theme::font_size::SM,
-        theme::text::MUTED,
+        label_style.font_size,
+        label_style.color,
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         value,
         Point::new(x + 122.0, y),
-        theme::font_size::SM,
-        theme::text::PRIMARY,
+        value_style.font_size,
+        value_style.color,
     ));
     y + 18.0
 }
@@ -8033,10 +8167,12 @@ fn paint_wrapped_label_line_mission_control_label(
 ) -> f32 {
     let value_x = x + mission_control_value_x_offset(label);
     let value_right = x + row_width.max(0.0);
+    let label_style = app_text_style(AppTextRole::FormLabel);
+    let value_style = app_text_style(AppTextRole::FormValue);
     paint.scene.draw_text(paint.text.layout_mono(
         &format!("{label}:"),
         Point::new(x, y),
-        12.0,
+        label_style.font_size,
         mission_control_muted_color(),
     ));
 
@@ -8044,7 +8180,12 @@ fn paint_wrapped_label_line_mission_control_label(
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
         let value_width = paint
             .text
-            .layout_mono(&chunk, Point::ZERO, 12.0, mission_control_text_color())
+            .layout_mono(
+                &chunk,
+                Point::ZERO,
+                value_style.font_size,
+                mission_control_text_color(),
+            )
             .bounds()
             .size
             .width;
@@ -8052,7 +8193,7 @@ fn paint_wrapped_label_line_mission_control_label(
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
             Point::new(target_x, line_y),
-            12.0,
+            value_style.font_size,
             mission_control_text_color(),
         ));
         line_y += MISSION_CONTROL_LABEL_ROW_LINE_HEIGHT;
@@ -8093,10 +8234,12 @@ fn paint_mission_control_body_block(
     row_width: f32,
     show_divider: bool,
 ) -> f32 {
+    let label_style = app_text_style(AppTextRole::FormLabel);
+    let supporting_style = app_text_style(AppTextRole::Supporting);
     paint.scene.draw_text(paint.text.layout_mono(
         label,
         Point::new(x, y),
-        12.0,
+        label_style.font_size,
         mission_control_muted_color(),
     ));
 
@@ -8105,7 +8248,7 @@ fn paint_mission_control_body_block(
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
             Point::new(x, line_y),
-            11.0,
+            supporting_style.font_size,
             mission_control_text_color(),
         ));
         line_y += MISSION_CONTROL_BODY_BLOCK_LINE_HEIGHT;
@@ -8173,7 +8316,7 @@ fn paint_mission_control_row_divider(
     let divider_y = row_bottom + MISSION_CONTROL_ROW_DIVIDER_TOP_GAP;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
-            .with_background(mission_control_panel_border_color().with_alpha(0.36)),
+            .with_background(mission_control_panel_border_color().with_alpha(0.18)),
     );
     divider_y + MISSION_CONTROL_ROW_DIVIDER_HEIGHT + MISSION_CONTROL_ROW_DIVIDER_BOTTOM_GAP
 }
@@ -8223,13 +8366,27 @@ fn mission_control_wrapped_row_height(
     value_chunk_len: usize,
     show_divider: bool,
 ) -> f32 {
+    mission_control_wrapped_row_height_with_trailing_gap(
+        value,
+        value_chunk_len,
+        show_divider,
+        MISSION_CONTROL_LABEL_ROW_TRAILING_GAP,
+    )
+}
+
+fn mission_control_wrapped_row_height_with_trailing_gap(
+    value: &str,
+    value_chunk_len: usize,
+    show_divider: bool,
+    trailing_gap: f32,
+) -> f32 {
     let lines = split_text_for_display(value, value_chunk_len.max(1))
         .len()
         .max(1) as f32;
     if show_divider {
         lines * 18.0 + 21.0
     } else {
-        lines * 18.0 + 20.0
+        lines * 18.0 + trailing_gap
     }
 }
 
