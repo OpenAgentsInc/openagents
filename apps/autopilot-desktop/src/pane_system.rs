@@ -8313,6 +8313,36 @@ pub fn dispatch_chat_scroll_event(
     chat_pane::dispatch_transcript_scroll_event(state, cursor_position, scroll_dy)
 }
 
+pub fn dispatch_wallet_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    if scroll_dy.abs() <= f32::EPSILON {
+        return false;
+    }
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| {
+            let pane = &state.panes[*index];
+            pane.kind == PaneKind::SparkWallet && pane.bounds.contains(cursor_position)
+        })
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    if !crate::panes::wallet::wallet_details_scroll_bounds(content_bounds).contains(cursor_position) {
+        return false;
+    }
+    let next = (state.spark_wallet_scroll_offset - scroll_dy).clamp(0.0, 4000.0);
+    if (next - state.spark_wallet_scroll_offset).abs() <= f32::EPSILON {
+        return false;
+    }
+    state.spark_wallet_scroll_offset = next;
+    true
+}
+
 pub fn dispatch_log_stream_scroll_event(
     state: &mut RenderState,
     cursor_position: Point,

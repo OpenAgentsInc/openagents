@@ -859,14 +859,14 @@ const PANE_SPECS: [PaneSpec; 63] = [
     },
     PaneSpec {
         kind: PaneKind::SparkWallet,
-        title: "Spark Lightning Wallet",
+        title: "WALLET",
         default_width: SPARK_PANE_WIDTH,
         default_height: SPARK_PANE_HEIGHT,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.wallet",
-            label: "Spark Wallet",
+            label: "Wallet",
             description: "Show Spark wallet controls",
             keybinding: Some("3"),
         }),

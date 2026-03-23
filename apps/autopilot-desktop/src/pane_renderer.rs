@@ -207,6 +207,7 @@ impl PaneRenderer {
         credit_settlement_ledger: &CreditSettlementLedgerPaneState,
         cad_demo: &CadDemoPaneState,
         spark_wallet: &SparkPaneState,
+        spark_wallet_scroll_offset: f32,
         provider_inventory: &crate::provider_inventory::DesktopControlInventoryStatus,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
@@ -724,7 +725,13 @@ impl PaneRenderer {
                     );
                 }
                 PaneKind::SparkWallet => {
-                    paint_spark_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
+                    paint_spark_wallet_pane(
+                        content_bounds,
+                        spark_wallet,
+                        spark_inputs,
+                        spark_wallet_scroll_offset,
+                        paint,
+                    );
                 }
                 PaneKind::SparkCreateInvoice => {
                     paint_create_invoice_pane(
@@ -7432,9 +7439,16 @@ fn paint_spark_wallet_pane(
     content_bounds: Bounds,
     spark_wallet: &SparkPaneState,
     spark_inputs: &mut SparkPaneInputs,
+    wallet_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
-    wallet_pane::paint_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
+    wallet_pane::paint_wallet_pane(
+        content_bounds,
+        spark_wallet,
+        spark_inputs,
+        wallet_scroll_offset,
+        paint,
+    );
 }
 
 #[cfg(test)]
