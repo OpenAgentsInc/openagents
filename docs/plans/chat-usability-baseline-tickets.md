@@ -15,7 +15,7 @@ Last updated: 2026-03-21 — B-1 and B-2 complete: kind-0 metadata, author displ
 | A-5 | ✅ Done | `OA_NIP28_TEAM_CHANNEL_ID` env var; `team_channel_id: Option<String>` on config; `build_filters` covers both channels; setup documented in `docs/headless-compute.md` |
 | B-1 | ✅ Done | `Kind0Metadata` struct + `author_metadata` in snapshot; kind-0 relay subscription; `resolve_author_display_name` fallback chain in chat renderer |
 | B-2 | ✅ Done | relative timestamps, same-author grouping, own-message `▶` glyph, per-author palette colors; `avatar_color_index` + `author_label_color` helpers |
-| C-1 | 🔲 Not started | |
+| C-1 | ✅ Done | Failed rows: error color on role label, "send failed: {error}  retry →" note; Acked rows clean; new `delivery_note_states_match_spec` test |
 | C-2 | 🔲 Not started | |
 | C-3 | 🔲 Not started | |
 | C-4 | 🔲 Not started | |

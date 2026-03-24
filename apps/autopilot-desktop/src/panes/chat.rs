@@ -1474,16 +1474,14 @@ fn managed_message_reaction_summary(message: &ManagedChatMessageProjection) -> O
 fn managed_message_delivery_note(message: &ManagedChatMessageProjection) -> Option<String> {
     match message.delivery_state {
         ManagedChatDeliveryState::Confirmed => None,
+        ManagedChatDeliveryState::Acked => None,
         ManagedChatDeliveryState::Publishing => Some(format!(
-            "publishing local echo attempt {}",
+            "sending… (attempt {})",
             message.attempt_count.max(1)
         )),
-        ManagedChatDeliveryState::Acked => {
-            Some("relay acknowledged local echo; waiting for sync".to_string())
-        }
         ManagedChatDeliveryState::Failed => Some(match message.delivery_error.as_deref() {
-            Some(error) => format!("publish failed: {error}"),
-            None => format!("publish failed on attempt {}", message.attempt_count.max(1)),
+            Some(error) => format!("send failed: {error}  retry →"),
+            None => format!("send failed (attempt {})  retry →", message.attempt_count.max(1)),
         }),
     }
 }
@@ -3822,7 +3820,11 @@ pub fn paint(
                         &role_label,
                         Point::new(transcript_scroll_clip.origin.x, y),
                         10.0,
-                        author_label_color(&message.author_pubkey, is_own),
+                        if message.delivery_state == ManagedChatDeliveryState::Failed {
+                            managed_message_role_color(message)
+                        } else {
+                            author_label_color(&message.author_pubkey, is_own)
+                        },
                     ));
                     y += CHAT_TRANSCRIPT_LINE_HEIGHT;
                 } else {
@@ -4557,8 +4559,9 @@ fn sanitize_chat_text(text: &str) -> String {
 mod tests {
     use super::{
         byte_offset_for_char_index, chat_tool_activity_lines, clamp_to_char_boundary,
-        is_tool_activity_event, message_progress_height, progress_status_color,
-        rich_message_attachments, sanitize_chat_text, wrap_transcript_text_lines,
+        is_tool_activity_event, managed_message_delivery_note, message_progress_height,
+        progress_status_color, rich_message_attachments, sanitize_chat_text,
+        wrap_transcript_text_lines,
     };
     use crate::app_state::{
         AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
@@ -4899,5 +4902,64 @@ mod tests {
                 .any(|line| line == "settlement: claim / dispute path")
         );
         assert!(lines.iter().any(|line| line == "claim: under_review"));
+    }
+
+    #[test]
+    fn delivery_note_states_match_spec() {
+        use crate::app_state::{ManagedChatDeliveryState, ManagedChatMessageProjection};
+        use crate::chat_message_classifier::ChatMessageClass;
+
+        fn make(
+            state: ManagedChatDeliveryState,
+            error: Option<&str>,
+            attempt: u32,
+        ) -> ManagedChatMessageProjection {
+            ManagedChatMessageProjection {
+                event_id: "a".repeat(64),
+                group_id: "g".to_string(),
+                channel_id: "c".to_string(),
+                author_pubkey: "p".repeat(64),
+                content: "hi".to_string(),
+                created_at: 0,
+                reply_to_event_id: None,
+                mention_pubkeys: vec![],
+                reaction_summaries: vec![],
+                reply_child_ids: vec![],
+                delivery_state: state,
+                delivery_error: error.map(str::to_string),
+                attempt_count: attempt,
+                message_class: ChatMessageClass::HumanMessage,
+            }
+        }
+
+        // Confirmed and Acked: clean rows — no delivery note
+        assert_eq!(
+            managed_message_delivery_note(&make(ManagedChatDeliveryState::Confirmed, None, 1)),
+            None
+        );
+        assert_eq!(
+            managed_message_delivery_note(&make(ManagedChatDeliveryState::Acked, None, 1)),
+            None
+        );
+
+        // Publishing: subtle sending indicator
+        let n = managed_message_delivery_note(&make(ManagedChatDeliveryState::Publishing, None, 2))
+            .unwrap();
+        assert!(n.contains("sending"), "got: {n:?}");
+
+        // Failed with relay error text + retry hint
+        let n = managed_message_delivery_note(&make(
+            ManagedChatDeliveryState::Failed,
+            Some("auth-rejected"),
+            1,
+        ))
+        .unwrap();
+        assert!(n.contains("auth-rejected"), "got: {n:?}");
+        assert!(n.contains("retry"), "got: {n:?}");
+
+        // Failed without error text: attempt count + retry hint
+        let n =
+            managed_message_delivery_note(&make(ManagedChatDeliveryState::Failed, None, 3)).unwrap();
+        assert!(n.contains("retry"), "got: {n:?}");
     }
 }
