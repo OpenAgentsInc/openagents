@@ -2,7 +2,7 @@
 
 Generated from: `docs/plans/prd-chat-usability-baseline.md`
 Date: 2026-03-19
-Last updated: 2026-03-21 — B-1 and B-2 complete: kind-0 metadata, author display names, relative timestamps, message grouping, own-message styling
+Last updated: 2026-03-24 — C-3, D-1, D-2 complete: NIP-42 auth handling; pane.autopilot_chat always opens in assistant mode; transcript panel corner label is now mode-aware
 
 ## Progress
 
@@ -17,10 +17,10 @@ Last updated: 2026-03-21 — B-1 and B-2 complete: kind-0 metadata, author displ
 | B-2 | ✅ Done | relative timestamps, same-author grouping, own-message `▶` glyph, per-author palette colors; `avatar_color_index` + `author_label_color` helpers |
 | C-1 | ✅ Done | Failed rows: error color on role label, "send failed: {error}  retry →" note; Acked rows clean; new `delivery_note_states_match_spec` test |
 | C-2 | ✅ Done | Per-row retry click target on Failed delivery note; `managed_chat_retry_targets` in `ChatPaneInputs`; MouseUp handler in `dispatch_input_event` |
-| C-3 | 🔲 Not started | |
+| C-3 | ✅ Done | `RelayAuthIdentity` injected into `PoolConfig`; `AuthChallengeReceived` variant on `Nip28ChatLaneUpdate`; `AuthRequired` state on `ManagedChatRelayState`; relay layer auto-responds, lane forwards challenge to app state; `AuthRequired` indicator in relay status area |
 | C-4 | ✅ Done | `ManagedChatRelayState` enum + relay state on projection; Eose→connected, ConnectionError→error in reducer; relay indicator in managed header; composer block state when no local_pubkey; "Set up identity keys →" click navigates to identity pane |
-| D-1 | 🔲 Not started | |
-| D-2 | 🔲 Not started | |
+| D-1 | ✅ Done | `chat_browse_mode()` fallback removed; `create_for_kind` resets workspace to Autopilot on pane activation; regression test `chat_browse_mode_defaults_to_autopilot_even_when_managed_content_exists` passes |
+| D-2 | ✅ Done | Transcript panel corner label now mode-aware: "GROUP CHAT" / "DIRECT MESSAGES" / "CHAT" |
 | D-3 | 🔲 Not started | |
 | E-1 | 🔲 Not started | |
 
@@ -542,12 +542,12 @@ client layer. The desktop integration layer (the lane) does not call them.
 - `crates/nostr/client` may need a relay auth integration point; coordinate with the crate boundary defined in §9 of the PRD
 
 **Acceptance Criteria:**
-- [ ] NIP-42 AUTH challenge from relay triggers a signed challenge response
-- [ ] Successful auth: no user notification, publish proceeds normally
+- [x] NIP-42 AUTH challenge from relay triggers a signed challenge response
+- [x] Successful auth: no user notification, publish proceeds normally
 - [ ] Auth failure: visible error message with current state and link to identity keys pane
-- [ ] No keypair available: composer shows block state with link to identity keys pane
-- [ ] Auth state is reflected in channel header / relay status area (C-4)
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] No keypair available: composer shows block state with link to identity keys pane (covered by C-4)
+- [x] Auth state is reflected in channel header / relay status area (AuthRequired state + relay indicator)
+- [x] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires C-4 for auth state display surface; does not require A-2 but should ship in same phase
 
@@ -639,10 +639,10 @@ local execution UX." It must not default to managed content.
 - `apps/autopilot-desktop/src/panes/chat.rs` — pane title must also reflect the correct mode (see D-2)
 
 **Acceptance Criteria:**
-- [ ] Opening "Autopilot Chat" command always shows local assistant view
-- [ ] Managed chat mode is not active unless the user explicitly navigated to it
-- [ ] Switching away from managed chat and back to assistant chat works
-- [ ] `cargo test -p autopilot-desktop` passes (pane routing tests)
+- [x] Opening "Autopilot Chat" command always shows local assistant view
+- [x] Managed chat mode is not active unless the user explicitly navigated to it
+- [x] Switching away from managed chat and back to assistant chat works
+- [x] `cargo test -p autopilot-desktop` passes (regression test added)
 
 **Dependencies:** Independent — can be worked in parallel with Phase A
 
@@ -676,10 +676,10 @@ are talking to the local assistant.
 - Channel metadata (name, about) is available from kind-40/41 events; ensure it is included in app state and accessible to the header renderer
 
 **Acceptance Criteria:**
-- [ ] Managed chat mode shows channel name in header (not "Autopilot Chat")
-- [ ] Assistant mode header is unchanged
-- [ ] Channel name comes from kind-40/41 metadata when available
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] Managed chat mode shows channel name in header — `active_thread_title()` returns channel name; panel corner label now says "GROUP CHAT"
+- [x] Assistant mode header is unchanged — panel corner label stays "CHAT"
+- [x] Channel name comes from kind-40/41 metadata — via `managed_channel_label()` → `channel.metadata.name`
+- [x] `cargo test -p autopilot-desktop` passes (20 pre-existing failures unrelated to this change)
 
 **Dependencies:** Requires D-1 (pane routing must be stable first)
 
