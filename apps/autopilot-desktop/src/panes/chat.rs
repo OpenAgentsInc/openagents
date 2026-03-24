@@ -341,8 +341,8 @@ fn notification_badge_label(count: usize) -> String {
 
 fn paint_notification_badge(bounds: Bounds, count: usize, urgent: bool, paint: &mut PaintContext) {
     let label = notification_badge_label(count);
-    let width = if label.len() >= 3 { 26.0 } else { 18.0 };
-    let badge_bounds = Bounds::new(bounds.max_x() - width, bounds.origin.y, width, 16.0);
+    let width = if label.len() >= 3 { 30.0 } else { 20.0 };
+    let badge_bounds = Bounds::new(bounds.max_x() - width, bounds.origin.y, width, 18.0);
     let background = if urgent {
         theme::status::ERROR
     } else {
@@ -352,19 +352,22 @@ fn paint_notification_badge(bounds: Bounds, count: usize, urgent: bool, paint: &
         Quad::new(badge_bounds)
             .with_background(background)
             .with_border(background.with_alpha(0.9), 1.0)
-            .with_corner_radius(8.0),
+            .with_corner_radius(9.0),
     );
-    let text_x = if label.len() >= 3 {
-        badge_bounds.origin.x + 4.0
-    } else {
-        badge_bounds.origin.x + 6.0
-    };
-    paint.scene.draw_text(paint.text.layout_mono(
-        &label,
-        Point::new(text_x, badge_bounds.origin.y + 4.0),
-        9.0,
-        theme::bg::APP,
-    ));
+    let mut label_run = paint
+        .text
+        .layout_mono(&label, Point::ZERO, 9.0, theme::bg::APP);
+    let label_bounds = label_run.bounds();
+    label_run.origin = Point::new(
+        badge_bounds.origin.x
+            + ((badge_bounds.size.width - label_bounds.size.width).max(0.0) * 0.5)
+            - label_bounds.origin.x,
+        badge_bounds.origin.y
+            + ((badge_bounds.size.height - label_bounds.size.height).max(0.0) * 0.5)
+            - label_bounds.origin.y
+            - 0.5,
+    );
+    paint.scene.draw_text(label_run);
 }
 
 fn paint_workspace_notification_badge(
@@ -2956,43 +2959,23 @@ fn paint_chat_shell(
                     .with_border(row_border, 1.0)
                     .with_corner_radius(7.0),
             );
-            let avatar_bounds = Bounds::new(
-                row_inner.origin.x + 10.0,
-                row_inner.origin.y + (row_inner.size.height - 25.0) * 0.5,
-                25.0,
-                25.0,
+            let indicator_bounds = Bounds::new(
+                row_inner.origin.x + 12.0,
+                row_inner.origin.y + (row_inner.size.height - 8.0) * 0.5,
+                8.0,
+                8.0,
             );
-            let background = if workspace.active {
-                workspace.accent.with_alpha(0.94)
-            } else {
-                chat_mission_panel_header_color().with_alpha(0.18)
-            };
-            let text_color = if workspace.active {
-                chat_mission_background_color()
-            } else {
-                chat_text_style(AppTextRole::SecondaryMetadata)
-                    .color
-                    .with_alpha(0.76)
-            };
             paint.scene.draw_quad(
-                Quad::new(avatar_bounds)
-                    .with_background(background)
-                    .with_border(
+                Quad::new(indicator_bounds)
+                    .with_background(
                         if workspace.active {
-                            workspace.accent
+                            workspace.accent.with_alpha(0.90)
                         } else {
-                            chat_mission_panel_border_color().with_alpha(0.24)
+                            chat_mission_panel_border_color().with_alpha(0.30)
                         },
-                        1.0,
                     )
-                    .with_corner_radius(12.5),
+                    .with_corner_radius(4.0),
             );
-            paint.scene.draw_text(paint.text.layout_mono(
-                &workspace.initials,
-                Point::new(avatar_bounds.origin.x + 4.5, avatar_bounds.origin.y + 7.8),
-                9.0,
-                text_color,
-            ));
             let badge_label = (workspace.badge_count > 0)
                 .then(|| notification_badge_label(workspace.badge_count));
             let badge_width = badge_label
@@ -3007,25 +2990,29 @@ fn paint_chat_shell(
                     16.0,
                 )
             });
-            let label_x = avatar_bounds.max_x() + 12.0;
+            let label_x = indicator_bounds.max_x() + 10.0;
             let label_right = badge_bounds
                 .map(|bounds| bounds.origin.x - 10.0)
                 .unwrap_or(row_inner.max_x() - 10.0);
             let label_width = (label_right - label_x).max(10.0);
-            paint.scene.draw_text(paint.text.layout(
+            let label_style = chat_text_style(AppTextRole::PrimaryRow);
+            let mut label_run = paint.text.layout(
                 &truncate_for_width(&workspace.label, label_width),
-                Point::new(label_x, row_inner.origin.y + 12.0),
-                chat_text_style(AppTextRole::PrimaryRow).font_size,
+                Point::ZERO,
+                label_style.font_size,
                 if workspace.active {
-                    chat_text_style(AppTextRole::PrimaryRow)
-                        .color
-                        .with_alpha(0.98)
+                    label_style.color.with_alpha(0.98)
                 } else {
-                    chat_text_style(AppTextRole::PrimaryRow)
-                        .color
-                        .with_alpha(0.70)
+                    label_style.color.with_alpha(0.70)
                 },
-            ));
+            );
+            let label_bounds = label_run.bounds();
+            let label_y = row_inner.origin.y
+                + ((row_inner.size.height - label_bounds.size.height).max(0.0) * 0.5)
+                - label_bounds.origin.y
+                - 1.0;
+            label_run.origin = Point::new(label_x, label_y);
+            paint.scene.draw_text(label_run);
             if let Some(badge_bounds) = badge_bounds {
                 paint_notification_badge(
                     badge_bounds,

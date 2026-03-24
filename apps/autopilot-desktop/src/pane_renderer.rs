@@ -20,10 +20,11 @@ use crate::app_state::{
     ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
     RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
     SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TassadarLabPaneState,
+    SparkWalletPaneState, StarterJobStatus, StarterJobsState, SyncHealthState, TassadarLabPaneState,
     TrajectoryAuditPaneState, VoicePlaygroundPaneInputs, VoicePlaygroundPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
     mission_control_show_local_model_button,
+    NostrIdentityPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -67,8 +68,9 @@ use crate::pane_system::{
     network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
     network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
     network_requests_type_input_bounds, network_requests_visible_quote_count,
-    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds_for_pane, provider_inventory_toggle_button_bounds,
+    nostr_copy_secret_button_bounds, nostr_identity_scroll_viewport_bounds,
+    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
+    provider_inventory_toggle_button_bounds,
     reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
     reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
     settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
@@ -156,6 +158,8 @@ impl PaneRenderer {
         nostr_identity: Option<&nostr::NostrIdentity>,
         nostr_identity_error: Option<&str>,
         nostr_secret_state: &NostrSecretState,
+        nostr_identity_pane: &mut NostrIdentityPaneState,
+        spark_wallet_pane: &mut SparkWalletPaneState,
         autopilot_chat: &AutopilotChatState,
         project_ops: &ProjectOpsPaneState,
         spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
@@ -187,7 +191,7 @@ impl PaneRenderer {
         apple_adapter_training: &mut AppleAdapterTrainingPaneState,
         training_status: &DesktopControlTrainingStatus,
         provider_blockers: &[ProviderBlocker],
-        earnings_scoreboard: &EarningsScoreboardState,
+        earnings_scoreboard: &mut EarningsScoreboardState,
         relay_connections: &RelayConnectionsState,
         sync_health: &SyncHealthState,
         network_requests: &NetworkRequestsState,
@@ -726,11 +730,18 @@ impl PaneRenderer {
                         nostr_identity,
                         nostr_identity_error,
                         nostr_secret_state,
+                        nostr_identity_pane,
                         paint,
                     );
                 }
                 PaneKind::SparkWallet => {
-                    paint_spark_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
+                    paint_spark_wallet_pane(
+                        content_bounds,
+                        spark_wallet,
+                        spark_wallet_pane,
+                        spark_inputs,
+                        paint,
+                    );
                 }
                 PaneKind::SparkCreateInvoice => {
                     paint_create_invoice_pane(
@@ -3727,7 +3738,7 @@ pub(crate) fn mission_control_panel_color() -> Hsla {
     Hsla::from_hex(0x0D121A)
 }
 
-fn mission_control_panel_header_color() -> Hsla {
+pub(crate) fn mission_control_panel_header_color() -> Hsla {
     Hsla::from_hex(0x121924)
 }
 
@@ -3739,7 +3750,7 @@ pub(crate) fn mission_control_text_color() -> Hsla {
     Hsla::from_hex(0xD8DFF0)
 }
 
-fn mission_control_muted_color() -> Hsla {
+pub(crate) fn mission_control_muted_color() -> Hsla {
     Hsla::from_hex(0x8A909E)
 }
 
@@ -4677,7 +4688,7 @@ fn paint_earnings_scoreboard_pane(
     content_bounds: Bounds,
     pane_is_active: bool,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
-    earnings_scoreboard: &EarningsScoreboardState,
+    earnings_scoreboard: &mut EarningsScoreboardState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
     job_inbox: &JobInboxState,
@@ -6293,6 +6304,7 @@ fn paint_nostr_identity_pane(
     nostr_identity: Option<&nostr::NostrIdentity>,
     nostr_identity_error: Option<&str>,
     nostr_secret_state: &NostrSecretState,
+    nostr_identity_pane: &mut NostrIdentityPaneState,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "local", paint);
@@ -6309,8 +6321,8 @@ fn paint_nostr_identity_pane(
     let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
     let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
     let copy_secret_bounds = nostr_copy_secret_button_bounds(content_bounds);
-    paint_action_button(regenerate_bounds, "Regenerate keys", paint);
-    paint_action_button(
+    paint_nostr_danger_button(regenerate_bounds, "Regenerate keys", paint);
+    paint_secondary_button(
         reveal_bounds,
         if secrets_revealed {
             "Hide secrets"
@@ -6319,52 +6331,37 @@ fn paint_nostr_identity_pane(
         },
         paint,
     );
-    paint_action_button(copy_secret_bounds, "Copy nsec", paint);
+    paint_secondary_button(copy_secret_bounds, "Copy nsec", paint);
 
-    let mut y = regenerate_bounds.origin.y + regenerate_bounds.size.height + 14.0;
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Identity path",
-        &nostr_identity.map_or_else(
-            || "Unavailable".to_string(),
-            |identity| identity.identity_path.display().to_string(),
-        ),
+    let viewport = nostr_identity_scroll_viewport_bounds(content_bounds);
+    let section_x = viewport.origin.x;
+    let section_width = viewport.size.width;
+    let wrapped_chunk_len = ((section_width - 134.0).max(120.0) / 7.0).floor() as usize;
+    let content_height = nostr_identity_content_height(
+        section_width,
+        wrapped_chunk_len,
+        nostr_identity,
+        nostr_identity_error,
+        nostr_secret_state,
+        now,
     );
-    paint.scene.draw_text(paint.text.layout(
-        &format!("State: {}", identity_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = nostr_identity_pane.clamp_scroll_offset_to(max_scroll);
+    paint.scene.push_clip(viewport);
+    let mut y = viewport.origin.y - scroll_offset;
+    let identity_path = nostr_identity.map_or_else(
+        || "Unavailable".to_string(),
+        |identity| identity.identity_path.display().to_string(),
+    );
+    y = paint_nostr_status_summary(
+        paint,
+        section_x,
+        y,
+        identity_state.label(),
+        &identity_path,
+        section_width,
         identity_state_color,
-    ));
-    y += 16.0;
-
-    if let Some(remaining) = nostr_secret_state
-        .revealed_until
-        .and_then(|until| until.checked_duration_since(now))
-    {
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Security",
-            &format!(
-                "Secrets visible for {:.0}s more. Values auto-hide for safety.",
-                remaining.as_secs_f32().ceil()
-            ),
-        );
-    }
-
-    if let Some(copy_notice) = nostr_secret_state.copy_notice.as_deref() {
-        y = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Clipboard",
-            copy_notice,
-        );
-    }
+    );
 
     if let Some(identity) = nostr_identity {
         let nsec_display = if secrets_revealed {
@@ -6382,67 +6379,276 @@ fn paint_nostr_identity_pane(
         } else {
             mask_mnemonic(&identity.mnemonic)
         };
-
-        y = paint_label_line(
+        let section_gap = 16.0;
+        let public_section_y = y;
+        let public_section_height = 12.0
+            + 14.0
+            + 8.0
+            + nostr_value_row_height(&identity.npub, wrapped_chunk_len)
+            + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len)
+            + 8.0;
+        paint_nostr_section_surface(
+            Bounds::new(section_x, public_section_y, section_width, public_section_height),
+            theme::accent::PRIMARY.with_alpha(0.34),
             paint,
-            content_bounds.origin.x + 12.0,
-            y,
+        );
+        let mut public_y = public_section_y + 12.0;
+        public_y = paint_nostr_section_heading(
+            paint,
+            section_x + 12.0,
+            public_y,
+            "Public identity",
+            section_width - 24.0,
+        );
+        public_y = paint_nostr_value_row(
+            paint,
+            section_x + 12.0,
+            public_y,
             "npub",
             &identity.npub,
+            wrapped_chunk_len,
+            section_width - 24.0,
+            app_text_style(AppTextRole::FormValue).color,
         );
-        y = paint_label_line(
+        let _ = paint_nostr_value_row(
             paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "nsec",
-            &nsec_display,
-        );
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
+            section_x + 12.0,
+            public_y,
             "Public key (hex)",
             &identity.public_key_hex,
+            wrapped_chunk_len,
+            section_width - 24.0,
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.82),
         );
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Private key (hex)",
-            &private_hex_display,
-        );
+        y = public_section_y + public_section_height + section_gap;
         let agent_preview = match nostr::derive_agent_keypair(&identity.mnemonic, 0)
             .and_then(|keypair| keypair.npub())
         {
             Ok(value) => value,
             Err(error) => format!("error:{error}"),
         };
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Agent account[0] npub",
-            &agent_preview,
+        let sensitive_panel_y = y;
+        let sensitive_accent = theme::status::WARNING;
+        let sensitive_inner_x = section_x + 12.0;
+        let sensitive_inner_width = (section_width - 24.0).max(200.0);
+        let sensitive_chunk_len =
+            ((sensitive_inner_width - 134.0).max(120.0) / 7.0).floor() as usize;
+        let visibility_status = if let Some(remaining) = nostr_secret_state
+            .revealed_until
+            .and_then(|until| until.checked_duration_since(now))
+        {
+            format!("Revealed {:.0}s", remaining.as_secs_f32().ceil())
+        } else {
+            "Hidden".to_string()
+        };
+        let clipboard_status = nostr_secret_state
+            .copy_notice
+            .as_deref()
+            .map(|notice| {
+                if notice.to_ascii_lowercase().contains("failed") {
+                    "Copy failed".to_string()
+                } else {
+                    "nsec copied".to_string()
+                }
+            })
+            .unwrap_or_else(|| "Copyable".to_string());
+        let sensitive_detail = if secrets_revealed {
+            "Reveal applies to nsec, private key, and recovery phrase. Copy action affects nsec only."
+        } else {
+            "Secrets stay masked until revealed. Copy action affects nsec only."
+        };
+        let sensitive_panel_height = 12.0
+            + 20.0
+            + 14.0
+            + 14.0
+            + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
+            + nostr_value_row_height(&private_hex_display, sensitive_chunk_len)
+            + 10.0;
+        let sensitive_bounds = Bounds::new(
+            section_x,
+            sensitive_panel_y,
+            section_width,
+            sensitive_panel_height,
         );
+        paint_nostr_sensitive_section_panel(sensitive_bounds, sensitive_accent, paint);
+        let mut sensitive_y = sensitive_bounds.origin.y + 10.0;
+        let heading_style = app_text_style(AppTextRole::SectionHeading);
+        paint.scene.draw_text(paint.text.layout_mono(
+            "Sensitive material",
+            Point::new(sensitive_inner_x, sensitive_y),
+            heading_style.font_size,
+            heading_style.color.with_alpha(0.94),
+        ));
+        let chip_gap = 8.0;
+        let visibility_chip_width = 92.0;
+        let clipboard_chip_width = 88.0;
+        let clipboard_chip_x = sensitive_bounds.max_x() - 12.0 - clipboard_chip_width;
+        let visibility_chip_x = clipboard_chip_x - chip_gap - visibility_chip_width;
+        paint_nostr_state_chip(
+            Bounds::new(visibility_chip_x, sensitive_y - 4.0, visibility_chip_width, 18.0),
+            &visibility_status,
+            if secrets_revealed {
+                sensitive_accent.with_alpha(0.78)
+            } else {
+                app_text_style(AppTextRole::SecondaryMetadata)
+                    .color
+                    .with_alpha(0.68)
+            },
+            paint,
+        );
+        paint_nostr_state_chip(
+            Bounds::new(clipboard_chip_x, sensitive_y - 4.0, clipboard_chip_width, 18.0),
+            &clipboard_status,
+            if nostr_secret_state.copy_notice.is_some() {
+                theme::accent::PRIMARY.with_alpha(0.82)
+            } else {
+                app_text_style(AppTextRole::SecondaryMetadata)
+                    .color
+                    .with_alpha(0.68)
+            },
+            paint,
+        );
+        sensitive_y += 14.0;
+        paint.scene.draw_text(paint.text.layout_mono(
+            &nostr_compact_detail(
+                sensitive_detail,
+                (((sensitive_inner_width - 4.0).max(120.0)) / 6.2).floor() as usize,
+            ),
+            Point::new(sensitive_inner_x, sensitive_y + 12.0),
+            app_text_style(AppTextRole::SecondaryMetadata).font_size,
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.76),
+        ));
+        sensitive_y += 24.0;
+        y = paint_nostr_value_row(
+            paint,
+            sensitive_inner_x,
+            sensitive_y,
+            "nsec",
+            &nsec_display,
+            sensitive_chunk_len,
+            sensitive_inner_width,
+            app_text_style(AppTextRole::FormValue).color,
+        );
+        let _ = paint_nostr_value_row(
+            paint,
+            sensitive_inner_x,
+            y,
+            "Private key (hex)",
+            &private_hex_display,
+            sensitive_chunk_len,
+            sensitive_inner_width,
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.82),
+        );
+        y = sensitive_bounds.max_y() + section_gap;
+
+        let recovery_panel_y = y;
+        let recovery_panel_height = 12.0
+            + 14.0
+            + 20.0
+            + nostr_multiline_value_row_height(&mnemonic_display, sensitive_chunk_len)
+            + 10.0;
+        let recovery_bounds = Bounds::new(
+            section_x,
+            recovery_panel_y,
+            section_width,
+            recovery_panel_height,
+        );
+        paint_nostr_section_surface(
+            recovery_bounds,
+            theme::status::WARNING.with_alpha(0.30),
+            paint,
+        );
+        let recovery_inner_x = section_x + 12.0;
+        let recovery_inner_width = (section_width - 24.0).max(200.0);
+        let mut recovery_y = recovery_bounds.origin.y + 12.0;
+        recovery_y = paint_nostr_section_heading(
+            paint,
+            recovery_inner_x,
+            recovery_y,
+            "Recovery phrase",
+            recovery_inner_width,
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &nostr_compact_detail(
+                if secrets_revealed {
+                    "Recovery phrase is visible temporarily. Store it somewhere safe and offline."
+                } else {
+                    "Recovery phrase stays masked until revealed. Use it only when recovering access."
+                },
+                (((recovery_inner_width - 4.0).max(120.0)) / 6.2).floor() as usize,
+            ),
+            Point::new(recovery_inner_x, recovery_y + 12.0),
+            app_text_style(AppTextRole::SecondaryMetadata).font_size,
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.76),
+        ));
+        let _ = paint_nostr_multiline_value_row(
+            paint,
+            recovery_inner_x,
+            recovery_y + 24.0,
+            "Mnemonic",
+            &mnemonic_display,
+            sensitive_chunk_len,
+            recovery_inner_width,
+            app_text_style(AppTextRole::FormValue).color,
+        );
+        y = recovery_bounds.max_y() + section_gap;
         let skill_preview = match nostr::derive_skill_keypair(&identity.mnemonic, 0, 1, 0)
             .and_then(|keypair| keypair.npub())
         {
             Ok(value) => value,
             Err(error) => format!("error:{error}"),
         };
-        y = paint_label_line(
+        let derived_section_y = y;
+        let derived_section_height = 12.0
+            + 14.0
+            + 8.0
+            + nostr_value_row_height(&agent_preview, wrapped_chunk_len)
+            + nostr_value_row_height(&skill_preview, wrapped_chunk_len)
+            + 8.0;
+        paint_nostr_section_surface(
+            Bounds::new(section_x, derived_section_y, section_width, derived_section_height),
+            theme::accent::PRIMARY.with_alpha(0.22),
             paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Skill[agent0:1:0] npub",
-            &skill_preview,
         );
-        let _ = paint_multiline_phrase(
+        let mut derived_y = derived_section_y + 12.0;
+        derived_y = paint_nostr_section_heading(
             paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Mnemonic",
-            &mnemonic_display,
+            section_x + 12.0,
+            derived_y,
+            "Derived accounts",
+            section_width - 24.0,
+        );
+        derived_y = paint_nostr_value_row(
+            paint,
+            section_x + 12.0,
+            derived_y,
+            "Agent account[0]",
+            &agent_preview,
+            wrapped_chunk_len,
+            section_width - 24.0,
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.82),
+        );
+        let _ = paint_nostr_value_row(
+            paint,
+            section_x + 12.0,
+            derived_y,
+            "Skill[agent0:1:0]",
+            &skill_preview,
+            wrapped_chunk_len,
+            section_width - 24.0,
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.82),
         );
     } else if let Some(error) = nostr_identity_error {
         let _ = paint_multiline_phrase(
@@ -6455,12 +6661,374 @@ fn paint_nostr_identity_pane(
     } else {
         let _ = paint_multiline_phrase(
             paint,
-            content_bounds.origin.x + 12.0,
+            section_x,
             y,
             "Identity",
             "No identity loaded yet. Regenerate keys to initialize custody material.",
         );
     }
+    paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        content_bounds,
+        viewport,
+        content_height,
+        scroll_offset,
+        paint,
+    );
+}
+
+fn nostr_identity_content_height(
+    section_width: f32,
+    wrapped_chunk_len: usize,
+    nostr_identity: Option<&nostr::NostrIdentity>,
+    nostr_identity_error: Option<&str>,
+    nostr_secret_state: &NostrSecretState,
+    now: std::time::Instant,
+) -> f32 {
+    let mut y = 0.0;
+    y += 54.0;
+
+    if let Some(identity) = nostr_identity {
+        let secrets_revealed = nostr_secret_state.is_revealed(now);
+        let nsec_display = if secrets_revealed {
+            identity.nsec.clone()
+        } else {
+            mask_secret(&identity.nsec)
+        };
+        let private_hex_display = if secrets_revealed {
+            identity.private_key_hex.clone()
+        } else {
+            mask_secret(&identity.private_key_hex)
+        };
+        let mnemonic_display = if secrets_revealed {
+            identity.mnemonic.clone()
+        } else {
+            mask_mnemonic(&identity.mnemonic)
+        };
+        let section_gap = 16.0;
+        let public_section_height = 12.0
+            + 14.0
+            + 8.0
+            + nostr_value_row_height(&identity.npub, wrapped_chunk_len)
+            + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len)
+            + 8.0;
+        let sensitive_inner_width = (section_width - 24.0).max(200.0);
+        let sensitive_chunk_len =
+            ((sensitive_inner_width - 134.0).max(120.0) / 7.0).floor() as usize;
+        let sensitive_panel_height = 12.0
+            + 20.0
+            + 14.0
+            + 14.0
+            + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
+            + nostr_value_row_height(&private_hex_display, sensitive_chunk_len)
+            + 10.0;
+        let recovery_panel_height = 12.0
+            + 14.0
+            + 20.0
+            + nostr_multiline_value_row_height(&mnemonic_display, sensitive_chunk_len)
+            + 10.0;
+        let agent_preview = match nostr::derive_agent_keypair(&identity.mnemonic, 0)
+            .and_then(|keypair| keypair.npub())
+        {
+            Ok(value) => value,
+            Err(error) => format!("error:{error}"),
+        };
+        let skill_preview = match nostr::derive_skill_keypair(&identity.mnemonic, 0, 1, 0)
+            .and_then(|keypair| keypair.npub())
+        {
+            Ok(value) => value,
+            Err(error) => format!("error:{error}"),
+        };
+        let derived_section_height = 12.0
+            + 14.0
+            + 8.0
+            + nostr_value_row_height(&agent_preview, wrapped_chunk_len)
+            + nostr_value_row_height(&skill_preview, wrapped_chunk_len)
+            + 8.0;
+        y += public_section_height + section_gap;
+        y += sensitive_panel_height + section_gap;
+        y += recovery_panel_height + section_gap;
+        y += derived_section_height;
+    } else if let Some(error) = nostr_identity_error {
+        y += nostr_phrase_height(error);
+    } else {
+        y += nostr_phrase_height(
+            "No identity loaded yet. Regenerate keys to initialize custody material.",
+        );
+    }
+
+    y + 8.0
+}
+
+fn nostr_phrase_height(value: &str) -> f32 {
+    let line_count = split_text_for_display(value, 72).len().max(1) as f32;
+    line_count * 18.0
+}
+
+fn paint_nostr_danger_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    let accent = theme::status::WARNING;
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::HOVER.with_alpha(0.54))
+            .with_border(accent.with_alpha(0.72), 1.0)
+            .with_corner_radius(ui_style::button::SECONDARY_CORNER_RADIUS),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            3.0,
+            bounds.size.height,
+        ))
+        .with_background(accent.with_alpha(0.90))
+        .with_corner_radius(3.0),
+    );
+    paint_button_label(
+        bounds,
+        label,
+        ui_style::button::label_font_size(AppButtonRole::Secondary),
+        theme::text::PRIMARY,
+        paint,
+    );
+}
+
+fn paint_nostr_state_chip(bounds: Bounds, label: &str, accent: Hsla, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(accent.with_alpha(0.12))
+            .with_border(accent.with_alpha(0.30), 1.0)
+            .with_corner_radius(9.0),
+    );
+    let text_style = app_text_style(AppTextRole::Helper);
+    paint_button_label(
+        bounds,
+        label,
+        text_style.font_size,
+        accent.with_alpha(0.92),
+        paint,
+    );
+}
+
+fn paint_nostr_section_surface(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.18))
+            .with_border(theme::border::DEFAULT.with_alpha(0.14), 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 8.0,
+            2.0,
+            (bounds.size.height - 16.0).max(0.0),
+        ))
+        .with_background(accent.with_alpha(0.90))
+        .with_corner_radius(2.0),
+    );
+}
+
+fn paint_nostr_section_heading(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    row_width: f32,
+) -> f32 {
+    let heading_style = app_text_style(AppTextRole::SectionHeading);
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(x, y),
+        heading_style.font_size,
+        heading_style.color.with_alpha(0.92),
+    ));
+    let divider_y = y + 14.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
+            .with_background(theme::border::DEFAULT.with_alpha(0.10)),
+    );
+    y + 22.0
+}
+
+fn paint_nostr_status_summary(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    state_label: &str,
+    supporting_detail: &str,
+    row_width: f32,
+    state_color: Hsla,
+) -> f32 {
+    let bounds = Bounds::new(x, y, row_width.max(0.0), 40.0);
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.18))
+            .with_border(theme::border::DEFAULT.with_alpha(0.14), 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 10.0,
+            bounds.origin.y + 11.0,
+            8.0,
+            8.0,
+        ))
+        .with_background(state_color.with_alpha(0.88))
+        .with_corner_radius(4.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        state_label,
+        Point::new(bounds.origin.x + 24.0, bounds.origin.y + 7.0),
+        app_text_style(AppTextRole::FormValue).font_size,
+        state_color,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &nostr_compact_detail(
+            supporting_detail,
+            (((bounds.size.width - 36.0).max(120.0)) / 6.2).floor() as usize,
+        ),
+        Point::new(bounds.origin.x + 24.0, bounds.origin.y + 22.0),
+        app_text_style(AppTextRole::SecondaryMetadata).font_size,
+        app_text_style(AppTextRole::SecondaryMetadata)
+            .color
+            .with_alpha(0.72),
+    ));
+    bounds.max_y() + 14.0
+}
+
+fn nostr_compact_detail(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let keep = max_chars.saturating_sub(1).max(1);
+    let truncated: String = value.chars().take(keep).collect();
+    format!("{truncated}…")
+}
+
+fn nostr_value_row_height(value: &str, value_chunk_len: usize) -> f32 {
+    let line_count = split_text_for_display(value, value_chunk_len.max(1))
+        .len()
+        .max(1) as f32;
+    line_count * 18.0 + 13.0
+}
+
+fn paint_nostr_value_row(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_chunk_len: usize,
+    row_width: f32,
+    value_color: Hsla,
+) -> f32 {
+    let label_style = app_text_style(AppTextRole::FormLabel);
+    let value_style = app_text_style(AppTextRole::FormValue);
+    let label_column_width = 122.0;
+    let mut line_y = y;
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("{label}:"),
+        Point::new(x, y),
+        label_style.font_size,
+        label_style.color,
+    ));
+
+    for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(x + label_column_width, line_y),
+            value_style.font_size,
+            value_color,
+        ));
+        line_y += 18.0;
+    }
+
+    let divider_y = line_y + 2.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
+            .with_background(theme::border::DEFAULT.with_alpha(0.08)),
+    );
+    divider_y + 11.0
+}
+
+fn nostr_multiline_value_row_height(value: &str, value_chunk_len: usize) -> f32 {
+    let line_count = split_text_for_display(value, value_chunk_len.max(1))
+        .len()
+        .max(1) as f32;
+    line_count * 18.0 + 13.0
+}
+
+fn paint_nostr_multiline_value_row(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_chunk_len: usize,
+    row_width: f32,
+    value_color: Hsla,
+) -> f32 {
+    let label_style = app_text_style(AppTextRole::FormLabel);
+    let label_column_width = 122.0;
+    let mut line_y = y;
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("{label}:"),
+        Point::new(x, y),
+        label_style.font_size,
+        label_style.color,
+    ));
+
+    for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(x + label_column_width, line_y),
+            app_text_style(AppTextRole::FormValue).font_size,
+            value_color,
+        ));
+        line_y += 18.0;
+    }
+
+    let divider_y = line_y + 2.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
+            .with_background(theme::border::DEFAULT.with_alpha(0.08)),
+    );
+    divider_y + 11.0
+}
+
+fn paint_nostr_sensitive_section_panel(
+    bounds: Bounds,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.22))
+            .with_border(accent.with_alpha(0.20), 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 8.0,
+            2.0,
+            (bounds.size.height - 16.0).max(0.0),
+        ))
+        .with_background(accent.with_alpha(0.82))
+        .with_corner_radius(2.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 2.0,
+            bounds.origin.y,
+            (bounds.size.width - 2.0).max(0.0),
+            24.0,
+        ))
+        .with_background(theme::bg::SURFACE.with_alpha(0.12))
+        .with_corner_radius(9.0),
+    );
 }
 
 fn nostr_identity_view_state(
@@ -7509,10 +8077,17 @@ fn paint_job_history_pane(
 fn paint_spark_wallet_pane(
     content_bounds: Bounds,
     spark_wallet: &SparkPaneState,
+    spark_wallet_pane: &mut SparkWalletPaneState,
     spark_inputs: &mut SparkPaneInputs,
     paint: &mut PaintContext,
 ) {
-    wallet_pane::paint_wallet_pane(content_bounds, spark_wallet, spark_inputs, paint);
+    wallet_pane::paint_wallet_pane(
+        content_bounds,
+        spark_wallet,
+        spark_wallet_pane,
+        spark_inputs,
+        paint,
+    );
 }
 
 #[cfg(test)]

@@ -13,8 +13,8 @@ use crate::pane_registry::pane_spec;
 use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
-    chat as chat_pane, data_seller as data_seller_pane, local_inference as local_inference_pane,
-    relay_connections as relay_connections_pane, rive as rive_pane,
+    chat as chat_pane, data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
+    local_inference as local_inference_pane, relay_connections as relay_connections_pane, rive as rive_pane,
     voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::render::{
@@ -1839,7 +1839,10 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 }
             }
             PaneKind::SparkWallet => {
-                let layout = spark_pane::layout(content_bounds);
+                let layout = spark_pane::layout_with_scroll(
+                    spark_pane::scroll_content_bounds(content_bounds),
+                    state.spark_wallet_pane.scroll_offset(),
+                );
                 if spark_pane::hits_input(layout, point) {
                     return CursorIcon::Text;
                 }
@@ -3481,7 +3484,7 @@ pub fn earnings_scoreboard_refresh_button_bounds(content_bounds: Bounds) -> Boun
     let width = earnings_scoreboard_button_width(content_bounds);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD + 20.0,
         width,
         34.0,
     )
@@ -3503,7 +3506,7 @@ fn earnings_scoreboard_button_bounds(content_bounds: Bounds, index: usize) -> Bo
     let width = earnings_scoreboard_button_width(content_bounds);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD + index as f32 * (width + JOB_INBOX_BUTTON_GAP),
-        content_bounds.origin.y + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD + 20.0,
         width,
         34.0,
     )
@@ -6507,6 +6510,17 @@ pub fn nostr_copy_secret_button_bounds(content_bounds: Bounds) -> Bounds {
     copy_bounds
 }
 
+pub fn nostr_identity_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let buttons_bottom = nostr_copy_secret_button_bounds(content_bounds).max_y();
+    let top = (buttons_bottom + 14.0).min(content_bounds.max_y());
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        top,
+        (content_bounds.size.width - 32.0).max(120.0),
+        (content_bounds.max_y() - top - 10.0).max(1.0),
+    )
+}
+
 pub(crate) fn topmost_pane_hit_action_in_order(
     state: &RenderState,
     point: Point,
@@ -8060,7 +8074,10 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::SparkWallet => {
-            let layout = spark_pane::layout(content_bounds);
+            let layout = spark_pane::layout_with_scroll(
+                spark_pane::scroll_content_bounds(content_bounds),
+                state.spark_wallet_pane.scroll_offset(),
+            );
             spark_pane::hit_action(layout, point).map(PaneHitAction::Spark)
         }
         PaneKind::SparkCreateInvoice => {
@@ -8577,6 +8594,85 @@ pub fn dispatch_provider_control_scroll_event(
     }
 
     state.provider_control.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_nostr_identity_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::NostrIdentity {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport = nostr_identity_scroll_viewport_bounds(content_bounds);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.nostr_identity_pane.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_earnings_scoreboard_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::EarningsScoreboard {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport =
+        earnings_jobs_pane::earnings_scroll_viewport_bounds(content_bounds, &state.earnings_scoreboard);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.earnings_scoreboard.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_spark_wallet_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::SparkWallet {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport = spark_pane::scroll_viewport_bounds(content_bounds);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.spark_wallet_pane.scroll_by(scroll_dy);
     true
 }
 

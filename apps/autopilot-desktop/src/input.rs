@@ -68,7 +68,10 @@ use crate::pane_system::{
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
     dispatch_log_stream_scroll_event, dispatch_mission_control_input_event,
     dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
+    dispatch_nostr_identity_scroll_event, dispatch_earnings_scoreboard_scroll_event,
+    dispatch_pay_invoice_input_event,
+    dispatch_provider_control_scroll_event,
+    dispatch_spark_wallet_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event,
     dispatch_voice_playground_input_event, pane_content_bounds, pane_indices_by_z_desc,
@@ -2907,6 +2910,15 @@ fn dispatch_mouse_scroll(
             }
             if !handled {
                 handled |= dispatch_provider_control_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_nostr_identity_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_earnings_scoreboard_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_spark_wallet_scroll_event(state, point, *dy);
             }
             if !handled {
                 handled |= dispatch_buy_mode_payments_scroll_event(state, point, event);
