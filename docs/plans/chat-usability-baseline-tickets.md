@@ -16,7 +16,7 @@ Last updated: 2026-03-21 — B-1 and B-2 complete: kind-0 metadata, author displ
 | B-1 | ✅ Done | `Kind0Metadata` struct + `author_metadata` in snapshot; kind-0 relay subscription; `resolve_author_display_name` fallback chain in chat renderer |
 | B-2 | ✅ Done | relative timestamps, same-author grouping, own-message `▶` glyph, per-author palette colors; `avatar_color_index` + `author_label_color` helpers |
 | C-1 | ✅ Done | Failed rows: error color on role label, "send failed: {error}  retry →" note; Acked rows clean; new `delivery_note_states_match_spec` test |
-| C-2 | 🔲 Not started | |
+| C-2 | ✅ Done | Per-row retry click target on Failed delivery note; `managed_chat_retry_targets` in `ChatPaneInputs`; MouseUp handler in `dispatch_input_event` |
 | C-3 | 🔲 Not started | |
 | C-4 | 🔲 Not started | |
 | D-1 | 🔲 Not started | |

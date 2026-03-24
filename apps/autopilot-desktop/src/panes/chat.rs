@@ -3744,6 +3744,7 @@ pub fn paint(
 
     match browse_mode {
         ChatBrowseMode::Managed => {
+            chat_inputs.managed_chat_retry_targets.clear();
             let overview_lines = managed_group_overview_lines(autopilot_chat);
             if !overview_lines.is_empty() {
                 paint.scene.draw_text(paint.text.layout_mono(
@@ -3888,6 +3889,17 @@ pub fn paint(
                         9.0,
                         managed_message_role_color(message),
                     ));
+                    if message.delivery_state == ManagedChatDeliveryState::Failed {
+                        chat_inputs.managed_chat_retry_targets.push((
+                            message.event_id.clone(),
+                            Bounds::new(
+                                transcript_scroll_clip.origin.x,
+                                y,
+                                transcript_scroll_clip.size.width,
+                                CHAT_ACTIVITY_ROW_LINE_HEIGHT,
+                            ),
+                        ));
+                    }
                     y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
                 y += 8.0;
@@ -4383,6 +4395,26 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         state
             .autopilot_chat
             .record_composer_draft(state.chat_inputs.composer.get_value().to_string());
+    }
+    if let InputEvent::MouseUp { button, x, y } = event {
+        if *button == wgpui::MouseButton::Left
+            && state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::Managed
+        {
+            let click = Point::new(*x, *y);
+            let matched = state
+                .chat_inputs
+                .managed_chat_retry_targets
+                .iter()
+                .find(|(_, b)| b.contains(click))
+                .map(|(id, _)| id.clone());
+            if let Some(event_id) = matched {
+                let _ = state
+                    .autopilot_chat
+                    .managed_chat_projection
+                    .retry_outbound_message(&event_id);
+                return true;
+            }
+        }
     }
     handled
 }
