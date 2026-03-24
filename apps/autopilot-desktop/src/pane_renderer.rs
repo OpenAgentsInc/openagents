@@ -27,7 +27,7 @@ use crate::app_state::{
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
-use crate::desktop_control::DesktopControlTrainingStatus;
+use crate::desktop_control::{DesktopControlRemoteTrainingStatus, DesktopControlTrainingStatus};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
 use crate::pane_system::{
@@ -84,9 +84,9 @@ use crate::panes::{
     local_inference as local_inference_pane, log_stream as log_stream_pane,
     nip90_sent_payments as nip90_sent_payments_pane, presentation as presentation_pane,
     project_ops as project_ops_pane, provider_control as provider_control_pane,
-    psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
-    relay_connections as relay_connections_pane, rive as rive_pane,
-    seller_earnings_timeline as seller_earnings_timeline_pane,
+    psionic_remote_training as psionic_remote_training_pane, psionic_viz as psionic_viz_pane,
+    relay_choreography as relay_choreography_pane, relay_connections as relay_connections_pane,
+    rive as rive_pane, seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, tassadar_lab as tassadar_lab_pane,
     voice_playground as voice_playground_pane, wallet as wallet_pane,
@@ -180,6 +180,7 @@ impl PaneRenderer {
         apple_fm_workbench: &mut AppleFmWorkbenchPaneState,
         apple_adapter_training: &mut AppleAdapterTrainingPaneState,
         training_status: &DesktopControlTrainingStatus,
+        remote_training_status: &DesktopControlRemoteTrainingStatus,
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
         relay_connections: &RelayConnectionsState,
@@ -455,6 +456,13 @@ impl PaneRenderer {
                         content_bounds,
                         local_inference,
                         local_inference_runtime,
+                        paint,
+                    );
+                }
+                PaneKind::PsionicRemoteTraining => {
+                    psionic_remote_training_pane::paint(
+                        content_bounds,
+                        remote_training_status,
                         paint,
                     );
                 }

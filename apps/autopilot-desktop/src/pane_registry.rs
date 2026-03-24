@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 63] = [
+const PANE_SPECS: [PaneSpec; 64] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -328,6 +328,21 @@ const PANE_SPECS: [PaneSpec; 63] = [
             id: "pane.psionic_viz",
             label: "Psionic Mesh",
             description: "Open a derived GPT-OSS decode field built from Psionic runtime metrics",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::PsionicRemoteTraining,
+        title: "Remote Training",
+        default_width: 1260.0,
+        default_height: 820.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.psionic_remote_training",
+            label: "Remote Training",
+            description: "Open the always-live Psionic Google and RunPod training visualization pane",
             keybinding: None,
         }),
         hotbar: None,
@@ -1175,6 +1190,18 @@ mod tests {
         assert!(
             !spec.startup,
             "psionic mesh pane should stay opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn remote_training_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.psionic_remote_training")
+            .expect("remote training command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::PsionicRemoteTraining);
+        assert!(spec.singleton, "remote training pane must be singleton");
+        assert!(
+            !spec.startup,
+            "remote training pane should remain opt-in instead of opening at startup"
         );
     }
 

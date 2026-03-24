@@ -107,9 +107,9 @@ mod tool_bridge;
 use actions::*;
 
 pub(crate) use actions::build_mission_control_buy_mode_request_event;
+pub(crate) use actions::create_nip28_channel;
 pub(crate) use actions::ensure_mission_control_apple_fm_refresh;
 pub(crate) use actions::ensure_mission_control_local_runtime_preflight;
-pub(crate) use actions::create_nip28_channel;
 pub(crate) use actions::queue_managed_chat_channel_message;
 pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;
 use shortcuts::*;
@@ -1142,7 +1142,11 @@ fn pump_background_every_loop(
         state,
         "every_loop",
         "autopilot_chat::hover_preview_visibility",
-        |state| state.autopilot_chat.refresh_thread_hover_preview_visibility(now),
+        |state| {
+            state
+                .autopilot_chat
+                .refresh_thread_hover_preview_visibility(now)
+        },
     ) {
         changed = true;
     }
@@ -3518,6 +3522,9 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
         PaneHitAction::AppleAdapterTraining(action) => {
             run_apple_adapter_training_action(state, action)
+        }
+        PaneHitAction::PsionicRemoteTraining(action) => {
+            run_psionic_remote_training_action(state, action)
         }
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),

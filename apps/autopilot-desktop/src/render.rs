@@ -1275,6 +1275,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     let provider_blockers = state.provider_blockers();
     let provider_inventory = crate::provider_inventory::inventory_status_for_state(state);
     let training_status = crate::desktop_control::current_training_status(state);
+    let remote_training_status = crate::desktop_control::current_remote_training_status(state);
     let pane_paint_report;
     {
         let buy_mode_enabled = state.mission_control_buy_mode_enabled();
@@ -1585,6 +1586,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.apple_fm_workbench,
             &mut state.apple_adapter_training,
             &training_status,
+            &remote_training_status,
             provider_blockers.as_slice(),
             &state.earnings_scoreboard,
             &state.relay_connections,
