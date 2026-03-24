@@ -3281,9 +3281,14 @@ fn paint_chat_shell(
         chat_mission_green_color(),
     ));
 
+    let transcript_panel_label = match autopilot_chat.chat_browse_mode() {
+        ChatBrowseMode::Managed => "GROUP CHAT",
+        ChatBrowseMode::DirectMessages => "DIRECT MESSAGES",
+        ChatBrowseMode::Autopilot => "CHAT",
+    };
     paint_chat_mission_panel(
         transcript_bounds,
-        "CHAT",
+        transcript_panel_label,
         chat_mission_orange_color(),
         paint,
     );
