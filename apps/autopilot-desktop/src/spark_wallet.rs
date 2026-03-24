@@ -455,9 +455,6 @@ impl SparkPaneState {
         }
 
         self.transient_mnemonic_override = Some(trimmed.to_string());
-        if let Err(error) = persist_default_identity_mnemonic(trimmed) {
-            self.last_error = Some(error);
-        }
         self.allow_wallet_create_on_next_init = allow_create_new;
         self.identity_path_override = None;
         self.identity_path = None;
@@ -922,27 +919,6 @@ impl SparkPaneState {
             ));
         }
     }
-}
-
-fn persist_default_identity_mnemonic(mnemonic: &str) -> Result<(), String> {
-    let path = identity_mnemonic_path()
-        .map_err(|error| format!("Failed to resolve default identity path: {error}"))?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| {
-            format!(
-                "Failed to create wallet seed directory {}: {error}",
-                parent.display()
-            )
-        })?;
-    }
-    std::fs::write(&path, format!("{mnemonic}\n"))
-        .map_err(|error| format!("Failed to write wallet seed file {}: {error}", path.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
-    Ok(())
 }
 
 pub(crate) fn is_settled_wallet_payment_status(status: &str) -> bool {
