@@ -1,6 +1,6 @@
 use crate::app_state::DefaultNip28ChannelConfig;
 use nostr::Event;
-use nostr_client::{ConnectionState, PoolConfig, RelayMessage, RelayPool};
+use nostr_client::{ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayMessage, RelayPool};
 use serde_json::json;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -25,6 +25,7 @@ pub enum Nip28ChatLaneUpdate {
     ConnectionError { relay_url: String, message: String },
     PublishAck { event_id: String },
     PublishError { event_id: String, message: String },
+    AuthChallengeReceived { relay_url: String },
 }
 
 pub struct Nip28ChatLaneWorker {
@@ -208,7 +209,20 @@ fn ensure_connected(
         *pool = None;
     }
 
-    let new_pool = Arc::new(RelayPool::new(PoolConfig::default()));
+    let pool_config = if let Some(ref key) = config.private_key_hex {
+        PoolConfig {
+            relay_config: RelayConfig {
+                nip42_identity: Some(RelayAuthIdentity {
+                    private_key_hex: key.clone(),
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    } else {
+        PoolConfig::default()
+    };
+    let new_pool = Arc::new(RelayPool::new(pool_config));
     let mut channel_ids = vec![config.channel_id.as_str()];
     if let Some(team_id) = config.team_channel_id.as_deref() {
         channel_ids.push(team_id);
@@ -264,6 +278,11 @@ async fn poll_events(pool: Arc<RelayPool>, update_tx: &Sender<Nip28ChatLaneUpdat
                 }
                 Ok(Ok(Some(RelayMessage::Eose(_)))) => {
                     let _ = update_tx.send(Nip28ChatLaneUpdate::Eose {
+                        relay_url: relay_url.clone(),
+                    });
+                }
+                Ok(Ok(Some(RelayMessage::Auth(_)))) => {
+                    let _ = update_tx.send(Nip28ChatLaneUpdate::AuthChallengeReceived {
                         relay_url: relay_url.clone(),
                     });
                 }

@@ -3465,6 +3465,10 @@ fn paint_chat_shell(
                         format!("○ {} connecting…", truncate_relay_url(relay_url)),
                         chat_mission_muted_color(),
                     ),
+                    ManagedChatRelayState::AuthRequired => (
+                        format!("○ {} authenticating…", truncate_relay_url(relay_url)),
+                        chat_mission_muted_color(),
+                    ),
                     ManagedChatRelayState::Error => {
                         let err = relay_last_error.unwrap_or("connection error");
                         (
