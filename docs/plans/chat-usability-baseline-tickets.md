@@ -12,9 +12,9 @@ Date: 2026-03-19
 | A-3 | ✅ Done | peer presence list + active count rendered in managed chat channel header |
 | A-4 | ✅ Done | `show_debug_events` toggle + `Debug`/`Debug ON` chip in managed header; `message_class` field on projection; A-2 filter moved to render time |
 | A-5 | ✅ Done | `OA_NIP28_TEAM_CHANNEL_ID` env var; `team_channel_id: Option<String>` on config; `build_filters` covers both channels; setup documented in `docs/headless-compute.md` |
-| B-1 | 🔲 Not started | |
-| B-2 | 🔲 Not started | |
-| C-1 | 🔲 Not started | |
+| B-1 | ✅ Done | `Kind0Metadata` struct + `author_metadata` in snapshot; kind-0 relay subscription; `resolve_author_display_name` fallback chain in chat renderer |
+| B-2 | ✅ Done | relative timestamps, same-author grouping, own-message `▶` glyph, per-author palette colors; `avatar_color_index` + `author_label_color` helpers |
+| C-1 | ✅ Done | Failed rows: error color on role label, "send failed: {error}  retry →" note; Acked rows clean; new `delivery_note_states_match_spec` test |
 | C-2 | 🔲 Not started | |
 | C-3 | 🔲 Not started | |
 | C-4 | 🔲 Not started | |
