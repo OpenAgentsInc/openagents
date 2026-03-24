@@ -189,6 +189,17 @@ training read model. It includes:
   see whether the local runtime is blocked, awaiting assignment, submitted,
   accepted, quarantined, replay-required, or settlement-ready
 
+Desktop control now also carries a separate `remote_training` mirror for the
+Psionic Google and RunPod lanes. That surface is app-owned and provider-neutral:
+
+- it mirrors the Psionic remote-training run index and retained bundles into an
+  app-local cache instead of making panes parse provider storage layouts
+- it refreshes active runs on a one-second cadence
+- it keeps `stale`, `summary_only`, and full-series posture explicit through
+  normalized run-list and selected-run detail state
+- it surfaces bundle provenance, cached-bundle paths, heartbeat age, and stale
+  reasons through the same desktop snapshot contract the GUI uses
+
 For the Apple adapter lane, the training command group is now an operator
 workflow rather than a status-only surface:
 

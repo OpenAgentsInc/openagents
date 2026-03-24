@@ -41,6 +41,10 @@ use psionic_sandbox::{
     ProviderSandboxExecutionControls, ProviderSandboxFileTransferReceipt,
     ProviderSandboxJobRequest, ProviderSandboxProfile,
 };
+use psionic_train::{
+    RemoteTrainingProvider, RemoteTrainingResultClassification, RemoteTrainingSeriesStatus,
+    RemoteTrainingVisualizationBundle,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
@@ -82,7 +86,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 15;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 16;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -123,6 +127,7 @@ pub struct DesktopControlSnapshot {
     pub cluster: DesktopControlClusterStatus,
     pub sandbox: DesktopControlSandboxStatus,
     pub training: DesktopControlTrainingStatus,
+    pub remote_training: DesktopControlRemoteTrainingStatus,
     pub proofs: DesktopControlProofStatus,
     pub challenges: DesktopControlChallengeStatus,
     pub buy_mode: DesktopControlBuyModeStatus,
@@ -891,6 +896,58 @@ pub struct DesktopControlTrainingStatus {
     pub contributor: DesktopControlTrainingContributorStatus,
     pub operator: DesktopControlAppleAdapterOperatorStatus,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingRunStatus {
+    pub provider: String,
+    pub profile_id: String,
+    pub lane_id: String,
+    pub run_id: String,
+    pub repo_revision: String,
+    pub result_classification: String,
+    pub series_status: String,
+    pub series_unavailable_reason: Option<String>,
+    pub summary_label: String,
+    pub detail: String,
+    pub last_heartbeat_at_ms: Option<u64>,
+    pub heartbeat_age_ms: Option<u64>,
+    pub stale: bool,
+    pub stale_reason: Option<String>,
+    pub bundle_cached: bool,
+    pub bundle_cache_path: Option<String>,
+    pub bundle_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingSelectedRunStatus {
+    pub run: DesktopControlRemoteTrainingRunStatus,
+    pub source_root: Option<String>,
+    pub source_index_path: Option<String>,
+    pub bundle: Option<RemoteTrainingVisualizationBundle>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingStatus {
+    pub available: bool,
+    pub source: String,
+    pub source_root: Option<String>,
+    pub source_index_path: Option<String>,
+    pub cache_root: Option<String>,
+    pub sync_state: String,
+    pub last_synced_at_epoch_ms: Option<u64>,
+    pub last_successful_sync_at_epoch_ms: Option<u64>,
+    pub refresh_interval_ms: u64,
+    pub run_count: usize,
+    pub active_run_count: usize,
+    pub summary_only_run_count: usize,
+    pub full_series_run_count: usize,
+    pub stale_run_count: usize,
+    pub selected_run_id: Option<String>,
+    pub runs: Vec<DesktopControlRemoteTrainingRunStatus>,
+    pub selected_run: Option<DesktopControlRemoteTrainingSelectedRunStatus>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1940,6 +1997,9 @@ pub fn drain_runtime_updates(state: &mut RenderState) -> bool {
 pub fn poll_runtime(state: &mut RenderState) -> bool {
     let mut changed = false;
     if refresh_compute_history_cache_if_due(state, false) {
+        changed = true;
+    }
+    if crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, false) {
         changed = true;
     }
     if sync_runtime_snapshot(state) {
@@ -5332,6 +5392,7 @@ fn proof_payload_response(state: &mut RenderState) -> DesktopControlActionRespon
 
 fn training_payload_response(state: &mut RenderState) -> DesktopControlActionResponse {
     refresh_compute_history_cache_if_due(state, true);
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
     match serde_json::to_value(desktop_control_training_status(state)) {
         Ok(payload) => DesktopControlActionResponse::ok_with_payload(
             "Captured training control state",
@@ -5425,6 +5486,7 @@ fn training_action_payload_response(
     if refresh_authority {
         refresh_compute_history_cache_if_due(state, true);
     }
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
     match serde_json::to_value(desktop_control_training_status(state)) {
         Ok(payload) => DesktopControlActionResponse::ok_with_payload(message, payload),
         Err(error) => DesktopControlActionResponse::error(format!(
@@ -6914,6 +6976,245 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
     }
 }
 
+fn desktop_control_remote_training_status(
+    state: &RenderState,
+) -> DesktopControlRemoteTrainingStatus {
+    let sync = &state.desktop_control.remote_training;
+    let now_epoch_ms = current_epoch_ms();
+    let runs = sync
+        .run_index
+        .as_ref()
+        .map(|index| {
+            index
+                .entries
+                .iter()
+                .map(|entry| {
+                    desktop_control_remote_training_run_status(
+                        entry,
+                        sync.bundles.get(entry.run_id.as_str()),
+                        sync.mirrored_bundle_paths.get(entry.run_id.as_str()),
+                        now_epoch_ms,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let selected_run = sync
+        .selected_run_id
+        .as_deref()
+        .and_then(|run_id| {
+            runs.iter()
+                .find(|run| run.run_id == run_id)
+                .cloned()
+                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
+                    run,
+                    source_root: sync
+                        .source_root
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    source_index_path: sync
+                        .source_index_path
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    bundle: sync.bundles.get(run_id).cloned(),
+                })
+        })
+        .or_else(|| {
+            runs.first()
+                .cloned()
+                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
+                    source_root: sync
+                        .source_root
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    source_index_path: sync
+                        .source_index_path
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    bundle: sync.bundles.get(run.run_id.as_str()).cloned(),
+                    run,
+                })
+        });
+    let run_count = runs.len();
+    let active_run_count = runs
+        .iter()
+        .filter(|run| run.result_classification == "active")
+        .count();
+    let full_series_run_count = runs
+        .iter()
+        .filter(|run| run.series_status == "available")
+        .count();
+    let summary_only_run_count = runs
+        .iter()
+        .filter(|run| run.series_status != "available")
+        .count();
+    let available = sync.run_index.is_some();
+    let sync_state = if sync.last_refreshed_at_epoch_ms.is_none() {
+        if sync.last_error.is_some() {
+            "error"
+        } else {
+            "pending"
+        }
+    } else if !available {
+        if sync.source_root_hint.is_some() || sync.source_index_path_hint.is_some() {
+            if sync.last_error.is_some() {
+                "error"
+            } else {
+                "idle"
+            }
+        } else {
+            "unconfigured"
+        }
+    } else if sync.using_cached_mirror || sync.last_error.is_some() {
+        "stale"
+    } else {
+        "ready"
+    }
+    .to_string();
+    DesktopControlRemoteTrainingStatus {
+        available,
+        source: if sync.using_cached_mirror {
+            "local_cache_mirror".to_string()
+        } else if sync.source_root.is_some() {
+            "live_psionic_mirror".to_string()
+        } else {
+            "unconfigured".to_string()
+        },
+        source_root: sync
+            .source_root
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        source_index_path: sync
+            .source_index_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        cache_root: Some(sync.cache_root.display().to_string()),
+        sync_state,
+        last_synced_at_epoch_ms: sync.last_refreshed_at_epoch_ms,
+        last_successful_sync_at_epoch_ms: sync.last_successful_sync_at_epoch_ms,
+        refresh_interval_ms: sync.refresh_interval_ms,
+        run_count,
+        active_run_count,
+        summary_only_run_count,
+        full_series_run_count,
+        stale_run_count: runs.iter().filter(|run| run.stale).count(),
+        selected_run_id: sync.selected_run_id.clone(),
+        runs,
+        selected_run,
+        last_error: sync.last_error.clone(),
+        last_action: sync.last_action.clone(),
+    }
+}
+
+fn desktop_control_remote_training_run_status(
+    entry: &psionic_train::RemoteTrainingRunIndexEntry,
+    bundle: Option<&RemoteTrainingVisualizationBundle>,
+    mirrored_bundle_path: Option<&PathBuf>,
+    now_epoch_ms: u64,
+) -> DesktopControlRemoteTrainingRunStatus {
+    let (heartbeat_age_ms, stale, stale_reason) =
+        remote_training_freshness(now_epoch_ms, entry, bundle);
+    DesktopControlRemoteTrainingRunStatus {
+        provider: remote_training_provider_label(entry.provider).to_string(),
+        profile_id: entry.profile_id.clone(),
+        lane_id: entry.lane_id.clone(),
+        run_id: entry.run_id.clone(),
+        repo_revision: entry.repo_revision.clone(),
+        result_classification: remote_training_result_label(entry.result_classification)
+            .to_string(),
+        series_status: remote_training_series_status_label(entry.series_status).to_string(),
+        series_unavailable_reason: entry.series_unavailable_reason.clone(),
+        summary_label: entry.summary_label.clone(),
+        detail: entry.detail.clone(),
+        last_heartbeat_at_ms: bundle
+            .and_then(|bundle| bundle.refresh_contract.last_heartbeat_at_ms)
+            .or(entry.last_heartbeat_at_ms),
+        heartbeat_age_ms,
+        stale,
+        stale_reason,
+        bundle_cached: mirrored_bundle_path.is_some() || bundle.is_some(),
+        bundle_cache_path: mirrored_bundle_path.map(|path| path.display().to_string()),
+        bundle_digest: entry
+            .bundle_digest
+            .clone()
+            .or_else(|| bundle.map(|bundle| bundle.bundle_digest.clone())),
+    }
+}
+
+fn remote_training_freshness(
+    now_epoch_ms: u64,
+    entry: &psionic_train::RemoteTrainingRunIndexEntry,
+    bundle: Option<&RemoteTrainingVisualizationBundle>,
+) -> (Option<u64>, bool, Option<String>) {
+    let last_heartbeat_at_ms = bundle
+        .and_then(|bundle| bundle.refresh_contract.last_heartbeat_at_ms)
+        .or(entry.last_heartbeat_at_ms);
+    let heartbeat_age_ms =
+        last_heartbeat_at_ms.map(|timestamp| now_epoch_ms.saturating_sub(timestamp));
+    if entry.result_classification != RemoteTrainingResultClassification::Active {
+        return (heartbeat_age_ms, false, None);
+    }
+    let stale_after_ms = bundle
+        .and_then(|bundle| {
+            bundle
+                .heartbeat_series
+                .last()
+                .map(|sample| sample.stale_after_ms)
+        })
+        .unwrap_or_else(|| {
+            bundle
+                .map(|bundle| {
+                    bundle
+                        .refresh_contract
+                        .target_ui_update_interval_ms
+                        .saturating_mul(3)
+                        .max(3_000)
+                })
+                .unwrap_or(3_000)
+        });
+    match heartbeat_age_ms {
+        Some(age_ms) if age_ms > stale_after_ms => (
+            Some(age_ms),
+            true,
+            Some(format!(
+                "latest heartbeat is {age_ms}ms old and exceeded the {stale_after_ms}ms stale window"
+            )),
+        ),
+        Some(age_ms) => (Some(age_ms), false, None),
+        None => (
+            None,
+            true,
+            Some("active run has no retained heartbeat timestamp".to_string()),
+        ),
+    }
+}
+
+fn remote_training_provider_label(provider: RemoteTrainingProvider) -> &'static str {
+    match provider {
+        RemoteTrainingProvider::GoogleCloud => "google_cloud",
+        RemoteTrainingProvider::RunPod => "run_pod",
+    }
+}
+
+fn remote_training_result_label(result: RemoteTrainingResultClassification) -> &'static str {
+    match result {
+        RemoteTrainingResultClassification::Planned => "planned",
+        RemoteTrainingResultClassification::Active => "active",
+        RemoteTrainingResultClassification::CompletedSuccess => "completed_success",
+        RemoteTrainingResultClassification::CompletedFailure => "completed_failure",
+        RemoteTrainingResultClassification::Refused => "refused",
+        RemoteTrainingResultClassification::RehearsalOnly => "rehearsal_only",
+    }
+}
+
+fn remote_training_series_status_label(status: RemoteTrainingSeriesStatus) -> &'static str {
+    match status {
+        RemoteTrainingSeriesStatus::Available => "available",
+        RemoteTrainingSeriesStatus::Partial => "partial",
+        RemoteTrainingSeriesStatus::Unavailable => "unavailable",
+    }
+}
+
 pub(crate) fn current_training_status(state: &RenderState) -> DesktopControlTrainingStatus {
     desktop_control_training_status(state)
 }
@@ -8246,6 +8547,7 @@ fn snapshot_for_state_with_signature(
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
         training: desktop_control_training_status(state),
+        remote_training: desktop_control_remote_training_status(state),
         proofs: desktop_control_proof_status(state),
         challenges: desktop_control_challenge_status(state),
         buy_mode: DesktopControlBuyModeStatus {
@@ -8964,17 +9266,18 @@ mod tests {
         DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
         DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
         DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlProofStatus, DesktopControlProviderStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
-        DesktopControlSessionStatus, DesktopControlSnapshot,
-        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
-        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
-        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
-        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
-        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
-        command_received_event, desktop_control_challenge_history_status,
-        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
-        validate_control_bind_addr,
+        DesktopControlProofStatus, DesktopControlProviderStatus,
+        DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
+        DesktopControlRemoteTrainingStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
+        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
+        DesktopControlSnapshot, DesktopControlTrainingParticipantStatus,
+        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
+        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
+        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
+        build_nip90_sent_payments_report_payload, build_settlement_history,
+        challenges_by_delivery_proof, command_outcome_event, command_received_event,
+        desktop_control_challenge_history_status, desktop_control_proof_history_status,
+        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -9381,6 +9684,111 @@ mod tests {
                 contributor: crate::desktop_control::DesktopControlTrainingContributorStatus::default(),
                 operator: DesktopControlAppleAdapterOperatorStatus::default(),
                 last_error: None,
+            },
+            remote_training: DesktopControlRemoteTrainingStatus {
+                available: true,
+                source: "live_psionic_mirror".to_string(),
+                source_root: Some("/tmp/psionic".to_string()),
+                source_index_path: Some(
+                    "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                        .to_string(),
+                ),
+                cache_root: Some("/tmp/openagents/remote-training-v1".to_string()),
+                sync_state: "ready".to_string(),
+                last_synced_at_epoch_ms: Some(1_762_500_003_000),
+                last_successful_sync_at_epoch_ms: Some(1_762_500_003_000),
+                refresh_interval_ms: 1_000,
+                run_count: 2,
+                active_run_count: 1,
+                summary_only_run_count: 1,
+                full_series_run_count: 1,
+                stale_run_count: 0,
+                selected_run_id: Some(
+                    "parameter-golf-runpod-single-h100-live-sample".to_string(),
+                ),
+                runs: vec![
+                    DesktopControlRemoteTrainingRunStatus {
+                        provider: "google_cloud".to_string(),
+                        profile_id: "google_a2_ultragpu_1g".to_string(),
+                        lane_id: "psion.google_single_node.accelerated".to_string(),
+                        run_id: "psion-google-summary-only-sample".to_string(),
+                        repo_revision: "main@ce5359b9".to_string(),
+                        result_classification: "completed_success".to_string(),
+                        series_status: "unavailable".to_string(),
+                        series_unavailable_reason: Some(
+                            "no canonical optimizer-step loss series".to_string(),
+                        ),
+                        summary_label: "Google summary-only".to_string(),
+                        detail: "Summary-only lane".to_string(),
+                        last_heartbeat_at_ms: Some(1_742_760_920_000),
+                        heartbeat_age_ms: Some(1_000),
+                        stale: false,
+                        stale_reason: None,
+                        bundle_cached: true,
+                        bundle_cache_path: Some(
+                            "/tmp/openagents/remote-training-v1/bundles/psion-google-summary-only-sample.json"
+                                .to_string(),
+                        ),
+                        bundle_digest: Some("digest-google".to_string()),
+                    },
+                    DesktopControlRemoteTrainingRunStatus {
+                        provider: "run_pod".to_string(),
+                        profile_id: "runpod_h100_single_gpu".to_string(),
+                        lane_id: "parameter_golf.runpod_single_h100".to_string(),
+                        run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
+                        repo_revision: "main@ce5359b9".to_string(),
+                        result_classification: "active".to_string(),
+                        series_status: "available".to_string(),
+                        series_unavailable_reason: None,
+                        summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
+                        detail: "Always-live lane".to_string(),
+                        last_heartbeat_at_ms: Some(1_742_846_402_000),
+                        heartbeat_age_ms: Some(900),
+                        stale: false,
+                        stale_reason: None,
+                        bundle_cached: true,
+                        bundle_cache_path: Some(
+                            "/tmp/openagents/remote-training-v1/bundles/parameter-golf-runpod-single-h100-live-sample.json"
+                                .to_string(),
+                        ),
+                        bundle_digest: Some("digest-runpod".to_string()),
+                    },
+                ],
+                selected_run: Some(DesktopControlRemoteTrainingSelectedRunStatus {
+                    run: DesktopControlRemoteTrainingRunStatus {
+                        provider: "run_pod".to_string(),
+                        profile_id: "runpod_h100_single_gpu".to_string(),
+                        lane_id: "parameter_golf.runpod_single_h100".to_string(),
+                        run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
+                        repo_revision: "main@ce5359b9".to_string(),
+                        result_classification: "active".to_string(),
+                        series_status: "available".to_string(),
+                        series_unavailable_reason: None,
+                        summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
+                        detail: "Always-live lane".to_string(),
+                        last_heartbeat_at_ms: Some(1_742_846_402_000),
+                        heartbeat_age_ms: Some(900),
+                        stale: false,
+                        stale_reason: None,
+                        bundle_cached: true,
+                        bundle_cache_path: Some(
+                            "/tmp/openagents/remote-training-v1/bundles/parameter-golf-runpod-single-h100-live-sample.json"
+                                .to_string(),
+                        ),
+                        bundle_digest: Some("digest-runpod".to_string()),
+                    },
+                    source_root: Some("/tmp/psionic".to_string()),
+                    source_index_path: Some(
+                        "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                            .to_string(),
+                    ),
+                    bundle: None,
+                }),
+                last_error: None,
+                last_action: Some(
+                    "Remote training mirror synced 2 runs and 2 cached bundles from the live source"
+                        .to_string(),
+                ),
             },
             proofs: DesktopControlProofStatus {
                 available: false,
