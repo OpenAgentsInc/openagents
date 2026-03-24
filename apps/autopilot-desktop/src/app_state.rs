@@ -13262,6 +13262,8 @@ pub struct DefaultNip28ChannelConfig {
     pub channel_id: String,
     /// Optional second channel (OA_NIP28_TEAM_CHANNEL_ID) for team testing.
     pub team_channel_id: Option<String>,
+    /// Private key hex for NIP-42 AUTH, set from loaded identity at spawn time.
+    pub private_key_hex: Option<String>,
 }
 
 impl DefaultNip28ChannelConfig {
@@ -13274,6 +13276,7 @@ impl DefaultNip28ChannelConfig {
             team_channel_id: std::env::var(ENV_NIP28_TEAM_CHANNEL_ID)
                 .ok()
                 .filter(|id| is_valid_nip28_channel_id(id)),
+            private_key_hex: None,
         }
     }
 

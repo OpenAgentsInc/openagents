@@ -218,6 +218,7 @@ fn run_standard_phase(
         relay_url: relay.url.clone(),
         channel_id: channel_id.clone(),
         team_channel_id: None,
+        private_key_hex: None,
     };
     relay.store_events(vec![
         build_group_metadata_event(),
@@ -1070,7 +1071,9 @@ fn pump_nip28_lane(chat: &mut AutopilotChatState, lane_worker: &mut Nip28ChatLan
                     .fail_outbound_message(&event_id, &message);
                 lane_worker.clear_dispatched(&event_id);
             }
-            Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+            Nip28ChatLaneUpdate::Eose { .. }
+            | Nip28ChatLaneUpdate::ConnectionError { .. }
+            | Nip28ChatLaneUpdate::AuthChallengeReceived { .. } => {}
         }
     }
     let pending_events = chat
