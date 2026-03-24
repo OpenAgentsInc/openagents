@@ -8,8 +8,10 @@ use crate::app_state::{
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatPaneInputs, ChatTranscriptSelectionState, DirectMessageMessageProjection,
     DirectMessageRoomProjection, ManagedChatChannelProjection, ManagedChatDeliveryState,
-    ManagedChatGroupProjection, ManagedChatMessageProjection, PaneKind, RenderState,
+    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
+    RenderState,
 };
+use crate::hotbar::{activate_hotbar_slot, HOTBAR_SLOT_NOSTR_IDENTITY};
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_renderer::split_text_for_display;
 use crate::pane_system::{
@@ -1439,6 +1441,10 @@ fn managed_message_role_label(
         format!("{glyph} {author_label}  {ts}")
     };
     Some(label)
+}
+
+fn truncate_relay_url(url: &str) -> &str {
+    url.trim_start_matches("wss://").trim_start_matches("ws://")
 }
 
 fn managed_message_role_color(message: &ManagedChatMessageProjection) -> wgpui::Hsla {
@@ -3441,6 +3447,39 @@ fn paint_chat_shell(
                 ));
                 status_y += 12.0;
             }
+            // Relay URL + connection state line
+            if status_y + 11.0 <= header_bounds.max_y() {
+                let relay_url = autopilot_chat
+                    .active_managed_chat_channel()
+                    .and_then(|ch| ch.relay_url.as_deref())
+                    .unwrap_or("no relay");
+                let relay_state = &autopilot_chat.managed_chat_projection.relay_connection_state;
+                let relay_last_error =
+                    autopilot_chat.managed_chat_projection.relay_last_error.as_deref();
+                let (relay_label, relay_color) = match relay_state {
+                    ManagedChatRelayState::Connected => (
+                        format!("● {}", truncate_relay_url(relay_url)),
+                        chat_mission_cyan_color(),
+                    ),
+                    ManagedChatRelayState::Connecting => (
+                        format!("○ {} connecting…", truncate_relay_url(relay_url)),
+                        chat_mission_muted_color(),
+                    ),
+                    ManagedChatRelayState::Error => {
+                        let err = relay_last_error.unwrap_or("connection error");
+                        (
+                            format!("✕ {} — {}", truncate_relay_url(relay_url), err),
+                            wgpui::theme::status::ERROR,
+                        )
+                    }
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &relay_label,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    relay_color,
+                ));
+            }
             let debug_label = if autopilot_chat.show_debug_events {
                 "Debug ON"
             } else {
@@ -4328,19 +4367,53 @@ pub fn paint(
         ));
     }
 
-    chat_inputs
-        .composer
-        .set_max_width(composer_bounds.size.width);
-    chat_inputs.composer.paint(composer_bounds, paint);
-    paint.scene.draw_quad(
-        Quad::new(composer_bounds)
-            .with_background(chat_mission_panel_header_color().with_alpha(0.18))
-            .with_border(chat_mission_cyan_color().with_alpha(0.85), 1.0)
-            .with_corner_radius(3.0),
-    );
+    let managed_has_identity =
+        autopilot_chat.managed_chat_projection.local_pubkey().is_some();
+    if browse_mode == ChatBrowseMode::Managed && !managed_has_identity {
+        // Block state — no signing identity configured for managed chat.
+        chat_inputs.composer_identity_link_bounds = None;
+        paint.scene.draw_quad(
+            Quad::new(composer_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.18))
+                .with_border(chat_mission_panel_border_color().with_alpha(0.85), 1.0)
+                .with_corner_radius(3.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            "You need an identity to send messages",
+            Point::new(composer_bounds.origin.x + 8.0, composer_bounds.origin.y + 10.0),
+            11.0,
+            chat_mission_muted_color(),
+        ));
+        let link_y = composer_bounds.origin.y + 24.0;
+        paint.scene.draw_text(paint.text.layout_mono(
+            "Set up identity keys →",
+            Point::new(composer_bounds.origin.x + 8.0, link_y),
+            11.0,
+            chat_mission_cyan_color(),
+        ));
+        chat_inputs.composer_identity_link_bounds = Some(Bounds::new(
+            composer_bounds.origin.x,
+            link_y - 2.0,
+            composer_bounds.size.width,
+            CHAT_ACTIVITY_ROW_LINE_HEIGHT + 4.0,
+        ));
+    } else {
+        chat_inputs.composer_identity_link_bounds = None;
+        chat_inputs
+            .composer
+            .set_max_width(composer_bounds.size.width);
+        chat_inputs.composer.paint(composer_bounds, paint);
+        paint.scene.draw_quad(
+            Quad::new(composer_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.18))
+                .with_border(chat_mission_cyan_color().with_alpha(0.85), 1.0)
+                .with_corner_radius(3.0),
+        );
+    }
     let can_send = match browse_mode {
         ChatBrowseMode::Managed => {
-            autopilot_chat.managed_chat_can_send(chat_inputs.composer.get_value())
+            managed_has_identity
+                && autopilot_chat.managed_chat_can_send(chat_inputs.composer.get_value())
         }
         ChatBrowseMode::DirectMessages => {
             autopilot_chat.direct_message_can_send(chat_inputs.composer.get_value())
@@ -4401,6 +4474,14 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
             && state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::Managed
         {
             let click = Point::new(*x, *y);
+            // Identity link — navigate to Nostr Identity pane
+            if let Some(link_bounds) = state.chat_inputs.composer_identity_link_bounds {
+                if link_bounds.contains(click) {
+                    activate_hotbar_slot(state, HOTBAR_SLOT_NOSTR_IDENTITY);
+                    return true;
+                }
+            }
+            // Per-row retry targets
             let matched = state
                 .chat_inputs
                 .managed_chat_retry_targets

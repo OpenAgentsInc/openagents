@@ -657,6 +657,9 @@ pub struct ChatPaneInputs {
     /// Per-frame retry click targets for failed managed chat rows: (event_id, bounds).
     /// Populated during paint, consumed in dispatch_input_event.
     pub managed_chat_retry_targets: Vec<(String, wgpui::Bounds)>,
+    /// Bounds of the "Set up identity keys →" link shown when no keypair is configured.
+    /// Populated during paint, consumed in dispatch_input_event.
+    pub composer_identity_link_bounds: Option<wgpui::Bounds>,
 }
 
 impl Default for ChatPaneInputs {
@@ -670,6 +673,7 @@ impl Default for ChatPaneInputs {
                 .font_size(wgpui::theme::font_size::SM - 3.0)
                 .border_color_focused(theme::border::FOCUS),
             managed_chat_retry_targets: vec![],
+            composer_identity_link_bounds: None,
         }
     }
 }
