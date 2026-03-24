@@ -388,16 +388,30 @@ pub struct SparkPaneInputs {
     pub send_amount: TextInput,
 }
 
+fn wallet_text_input(input: TextInput) -> TextInput {
+    input
+        .font_size(theme::font_size::SM - 1.0)
+        .padding(10.0, 6.0)
+        .mono(true)
+        .background(theme::bg::SURFACE.with_alpha(0.92))
+        .border_color(theme::border::DEFAULT.with_alpha(0.72))
+        .border_color_focused(theme::accent::PRIMARY.with_alpha(0.88))
+        .text_color(theme::text::PRIMARY)
+        .placeholder_color(theme::text::MUTED.with_alpha(0.52))
+}
+
 impl Default for SparkPaneInputs {
     fn default() -> Self {
         Self {
-            invoice_amount: TextInput::new()
+            invoice_amount: wallet_text_input(
+                TextInput::new()
                 .value("1000")
                 .placeholder("Lightning invoice sats"),
-            send_request: TextInput::new()
+            ),
+            send_request: wallet_text_input(TextInput::new()
                 .placeholder("Lightning invoice / payment request")
-                .mono(true),
-            send_amount: TextInput::new().placeholder("Send sats (optional)"),
+            ),
+            send_amount: wallet_text_input(TextInput::new().placeholder("Send sats (optional)")),
         }
     }
 }
@@ -410,10 +424,10 @@ pub struct PayInvoicePaneInputs {
 impl Default for PayInvoicePaneInputs {
     fn default() -> Self {
         Self {
-            payment_request: TextInput::new()
+            payment_request: wallet_text_input(TextInput::new()
                 .placeholder("Lightning invoice / payment request")
-                .mono(true),
-            amount_sats: TextInput::new().placeholder("Send sats (optional)"),
+            ),
+            amount_sats: wallet_text_input(TextInput::new().placeholder("Send sats (optional)")),
         }
     }
 }
@@ -427,11 +441,13 @@ pub struct CreateInvoicePaneInputs {
 impl Default for CreateInvoicePaneInputs {
     fn default() -> Self {
         Self {
-            amount_sats: TextInput::new()
+            amount_sats: wallet_text_input(TextInput::new()
                 .value("1000")
-                .placeholder("Lightning invoice sats"),
-            description: TextInput::new().placeholder("Description (optional)"),
-            expiry_seconds: TextInput::new().value("3600").placeholder("Expiry seconds"),
+                .placeholder("Lightning invoice sats")),
+            description: wallet_text_input(TextInput::new().placeholder("Description (optional)")),
+            expiry_seconds: wallet_text_input(
+                TextInput::new().value("3600").placeholder("Expiry seconds"),
+            ),
         }
     }
 }
@@ -762,6 +778,70 @@ impl ProviderControlPaneState {
 
     pub fn local_fm_summary_is_pending(&self) -> bool {
         self.local_fm_summary_pending_request_id.is_some()
+    }
+}
+
+pub struct NostrIdentityPaneState {
+    scroll_offset_px: f32,
+}
+
+impl Default for NostrIdentityPaneState {
+    fn default() -> Self {
+        Self {
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl NostrIdentityPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
+    }
+}
+
+pub struct SparkWalletPaneState {
+    scroll_offset_px: f32,
+}
+
+impl Default for SparkWalletPaneState {
+    fn default() -> Self {
+        Self {
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl SparkWalletPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
     }
 }
 
@@ -14752,6 +14832,7 @@ pub struct EarningsScoreboardState {
     pub avg_wallet_confirmation_latency_seconds: Option<u64>,
     pub stale_after: Duration,
     pub last_refreshed_at: Option<Instant>,
+    scroll_offset_px: f32,
     tracked_online_since: Option<Instant>,
     first_completed_since_online: Option<Instant>,
 }
@@ -14774,6 +14855,7 @@ impl Default for EarningsScoreboardState {
             avg_wallet_confirmation_latency_seconds: None,
             stale_after: Duration::from_secs(12),
             last_refreshed_at: None,
+            scroll_offset_px: 0.0,
             tracked_online_since: None,
             first_completed_since_online: None,
         }
@@ -14898,6 +14980,16 @@ impl EarningsScoreboardState {
     pub fn is_stale(&self, now: Instant) -> bool {
         self.last_refreshed_at
             .is_none_or(|refresh| now.duration_since(refresh) > self.stale_after)
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        let clamped = self.scroll_offset_px.clamp(0.0, max_scroll.max(0.0));
+        self.scroll_offset_px = clamped;
+        clamped
     }
 }
 
@@ -15245,6 +15337,8 @@ pub struct RenderState {
     pub nostr_identity: Option<NostrIdentity>,
     pub nostr_identity_error: Option<String>,
     pub nostr_secret_state: NostrSecretState,
+    pub nostr_identity_pane: NostrIdentityPaneState,
+    pub spark_wallet_pane: SparkWalletPaneState,
     pub spark_wallet: SparkPaneState,
     pub spark_worker: SparkWalletWorker,
     pub stable_sats_blink_worker: StableSatsBlinkWorker,
