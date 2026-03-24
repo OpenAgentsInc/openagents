@@ -10745,7 +10745,9 @@ mod tests {
                         .fail_outbound_message(&event_id, &message);
                     lane_worker.clear_dispatched(&event_id);
                 }
-                Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+                Nip28ChatLaneUpdate::Eose { .. }
+                | Nip28ChatLaneUpdate::ConnectionError { .. }
+                | Nip28ChatLaneUpdate::AuthChallengeReceived { .. } => {}
             }
         }
         let pending_events = chat
@@ -12020,6 +12022,7 @@ mod tests {
             relay_url: relay.url.clone(),
             channel_id: main_channel_id.clone(),
             team_channel_id: None,
+            private_key_hex: None,
         });
 
         let token = "token-nip28-programmatic".to_string();

@@ -236,6 +236,9 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             Nip28ChatLaneUpdate::ConnectionError { message, .. } => {
                 state.autopilot_chat.managed_chat_projection.mark_relay_error(&message);
             }
+            Nip28ChatLaneUpdate::AuthChallengeReceived { .. } => {
+                state.autopilot_chat.managed_chat_projection.mark_relay_auth_required();
+            }
         }
     }
     if !nip28_relay_events.is_empty() {
