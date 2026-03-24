@@ -230,7 +230,12 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
                     .fail_outbound_message(&event_id, &message);
                 state.nip28_chat_lane_worker.clear_dispatched(&event_id);
             }
-            Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+            Nip28ChatLaneUpdate::Eose { .. } => {
+                state.autopilot_chat.managed_chat_projection.mark_relay_connected();
+            }
+            Nip28ChatLaneUpdate::ConnectionError { message, .. } => {
+                state.autopilot_chat.managed_chat_projection.mark_relay_error(&message);
+            }
         }
     }
     if !nip28_relay_events.is_empty() {

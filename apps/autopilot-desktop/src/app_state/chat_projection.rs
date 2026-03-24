@@ -38,6 +38,19 @@ impl ManagedChatDeliveryState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedChatRelayState {
+    Connecting,
+    Connected,
+    Error,
+}
+
+impl Default for ManagedChatRelayState {
+    fn default() -> Self {
+        Self::Connecting
+    }
+}
+
 fn managed_chat_outbound_attempt_count_default() -> u32 {
     1
 }
@@ -169,6 +182,8 @@ pub struct ManagedChatProjectionState {
     /// Team channel ID from config — injected as a synthetic placeholder in the projection.
     team_channel_id: Option<String>,
     projection_file_path: PathBuf,
+    pub relay_connection_state: ManagedChatRelayState,
+    pub relay_last_error: Option<String>,
 }
 
 impl Default for ManagedChatProjectionState {
@@ -210,6 +225,8 @@ impl ManagedChatProjectionState {
                     local_pubkey: None,
                     team_channel_id,
                     projection_file_path,
+                    relay_connection_state: ManagedChatRelayState::Connecting,
+                    relay_last_error: None,
                 }
             }
             Err(error) => Self {
@@ -226,6 +243,8 @@ impl ManagedChatProjectionState {
                 local_pubkey: None,
                 team_channel_id: None,
                 projection_file_path,
+                relay_connection_state: ManagedChatRelayState::Connecting,
+                relay_last_error: None,
             },
         }
     }
@@ -244,6 +263,16 @@ impl ManagedChatProjectionState {
             );
         }
         state
+    }
+
+    pub fn mark_relay_connected(&mut self) {
+        self.relay_connection_state = ManagedChatRelayState::Connected;
+        self.relay_last_error = None;
+    }
+
+    pub fn mark_relay_error(&mut self, message: &str) {
+        self.relay_connection_state = ManagedChatRelayState::Error;
+        self.relay_last_error = Some(message.to_string());
     }
 
     pub fn set_local_pubkey(&mut self, local_pubkey: Option<&str>) {
