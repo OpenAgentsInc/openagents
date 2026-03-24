@@ -3442,13 +3442,16 @@ fn paint_chat_shell(
         ChatBrowseMode::DirectMessages => "DIRECT MESSAGES",
         ChatBrowseMode::Autopilot => "CHAT",
     };
+
     paint_chat_mission_panel(
         transcript_bounds,
         transcript_panel_label,
         chat_transcript_accent_color(),
         ChatPanelTone::Primary,
+        // chat_mission_orange_color(),
         paint,
     );
+
     paint.scene.draw_quad(
         Quad::new(header_bounds)
             .with_background(chat_mission_panel_color().with_alpha(0.92))
