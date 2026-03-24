@@ -83,6 +83,7 @@ pub(crate) fn desktop_control_signature(state: &RenderState) -> String {
     append_desktop_control_shell_signature(&mut builder, state);
     append_desktop_control_buy_mode_signature(&mut builder, state);
     append_desktop_control_compute_history_signature(&mut builder, state);
+    append_desktop_control_remote_training_signature(&mut builder, state);
     append_desktop_control_log_signature(&mut builder, state);
     builder.finish()
 }
@@ -1168,6 +1169,88 @@ fn append_desktop_control_compute_history_signature(
                 .as_ref()
                 .and_then(|result| result.reason_code.as_ref())
                 .map(|reason| reason.label()),
+        );
+    }
+}
+
+fn append_desktop_control_remote_training_signature(
+    builder: &mut SignatureBuilder,
+    state: &RenderState,
+) {
+    let remote_training = &state.desktop_control.remote_training;
+    builder.opt_str(
+        "desktop_remote_training_source_root_hint",
+        remote_training
+            .source_root_hint
+            .as_ref()
+            .and_then(|path| path.to_str()),
+    );
+    builder.opt_str(
+        "desktop_remote_training_source_root",
+        remote_training
+            .source_root
+            .as_ref()
+            .and_then(|path| path.to_str()),
+    );
+    builder.opt_str(
+        "desktop_remote_training_source_index_path",
+        remote_training
+            .source_index_path
+            .as_ref()
+            .and_then(|path| path.to_str()),
+    );
+    builder.opt_u64(
+        "desktop_remote_training_last_refreshed_at_epoch_ms",
+        remote_training.last_refreshed_at_epoch_ms,
+    );
+    builder.opt_u64(
+        "desktop_remote_training_last_successful_sync_at_epoch_ms",
+        remote_training.last_successful_sync_at_epoch_ms,
+    );
+    builder.field(
+        "desktop_remote_training_refresh_interval_ms",
+        remote_training.refresh_interval_ms,
+    );
+    builder.bool(
+        "desktop_remote_training_using_cached_mirror",
+        remote_training.using_cached_mirror,
+    );
+    builder.opt_str(
+        "desktop_remote_training_selected_run_id",
+        remote_training.selected_run_id.as_deref(),
+    );
+    builder.opt_str(
+        "desktop_remote_training_last_error",
+        remote_training.last_error.as_deref(),
+    );
+    builder.opt_str(
+        "desktop_remote_training_last_action",
+        remote_training.last_action.as_deref(),
+    );
+    if let Some(index) = &remote_training.run_index {
+        builder.field(
+            "desktop_remote_training_index_digest",
+            index.index_digest.as_str(),
+        );
+        builder.field("desktop_remote_training_index_id", index.index_id.as_str());
+    }
+    for (run_id, bundle) in &remote_training.bundles {
+        builder.field("desktop_remote_training_bundle_run_id", run_id.as_str());
+        builder.field(
+            "desktop_remote_training_bundle_digest",
+            bundle.bundle_digest.as_str(),
+        );
+        builder.field(
+            "desktop_remote_training_bundle_heartbeat_seq",
+            bundle.refresh_contract.heartbeat_seq,
+        );
+        builder.opt_u64(
+            "desktop_remote_training_bundle_last_heartbeat_at_ms",
+            bundle.refresh_contract.last_heartbeat_at_ms,
+        );
+        builder.field(
+            "desktop_remote_training_bundle_series_status",
+            format!("{:?}", bundle.series_status),
         );
     }
 }

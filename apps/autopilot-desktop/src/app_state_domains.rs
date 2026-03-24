@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use super::*;
@@ -10,6 +11,7 @@ use psionic_serve::{
     TassadarLabUpdate, TassadarPlannerFallbackPolicy, TassadarPlannerRoutingBudget,
     TassadarPlannerRoutingPolicy,
 };
+use psionic_train::{RemoteTrainingRunIndex, RemoteTrainingVisualizationBundle};
 use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
@@ -2949,6 +2951,7 @@ pub struct DesktopControlState {
     pub last_snapshot_revision: u64,
     pub last_snapshot_signature: Option<String>,
     pub compute_history: DesktopControlComputeHistoryState,
+    pub remote_training: DesktopControlRemoteTrainingSyncState,
 }
 
 #[derive(Clone, Debug)]
@@ -2990,6 +2993,49 @@ impl Default for DesktopControlComputeHistoryState {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct DesktopControlRemoteTrainingSyncState {
+    pub source_root_hint: Option<PathBuf>,
+    pub source_index_path_hint: Option<PathBuf>,
+    pub source_root: Option<PathBuf>,
+    pub source_index_path: Option<PathBuf>,
+    pub cache_root: PathBuf,
+    pub using_cached_mirror: bool,
+    pub refresh_interval_ms: u64,
+    pub selected_run_id: Option<String>,
+    pub run_index: Option<RemoteTrainingRunIndex>,
+    pub bundles: BTreeMap<String, RemoteTrainingVisualizationBundle>,
+    pub mirrored_bundle_paths: BTreeMap<String, PathBuf>,
+    pub last_refreshed_at_epoch_ms: Option<u64>,
+    pub last_successful_sync_at_epoch_ms: Option<u64>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+}
+
+impl Default for DesktopControlRemoteTrainingSyncState {
+    fn default() -> Self {
+        Self {
+            source_root_hint: crate::remote_training_sync::default_remote_training_source_root_hint(
+            ),
+            source_index_path_hint:
+                crate::remote_training_sync::default_remote_training_source_index_path_hint(),
+            source_root: None,
+            source_index_path: None,
+            cache_root: crate::remote_training_sync::default_remote_training_cache_root(),
+            using_cached_mirror: false,
+            refresh_interval_ms: 15_000,
+            selected_run_id: None,
+            run_index: None,
+            bundles: BTreeMap::new(),
+            mirrored_bundle_paths: BTreeMap::new(),
+            last_refreshed_at_epoch_ms: None,
+            last_successful_sync_at_epoch_ms: None,
+            last_error: None,
+            last_action: Some("Remote training mirror idle".to_string()),
+        }
+    }
+}
+
 impl Default for DesktopControlState {
     fn default() -> Self {
         Self {
@@ -3007,6 +3053,7 @@ impl Default for DesktopControlState {
             last_snapshot_revision: 0,
             last_snapshot_signature: None,
             compute_history: DesktopControlComputeHistoryState::default(),
+            remote_training: DesktopControlRemoteTrainingSyncState::default(),
         }
     }
 }
