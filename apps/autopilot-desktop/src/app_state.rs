@@ -408,18 +408,23 @@ impl Default for SparkPaneInputs {
         Self {
             invoice_amount: wallet_text_input(
                 TextInput::new()
-                .value("1000")
-                .placeholder("Lightning invoice sats"),
+                    .value("1000")
+                    .placeholder("Lightning invoice sats"),
             ),
-            send_request: wallet_text_input(TextInput::new()
-                .placeholder("Lightning invoice / payment request")
-                .mono(true)),
+            send_request: wallet_text_input(
+                TextInput::new()
+                    .placeholder("Lightning invoice / payment request")
+                    .mono(true),
+            ),
             send_amount: wallet_text_input(TextInput::new().placeholder("Send sats (optional)")),
-            identity_path: wallet_text_input(TextInput::new()
-                .placeholder("Wallet seed path (identity mnemonic)")
-                .mono(true)),
-            mnemonic_phrase: wallet_text_input(TextInput::new()
-                .placeholder("Paste mnemonic words (session only, not saved)")),
+            identity_path: wallet_text_input(
+                TextInput::new()
+                    .placeholder("Wallet seed path (identity mnemonic)")
+                    .mono(true),
+            ),
+            mnemonic_phrase: wallet_text_input(
+                TextInput::new().placeholder("Paste mnemonic words (session only, not saved)"),
+            ),
         }
     }
 }
@@ -432,8 +437,8 @@ pub struct PayInvoicePaneInputs {
 impl Default for PayInvoicePaneInputs {
     fn default() -> Self {
         Self {
-            payment_request: wallet_text_input(TextInput::new()
-                .placeholder("Lightning invoice / payment request")
+            payment_request: wallet_text_input(
+                TextInput::new().placeholder("Lightning invoice / payment request"),
             ),
             amount_sats: wallet_text_input(TextInput::new().placeholder("Send sats (optional)")),
         }
@@ -449,9 +454,11 @@ pub struct CreateInvoicePaneInputs {
 impl Default for CreateInvoicePaneInputs {
     fn default() -> Self {
         Self {
-            amount_sats: wallet_text_input(TextInput::new()
-                .value("1000")
-                .placeholder("Lightning invoice sats")),
+            amount_sats: wallet_text_input(
+                TextInput::new()
+                    .value("1000")
+                    .placeholder("Lightning invoice sats"),
+            ),
             description: wallet_text_input(TextInput::new().placeholder("Description (optional)")),
             expiry_seconds: wallet_text_input(
                 TextInput::new().value("3600").placeholder("Expiry seconds"),
@@ -678,8 +685,9 @@ impl Default for JobHistoryPaneInputs {
 pub struct ChatPaneInputs {
     pub composer: TextInput,
     pub thread_search: TextInput,
+    /// Per-frame retry click targets for failed managed chat rows: (event_id, bounds).
+    /// Populated during paint, consumed in dispatch_input_event.
     pub managed_chat_retry_targets: Vec<(String, wgpui::Bounds)>,
-    pub composer_identity_link_bounds: Option<wgpui::Bounds>,
 }
 
 impl Default for ChatPaneInputs {
@@ -698,7 +706,6 @@ impl Default for ChatPaneInputs {
                 .font_size(wgpui::theme::font_size::SM - 3.0)
                 .border_color_focused(theme::border::FOCUS),
             managed_chat_retry_targets: vec![],
-            composer_identity_link_bounds: None,
         }
     }
 }

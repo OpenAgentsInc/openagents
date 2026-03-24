@@ -3948,6 +3948,7 @@ pub fn paint(
 
     match browse_mode {
         ChatBrowseMode::Managed => {
+            chat_inputs.managed_chat_retry_targets.clear();
             let overview_lines = managed_group_overview_lines(autopilot_chat);
             if !overview_lines.is_empty() {
                 paint.scene.draw_text(paint.text.layout_mono(
@@ -4084,6 +4085,17 @@ pub fn paint(
                         9.0,
                         managed_message_role_color(message),
                     ));
+                    if message.delivery_state == ManagedChatDeliveryState::Failed {
+                        chat_inputs.managed_chat_retry_targets.push((
+                            message.event_id.clone(),
+                            Bounds::new(
+                                transcript_scroll_clip.origin.x,
+                                y,
+                                transcript_scroll_clip.size.width,
+                                CHAT_ACTIVITY_ROW_LINE_HEIGHT,
+                            ),
+                        ));
+                    }
                     y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
                 y += 8.0;
@@ -4681,12 +4693,6 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
             && state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::Managed
         {
             let click = Point::new(*x, *y);
-            if let Some(link_bounds) = state.chat_inputs.composer_identity_link_bounds
-                && link_bounds.contains(click)
-            {
-                activate_hotbar_slot(state, HOTBAR_SLOT_NOSTR_IDENTITY);
-                return true;
-            }
             let matched = state
                 .chat_inputs
                 .managed_chat_retry_targets
