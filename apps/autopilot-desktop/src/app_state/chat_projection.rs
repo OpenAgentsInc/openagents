@@ -49,6 +49,8 @@ impl ManagedChatDeliveryState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManagedChatRelayState {
     Connecting,
+    /// AUTH challenge received; response sent; waiting for EOSE.
+    AuthRequired,
     Connected,
     Error,
 }
@@ -278,6 +280,12 @@ impl ManagedChatProjectionState {
     pub fn mark_relay_connected(&mut self) {
         self.relay_connection_state = ManagedChatRelayState::Connected;
         self.relay_last_error = None;
+    }
+
+    pub fn mark_relay_auth_required(&mut self) {
+        if self.relay_connection_state == ManagedChatRelayState::Connecting {
+            self.relay_connection_state = ManagedChatRelayState::AuthRequired;
+        }
     }
 
     pub fn mark_relay_error(&mut self, message: &str) {
