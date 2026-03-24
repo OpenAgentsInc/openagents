@@ -19,18 +19,17 @@ use crate::pane_system::{
     chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
     chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
     chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
-    chat_help_toggle_button_bounds, chat_interrupt_button_bounds, chat_new_thread_button_bounds,
-    chat_refresh_threads_button_bounds, chat_review_button_bounds, chat_send_button_bounds,
-    chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
-    chat_thread_action_fork_button_bounds, chat_thread_action_open_editor_button_bounds,
-    chat_thread_action_reload_button_bounds, chat_thread_action_rename_button_bounds,
-    chat_thread_action_rollback_button_bounds, chat_thread_action_unarchive_button_bounds,
-    chat_thread_action_unsubscribe_button_bounds, chat_thread_filter_archived_button_bounds,
-    chat_thread_filter_provider_button_bounds, chat_thread_filter_source_button_bounds,
-    chat_thread_rail_bounds, chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds,
-    chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
-    chat_transcript_bounds, chat_visible_thread_row_count,
-    chat_managed_debug_toggle_bounds,
+    chat_help_toggle_button_bounds, chat_interrupt_button_bounds, chat_managed_debug_toggle_bounds,
+    chat_new_thread_button_bounds, chat_refresh_threads_button_bounds, chat_review_button_bounds,
+    chat_send_button_bounds, chat_thread_action_archive_button_bounds,
+    chat_thread_action_copy_button_bounds, chat_thread_action_fork_button_bounds,
+    chat_thread_action_open_editor_button_bounds, chat_thread_action_reload_button_bounds,
+    chat_thread_action_rename_button_bounds, chat_thread_action_rollback_button_bounds,
+    chat_thread_action_unarchive_button_bounds, chat_thread_action_unsubscribe_button_bounds,
+    chat_thread_filter_archived_button_bounds, chat_thread_filter_provider_button_bounds,
+    chat_thread_filter_source_button_bounds, chat_thread_rail_bounds,
+    chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds, chat_thread_search_input_bounds,
+    chat_transcript_body_bounds_with_height, chat_transcript_bounds, chat_visible_thread_row_count,
     chat_workspace_rail_bounds, chat_workspace_rail_toggle_button_bounds,
     chat_workspace_row_bounds, pane_content_bounds, set_chat_shell_layout_state,
 };
@@ -231,7 +230,8 @@ struct ChatShellChannelEntry {
 }
 
 fn normalize_thread_row_text(value: &str) -> String {
-    value.chars()
+    value
+        .chars()
         .flat_map(|ch| ch.to_lowercase())
         .map(|ch| {
             if ch.is_alphanumeric() || ch.is_whitespace() {
@@ -269,7 +269,9 @@ fn thread_row_title(
         .unwrap_or_else(|| compact_display_token(thread_id, 14))
 }
 
-fn thread_row_preview(metadata: Option<&crate::app_state::AutopilotThreadMetadata>) -> Option<String> {
+fn thread_row_preview(
+    metadata: Option<&crate::app_state::AutopilotThreadMetadata>,
+) -> Option<String> {
     metadata
         .and_then(|value| value.preview.as_deref())
         .map(str::trim)
@@ -1302,7 +1304,11 @@ fn transcript_message_layouts(
             .max(120.0);
         let markdown_document = markdown_parser.parse(&markdown_source);
         let markdown_height = markdown_renderer
-            .measure(&markdown_document, bubble_content_width, &mut state.text_system)
+            .measure(
+                &markdown_document,
+                bubble_content_width,
+                &mut state.text_system,
+            )
             .height
             .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
         let attachments_height = rich_message_attachments_height(&markdown_source);
@@ -1324,7 +1330,12 @@ fn transcript_message_layouts(
 
         layouts.push((
             message.id,
-            Bounds::new(bubble_bounds.origin.x, start_y, bubble_bounds.size.width, (y - start_y).max(0.0)),
+            Bounds::new(
+                bubble_bounds.origin.x,
+                start_y,
+                bubble_bounds.size.width,
+                (y - start_y).max(0.0),
+            ),
         ));
     }
 
@@ -1590,16 +1601,17 @@ fn managed_message_reaction_summary(message: &ManagedChatMessageProjection) -> O
 fn managed_message_delivery_note(message: &ManagedChatMessageProjection) -> Option<String> {
     match message.delivery_state {
         ManagedChatDeliveryState::Confirmed => None,
+        ManagedChatDeliveryState::Acked => None,
         ManagedChatDeliveryState::Publishing => Some(format!(
-            "publishing local echo attempt {}",
+            "sending… (attempt {})",
             message.attempt_count.max(1)
         )),
-        ManagedChatDeliveryState::Acked => {
-            Some("relay acknowledged local echo; waiting for sync".to_string())
-        }
         ManagedChatDeliveryState::Failed => Some(match message.delivery_error.as_deref() {
-            Some(error) => format!("publish failed: {error}"),
-            None => format!("publish failed on attempt {}", message.attempt_count.max(1)),
+            Some(error) => format!("send failed: {error}  retry →"),
+            None => format!(
+                "send failed (attempt {})  retry →",
+                message.attempt_count.max(1)
+            ),
         }),
     }
 }
@@ -2023,9 +2035,7 @@ fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .map(ToString::to_string)
-        .or_else(|| {
-            thread_id.and_then(|thread_id| autopilot_chat.suggested_thread_name(thread_id))
-        })
+        .or_else(|| thread_id.and_then(|thread_id| autopilot_chat.suggested_thread_name(thread_id)))
         .or_else(|| {
             metadata
                 .and_then(|value| value.project_name.as_deref())
@@ -2066,9 +2076,9 @@ fn active_thread_supporting_context(
             if let Some(room) = autopilot_chat.active_direct_message_room() {
                 return Some(
                     vec![
-                    format!("{} participant(s)", room.participant_pubkeys.len()),
-                    format!("{} message(s)", room.message_ids.len()),
-                ]
+                        format!("{} participant(s)", room.participant_pubkeys.len()),
+                        format!("{} message(s)", room.message_ids.len()),
+                    ]
                     .join("  •  "),
                 );
             }
@@ -2657,12 +2667,7 @@ fn paint_thread_rail_button(
     ));
 }
 
-fn paint_header_chip(
-    bounds: Bounds,
-    label: &str,
-    _accent: wgpui::Hsla,
-    paint: &mut PaintContext,
-) {
+fn paint_header_chip(bounds: Bounds, label: &str, _accent: wgpui::Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(chat_mission_panel_header_color().with_alpha(0.18))
@@ -2969,13 +2974,11 @@ fn paint_chat_shell(
             );
             paint.scene.draw_quad(
                 Quad::new(indicator_bounds)
-                    .with_background(
-                        if workspace.active {
-                            workspace.accent.with_alpha(0.90)
-                        } else {
-                            chat_mission_panel_border_color().with_alpha(0.30)
-                        },
-                    )
+                    .with_background(if workspace.active {
+                        workspace.accent.with_alpha(0.90)
+                    } else {
+                        chat_mission_panel_border_color().with_alpha(0.30)
+                    })
                     .with_corner_radius(4.0),
             );
             let badge_label = (workspace.badge_count > 0)
@@ -3323,9 +3326,13 @@ fn paint_chat_shell(
                     .color
                     .with_alpha(0.88)
             } else if entry.active && !suppress_active_highlight {
-                chat_text_style(AppTextRole::PrimaryRow).color.with_alpha(0.98)
+                chat_text_style(AppTextRole::PrimaryRow)
+                    .color
+                    .with_alpha(0.98)
             } else {
-                chat_text_style(AppTextRole::PrimaryRow).color.with_alpha(0.86)
+                chat_text_style(AppTextRole::PrimaryRow)
+                    .color
+                    .with_alpha(0.86)
             };
             paint.scene.draw_text(paint.text.layout(
                 &truncate_for_width(&entry.title, text_width),
@@ -3340,7 +3347,11 @@ fn paint_chat_shell(
                 },
                 title_color,
             ));
-            if let Some(subtitle) = entry.subtitle.as_deref().filter(|subtitle| !subtitle.trim().is_empty()) {
+            if let Some(subtitle) = entry
+                .subtitle
+                .as_deref()
+                .filter(|subtitle| !subtitle.trim().is_empty())
+            {
                 paint.scene.draw_text(paint.text.layout_mono(
                     &truncate_for_width(subtitle, text_width),
                     Point::new(row_inner.origin.x + row_padding, row_inner.origin.y + 21.0),
@@ -3379,8 +3390,8 @@ fn paint_chat_shell(
                 3.0,
                 rows_clip.size.height,
             );
-        paint.scene.draw_quad(
-            Quad::new(track_bounds)
+            paint.scene.draw_quad(
+                Quad::new(track_bounds)
                     .with_background(chat_mission_panel_border_color().with_alpha(0.18)),
             );
             let thumb_height = (rows_clip.size.height
@@ -3453,8 +3464,7 @@ fn paint_chat_shell(
             .with_background(chat_mission_panel_header_color().with_alpha(0.20)),
     );
     paint.scene.draw_quad(
-        Quad::new(action_tier_bounds)
-            .with_background(chat_mission_panel_color().with_alpha(0.30)),
+        Quad::new(action_tier_bounds).with_background(chat_mission_panel_color().with_alpha(0.30)),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
@@ -3479,7 +3489,10 @@ fn paint_chat_shell(
     let context_line = active_thread_supporting_context(autopilot_chat, spacetime_presence);
     paint.scene.draw_text(paint.text.layout(
         &truncate_for_width(&title_text, (header_bounds.size.width - 32.0).max(120.0)),
-        Point::new(header_bounds.origin.x + panel_padding + 4.0, header_bounds.origin.y + 8.0),
+        Point::new(
+            header_bounds.origin.x + panel_padding + 4.0,
+            header_bounds.origin.y + 8.0,
+        ),
         chat_text_style(AppTextRole::Header).font_size + 2.0,
         chat_text_style(AppTextRole::Header).color.with_alpha(0.98),
     ));
@@ -3487,14 +3500,19 @@ fn paint_chat_shell(
         .as_deref()
         .filter(|line| !line.trim().is_empty())
     {
-        paint.scene.draw_text(paint.text.layout_mono(
-            &truncate_for_width(context_line, (header_bounds.size.width - 32.0).max(120.0)),
-            Point::new(header_bounds.origin.x + panel_padding + 4.0, header_bounds.origin.y + 27.0),
-            chat_text_style(AppTextRole::SecondaryMetadata).font_size,
-            chat_text_style(AppTextRole::SecondaryMetadata)
-                .color
-                .with_alpha(0.72),
-        ));
+        paint.scene.draw_text(
+            paint.text.layout_mono(
+                &truncate_for_width(context_line, (header_bounds.size.width - 32.0).max(120.0)),
+                Point::new(
+                    header_bounds.origin.x + panel_padding + 4.0,
+                    header_bounds.origin.y + 27.0,
+                ),
+                chat_text_style(AppTextRole::SecondaryMetadata).font_size,
+                chat_text_style(AppTextRole::SecondaryMetadata)
+                    .color
+                    .with_alpha(0.72),
+            ),
+        );
     }
     match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Autopilot => {
@@ -3981,13 +3999,43 @@ pub fn paint(
                 {
                     continue;
                 }
-                paint.scene.draw_text(paint.text.layout_mono(
-                    &managed_message_role_label(index, message),
-                    Point::new(transcript_scroll_clip.origin.x, y),
-                    10.0,
-                    managed_message_role_color(message),
-                ));
-                y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+
+                let is_own = local_pubkey.as_deref() == Some(message.author_pubkey.as_str());
+                let is_grouped = prev_author_pubkey.as_deref()
+                    == Some(message.author_pubkey.as_str())
+                    && message.created_at.saturating_sub(prev_created_at) < 300;
+
+                if let Some(role_label) = managed_message_role_label(
+                    message,
+                    author_metadata,
+                    is_grouped,
+                    is_own,
+                    now_secs,
+                ) {
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &role_label,
+                        Point::new(transcript_scroll_clip.origin.x, y),
+                        10.0,
+                        if message.delivery_state == ManagedChatDeliveryState::Failed {
+                            managed_message_role_color(message)
+                        } else {
+                            author_label_color(&message.author_pubkey, is_own)
+                        },
+                    ));
+                    y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+                } else {
+                    // Compact grouped row: show small timestamp suffix
+                    let ts = format_managed_chat_relative_timestamp(message.created_at, now_secs);
+                    if !ts.is_empty() {
+                        paint.scene.draw_text(paint.text.layout_mono(
+                            &ts,
+                            Point::new(transcript_scroll_clip.origin.x + 12.0, y),
+                            9.0,
+                            theme::text::MUTED,
+                        ));
+                        y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+                    }
+                }
 
                 if let Some(reply_label) = managed_message_reply_label(message) {
                     paint.scene.draw_text(paint.text.layout_mono(
@@ -4270,12 +4318,8 @@ pub fn paint(
 
             for message in &autopilot_chat.messages {
                 let markdown_source = message_markdown_source(message);
-                let bubble_bounds = chat_message_bubble_bounds(
-                    transcript_scroll_clip,
-                    message.role,
-                    y,
-                    0.0,
-                );
+                let bubble_bounds =
+                    chat_message_bubble_bounds(transcript_scroll_clip, message.role, y, 0.0);
                 let bubble_content_x = bubble_bounds.origin.x + CHAT_MESSAGE_BUBBLE_PAD_X;
                 let bubble_content_y = y + CHAT_MESSAGE_BUBBLE_PAD_Y;
                 let bubble_content_width =
@@ -4309,8 +4353,8 @@ pub fn paint(
                     );
                 }
                 let markdown_document = markdown_parser.parse(&markdown_source);
-                let markdown_size = markdown_renderer
-                    .measure(&markdown_document, bubble_content_width, paint.text);
+                let markdown_size =
+                    markdown_renderer.measure(&markdown_document, bubble_content_width, paint.text);
                 let attachments_height = rich_message_attachments_height(&markdown_source);
                 let progress_height = message_progress_height(message);
                 let bubble_height = CHAT_MESSAGE_BUBBLE_PAD_Y
@@ -4430,17 +4474,17 @@ pub fn paint(
     if browse_mode == ChatBrowseMode::Autopilot {
         let help_bounds = chat_help_toggle_button_bounds(content_bounds);
         paint.scene.draw_quad(
-        Quad::new(help_bounds)
-            .with_background(chat_mission_panel_header_color().with_alpha(0.45))
-            .with_border(
-                if autopilot_chat.show_autopilot_help_hint {
-                    chat_mission_cyan_color().with_alpha(0.42)
-                } else {
-                    chat_mission_panel_border_color().with_alpha(0.16)
-                },
-                1.0,
-            )
-            .with_corner_radius(8.0),
+            Quad::new(help_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.45))
+                .with_border(
+                    if autopilot_chat.show_autopilot_help_hint {
+                        chat_mission_cyan_color().with_alpha(0.42)
+                    } else {
+                        chat_mission_panel_border_color().with_alpha(0.16)
+                    },
+                    1.0,
+                )
+                .with_corner_radius(8.0),
         );
         paint.scene.draw_text(paint.text.layout_mono(
             "?",
@@ -4674,12 +4718,16 @@ pub fn update_thread_hover_preview_target(state: &mut RenderState, cursor_positi
         .map(|pane| pane.bounds);
     let now = std::time::Instant::now();
     let Some(bounds) = top_chat else {
-        return state.autopilot_chat.set_thread_hover_preview_target(None, now);
+        return state
+            .autopilot_chat
+            .set_thread_hover_preview_target(None, now);
     };
     if state.autopilot_chat.chat_browse_mode() != ChatBrowseMode::Autopilot
         || state.autopilot_chat.thread_rail_collapsed
     {
-        return state.autopilot_chat.set_thread_hover_preview_target(None, now);
+        return state
+            .autopilot_chat
+            .set_thread_hover_preview_target(None, now);
     }
     let content_bounds = pane_content_bounds(bounds);
     let channel_entries = shell_channel_entries(&state.autopilot_chat);
@@ -4697,7 +4745,9 @@ pub fn update_thread_hover_preview_target(state: &mut RenderState, cursor_positi
         chat_thread_rail_bounds(content_bounds),
     );
     if !rows_clip.contains(cursor_position) {
-        return state.autopilot_chat.set_thread_hover_preview_target(None, now);
+        return state
+            .autopilot_chat
+            .set_thread_hover_preview_target(None, now);
     }
     for (index, entry) in channel_entries
         .iter()
@@ -4705,8 +4755,11 @@ pub fn update_thread_hover_preview_target(state: &mut RenderState, cursor_positi
         .take(visible_rows)
         .enumerate()
     {
-        let row_bounds =
-            chat_thread_row_bounds(content_bounds, index, state.autopilot_chat.thread_tools_expanded);
+        let row_bounds = chat_thread_row_bounds(
+            content_bounds,
+            index,
+            state.autopilot_chat.thread_tools_expanded,
+        );
         if row_bounds.contains(cursor_position) {
             return state
                 .autopilot_chat
@@ -4756,10 +4809,9 @@ pub fn dispatch_transcript_scroll_event(
                 visible_rows,
             )
         {
-            let _ = state.autopilot_chat.set_thread_hover_preview_target(
-                None,
-                std::time::Instant::now(),
-            );
+            let _ = state
+                .autopilot_chat
+                .set_thread_hover_preview_target(None, std::time::Instant::now());
             return true;
         }
     }
@@ -4833,8 +4885,9 @@ fn sanitize_chat_text(text: &str) -> String {
 mod tests {
     use super::{
         byte_offset_for_char_index, chat_tool_activity_lines, clamp_to_char_boundary,
-        is_tool_activity_event, message_progress_height, progress_status_color,
-        rich_message_attachments, sanitize_chat_text, wrap_transcript_text_lines,
+        is_tool_activity_event, managed_message_delivery_note, message_progress_height,
+        progress_status_color, rich_message_attachments, sanitize_chat_text,
+        wrap_transcript_text_lines,
     };
     use crate::app_state::{
         AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
@@ -5175,5 +5228,64 @@ mod tests {
                 .any(|line| line == "settlement: claim / dispute path")
         );
         assert!(lines.iter().any(|line| line == "claim: under_review"));
+    }
+
+    #[test]
+    fn delivery_note_states_match_spec() {
+        use crate::app_state::{ManagedChatDeliveryState, ManagedChatMessageProjection};
+        use crate::chat_message_classifier::ChatMessageClass;
+
+        fn make(
+            state: ManagedChatDeliveryState,
+            error: Option<&str>,
+            attempt: u32,
+        ) -> ManagedChatMessageProjection {
+            ManagedChatMessageProjection {
+                event_id: "a".repeat(64),
+                group_id: "g".to_string(),
+                channel_id: "c".to_string(),
+                author_pubkey: "p".repeat(64),
+                content: "hi".to_string(),
+                created_at: 0,
+                reply_to_event_id: None,
+                mention_pubkeys: vec![],
+                reaction_summaries: vec![],
+                reply_child_ids: vec![],
+                delivery_state: state,
+                delivery_error: error.map(str::to_string),
+                attempt_count: attempt,
+                message_class: ChatMessageClass::HumanMessage,
+            }
+        }
+
+        // Confirmed and Acked: clean rows — no delivery note
+        assert_eq!(
+            managed_message_delivery_note(&make(ManagedChatDeliveryState::Confirmed, None, 1)),
+            None
+        );
+        assert_eq!(
+            managed_message_delivery_note(&make(ManagedChatDeliveryState::Acked, None, 1)),
+            None
+        );
+
+        // Publishing: subtle sending indicator
+        let n = managed_message_delivery_note(&make(ManagedChatDeliveryState::Publishing, None, 2))
+            .unwrap();
+        assert!(n.contains("sending"), "got: {n:?}");
+
+        // Failed with relay error text + retry hint
+        let n = managed_message_delivery_note(&make(
+            ManagedChatDeliveryState::Failed,
+            Some("auth-rejected"),
+            1,
+        ))
+        .unwrap();
+        assert!(n.contains("auth-rejected"), "got: {n:?}");
+        assert!(n.contains("retry"), "got: {n:?}");
+
+        // Failed without error text: attempt count + retry hint
+        let n = managed_message_delivery_note(&make(ManagedChatDeliveryState::Failed, None, 3))
+            .unwrap();
+        assert!(n.contains("retry"), "got: {n:?}");
     }
 }
