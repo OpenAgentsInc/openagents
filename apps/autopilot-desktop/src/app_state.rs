@@ -102,6 +102,7 @@ pub enum PaneKind {
     VoicePlayground,
     LocalInference,
     PsionicViz,
+    PsionicRemoteTraining,
     AttnResLab,
     TassadarLab,
     RivePreview,
@@ -1411,9 +1412,8 @@ impl Default for DataBuyerPaneState {
                 "Data Buyer pane ready; refresh the relay catalog to select a dataset listing."
                     .to_string(),
             ),
-            status_line:
-                "Waiting for a relay dataset listing before issuing a targeted request."
-                    .to_string(),
+            status_line: "Waiting for a relay dataset listing before issuing a targeted request."
+                .to_string(),
             local_buyer_id: None,
             selected_asset_id: None,
             selected_listing_coordinate: None,
@@ -1443,9 +1443,8 @@ impl DataBuyerPaneState {
 
     pub fn mark_opened(&mut self) {
         self.last_error = None;
-        self.last_action = Some(
-            "Opened Data Buyer pane; waiting for a relay dataset selection.".to_string(),
-        );
+        self.last_action =
+            Some("Opened Data Buyer pane; waiting for a relay dataset selection.".to_string());
     }
 
     fn visible_relay_listings<'a>(
@@ -1691,17 +1690,19 @@ impl DataBuyerPaneState {
             .and_then(|request| market.relay_access_contract_for_request(request.event_id.as_str()))
             .or_else(|| {
                 let buyer_id = self.local_buyer_id.as_deref();
-                self.selected_offer_coordinate.as_deref().and_then(|coordinate| {
-                    market.relay_access_contracts.iter().find(|contract| {
-                        contract
-                            .offer_coordinate
-                            .as_deref()
-                            .is_some_and(|value| value.eq_ignore_ascii_case(coordinate))
-                            && buyer_id.is_none_or(|buyer_id| {
-                                contract.buyer_pubkey.eq_ignore_ascii_case(buyer_id)
-                            })
+                self.selected_offer_coordinate
+                    .as_deref()
+                    .and_then(|coordinate| {
+                        market.relay_access_contracts.iter().find(|contract| {
+                            contract
+                                .offer_coordinate
+                                .as_deref()
+                                .is_some_and(|value| value.eq_ignore_ascii_case(coordinate))
+                                && buyer_id.is_none_or(|buyer_id| {
+                                    contract.buyer_pubkey.eq_ignore_ascii_case(buyer_id)
+                                })
+                        })
                     })
-                })
             })
     }
 
@@ -1799,7 +1800,8 @@ impl DataBuyerPaneState {
                 modes
             })
             .or_else(|| {
-                grant.map(|grant| json_string_array_field(&grant.metadata, "delivery_modes"))
+                grant
+                    .map(|grant| json_string_array_field(&grant.metadata, "delivery_modes"))
                     .filter(|modes| !modes.is_empty())
             })
             .or_else(|| {
@@ -5085,9 +5087,8 @@ impl DataMarketPaneState {
     pub fn mark_opened(&mut self) {
         self.last_error = None;
         if !self.has_snapshot() {
-            self.last_action = Some(
-                "Opened Data Market pane; refresh to load the DS relay catalog".to_string(),
-            );
+            self.last_action =
+                Some("Opened Data Market pane; refresh to load the DS relay catalog".to_string());
         }
     }
 
@@ -5412,9 +5413,8 @@ impl DataMarketPaneState {
         self.relay_listings
             .iter()
             .filter(|listing| {
-                crate::nip90_compute_semantics::normalize_pubkey(
-                    listing.publisher_pubkey.as_str(),
-                ) == normalized_publisher
+                crate::nip90_compute_semantics::normalize_pubkey(listing.publisher_pubkey.as_str())
+                    == normalized_publisher
             })
             .collect()
     }

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use wgpui::components::hud::{DotShape, DotsGrid, Heatmap, RingGauge, Scanlines, SignalMeter};
@@ -18,6 +19,9 @@ use crate::pane_system::{
     attnres_lab_pipeline_button_bounds, attnres_lab_previous_sublayer_button_bounds,
     attnres_lab_refresh_button_bounds, attnres_lab_reset_button_bounds,
     attnres_lab_slower_button_bounds, attnres_lab_toggle_playback_button_bounds,
+};
+use crate::panes::training_viz_shared::{
+    EventFeedRow, HistoryChartSeries, paint_event_feed_body, paint_history_chart_body,
 };
 
 const PANEL_RADIUS: f32 = 10.0;
@@ -1311,8 +1315,6 @@ fn paint_loss_curve_panel(
     paint: &mut PaintContext,
 ) {
     let accent = Hsla::from_hex(ACCENT_CORAL);
-    paint_panel_texture(bounds, accent, phase, paint);
-
     let loss_raw = metric_history_raw_values(snapshot.metrics.as_slice(), MetricHistoryKind::Loss);
     let ema_raw = metric_history_raw_values(snapshot.metrics.as_slice(), MetricHistoryKind::Ema);
     let start_loss = loss_raw.first().copied().unwrap_or(snapshot.training_loss);
@@ -1321,104 +1323,6 @@ fn paint_loss_curve_panel(
         .copied()
         .fold(f32::INFINITY, f32::min)
         .min(snapshot.training_loss);
-    let min = loss_raw
-        .iter()
-        .copied()
-        .chain(ema_raw.iter().copied())
-        .fold(f32::INFINITY, f32::min);
-    let max = loss_raw
-        .iter()
-        .copied()
-        .chain(ema_raw.iter().copied())
-        .fold(f32::NEG_INFINITY, f32::max);
-    let min = if min.is_finite() { min } else { 0.0 };
-    let max = if max.is_finite() { max } else { 1.0 };
-    let span = (max - min).max(0.0001);
-    let chart_bounds = Bounds::new(
-        bounds.origin.x + 16.0,
-        bounds.origin.y + 52.0,
-        bounds.size.width - 32.0,
-        (bounds.size.height - 96.0).max(120.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(chart_bounds)
-            .with_background(Hsla::from_hex(0x041018).with_alpha(0.92))
-            .with_border(accent.with_alpha(0.16), 1.0)
-            .with_corner_radius(8.0),
-    );
-
-    for band in 0..=4 {
-        let y = chart_bounds.origin.y + band as f32 * (chart_bounds.size.height / 4.0);
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                chart_bounds.origin.x,
-                y,
-                chart_bounds.size.width,
-                1.0,
-            ))
-            .with_background(theme::text::PRIMARY.with_alpha(0.08)),
-        );
-        let guide_value = max - span * (band as f32 / 4.0);
-        paint.scene.draw_text(paint.text.layout_mono(
-            format!("{guide_value:.2}").as_str(),
-            Point::new(chart_bounds.origin.x + 8.0, y - 2.0),
-            9.0,
-            theme::text::MUTED,
-        ));
-    }
-
-    let sample_count = ((chart_bounds.size.width / 4.0).floor() as usize).clamp(24, 160);
-    let loss_samples = sample_metric_series(loss_raw.as_slice(), sample_count);
-    let ema_samples = sample_metric_series(ema_raw.as_slice(), sample_count);
-    let column_gap = 1.5;
-    let column_width = ((chart_bounds.size.width
-        - column_gap * sample_count.saturating_sub(1) as f32)
-        / sample_count as f32)
-        .max(1.0);
-
-    for index in 0..sample_count {
-        let x = chart_bounds.origin.x + index as f32 * (column_width + column_gap);
-        let loss = loss_samples
-            .get(index)
-            .copied()
-            .unwrap_or(snapshot.training_loss);
-        let ema = ema_samples.get(index).copied().unwrap_or(snapshot.ema_loss);
-        let loss_level = 1.0 - ((loss - min) / span).clamp(0.0, 1.0);
-        let ema_level = 1.0 - ((ema - min) / span).clamp(0.0, 1.0);
-        let loss_y = chart_bounds.origin.y + loss_level * chart_bounds.size.height;
-        let ema_y = chart_bounds.origin.y + ema_level * chart_bounds.size.height;
-        let emphasis = if index + 1 == sample_count { 0.22 } else { 0.0 };
-
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                x,
-                loss_y.min(chart_bounds.max_y() - 2.0),
-                column_width,
-                (chart_bounds.max_y() - loss_y).max(2.0),
-            ))
-            .with_background(accent.with_alpha(0.11 + emphasis))
-            .with_corner_radius(2.0),
-        );
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                x,
-                loss_y.clamp(chart_bounds.origin.y, chart_bounds.max_y() - 2.0),
-                column_width,
-                2.0,
-            ))
-            .with_background(accent.with_alpha(0.82 + emphasis)),
-        );
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                x,
-                ema_y.clamp(chart_bounds.origin.y, chart_bounds.max_y() - 2.0),
-                column_width,
-                2.0,
-            ))
-            .with_background(Hsla::from_hex(ACCENT_GOLD).with_alpha(0.88)),
-        );
-    }
-
     let live_step = snapshot
         .metrics
         .last()
@@ -1444,14 +1348,31 @@ fn paint_loss_curve_panel(
         snapshot.metrics.len(),
         ((start_loss - snapshot.training_loss) / start_loss.max(0.0001) * 100.0).max(0.0)
     );
-    let fitted_footer =
-        truncate_mono_text_to_width(paint, footer.as_str(), bounds.size.width - 32.0, 10.0);
-    paint.scene.draw_text(paint.text.layout_mono(
-        fitted_footer.as_str(),
-        Point::new(bounds.origin.x + 16.0, bounds.max_y() - 12.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    paint_history_chart_body(
+        bounds,
+        accent,
+        phase,
+        Some(header.as_str()),
+        Some(footer.as_str()),
+        "No AttnRes metrics recorded yet.",
+        &[
+            HistoryChartSeries {
+                label: "loss",
+                values: loss_raw.as_slice(),
+                color: accent,
+                fill_alpha: 0.11,
+                line_alpha: 0.82,
+            },
+            HistoryChartSeries {
+                label: "ema",
+                values: ema_raw.as_slice(),
+                color: Hsla::from_hex(ACCENT_GOLD),
+                fill_alpha: 0.0,
+                line_alpha: 0.88,
+            },
+        ],
+        paint,
+    );
 }
 
 fn paint_loss_summary_panel(
@@ -1805,50 +1726,23 @@ fn paint_selected_sublayer(
 }
 
 fn paint_event_feed(bounds: Bounds, events: &[String], phase: f32, paint: &mut PaintContext) {
-    paint_panel_texture(bounds, Hsla::from_hex(ACCENT_CORAL), phase, paint);
-    if events.is_empty() {
-        paint.scene.draw_text(paint.text.layout(
-            "No AttnRes events recorded yet.",
-            Point::new(bounds.origin.x + 14.0, bounds.origin.y + 36.0),
-            11.0,
-            theme::text::MUTED,
-        ));
-        return;
-    }
-
-    let rail_x = bounds.origin.x + 20.0;
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            rail_x,
-            bounds.origin.y + 36.0,
-            1.0,
-            (bounds.size.height - 56.0).max(24.0),
-        ))
-        .with_background(Hsla::from_hex(ACCENT_CORAL).with_alpha(0.16)),
+    let rows = events
+        .iter()
+        .enumerate()
+        .map(|(index, event)| EventFeedRow {
+            label: Cow::Owned(format!("E{:02}", index + 1)),
+            detail: Cow::Borrowed(event.as_str()),
+            color: Hsla::from_hex(ACCENT_CORAL),
+        })
+        .collect::<Vec<_>>();
+    paint_event_feed_body(
+        bounds,
+        Hsla::from_hex(ACCENT_CORAL),
+        phase,
+        "No AttnRes events recorded yet.",
+        rows.as_slice(),
+        paint,
     );
-
-    let mut y = bounds.origin.y + 38.0;
-    let remaining_events = ((bounds.max_y() - y - 16.0) / (PANEL_LINE_HEIGHT + 8.0))
-        .floor()
-        .max(1.0) as usize;
-    for (index, event) in events.iter().take(remaining_events.min(5)).enumerate() {
-        let pulse = if index == 0 { 0.12 + phase * 0.12 } else { 0.0 };
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(rail_x - 4.0, y + 3.0, 9.0, 9.0))
-                .with_background(Hsla::from_hex(ACCENT_CORAL).with_alpha(0.74 + pulse))
-                .with_corner_radius(4.5),
-        );
-        y = paint_panel_multiline_phrase(
-            paint,
-            bounds,
-            bounds.origin.x + 34.0,
-            y,
-            format!("E{:02}", index + 1).as_str(),
-            event.as_str(),
-            2,
-        );
-        y += 8.0;
-    }
 }
 
 fn paint_algorithm_steps(
@@ -2785,66 +2679,15 @@ fn paint_filter_like_button(bounds: Bounds, label: &str, active: bool, paint: &m
 }
 
 fn paint_panel_shell(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(Hsla::from_hex(0x071019).with_alpha(0.96))
-            .with_border(accent.with_alpha(0.28), 1.0)
-            .with_corner_radius(PANEL_RADIUS),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x + 1.0,
-            bounds.origin.y + 1.0,
-            bounds.size.width - 2.0,
-            PANEL_TITLE_BAR_HEIGHT,
-        ))
-        .with_background(accent.with_alpha(0.06))
-        .with_corner_radius(PANEL_RADIUS - 1.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x + 10.0,
-            bounds.max_y() - 3.0,
-            bounds.size.width - 20.0,
-            1.0,
-        ))
-        .with_background(accent.with_alpha(0.12)),
-    );
+    crate::panes::training_viz_shared::paint_panel_shell(bounds, accent, paint);
 }
 
 fn paint_panel_title(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
-    let title_y = bounds.origin.y + 1.0 + (PANEL_TITLE_BAR_HEIGHT - PANEL_TITLE_FONT_SIZE) * 0.5;
-    paint.scene.draw_text(paint.text.layout_mono(
-        title,
-        Point::new(bounds.origin.x + 10.0, title_y),
-        PANEL_TITLE_FONT_SIZE,
-        accent.with_alpha(0.9),
-    ));
+    crate::panes::training_viz_shared::paint_panel_title(bounds, title, accent, paint);
 }
 
 fn paint_panel_texture(bounds: Bounds, accent: Hsla, phase: f32, paint: &mut PaintContext) {
-    let inner = Bounds::new(
-        bounds.origin.x + 12.0,
-        bounds.origin.y + 28.0,
-        bounds.size.width - 24.0,
-        (bounds.size.height - 40.0).max(18.0),
-    );
-    let mut dots = DotsGrid::new()
-        .shape(DotShape::Cross)
-        .distance(24.0)
-        .size(0.8)
-        .color(accent.with_alpha(0.08))
-        .animation_progress(1.0);
-    dots.paint(inner, paint);
-
-    let mut scanlines = Scanlines::new()
-        .spacing(16.0)
-        .line_color(accent.with_alpha(0.03))
-        .scan_color(accent.with_alpha(0.07))
-        .scan_width(18.0)
-        .scan_progress(phase)
-        .opacity(0.56);
-    scanlines.paint(inner, paint);
+    crate::panes::training_viz_shared::paint_panel_texture(bounds, accent, phase, paint);
 }
 
 fn paint_signal_triplet(
@@ -3022,28 +2865,7 @@ fn metric_history_raw_values(
 }
 
 fn sample_metric_series(raw: &[f32], sample_count: usize) -> Vec<f32> {
-    if raw.is_empty() || sample_count == 0 {
-        return Vec::new();
-    }
-    if sample_count == 1 {
-        return vec![*raw.last().unwrap_or(&0.0)];
-    }
-
-    let steps = raw.len().saturating_sub(1);
-    (0..sample_count)
-        .map(|index| {
-            let pos = index as f32 / (sample_count.saturating_sub(1)) as f32;
-            let sample_pos = pos * steps as f32;
-            let low = sample_pos.floor() as usize;
-            let high = sample_pos.ceil() as usize;
-            let blend = sample_pos - low as f32;
-            if steps == 0 {
-                raw[0]
-            } else {
-                raw[low] + (raw[high] - raw[low]) * blend
-            }
-        })
-        .collect()
+    crate::panes::training_viz_shared::sample_history_series(raw, sample_count)
 }
 
 fn build_selected_route_ribbon(selected: &AttnResLabSublayerSnapshot, phase: f32) -> Vec<f32> {

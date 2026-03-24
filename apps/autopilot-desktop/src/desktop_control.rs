@@ -7306,6 +7306,12 @@ pub(crate) fn current_training_status(state: &RenderState) -> DesktopControlTrai
     desktop_control_training_status(state)
 }
 
+pub(crate) fn current_remote_training_status(
+    state: &RenderState,
+) -> DesktopControlRemoteTrainingStatus {
+    desktop_control_remote_training_status(state)
+}
+
 pub(crate) fn run_inline_action_request(
     state: &mut RenderState,
     action: DesktopControlActionRequest,

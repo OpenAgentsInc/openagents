@@ -15,8 +15,8 @@ use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
     BuyModePaymentsPaneAction, DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
     LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
-    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
-    SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
+    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, PsionicRemoteTrainingPaneAction,
+    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9821,6 +9821,29 @@ pub(super) fn run_apple_adapter_training_action(
                 None,
                 true,
             );
+            true
+        }
+    }
+}
+
+pub(super) fn run_psionic_remote_training_action(
+    state: &mut crate::app_state::RenderState,
+    action: PsionicRemoteTrainingPaneAction,
+) -> bool {
+    match action {
+        PsionicRemoteTrainingPaneAction::Refresh => {
+            crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
+            true
+        }
+        PsionicRemoteTrainingPaneAction::SelectRun(row_index) => {
+            let status = crate::desktop_control::current_remote_training_status(state);
+            let run_id = status.runs.get(row_index).map(|run| run.run_id.clone());
+            if let Some(run_id) = run_id {
+                state.desktop_control.remote_training.selected_run_id = Some(run_id.clone());
+                state.desktop_control.remote_training.last_action =
+                    Some(format!("Selected remote training run {run_id}"));
+                state.desktop_control.remote_training.last_error = None;
+            }
             true
         }
     }
