@@ -1286,6 +1286,11 @@ pub enum DesktopControlActionRequest {
     GetResearchStatus,
     ResetResearchState,
     GetTrainingStatus,
+    GetRemoteTrainingStatus,
+    GetRemoteTrainingRun {
+        run_id: Option<String>,
+    },
+    RefreshRemoteTrainingStatus,
     LaunchAppleAdapterTraining {
         train_dataset_path: String,
         held_out_dataset_path: String,
@@ -1490,6 +1495,9 @@ impl DesktopControlActionRequest {
             Self::GetResearchStatus => "research-status",
             Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
+            Self::GetRemoteTrainingStatus => "remote-training-status",
+            Self::GetRemoteTrainingRun { .. } => "remote-training-run",
+            Self::RefreshRemoteTrainingStatus => "remote-training-refresh",
             Self::LaunchAppleAdapterTraining { .. } => "training-launch-apple-adapter",
             Self::ExportAppleAdapterTraining { .. } => "training-export-apple-adapter",
             Self::AcceptAppleAdapterTraining { .. } => "training-accept-apple-adapter",
@@ -2282,10 +2290,16 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetResearchStatus
         | DesktopControlActionRequest::ResetResearchState
         | DesktopControlActionRequest::GetTrainingStatus
+        | DesktopControlActionRequest::GetRemoteTrainingStatus
+        | DesktopControlActionRequest::RefreshRemoteTrainingStatus
         | DesktopControlActionRequest::GetProofStatus
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::GetRemoteTrainingRun { run_id } => json!({
+            "command_label": action.label(),
+            "run_id": run_id,
+        }),
         DesktopControlActionRequest::LaunchAppleAdapterTraining {
             train_dataset_path,
             held_out_dataset_path,
@@ -3445,6 +3459,15 @@ fn apply_action_request(
         DesktopControlActionRequest::GetResearchStatus => research_payload_response().into(),
         DesktopControlActionRequest::ResetResearchState => reset_research_action().into(),
         DesktopControlActionRequest::GetTrainingStatus => training_payload_response(state).into(),
+        DesktopControlActionRequest::GetRemoteTrainingStatus => {
+            remote_training_payload_response(state, false).into()
+        }
+        DesktopControlActionRequest::GetRemoteTrainingRun { run_id } => {
+            remote_training_run_payload_response(state, run_id.as_deref()).into()
+        }
+        DesktopControlActionRequest::RefreshRemoteTrainingStatus => {
+            remote_training_payload_response(state, true).into()
+        }
         DesktopControlActionRequest::LaunchAppleAdapterTraining {
             train_dataset_path,
             held_out_dataset_path,
@@ -5400,6 +5423,70 @@ fn training_payload_response(state: &mut RenderState) -> DesktopControlActionRes
         ),
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode training control state: {error}"
+        )),
+    }
+}
+
+fn remote_training_payload_response(
+    state: &mut RenderState,
+    force_refresh: bool,
+) -> DesktopControlActionResponse {
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, force_refresh);
+    match serde_json::to_value(desktop_control_remote_training_status(state)) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            if force_refresh {
+                "Refreshed remote training control state"
+            } else {
+                "Captured remote training control state"
+            },
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode remote training control state: {error}"
+        )),
+    }
+}
+
+fn remote_training_run_payload_response(
+    state: &mut RenderState,
+    requested_run_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
+    let status = desktop_control_remote_training_status(state);
+    let selected_run = requested_run_id.map_or_else(
+        || status.selected_run.clone(),
+        |run_id| {
+            status
+                .runs
+                .iter()
+                .find(|run| run.run_id == run_id)
+                .cloned()
+                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
+                    run,
+                    source_root: status.source_root.clone(),
+                    source_index_path: status.source_index_path.clone(),
+                    bundle: state
+                        .desktop_control
+                        .remote_training
+                        .bundles
+                        .get(run_id)
+                        .cloned(),
+                })
+        },
+    );
+    let Some(selected_run) = selected_run else {
+        return DesktopControlActionResponse::error(match requested_run_id {
+            Some(run_id) => format!("Remote training run `{run_id}` was not found"),
+            None => "No remote training runs are available".to_string(),
+        });
+    };
+    match serde_json::to_value(selected_run) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            "Captured remote training run detail",
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode remote training run detail: {error}"
         )),
     }
 }

@@ -29,15 +29,15 @@ use autopilot_desktop::{
     local_runtime_device_inventory_label, local_runtime_execution_posture_label,
     local_runtime_scheduler_posture_label,
 };
-use bitcoin::hashes::{Hash, sha256};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use bitcoin::hashes::{Hash, sha256};
 use chrono::{DateTime, Datelike, Local, LocalResult, NaiveDate, TimeZone};
 use clap::{Parser, Subcommand, ValueEnum};
 use nostr_client::{RelayConnection, RelayMessage};
 use psionic_sandbox::ProviderSandboxEntrypointType;
-use reqwest::blocking::Client;
 use reqwest::Url;
+use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
@@ -97,6 +97,11 @@ enum Command {
     Training {
         #[command(subcommand)]
         command: TrainingCommand,
+    },
+    #[command(name = "remote-training")]
+    RemoteTraining {
+        #[command(subcommand)]
+        command: RemoteTrainingCommand,
     },
     Research {
         #[command(subcommand)]
@@ -427,6 +432,15 @@ enum TrainingCommand {
     Accept {
         run_id: String,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum RemoteTrainingCommand {
+    Status,
+    List,
+    Run { run_id: Option<String> },
+    Stale,
+    Refresh,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1039,6 +1053,20 @@ impl TrainingCommand {
             Self::Accept { run_id } => DesktopControlActionRequest::AcceptAppleAdapterTraining {
                 run_id: run_id.clone(),
             },
+        }
+    }
+}
+
+impl RemoteTrainingCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status | Self::List | Self::Stale => {
+                DesktopControlActionRequest::GetRemoteTrainingStatus
+            }
+            Self::Run { run_id } => DesktopControlActionRequest::GetRemoteTrainingRun {
+                run_id: run_id.clone(),
+            },
+            Self::Refresh => DesktopControlActionRequest::RefreshRemoteTrainingStatus,
         }
     }
 }
@@ -1711,6 +1739,26 @@ fn main() -> Result<()> {
                 }
             }
         },
+        Command::RemoteTraining { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                if matches!(command, RemoteTrainingCommand::Refresh) {
+                    println!("{}", response.message);
+                }
+                match command {
+                    RemoteTrainingCommand::Status | RemoteTrainingCommand::Refresh => {
+                        print_remote_training_text(payload);
+                    }
+                    RemoteTrainingCommand::List => print_remote_training_runs_text(payload),
+                    RemoteTrainingCommand::Run { .. } => print_remote_training_run_text(payload),
+                    RemoteTrainingCommand::Stale => print_remote_training_stale_text(payload),
+                }
+            }
+        }
         Command::Research { command } => {
             let response = client.action(&command.action_request())?;
             ensure_action_success(&response)?;
@@ -3370,7 +3418,10 @@ fn normalize_delivery_digest(value: Option<&str>) -> Result<Option<String>> {
         return Ok(None);
     };
     let normalized = raw.strip_prefix("sha256:").unwrap_or(raw);
-    if normalized.len() != 64 || !normalized.chars().all(|character| character.is_ascii_hexdigit())
+    if normalized.len() != 64
+        || !normalized
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
     {
         bail!("delivery digest must be a sha256 hex string, got {raw}");
     }
@@ -3408,8 +3459,8 @@ fn private_key_bytes(identity: &nostr::NostrIdentity) -> Result<[u8; 32]> {
 }
 
 fn compressed_pubkey_from_xonly_hex(pubkey: &str) -> Result<Vec<u8>> {
-    let decoded = hex::decode(pubkey.trim())
-        .with_context(|| format!("decode sender pubkey hex {pubkey}"))?;
+    let decoded =
+        hex::decode(pubkey.trim()).with_context(|| format!("decode sender pubkey hex {pubkey}"))?;
     if decoded.len() != 32 {
         bail!("sender pubkey must be 32-byte hex, got {}", decoded.len());
     }
@@ -3442,7 +3493,9 @@ fn load_target_identity(target: &ResolvedTarget) -> Result<nostr::NostrIdentity>
         .identity_path
         .clone()
         .or_else(|| nostr::identity_mnemonic_path().ok())
-        .ok_or_else(|| anyhow!("could not resolve an identity mnemonic path for remote delivery decryption"))?;
+        .ok_or_else(|| {
+            anyhow!("could not resolve an identity mnemonic path for remote delivery decryption")
+        })?;
     nostr::load_identity_from_path(identity_path.as_path()).with_context(|| {
         format!(
             "load buyer identity mnemonic for remote delivery decryption from {}",
@@ -3474,7 +3527,9 @@ fn parse_delivery_pointer_text(
 
     if let Ok(envelope) = serde_json::from_str::<DataMarketDeliveryPointerEnvelope>(trimmed) {
         let schema = envelope.schema_version.as_deref().unwrap_or_default();
-        if envelope.ciphertext.is_some() || schema.eq_ignore_ascii_case("oa.data_market.encrypted_pointer.v1") {
+        if envelope.ciphertext.is_some()
+            || schema.eq_ignore_ascii_case("oa.data_market.encrypted_pointer.v1")
+        {
             let sender_pubkey = envelope
                 .sender_pubkey
                 .as_deref()
@@ -3488,12 +3543,9 @@ fn parse_delivery_pointer_text(
             let identity = load_target_identity(target)?;
             let private_key = private_key_bytes(&identity)?;
             let sender_pubkey = compressed_pubkey_from_xonly_hex(sender_pubkey)?;
-            let plaintext = nostr::nip44::decrypt(
-                &private_key,
-                sender_pubkey.as_slice(),
-                ciphertext,
-            )
-            .map_err(|error| anyhow!("decrypt encrypted delivery pointer: {error}"))?;
+            let plaintext =
+                nostr::nip44::decrypt(&private_key, sender_pubkey.as_slice(), ciphertext)
+                    .map_err(|error| anyhow!("decrypt encrypted delivery pointer: {error}"))?;
             let nested_digest = envelope
                 .delivery_digest
                 .as_deref()
@@ -3567,7 +3619,11 @@ fn parse_giftwrap_delivery_ref(value: &str) -> Result<(String, Vec<String>)> {
         })
         .ok_or_else(|| anyhow!("giftwrap delivery ref is missing an event id"))?
         .to_string();
-    if event_id.len() != 64 || !event_id.chars().all(|character| character.is_ascii_hexdigit()) {
+    if event_id.len() != 64
+        || !event_id
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
         bail!("giftwrap delivery ref must carry a 64-character event id");
     }
     let relay_urls = parsed
@@ -3603,10 +3659,7 @@ fn parse_giftwrapped_delivery_pointer(
     })
 }
 
-fn fetch_remote_delivery_bytes(
-    http: &Client,
-    url: &str,
-) -> Result<(Vec<u8>, Option<String>)> {
+fn fetch_remote_delivery_bytes(http: &Client, url: &str) -> Result<(Vec<u8>, Option<String>)> {
     let mut response = http
         .get(url)
         .send()
@@ -3634,7 +3687,10 @@ fn resolve_delivery_source(
     locator: DataMarketResolvedDeliveryLocator,
     require_remote_digest: bool,
     depth_remaining: usize,
-) -> Result<(DataMarketResolvedPayloadSource, DataMarketResolvedDeliveryLocator)> {
+) -> Result<(
+    DataMarketResolvedPayloadSource,
+    DataMarketResolvedDeliveryLocator,
+)> {
     if depth_remaining == 0 {
         bail!("delivery pointer resolution exceeded the maximum recursion depth");
     }
@@ -3647,7 +3703,8 @@ fn resolve_delivery_source(
         return Ok((DataMarketResolvedPayloadSource::LocalPath(path), locator));
     }
     if delivery_ref.starts_with("http://") || delivery_ref.starts_with("https://") {
-        let (bytes, content_type) = fetch_remote_delivery_bytes(&client.http, delivery_ref.as_str())?;
+        let (bytes, content_type) =
+            fetch_remote_delivery_bytes(&client.http, delivery_ref.as_str())?;
         if let Ok(text) = std::str::from_utf8(bytes.as_slice())
             && let Some(nested) = parse_delivery_pointer_text(
                 text,
@@ -3663,15 +3720,19 @@ fn resolve_delivery_source(
                 depth_remaining.saturating_sub(1),
             );
         }
-        if require_remote_digest && normalize_delivery_digest(locator.delivery_digest.as_deref())?.is_none()
+        if require_remote_digest
+            && normalize_delivery_digest(locator.delivery_digest.as_deref())?.is_none()
         {
             bail!(
                 "remote delivery ref {} requires delivery_digest so the payload can be verified before materialization",
                 delivery_ref
             );
         }
-        let verified_digest =
-            verify_delivery_bytes_digest(bytes.as_slice(), locator.delivery_digest.as_deref(), delivery_ref.as_str())?;
+        let verified_digest = verify_delivery_bytes_digest(
+            bytes.as_slice(),
+            locator.delivery_digest.as_deref(),
+            delivery_ref.as_str(),
+        )?;
         return Ok((
             DataMarketResolvedPayloadSource::RemoteFile {
                 source_ref: delivery_ref.clone(),
@@ -3734,7 +3795,11 @@ fn copy_manifest_ref_to_output(
                         .with_context(|| format!("create parent {}", parent.display()))?;
                 }
                 fs::copy(path.as_path(), target_path).with_context(|| {
-                    format!("copy manifest {} -> {}", path.display(), target_path.display())
+                    format!(
+                        "copy manifest {} -> {}",
+                        path.display(),
+                        target_path.display()
+                    )
                 })?;
             } else {
                 bail!(
@@ -3952,7 +4017,9 @@ fn materialize_data_market_delivery(
             infer_remote_file_name(manifest_ref.as_str(), None)
         };
         let target_path = manifests_root.join(format!("{index:02}-{base_name}"));
-        if let Err(error) = copy_manifest_ref_to_output(client, manifest_ref.as_str(), target_path.as_path()) {
+        if let Err(error) =
+            copy_manifest_ref_to_output(client, manifest_ref.as_str(), target_path.as_path())
+        {
             unresolved_manifest_refs.push(manifest_ref.clone());
             let _ = error;
             continue;
@@ -4397,6 +4464,9 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.sandbox.active_job_count
     );
     for line in training_status_lines(snapshot) {
+        println!("{line}");
+    }
+    for line in remote_training_status_lines(snapshot) {
         println!("{line}");
     }
     println!(
@@ -5037,6 +5107,66 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     }
     if let Some(error) = snapshot.training.last_error.as_deref() {
         lines.push(format!("training last_error: {error}"));
+    }
+    lines
+}
+
+fn remote_training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
+    let mut lines = vec![format!(
+        "remote training: available={} source={} state={} last_sync={} last_success={} refresh_ms={} runs={} active_runs={} full_series={} summary_only={} stale_runs={} selected={} last_error={}",
+        snapshot.remote_training.available,
+        snapshot.remote_training.source,
+        snapshot.remote_training.sync_state,
+        snapshot
+            .remote_training
+            .last_synced_at_epoch_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        snapshot
+            .remote_training
+            .last_successful_sync_at_epoch_ms
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        snapshot.remote_training.refresh_interval_ms,
+        snapshot.remote_training.run_count,
+        snapshot.remote_training.active_run_count,
+        snapshot.remote_training.full_series_run_count,
+        snapshot.remote_training.summary_only_run_count,
+        snapshot.remote_training.stale_run_count,
+        snapshot
+            .remote_training
+            .selected_run_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .remote_training
+            .last_error
+            .as_deref()
+            .unwrap_or("-"),
+    )];
+    if let Some(selected_run) = snapshot.remote_training.selected_run.as_ref() {
+        lines.push(format!(
+            "remote training selected: run={} provider={} lane={} result={} series={} heartbeat_age_ms={} stale={} cache={} digest={} unavailable_reason={} stale_reason={}",
+            selected_run.run.run_id,
+            selected_run.run.provider,
+            selected_run.run.lane_id,
+            selected_run.run.result_classification,
+            selected_run.run.series_status,
+            selected_run
+                .run
+                .heartbeat_age_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            selected_run.run.stale,
+            selected_run.run.bundle_cached,
+            selected_run.run.bundle_digest.as_deref().unwrap_or("-"),
+            selected_run
+                .run
+                .series_unavailable_reason
+                .as_deref()
+                .unwrap_or("-"),
+            selected_run.run.stale_reason.as_deref().unwrap_or("-"),
+        ));
     }
     lines
 }
@@ -6654,6 +6784,262 @@ fn training_operator_run_is_terminal(run: &DesktopControlAppleAdapterOperatorRun
         && !matches!(run.acceptance_state.as_str(), "running")
 }
 
+fn print_remote_training_text(payload: &Value) {
+    println!(
+        "remote training: available={} source={} state={} last_sync={} last_success={} refresh_ms={} runs={} active_runs={} full_series={} summary_only={} stale_runs={} selected={} last_error={}",
+        json_bool(payload.get("available")),
+        json_str(payload.get("source")).unwrap_or("-"),
+        json_str(payload.get("sync_state")).unwrap_or("-"),
+        payload
+            .get("last_synced_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("last_successful_sync_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("refresh_interval_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("active_run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("full_series_run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("summary_only_run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("stale_run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        json_str(payload.get("selected_run_id")).unwrap_or("-"),
+        json_str(payload.get("last_error")).unwrap_or("-"),
+    );
+    if let Some(selected_run) = payload.get("selected_run") {
+        print_remote_training_run_text(selected_run);
+    }
+    print_remote_training_runs_text(payload);
+}
+
+fn print_remote_training_runs_text(payload: &Value) {
+    let runs = payload
+        .get("runs")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if runs.is_empty() {
+        println!("remote training runs: none");
+        return;
+    }
+    for run in runs {
+        println!(
+            "remote training run: run={} provider={} lane={} result={} series={} heartbeat_age_ms={} stale={} cached={} digest={} label={} unavailable_reason={} stale_reason={}",
+            json_str(run.get("run_id")).unwrap_or("-"),
+            json_str(run.get("provider")).unwrap_or("-"),
+            json_str(run.get("lane_id")).unwrap_or("-"),
+            json_str(run.get("result_classification")).unwrap_or("-"),
+            json_str(run.get("series_status")).unwrap_or("-"),
+            run.get("heartbeat_age_ms")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            json_bool(run.get("stale")),
+            json_bool(run.get("bundle_cached")),
+            json_str(run.get("bundle_digest")).unwrap_or("-"),
+            json_str(run.get("summary_label")).unwrap_or("-"),
+            json_str(run.get("series_unavailable_reason")).unwrap_or("-"),
+            json_str(run.get("stale_reason")).unwrap_or("-"),
+        );
+    }
+}
+
+fn print_remote_training_run_text(payload: &Value) {
+    let run = payload.get("run").unwrap_or(payload);
+    println!(
+        "remote training detail: run={} provider={} profile={} lane={} repo={} result={} series={} heartbeat_age_ms={} stale={} cached={} cache_path={} digest={} label={} detail={}",
+        json_str(run.get("run_id")).unwrap_or("-"),
+        json_str(run.get("provider")).unwrap_or("-"),
+        json_str(run.get("profile_id")).unwrap_or("-"),
+        json_str(run.get("lane_id")).unwrap_or("-"),
+        json_str(run.get("repo_revision")).unwrap_or("-"),
+        json_str(run.get("result_classification")).unwrap_or("-"),
+        json_str(run.get("series_status")).unwrap_or("-"),
+        run.get("heartbeat_age_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        json_bool(run.get("stale")),
+        json_bool(run.get("bundle_cached")),
+        json_str(run.get("bundle_cache_path")).unwrap_or("-"),
+        json_str(run.get("bundle_digest")).unwrap_or("-"),
+        json_str(run.get("summary_label")).unwrap_or("-"),
+        json_str(run.get("detail")).unwrap_or("-"),
+    );
+    println!(
+        "remote training detail freshness: unavailable_reason={} stale_reason={} source_root={} source_index={}",
+        json_str(run.get("series_unavailable_reason")).unwrap_or("-"),
+        json_str(run.get("stale_reason")).unwrap_or("-"),
+        json_str(payload.get("source_root")).unwrap_or("-"),
+        json_str(payload.get("source_index_path")).unwrap_or("-"),
+    );
+    if let Some(bundle) = payload.get("bundle") {
+        println!(
+            "remote training bundle: profile={} lane={} run={} provider={} result={} emission={} refresh_ms={} heartbeat_seq={} last_heartbeat={} series={} summary_steps={} latest_step={} losses={} math={} runtime={} gpu={} distributed={} events={} source_artifacts={}",
+            json_str(bundle.get("profile_id")).unwrap_or("-"),
+            json_str(bundle.get("lane_id")).unwrap_or("-"),
+            json_str(bundle.get("run_id")).unwrap_or("-"),
+            json_str(bundle.get("provider")).unwrap_or("-"),
+            json_str(bundle.get("result_classification")).unwrap_or("-"),
+            bundle
+                .get("refresh_contract")
+                .and_then(|value| value.get("emission_mode"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            bundle
+                .get("refresh_contract")
+                .and_then(|value| value.get("target_ui_update_interval_ms"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            bundle
+                .get("refresh_contract")
+                .and_then(|value| value.get("heartbeat_seq"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            bundle
+                .get("refresh_contract")
+                .and_then(|value| value.get("last_heartbeat_at_ms"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            json_str(bundle.get("series_status")).unwrap_or("-"),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("total_steps_completed"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("latest_global_step"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            json_array_len(bundle.get("loss_series")),
+            json_array_len(bundle.get("math_series")),
+            json_array_len(bundle.get("runtime_series")),
+            json_array_len(bundle.get("gpu_series")),
+            json_array_len(bundle.get("distributed_series")),
+            json_array_len(bundle.get("event_series")),
+            json_array_len(bundle.get("source_artifacts")),
+        );
+        println!(
+            "remote training bundle summary: train_loss={} ema_loss={} validation_loss={} tokens_per_second={} samples_per_second_milli={} checkpoint={} summary_detail={}",
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("latest_train_loss"))
+                .and_then(Value::as_f64)
+                .map(|value| format!("{value:.4}"))
+                .unwrap_or_else(|| "-".to_string()),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("latest_ema_loss"))
+                .and_then(Value::as_f64)
+                .map(|value| format!("{value:.4}"))
+                .unwrap_or_else(|| "-".to_string()),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("latest_validation_loss"))
+                .and_then(Value::as_f64)
+                .map(|value| format!("{value:.4}"))
+                .unwrap_or_else(|| "-".to_string()),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("latest_tokens_per_second"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("latest_samples_per_second_milli"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("latest_checkpoint_ref"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            bundle
+                .get("summary")
+                .and_then(|value| value.get("detail"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+        );
+        if let Some(source_artifacts) = bundle.get("source_artifacts").and_then(Value::as_array) {
+            for artifact in source_artifacts {
+                println!(
+                    "remote training provenance: role={} source_kind={} authoritative={} uri={} digest={} receipts={} detail={}",
+                    json_str(artifact.get("artifact_role")).unwrap_or("-"),
+                    json_str(artifact.get("source_kind")).unwrap_or("-"),
+                    json_bool(artifact.get("authoritative")),
+                    json_str(artifact.get("artifact_uri")).unwrap_or("-"),
+                    json_str(artifact.get("artifact_digest")).unwrap_or("-"),
+                    json_joined_array(artifact.get("source_receipt_ids"))
+                        .unwrap_or_else(|| "-".to_string()),
+                    json_str(artifact.get("detail")).unwrap_or("-"),
+                );
+            }
+        }
+    }
+}
+
+fn print_remote_training_stale_text(payload: &Value) {
+    println!(
+        "remote training stale: state={} source={} last_error={}",
+        json_str(payload.get("sync_state")).unwrap_or("-"),
+        json_str(payload.get("source")).unwrap_or("-"),
+        json_str(payload.get("last_error")).unwrap_or("-"),
+    );
+    let stale_runs = payload
+        .get("runs")
+        .and_then(Value::as_array)
+        .map(|runs| {
+            runs.iter()
+                .filter(|run| json_bool(run.get("stale")))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if stale_runs.is_empty() {
+        println!("remote training stale runs: none");
+        return;
+    }
+    for run in stale_runs {
+        println!(
+            "remote training stale run: run={} provider={} result={} heartbeat_age_ms={} reason={} unavailable_reason={}",
+            json_str(run.get("run_id")).unwrap_or("-"),
+            json_str(run.get("provider")).unwrap_or("-"),
+            json_str(run.get("result_classification")).unwrap_or("-"),
+            run.get("heartbeat_age_ms")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            json_str(run.get("stale_reason")).unwrap_or("-"),
+            json_str(run.get("series_unavailable_reason")).unwrap_or("-"),
+        );
+    }
+}
+
 fn print_research_text(payload: &Value) {
     println!(
         "research: programs={} updated_at={} storage={}",
@@ -7231,17 +7617,18 @@ mod tests {
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, GptOssCommand,
-        LocalRuntimeCommand, ProofCommand, ProviderCommand, ResearchCommand, ResolvedTarget,
-        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
-        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
-        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
-        WaitCondition, WaitConditionArg, WalletCommand,
+        LocalRuntimeCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand, ResearchCommand,
+        ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
+        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
+        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
+        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
         buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
-        compressed_pubkey_from_xonly_hex, data_market_sha256_hex, materialize_data_market_delivery,
-        ensure_buy_mode_budget_ack, inventory_status_lines, nip90_sent_payments_report_lines,
-        parse_giftwrapped_delivery_pointer, private_key_bytes,
-        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
-        request_has_failed, request_has_paid, request_has_payment_required, training_status_lines,
+        compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
+        inventory_status_lines, materialize_data_market_delivery, nip90_sent_payments_report_lines,
+        parse_giftwrapped_delivery_pointer, parse_local_daily_window,
+        parse_nip90_sent_payments_report, parse_report_boundary, private_key_bytes,
+        remote_training_status_lines, request_has_failed, request_has_paid,
+        request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlAttnResView, DesktopControlBuyModeRequestStatus,
@@ -7259,7 +7646,6 @@ mod tests {
         LocalRuntimeCompileFailure, LocalRuntimeDiagnostics, LocalRuntimeExecutionPosture,
     };
     use clap::Parser;
-    use reqwest::blocking::Client;
     use psionic_runtime::{
         AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendRuntimeResources,
         CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
@@ -7268,12 +7654,13 @@ mod tests {
         KernelCachePolicy, KernelCacheReport, KernelCacheState, LocalRuntimeObservability,
     };
     use psionic_sandbox::ProviderSandboxEntrypointType;
+    use reqwest::blocking::Client;
+    use serde_json::{Value, json};
     use std::collections::BTreeMap;
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::path::PathBuf;
     use std::thread;
-    use serde_json::{Value, json};
     use tempfile::{NamedTempFile, TempDir};
 
     fn write_temp_json(raw: &str) -> NamedTempFile {
@@ -7335,7 +7722,9 @@ mod tests {
                 stream
                     .write_all(response.as_bytes())
                     .expect("write response head");
-                stream.write_all(body.as_slice()).expect("write response body");
+                stream
+                    .write_all(body.as_slice())
+                    .expect("write response body");
             }
         });
         (base_url, handle)
@@ -7962,6 +8351,31 @@ mod tests {
             DesktopControlActionRequest::AcceptAppleAdapterTraining {
                 run_id: "weather-helper-1".to_string(),
             }
+        );
+        assert_eq!(
+            RemoteTrainingCommand::Status.action_request(),
+            DesktopControlActionRequest::GetRemoteTrainingStatus
+        );
+        assert_eq!(
+            RemoteTrainingCommand::List.action_request(),
+            DesktopControlActionRequest::GetRemoteTrainingStatus
+        );
+        assert_eq!(
+            RemoteTrainingCommand::Stale.action_request(),
+            DesktopControlActionRequest::GetRemoteTrainingStatus
+        );
+        assert_eq!(
+            RemoteTrainingCommand::Run {
+                run_id: Some("parameter-golf-runpod-single-h100-live-sample".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::GetRemoteTrainingRun {
+                run_id: Some("parameter-golf-runpod-single-h100-live-sample".to_string()),
+            }
+        );
+        assert_eq!(
+            RemoteTrainingCommand::Refresh.action_request(),
+            DesktopControlActionRequest::RefreshRemoteTrainingStatus
         );
         assert_eq!(
             ResearchCommand::Status.action_request(),
@@ -8884,6 +9298,94 @@ mod tests {
     }
 
     #[test]
+    fn remote_training_status_lines_surface_stale_and_series_posture() {
+        let mut snapshot = sample_snapshot();
+        snapshot.remote_training.available = true;
+        snapshot.remote_training.source = "live_psionic_mirror".to_string();
+        snapshot.remote_training.sync_state = "stale".to_string();
+        snapshot.remote_training.last_synced_at_epoch_ms = Some(1_742_846_403_000);
+        snapshot.remote_training.last_successful_sync_at_epoch_ms = Some(1_742_846_402_000);
+        snapshot.remote_training.refresh_interval_ms = 1_000;
+        snapshot.remote_training.run_count = 2;
+        snapshot.remote_training.active_run_count = 1;
+        snapshot.remote_training.full_series_run_count = 1;
+        snapshot.remote_training.summary_only_run_count = 1;
+        snapshot.remote_training.stale_run_count = 1;
+        snapshot.remote_training.selected_run_id =
+            Some("parameter-golf-runpod-single-h100-live-sample".to_string());
+        snapshot.remote_training.last_error =
+            Some("live mirror refresh failed and the app is using the cache".to_string());
+        snapshot.remote_training.runs = vec![
+            autopilot_desktop::desktop_control::DesktopControlRemoteTrainingRunStatus {
+                provider: "google_cloud".to_string(),
+                profile_id: "google_a2_ultragpu_1g".to_string(),
+                lane_id: "psion.google_single_node.accelerated".to_string(),
+                run_id: "psion-google-summary-only-sample".to_string(),
+                repo_revision: "main@f7d62771".to_string(),
+                result_classification: "completed_success".to_string(),
+                series_status: "unavailable".to_string(),
+                series_unavailable_reason: Some(
+                    "no canonical optimizer-step loss series was retained".to_string(),
+                ),
+                summary_label: "Google summary-only".to_string(),
+                detail: "Summary-only lane".to_string(),
+                last_heartbeat_at_ms: Some(1_742_760_920_000),
+                heartbeat_age_ms: Some(15_000),
+                stale: false,
+                stale_reason: None,
+                bundle_cached: true,
+                bundle_cache_path: Some("/tmp/cache/google.json".to_string()),
+                bundle_digest: Some("digest-google".to_string()),
+            },
+            autopilot_desktop::desktop_control::DesktopControlRemoteTrainingRunStatus {
+                provider: "run_pod".to_string(),
+                profile_id: "runpod_h100_single_gpu".to_string(),
+                lane_id: "parameter_golf.runpod_single_h100".to_string(),
+                run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
+                repo_revision: "main@f7d62771".to_string(),
+                result_classification: "active".to_string(),
+                series_status: "available".to_string(),
+                series_unavailable_reason: None,
+                summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
+                detail: "Always-live lane".to_string(),
+                last_heartbeat_at_ms: Some(1_742_846_402_000),
+                heartbeat_age_ms: Some(4_200),
+                stale: true,
+                stale_reason: Some(
+                    "latest heartbeat is 4200ms old and exceeded the 2500ms stale window"
+                        .to_string(),
+                ),
+                bundle_cached: true,
+                bundle_cache_path: Some("/tmp/cache/runpod.json".to_string()),
+                bundle_digest: Some("digest-runpod".to_string()),
+            },
+        ];
+        snapshot.remote_training.selected_run = Some(
+            autopilot_desktop::desktop_control::DesktopControlRemoteTrainingSelectedRunStatus {
+                run: snapshot.remote_training.runs[1].clone(),
+                source_root: Some("/tmp/psionic".to_string()),
+                source_index_path: Some(
+                    "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                        .to_string(),
+                ),
+                bundle: None,
+            },
+        );
+
+        let lines = remote_training_status_lines(&snapshot);
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("state=stale") && line.contains("summary_only=1"))
+        );
+        assert!(lines.iter().any(|line| {
+            line.contains("run=parameter-golf-runpod-single-h100-live-sample")
+                && line.contains("stale=true")
+        }));
+    }
+
+    #[test]
     fn wait_conditions_cover_nip28_readiness_messages_and_outbound_idle() {
         let mut snapshot = sample_snapshot();
         snapshot.local_runtime.runtime_ready = true;
@@ -9011,7 +9513,10 @@ mod tests {
         let buyer = nostr::load_identity_from_path(buyer_path.as_path()).expect("buyer identity");
         let client = make_client(buyer_path);
         let payload_bytes = b"alpha dataset payload".to_vec();
-        let digest = format!("sha256:{}", data_market_sha256_hex(payload_bytes.as_slice()));
+        let digest = format!(
+            "sha256:{}",
+            data_market_sha256_hex(payload_bytes.as_slice())
+        );
         let (base_url, handle) = spawn_http_server(
             BTreeMap::from([(
                 "/payload.bin".to_string(),
@@ -9031,11 +9536,15 @@ mod tests {
                 .expect("materialize remote delivery");
         handle.join().expect("http server thread");
 
-        let written = std::fs::read(output_dir.join("payload").join("payload.bin"))
-            .expect("written payload");
+        let written =
+            std::fs::read(output_dir.join("payload").join("payload.bin")).expect("written payload");
         assert_eq!(written, payload_bytes);
         assert_eq!(summary.delivery_digest.as_deref(), Some(digest.as_str()));
-        assert!(summary.payload_source_kind.starts_with("remote_file:http://"));
+        assert!(
+            summary
+                .payload_source_kind
+                .starts_with("remote_file:http://")
+        );
     }
 
     #[test]
@@ -9052,10 +9561,14 @@ mod tests {
             "legal winner thank year wave sausage worth useful legal winner thank yellow",
         );
         let buyer = nostr::load_identity_from_path(buyer_path.as_path()).expect("buyer identity");
-        let seller = nostr::load_identity_from_path(seller_path.as_path()).expect("seller identity");
+        let seller =
+            nostr::load_identity_from_path(seller_path.as_path()).expect("seller identity");
         let client = make_client(buyer_path);
         let payload_bytes = b"encrypted pointer payload".to_vec();
-        let digest = format!("sha256:{}", data_market_sha256_hex(payload_bytes.as_slice()));
+        let digest = format!(
+            "sha256:{}",
+            data_market_sha256_hex(payload_bytes.as_slice())
+        );
         let seller_private_key = private_key_bytes(&seller).expect("seller private key");
         let buyer_public_key =
             compressed_pubkey_from_xonly_hex(buyer.public_key_hex.as_str()).expect("buyer pubkey");
@@ -9105,8 +9618,8 @@ mod tests {
         pointer_handle.join().expect("pointer http server thread");
         payload_handle.join().expect("payload http server thread");
 
-        let written = std::fs::read(output_dir.join("payload").join("payload.bin"))
-            .expect("written payload");
+        let written =
+            std::fs::read(output_dir.join("payload").join("payload.bin")).expect("written payload");
         assert_eq!(written, payload_bytes);
         assert_eq!(summary.delivery_digest.as_deref(), Some(digest.as_str()));
     }
@@ -9125,10 +9638,14 @@ mod tests {
             "legal winner thank year wave sausage worth useful legal winner thank yellow",
         );
         let buyer = nostr::load_identity_from_path(buyer_path.as_path()).expect("buyer identity");
-        let seller = nostr::load_identity_from_path(seller_path.as_path()).expect("seller identity");
+        let seller =
+            nostr::load_identity_from_path(seller_path.as_path()).expect("seller identity");
         let client = make_client(buyer_path);
         let payload_bytes = b"giftwrap payload".to_vec();
-        let digest = format!("sha256:{}", data_market_sha256_hex(payload_bytes.as_slice()));
+        let digest = format!(
+            "sha256:{}",
+            data_market_sha256_hex(payload_bytes.as_slice())
+        );
         let pointer_json = json!({
             "schema_version": "oa.data_market.delivery_pointer.v1",
             "delivery_ref": "https://download.example/dataset.bin",
@@ -9148,13 +9665,9 @@ mod tests {
         )
         .expect("giftwrap event");
 
-        let parsed = parse_giftwrapped_delivery_pointer(
-            &wrap,
-            &client.target,
-            Some(digest.as_str()),
-            &[],
-        )
-        .expect("parse giftwrapped pointer");
+        let parsed =
+            parse_giftwrapped_delivery_pointer(&wrap, &client.target, Some(digest.as_str()), &[])
+                .expect("parse giftwrapped pointer");
 
         assert_eq!(parsed.delivery_ref, "https://download.example/dataset.bin");
         assert_eq!(parsed.delivery_digest.as_deref(), Some(digest.as_str()));
@@ -9187,8 +9700,10 @@ mod tests {
         let error = materialize_data_market_delivery(&client, &payload, output_dir.as_path(), true)
             .expect_err("missing digest should fail");
         handle.join().expect("http server thread");
-        assert!(error
-            .to_string()
-            .contains("requires delivery_digest so the payload can be verified"));
+        assert!(
+            error
+                .to_string()
+                .contains("requires delivery_digest so the payload can be verified")
+        );
     }
 }
