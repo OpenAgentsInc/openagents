@@ -9741,13 +9741,16 @@ impl AutopilotChatState {
             _ => {}
         }
 
-        if self.has_managed_chat_browseable_content() {
-            ChatBrowseMode::Managed
-        } else if self.has_direct_message_browseable_content() {
-            ChatBrowseMode::DirectMessages
-        } else {
-            ChatBrowseMode::Autopilot
-        }
+        // Managed and DirectMessages are only active via explicit user navigation.
+        ChatBrowseMode::Autopilot
+
+        // if self.has_managed_chat_browseable_content() {
+        //     ChatBrowseMode::Managed
+        // } else if self.has_direct_message_browseable_content() {
+        //     ChatBrowseMode::DirectMessages
+        // } else {
+        //     ChatBrowseMode::Autopilot
+        // }
     }
 
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
@@ -15696,6 +15699,7 @@ mod tests {
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
+        ChatBrowseMode,
         AutopilotMessageStatus, AutopilotRole, AutopilotTerminalSessionStatus,
         AutopilotTurnPlanStep, BuyModePaneState, BuyerResolutionMode, BuyerResolutionReason,
         CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
@@ -20884,6 +20888,74 @@ mod tests {
             Some("beta")
         );
         assert_eq!(chat.active_managed_chat_messages().len(), 1);
+    }
+
+    #[test]
+    fn chat_browse_mode_defaults_to_autopilot_even_when_managed_content_exists() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            "oa-main",
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel_alpha = nostr::ManagedChannelCreateEvent::new(
+            "oa-main",
+            nostr::ChannelMetadata::new("alpha", "", ""),
+            20,
+        )
+        .expect("channel alpha")
+        .with_hints(
+            nostr::ManagedChannelHints::new()
+                .with_channel_type(nostr::ManagedChannelType::Ops)
+                .with_position(1),
+        )
+        .expect("alpha hints");
+
+        chat.managed_chat_projection.record_relay_events(vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel_alpha.to_tags().expect("alpha tags"),
+                channel_alpha.content().expect("alpha content"),
+            ),
+        ]);
+
+        // Managed content exists but no explicit workspace selection was made.
+        assert!(chat.has_managed_chat_browseable_content());
+        // Mode must be Autopilot — not Managed — without explicit navigation.
+        assert_eq!(chat.chat_browse_mode(), ChatBrowseMode::Autopilot);
     }
 
     #[test]

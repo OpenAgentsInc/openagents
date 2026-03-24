@@ -5,8 +5,9 @@ use wgpui::{Bounds, Button, Component, InputEvent, Modifiers, MouseButton, Point
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
-    mission_control_local_model_button_enabled, mission_control_show_local_model_button,
+    ActivityFeedFilter, ChatWorkspaceSelection, DesktopPane, PaneDragMode, PaneKind,
+    PanePresentation, RenderState, mission_control_local_model_button_enabled,
+    mission_control_show_local_model_button,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -1371,6 +1372,7 @@ impl PaneController {
     pub fn create_for_kind(state: &mut RenderState, kind: PaneKind) -> u64 {
         let id = Self::create(state, PaneDescriptor::for_kind(kind));
         if kind == PaneKind::AutopilotChat {
+            state.autopilot_chat.selected_workspace = ChatWorkspaceSelection::Autopilot;
             focus_chat_composer_for_pane_open(state);
             queue_chat_thread_history_refresh_for_pane_open(state);
         } else if kind == PaneKind::LocalInference {
