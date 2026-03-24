@@ -18,7 +18,7 @@ Last updated: 2026-03-21 — B-1 and B-2 complete: kind-0 metadata, author displ
 | C-1 | ✅ Done | Failed rows: error color on role label, "send failed: {error}  retry →" note; Acked rows clean; new `delivery_note_states_match_spec` test |
 | C-2 | ✅ Done | Per-row retry click target on Failed delivery note; `managed_chat_retry_targets` in `ChatPaneInputs`; MouseUp handler in `dispatch_input_event` |
 | C-3 | 🔲 Not started | |
-| C-4 | 🔲 Not started | |
+| C-4 | ✅ Done | `ManagedChatRelayState` enum + relay state on projection; Eose→connected, ConnectionError→error in reducer; relay indicator in managed header; composer block state when no local_pubkey; "Set up identity keys →" click navigates to identity pane |
 | D-1 | 🔲 Not started | |
 | D-2 | 🔲 Not started | |
 | D-3 | 🔲 Not started | |
@@ -458,12 +458,12 @@ message failed or why.
 - Error text may come from the relay OK message or a connection error — surface whatever is available in `delivery_error`
 
 **Acceptance Criteria:**
-- [ ] Failed message rows show a visible error indicator
-- [ ] Relay error text is accessible on the failed row (inline or hover)
-- [ ] Pending rows show a subtle sending indicator
-- [ ] Delivered/acked rows show no indicator (clean)
-- [ ] The error is on the specific failed row, not just an aggregate count
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] Failed message rows show a visible error indicator
+- [x] Relay error text is accessible on the failed row (inline or hover)
+- [x] Pending rows show a subtle sending indicator
+- [x] Delivered/acked rows show no indicator (clean)
+- [x] The error is on the specific failed row, not just an aggregate count
+- [x] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires A-2 (classified transcript — delivery state shown only on HumanMessage rows)
 
@@ -498,11 +498,11 @@ cannot retry from the failed row itself.
 - `apps/autopilot-desktop/src/input/reducers/mod.rs` for the retry command handler
 
 **Acceptance Criteria:**
-- [ ] "Retry" affordance visible on every failed message row
-- [ ] Clicking retry transitions the row to Pending state
-- [ ] Successful retry transitions the row to Delivered state
-- [ ] Failed retry returns the row to Failed state with updated error text
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] "Retry" affordance visible on every failed message row
+- [x] Clicking retry transitions the row to Pending state
+- [x] Successful retry transitions the row to Delivered state
+- [x] Failed retry returns the row to Failed state with updated error text
+- [x] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires C-1 (delivery state visible on rows)
 
@@ -585,13 +585,13 @@ silent failure. Relay connection state is also not visible in the pane.
 - Composer block state: disable the text input and show explanatory copy; do not hide the composer entirely
 
 **Acceptance Criteria:**
-- [ ] Composer is disabled with explanatory copy when no keypair configured
-- [ ] Link from composer block state navigates to identity keys pane
-- [ ] Composer is enabled when a valid keypair is present
-- [ ] Channel header shows relay URL and connection state
+- [x] Composer is disabled with explanatory copy when no keypair configured
+- [x] Link from composer block state navigates to identity keys pane
+- [x] Composer is enabled when a valid keypair is present
+- [x] Channel header shows relay URL and connection state
 - [ ] Last relay error accessible on hover/tap of relay indicator
-- [ ] Connection state updates reactively (connect → auth → connected)
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] Connection state updates reactively (connect → auth → connected)
+- [x] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Independent — can start before C-1; auth state display used by C-3
 
