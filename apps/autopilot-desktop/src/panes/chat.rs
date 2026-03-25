@@ -20,19 +20,18 @@ use crate::pane_system::{
     chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
     chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
     chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
-    chat_help_toggle_button_bounds, chat_interrupt_button_bounds, chat_managed_debug_toggle_bounds,
-    chat_new_thread_button_bounds, chat_refresh_threads_button_bounds, chat_review_button_bounds,
-    chat_send_button_bounds, chat_thread_action_archive_button_bounds,
-    chat_thread_action_copy_button_bounds, chat_thread_action_fork_button_bounds,
-    chat_thread_action_open_editor_button_bounds, chat_thread_action_reload_button_bounds,
-    chat_thread_action_rename_button_bounds, chat_thread_action_rollback_button_bounds,
-    chat_thread_action_unarchive_button_bounds, chat_thread_action_unsubscribe_button_bounds,
-    chat_thread_filter_archived_button_bounds, chat_thread_filter_provider_button_bounds,
-    chat_thread_filter_source_button_bounds, chat_thread_rail_bounds,
-    chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds, chat_thread_search_input_bounds,
-    chat_transcript_body_bounds_with_height, chat_transcript_bounds, chat_visible_thread_row_count,
-    chat_workspace_rail_bounds, chat_workspace_rail_toggle_button_bounds,
-    chat_workspace_row_bounds, pane_content_bounds, set_chat_shell_layout_state,
+    chat_help_toggle_button_bounds, chat_interrupt_button_bounds, chat_new_thread_button_bounds,
+    chat_refresh_threads_button_bounds, chat_review_button_bounds, chat_send_button_bounds,
+    chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
+    chat_thread_action_fork_button_bounds, chat_thread_action_open_editor_button_bounds,
+    chat_thread_action_reload_button_bounds, chat_thread_action_rename_button_bounds,
+    chat_thread_action_rollback_button_bounds, chat_thread_action_unarchive_button_bounds,
+    chat_thread_action_unsubscribe_button_bounds, chat_thread_filter_archived_button_bounds,
+    chat_thread_filter_provider_button_bounds, chat_thread_filter_source_button_bounds,
+    chat_thread_rail_bounds, chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds,
+    chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
+    chat_transcript_bounds, chat_visible_thread_row_count, chat_workspace_rail_bounds,
+    chat_workspace_rail_toggle_button_bounds, pane_content_bounds, set_chat_shell_layout_state,
 };
 use crate::ui_style::{self, AppSpacingRole, AppTextRole};
 use wgpui::components::sections::TerminalStream;
@@ -1094,12 +1093,10 @@ fn transcript_content_height(
             }
             for message in autopilot_chat.active_managed_chat_messages() {
                 use crate::chat_message_classifier::ChatMessageClass;
-                if !autopilot_chat.show_debug_events
-                    && matches!(
-                        message.message_class,
-                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
-                    )
-                {
+                if matches!(
+                    message.message_class,
+                    ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
+                ) {
                     continue;
                 }
                 height += CHAT_TRANSCRIPT_LINE_HEIGHT;
@@ -1115,7 +1112,7 @@ fn transcript_content_height(
                 if managed_message_reaction_summary(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
-                if managed_message_delivery_note(message).is_some() {
+                if managed_message_delivery_note(autopilot_chat, message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
                 height += 8.0;
@@ -1401,6 +1398,25 @@ fn compact_hex_label(value: &str, prefix_chars: usize) -> String {
     }
 }
 
+fn resolve_author_display_name<'a>(
+    pubkey: &'a str,
+    author_metadata: &'a std::collections::HashMap<String, crate::app_state::Kind0Metadata>,
+) -> std::borrow::Cow<'a, str> {
+    if let Some(meta) = author_metadata.get(pubkey) {
+        if let Some(dn) = &meta.display_name {
+            if !dn.is_empty() {
+                return std::borrow::Cow::Borrowed(dn.as_str());
+            }
+        }
+        if let Some(n) = &meta.name {
+            if !n.is_empty() {
+                return std::borrow::Cow::Borrowed(n.as_str());
+            }
+        }
+    }
+    std::borrow::Cow::Owned(compact_hex_bookend(pubkey, 8))
+}
+
 fn shell_initials(value: &str) -> String {
     let mut initials = value
         .chars()
@@ -1489,6 +1505,17 @@ fn managed_status_text(autopilot_chat: &AutopilotChatState) -> String {
         format!("{channel_count} channel(s)"),
         format!("{cached_events} cached"),
     ];
+    if !autopilot_chat
+        .managed_chat_lane
+        .configured_relays
+        .is_empty()
+    {
+        parts.push(format!(
+            "{} / {} relay(s) live",
+            autopilot_chat.managed_chat_lane.connected_relay_count,
+            autopilot_chat.managed_chat_lane.configured_relays.len()
+        ));
+    }
     let mut publishing = 0usize;
     let mut acked = 0usize;
     let mut failed = 0usize;
@@ -1606,10 +1633,32 @@ fn managed_message_reaction_summary(message: &ManagedChatMessageProjection) -> O
     )
 }
 
-fn managed_message_delivery_note(message: &ManagedChatMessageProjection) -> Option<String> {
+fn managed_channel_subscription_is_healthy(
+    autopilot_chat: &AutopilotChatState,
+    channel_id: &str,
+) -> bool {
+    autopilot_chat.managed_chat_lane.connected_relay_count > 0
+        && !autopilot_chat.managed_chat_lane.reconnecting
+        && autopilot_chat
+            .managed_chat_lane
+            .subscribed_channel_ids
+            .iter()
+            .any(|candidate| candidate == channel_id)
+}
+
+fn managed_message_delivery_note(
+    autopilot_chat: &AutopilotChatState,
+    message: &ManagedChatMessageProjection,
+) -> Option<String> {
     match message.delivery_state {
         ManagedChatDeliveryState::Confirmed => None,
-        ManagedChatDeliveryState::Acked => None,
+        ManagedChatDeliveryState::Acked => Some(
+            if managed_channel_subscription_is_healthy(autopilot_chat, &message.channel_id) {
+                "published to relay; waiting for inbound echo".to_string()
+            } else {
+                "published to relay; inbound subscription not healthy".to_string()
+            },
+        ),
         ManagedChatDeliveryState::Publishing => Some(format!(
             "sending… (attempt {})",
             message.attempt_count.max(1)
@@ -3262,21 +3311,6 @@ fn paint_chat_shell(
                 chat_thread_row_bounds(content_bounds, index, autopilot_chat.thread_tools_expanded);
             let is_hovered =
                 entry.thread_id.is_some() && entry.thread_id.as_deref() == hovered_thread_id;
-            let row_inner = Bounds::new(
-                row_bounds.origin.x + 2.0,
-                row_bounds.origin.y + 1.0,
-                (row_bounds.size.width - 8.0).max(0.0),
-                (row_bounds.size.height - 2.0).max(0.0),
-            );
-            let row_padding = chat_spacing(AppSpacingRole::RowPadding);
-            let badge_reserved_width = if entry.badge_count > 0 { 44.0 } else { 18.0 };
-            let text_width =
-                (row_inner.size.width - row_padding * 2.0 - badge_reserved_width).max(60.0);
-            let has_subtitle = entry
-                .subtitle
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|subtitle| !subtitle.is_empty());
             let background = if entry.is_category {
                 chat_mission_panel_header_color().with_alpha(0.12)
             } else if is_hovered {
@@ -3697,22 +3731,6 @@ fn paint_chat_shell(
                     relay_color,
                 ));
             }
-            let debug_label = if autopilot_chat.show_debug_events {
-                "Debug ON"
-            } else {
-                "Debug"
-            };
-            let debug_accent = if autopilot_chat.show_debug_events {
-                chat_mission_orange_color()
-            } else {
-                chat_mission_muted_color()
-            };
-            paint_header_chip(
-                chat_managed_debug_toggle_bounds(content_bounds),
-                debug_label,
-                debug_accent,
-                paint,
-            );
         }
         ChatBrowseMode::DirectMessages => {
             let status_text = direct_status_text(autopilot_chat);
@@ -4042,14 +4060,27 @@ pub fn paint(
                 ));
             }
 
-            for (index, message) in managed_messages.into_iter().enumerate() {
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let local_pubkey = autopilot_chat
+                .managed_chat_projection
+                .local_pubkey()
+                .map(|s| s.to_string());
+            let author_metadata = &autopilot_chat
+                .managed_chat_projection
+                .snapshot
+                .author_metadata;
+            let mut prev_author_pubkey: Option<String> = None;
+            let mut prev_created_at: u64 = 0;
+
+            for message in managed_messages.into_iter() {
                 use crate::chat_message_classifier::ChatMessageClass;
-                if !autopilot_chat.show_debug_events
-                    && matches!(
-                        message.message_class,
-                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
-                    )
-                {
+                if matches!(
+                    message.message_class,
+                    ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
+                ) {
                     continue;
                 }
 
@@ -4130,7 +4161,8 @@ pub fn paint(
                     ));
                     y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
-                if let Some(delivery_note) = managed_message_delivery_note(message) {
+                if let Some(delivery_note) = managed_message_delivery_note(autopilot_chat, message)
+                {
                     paint.scene.draw_text(paint.text.layout_mono(
                         &delivery_note,
                         Point::new(transcript_scroll_clip.origin.x + 6.0, y),
@@ -5292,32 +5324,53 @@ mod tests {
 
         // Confirmed and Acked: clean rows — no delivery note
         assert_eq!(
-            managed_message_delivery_note(&make(ManagedChatDeliveryState::Confirmed, None, 1)),
-            None
-        );
-        assert_eq!(
-            managed_message_delivery_note(&make(ManagedChatDeliveryState::Acked, None, 1)),
+            managed_message_delivery_note(
+                &AutopilotChatState::default(),
+                &make(ManagedChatDeliveryState::Confirmed, None, 1),
+            ),
             None
         );
 
+        let mut healthy_chat = AutopilotChatState::default();
+        healthy_chat.managed_chat_lane.connected_relay_count = 1;
+        healthy_chat.managed_chat_lane.subscribed_channel_ids = vec!["channel".to_string()];
+        let note = managed_message_delivery_note(
+            &healthy_chat,
+            &make(ManagedChatDeliveryState::Acked, None, 1),
+        )
+        .unwrap();
+        assert!(note.contains("inbound echo"), "got: {note:?}");
+
+        let note = managed_message_delivery_note(
+            &AutopilotChatState::default(),
+            &make(ManagedChatDeliveryState::Acked, None, 1),
+        )
+        .unwrap();
+        assert!(note.contains("not healthy"), "got: {note:?}");
+
         // Publishing: subtle sending indicator
-        let n = managed_message_delivery_note(&make(ManagedChatDeliveryState::Publishing, None, 2))
-            .unwrap();
+        let n = managed_message_delivery_note(
+            &AutopilotChatState::default(),
+            &make(ManagedChatDeliveryState::Publishing, None, 2),
+        )
+        .unwrap();
         assert!(n.contains("sending"), "got: {n:?}");
 
         // Failed with relay error text + retry hint
-        let n = managed_message_delivery_note(&make(
-            ManagedChatDeliveryState::Failed,
-            Some("auth-rejected"),
-            1,
-        ))
+        let n = managed_message_delivery_note(
+            &AutopilotChatState::default(),
+            &make(ManagedChatDeliveryState::Failed, Some("auth-rejected"), 1),
+        )
         .unwrap();
         assert!(n.contains("auth-rejected"), "got: {n:?}");
         assert!(n.contains("retry"), "got: {n:?}");
 
         // Failed without error text: attempt count + retry hint
-        let n = managed_message_delivery_note(&make(ManagedChatDeliveryState::Failed, None, 3))
-            .unwrap();
+        let n = managed_message_delivery_note(
+            &AutopilotChatState::default(),
+            &make(ManagedChatDeliveryState::Failed, None, 3),
+        )
+        .unwrap();
         assert!(n.contains("retry"), "got: {n:?}");
     }
 }
