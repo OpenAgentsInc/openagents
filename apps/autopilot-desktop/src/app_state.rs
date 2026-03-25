@@ -387,6 +387,8 @@ pub struct SparkPaneInputs {
     pub invoice_amount: TextInput,
     pub send_request: TextInput,
     pub send_amount: TextInput,
+    pub identity_path: TextInput,
+    pub mnemonic_phrase: TextInput,
 }
 
 impl Default for SparkPaneInputs {
@@ -399,6 +401,11 @@ impl Default for SparkPaneInputs {
                 .placeholder("Lightning invoice / payment request")
                 .mono(true),
             send_amount: TextInput::new().placeholder("Send sats (optional)"),
+            identity_path: TextInput::new()
+                .placeholder("Wallet seed path (identity mnemonic)")
+                .mono(true),
+            mnemonic_phrase: TextInput::new()
+                .placeholder("Paste mnemonic words (session only, not saved)"),
         }
     }
 }
@@ -15211,6 +15218,7 @@ pub struct RenderState {
     pub nostr_identity_error: Option<String>,
     pub nostr_secret_state: NostrSecretState,
     pub spark_wallet: SparkPaneState,
+    pub spark_wallet_scroll_offset: f32,
     pub spark_worker: SparkWalletWorker,
     pub stable_sats_blink_worker: StableSatsBlinkWorker,
     pub spark_inputs: SparkPaneInputs,

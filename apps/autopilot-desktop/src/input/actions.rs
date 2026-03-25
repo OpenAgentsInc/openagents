@@ -14227,26 +14227,43 @@ pub(super) fn run_spark_action(
     state: &mut crate::app_state::RenderState,
     action: SparkPaneAction,
 ) -> bool {
-    if action == SparkPaneAction::CopySparkAddress {
-        state.spark_wallet.last_error = None;
-        let notice = match state.spark_wallet.spark_address.as_deref() {
-            Some(address) if !address.trim().is_empty() => match copy_to_clipboard(address) {
-                Ok(()) => "Copied Spark address to clipboard".to_string(),
-                Err(error) => format!("Failed to copy Spark address: {error}"),
-            },
-            _ => "No Spark address available. Generate Spark receive first.".to_string(),
-        };
-
-        if notice.starts_with("Failed") || notice.starts_with("No Spark address") {
-            state.spark_wallet.last_error = Some(notice);
-        } else {
-            state.spark_wallet.last_action = Some(notice);
+    if action == SparkPaneAction::UseMnemonicPhrase {
+        let phrase = state.spark_inputs.mnemonic_phrase.get_value().trim().to_string();
+        // Never keep mnemonic text visible in the UI after submit.
+        state.spark_inputs.mnemonic_phrase.set_value(String::new());
+        if phrase.is_empty() {
+            state.spark_wallet.last_error = Some("Mnemonic cannot be empty".to_string());
+            return true;
         }
+        let words = phrase.split_whitespace().count();
+        if words != 12 && words != 24 {
+            state.spark_wallet.last_error = Some("Mnemonic must be 12 or 24 words".to_string());
+            return true;
+        }
+
+        state.spark_wallet.last_error = None;
+        state.spark_wallet.last_action =
+            Some("Switching wallet from pasted mnemonic (not saved)".to_string());
+        queue_spark_command(
+            state,
+            SparkWalletCommand::UseTransientMnemonic {
+                phrase,
+                allow_create_new: false,
+            },
+        );
+        queue_spark_command(state, SparkWalletCommand::Refresh);
+        return true;
+    }
+
+    if action == SparkPaneAction::CreateNewWallet {
+        state.spark_wallet.last_error =
+            Some("Create New Wallet is temporarily disabled.".to_string());
         return true;
     }
 
     let command = match build_spark_command_for_action(
         action,
+        state.spark_inputs.identity_path.get_value(),
         state.spark_inputs.invoice_amount.get_value(),
         state.spark_inputs.send_request.get_value(),
         state.spark_inputs.send_amount.get_value(),
@@ -14323,16 +14340,32 @@ pub(super) fn run_create_invoice_action(
 
 pub(super) fn build_spark_command_for_action(
     action: SparkPaneAction,
+    identity_path: &str,
     invoice_amount: &str,
     send_request: &str,
     send_amount: &str,
 ) -> Result<SparkWalletCommand, String> {
     match action {
         SparkPaneAction::Refresh => Ok(SparkWalletCommand::Refresh),
+        SparkPaneAction::UseIdentityPath => {
+            let trimmed = identity_path.trim();
+            if trimmed.is_empty() {
+                return Err("Wallet seed path cannot be empty".to_string());
+            }
+            Ok(SparkWalletCommand::SetIdentityPathOverride {
+                path: Some(std::path::PathBuf::from(trimmed)),
+            })
+        }
+        SparkPaneAction::UseDefaultIdentity => Ok(SparkWalletCommand::SetIdentityPathOverride {
+            path: None,
+        }),
+        SparkPaneAction::UseMnemonicPhrase => {
+            Err("Mnemonic import action is handled directly in UI".to_string())
+        }
         SparkPaneAction::GenerateSparkAddress => Ok(SparkWalletCommand::GenerateSparkAddress),
         SparkPaneAction::GenerateBitcoinAddress => Ok(SparkWalletCommand::GenerateBitcoinAddress),
-        SparkPaneAction::CopySparkAddress => {
-            Err("Spark copy action is handled directly in UI".to_string())
+        SparkPaneAction::CreateNewWallet => {
+            Err("Create wallet action is handled directly in UI".to_string())
         }
         SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateBolt11Invoice {
             amount_sats: parse_positive_amount_str(invoice_amount, "Invoice amount")?,
@@ -14349,6 +14382,14 @@ pub(super) fn build_spark_command_for_action(
             })
         }
     }
+}
+
+fn generate_wallet_mnemonic_phrase() -> Result<String, String> {
+    let mut entropy = [0_u8; 16];
+    getrandom::fill(&mut entropy).map_err(|error| format!("Failed to generate entropy: {error}"))?;
+    bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy)
+        .map(|mnemonic| mnemonic.to_string())
+        .map_err(|error| format!("Failed to create wallet mnemonic: {error}"))
 }
 
 pub(super) fn build_pay_invoice_command(
