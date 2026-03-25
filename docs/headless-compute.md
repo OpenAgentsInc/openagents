@@ -629,7 +629,11 @@ cargo run -p autopilot-desktop --bin autopilot-headless-compute -- buyer \
 
 ## NIP-28 managed chat channels
 
-The desktop app subscribes to one or two NIP-28 channels on startup.
+The desktop app bootstraps from the configured default channel, then keeps the
+live NIP-28 subscription set aligned with the managed-chat projection. Runtime
+subscription scope is all discovered managed-chat channel ids currently present
+in the projection, and the lane subscribes across the app's configured relay
+set instead of a single relay.
 
 ### Default channel
 
@@ -640,12 +644,15 @@ The primary channel is set by:
 
 ### Team test channel (A-5)
 
-A second channel for team testing can be added without touching the default:
+A second channel for team testing can still be seeded without touching the
+default:
 
 - `OA_NIP28_TEAM_CHANNEL_ID` — 64-char hex kind-40 event ID of the team test channel
 
-When set, the lane worker subscribes to both channels simultaneously on the same
-relay. Both channels appear in the managed chat workspace rail.
+When set, the lane worker bootstraps with both channel ids available to the
+projection. Both channels appear in the managed chat workspace rail, and the
+runtime will continue subscribing to any additional managed-chat channels the
+projection discovers later.
 
 **Creating a team channel (one-time, manual):**
 

@@ -5846,13 +5846,6 @@ pub(super) fn run_chat_toggle_thread_tools_action(
     true
 }
 
-pub(super) fn run_chat_toggle_debug_events_action(
-    state: &mut crate::app_state::RenderState,
-) -> bool {
-    state.autopilot_chat.show_debug_events = !state.autopilot_chat.show_debug_events;
-    true
-}
-
 pub(super) fn run_chat_toggle_archived_filter_action(
     state: &mut crate::app_state::RenderState,
 ) -> bool {

@@ -107,9 +107,9 @@ mod tool_bridge;
 use actions::*;
 
 pub(crate) use actions::build_mission_control_buy_mode_request_event;
+pub(crate) use actions::create_nip28_channel;
 pub(crate) use actions::ensure_mission_control_apple_fm_refresh;
 pub(crate) use actions::ensure_mission_control_local_runtime_preflight;
-pub(crate) use actions::create_nip28_channel;
 pub(crate) use actions::queue_managed_chat_channel_message;
 pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;
 use shortcuts::*;
@@ -1142,7 +1142,11 @@ fn pump_background_every_loop(
         state,
         "every_loop",
         "autopilot_chat::hover_preview_visibility",
-        |state| state.autopilot_chat.refresh_thread_hover_preview_visibility(now),
+        |state| {
+            state
+                .autopilot_chat
+                .refresh_thread_hover_preview_visibility(now)
+        },
     ) {
         changed = true;
     }
@@ -3435,7 +3439,6 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatCycleSandboxMode => run_chat_cycle_sandbox_mode_action(state),
         PaneHitAction::ChatToggleHeaderControls => run_chat_toggle_header_controls_action(state),
         PaneHitAction::ChatToggleHelpHint => run_chat_toggle_help_hint_action(state),
-        PaneHitAction::ChatToggleDebugEvents => run_chat_toggle_debug_events_action(state),
         PaneHitAction::ChatToggleWorkspaceRail => run_chat_toggle_workspace_rail_action(state),
         PaneHitAction::ChatToggleThreadRail => run_chat_toggle_thread_rail_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
