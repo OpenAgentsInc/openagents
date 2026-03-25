@@ -5,8 +5,9 @@ use wgpui::{Bounds, Button, Component, InputEvent, Modifiers, MouseButton, Point
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
-    mission_control_local_model_button_enabled, mission_control_show_local_model_button,
+    ActivityFeedFilter, ChatWorkspaceSelection, DesktopPane, PaneDragMode, PaneKind,
+    PanePresentation, RenderState, mission_control_local_model_button_enabled,
+    mission_control_show_local_model_button,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -86,6 +87,9 @@ const APPLE_ADAPTER_TRAINING_MAX_RUN_ROWS: usize = 9;
 const APPLE_ADAPTER_TRAINING_INPUT_HEIGHT: f32 = 26.0;
 const APPLE_ADAPTER_TRAINING_INPUT_GAP: f32 = 8.0;
 const APPLE_ADAPTER_TRAINING_PREFLIGHT_HEIGHT: f32 = 120.0;
+const PSIONIC_REMOTE_TRAINING_RUN_ROW_HEIGHT: f32 = 54.0;
+const PSIONIC_REMOTE_TRAINING_RUN_ROW_GAP: f32 = 8.0;
+const PSIONIC_REMOTE_TRAINING_MAX_RUN_ROWS: usize = 8;
 const RELAY_CONNECTIONS_ROW_HEIGHT: f32 = 30.0;
 const RELAY_CONNECTIONS_ROW_GAP: f32 = 6.0;
 const RELAY_CONNECTIONS_MAX_ROWS: usize = 8;
@@ -647,6 +651,12 @@ pub enum AppleAdapterTrainingPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PsionicRemoteTrainingPaneAction {
+    Refresh,
+    SelectRun(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkRequestsPaneAction {
     RequestQuotes,
     AcceptSelectedQuote,
@@ -1101,7 +1111,6 @@ pub enum PaneHitAction {
     ChatCycleSourceFilter,
     ChatCycleProviderFilter,
     ChatToggleThreadTools,
-    ChatToggleDebugEvents,
     ChatForkThread,
     ChatArchiveThread,
     ChatUnarchiveThread,
@@ -1150,6 +1159,7 @@ pub enum PaneHitAction {
     RivePreview(RivePreviewPaneAction),
     AppleFmWorkbench(AppleFmWorkbenchPaneAction),
     AppleAdapterTraining(AppleAdapterTrainingPaneAction),
+    PsionicRemoteTraining(PsionicRemoteTrainingPaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
     ReciprocalLoop(ReciprocalLoopPaneAction),
@@ -1272,6 +1282,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::FrameDebugger => pane_size_for_content(1080.0, 600.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
         PaneKind::AppleAdapterTraining => pane_size_for_content(1220.0, 760.0),
+        PaneKind::PsionicRemoteTraining => pane_size_for_content(1240.0, 780.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(960.0, 540.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
             pane_size_for_content(900.0, 420.0)
@@ -1376,6 +1387,7 @@ impl PaneController {
     pub fn create_for_kind(state: &mut RenderState, kind: PaneKind) -> u64 {
         let id = Self::create(state, PaneDescriptor::for_kind(kind));
         if kind == PaneKind::AutopilotChat {
+            state.autopilot_chat.selected_workspace = ChatWorkspaceSelection::Autopilot;
             focus_chat_composer_for_pane_open(state);
             queue_chat_thread_history_refresh_for_pane_open(state);
         } else if kind == PaneKind::LocalInference {
@@ -1388,6 +1400,8 @@ impl PaneController {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleAdapterTraining {
             focus_apple_adapter_training_input_for_pane_open(state);
+        } else if kind == PaneKind::PsionicRemoteTraining {
+            crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
         } else if kind == PaneKind::DataSeller {
             crate::data_seller_control::hydrate_data_seller_inventory_from_relay_replica(state);
             state.data_seller.mark_opened();
@@ -1873,6 +1887,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
             | PaneKind::PsionicViz
+            | PaneKind::PsionicRemoteTraining
             | PaneKind::AttnResLab
             | PaneKind::TassadarLab
             | PaneKind::RivePreview
@@ -2112,14 +2127,6 @@ pub fn chat_review_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_primary_header_button_bounds(content_bounds, 2)
-}
-
-pub fn chat_managed_debug_toggle_bounds(content_bounds: Bounds) -> Bounds {
-    let transcript_bounds = chat_transcript_bounds(content_bounds);
-    let header_x = transcript_bounds.origin.x + 8.0;
-    let header_y = transcript_bounds.origin.y + 8.0;
-    // Bottom-left of the 106 px managed channel header
-    Bounds::new(header_x + 8.0, header_y + 78.0, 84.0, 16.0)
 }
 
 // pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
@@ -4421,6 +4428,131 @@ pub fn apple_adapter_training_log_tail_bounds(content_bounds: Bounds) -> Bounds 
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct PsionicRemoteTrainingPaneLayout {
+    pub status_row: Bounds,
+    pub summary_band: Bounds,
+    pub runs_panel: Bounds,
+    pub hero_panel: Bounds,
+    pub loss_panel: Bounds,
+    pub math_panel: Bounds,
+    pub runtime_panel: Bounds,
+    pub hardware_panel: Bounds,
+    pub events_panel: Bounds,
+    pub provenance_panel: Bounds,
+}
+
+pub fn psionic_remote_training_layout(content_bounds: Bounds) -> PsionicRemoteTrainingPaneLayout {
+    let outer_gap = 12.0;
+    let card_height = 52.0;
+    let summary_height = 34.0;
+    let status_row = Bounds::new(
+        content_bounds.origin.x + outer_gap,
+        content_bounds.origin.y + outer_gap,
+        (content_bounds.size.width - outer_gap * 2.0).max(0.0),
+        card_height,
+    );
+    let summary_band = Bounds::new(
+        status_row.origin.x,
+        status_row.max_y() + 10.0,
+        status_row.size.width,
+        summary_height,
+    );
+    let body_y = summary_band.max_y() + 12.0;
+    let body_height = (content_bounds.max_y() - body_y - outer_gap).max(0.0);
+    let column_gap = 10.0;
+    let runs_width = 320.0f32.min((status_row.size.width * 0.29).max(280.0));
+    let detail_width = (status_row.size.width - runs_width - column_gap).max(420.0);
+    let runs_panel = Bounds::new(status_row.origin.x, body_y, runs_width, body_height);
+    let detail_x = runs_panel.max_x() + column_gap;
+    let hero_height = 104.0f32.min((body_height * 0.2).max(92.0));
+    let row_gap = 10.0;
+    let row_height = ((body_height - hero_height - row_gap * 3.0) / 3.0).max(132.0);
+    let half_width = ((detail_width - column_gap) / 2.0).max(200.0);
+    let hero_panel = Bounds::new(detail_x, body_y, detail_width, hero_height);
+    let loss_panel = Bounds::new(
+        detail_x,
+        hero_panel.max_y() + row_gap,
+        half_width,
+        row_height,
+    );
+    let math_panel = Bounds::new(
+        loss_panel.max_x() + column_gap,
+        loss_panel.origin.y,
+        detail_x + detail_width - (loss_panel.max_x() + column_gap),
+        row_height,
+    );
+    let runtime_panel = Bounds::new(
+        detail_x,
+        loss_panel.max_y() + row_gap,
+        half_width,
+        row_height,
+    );
+    let hardware_panel = Bounds::new(
+        runtime_panel.max_x() + column_gap,
+        runtime_panel.origin.y,
+        detail_x + detail_width - (runtime_panel.max_x() + column_gap),
+        row_height,
+    );
+    let events_panel = Bounds::new(
+        detail_x,
+        runtime_panel.max_y() + row_gap,
+        half_width,
+        row_height,
+    );
+    let provenance_panel = Bounds::new(
+        events_panel.max_x() + column_gap,
+        events_panel.origin.y,
+        detail_x + detail_width - (events_panel.max_x() + column_gap),
+        row_height,
+    );
+
+    PsionicRemoteTrainingPaneLayout {
+        status_row,
+        summary_band,
+        runs_panel,
+        hero_panel,
+        loss_panel,
+        math_panel,
+        runtime_panel,
+        hardware_panel,
+        events_panel,
+        provenance_panel,
+    }
+}
+
+fn psionic_remote_training_panel_body_bounds(panel: Bounds) -> Bounds {
+    Bounds::new(
+        panel.origin.x + 12.0,
+        panel.origin.y + 28.0,
+        (panel.size.width - 24.0).max(0.0),
+        (panel.size.height - 36.0).max(0.0),
+    )
+}
+
+pub fn psionic_remote_training_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let body = psionic_remote_training_panel_body_bounds(
+        psionic_remote_training_layout(content_bounds).runs_panel,
+    );
+    Bounds::new(body.origin.x, body.origin.y, 110.0, 28.0)
+}
+
+pub fn psionic_remote_training_run_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let body = psionic_remote_training_panel_body_bounds(
+        psionic_remote_training_layout(content_bounds).runs_panel,
+    );
+    let refresh = psionic_remote_training_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        body.origin.x,
+        refresh.max_y()
+            + 12.0
+            + row_index as f32
+                * (PSIONIC_REMOTE_TRAINING_RUN_ROW_HEIGHT + PSIONIC_REMOTE_TRAINING_RUN_ROW_GAP),
+        body.size.width,
+        PSIONIC_REMOTE_TRAINING_RUN_ROW_HEIGHT,
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct AppleFmWorkbenchPaneLayout {
     pub status_row: Bounds,
     pub summary_band: Bounds,
@@ -6671,11 +6803,6 @@ fn pane_hit_action_for_pane(
                     }
                 }
             }
-            if browse_mode == crate::app_state::ChatBrowseMode::Managed {
-                if chat_managed_debug_toggle_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatToggleDebugEvents);
-                }
-            }
             //             if state.autopilot_chat.chat_has_browseable_content() {
             if state.autopilot_chat.chat_has_browseable_content()
                 && !state.autopilot_chat.workspace_rail_collapsed
@@ -7440,6 +7567,22 @@ fn pane_hit_action_for_pane(
                 {
                     return Some(PaneHitAction::AppleAdapterTraining(
                         AppleAdapterTrainingPaneAction::SelectRun(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::PsionicRemoteTraining => {
+            if psionic_remote_training_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::PsionicRemoteTraining(
+                    PsionicRemoteTrainingPaneAction::Refresh,
+                ));
+            }
+            for row_index in 0..PSIONIC_REMOTE_TRAINING_MAX_RUN_ROWS {
+                if psionic_remote_training_run_row_bounds(content_bounds, row_index).contains(point)
+                {
+                    return Some(PaneHitAction::PsionicRemoteTraining(
+                        PsionicRemoteTrainingPaneAction::SelectRun(row_index),
                     ));
                 }
             }
@@ -8469,6 +8612,36 @@ pub fn dispatch_chat_scroll_event(
     chat_pane::dispatch_transcript_scroll_event(state, cursor_position, scroll_dy)
 }
 
+pub fn dispatch_wallet_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    if scroll_dy.abs() <= f32::EPSILON {
+        return false;
+    }
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| {
+            let pane = &state.panes[*index];
+            pane.kind == PaneKind::SparkWallet && pane.bounds.contains(cursor_position)
+        })
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    if !crate::panes::wallet::wallet_details_scroll_bounds(content_bounds).contains(cursor_position) {
+        return false;
+    }
+    let next = (state.spark_wallet_scroll_offset - scroll_dy).clamp(0.0, 4000.0);
+    if (next - state.spark_wallet_scroll_offset).abs() <= f32::EPSILON {
+        return false;
+    }
+    state.spark_wallet_scroll_offset = next;
+    true
+}
+
 pub fn dispatch_log_stream_scroll_event(
     state: &mut RenderState,
     cursor_position: Point,
@@ -9384,6 +9557,38 @@ mod tests {
         assert!(detail.max_x() <= layout.detail_panel.max_x());
         assert!(content.contains(layout.status_row.origin));
         assert!(content.contains(layout.launch_panel.origin));
+    }
+
+    #[test]
+    fn remote_training_minimum_size_is_below_default_but_above_global_floor() {
+        let spec =
+            crate::pane_registry::pane_spec(crate::app_state::PaneKind::PsionicRemoteTraining);
+        let min_size = super::pane_minimum_size(crate::app_state::PaneKind::PsionicRemoteTraining);
+
+        assert!(min_size.width > super::PANE_MIN_WIDTH);
+        assert!(min_size.height > super::PANE_MIN_HEIGHT);
+        assert!(min_size.width < spec.default_width);
+        assert!(min_size.height < spec.default_height);
+    }
+
+    #[test]
+    fn remote_training_layout_orders_shell_regions() {
+        let content = Bounds::new(0.0, 0.0, 1260.0, 820.0);
+        let layout = psionic_remote_training_layout(content);
+        let refresh = psionic_remote_training_refresh_button_bounds(content);
+        let row0 = psionic_remote_training_run_row_bounds(content, 0);
+
+        assert!(layout.status_row.max_y() < layout.summary_band.min_y());
+        assert!(layout.summary_band.max_y() < layout.runs_panel.min_y());
+        assert!(layout.runs_panel.max_x() < layout.hero_panel.min_x());
+        assert!(layout.hero_panel.max_y() < layout.loss_panel.min_y());
+        assert!(layout.loss_panel.max_x() < layout.math_panel.min_x());
+        assert!(layout.runtime_panel.max_y() < layout.events_panel.min_y());
+        assert!(layout.events_panel.max_x() < layout.provenance_panel.min_x());
+        assert!(refresh.max_y() < row0.min_y());
+        assert!(content.contains(layout.status_row.origin));
+        assert!(content.contains(layout.runs_panel.origin));
+        assert!(content.contains(layout.provenance_panel.origin));
     }
 
     #[test]

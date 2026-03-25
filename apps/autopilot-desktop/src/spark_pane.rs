@@ -29,8 +29,12 @@ const SUPPORTING_SECTION_HEADER_HEIGHT: f32 = 48.0;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SparkPaneAction {
     Refresh,
+    UseIdentityPath,
+    UseDefaultIdentity,
+    UseMnemonicPhrase,
     GenerateSparkAddress,
     GenerateBitcoinAddress,
+    CreateNewWallet,
     CopySparkAddress,
     CreateInvoice,
     SendPayment,

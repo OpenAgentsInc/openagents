@@ -566,7 +566,11 @@ pub fn init_state(
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
-        let nip28_chat_lane_worker = crate::nip28_chat_lane::Nip28ChatLaneWorker::spawn();
+        let nip28_chat_lane_worker = {
+            let mut cfg = crate::app_state::DefaultNip28ChannelConfig::from_env_or_default();
+            cfg.private_key_hex = nostr_identity.as_ref().map(|id| id.private_key_hex.clone());
+            crate::nip28_chat_lane::Nip28ChatLaneWorker::spawn_with_config(cfg)
+        };
         let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
         let voice_playground_worker = VoicePlaygroundWorker::new();
         let chat_terminal_worker = crate::chat_terminal::ChatTerminalWorker::spawn();
@@ -643,6 +647,7 @@ pub fn init_state(
             nostr_identity_pane: crate::app_state::NostrIdentityPaneState::default(),
             spark_wallet_pane: crate::app_state::SparkWalletPaneState::default(),
             spark_wallet,
+            spark_wallet_scroll_offset: 0.0,
             spark_worker,
             stable_sats_blink_worker,
             spark_inputs: crate::app_state::SparkPaneInputs::default(),
@@ -1277,6 +1282,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     let provider_blockers = state.provider_blockers();
     let provider_inventory = crate::provider_inventory::inventory_status_for_state(state);
     let training_status = crate::desktop_control::current_training_status(state);
+    let remote_training_status = crate::desktop_control::current_remote_training_status(state);
     let pane_paint_report;
     {
         let buy_mode_enabled = state.mission_control_buy_mode_enabled();
@@ -1589,6 +1595,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.apple_fm_workbench,
             &mut state.apple_adapter_training,
             &training_status,
+            &remote_training_status,
             provider_blockers.as_slice(),
             &mut state.earnings_scoreboard,
             &state.relay_connections,
@@ -1616,6 +1623,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &state.credit_settlement_ledger,
             &state.cad_demo,
             &state.spark_wallet,
+            state.spark_wallet_scroll_offset,
             &provider_inventory,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
