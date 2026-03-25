@@ -102,6 +102,7 @@ pub enum PaneKind {
     VoicePlayground,
     LocalInference,
     PsionicViz,
+    PsionicRemoteTraining,
     AttnResLab,
     TassadarLab,
     RivePreview,
@@ -386,6 +387,8 @@ pub struct SparkPaneInputs {
     pub invoice_amount: TextInput,
     pub send_request: TextInput,
     pub send_amount: TextInput,
+    pub identity_path: TextInput,
+    pub mnemonic_phrase: TextInput,
 }
 
 fn wallet_text_input(input: TextInput) -> TextInput {
@@ -410,8 +413,13 @@ impl Default for SparkPaneInputs {
             ),
             send_request: wallet_text_input(TextInput::new()
                 .placeholder("Lightning invoice / payment request")
-            ),
+                .mono(true)),
             send_amount: wallet_text_input(TextInput::new().placeholder("Send sats (optional)")),
+            identity_path: wallet_text_input(TextInput::new()
+                .placeholder("Wallet seed path (identity mnemonic)")
+                .mono(true)),
+            mnemonic_phrase: wallet_text_input(TextInput::new()
+                .placeholder("Paste mnemonic words (session only, not saved)")),
         }
     }
 }
@@ -670,6 +678,12 @@ impl Default for JobHistoryPaneInputs {
 pub struct ChatPaneInputs {
     pub composer: TextInput,
     pub thread_search: TextInput,
+    /// Per-frame retry click targets for failed managed chat rows: (event_id, bounds).
+    /// Populated during paint, consumed in dispatch_input_event.
+    pub managed_chat_retry_targets: Vec<(String, wgpui::Bounds)>,
+    /// Bounds of the "Set up identity keys →" link shown when no keypair is configured.
+    /// Populated during paint, consumed in dispatch_input_event.
+    pub composer_identity_link_bounds: Option<wgpui::Bounds>,
 }
 
 impl Default for ChatPaneInputs {
@@ -687,6 +701,8 @@ impl Default for ChatPaneInputs {
                 .placeholder("Filter thread history...")
                 .font_size(wgpui::theme::font_size::SM - 3.0)
                 .border_color_focused(theme::border::FOCUS),
+            managed_chat_retry_targets: vec![],
+            composer_identity_link_bounds: None,
         }
     }
 }
@@ -1496,9 +1512,8 @@ impl Default for DataBuyerPaneState {
                 "Data Buyer pane ready; refresh the relay catalog to select a dataset listing."
                     .to_string(),
             ),
-            status_line:
-                "Waiting for a relay dataset listing before issuing a targeted request."
-                    .to_string(),
+            status_line: "Waiting for a relay dataset listing before issuing a targeted request."
+                .to_string(),
             local_buyer_id: None,
             selected_asset_id: None,
             selected_listing_coordinate: None,
@@ -1528,9 +1543,8 @@ impl DataBuyerPaneState {
 
     pub fn mark_opened(&mut self) {
         self.last_error = None;
-        self.last_action = Some(
-            "Opened Data Buyer pane; waiting for a relay dataset selection.".to_string(),
-        );
+        self.last_action =
+            Some("Opened Data Buyer pane; waiting for a relay dataset selection.".to_string());
     }
 
     fn visible_relay_listings<'a>(
@@ -1776,17 +1790,19 @@ impl DataBuyerPaneState {
             .and_then(|request| market.relay_access_contract_for_request(request.event_id.as_str()))
             .or_else(|| {
                 let buyer_id = self.local_buyer_id.as_deref();
-                self.selected_offer_coordinate.as_deref().and_then(|coordinate| {
-                    market.relay_access_contracts.iter().find(|contract| {
-                        contract
-                            .offer_coordinate
-                            .as_deref()
-                            .is_some_and(|value| value.eq_ignore_ascii_case(coordinate))
-                            && buyer_id.is_none_or(|buyer_id| {
-                                contract.buyer_pubkey.eq_ignore_ascii_case(buyer_id)
-                            })
+                self.selected_offer_coordinate
+                    .as_deref()
+                    .and_then(|coordinate| {
+                        market.relay_access_contracts.iter().find(|contract| {
+                            contract
+                                .offer_coordinate
+                                .as_deref()
+                                .is_some_and(|value| value.eq_ignore_ascii_case(coordinate))
+                                && buyer_id.is_none_or(|buyer_id| {
+                                    contract.buyer_pubkey.eq_ignore_ascii_case(buyer_id)
+                                })
+                        })
                     })
-                })
             })
     }
 
@@ -1884,7 +1900,8 @@ impl DataBuyerPaneState {
                 modes
             })
             .or_else(|| {
-                grant.map(|grant| json_string_array_field(&grant.metadata, "delivery_modes"))
+                grant
+                    .map(|grant| json_string_array_field(&grant.metadata, "delivery_modes"))
                     .filter(|modes| !modes.is_empty())
             })
             .or_else(|| {
@@ -5170,9 +5187,8 @@ impl DataMarketPaneState {
     pub fn mark_opened(&mut self) {
         self.last_error = None;
         if !self.has_snapshot() {
-            self.last_action = Some(
-                "Opened Data Market pane; refresh to load the DS relay catalog".to_string(),
-            );
+            self.last_action =
+                Some("Opened Data Market pane; refresh to load the DS relay catalog".to_string());
         }
     }
 
@@ -5497,9 +5513,8 @@ impl DataMarketPaneState {
         self.relay_listings
             .iter()
             .filter(|listing| {
-                crate::nip90_compute_semantics::normalize_pubkey(
-                    listing.publisher_pubkey.as_str(),
-                ) == normalized_publisher
+                crate::nip90_compute_semantics::normalize_pubkey(listing.publisher_pubkey.as_str())
+                    == normalized_publisher
             })
             .collect()
     }
@@ -8311,6 +8326,7 @@ pub struct AutopilotChatState {
     pub active_thread_id: Option<String>,
     pub selected_workspace: ChatWorkspaceSelection,
     pub managed_chat_projection: ManagedChatProjectionState,
+    pub managed_chat_lane: crate::nip28_chat_lane::Nip28ChatLaneSnapshot,
     pub direct_message_projection: DirectMessageProjectionState,
     pub startup_new_thread_bootstrap_pending: bool,
     pub startup_new_thread_bootstrap_sent: bool,
@@ -8353,7 +8369,6 @@ pub struct AutopilotChatState {
     pub header_controls_expanded: bool,
     pub thread_tools_expanded: bool,
     pub show_autopilot_help_hint: bool,
-    pub show_debug_events: bool,
     pub workspace_rail_collapsed: bool,
     pub thread_rail_collapsed: bool,
     pub thread_rail_scroll_row_offset: usize,
@@ -8453,6 +8468,7 @@ impl Default for AutopilotChatState {
             active_thread_id: None,
             selected_workspace: ChatWorkspaceSelection::Autopilot,
             managed_chat_projection: ManagedChatProjectionState::default(),
+            managed_chat_lane: crate::nip28_chat_lane::Nip28ChatLaneSnapshot::default(),
             direct_message_projection: DirectMessageProjectionState::default(),
             startup_new_thread_bootstrap_pending: false,
             startup_new_thread_bootstrap_sent: false,
@@ -8495,7 +8511,6 @@ impl Default for AutopilotChatState {
             header_controls_expanded: false,
             thread_tools_expanded: false,
             show_autopilot_help_hint: false,
-            show_debug_events: false,
             workspace_rail_collapsed: false,
             thread_rail_collapsed: false,
             thread_rail_scroll_row_offset: 0,
@@ -9848,13 +9863,16 @@ impl AutopilotChatState {
             _ => {}
         }
 
-        if self.has_managed_chat_browseable_content() {
-            ChatBrowseMode::Managed
-        } else if self.has_direct_message_browseable_content() {
-            ChatBrowseMode::DirectMessages
-        } else {
-            ChatBrowseMode::Autopilot
-        }
+        // Managed and DirectMessages are only active via explicit user navigation.
+        ChatBrowseMode::Autopilot
+
+        // if self.has_managed_chat_browseable_content() {
+        //     ChatBrowseMode::Managed
+        // } else if self.has_direct_message_browseable_content() {
+        //     ChatBrowseMode::DirectMessages
+        // } else {
+        //     ChatBrowseMode::Autopilot
+        // }
     }
 
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
@@ -13240,6 +13258,8 @@ pub struct DefaultNip28ChannelConfig {
     pub channel_id: String,
     /// Optional second channel (OA_NIP28_TEAM_CHANNEL_ID) for team testing.
     pub team_channel_id: Option<String>,
+    /// Private key hex for NIP-42 AUTH, set from loaded identity at spawn time.
+    pub private_key_hex: Option<String>,
 }
 
 impl DefaultNip28ChannelConfig {
@@ -13252,6 +13272,7 @@ impl DefaultNip28ChannelConfig {
             team_channel_id: std::env::var(ENV_NIP28_TEAM_CHANNEL_ID)
                 .ok()
                 .filter(|id| is_valid_nip28_channel_id(id)),
+            private_key_hex: None,
         }
     }
 
@@ -15340,6 +15361,7 @@ pub struct RenderState {
     pub nostr_identity_pane: NostrIdentityPaneState,
     pub spark_wallet_pane: SparkWalletPaneState,
     pub spark_wallet: SparkPaneState,
+    pub spark_wallet_scroll_offset: f32,
     pub spark_worker: SparkWalletWorker,
     pub stable_sats_blink_worker: StableSatsBlinkWorker,
     pub spark_inputs: SparkPaneInputs,
@@ -15819,18 +15841,19 @@ mod tests {
         CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
         CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
         CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, DataBuyerPaneState,
-        DataSellerPaneState, DataSellerPreviewPosture, EarnJobLifecycleProjectionRow,
-        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
-        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
-        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        LogStreamPaneState, MissionControlPaneState, NetworkAggregateCountersState,
-        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
-        ProviderMode, ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
-        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
-        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, ChatBrowseMode,
+        DataBuyerPaneState, DataSellerPaneState, DataSellerPreviewPosture,
+        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
+        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, LogStreamPaneState, MissionControlPaneState,
+        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
+        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
+        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+        SyncRecoveryPhase,
     };
     use chrono::TimeZone;
     use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -21002,6 +21025,74 @@ mod tests {
             Some("beta")
         );
         assert_eq!(chat.active_managed_chat_messages().len(), 1);
+    }
+
+    #[test]
+    fn chat_browse_mode_defaults_to_autopilot_even_when_managed_content_exists() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            "oa-main",
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel_alpha = nostr::ManagedChannelCreateEvent::new(
+            "oa-main",
+            nostr::ChannelMetadata::new("alpha", "", ""),
+            20,
+        )
+        .expect("channel alpha")
+        .with_hints(
+            nostr::ManagedChannelHints::new()
+                .with_channel_type(nostr::ManagedChannelType::Ops)
+                .with_position(1),
+        )
+        .expect("alpha hints");
+
+        chat.managed_chat_projection.record_relay_events(vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel_alpha.to_tags().expect("alpha tags"),
+                channel_alpha.content().expect("alpha content"),
+            ),
+        ]);
+
+        // Managed content exists but no explicit workspace selection was made.
+        assert!(chat.has_managed_chat_browseable_content());
+        // Mode must be Autopilot — not Managed — without explicit navigation.
+        assert_eq!(chat.chat_browse_mode(), ChatBrowseMode::Autopilot);
     }
 
     #[test]

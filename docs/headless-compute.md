@@ -124,6 +124,11 @@ autopilotctl tunnels status
 autopilotctl cluster status
 autopilotctl sandbox status
 autopilotctl training status
+autopilotctl remote-training status
+autopilotctl remote-training list
+autopilotctl remote-training run parameter-golf-runpod-single-h100-live-sample
+autopilotctl remote-training stale
+autopilotctl remote-training refresh
 autopilotctl training launch /tmp/train.jsonl /tmp/held-out.jsonl weather-helper --author "OpenAgents" --description "Repo-native Apple adapter operator run" --license Apache-2.0
 autopilotctl training export weather-helper-1760000000000 /tmp/weather-helper.fmadapter
 autopilotctl training accept weather-helper-1760000000000
@@ -188,6 +193,41 @@ training read model. It includes:
 - a contributor-focused summary for the current desktop node so operators can
   see whether the local runtime is blocked, awaiting assignment, submitted,
   accepted, quarantined, replay-required, or settlement-ready
+
+Desktop control now also carries a separate `remote_training` mirror for the
+Psionic Google and RunPod lanes. That surface is app-owned and provider-neutral:
+
+- it mirrors the Psionic remote-training run index and retained bundles into an
+  app-local cache instead of making panes parse provider storage layouts
+- it refreshes active runs on a one-second cadence
+- it keeps `stale`, `summary_only`, and full-series posture explicit through
+  normalized run-list and selected-run detail state
+- it surfaces bundle provenance, cached-bundle paths, heartbeat age, and stale
+  reasons through the same desktop snapshot contract the GUI uses
+
+The desktop-control action surface now exposes that same mirror directly:
+
+- `remote-training-status` returns the normalized run list, selected run
+  summary, refresh cadence, cache paths, provenance source, stale counts, and
+  the last live-source error
+- `remote-training-run` returns the selected or requested run together with the
+  retained visualization bundle when the app has it cached locally
+- `remote-training-refresh` forces an immediate mirror refresh before returning
+  the normalized status payload
+
+`autopilotctl remote-training` is the operator-facing wrapper over those
+actions:
+
+- `status` prints the same top-level remote-training summary the full desktop
+  snapshot now includes
+- `list` prints every mirrored run with provider, lane, result, series posture,
+  heartbeat age, cache state, and stale diagnostics
+- `run [run_id]` prints selected-run detail and retained bundle counts,
+  freshness, provenance, and source-root information
+- `stale` filters the mirrored run list down to stale entries and their
+  freshness failure reasons
+- `refresh` forces a one-shot sync before printing the same normalized status
+  payload
 
 For the Apple adapter lane, the training command group is now an operator
 workflow rather than a status-only surface:
@@ -629,7 +669,11 @@ cargo run -p autopilot-desktop --bin autopilot-headless-compute -- buyer \
 
 ## NIP-28 managed chat channels
 
-The desktop app subscribes to one or two NIP-28 channels on startup.
+The desktop app bootstraps from the configured default channel, then keeps the
+live NIP-28 subscription set aligned with the managed-chat projection. Runtime
+subscription scope is all discovered managed-chat channel ids currently present
+in the projection, and the lane subscribes across the app's configured relay
+set instead of a single relay.
 
 ### Default channel
 
@@ -640,12 +684,15 @@ The primary channel is set by:
 
 ### Team test channel (A-5)
 
-A second channel for team testing can be added without touching the default:
+A second channel for team testing can still be seeded without touching the
+default:
 
 - `OA_NIP28_TEAM_CHANNEL_ID` — 64-char hex kind-40 event ID of the team test channel
 
-When set, the lane worker subscribes to both channels simultaneously on the same
-relay. Both channels appear in the managed chat workspace rail.
+When set, the lane worker bootstraps with both channel ids available to the
+projection. Both channels appear in the managed chat workspace rail, and the
+runtime will continue subscribing to any additional managed-chat channels the
+projection discovers later.
 
 **Creating a team channel (one-time, manual):**
 

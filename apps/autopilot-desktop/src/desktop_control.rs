@@ -41,6 +41,10 @@ use psionic_sandbox::{
     ProviderSandboxExecutionControls, ProviderSandboxFileTransferReceipt,
     ProviderSandboxJobRequest, ProviderSandboxProfile,
 };
+use psionic_train::{
+    RemoteTrainingProvider, RemoteTrainingResultClassification, RemoteTrainingSeriesStatus,
+    RemoteTrainingVisualizationBundle,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
@@ -82,7 +86,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 15;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 16;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -123,6 +127,7 @@ pub struct DesktopControlSnapshot {
     pub cluster: DesktopControlClusterStatus,
     pub sandbox: DesktopControlSandboxStatus,
     pub training: DesktopControlTrainingStatus,
+    pub remote_training: DesktopControlRemoteTrainingStatus,
     pub proofs: DesktopControlProofStatus,
     pub challenges: DesktopControlChallengeStatus,
     pub buy_mode: DesktopControlBuyModeStatus,
@@ -893,6 +898,58 @@ pub struct DesktopControlTrainingStatus {
     pub last_error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingRunStatus {
+    pub provider: String,
+    pub profile_id: String,
+    pub lane_id: String,
+    pub run_id: String,
+    pub repo_revision: String,
+    pub result_classification: String,
+    pub series_status: String,
+    pub series_unavailable_reason: Option<String>,
+    pub summary_label: String,
+    pub detail: String,
+    pub last_heartbeat_at_ms: Option<u64>,
+    pub heartbeat_age_ms: Option<u64>,
+    pub stale: bool,
+    pub stale_reason: Option<String>,
+    pub bundle_cached: bool,
+    pub bundle_cache_path: Option<String>,
+    pub bundle_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingSelectedRunStatus {
+    pub run: DesktopControlRemoteTrainingRunStatus,
+    pub source_root: Option<String>,
+    pub source_index_path: Option<String>,
+    pub bundle: Option<RemoteTrainingVisualizationBundle>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingStatus {
+    pub available: bool,
+    pub source: String,
+    pub source_root: Option<String>,
+    pub source_index_path: Option<String>,
+    pub cache_root: Option<String>,
+    pub sync_state: String,
+    pub last_synced_at_epoch_ms: Option<u64>,
+    pub last_successful_sync_at_epoch_ms: Option<u64>,
+    pub refresh_interval_ms: u64,
+    pub run_count: usize,
+    pub active_run_count: usize,
+    pub summary_only_run_count: usize,
+    pub full_series_run_count: usize,
+    pub stale_run_count: usize,
+    pub selected_run_id: Option<String>,
+    pub runs: Vec<DesktopControlRemoteTrainingRunStatus>,
+    pub selected_run: Option<DesktopControlRemoteTrainingSelectedRunStatus>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlSettlementHistoryStatus {
     pub settlement_id: String,
@@ -1140,8 +1197,15 @@ pub struct DesktopControlNip28Status {
     pub available: bool,
     pub browse_mode: String,
     pub configured_relay_url: String,
+    pub configured_relay_count: usize,
+    pub connected_relay_count: usize,
     pub configured_channel_id: String,
     pub configured_channel_loaded: bool,
+    pub subscribed_channel_ids: Vec<String>,
+    pub last_inbound_event_at_epoch_secs: Option<u64>,
+    pub last_eose_at_epoch_secs: Option<u64>,
+    pub reconnecting: bool,
+    pub last_subscription_error: Option<String>,
     pub local_pubkey: Option<String>,
     pub selected_group_id: Option<String>,
     pub selected_group_name: Option<String>,
@@ -1229,6 +1293,11 @@ pub enum DesktopControlActionRequest {
     GetResearchStatus,
     ResetResearchState,
     GetTrainingStatus,
+    GetRemoteTrainingStatus,
+    GetRemoteTrainingRun {
+        run_id: Option<String>,
+    },
+    RefreshRemoteTrainingStatus,
     LaunchAppleAdapterTraining {
         train_dataset_path: String,
         held_out_dataset_path: String,
@@ -1433,6 +1502,9 @@ impl DesktopControlActionRequest {
             Self::GetResearchStatus => "research-status",
             Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
+            Self::GetRemoteTrainingStatus => "remote-training-status",
+            Self::GetRemoteTrainingRun { .. } => "remote-training-run",
+            Self::RefreshRemoteTrainingStatus => "remote-training-refresh",
             Self::LaunchAppleAdapterTraining { .. } => "training-launch-apple-adapter",
             Self::ExportAppleAdapterTraining { .. } => "training-export-apple-adapter",
             Self::AcceptAppleAdapterTraining { .. } => "training-accept-apple-adapter",
@@ -1942,6 +2014,9 @@ pub fn poll_runtime(state: &mut RenderState) -> bool {
     if refresh_compute_history_cache_if_due(state, false) {
         changed = true;
     }
+    if crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, false) {
+        changed = true;
+    }
     if sync_runtime_snapshot(state) {
         changed = true;
     }
@@ -2222,10 +2297,16 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetResearchStatus
         | DesktopControlActionRequest::ResetResearchState
         | DesktopControlActionRequest::GetTrainingStatus
+        | DesktopControlActionRequest::GetRemoteTrainingStatus
+        | DesktopControlActionRequest::RefreshRemoteTrainingStatus
         | DesktopControlActionRequest::GetProofStatus
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::GetRemoteTrainingRun { run_id } => json!({
+            "command_label": action.label(),
+            "run_id": run_id,
+        }),
         DesktopControlActionRequest::LaunchAppleAdapterTraining {
             train_dataset_path,
             held_out_dataset_path,
@@ -3243,9 +3324,12 @@ fn nip28_status_summary(status: &DesktopControlNip28Status) -> String {
         );
     }
     format!(
-        "nip28 group={} channel={} messages={} publishing_outbound={}",
+        "nip28 group={} channel={} relays={}/{} subscribed_channels={} messages={} publishing_outbound={}",
         status.selected_group_name.as_deref().unwrap_or("-"),
         status.selected_channel_name.as_deref().unwrap_or("-"),
+        status.connected_relay_count,
+        status.configured_relay_count,
+        status.subscribed_channel_ids.len(),
         status.recent_messages.len(),
         status.publishing_outbound_count
     )
@@ -3385,6 +3469,15 @@ fn apply_action_request(
         DesktopControlActionRequest::GetResearchStatus => research_payload_response().into(),
         DesktopControlActionRequest::ResetResearchState => reset_research_action().into(),
         DesktopControlActionRequest::GetTrainingStatus => training_payload_response(state).into(),
+        DesktopControlActionRequest::GetRemoteTrainingStatus => {
+            remote_training_payload_response(state, false).into()
+        }
+        DesktopControlActionRequest::GetRemoteTrainingRun { run_id } => {
+            remote_training_run_payload_response(state, run_id.as_deref()).into()
+        }
+        DesktopControlActionRequest::RefreshRemoteTrainingStatus => {
+            remote_training_payload_response(state, true).into()
+        }
         DesktopControlActionRequest::LaunchAppleAdapterTraining {
             train_dataset_path,
             held_out_dataset_path,
@@ -5332,6 +5425,7 @@ fn proof_payload_response(state: &mut RenderState) -> DesktopControlActionRespon
 
 fn training_payload_response(state: &mut RenderState) -> DesktopControlActionResponse {
     refresh_compute_history_cache_if_due(state, true);
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
     match serde_json::to_value(desktop_control_training_status(state)) {
         Ok(payload) => DesktopControlActionResponse::ok_with_payload(
             "Captured training control state",
@@ -5339,6 +5433,70 @@ fn training_payload_response(state: &mut RenderState) -> DesktopControlActionRes
         ),
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode training control state: {error}"
+        )),
+    }
+}
+
+fn remote_training_payload_response(
+    state: &mut RenderState,
+    force_refresh: bool,
+) -> DesktopControlActionResponse {
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, force_refresh);
+    match serde_json::to_value(desktop_control_remote_training_status(state)) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            if force_refresh {
+                "Refreshed remote training control state"
+            } else {
+                "Captured remote training control state"
+            },
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode remote training control state: {error}"
+        )),
+    }
+}
+
+fn remote_training_run_payload_response(
+    state: &mut RenderState,
+    requested_run_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
+    let status = desktop_control_remote_training_status(state);
+    let selected_run = requested_run_id.map_or_else(
+        || status.selected_run.clone(),
+        |run_id| {
+            status
+                .runs
+                .iter()
+                .find(|run| run.run_id == run_id)
+                .cloned()
+                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
+                    run,
+                    source_root: status.source_root.clone(),
+                    source_index_path: status.source_index_path.clone(),
+                    bundle: state
+                        .desktop_control
+                        .remote_training
+                        .bundles
+                        .get(run_id)
+                        .cloned(),
+                })
+        },
+    );
+    let Some(selected_run) = selected_run else {
+        return DesktopControlActionResponse::error(match requested_run_id {
+            Some(run_id) => format!("Remote training run `{run_id}` was not found"),
+            None => "No remote training runs are available".to_string(),
+        });
+    };
+    match serde_json::to_value(selected_run) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            "Captured remote training run detail",
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode remote training run detail: {error}"
         )),
     }
 }
@@ -5425,6 +5583,7 @@ fn training_action_payload_response(
     if refresh_authority {
         refresh_compute_history_cache_if_due(state, true);
     }
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
     match serde_json::to_value(desktop_control_training_status(state)) {
         Ok(payload) => DesktopControlActionResponse::ok_with_payload(message, payload),
         Err(error) => DesktopControlActionResponse::error(format!(
@@ -6914,8 +7073,253 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
     }
 }
 
+fn desktop_control_remote_training_status(
+    state: &RenderState,
+) -> DesktopControlRemoteTrainingStatus {
+    let sync = &state.desktop_control.remote_training;
+    let now_epoch_ms = current_epoch_ms();
+    let runs = sync
+        .run_index
+        .as_ref()
+        .map(|index| {
+            index
+                .entries
+                .iter()
+                .map(|entry| {
+                    desktop_control_remote_training_run_status(
+                        entry,
+                        sync.bundles.get(entry.run_id.as_str()),
+                        sync.mirrored_bundle_paths.get(entry.run_id.as_str()),
+                        now_epoch_ms,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let selected_run = sync
+        .selected_run_id
+        .as_deref()
+        .and_then(|run_id| {
+            runs.iter()
+                .find(|run| run.run_id == run_id)
+                .cloned()
+                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
+                    run,
+                    source_root: sync
+                        .source_root
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    source_index_path: sync
+                        .source_index_path
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    bundle: sync.bundles.get(run_id).cloned(),
+                })
+        })
+        .or_else(|| {
+            runs.first()
+                .cloned()
+                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
+                    source_root: sync
+                        .source_root
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    source_index_path: sync
+                        .source_index_path
+                        .as_ref()
+                        .map(|path| path.display().to_string()),
+                    bundle: sync.bundles.get(run.run_id.as_str()).cloned(),
+                    run,
+                })
+        });
+    let run_count = runs.len();
+    let active_run_count = runs
+        .iter()
+        .filter(|run| run.result_classification == "active")
+        .count();
+    let full_series_run_count = runs
+        .iter()
+        .filter(|run| run.series_status == "available")
+        .count();
+    let summary_only_run_count = runs
+        .iter()
+        .filter(|run| run.series_status != "available")
+        .count();
+    let available = sync.run_index.is_some();
+    let sync_state = if sync.last_refreshed_at_epoch_ms.is_none() {
+        if sync.last_error.is_some() {
+            "error"
+        } else {
+            "pending"
+        }
+    } else if !available {
+        if sync.source_root_hint.is_some() || sync.source_index_path_hint.is_some() {
+            if sync.last_error.is_some() {
+                "error"
+            } else {
+                "idle"
+            }
+        } else {
+            "unconfigured"
+        }
+    } else if sync.using_cached_mirror || sync.last_error.is_some() {
+        "stale"
+    } else {
+        "ready"
+    }
+    .to_string();
+    DesktopControlRemoteTrainingStatus {
+        available,
+        source: if sync.using_cached_mirror {
+            "local_cache_mirror".to_string()
+        } else if sync.source_root.is_some() {
+            "live_psionic_mirror".to_string()
+        } else {
+            "unconfigured".to_string()
+        },
+        source_root: sync
+            .source_root
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        source_index_path: sync
+            .source_index_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        cache_root: Some(sync.cache_root.display().to_string()),
+        sync_state,
+        last_synced_at_epoch_ms: sync.last_refreshed_at_epoch_ms,
+        last_successful_sync_at_epoch_ms: sync.last_successful_sync_at_epoch_ms,
+        refresh_interval_ms: sync.refresh_interval_ms,
+        run_count,
+        active_run_count,
+        summary_only_run_count,
+        full_series_run_count,
+        stale_run_count: runs.iter().filter(|run| run.stale).count(),
+        selected_run_id: sync.selected_run_id.clone(),
+        runs,
+        selected_run,
+        last_error: sync.last_error.clone(),
+        last_action: sync.last_action.clone(),
+    }
+}
+
+fn desktop_control_remote_training_run_status(
+    entry: &psionic_train::RemoteTrainingRunIndexEntry,
+    bundle: Option<&RemoteTrainingVisualizationBundle>,
+    mirrored_bundle_path: Option<&PathBuf>,
+    now_epoch_ms: u64,
+) -> DesktopControlRemoteTrainingRunStatus {
+    let (heartbeat_age_ms, stale, stale_reason) =
+        remote_training_freshness(now_epoch_ms, entry, bundle);
+    DesktopControlRemoteTrainingRunStatus {
+        provider: remote_training_provider_label(entry.provider).to_string(),
+        profile_id: entry.profile_id.clone(),
+        lane_id: entry.lane_id.clone(),
+        run_id: entry.run_id.clone(),
+        repo_revision: entry.repo_revision.clone(),
+        result_classification: remote_training_result_label(entry.result_classification)
+            .to_string(),
+        series_status: remote_training_series_status_label(entry.series_status).to_string(),
+        series_unavailable_reason: entry.series_unavailable_reason.clone(),
+        summary_label: entry.summary_label.clone(),
+        detail: entry.detail.clone(),
+        last_heartbeat_at_ms: bundle
+            .and_then(|bundle| bundle.refresh_contract.last_heartbeat_at_ms)
+            .or(entry.last_heartbeat_at_ms),
+        heartbeat_age_ms,
+        stale,
+        stale_reason,
+        bundle_cached: mirrored_bundle_path.is_some() || bundle.is_some(),
+        bundle_cache_path: mirrored_bundle_path.map(|path| path.display().to_string()),
+        bundle_digest: entry
+            .bundle_digest
+            .clone()
+            .or_else(|| bundle.map(|bundle| bundle.bundle_digest.clone())),
+    }
+}
+
+fn remote_training_freshness(
+    now_epoch_ms: u64,
+    entry: &psionic_train::RemoteTrainingRunIndexEntry,
+    bundle: Option<&RemoteTrainingVisualizationBundle>,
+) -> (Option<u64>, bool, Option<String>) {
+    let last_heartbeat_at_ms = bundle
+        .and_then(|bundle| bundle.refresh_contract.last_heartbeat_at_ms)
+        .or(entry.last_heartbeat_at_ms);
+    let heartbeat_age_ms =
+        last_heartbeat_at_ms.map(|timestamp| now_epoch_ms.saturating_sub(timestamp));
+    if entry.result_classification != RemoteTrainingResultClassification::Active {
+        return (heartbeat_age_ms, false, None);
+    }
+    let stale_after_ms = bundle
+        .and_then(|bundle| {
+            bundle
+                .heartbeat_series
+                .last()
+                .map(|sample| sample.stale_after_ms)
+        })
+        .unwrap_or_else(|| {
+            bundle
+                .map(|bundle| {
+                    bundle
+                        .refresh_contract
+                        .target_ui_update_interval_ms
+                        .saturating_mul(3)
+                        .max(3_000)
+                })
+                .unwrap_or(3_000)
+        });
+    match heartbeat_age_ms {
+        Some(age_ms) if age_ms > stale_after_ms => (
+            Some(age_ms),
+            true,
+            Some(format!(
+                "latest heartbeat is {age_ms}ms old and exceeded the {stale_after_ms}ms stale window"
+            )),
+        ),
+        Some(age_ms) => (Some(age_ms), false, None),
+        None => (
+            None,
+            true,
+            Some("active run has no retained heartbeat timestamp".to_string()),
+        ),
+    }
+}
+
+fn remote_training_provider_label(provider: RemoteTrainingProvider) -> &'static str {
+    match provider {
+        RemoteTrainingProvider::GoogleCloud => "google_cloud",
+        RemoteTrainingProvider::RunPod => "run_pod",
+    }
+}
+
+fn remote_training_result_label(result: RemoteTrainingResultClassification) -> &'static str {
+    match result {
+        RemoteTrainingResultClassification::Planned => "planned",
+        RemoteTrainingResultClassification::Active => "active",
+        RemoteTrainingResultClassification::CompletedSuccess => "completed_success",
+        RemoteTrainingResultClassification::CompletedFailure => "completed_failure",
+        RemoteTrainingResultClassification::Refused => "refused",
+        RemoteTrainingResultClassification::RehearsalOnly => "rehearsal_only",
+    }
+}
+
+fn remote_training_series_status_label(status: RemoteTrainingSeriesStatus) -> &'static str {
+    match status {
+        RemoteTrainingSeriesStatus::Available => "available",
+        RemoteTrainingSeriesStatus::Partial => "partial",
+        RemoteTrainingSeriesStatus::Unavailable => "unavailable",
+    }
+}
+
 pub(crate) fn current_training_status(state: &RenderState) -> DesktopControlTrainingStatus {
     desktop_control_training_status(state)
+}
+
+pub(crate) fn current_remote_training_status(
+    state: &RenderState,
+) -> DesktopControlRemoteTrainingStatus {
+    desktop_control_remote_training_status(state)
 }
 
 pub(crate) fn run_inline_action_request(
@@ -8246,6 +8650,7 @@ fn snapshot_for_state_with_signature(
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
         training: desktop_control_training_status(state),
+        remote_training: desktop_control_remote_training_status(state),
         proofs: desktop_control_proof_status(state),
         challenges: desktop_control_challenge_status(state),
         buy_mode: DesktopControlBuyModeStatus {
@@ -8369,6 +8774,7 @@ fn desktop_control_nip28_status(
     chat: &crate::app_state::AutopilotChatState,
 ) -> DesktopControlNip28Status {
     let config = DefaultNip28ChannelConfig::from_env_or_default();
+    let lane = &chat.managed_chat_lane;
     let browse_mode = match chat.chat_browse_mode() {
         crate::app_state::ChatBrowseMode::Autopilot => "autopilot",
         crate::app_state::ChatBrowseMode::Managed => "managed",
@@ -8445,7 +8851,13 @@ fn desktop_control_nip28_status(
     DesktopControlNip28Status {
         available: chat.has_managed_chat_browseable_content(),
         browse_mode,
-        configured_relay_url: config.relay_url.clone(),
+        configured_relay_url: lane
+            .configured_relays
+            .first()
+            .cloned()
+            .unwrap_or_else(|| config.relay_url.clone()),
+        configured_relay_count: lane.configured_relays.len(),
+        connected_relay_count: lane.connected_relay_count,
         configured_channel_id: config.channel_id.clone(),
         configured_channel_loaded: chat
             .managed_chat_projection
@@ -8453,6 +8865,11 @@ fn desktop_control_nip28_status(
             .channels
             .iter()
             .any(|channel| channel.channel_id == config.channel_id),
+        subscribed_channel_ids: lane.subscribed_channel_ids.clone(),
+        last_inbound_event_at_epoch_secs: lane.last_inbound_event_at_epoch_secs,
+        last_eose_at_epoch_secs: lane.last_eose_at_epoch_secs,
+        reconnecting: lane.reconnecting,
+        last_subscription_error: lane.last_error.clone(),
         local_pubkey: chat.managed_chat_local_pubkey().map(str::to_string),
         selected_group_id: active_group.map(|group| group.group_id.clone()),
         selected_group_name: active_group.map(group_name_label),
@@ -8964,17 +9381,18 @@ mod tests {
         DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
         DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
         DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlProofStatus, DesktopControlProviderStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
-        DesktopControlSessionStatus, DesktopControlSnapshot,
-        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
-        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
-        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
-        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
-        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
-        command_received_event, desktop_control_challenge_history_status,
-        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
-        validate_control_bind_addr,
+        DesktopControlProofStatus, DesktopControlProviderStatus,
+        DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
+        DesktopControlRemoteTrainingStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
+        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
+        DesktopControlSnapshot, DesktopControlTrainingParticipantStatus,
+        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
+        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
+        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
+        build_nip90_sent_payments_report_payload, build_settlement_history,
+        challenges_by_delivery_proof, command_outcome_event, command_received_event,
+        desktop_control_challenge_history_status, desktop_control_proof_history_status,
+        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -9381,6 +9799,111 @@ mod tests {
                 contributor: crate::desktop_control::DesktopControlTrainingContributorStatus::default(),
                 operator: DesktopControlAppleAdapterOperatorStatus::default(),
                 last_error: None,
+            },
+            remote_training: DesktopControlRemoteTrainingStatus {
+                available: true,
+                source: "live_psionic_mirror".to_string(),
+                source_root: Some("/tmp/psionic".to_string()),
+                source_index_path: Some(
+                    "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                        .to_string(),
+                ),
+                cache_root: Some("/tmp/openagents/remote-training-v1".to_string()),
+                sync_state: "ready".to_string(),
+                last_synced_at_epoch_ms: Some(1_762_500_003_000),
+                last_successful_sync_at_epoch_ms: Some(1_762_500_003_000),
+                refresh_interval_ms: 1_000,
+                run_count: 2,
+                active_run_count: 1,
+                summary_only_run_count: 1,
+                full_series_run_count: 1,
+                stale_run_count: 0,
+                selected_run_id: Some(
+                    "parameter-golf-runpod-single-h100-live-sample".to_string(),
+                ),
+                runs: vec![
+                    DesktopControlRemoteTrainingRunStatus {
+                        provider: "google_cloud".to_string(),
+                        profile_id: "google_a2_ultragpu_1g".to_string(),
+                        lane_id: "psion.google_single_node.accelerated".to_string(),
+                        run_id: "psion-google-summary-only-sample".to_string(),
+                        repo_revision: "main@ce5359b9".to_string(),
+                        result_classification: "completed_success".to_string(),
+                        series_status: "unavailable".to_string(),
+                        series_unavailable_reason: Some(
+                            "no canonical optimizer-step loss series".to_string(),
+                        ),
+                        summary_label: "Google summary-only".to_string(),
+                        detail: "Summary-only lane".to_string(),
+                        last_heartbeat_at_ms: Some(1_742_760_920_000),
+                        heartbeat_age_ms: Some(1_000),
+                        stale: false,
+                        stale_reason: None,
+                        bundle_cached: true,
+                        bundle_cache_path: Some(
+                            "/tmp/openagents/remote-training-v1/bundles/psion-google-summary-only-sample.json"
+                                .to_string(),
+                        ),
+                        bundle_digest: Some("digest-google".to_string()),
+                    },
+                    DesktopControlRemoteTrainingRunStatus {
+                        provider: "run_pod".to_string(),
+                        profile_id: "runpod_h100_single_gpu".to_string(),
+                        lane_id: "parameter_golf.runpod_single_h100".to_string(),
+                        run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
+                        repo_revision: "main@ce5359b9".to_string(),
+                        result_classification: "active".to_string(),
+                        series_status: "available".to_string(),
+                        series_unavailable_reason: None,
+                        summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
+                        detail: "Always-live lane".to_string(),
+                        last_heartbeat_at_ms: Some(1_742_846_402_000),
+                        heartbeat_age_ms: Some(900),
+                        stale: false,
+                        stale_reason: None,
+                        bundle_cached: true,
+                        bundle_cache_path: Some(
+                            "/tmp/openagents/remote-training-v1/bundles/parameter-golf-runpod-single-h100-live-sample.json"
+                                .to_string(),
+                        ),
+                        bundle_digest: Some("digest-runpod".to_string()),
+                    },
+                ],
+                selected_run: Some(DesktopControlRemoteTrainingSelectedRunStatus {
+                    run: DesktopControlRemoteTrainingRunStatus {
+                        provider: "run_pod".to_string(),
+                        profile_id: "runpod_h100_single_gpu".to_string(),
+                        lane_id: "parameter_golf.runpod_single_h100".to_string(),
+                        run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
+                        repo_revision: "main@ce5359b9".to_string(),
+                        result_classification: "active".to_string(),
+                        series_status: "available".to_string(),
+                        series_unavailable_reason: None,
+                        summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
+                        detail: "Always-live lane".to_string(),
+                        last_heartbeat_at_ms: Some(1_742_846_402_000),
+                        heartbeat_age_ms: Some(900),
+                        stale: false,
+                        stale_reason: None,
+                        bundle_cached: true,
+                        bundle_cache_path: Some(
+                            "/tmp/openagents/remote-training-v1/bundles/parameter-golf-runpod-single-h100-live-sample.json"
+                                .to_string(),
+                        ),
+                        bundle_digest: Some("digest-runpod".to_string()),
+                    },
+                    source_root: Some("/tmp/psionic".to_string()),
+                    source_index_path: Some(
+                        "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                            .to_string(),
+                    ),
+                    bundle: None,
+                }),
+                last_error: None,
+                last_action: Some(
+                    "Remote training mirror synced 2 runs and 2 cached bundles from the live source"
+                        .to_string(),
+                ),
             },
             proofs: DesktopControlProofStatus {
                 available: false,
@@ -10226,6 +10749,7 @@ mod tests {
     fn pump_nip28_lane(
         chat: &mut AutopilotChatState,
         lane_worker: &mut Nip28ChatLaneWorker,
+        relay_urls: &[String],
     ) -> bool {
         let mut changed = false;
         for update in lane_worker.drain_updates() {
@@ -10244,7 +10768,12 @@ mod tests {
                         .fail_outbound_message(&event_id, &message);
                     lane_worker.clear_dispatched(&event_id);
                 }
-                Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+                Nip28ChatLaneUpdate::Eose { .. }
+                | Nip28ChatLaneUpdate::ConnectionError { .. }
+                | Nip28ChatLaneUpdate::AuthChallengeReceived { .. } => {}
+                Nip28ChatLaneUpdate::Snapshot(snapshot) => {
+                    chat.managed_chat_lane = snapshot;
+                }
             }
         }
         let pending_events = chat
@@ -10257,6 +10786,13 @@ mod tests {
         for event in pending_events {
             lane_worker.publish(event);
         }
+        lane_worker.sync_managed_chat_subscriptions(
+            relay_urls.to_vec(),
+            chat.managed_chat_projection.discovered_channel_ids(),
+            chat.managed_chat_projection.subscription_since_created_at(
+                crate::nip28_chat_lane::NIP28_CHAT_BACKFILL_OVERLAP_SECS,
+            ),
+        );
         if chat.maybe_auto_select_default_nip28_channel() {
             changed = true;
         }
@@ -10534,6 +11070,7 @@ mod tests {
         buyer_lane: &mut Nip28ChatLaneWorker,
         remote_chat: &mut AutopilotChatState,
         remote_lane: &mut Nip28ChatLaneWorker,
+        relay_urls: &[String],
         provider_online: bool,
         next_revision: &mut u64,
         requests: &crate::state::operations::NetworkRequestsState,
@@ -10542,8 +11079,8 @@ mod tests {
         predicate: impl Fn(&DesktopControlSnapshot) -> bool,
     ) -> DesktopControlSnapshot {
         for _ in 0..160 {
-            let remote_changed = pump_nip28_lane(remote_chat, remote_lane);
-            let buyer_changed = pump_nip28_lane(buyer_chat, buyer_lane);
+            let remote_changed = pump_nip28_lane(remote_chat, remote_lane, relay_urls);
+            let buyer_changed = pump_nip28_lane(buyer_chat, buyer_lane, relay_urls);
             if remote_changed || buyer_changed {
                 let snapshot = sync_test_snapshot_with_buy_mode(
                     runtime,
@@ -10669,12 +11206,13 @@ mod tests {
         previous_snapshot: &mut Option<DesktopControlSnapshot>,
         chat: &mut AutopilotChatState,
         lane_worker: &mut Nip28ChatLaneWorker,
+        relay_urls: &[String],
         provider_online: bool,
         next_revision: &mut u64,
         predicate: impl Fn(&DesktopControlSnapshot) -> bool,
     ) -> DesktopControlSnapshot {
         for _ in 0..120 {
-            if pump_nip28_lane(chat, lane_worker) {
+            if pump_nip28_lane(chat, lane_worker, relay_urls) {
                 let snapshot = sync_test_snapshot(
                     runtime,
                     previous_snapshot,
@@ -11519,6 +12057,7 @@ mod tests {
             relay_url: relay.url.clone(),
             channel_id: main_channel_id.clone(),
             team_channel_id: None,
+            private_key_hex: None,
         });
 
         let token = "token-nip28-programmatic".to_string();
@@ -11593,6 +12132,7 @@ mod tests {
             &mut previous_snapshot,
             &mut chat,
             &mut lane_worker,
+            std::slice::from_ref(&relay.url),
             provider_online,
             &mut next_revision,
             |snapshot| {
@@ -11726,6 +12266,7 @@ mod tests {
             &mut previous_snapshot,
             &mut chat,
             &mut lane_worker,
+            std::slice::from_ref(&relay.url),
             provider_online,
             &mut next_revision,
             |snapshot| {
@@ -11766,6 +12307,264 @@ mod tests {
                 .events
                 .iter()
                 .any(|event| event.summary.contains("nip28-send applied"))
+        );
+    }
+
+    #[test]
+    fn desktop_control_http_harness_switches_to_discovered_channel_and_stays_live() {
+        let relay = TestNip28Relay::spawn();
+        let main_channel_id = DefaultNip28ChannelConfig::from_env_or_default().channel_id;
+        let side_channel_id = repeated_hex('a', 64);
+        let remote_pubkey = repeated_hex('9', 64);
+        let group = build_test_group_metadata_event();
+        let main_channel = build_test_channel_create_event(main_channel_id.as_str());
+        let side_channel = build_test_channel_create_event(side_channel_id.as_str());
+
+        let identity = nostr::regenerate_identity().expect("generate test nostr identity");
+        let temp = tempdir().expect("tempdir");
+        let projection_path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(projection_path);
+        chat.managed_chat_projection
+            .set_local_pubkey(Some(identity.public_key_hex.as_str()));
+        chat.managed_chat_projection.replace_relay_events(vec![
+            group.clone(),
+            main_channel.clone(),
+            side_channel.clone(),
+        ]);
+
+        let mut lane_worker = Nip28ChatLaneWorker::spawn_with_config(DefaultNip28ChannelConfig {
+            relay_url: relay.url.clone(),
+            channel_id: main_channel_id.clone(),
+            team_channel_id: None,
+            private_key_hex: None,
+        });
+
+        let token = "token-nip28-multi-channel".to_string();
+        let mut runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            auth_token: token.clone(),
+        })
+        .expect("spawn desktop control runtime");
+        let client = reqwest::blocking::Client::new();
+        let snapshot_url = format!("http://{}/v1/snapshot", runtime.listen_addr());
+        let action_url = format!("http://{}/v1/action", runtime.listen_addr());
+
+        let provider_online = false;
+        let mut previous_snapshot = None;
+        let mut next_revision = 1;
+        let initial_snapshot = sync_test_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &chat,
+            provider_online,
+            &mut next_revision,
+        );
+        assert_eq!(initial_snapshot.nip28.connected_relay_count, 0);
+
+        let loaded_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            std::slice::from_ref(&relay.url),
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.available
+                    && snapshot.nip28.channels.len() >= 2
+                    && snapshot
+                        .nip28
+                        .subscribed_channel_ids
+                        .contains(&side_channel_id)
+                    && snapshot.nip28.connected_relay_count > 0
+            },
+        );
+        assert!(
+            loaded_snapshot
+                .nip28
+                .subscribed_channel_ids
+                .contains(&side_channel_id)
+        );
+
+        let select_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::SelectNip28Channel {
+                channel_id: side_channel_id.clone(),
+            },
+        );
+        let select_request = wait_for_action_request(&mut runtime);
+        assert_eq!(
+            select_request.action,
+            DesktopControlActionRequest::SelectNip28Channel {
+                channel_id: side_channel_id.clone(),
+            }
+        );
+        runtime
+            .append_events(vec![command_received_event(&select_request.action)])
+            .expect("append select command received");
+        let select_message =
+            super::select_nip28_channel(&mut chat, side_channel_id.as_str()).expect("select side");
+        let select_snapshot = build_test_snapshot(&chat, provider_online, next_revision);
+        next_revision = next_revision.saturating_add(1);
+        let select_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok_with_payload(
+                select_message,
+                json!({
+                    "group_id": chat
+                        .active_managed_chat_group()
+                        .map(|group| group.group_id.clone()),
+                    "channel_id": chat
+                        .active_managed_chat_channel()
+                        .map(|channel| channel.channel_id.clone()),
+                }),
+            ),
+            &select_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &select_request.action,
+                &select_response,
+            )])
+            .expect("append select command outcome");
+        runtime
+            .sync_snapshot(select_snapshot.clone())
+            .expect("sync select snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &select_snapshot,
+            ))
+            .expect("append select snapshot events");
+        previous_snapshot = Some(select_snapshot);
+        select_request.respond(select_response.clone());
+        let select_response = select_join.join().expect("join select action");
+        assert!(select_response.success);
+
+        relay.store_events(vec![build_test_channel_message_event(
+            &repeated_hex('b', 64),
+            remote_pubkey.as_str(),
+            side_channel_id.as_str(),
+            relay.url.as_str(),
+            40,
+            "hello from second channel",
+        )]);
+
+        let received_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            std::slice::from_ref(&relay.url),
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.selected_channel_id.as_deref() == Some(side_channel_id.as_str())
+                    && snapshot
+                        .nip28
+                        .recent_messages
+                        .iter()
+                        .any(|message| message.content == "hello from second channel")
+            },
+        );
+        assert_eq!(
+            received_snapshot.nip28.selected_channel_id.as_deref(),
+            Some(side_channel_id.as_str())
+        );
+
+        let send_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::SendNip28Message {
+                content: "hello from selected channel".to_string(),
+                reply_to_event_id: None,
+            },
+        );
+        let send_request = wait_for_action_request(&mut runtime);
+        runtime
+            .append_events(vec![command_received_event(&send_request.action)])
+            .expect("append send command received");
+        let send_event_id =
+            super::send_nip28_message(&mut chat, &identity, "hello from selected channel", None)
+                .expect("queue selected channel message");
+        let queued_snapshot = build_test_snapshot(&chat, provider_online, next_revision);
+        next_revision = next_revision.saturating_add(1);
+        let send_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok_with_payload(
+                format!("Queued NIP-28 message {send_event_id}"),
+                json!({
+                    "event_id": send_event_id,
+                    "channel_id": chat
+                        .active_managed_chat_channel()
+                        .map(|channel| channel.channel_id.clone()),
+                    "reply_to_event_id": Value::Null,
+                }),
+            ),
+            &queued_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &send_request.action,
+                &send_response,
+            )])
+            .expect("append send command outcome");
+        runtime
+            .sync_snapshot(queued_snapshot.clone())
+            .expect("sync queued snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &queued_snapshot,
+            ))
+            .expect("append queued snapshot events");
+        previous_snapshot = Some(queued_snapshot);
+        send_request.respond(send_response.clone());
+        let send_response = send_join.join().expect("join send action");
+        assert!(send_response.success);
+
+        let confirmed_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            std::slice::from_ref(&relay.url),
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.selected_channel_id.as_deref() == Some(side_channel_id.as_str())
+                    && snapshot.nip28.publishing_outbound_count == 0
+                    && snapshot.nip28.recent_messages.iter().any(|message| {
+                        message.content == "hello from selected channel"
+                            && message.delivery_state == "confirmed"
+                    })
+            },
+        );
+        assert!(
+            confirmed_snapshot
+                .nip28
+                .recent_messages
+                .iter()
+                .any(|message| {
+                    message.content == "hello from selected channel"
+                        && message.delivery_state == "confirmed"
+                })
+        );
+
+        let latest_snapshot = fetch_snapshot(&client, snapshot_url.as_str(), token.as_str());
+        assert_eq!(
+            latest_snapshot.nip28.selected_channel_id.as_deref(),
+            Some(side_channel_id.as_str())
+        );
+        assert!(
+            latest_snapshot
+                .nip28
+                .recent_messages
+                .iter()
+                .any(|message| message.content == "hello from second channel")
         );
     }
 
@@ -11849,6 +12648,7 @@ mod tests {
             &mut buyer_chat_lane,
             &mut target_chat,
             &mut target_chat_lane,
+            std::slice::from_ref(&relay.url),
             false,
             &mut next_revision,
             &requests,
@@ -11885,6 +12685,7 @@ mod tests {
             &mut buyer_chat_lane,
             &mut target_chat,
             &mut target_chat_lane,
+            std::slice::from_ref(&relay.url),
             false,
             &mut next_revision,
             &requests,

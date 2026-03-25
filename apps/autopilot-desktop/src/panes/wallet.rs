@@ -2,7 +2,7 @@ use wgpui::{Bounds, Component, Hsla, InputEvent, PaintContext, Point, Quad, them
 
 use crate::app_state::{
     CreateInvoicePaneInputs, PaneKind, PaneLoadState, PayInvoicePaneInputs, RenderState,
-    SparkPaneInputs, SparkWalletPaneState,
+    SparkPaneInputs,
 };
 use crate::pane_renderer::{
     app_text_style, mission_control_muted_color, mission_control_panel_header_color,
@@ -17,11 +17,15 @@ use crate::ui_style::AppTextRole;
 const WALLET_PANEL_RADIUS: f32 = 3.0;
 const WALLET_CARD_RADIUS: f32 = 3.0;
 
+pub fn wallet_details_scroll_bounds(content_bounds: Bounds) -> Bounds {
+    spark_pane::scroll_viewport_bounds(content_bounds)
+}
+
 pub fn paint_wallet_pane(
     content_bounds: wgpui::Bounds,
     spark_wallet: &SparkPaneState,
-    spark_wallet_pane: &mut SparkWalletPaneState,
     spark_inputs: &mut SparkPaneInputs,
+    details_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "wallet", paint);
@@ -30,7 +34,7 @@ pub fn paint_wallet_pane(
     let viewport = spark_pane::scroll_viewport_bounds(content_bounds);
     let content_height = spark_wallet_content_height(scroll_content_bounds, spark_wallet);
     let max_scroll = (content_height - viewport.size.height).max(0.0);
-    let scroll_offset = spark_wallet_pane.clamp_scroll_offset_to(max_scroll);
+    let scroll_offset = details_scroll_offset.clamp(0.0, max_scroll);
     let layout = spark_pane::layout_with_scroll(scroll_content_bounds, scroll_offset);
     let state = spark_wallet_view_state(spark_wallet);
     let state_color = match state {
@@ -1212,7 +1216,7 @@ pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -
     let content_bounds = pane_content_bounds(bounds);
     let layout = spark_pane::layout_with_scroll(
         spark_pane::scroll_content_bounds(content_bounds),
-        state.spark_wallet_pane.scroll_offset(),
+        state.spark_wallet_scroll_offset,
     );
     let mut handled = false;
 

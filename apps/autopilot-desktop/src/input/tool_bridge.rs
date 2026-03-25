@@ -55,10 +55,10 @@ use crate::pane_system::{
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
-use crate::state::operations::SubmittedNetworkRequest;
 use crate::state::autopilot_goals::{
     GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
 };
+use crate::state::operations::SubmittedNetworkRequest;
 use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 use crate::state::swap_contract::{
     SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapExecutionStatus,
@@ -1511,9 +1511,8 @@ fn relay_selector_matches(actual: &str, expected: &str) -> bool {
 }
 
 fn relay_optional_selector_matches(value: Option<&str>, expected: Option<&str>) -> bool {
-    expected.is_none_or(|expected| {
-        value.is_some_and(|value| relay_selector_matches(value, expected))
-    })
+    expected
+        .is_none_or(|expected| value.is_some_and(|value| relay_selector_matches(value, expected)))
 }
 
 fn relay_request_contexts(
@@ -1549,10 +1548,9 @@ fn relay_request_contexts(
             .relay_requests
             .iter()
             .any(|request| relay_selector_matches(request.event_id.as_str(), selector))
-            || market
-                .relay_access_contracts
-                .iter()
-                .any(|contract| relay_selector_matches(contract.request_event_id.as_str(), selector))
+            || market.relay_access_contracts.iter().any(|contract| {
+                relay_selector_matches(contract.request_event_id.as_str(), selector)
+            })
             || market
                 .relay_results
                 .iter()
@@ -1608,13 +1606,19 @@ fn synthesize_relay_delivery_bundle(
         .filter(|result| {
             grant_selector.is_none_or(|expected| {
                 relay_optional_selector_matches(result.grant_id.as_deref(), Some(expected))
-                    || relay_optional_selector_matches(result.linked_grant_id.as_deref(), Some(expected))
+                    || relay_optional_selector_matches(
+                        result.linked_grant_id.as_deref(),
+                        Some(expected),
+                    )
             })
         })
         .filter(|result| {
             explicit_asset_id.is_none_or(|expected| {
                 relay_optional_selector_matches(result.asset_id.as_deref(), Some(expected))
-                    || relay_optional_selector_matches(result.linked_asset_id.as_deref(), Some(expected))
+                    || relay_optional_selector_matches(
+                        result.linked_asset_id.as_deref(),
+                        Some(expected),
+                    )
                     || relay_selector_matches(result.asset_ref.as_str(), expected)
             })
         })
@@ -1685,8 +1689,9 @@ fn synthesize_relay_delivery_bundle(
         .relay_access_contracts
         .iter()
         .filter(|contract| {
-            explicit_delivery_bundle_id
-                .is_none_or(|expected| relay_selector_matches(contract.coordinate.as_str(), expected))
+            explicit_delivery_bundle_id.is_none_or(|expected| {
+                relay_selector_matches(contract.coordinate.as_str(), expected)
+            })
         })
         .filter(|contract| {
             request_event_ids.is_empty()
@@ -1695,7 +1700,10 @@ fn synthesize_relay_delivery_bundle(
         .filter(|contract| {
             grant_selector.is_none_or(|expected| {
                 relay_optional_selector_matches(contract.linked_grant_id.as_deref(), Some(expected))
-                    || relay_optional_selector_matches(contract.offer_coordinate.as_deref(), Some(expected))
+                    || relay_optional_selector_matches(
+                        contract.offer_coordinate.as_deref(),
+                        Some(expected),
+                    )
             })
         })
         .filter(|contract| {
@@ -4219,6 +4227,17 @@ fn pane_action_to_hit_action(
     match kind {
         PaneKind::ProjectOps => unsupported(),
         PaneKind::PsionicViz => unsupported(),
+        PaneKind::PsionicRemoteTraining => match action {
+            "refresh" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::Refresh,
+            )),
+            "select_row" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::SelectRun(require_index(
+                    action,
+                )?),
+            )),
+            _ => unsupported(),
+        },
         PaneKind::AttnResLab => unsupported(),
         PaneKind::TassadarLab => unsupported(),
         PaneKind::Presentation => unsupported(),
@@ -4785,7 +4804,7 @@ fn pane_action_to_hit_action(
             "generate_bitcoin_address" => Ok(PaneHitAction::Spark(
                 SparkPaneAction::GenerateBitcoinAddress,
             )),
-            "copy_spark_address" => Ok(PaneHitAction::Spark(SparkPaneAction::CopySparkAddress)),
+            "create_new_wallet" => Ok(PaneHitAction::Spark(SparkPaneAction::CreateNewWallet)),
             "create_invoice" => Ok(PaneHitAction::Spark(SparkPaneAction::CreateInvoice)),
             "send_payment" => Ok(PaneHitAction::Spark(SparkPaneAction::SendPayment)),
             _ => unsupported(),
@@ -8180,6 +8199,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "gpt_oss_viz",
             "decode_field",
         ],
+        PaneKind::PsionicRemoteTraining => &[
+            "psionic_remote_training",
+            "remote_training",
+            "training_viewer",
+            "google_runpod_training",
+        ],
         PaneKind::RivePreview => &["rive", "rive_preview", "hud_preview"],
         PaneKind::Presentation => &["presentation", "deck", "slides", "present"],
         PaneKind::FrameDebugger => &[
@@ -8284,6 +8309,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::VoicePlayground => "voice_playground",
         PaneKind::LocalInference => "local_inference",
         PaneKind::PsionicViz => "psionic_viz",
+        PaneKind::PsionicRemoteTraining => "psionic_remote_training",
         PaneKind::AttnResLab => "attnres_lab",
         PaneKind::TassadarLab => "tassadar_lab",
         PaneKind::RivePreview => "rive_preview",
@@ -8382,7 +8408,9 @@ mod tests {
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
-    use crate::state::operations::{BuyerResolutionMode, NetworkRequestStatus, SubmittedNetworkRequest};
+    use crate::state::operations::{
+        BuyerResolutionMode, NetworkRequestStatus, SubmittedNetworkRequest,
+    };
     use crate::state::swap_contract::{SwapAmountUnit, SwapDirection};
     use codex_client::AppServerRequestId;
     use serde::Deserialize;
@@ -8445,7 +8473,10 @@ mod tests {
         .expect("economically meaningful turns should create labor bindings")
     }
 
-    fn submitted_request_fixture(request_id: &str, request_event_id: &str) -> SubmittedNetworkRequest {
+    fn submitted_request_fixture(
+        request_id: &str,
+        request_event_id: &str,
+    ) -> SubmittedNetworkRequest {
         SubmittedNetworkRequest {
             request_id: request_id.to_string(),
             published_request_event_id: Some(request_event_id.to_string()),
@@ -8684,58 +8715,65 @@ mod tests {
     #[test]
     fn relay_delivery_synthesis_uses_ds_result_when_kernel_delivery_state_is_empty() {
         let mut market = DataMarketPaneState::default();
-        market.relay_access_contracts.push(RelayDatasetAccessContractProjection {
-            coordinate: "30407:seller-pubkey:contract.alpha".to_string(),
-            seller_pubkey: "seller-pubkey".to_string(),
-            buyer_pubkey: "buyer-pubkey".to_string(),
-            relay_url: Some("ws://127.0.0.1:7777".to_string()),
-            listing_coordinate: "30404:seller-pubkey:listing.alpha".to_string(),
-            offer_coordinate: Some("30406:seller-pubkey:offer.alpha".to_string()),
-            request_event_id: "request-event-alpha".to_string(),
-            result_event_id: Some("result.alpha".to_string()),
-            status: "fulfilled".to_string(),
-            payment_method: Some("lightning".to_string()),
-            amount_msats: Some(5_000),
-            bolt11: None,
-            payment_hash: Some("payment-hash-alpha".to_string()),
-            payment_evidence_event_ids: Vec::new(),
-            delivery_mode: Some("encrypted_pointer".to_string()),
-            delivery_ref: Some("https://delivery.example/contracts/alpha".to_string()),
-            delivery_mime_type: Some("application/octet-stream".to_string()),
-            delivery_digest: Some("sha256:alpha".to_string()),
-            created_at_seconds: 1_774_000_010,
-            expires_at_seconds: Some(1_774_003_610),
-            reason_code: None,
-            linked_asset_id: Some("asset.alpha".to_string()),
-            linked_grant_id: Some("grant.alpha".to_string()),
-        });
-        market.relay_results.push(RelayDatasetAccessResultProjection {
-            event_id: "result.alpha".to_string(),
-            seller_pubkey: "seller-pubkey".to_string(),
-            buyer_pubkey: "buyer-pubkey".to_string(),
-            relay_url: Some("ws://127.0.0.1:7777".to_string()),
-            request_event_id: "request-event-alpha".to_string(),
-            listing_coordinate: "30404:seller-pubkey:listing.alpha".to_string(),
-            offer_coordinate: Some("30406:seller-pubkey:offer.alpha".to_string()),
-            asset_ref: "30404:seller-pubkey:listing.alpha".to_string(),
-            asset_id: None,
-            grant_id: None,
-            delivery_bundle_id: "delivery.alpha".to_string(),
-            delivery_mode: "encrypted_pointer".to_string(),
-            preview_posture: "metadata_only".to_string(),
-            delivery_ref: Some("https://delivery.example/results/alpha".to_string()),
-            delivery_digest: Some("sha256:alpha".to_string()),
-            amount_msats: Some(5_000),
-            bolt11: None,
-            payment_hash: Some("payment-hash-alpha".to_string()),
-            created_at_seconds: 1_774_000_011,
-            linked_asset_id: Some("asset.alpha".to_string()),
-            linked_grant_id: Some("grant.alpha".to_string()),
-        });
+        market
+            .relay_access_contracts
+            .push(RelayDatasetAccessContractProjection {
+                coordinate: "30407:seller-pubkey:contract.alpha".to_string(),
+                seller_pubkey: "seller-pubkey".to_string(),
+                buyer_pubkey: "buyer-pubkey".to_string(),
+                relay_url: Some("ws://127.0.0.1:7777".to_string()),
+                listing_coordinate: "30404:seller-pubkey:listing.alpha".to_string(),
+                offer_coordinate: Some("30406:seller-pubkey:offer.alpha".to_string()),
+                request_event_id: "request-event-alpha".to_string(),
+                result_event_id: Some("result.alpha".to_string()),
+                status: "fulfilled".to_string(),
+                payment_method: Some("lightning".to_string()),
+                amount_msats: Some(5_000),
+                bolt11: None,
+                payment_hash: Some("payment-hash-alpha".to_string()),
+                payment_evidence_event_ids: Vec::new(),
+                delivery_mode: Some("encrypted_pointer".to_string()),
+                delivery_ref: Some("https://delivery.example/contracts/alpha".to_string()),
+                delivery_mime_type: Some("application/octet-stream".to_string()),
+                delivery_digest: Some("sha256:alpha".to_string()),
+                created_at_seconds: 1_774_000_010,
+                expires_at_seconds: Some(1_774_003_610),
+                reason_code: None,
+                linked_asset_id: Some("asset.alpha".to_string()),
+                linked_grant_id: Some("grant.alpha".to_string()),
+            });
+        market
+            .relay_results
+            .push(RelayDatasetAccessResultProjection {
+                event_id: "result.alpha".to_string(),
+                seller_pubkey: "seller-pubkey".to_string(),
+                buyer_pubkey: "buyer-pubkey".to_string(),
+                relay_url: Some("ws://127.0.0.1:7777".to_string()),
+                request_event_id: "request-event-alpha".to_string(),
+                listing_coordinate: "30404:seller-pubkey:listing.alpha".to_string(),
+                offer_coordinate: Some("30406:seller-pubkey:offer.alpha".to_string()),
+                asset_ref: "30404:seller-pubkey:listing.alpha".to_string(),
+                asset_id: None,
+                grant_id: None,
+                delivery_bundle_id: "delivery.alpha".to_string(),
+                delivery_mode: "encrypted_pointer".to_string(),
+                preview_posture: "metadata_only".to_string(),
+                delivery_ref: Some("https://delivery.example/results/alpha".to_string()),
+                delivery_digest: Some("sha256:alpha".to_string()),
+                amount_msats: Some(5_000),
+                bolt11: None,
+                payment_hash: Some("payment-hash-alpha".to_string()),
+                created_at_seconds: 1_774_000_011,
+                linked_asset_id: Some("asset.alpha".to_string()),
+                linked_grant_id: Some("grant.alpha".to_string()),
+            });
 
         let resolved = super::synthesize_relay_delivery_bundle(
             &market,
-            &[submitted_request_fixture("request.alpha", "request-event-alpha")],
+            &[submitted_request_fixture(
+                "request.alpha",
+                "request-event-alpha",
+            )],
             None,
             Some("request.alpha"),
             Some("grant.alpha"),

@@ -63,6 +63,7 @@ mod project_ops;
 mod provider_admin;
 mod provider_inventory;
 mod provider_nip90_lane;
+mod remote_training_sync;
 mod render;
 mod research_control;
 pub mod rive_assets;

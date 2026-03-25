@@ -15,8 +15,8 @@ use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
     BuyModePaymentsPaneAction, DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
     LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
-    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
-    SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
+    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, PsionicRemoteTrainingPaneAction,
+    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -33,6 +33,7 @@ const DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Direct message relay publish transport is not wired yet; local echo saved for retry.";
 const MISSION_CONTROL_BUY_MODE_PROMPT: &str = "Reply with the exact text BUY MODE OK.";
 const MISSION_CONTROL_LOCAL_FM_SUMMARY_INSTRUCTIONS: &str = "You are the Mission Control local Foundation Models test. Summarize only the supplied context in 3 short markdown bullets. Highlight the latest result, current buyer/provider state, and the next operator action. Do not invent facts or mention missing data unless it matters.";
+const MNEMONIC_CLIPBOARD_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ManagedChatComposerIntent {
@@ -5846,13 +5847,6 @@ pub(super) fn run_chat_toggle_thread_tools_action(
     true
 }
 
-pub(super) fn run_chat_toggle_debug_events_action(
-    state: &mut crate::app_state::RenderState,
-) -> bool {
-    state.autopilot_chat.show_debug_events = !state.autopilot_chat.show_debug_events;
-    true
-}
-
 pub(super) fn run_chat_toggle_archived_filter_action(
     state: &mut crate::app_state::RenderState,
 ) -> bool {
@@ -9826,6 +9820,29 @@ pub(super) fn run_apple_adapter_training_action(
     }
 }
 
+pub(super) fn run_psionic_remote_training_action(
+    state: &mut crate::app_state::RenderState,
+    action: PsionicRemoteTrainingPaneAction,
+) -> bool {
+    match action {
+        PsionicRemoteTrainingPaneAction::Refresh => {
+            crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
+            true
+        }
+        PsionicRemoteTrainingPaneAction::SelectRun(row_index) => {
+            let status = crate::desktop_control::current_remote_training_status(state);
+            let run_id = status.runs.get(row_index).map(|run| run.run_id.clone());
+            if let Some(run_id) = run_id {
+                state.desktop_control.remote_training.selected_run_id = Some(run_id.clone());
+                state.desktop_control.remote_training.last_action =
+                    Some(format!("Selected remote training run {run_id}"));
+                state.desktop_control.remote_training.last_error = None;
+            }
+            true
+        }
+    }
+}
+
 fn apply_apple_adapter_training_workbench_handoff(
     state: &mut crate::app_state::RenderState,
     handoff: &crate::panes::apple_adapter_training::AppleAdapterTrainingWorkbenchHandoff,
@@ -10047,8 +10064,14 @@ pub(super) fn run_mission_control_action(
             let notice = match state.nostr_identity.as_ref() {
                 Some(identity) if !identity.mnemonic.trim().is_empty() => {
                     match copy_to_clipboard(&identity.mnemonic) {
-                        Ok(()) => "Copied 12-word wallet seed to clipboard. Treat it like cash."
-                            .to_string(),
+                        Ok(()) => {
+                            schedule_sensitive_clipboard_clear(
+                                identity.mnemonic.clone(),
+                                std::time::Duration::from_secs(MNEMONIC_CLIPBOARD_EXPIRY_SECONDS),
+                            );
+                            "Copied 12-word wallet seed to clipboard. Treat it like cash. Clipboard clears in 5 minutes."
+                                .to_string()
+                        }
                         Err(error) => format!("Failed to copy wallet seed: {error}"),
                     }
                 }
@@ -14222,6 +14245,40 @@ pub(super) fn run_spark_action(
     state: &mut crate::app_state::RenderState,
     action: SparkPaneAction,
 ) -> bool {
+    if action == SparkPaneAction::UseMnemonicPhrase {
+        let phrase = state.spark_inputs.mnemonic_phrase.get_value().trim().to_string();
+        // Never keep mnemonic text visible in the UI after submit.
+        state.spark_inputs.mnemonic_phrase.set_value(String::new());
+        if phrase.is_empty() {
+            state.spark_wallet.last_error = Some("Mnemonic cannot be empty".to_string());
+            return true;
+        }
+        let words = phrase.split_whitespace().count();
+        if words != 12 && words != 24 {
+            state.spark_wallet.last_error = Some("Mnemonic must be 12 or 24 words".to_string());
+            return true;
+        }
+
+        state.spark_wallet.last_error = None;
+        state.spark_wallet.last_action =
+            Some("Switching wallet from pasted mnemonic (not saved)".to_string());
+        queue_spark_command(
+            state,
+            SparkWalletCommand::UseTransientMnemonic {
+                phrase,
+                allow_create_new: false,
+            },
+        );
+        queue_spark_command(state, SparkWalletCommand::Refresh);
+        return true;
+    }
+
+    if action == SparkPaneAction::CreateNewWallet {
+        state.spark_wallet.last_error =
+            Some("Create New Wallet is temporarily disabled.".to_string());
+        return true;
+    }
+
     if action == SparkPaneAction::CopySparkAddress {
         state.spark_wallet.last_error = None;
         let notice = match state.spark_wallet.spark_address.as_deref() {
@@ -14229,10 +14286,10 @@ pub(super) fn run_spark_action(
                 Ok(()) => "Copied Spark address to clipboard".to_string(),
                 Err(error) => format!("Failed to copy Spark address: {error}"),
             },
-            _ => "No Spark address available. Generate Spark receive first.".to_string(),
+            _ => "No Spark address available yet. Generate one first.".to_string(),
         };
 
-        if notice.starts_with("Failed") || notice.starts_with("No Spark address") {
+        if notice.starts_with("Failed") || notice.starts_with("No Spark address available") {
             state.spark_wallet.last_error = Some(notice);
         } else {
             state.spark_wallet.last_action = Some(notice);
@@ -14242,6 +14299,7 @@ pub(super) fn run_spark_action(
 
     let command = match build_spark_command_for_action(
         action,
+        state.spark_inputs.identity_path.get_value(),
         state.spark_inputs.invoice_amount.get_value(),
         state.spark_inputs.send_request.get_value(),
         state.spark_inputs.send_amount.get_value(),
@@ -14318,16 +14376,35 @@ pub(super) fn run_create_invoice_action(
 
 pub(super) fn build_spark_command_for_action(
     action: SparkPaneAction,
+    identity_path: &str,
     invoice_amount: &str,
     send_request: &str,
     send_amount: &str,
 ) -> Result<SparkWalletCommand, String> {
     match action {
         SparkPaneAction::Refresh => Ok(SparkWalletCommand::Refresh),
+        SparkPaneAction::UseIdentityPath => {
+            let trimmed = identity_path.trim();
+            if trimmed.is_empty() {
+                return Err("Wallet seed path cannot be empty".to_string());
+            }
+            Ok(SparkWalletCommand::SetIdentityPathOverride {
+                path: Some(std::path::PathBuf::from(trimmed)),
+            })
+        }
+        SparkPaneAction::UseDefaultIdentity => Ok(SparkWalletCommand::SetIdentityPathOverride {
+            path: None,
+        }),
+        SparkPaneAction::UseMnemonicPhrase => {
+            Err("Mnemonic import action is handled directly in UI".to_string())
+        }
         SparkPaneAction::GenerateSparkAddress => Ok(SparkWalletCommand::GenerateSparkAddress),
         SparkPaneAction::GenerateBitcoinAddress => Ok(SparkWalletCommand::GenerateBitcoinAddress),
+        SparkPaneAction::CreateNewWallet => {
+            Err("Create wallet action is handled directly in UI".to_string())
+        }
         SparkPaneAction::CopySparkAddress => {
-            Err("Spark copy action is handled directly in UI".to_string())
+            Err("Copy Spark address action is handled directly in UI".to_string())
         }
         SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateBolt11Invoice {
             amount_sats: parse_positive_amount_str(invoice_amount, "Invoice amount")?,
@@ -14344,6 +14421,14 @@ pub(super) fn build_spark_command_for_action(
             })
         }
     }
+}
+
+fn generate_wallet_mnemonic_phrase() -> Result<String, String> {
+    let mut entropy = [0_u8; 16];
+    getrandom::fill(&mut entropy).map_err(|error| format!("Failed to generate entropy: {error}"))?;
+    bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy)
+        .map(|mnemonic| mnemonic.to_string())
+        .map_err(|error| format!("Failed to create wallet mnemonic: {error}"))
 }
 
 pub(super) fn build_pay_invoice_command(
@@ -14439,6 +14524,79 @@ pub(super) fn normalize_optional_text(raw: &str) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+fn schedule_sensitive_clipboard_clear(expected_contents: String, delay: std::time::Duration) {
+    let expected = normalize_clipboard_for_compare(expected_contents.as_str());
+    if expected.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        let Some(current) = read_system_clipboard_for_sensitive_expiry() else {
+            return;
+        };
+        if normalize_clipboard_for_compare(current.as_str()) == expected {
+            let _ = copy_to_clipboard("");
+        }
+    });
+}
+
+fn normalize_clipboard_for_compare(value: &str) -> String {
+    value
+        .trim_end_matches(['\r', '\n'])
+        .trim()
+        .to_string()
+}
+
+fn read_system_clipboard_for_sensitive_expiry() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        read_clipboard_with_command_for_sensitive_expiry("pbpaste", &[])
+            .or_else(|| read_clipboard_with_command_for_sensitive_expiry("/usr/bin/pbpaste", &[]))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        read_clipboard_with_command_for_sensitive_expiry("wl-paste", &["-n"])
+            .or_else(|| {
+                read_clipboard_with_command_for_sensitive_expiry(
+                    "xclip",
+                    &["-selection", "clipboard", "-o"],
+                )
+            })
+            .or_else(|| {
+                read_clipboard_with_command_for_sensitive_expiry(
+                    "xsel",
+                    &["--clipboard", "--output"],
+                )
+            })
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        read_clipboard_with_command_for_sensitive_expiry(
+            "powershell",
+            &["-NoProfile", "-Command", "Get-Clipboard"],
+        )
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+fn read_clipboard_with_command_for_sensitive_expiry(cmd: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(cmd).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    match String::from_utf8(output.stdout) {
+        Ok(text) => Some(text),
+        Err(error) => Some(String::from_utf8_lossy(error.as_bytes()).to_string()),
     }
 }
 

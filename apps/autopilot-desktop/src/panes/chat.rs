@@ -10,6 +10,7 @@ use crate::app_state::{
     DirectMessageRoomProjection, ManagedChatChannelProjection, ManagedChatDeliveryState,
     ManagedChatGroupProjection, ManagedChatMessageProjection, PaneKind, RenderState,
 };
+use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_renderer::split_text_for_display;
 use crate::pane_system::{
@@ -28,7 +29,7 @@ use crate::pane_system::{
     chat_thread_filter_provider_button_bounds, chat_thread_filter_source_button_bounds,
     chat_thread_rail_bounds, chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds,
     chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
-    chat_transcript_bounds, chat_visible_thread_row_count, chat_managed_debug_toggle_bounds,
+    chat_transcript_bounds, chat_visible_thread_row_count,
     chat_workspace_rail_bounds, chat_workspace_rail_toggle_button_bounds,
     chat_workspace_row_bounds, pane_content_bounds, set_chat_shell_layout_state,
 };
@@ -1088,15 +1089,6 @@ fn transcript_content_height(
                 height += 8.0;
             }
             for message in autopilot_chat.active_managed_chat_messages() {
-                use crate::chat_message_classifier::ChatMessageClass;
-                if !autopilot_chat.show_debug_events
-                    && matches!(
-                        message.message_class,
-                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
-                    )
-                {
-                    continue;
-                }
                 height += CHAT_TRANSCRIPT_LINE_HEIGHT;
                 if managed_message_reply_label(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
@@ -3247,7 +3239,8 @@ fn paint_chat_shell(
         {
             let row_bounds =
                 chat_thread_row_bounds(content_bounds, index, autopilot_chat.thread_tools_expanded);
-            let is_hovered = entry.thread_id.as_deref() == hovered_thread_id;
+            let is_hovered =
+                entry.thread_id.is_some() && entry.thread_id.as_deref() == hovered_thread_id;
             let row_inner = Bounds::new(
                 row_bounds.origin.x + 2.0,
                 row_bounds.origin.y + 1.0,
@@ -3415,9 +3408,14 @@ fn paint_chat_shell(
         chat_mission_green_color(),
     ));
 
+    let transcript_panel_label = match autopilot_chat.chat_browse_mode() {
+        ChatBrowseMode::Managed => "GROUP CHAT",
+        ChatBrowseMode::DirectMessages => "DIRECT MESSAGES",
+        ChatBrowseMode::Autopilot => "CHAT",
+    };
     paint_chat_mission_panel(
         transcript_bounds,
-        "CHAT",
+        transcript_panel_label,
         chat_transcript_accent_color(),
         ChatPanelTone::Primary,
         paint,
@@ -3589,24 +3587,7 @@ fn paint_chat_shell(
                 );
             }
         }
-        ChatBrowseMode::Managed => {
-            let debug_label = if autopilot_chat.show_debug_events {
-                "Debug ON"
-            } else {
-                "Debug"
-            };
-            let debug_accent = if autopilot_chat.show_debug_events {
-                chat_mission_orange_color()
-            } else {
-                chat_mission_muted_color()
-            };
-            paint_header_chip(
-                chat_managed_debug_toggle_bounds(content_bounds),
-                debug_label,
-                debug_accent,
-                paint,
-            );
-        }
+        ChatBrowseMode::Managed => {}
         ChatBrowseMode::DirectMessages => {}
     }
 }
@@ -3917,15 +3898,6 @@ pub fn paint(
             }
 
             for (index, message) in managed_messages.into_iter().enumerate() {
-                use crate::chat_message_classifier::ChatMessageClass;
-                if !autopilot_chat.show_debug_events
-                    && matches!(
-                        message.message_class,
-                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
-                    )
-                {
-                    continue;
-                }
                 paint.scene.draw_text(paint.text.layout_mono(
                     &managed_message_role_label(index, message),
                     Point::new(transcript_scroll_clip.origin.x, y),
@@ -4465,25 +4437,63 @@ pub fn paint(
         ))
         .with_background(chat_mission_panel_border_color().with_alpha(0.14)),
     );
+    let managed_has_identity = autopilot_chat
+        .managed_chat_projection
+        .local_pubkey()
+        .is_some();
     let composer_field_bounds = Bounds::new(
         composer_bounds.origin.x + 2.0,
         composer_bounds.origin.y + 1.0,
         (composer_bounds.size.width - 8.0).max(0.0),
         (composer_bounds.size.height - 2.0).max(0.0),
     );
-    paint.scene.draw_quad(
-        Quad::new(composer_field_bounds)
-            .with_background(chat_mission_panel_header_color().with_alpha(0.14))
-            .with_border(chat_mission_panel_color().with_alpha(0.0), 0.0)
-            .with_corner_radius(8.0),
-    );
-    chat_inputs
-        .composer
-        .set_max_width(composer_field_bounds.size.width);
-    chat_inputs.composer.paint(composer_field_bounds, paint);
+    if browse_mode == ChatBrowseMode::Managed && !managed_has_identity {
+        chat_inputs.composer_identity_link_bounds = None;
+        paint.scene.draw_quad(
+            Quad::new(composer_field_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.18))
+                .with_border(chat_mission_panel_border_color().with_alpha(0.85), 1.0)
+                .with_corner_radius(8.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            "You need an identity to send messages",
+            Point::new(
+                composer_field_bounds.origin.x + 10.0,
+                composer_field_bounds.origin.y + 10.0,
+            ),
+            11.0,
+            chat_mission_muted_color(),
+        ));
+        let link_y = composer_field_bounds.origin.y + 26.0;
+        paint.scene.draw_text(paint.text.layout_mono(
+            "Set up identity keys ->",
+            Point::new(composer_field_bounds.origin.x + 10.0, link_y),
+            11.0,
+            chat_mission_cyan_color(),
+        ));
+        chat_inputs.composer_identity_link_bounds = Some(Bounds::new(
+            composer_field_bounds.origin.x,
+            link_y - 2.0,
+            composer_field_bounds.size.width,
+            CHAT_ACTIVITY_ROW_LINE_HEIGHT + 4.0,
+        ));
+    } else {
+        chat_inputs.composer_identity_link_bounds = None;
+        paint.scene.draw_quad(
+            Quad::new(composer_field_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.14))
+                .with_border(chat_mission_panel_color().with_alpha(0.0), 0.0)
+                .with_corner_radius(8.0),
+        );
+        chat_inputs
+            .composer
+            .set_max_width(composer_field_bounds.size.width);
+        chat_inputs.composer.paint(composer_field_bounds, paint);
+    }
     let can_send = match browse_mode {
         ChatBrowseMode::Managed => {
-            autopilot_chat.managed_chat_can_send(chat_inputs.composer.get_value())
+            managed_has_identity
+                && autopilot_chat.managed_chat_can_send(chat_inputs.composer.get_value())
         }
         ChatBrowseMode::DirectMessages => {
             autopilot_chat.direct_message_can_send(chat_inputs.composer.get_value())
@@ -4538,6 +4548,32 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         state
             .autopilot_chat
             .record_composer_draft(state.chat_inputs.composer.get_value().to_string());
+    }
+    if let InputEvent::MouseUp { button, x, y } = event {
+        if *button == wgpui::MouseButton::Left
+            && state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::Managed
+        {
+            let click = Point::new(*x, *y);
+            if let Some(link_bounds) = state.chat_inputs.composer_identity_link_bounds
+                && link_bounds.contains(click)
+            {
+                activate_hotbar_slot(state, HOTBAR_SLOT_NOSTR_IDENTITY);
+                return true;
+            }
+            let matched = state
+                .chat_inputs
+                .managed_chat_retry_targets
+                .iter()
+                .find(|(_, b)| b.contains(click))
+                .map(|(id, _)| id.clone());
+            if let Some(event_id) = matched {
+                let _ = state
+                    .autopilot_chat
+                    .managed_chat_projection
+                    .retry_outbound_message(&event_id);
+                return true;
+            }
+        }
     }
     handled
 }

@@ -79,6 +79,7 @@ nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
+rusqlite = { version = "0.31" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 wgpui = { path = "../../crates/wgpui", default-features = false, features = ["desktop"] }
 wgpu = { workspace = true }
@@ -101,6 +102,7 @@ clap = { version = "4.5", features = ["derive"] }
 getrandom = "0.3"
 futures-util = "0.3"
 qrcode = { version = "0.12", default-features = false }
+bip39 = "2.2"
 tokio-tungstenite = "0.24"
 rustls = { version = "0.23", features = ["ring"] }
 tiny-skia = "0.11"
