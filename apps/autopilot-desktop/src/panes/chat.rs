@@ -30,6 +30,7 @@ use crate::pane_system::{
     chat_thread_rail_bounds, chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds,
     chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
     chat_transcript_bounds, chat_visible_thread_row_count,
+    chat_managed_debug_toggle_bounds,
     chat_workspace_rail_bounds, chat_workspace_rail_toggle_button_bounds,
     chat_workspace_row_bounds, pane_content_bounds, set_chat_shell_layout_state,
 };
@@ -1089,6 +1090,15 @@ fn transcript_content_height(
                 height += 8.0;
             }
             for message in autopilot_chat.active_managed_chat_messages() {
+                use crate::chat_message_classifier::ChatMessageClass;
+                if !autopilot_chat.show_debug_events
+                    && matches!(
+                        message.message_class,
+                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
+                    )
+                {
+                    continue;
+                }
                 height += CHAT_TRANSCRIPT_LINE_HEIGHT;
                 if managed_message_reply_label(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
@@ -3587,8 +3597,72 @@ fn paint_chat_shell(
                 );
             }
         }
-        ChatBrowseMode::Managed => {}
-        ChatBrowseMode::DirectMessages => {}
+        ChatBrowseMode::Managed => {
+            let status_text = managed_status_text(autopilot_chat);
+            let status_width = (header_bounds.size.width * 0.45).max(150.0);
+            let status_x = header_bounds.max_x() - status_width - 10.0;
+            let mut status_y = header_bounds.origin.y + 12.0;
+            let max_chars = ((status_width / 6.2).floor() as usize).max(12);
+            for chunk in split_text_for_display(&status_text, max_chars)
+                .into_iter()
+                .take(3)
+            {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &chunk,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    chat_mission_cyan_color(),
+                ));
+                status_y += 12.0;
+            }
+            for line in managed_peer_presence_lines(autopilot_chat) {
+                if status_y + 11.0 > header_bounds.max_y() {
+                    break;
+                }
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &line,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    chat_mission_cyan_color(),
+                ));
+                status_y += 12.0;
+            }
+            let debug_label = if autopilot_chat.show_debug_events {
+                "Debug ON"
+            } else {
+                "Debug"
+            };
+            let debug_accent = if autopilot_chat.show_debug_events {
+                chat_mission_orange_color()
+            } else {
+                chat_mission_muted_color()
+            };
+            paint_header_chip(
+                chat_managed_debug_toggle_bounds(content_bounds),
+                debug_label,
+                debug_accent,
+                paint,
+            );
+        }
+        ChatBrowseMode::DirectMessages => {
+            let status_text = direct_status_text(autopilot_chat);
+            let status_width = (header_bounds.size.width * 0.45).max(150.0);
+            let status_x = header_bounds.max_x() - status_width - 10.0;
+            let mut status_y = header_bounds.origin.y + 12.0;
+            let max_chars = ((status_width / 6.2).floor() as usize).max(12);
+            for chunk in split_text_for_display(&status_text, max_chars)
+                .into_iter()
+                .take(3)
+            {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &chunk,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    chat_mission_cyan_color(),
+                ));
+                status_y += 12.0;
+            }
+        }
     }
 }
 
@@ -3898,6 +3972,15 @@ pub fn paint(
             }
 
             for (index, message) in managed_messages.into_iter().enumerate() {
+                use crate::chat_message_classifier::ChatMessageClass;
+                if !autopilot_chat.show_debug_events
+                    && matches!(
+                        message.message_class,
+                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
+                    )
+                {
+                    continue;
+                }
                 paint.scene.draw_text(paint.text.layout_mono(
                     &managed_message_role_label(index, message),
                     Point::new(transcript_scroll_clip.origin.x, y),

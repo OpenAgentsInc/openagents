@@ -2,7 +2,6 @@
 
 Generated from: `docs/plans/prd-chat-usability-baseline.md`
 Date: 2026-03-19
-Last updated: 2026-03-24 — C-3, D-1, D-2 complete: NIP-42 auth handling; pane.autopilot_chat always opens in assistant mode; transcript panel corner label is now mode-aware
 
 ## Progress
 
@@ -13,14 +12,14 @@ Last updated: 2026-03-24 — C-3, D-1, D-2 complete: NIP-42 auth handling; pane.
 | A-3 | ✅ Done | peer presence list + active count rendered in managed chat channel header |
 | A-4 | ✅ Done | `show_debug_events` toggle + `Debug`/`Debug ON` chip in managed header; `message_class` field on projection; A-2 filter moved to render time |
 | A-5 | ✅ Done | `OA_NIP28_TEAM_CHANNEL_ID` env var; `team_channel_id: Option<String>` on config; `build_filters` covers both channels; setup documented in `docs/headless-compute.md` |
-| B-1 | ✅ Done | `Kind0Metadata` struct + `author_metadata` in snapshot; kind-0 relay subscription; `resolve_author_display_name` fallback chain in chat renderer |
-| B-2 | ✅ Done | relative timestamps, same-author grouping, own-message `▶` glyph, per-author palette colors; `avatar_color_index` + `author_label_color` helpers |
-| C-1 | ✅ Done | Failed rows: error color on role label, "send failed: {error}  retry →" note; Acked rows clean; new `delivery_note_states_match_spec` test |
-| C-2 | ✅ Done | Per-row retry click target on Failed delivery note; `managed_chat_retry_targets` in `ChatPaneInputs`; MouseUp handler in `dispatch_input_event` |
-| C-3 | ✅ Done | `RelayAuthIdentity` injected into `PoolConfig`; `AuthChallengeReceived` variant on `Nip28ChatLaneUpdate`; `AuthRequired` state on `ManagedChatRelayState`; relay layer auto-responds, lane forwards challenge to app state; `AuthRequired` indicator in relay status area |
-| C-4 | ✅ Done | `ManagedChatRelayState` enum + relay state on projection; Eose→connected, ConnectionError→error in reducer; relay indicator in managed header; composer block state when no local_pubkey; "Set up identity keys →" click navigates to identity pane |
-| D-1 | ✅ Done | `chat_browse_mode()` fallback removed; `create_for_kind` resets workspace to Autopilot on pane activation; regression test `chat_browse_mode_defaults_to_autopilot_even_when_managed_content_exists` passes |
-| D-2 | ✅ Done | Transcript panel corner label now mode-aware: "GROUP CHAT" / "DIRECT MESSAGES" / "CHAT" |
+| B-1 | 🔲 Not started | |
+| B-2 | 🔲 Not started | |
+| C-1 | 🔲 Not started | |
+| C-2 | 🔲 Not started | |
+| C-3 | 🔲 Not started | |
+| C-4 | 🔲 Not started | |
+| D-1 | 🔲 Not started | |
+| D-2 | 🔲 Not started | |
 | D-3 | 🔲 Not started | |
 | E-1 | 🔲 Not started | |
 
@@ -270,12 +269,12 @@ non-human events, operators need a way to get them back.
 - Toggle must not be accessible from the Autopilot assistant chat lane
 
 **Acceptance Criteria:**
-- [x] Toggle visible in managed chat mode
-- [x] Toggle is OFF by default
-- [x] Enabling toggle makes presence/debug events visible in transcript
-- [x] Debug/presence rows have visual distinction from human message rows
-- [x] Toggle is not present in the Autopilot assistant chat lane
-- [x] `cargo test -p autopilot-desktop` passes
+- [ ] Toggle visible in managed chat mode
+- [ ] Toggle is OFF by default
+- [ ] Enabling toggle makes presence/debug events visible in transcript
+- [ ] Debug/presence rows have visual distinction from human message rows
+- [ ] Toggle is not present in the Autopilot assistant chat lane
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires A-2 (classification + filtering in place)
 
@@ -309,11 +308,11 @@ production channel and gives Ben a clean environment to test in during Phase E.
 - The channel should be on the same relay already configured for managed chat (check `nip28_chat_lane.rs` for the relay URL currently in use)
 
 **Acceptance Criteria:**
-- [x] A second NIP-28 channel exists with a team-identifiable name
-- [x] The channel ID is documented
-- [x] Setting the config key causes the channel to appear in the app rail
-- [x] Team members can join and see the channel without manual ID entry
-- [x] The test channel does not interfere with the existing production channel
+- [ ] A second NIP-28 channel exists with a team-identifiable name
+- [ ] The channel ID is documented
+- [ ] Setting the config key causes the channel to appear in the app rail
+- [ ] Team members can join and see the channel without manual ID entry
+- [ ] The test channel does not interfere with the existing production channel
 
 **Dependencies:** None — can start in parallel with A-1 through A-4
 
@@ -356,14 +355,12 @@ message shows a raw pubkey or is completely unlabeled.
 - `ManagedChatMessageProjection` may need a `resolved_display_name: Option<String>` field, or the resolution can happen at render time from the cache
 
 **Acceptance Criteria:**
-- [x] Messages from a new pubkey trigger a kind-0 metadata request
-- [x] Resolved display name appears in the message row (not raw pubkey)
-- [x] Fallback chain works: `display_name` → `name` → short npub → short hex
-- [x] No duplicate requests for already-cached pubkeys (`fetched_kind0_pubkeys` dedup set in lane loop)
-- [x] No flicker when metadata arrives after initial render (resolution at render time from cache)
-- [x] `cargo test -p autopilot-desktop` passes — 14/14 chat projection tests ✅
-
-**Completed:** 2026-03-21 — `nip28_chat_lane.rs`, `chat_projection.rs`, `input/reducers/mod.rs`, `panes/chat.rs`
+- [ ] Messages from a new pubkey trigger a kind-0 metadata request
+- [ ] Resolved display name appears in the message row (not raw pubkey)
+- [ ] Fallback chain works: `display_name` → `name` → short npub → short hex
+- [ ] No duplicate requests for already-cached pubkeys
+- [ ] No flicker when metadata arrives after initial render
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires A-2 (transcript contains only HumanMessage rows to attach identity to)
 
@@ -402,16 +399,14 @@ for Autopilot threads but is not used for managed chat rows.
 - Do not block render on metadata availability; show fallback name/avatar immediately, update when kind-0 arrives
 
 **Acceptance Criteria:**
-- [x] Every human message row shows a resolved author name (or short hex fallback)
-- [x] Every human message row shows a relative timestamp (`format_managed_chat_relative_timestamp`)
-- [x] Absolute time inline on non-grouped rows (appended to relative timestamp)
-- [x] Adjacent messages from the same author within 5 min are grouped (first row has full header, subsequent rows are compact with indented timestamp)
-- [x] Own messages are visually distinct (`▶` glyph + `theme::accent::SECONDARY` color)
-- [x] Avatar fallback: deterministic color per pubkey via `avatar_color_index` + `author_label_color` palette
-- [ ] Avatar from kind-0 `picture` URL — deferred (TUI cannot render network images inline; field is cached in `Kind0Metadata.picture` for future renderer)
-- [x] `cargo test -p autopilot-desktop` passes — 14/14 chat projection tests ✅
-
-**Completed:** 2026-03-21 — `panes/chat.rs` only
+- [ ] Every human message row shows a resolved author name (or short npub fallback)
+- [ ] Every human message row shows a relative timestamp
+- [ ] Absolute time accessible on hover
+- [ ] Adjacent messages from the same author within 5 min are grouped (first row has full header, subsequent rows are compact)
+- [ ] Own messages are visually distinct from other authors' messages
+- [ ] Avatar shows for messages where kind-0 `picture` is available
+- [ ] Avatar fallback shown when no picture URL
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:**
 - Requires B-1 (kind-0 metadata cache)
@@ -458,12 +453,12 @@ message failed or why.
 - Error text may come from the relay OK message or a connection error — surface whatever is available in `delivery_error`
 
 **Acceptance Criteria:**
-- [x] Failed message rows show a visible error indicator
-- [x] Relay error text is accessible on the failed row (inline or hover)
-- [x] Pending rows show a subtle sending indicator
-- [x] Delivered/acked rows show no indicator (clean)
-- [x] The error is on the specific failed row, not just an aggregate count
-- [x] `cargo test -p autopilot-desktop` passes
+- [ ] Failed message rows show a visible error indicator
+- [ ] Relay error text is accessible on the failed row (inline or hover)
+- [ ] Pending rows show a subtle sending indicator
+- [ ] Delivered/acked rows show no indicator (clean)
+- [ ] The error is on the specific failed row, not just an aggregate count
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires A-2 (classified transcript — delivery state shown only on HumanMessage rows)
 
@@ -498,11 +493,11 @@ cannot retry from the failed row itself.
 - `apps/autopilot-desktop/src/input/reducers/mod.rs` for the retry command handler
 
 **Acceptance Criteria:**
-- [x] "Retry" affordance visible on every failed message row
-- [x] Clicking retry transitions the row to Pending state
-- [x] Successful retry transitions the row to Delivered state
-- [x] Failed retry returns the row to Failed state with updated error text
-- [x] `cargo test -p autopilot-desktop` passes
+- [ ] "Retry" affordance visible on every failed message row
+- [ ] Clicking retry transitions the row to Pending state
+- [ ] Successful retry transitions the row to Delivered state
+- [ ] Failed retry returns the row to Failed state with updated error text
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires C-1 (delivery state visible on rows)
 
@@ -542,12 +537,12 @@ client layer. The desktop integration layer (the lane) does not call them.
 - `crates/nostr/client` may need a relay auth integration point; coordinate with the crate boundary defined in §9 of the PRD
 
 **Acceptance Criteria:**
-- [x] NIP-42 AUTH challenge from relay triggers a signed challenge response
-- [x] Successful auth: no user notification, publish proceeds normally
+- [ ] NIP-42 AUTH challenge from relay triggers a signed challenge response
+- [ ] Successful auth: no user notification, publish proceeds normally
 - [ ] Auth failure: visible error message with current state and link to identity keys pane
-- [x] No keypair available: composer shows block state with link to identity keys pane (covered by C-4)
-- [x] Auth state is reflected in channel header / relay status area (AuthRequired state + relay indicator)
-- [x] `cargo test -p autopilot-desktop` passes
+- [ ] No keypair available: composer shows block state with link to identity keys pane
+- [ ] Auth state is reflected in channel header / relay status area (C-4)
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires C-4 for auth state display surface; does not require A-2 but should ship in same phase
 
@@ -585,13 +580,13 @@ silent failure. Relay connection state is also not visible in the pane.
 - Composer block state: disable the text input and show explanatory copy; do not hide the composer entirely
 
 **Acceptance Criteria:**
-- [x] Composer is disabled with explanatory copy when no keypair configured
-- [x] Link from composer block state navigates to identity keys pane
-- [x] Composer is enabled when a valid keypair is present
-- [x] Channel header shows relay URL and connection state
+- [ ] Composer is disabled with explanatory copy when no keypair configured
+- [ ] Link from composer block state navigates to identity keys pane
+- [ ] Composer is enabled when a valid keypair is present
+- [ ] Channel header shows relay URL and connection state
 - [ ] Last relay error accessible on hover/tap of relay indicator
-- [x] Connection state updates reactively (connect → auth → connected)
-- [x] `cargo test -p autopilot-desktop` passes
+- [ ] Connection state updates reactively (connect → auth → connected)
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Independent — can start before C-1; auth state display used by C-3
 
@@ -639,10 +634,10 @@ local execution UX." It must not default to managed content.
 - `apps/autopilot-desktop/src/panes/chat.rs` — pane title must also reflect the correct mode (see D-2)
 
 **Acceptance Criteria:**
-- [x] Opening "Autopilot Chat" command always shows local assistant view
-- [x] Managed chat mode is not active unless the user explicitly navigated to it
-- [x] Switching away from managed chat and back to assistant chat works
-- [x] `cargo test -p autopilot-desktop` passes (regression test added)
+- [ ] Opening "Autopilot Chat" command always shows local assistant view
+- [ ] Managed chat mode is not active unless the user explicitly navigated to it
+- [ ] Switching away from managed chat and back to assistant chat works
+- [ ] `cargo test -p autopilot-desktop` passes (pane routing tests)
 
 **Dependencies:** Independent — can be worked in parallel with Phase A
 
@@ -676,10 +671,10 @@ are talking to the local assistant.
 - Channel metadata (name, about) is available from kind-40/41 events; ensure it is included in app state and accessible to the header renderer
 
 **Acceptance Criteria:**
-- [x] Managed chat mode shows channel name in header — `active_thread_title()` returns channel name; panel corner label now says "GROUP CHAT"
-- [x] Assistant mode header is unchanged — panel corner label stays "CHAT"
-- [x] Channel name comes from kind-40/41 metadata — via `managed_channel_label()` → `channel.metadata.name`
-- [x] `cargo test -p autopilot-desktop` passes (20 pre-existing failures unrelated to this change)
+- [ ] Managed chat mode shows channel name in header (not "Autopilot Chat")
+- [ ] Assistant mode header is unchanged
+- [ ] Channel name comes from kind-40/41 metadata when available
+- [ ] `cargo test -p autopilot-desktop` passes
 
 **Dependencies:** Requires D-1 (pane routing must be stable first)
 
