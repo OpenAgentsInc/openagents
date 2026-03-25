@@ -211,7 +211,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         changed = true;
         match update {
             Nip28ChatLaneUpdate::RelayEvent(event) => {
-                // All events stored; rendering filters based on show_debug_events (A-4)
+                // Store the full relay event stream; managed-chat projection decides what is visible.
                 nip28_relay_events.push(event);
             }
             Nip28ChatLaneUpdate::PublishAck { event_id } => {
@@ -231,13 +231,25 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
                 state.nip28_chat_lane_worker.clear_dispatched(&event_id);
             }
             Nip28ChatLaneUpdate::Eose { .. } => {
-                state.autopilot_chat.managed_chat_projection.mark_relay_connected();
+                state
+                    .autopilot_chat
+                    .managed_chat_projection
+                    .mark_relay_connected();
             }
             Nip28ChatLaneUpdate::ConnectionError { message, .. } => {
-                state.autopilot_chat.managed_chat_projection.mark_relay_error(&message);
+                state
+                    .autopilot_chat
+                    .managed_chat_projection
+                    .mark_relay_error(&message);
             }
             Nip28ChatLaneUpdate::AuthChallengeReceived { .. } => {
-                state.autopilot_chat.managed_chat_projection.mark_relay_auth_required();
+                state
+                    .autopilot_chat
+                    .managed_chat_projection
+                    .mark_relay_auth_required();
+            }
+            Nip28ChatLaneUpdate::Snapshot(snapshot) => {
+                state.autopilot_chat.managed_chat_lane = snapshot;
             }
         }
     }
@@ -246,6 +258,19 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             .autopilot_chat
             .managed_chat_projection
             .record_relay_events(nip28_relay_events);
+
+        // Trigger kind-0 fetch for any author pubkeys not yet requested
+        let author_pubkeys: Vec<String> = state
+            .autopilot_chat
+            .managed_chat_projection
+            .snapshot
+            .messages
+            .values()
+            .map(|m| m.author_pubkey.clone())
+            .collect();
+        state
+            .nip28_chat_lane_worker
+            .fetch_kind0_if_needed(author_pubkeys);
     }
 
     {
@@ -282,6 +307,22 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         tracing::info!("nip28: auto-selected default channel");
         changed = true;
     }
+
+    state
+        .nip28_chat_lane_worker
+        .sync_managed_chat_subscriptions(
+            state.settings.document.configured_relay_urls(),
+            state
+                .autopilot_chat
+                .managed_chat_projection
+                .discovered_channel_ids(),
+            state
+                .autopilot_chat
+                .managed_chat_projection
+                .subscription_since_created_at(
+                    crate::nip28_chat_lane::NIP28_CHAT_BACKFILL_OVERLAP_SECS,
+                ),
+        );
 
     changed
 }

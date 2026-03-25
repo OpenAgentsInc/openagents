@@ -626,6 +626,32 @@ impl ManagedChatProjectionState {
         Ok(())
     }
 
+    pub fn discovered_channel_ids(&self) -> Vec<String> {
+        let channel_ids = self
+            .snapshot
+            .channels
+            .iter()
+            .map(|channel| channel.channel_id.clone())
+            .collect::<BTreeSet<_>>();
+        channel_ids.into_iter().collect()
+    }
+
+    pub fn subscription_since_created_at(&self, overlap_secs: u64) -> u64 {
+        self.relay_events
+            .iter()
+            .map(|event| event.created_at)
+            .max()
+            .or_else(|| {
+                self.snapshot
+                    .messages
+                    .values()
+                    .map(|message| message.created_at)
+                    .max()
+            })
+            .unwrap_or_default()
+            .saturating_sub(overlap_secs)
+    }
+
     fn refresh_projection(&mut self, action: impl Into<String>) {
         self.relay_events =
             normalize_managed_chat_relay_events(std::mem::take(&mut self.relay_events));
@@ -2555,6 +2581,46 @@ mod tests {
                 .map(|message| message.delivery_state),
             Some(ManagedChatDeliveryState::Acked)
         );
+    }
+
+    #[test]
+    fn managed_chat_projection_reports_discovered_subscription_channels() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection = ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let channel_a = build_channel_create_event('a', 20, "ops");
+        let channel_b = build_channel_create_event('b', 21, "alerts");
+        projection.replace_relay_events(vec![
+            build_group_metadata_event('c', 10, "Ops"),
+            build_channel_metadata_event('d', 22, &channel_a.id, "ops", 1),
+            build_channel_metadata_event('e', 23, &channel_b.id, "alerts", 2),
+            channel_a.clone(),
+            channel_b.clone(),
+        ]);
+
+        assert_eq!(
+            projection.discovered_channel_ids(),
+            vec![channel_a.id.clone(), channel_b.id.clone()]
+        );
+    }
+
+    #[test]
+    fn managed_chat_projection_subscription_since_uses_overlap_window() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("managed-chat.json");
+        let mut projection = ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let channel = build_channel_create_event('a', 20, "ops");
+        let message = build_message_event('b', 'c', 250, &channel.id, "hello");
+        projection.replace_relay_events(vec![
+            build_group_metadata_event('d', 10, "Ops"),
+            build_channel_metadata_event('e', 21, &channel.id, "ops", 1),
+            channel,
+            message,
+        ]);
+
+        assert_eq!(projection.subscription_since_created_at(120), 130);
     }
 
     #[test]
