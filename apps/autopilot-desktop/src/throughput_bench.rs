@@ -100,7 +100,6 @@ struct BuyerHarness {
     label: String,
     identity: NostrIdentity,
     chat: AutopilotChatState,
-    relay_urls: Vec<String>,
     chat_lane: Nip28ChatLaneWorker,
     request_lane: ProviderNip90LaneWorker,
     requests: NetworkRequestsState,
@@ -114,7 +113,6 @@ struct BuyerHarness {
 struct ProviderHarness {
     identity: NostrIdentity,
     chat: AutopilotChatState,
-    relay_urls: Vec<String>,
     chat_lane: Nip28ChatLaneWorker,
     lane: ProviderNip90LaneWorker,
     runtime: ProviderRuntimeState,
@@ -220,7 +218,6 @@ fn run_standard_phase(
         relay_url: relay.url.clone(),
         channel_id: channel_id.clone(),
         team_channel_id: None,
-        private_key_hex: None,
     };
     relay.store_events(vec![
         build_group_metadata_event(),
@@ -244,7 +241,6 @@ fn run_standard_phase(
             label,
             identity,
             chat,
-            relay_urls: vec![relay.url.clone()],
             chat_lane: Nip28ChatLaneWorker::spawn_with_config(chat_config.clone()),
             request_lane: ProviderNip90LaneWorker::spawn(vec![relay.url.clone()]),
             requests: NetworkRequestsState::default(),
@@ -283,7 +279,6 @@ fn run_standard_phase(
         providers.push(ProviderHarness {
             identity,
             chat,
-            relay_urls: vec![relay.url.clone()],
             chat_lane: Nip28ChatLaneWorker::spawn_with_config(chat_config.clone()),
             lane,
             runtime: ready_provider_runtime(Instant::now()),
@@ -485,18 +480,10 @@ fn wait_for_provider_lanes_online(providers: &mut [ProviderHarness]) -> Result<(
 
 fn pump_all_chat_lanes(buyers: &mut [BuyerHarness], providers: &mut [ProviderHarness]) {
     for buyer in buyers {
-        pump_nip28_lane(
-            &mut buyer.chat,
-            &mut buyer.chat_lane,
-            buyer.relay_urls.as_slice(),
-        );
+        pump_nip28_lane(&mut buyer.chat, &mut buyer.chat_lane);
     }
     for provider in providers {
-        pump_nip28_lane(
-            &mut provider.chat,
-            &mut provider.chat_lane,
-            provider.relay_urls.as_slice(),
-        );
+        pump_nip28_lane(&mut provider.chat, &mut provider.chat_lane);
     }
 }
 
@@ -1067,11 +1054,7 @@ fn build_provider_payment_required_feedback_event(
     sign_template(identity, &create_job_feedback_event(&feedback))
 }
 
-fn pump_nip28_lane(
-    chat: &mut AutopilotChatState,
-    lane_worker: &mut Nip28ChatLaneWorker,
-    relay_urls: &[String],
-) {
+fn pump_nip28_lane(chat: &mut AutopilotChatState, lane_worker: &mut Nip28ChatLaneWorker) {
     for update in lane_worker.drain_updates() {
         match update {
             Nip28ChatLaneUpdate::RelayEvent(event) => {
@@ -1087,12 +1070,7 @@ fn pump_nip28_lane(
                     .fail_outbound_message(&event_id, &message);
                 lane_worker.clear_dispatched(&event_id);
             }
-            Nip28ChatLaneUpdate::Eose { .. }
-            | Nip28ChatLaneUpdate::ConnectionError { .. }
-            | Nip28ChatLaneUpdate::AuthChallengeReceived { .. } => {}
-            Nip28ChatLaneUpdate::Snapshot(snapshot) => {
-                chat.managed_chat_lane = snapshot;
-            }
+            Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
         }
     }
     let pending_events = chat
@@ -1105,13 +1083,6 @@ fn pump_nip28_lane(
     for event in pending_events {
         lane_worker.publish(event);
     }
-    lane_worker.sync_managed_chat_subscriptions(
-        relay_urls.to_vec(),
-        chat.managed_chat_projection.discovered_channel_ids(),
-        chat.managed_chat_projection.subscription_since_created_at(
-            crate::nip28_chat_lane::NIP28_CHAT_BACKFILL_OVERLAP_SECS,
-        ),
-    );
     let _ = chat.maybe_auto_select_default_nip28_channel();
 }
 
