@@ -33,6 +33,7 @@ const DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Direct message relay publish transport is not wired yet; local echo saved for retry.";
 const MISSION_CONTROL_BUY_MODE_PROMPT: &str = "Reply with the exact text BUY MODE OK.";
 const MISSION_CONTROL_LOCAL_FM_SUMMARY_INSTRUCTIONS: &str = "You are the Mission Control local Foundation Models test. Summarize only the supplied context in 3 short markdown bullets. Highlight the latest result, current buyer/provider state, and the next operator action. Do not invent facts or mention missing data unless it matters.";
+const MNEMONIC_CLIPBOARD_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ManagedChatComposerIntent {
@@ -10052,8 +10053,14 @@ pub(super) fn run_mission_control_action(
             let notice = match state.nostr_identity.as_ref() {
                 Some(identity) if !identity.mnemonic.trim().is_empty() => {
                     match copy_to_clipboard(&identity.mnemonic) {
-                        Ok(()) => "Copied 12-word wallet seed to clipboard. Treat it like cash."
-                            .to_string(),
+                        Ok(()) => {
+                            schedule_sensitive_clipboard_clear(
+                                identity.mnemonic.clone(),
+                                std::time::Duration::from_secs(MNEMONIC_CLIPBOARD_EXPIRY_SECONDS),
+                            );
+                            "Copied 12-word wallet seed to clipboard. Treat it like cash. Clipboard clears in 5 minutes."
+                                .to_string()
+                        }
                         Err(error) => format!("Failed to copy wallet seed: {error}"),
                     }
                 }
@@ -14485,6 +14492,79 @@ pub(super) fn normalize_optional_text(raw: &str) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+fn schedule_sensitive_clipboard_clear(expected_contents: String, delay: std::time::Duration) {
+    let expected = normalize_clipboard_for_compare(expected_contents.as_str());
+    if expected.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        let Some(current) = read_system_clipboard_for_sensitive_expiry() else {
+            return;
+        };
+        if normalize_clipboard_for_compare(current.as_str()) == expected {
+            let _ = copy_to_clipboard("");
+        }
+    });
+}
+
+fn normalize_clipboard_for_compare(value: &str) -> String {
+    value
+        .trim_end_matches(['\r', '\n'])
+        .trim()
+        .to_string()
+}
+
+fn read_system_clipboard_for_sensitive_expiry() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        read_clipboard_with_command_for_sensitive_expiry("pbpaste", &[])
+            .or_else(|| read_clipboard_with_command_for_sensitive_expiry("/usr/bin/pbpaste", &[]))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        read_clipboard_with_command_for_sensitive_expiry("wl-paste", &["-n"])
+            .or_else(|| {
+                read_clipboard_with_command_for_sensitive_expiry(
+                    "xclip",
+                    &["-selection", "clipboard", "-o"],
+                )
+            })
+            .or_else(|| {
+                read_clipboard_with_command_for_sensitive_expiry(
+                    "xsel",
+                    &["--clipboard", "--output"],
+                )
+            })
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        read_clipboard_with_command_for_sensitive_expiry(
+            "powershell",
+            &["-NoProfile", "-Command", "Get-Clipboard"],
+        )
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+fn read_clipboard_with_command_for_sensitive_expiry(cmd: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(cmd).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    match String::from_utf8(output.stdout) {
+        Ok(text) => Some(text),
+        Err(error) => Some(String::from_utf8_lossy(error.as_bytes()).to_string()),
     }
 }
 

@@ -11,6 +11,8 @@ use wgpui::components::sections::TerminalStream;
 
 const ENV_AUTOPILOT_LOG_DIR: &str = "OPENAGENTS_AUTOPILOT_LOG_DIR";
 const DEFAULT_MAX_SESSION_FILES: usize = 12;
+const DEFAULT_MAX_SESSION_LOG_AGE_DAYS: u64 = 7;
+const DEFAULT_MAX_TOTAL_SESSION_LOG_BYTES: u64 = 256 * 1024 * 1024;
 
 static SESSION_LOG_WRITER: OnceLock<SessionLogWriter> = OnceLock::new();
 
@@ -35,6 +37,8 @@ enum SessionLogCommand {
 struct SessionLogConfig {
     base_dir: PathBuf,
     max_session_files: usize,
+    max_session_age: std::time::Duration,
+    max_total_session_bytes: u64,
     session_id: String,
 }
 
@@ -148,6 +152,8 @@ impl SessionLogWriter {
         let SessionLogConfig {
             base_dir,
             max_session_files,
+            max_session_age,
+            max_total_session_bytes,
             session_id,
         } = config;
         let session_dir = base_dir.join("sessions");
@@ -170,6 +176,8 @@ impl SessionLogWriter {
                     thread_latest_path,
                     thread_session_id,
                     max_session_files,
+                    max_session_age,
+                    max_total_session_bytes,
                 );
             });
         if let Err(error) = spawn_result {
@@ -287,6 +295,8 @@ fn run_session_log_writer(
     latest_path: PathBuf,
     session_id: String,
     max_session_files: usize,
+    max_session_age: std::time::Duration,
+    max_total_session_bytes: u64,
 ) {
     let mut file = initialize_session_log_file(
         base_dir.as_path(),
@@ -294,6 +304,8 @@ fn run_session_log_writer(
         session_path.as_path(),
         latest_path.as_path(),
         max_session_files,
+        max_session_age,
+        max_total_session_bytes,
     );
 
     if let Some(file_handle) = file.as_mut() {
@@ -349,6 +361,8 @@ fn initialize_session_log_file(
     session_path: &Path,
     latest_path: &Path,
     max_session_files: usize,
+    max_session_age: std::time::Duration,
+    max_total_session_bytes: u64,
 ) -> Option<File> {
     if let Err(error) = fs::create_dir_all(base_dir) {
         emit_session_log_fallback(&format!(
@@ -366,7 +380,12 @@ fn initialize_session_log_file(
         ));
         return None;
     }
-    if let Err(error) = prune_old_session_logs(session_dir, max_session_files) {
+    if let Err(error) = prune_old_session_logs(
+        session_dir,
+        max_session_files,
+        max_session_age,
+        max_total_session_bytes,
+    ) {
         emit_session_log_fallback(&format!(
             "Autopilot session log retention cleanup failed for {}: {}",
             session_dir.display(),
@@ -438,7 +457,28 @@ fn refresh_latest_alias(session_path: &Path, latest_path: &Path) -> Result<(), S
         .map_err(|error| format!("copy latest alias {}: {error}", latest_path.display()))
 }
 
-fn prune_old_session_logs(session_dir: &Path, max_session_files: usize) -> Result<(), String> {
+fn prune_old_session_logs(
+    session_dir: &Path,
+    max_session_files: usize,
+    max_session_age: std::time::Duration,
+    max_total_session_bytes: u64,
+) -> Result<(), String> {
+    prune_old_session_logs_at(
+        session_dir,
+        max_session_files,
+        max_session_age,
+        max_total_session_bytes,
+        std::time::SystemTime::now(),
+    )
+}
+
+fn prune_old_session_logs_at(
+    session_dir: &Path,
+    max_session_files: usize,
+    max_session_age: std::time::Duration,
+    max_total_session_bytes: u64,
+    now: std::time::SystemTime,
+) -> Result<(), String> {
     let mut files = fs::read_dir(session_dir)
         .map_err(|error| {
             format!(
@@ -454,20 +494,48 @@ fn prune_old_session_logs(session_dir: &Path, max_session_files: usize) -> Resul
                 .unwrap_or(false)
         })
         .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+        .filter_map(|entry| {
+            let metadata = entry.metadata().ok()?;
+            let modified = metadata
+                .modified()
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            Some((entry, modified, metadata.len()))
+        })
         .collect::<Vec<_>>();
-    if files.len() <= max_session_files {
-        return Ok(());
+
+    files.sort_by_key(|(entry, modified, _)| (*modified, entry.file_name()));
+
+    if !max_session_age.is_zero() {
+        if let Some(cutoff) = now.checked_sub(max_session_age) {
+            for (entry, modified, _) in &files {
+                if *modified < cutoff {
+                    fs::remove_file(entry.path()).map_err(|error| {
+                        format!(
+                            "remove stale session log {}: {error}",
+                            entry.path().display()
+                        )
+                    })?;
+                }
+            }
+            files.retain(|(_, modified, _)| *modified >= cutoff);
+        }
     }
 
-    files.sort_by_key(|entry| entry.file_name());
-    let remove_count = files.len().saturating_sub(max_session_files);
-    for entry in files.into_iter().take(remove_count) {
+    let mut total_size = files
+        .iter()
+        .fold(0_u64, |acc, (_, _, size)| acc.saturating_add(*size));
+    while files.len() > max_session_files || total_size > max_total_session_bytes {
+        let Some((entry, _, size)) = files.first() else {
+            break;
+        };
         fs::remove_file(entry.path()).map_err(|error| {
             format!(
                 "remove stale session log {}: {error}",
                 entry.path().display()
             )
         })?;
+        total_size = total_size.saturating_sub(*size);
+        files.remove(0);
     }
     Ok(())
 }
@@ -483,6 +551,10 @@ fn default_session_log_config() -> SessionLogConfig {
     SessionLogConfig {
         base_dir: default_autopilot_log_dir(),
         max_session_files: DEFAULT_MAX_SESSION_FILES,
+        max_session_age: std::time::Duration::from_secs(
+            DEFAULT_MAX_SESSION_LOG_AGE_DAYS * 24 * 60 * 60,
+        ),
+        max_total_session_bytes: DEFAULT_MAX_TOTAL_SESSION_LOG_BYTES,
         session_id: default_session_id(),
     }
 }
@@ -547,7 +619,7 @@ mod tests {
 
     use super::{
         DEFAULT_MAX_SESSION_FILES, SessionLogConfig, current_timestamp_ms, domain_projection,
-        resolve_log_dir_from, session_log_writer_for_tests,
+        prune_old_session_logs_at, resolve_log_dir_from, session_log_writer_for_tests,
     };
 
     #[test]
@@ -571,6 +643,8 @@ mod tests {
         let writer = session_log_writer_for_tests(SessionLogConfig {
             base_dir: temp.path().join("logs"),
             max_session_files: DEFAULT_MAX_SESSION_FILES,
+            max_session_age: std::time::Duration::from_secs(7 * 24 * 60 * 60),
+            max_total_session_bytes: 256 * 1024 * 1024,
             session_id: "20260311T214500Z-pid12345".to_string(),
         });
 
@@ -747,6 +821,8 @@ mod tests {
         let writer = session_log_writer_for_tests(SessionLogConfig {
             base_dir: temp.path().join("logs"),
             max_session_files: DEFAULT_MAX_SESSION_FILES,
+            max_session_age: std::time::Duration::from_secs(7 * 24 * 60 * 60),
+            max_total_session_bytes: 256 * 1024 * 1024,
             session_id: "20260311T230000Z-pid67890".to_string(),
         });
 
@@ -803,5 +879,55 @@ mod tests {
             }),
             "expected desktop control domain event in session log"
         );
+    }
+
+    #[test]
+    fn prune_old_session_logs_removes_logs_older_than_age_limit() {
+        let temp = tempdir().expect("create temp log dir");
+        let session_dir = temp.path().join("sessions");
+        std::fs::create_dir_all(&session_dir).expect("create sessions dir");
+
+        let stale_path = session_dir.join("old.jsonl");
+        std::fs::write(&stale_path, "old\n").expect("write stale log");
+        std::thread::sleep(std::time::Duration::from_millis(40));
+        let fresh_path = session_dir.join("new.jsonl");
+        std::fs::write(&fresh_path, "new\n").expect("write fresh log");
+
+        prune_old_session_logs_at(
+            &session_dir,
+            12,
+            std::time::Duration::from_millis(20),
+            1024 * 1024,
+            std::time::SystemTime::now(),
+        )
+        .expect("prune by age");
+
+        assert!(!stale_path.exists());
+        assert!(fresh_path.exists());
+    }
+
+    #[test]
+    fn prune_old_session_logs_removes_oldest_until_size_cap_is_met() {
+        let temp = tempdir().expect("create temp log dir");
+        let session_dir = temp.path().join("sessions");
+        std::fs::create_dir_all(&session_dir).expect("create sessions dir");
+
+        let oldest_path = session_dir.join("a-oldest.jsonl");
+        let newest_path = session_dir.join("b-newest.jsonl");
+        std::fs::write(&oldest_path, "12345\n").expect("write oldest log");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(&newest_path, "67890\n").expect("write newest log");
+
+        prune_old_session_logs_at(
+            &session_dir,
+            12,
+            std::time::Duration::from_secs(7 * 24 * 60 * 60),
+            8,
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(300),
+        )
+        .expect("prune by size");
+
+        assert!(!oldest_path.exists());
+        assert!(newest_path.exists());
     }
 }
