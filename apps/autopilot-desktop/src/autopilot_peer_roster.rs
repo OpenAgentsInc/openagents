@@ -686,7 +686,6 @@ mod tests {
             relay_url: "wss://relay.openagents.test".to_string(),
             channel_id: channel_id.to_string(),
             team_channel_id: None,
-            private_key_hex: None,
         }
     }
 
