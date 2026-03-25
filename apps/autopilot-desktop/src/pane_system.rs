@@ -5,9 +5,8 @@ use wgpui::{Bounds, Button, Component, InputEvent, Modifiers, MouseButton, Point
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    ActivityFeedFilter, ChatWorkspaceSelection, DesktopPane, PaneDragMode, PaneKind,
-    PanePresentation, RenderState, mission_control_local_model_button_enabled,
-    mission_control_show_local_model_button,
+    ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, PanePresentation, RenderState,
+    mission_control_local_model_button_enabled, mission_control_show_local_model_button,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
@@ -1106,6 +1105,7 @@ pub enum PaneHitAction {
     ChatCycleSourceFilter,
     ChatCycleProviderFilter,
     ChatToggleThreadTools,
+    ChatToggleDebugEvents,
     ChatForkThread,
     ChatArchiveThread,
     ChatUnarchiveThread,
@@ -1382,7 +1382,6 @@ impl PaneController {
     pub fn create_for_kind(state: &mut RenderState, kind: PaneKind) -> u64 {
         let id = Self::create(state, PaneDescriptor::for_kind(kind));
         if kind == PaneKind::AutopilotChat {
-            state.autopilot_chat.selected_workspace = ChatWorkspaceSelection::Autopilot;
             focus_chat_composer_for_pane_open(state);
             queue_chat_thread_history_refresh_for_pane_open(state);
         } else if kind == PaneKind::LocalInference {
@@ -2119,6 +2118,14 @@ pub fn chat_review_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_primary_header_button_bounds(content_bounds, 2)
+}
+
+pub fn chat_managed_debug_toggle_bounds(content_bounds: Bounds) -> Bounds {
+    let transcript_bounds = chat_transcript_bounds(content_bounds);
+    let header_x = transcript_bounds.origin.x + 8.0;
+    let header_y = transcript_bounds.origin.y + 8.0;
+    // Bottom-left of the 106 px managed channel header
+    Bounds::new(header_x + 8.0, header_y + 78.0, 84.0, 16.0)
 }
 
 // pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
@@ -6684,6 +6691,11 @@ fn pane_hit_action_for_pane(
                     {
                         return Some(PaneHitAction::ChatUnsubscribeThread);
                     }
+                }
+            }
+            if browse_mode == crate::app_state::ChatBrowseMode::Managed {
+                if chat_managed_debug_toggle_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatToggleDebugEvents);
                 }
             }
             //             if state.autopilot_chat.chat_has_browseable_content() {
