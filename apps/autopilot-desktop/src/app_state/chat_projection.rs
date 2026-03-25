@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use nostr::{
@@ -13,14 +13,6 @@ use nostr::{
 use serde::{Deserialize, Serialize};
 
 use super::PaneLoadState;
-
-/// Resolved kind-0 (user metadata) for a single Nostr pubkey.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Kind0Metadata {
-    pub display_name: Option<String>,
-    pub name: Option<String>,
-    pub picture: Option<String>,
-}
 
 const MANAGED_CHAT_PROJECTION_SCHEMA_VERSION: u16 = 1;
 const MANAGED_CHAT_PROJECTION_STREAM_ID: &str = "stream.managed_chat_projection.v1";
@@ -43,21 +35,6 @@ pub enum ManagedChatDeliveryState {
 impl ManagedChatDeliveryState {
     pub fn is_retryable(self) -> bool {
         matches!(self, Self::Failed)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ManagedChatRelayState {
-    Connecting,
-    /// AUTH challenge received; response sent; waiting for EOSE.
-    AuthRequired,
-    Connected,
-    Error,
-}
-
-impl Default for ManagedChatRelayState {
-    fn default() -> Self {
-        Self::Connecting
     }
 }
 
@@ -162,8 +139,6 @@ pub struct ManagedChatProjectionSnapshot {
     pub groups: Vec<ManagedChatGroupProjection>,
     pub channels: Vec<ManagedChatChannelProjection>,
     pub messages: BTreeMap<String, ManagedChatMessageProjection>,
-    /// Resolved kind-0 metadata keyed by pubkey (session-local cache).
-    pub author_metadata: HashMap<String, Kind0Metadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -194,8 +169,6 @@ pub struct ManagedChatProjectionState {
     /// Team channel ID from config — injected as a synthetic placeholder in the projection.
     team_channel_id: Option<String>,
     projection_file_path: PathBuf,
-    pub relay_connection_state: ManagedChatRelayState,
-    pub relay_last_error: Option<String>,
 }
 
 impl Default for ManagedChatProjectionState {
@@ -237,8 +210,6 @@ impl ManagedChatProjectionState {
                     local_pubkey: None,
                     team_channel_id,
                     projection_file_path,
-                    relay_connection_state: ManagedChatRelayState::Connecting,
-                    relay_last_error: None,
                 }
             }
             Err(error) => Self {
@@ -255,8 +226,6 @@ impl ManagedChatProjectionState {
                 local_pubkey: None,
                 team_channel_id: None,
                 projection_file_path,
-                relay_connection_state: ManagedChatRelayState::Connecting,
-                relay_last_error: None,
             },
         }
     }
@@ -275,22 +244,6 @@ impl ManagedChatProjectionState {
             );
         }
         state
-    }
-
-    pub fn mark_relay_connected(&mut self) {
-        self.relay_connection_state = ManagedChatRelayState::Connected;
-        self.relay_last_error = None;
-    }
-
-    pub fn mark_relay_auth_required(&mut self) {
-        if self.relay_connection_state == ManagedChatRelayState::Connecting {
-            self.relay_connection_state = ManagedChatRelayState::AuthRequired;
-        }
-    }
-
-    pub fn mark_relay_error(&mut self, message: &str) {
-        self.relay_connection_state = ManagedChatRelayState::Error;
-        self.relay_last_error = Some(message.to_string());
     }
 
     pub fn set_local_pubkey(&mut self, local_pubkey: Option<&str>) {
@@ -636,32 +589,6 @@ impl ManagedChatProjectionState {
         Ok(())
     }
 
-    pub fn discovered_channel_ids(&self) -> Vec<String> {
-        let channel_ids = self
-            .snapshot
-            .channels
-            .iter()
-            .map(|channel| channel.channel_id.clone())
-            .collect::<BTreeSet<_>>();
-        channel_ids.into_iter().collect()
-    }
-
-    pub fn subscription_since_created_at(&self, overlap_secs: u64) -> u64 {
-        self.relay_events
-            .iter()
-            .map(|event| event.created_at)
-            .max()
-            .or_else(|| {
-                self.snapshot
-                    .messages
-                    .values()
-                    .map(|message| message.created_at)
-                    .max()
-            })
-            .unwrap_or_default()
-            .saturating_sub(overlap_secs)
-    }
-
     fn refresh_projection(&mut self, action: impl Into<String>) {
         self.relay_events =
             normalize_managed_chat_relay_events(std::mem::take(&mut self.relay_events));
@@ -925,8 +852,6 @@ fn rebuild_managed_chat_projection(
     let mut channels = BTreeMap::<String, MutableChannelProjection>::new();
     let mut messages = BTreeMap::<String, ManagedChatMessageProjection>::new();
     let mut reaction_candidates = Vec::<ReactionCandidate>::new();
-    // kind-0 metadata: keep latest per pubkey (replaceable events)
-    let mut author_metadata_raw: HashMap<String, (u64, Kind0Metadata)> = HashMap::new();
 
     for event in relay_events
         .iter()
@@ -938,29 +863,6 @@ fn rebuild_managed_chat_projection(
         }
 
         match event.kind {
-            0 => {
-                // Kind-0: replaceable user metadata — keep the latest per pubkey
-                let is_newer = author_metadata_raw
-                    .get(&event.pubkey)
-                    .map_or(true, |(ts, _)| event.created_at > *ts);
-                if is_newer {
-                    if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&event.content) {
-                        author_metadata_raw.insert(
-                            event.pubkey.clone(),
-                            (
-                                event.created_at,
-                                Kind0Metadata {
-                                    display_name: meta["display_name"]
-                                        .as_str()
-                                        .map(|s| s.to_string()),
-                                    name: meta["name"].as_str().map(|s| s.to_string()),
-                                    picture: meta["picture"].as_str().map(|s| s.to_string()),
-                                },
-                            ),
-                        );
-                    }
-                }
-            }
             39000 => {
                 if let Ok(parsed) = GroupMetadataEvent::from_event(event) {
                     let group = groups.entry(parsed.group_id).or_default();
@@ -1501,16 +1403,10 @@ fn rebuild_managed_chat_projection(
         .collect::<Vec<_>>();
     group_rows.sort_by(|left, right| left.group_id.cmp(&right.group_id));
 
-    let author_metadata: HashMap<String, Kind0Metadata> = author_metadata_raw
-        .into_iter()
-        .map(|(pk, (_, km))| (pk, km))
-        .collect();
-
     ManagedChatProjectionSnapshot {
         groups: group_rows,
         channels: channel_rows,
         messages,
-        author_metadata,
     }
 }
 
@@ -2622,46 +2518,6 @@ mod tests {
                 .map(|message| message.delivery_state),
             Some(ManagedChatDeliveryState::Acked)
         );
-    }
-
-    #[test]
-    fn managed_chat_projection_reports_discovered_subscription_channels() {
-        let temp = tempdir().unwrap();
-        let path = temp.path().join("managed-chat.json");
-        let mut projection = ManagedChatProjectionState::from_projection_path_for_tests(path);
-
-        let channel_a = build_channel_create_event('a', 20, "ops");
-        let channel_b = build_channel_create_event('b', 21, "alerts");
-        projection.replace_relay_events(vec![
-            build_group_metadata_event('c', 10, "Ops"),
-            build_channel_metadata_event('d', 22, &channel_a.id, "ops", 1),
-            build_channel_metadata_event('e', 23, &channel_b.id, "alerts", 2),
-            channel_a.clone(),
-            channel_b.clone(),
-        ]);
-
-        assert_eq!(
-            projection.discovered_channel_ids(),
-            vec![channel_a.id.clone(), channel_b.id.clone()]
-        );
-    }
-
-    #[test]
-    fn managed_chat_projection_subscription_since_uses_overlap_window() {
-        let temp = tempdir().unwrap();
-        let path = temp.path().join("managed-chat.json");
-        let mut projection = ManagedChatProjectionState::from_projection_path_for_tests(path);
-
-        let channel = build_channel_create_event('a', 20, "ops");
-        let message = build_message_event('b', 'c', 250, &channel.id, "hello");
-        projection.replace_relay_events(vec![
-            build_group_metadata_event('d', 10, "Ops"),
-            build_channel_metadata_event('e', 21, &channel.id, "ops", 1),
-            channel,
-            message,
-        ]);
-
-        assert_eq!(projection.subscription_since_created_at(120), 130);
     }
 
     #[test]
