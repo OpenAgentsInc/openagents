@@ -1197,8 +1197,15 @@ pub struct DesktopControlNip28Status {
     pub available: bool,
     pub browse_mode: String,
     pub configured_relay_url: String,
+    pub configured_relay_count: usize,
+    pub connected_relay_count: usize,
     pub configured_channel_id: String,
     pub configured_channel_loaded: bool,
+    pub subscribed_channel_ids: Vec<String>,
+    pub last_inbound_event_at_epoch_secs: Option<u64>,
+    pub last_eose_at_epoch_secs: Option<u64>,
+    pub reconnecting: bool,
+    pub last_subscription_error: Option<String>,
     pub local_pubkey: Option<String>,
     pub selected_group_id: Option<String>,
     pub selected_group_name: Option<String>,
@@ -3317,9 +3324,12 @@ fn nip28_status_summary(status: &DesktopControlNip28Status) -> String {
         );
     }
     format!(
-        "nip28 group={} channel={} messages={} publishing_outbound={}",
+        "nip28 group={} channel={} relays={}/{} subscribed_channels={} messages={} publishing_outbound={}",
         status.selected_group_name.as_deref().unwrap_or("-"),
         status.selected_channel_name.as_deref().unwrap_or("-"),
+        status.connected_relay_count,
+        status.configured_relay_count,
+        status.subscribed_channel_ids.len(),
         status.recent_messages.len(),
         status.publishing_outbound_count
     )
@@ -8764,6 +8774,7 @@ fn desktop_control_nip28_status(
     chat: &crate::app_state::AutopilotChatState,
 ) -> DesktopControlNip28Status {
     let config = DefaultNip28ChannelConfig::from_env_or_default();
+    let lane = &chat.managed_chat_lane;
     let browse_mode = match chat.chat_browse_mode() {
         crate::app_state::ChatBrowseMode::Autopilot => "autopilot",
         crate::app_state::ChatBrowseMode::Managed => "managed",
@@ -8840,7 +8851,13 @@ fn desktop_control_nip28_status(
     DesktopControlNip28Status {
         available: chat.has_managed_chat_browseable_content(),
         browse_mode,
-        configured_relay_url: config.relay_url.clone(),
+        configured_relay_url: lane
+            .configured_relays
+            .first()
+            .cloned()
+            .unwrap_or_else(|| config.relay_url.clone()),
+        configured_relay_count: lane.configured_relays.len(),
+        connected_relay_count: lane.connected_relay_count,
         configured_channel_id: config.channel_id.clone(),
         configured_channel_loaded: chat
             .managed_chat_projection
@@ -8848,6 +8865,11 @@ fn desktop_control_nip28_status(
             .channels
             .iter()
             .any(|channel| channel.channel_id == config.channel_id),
+        subscribed_channel_ids: lane.subscribed_channel_ids.clone(),
+        last_inbound_event_at_epoch_secs: lane.last_inbound_event_at_epoch_secs,
+        last_eose_at_epoch_secs: lane.last_eose_at_epoch_secs,
+        reconnecting: lane.reconnecting,
+        last_subscription_error: lane.last_error.clone(),
         local_pubkey: chat.managed_chat_local_pubkey().map(str::to_string),
         selected_group_id: active_group.map(|group| group.group_id.clone()),
         selected_group_name: active_group.map(group_name_label),
@@ -10727,6 +10749,7 @@ mod tests {
     fn pump_nip28_lane(
         chat: &mut AutopilotChatState,
         lane_worker: &mut Nip28ChatLaneWorker,
+        relay_urls: &[String],
     ) -> bool {
         let mut changed = false;
         for update in lane_worker.drain_updates() {
@@ -10745,7 +10768,12 @@ mod tests {
                         .fail_outbound_message(&event_id, &message);
                     lane_worker.clear_dispatched(&event_id);
                 }
-                Nip28ChatLaneUpdate::Eose { .. } | Nip28ChatLaneUpdate::ConnectionError { .. } => {}
+                Nip28ChatLaneUpdate::Eose { .. }
+                | Nip28ChatLaneUpdate::ConnectionError { .. }
+                | Nip28ChatLaneUpdate::AuthChallengeReceived { .. } => {}
+                Nip28ChatLaneUpdate::Snapshot(snapshot) => {
+                    chat.managed_chat_lane = snapshot;
+                }
             }
         }
         let pending_events = chat
@@ -10758,6 +10786,13 @@ mod tests {
         for event in pending_events {
             lane_worker.publish(event);
         }
+        lane_worker.sync_managed_chat_subscriptions(
+            relay_urls.to_vec(),
+            chat.managed_chat_projection.discovered_channel_ids(),
+            chat.managed_chat_projection.subscription_since_created_at(
+                crate::nip28_chat_lane::NIP28_CHAT_BACKFILL_OVERLAP_SECS,
+            ),
+        );
         if chat.maybe_auto_select_default_nip28_channel() {
             changed = true;
         }
@@ -11035,6 +11070,7 @@ mod tests {
         buyer_lane: &mut Nip28ChatLaneWorker,
         remote_chat: &mut AutopilotChatState,
         remote_lane: &mut Nip28ChatLaneWorker,
+        relay_urls: &[String],
         provider_online: bool,
         next_revision: &mut u64,
         requests: &crate::state::operations::NetworkRequestsState,
@@ -11043,8 +11079,8 @@ mod tests {
         predicate: impl Fn(&DesktopControlSnapshot) -> bool,
     ) -> DesktopControlSnapshot {
         for _ in 0..160 {
-            let remote_changed = pump_nip28_lane(remote_chat, remote_lane);
-            let buyer_changed = pump_nip28_lane(buyer_chat, buyer_lane);
+            let remote_changed = pump_nip28_lane(remote_chat, remote_lane, relay_urls);
+            let buyer_changed = pump_nip28_lane(buyer_chat, buyer_lane, relay_urls);
             if remote_changed || buyer_changed {
                 let snapshot = sync_test_snapshot_with_buy_mode(
                     runtime,
@@ -11170,12 +11206,13 @@ mod tests {
         previous_snapshot: &mut Option<DesktopControlSnapshot>,
         chat: &mut AutopilotChatState,
         lane_worker: &mut Nip28ChatLaneWorker,
+        relay_urls: &[String],
         provider_online: bool,
         next_revision: &mut u64,
         predicate: impl Fn(&DesktopControlSnapshot) -> bool,
     ) -> DesktopControlSnapshot {
         for _ in 0..120 {
-            if pump_nip28_lane(chat, lane_worker) {
+            if pump_nip28_lane(chat, lane_worker, relay_urls) {
                 let snapshot = sync_test_snapshot(
                     runtime,
                     previous_snapshot,
@@ -12020,6 +12057,7 @@ mod tests {
             relay_url: relay.url.clone(),
             channel_id: main_channel_id.clone(),
             team_channel_id: None,
+            private_key_hex: None,
         });
 
         let token = "token-nip28-programmatic".to_string();
@@ -12094,6 +12132,7 @@ mod tests {
             &mut previous_snapshot,
             &mut chat,
             &mut lane_worker,
+            std::slice::from_ref(&relay.url),
             provider_online,
             &mut next_revision,
             |snapshot| {
@@ -12227,6 +12266,7 @@ mod tests {
             &mut previous_snapshot,
             &mut chat,
             &mut lane_worker,
+            std::slice::from_ref(&relay.url),
             provider_online,
             &mut next_revision,
             |snapshot| {
@@ -12267,6 +12307,264 @@ mod tests {
                 .events
                 .iter()
                 .any(|event| event.summary.contains("nip28-send applied"))
+        );
+    }
+
+    #[test]
+    fn desktop_control_http_harness_switches_to_discovered_channel_and_stays_live() {
+        let relay = TestNip28Relay::spawn();
+        let main_channel_id = DefaultNip28ChannelConfig::from_env_or_default().channel_id;
+        let side_channel_id = repeated_hex('a', 64);
+        let remote_pubkey = repeated_hex('9', 64);
+        let group = build_test_group_metadata_event();
+        let main_channel = build_test_channel_create_event(main_channel_id.as_str());
+        let side_channel = build_test_channel_create_event(side_channel_id.as_str());
+
+        let identity = nostr::regenerate_identity().expect("generate test nostr identity");
+        let temp = tempdir().expect("tempdir");
+        let projection_path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            ManagedChatProjectionState::from_projection_path_for_tests(projection_path);
+        chat.managed_chat_projection
+            .set_local_pubkey(Some(identity.public_key_hex.as_str()));
+        chat.managed_chat_projection.replace_relay_events(vec![
+            group.clone(),
+            main_channel.clone(),
+            side_channel.clone(),
+        ]);
+
+        let mut lane_worker = Nip28ChatLaneWorker::spawn_with_config(DefaultNip28ChannelConfig {
+            relay_url: relay.url.clone(),
+            channel_id: main_channel_id.clone(),
+            team_channel_id: None,
+            private_key_hex: None,
+        });
+
+        let token = "token-nip28-multi-channel".to_string();
+        let mut runtime = DesktopControlRuntime::spawn(DesktopControlRuntimeConfig {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            auth_token: token.clone(),
+        })
+        .expect("spawn desktop control runtime");
+        let client = reqwest::blocking::Client::new();
+        let snapshot_url = format!("http://{}/v1/snapshot", runtime.listen_addr());
+        let action_url = format!("http://{}/v1/action", runtime.listen_addr());
+
+        let provider_online = false;
+        let mut previous_snapshot = None;
+        let mut next_revision = 1;
+        let initial_snapshot = sync_test_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &chat,
+            provider_online,
+            &mut next_revision,
+        );
+        assert_eq!(initial_snapshot.nip28.connected_relay_count, 0);
+
+        let loaded_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            std::slice::from_ref(&relay.url),
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.available
+                    && snapshot.nip28.channels.len() >= 2
+                    && snapshot
+                        .nip28
+                        .subscribed_channel_ids
+                        .contains(&side_channel_id)
+                    && snapshot.nip28.connected_relay_count > 0
+            },
+        );
+        assert!(
+            loaded_snapshot
+                .nip28
+                .subscribed_channel_ids
+                .contains(&side_channel_id)
+        );
+
+        let select_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::SelectNip28Channel {
+                channel_id: side_channel_id.clone(),
+            },
+        );
+        let select_request = wait_for_action_request(&mut runtime);
+        assert_eq!(
+            select_request.action,
+            DesktopControlActionRequest::SelectNip28Channel {
+                channel_id: side_channel_id.clone(),
+            }
+        );
+        runtime
+            .append_events(vec![command_received_event(&select_request.action)])
+            .expect("append select command received");
+        let select_message =
+            super::select_nip28_channel(&mut chat, side_channel_id.as_str()).expect("select side");
+        let select_snapshot = build_test_snapshot(&chat, provider_online, next_revision);
+        next_revision = next_revision.saturating_add(1);
+        let select_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok_with_payload(
+                select_message,
+                json!({
+                    "group_id": chat
+                        .active_managed_chat_group()
+                        .map(|group| group.group_id.clone()),
+                    "channel_id": chat
+                        .active_managed_chat_channel()
+                        .map(|channel| channel.channel_id.clone()),
+                }),
+            ),
+            &select_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &select_request.action,
+                &select_response,
+            )])
+            .expect("append select command outcome");
+        runtime
+            .sync_snapshot(select_snapshot.clone())
+            .expect("sync select snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &select_snapshot,
+            ))
+            .expect("append select snapshot events");
+        previous_snapshot = Some(select_snapshot);
+        select_request.respond(select_response.clone());
+        let select_response = select_join.join().expect("join select action");
+        assert!(select_response.success);
+
+        relay.store_events(vec![build_test_channel_message_event(
+            &repeated_hex('b', 64),
+            remote_pubkey.as_str(),
+            side_channel_id.as_str(),
+            relay.url.as_str(),
+            40,
+            "hello from second channel",
+        )]);
+
+        let received_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            std::slice::from_ref(&relay.url),
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.selected_channel_id.as_deref() == Some(side_channel_id.as_str())
+                    && snapshot
+                        .nip28
+                        .recent_messages
+                        .iter()
+                        .any(|message| message.content == "hello from second channel")
+            },
+        );
+        assert_eq!(
+            received_snapshot.nip28.selected_channel_id.as_deref(),
+            Some(side_channel_id.as_str())
+        );
+
+        let send_join = post_action_async(
+            &client,
+            action_url.as_str(),
+            token.as_str(),
+            DesktopControlActionRequest::SendNip28Message {
+                content: "hello from selected channel".to_string(),
+                reply_to_event_id: None,
+            },
+        );
+        let send_request = wait_for_action_request(&mut runtime);
+        runtime
+            .append_events(vec![command_received_event(&send_request.action)])
+            .expect("append send command received");
+        let send_event_id =
+            super::send_nip28_message(&mut chat, &identity, "hello from selected channel", None)
+                .expect("queue selected channel message");
+        let queued_snapshot = build_test_snapshot(&chat, provider_online, next_revision);
+        next_revision = next_revision.saturating_add(1);
+        let send_response = apply_response_snapshot_metadata(
+            DesktopControlActionResponse::ok_with_payload(
+                format!("Queued NIP-28 message {send_event_id}"),
+                json!({
+                    "event_id": send_event_id,
+                    "channel_id": chat
+                        .active_managed_chat_channel()
+                        .map(|channel| channel.channel_id.clone()),
+                    "reply_to_event_id": Value::Null,
+                }),
+            ),
+            &queued_snapshot,
+        );
+        runtime
+            .append_events(vec![command_outcome_event(
+                &send_request.action,
+                &send_response,
+            )])
+            .expect("append send command outcome");
+        runtime
+            .sync_snapshot(queued_snapshot.clone())
+            .expect("sync queued snapshot");
+        runtime
+            .append_events(snapshot_change_events(
+                previous_snapshot.as_ref(),
+                &queued_snapshot,
+            ))
+            .expect("append queued snapshot events");
+        previous_snapshot = Some(queued_snapshot);
+        send_request.respond(send_response.clone());
+        let send_response = send_join.join().expect("join send action");
+        assert!(send_response.success);
+
+        let confirmed_snapshot = pump_until_snapshot(
+            &runtime,
+            &mut previous_snapshot,
+            &mut chat,
+            &mut lane_worker,
+            std::slice::from_ref(&relay.url),
+            provider_online,
+            &mut next_revision,
+            |snapshot| {
+                snapshot.nip28.selected_channel_id.as_deref() == Some(side_channel_id.as_str())
+                    && snapshot.nip28.publishing_outbound_count == 0
+                    && snapshot.nip28.recent_messages.iter().any(|message| {
+                        message.content == "hello from selected channel"
+                            && message.delivery_state == "confirmed"
+                    })
+            },
+        );
+        assert!(
+            confirmed_snapshot
+                .nip28
+                .recent_messages
+                .iter()
+                .any(|message| {
+                    message.content == "hello from selected channel"
+                        && message.delivery_state == "confirmed"
+                })
+        );
+
+        let latest_snapshot = fetch_snapshot(&client, snapshot_url.as_str(), token.as_str());
+        assert_eq!(
+            latest_snapshot.nip28.selected_channel_id.as_deref(),
+            Some(side_channel_id.as_str())
+        );
+        assert!(
+            latest_snapshot
+                .nip28
+                .recent_messages
+                .iter()
+                .any(|message| message.content == "hello from second channel")
         );
     }
 
@@ -12350,6 +12648,7 @@ mod tests {
             &mut buyer_chat_lane,
             &mut target_chat,
             &mut target_chat_lane,
+            std::slice::from_ref(&relay.url),
             false,
             &mut next_revision,
             &requests,
@@ -12386,6 +12685,7 @@ mod tests {
             &mut buyer_chat_lane,
             &mut target_chat,
             &mut target_chat_lane,
+            std::slice::from_ref(&relay.url),
             false,
             &mut next_revision,
             &requests,
