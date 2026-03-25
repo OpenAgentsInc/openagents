@@ -4804,7 +4804,7 @@ fn pane_action_to_hit_action(
             "generate_bitcoin_address" => Ok(PaneHitAction::Spark(
                 SparkPaneAction::GenerateBitcoinAddress,
             )),
-            "copy_spark_address" => Ok(PaneHitAction::Spark(SparkPaneAction::CopySparkAddress)),
+            "create_new_wallet" => Ok(PaneHitAction::Spark(SparkPaneAction::CreateNewWallet)),
             "create_invoice" => Ok(PaneHitAction::Spark(SparkPaneAction::CreateInvoice)),
             "send_payment" => Ok(PaneHitAction::Spark(SparkPaneAction::SendPayment)),
             _ => unsupported(),

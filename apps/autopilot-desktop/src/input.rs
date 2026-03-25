@@ -70,7 +70,7 @@ use crate::pane_system::{
     dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, dispatch_wallet_scroll_event,
     dispatch_voice_playground_input_event, pane_content_bounds, pane_indices_by_z_desc,
     pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
@@ -2925,6 +2925,9 @@ fn dispatch_mouse_scroll(
                 handled |= dispatch_active_job_scroll_event(state, point, *dy);
             }
             if !handled {
+                handled |= dispatch_wallet_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_chat_scroll_event(state, point, *dy);
             }
         }
@@ -4648,24 +4651,24 @@ mod tests {
     #[test]
     fn spark_command_builder_routes_actions() {
         assert!(matches!(
-            build_spark_command_for_action(SparkPaneAction::Refresh, "", "", ""),
+            build_spark_command_for_action(SparkPaneAction::Refresh, "", "", "", ""),
             Ok(SparkWalletCommand::Refresh)
         ));
         assert!(matches!(
-            build_spark_command_for_action(SparkPaneAction::GenerateSparkAddress, "", "", ""),
+            build_spark_command_for_action(SparkPaneAction::GenerateSparkAddress, "", "", "", ""),
             Ok(SparkWalletCommand::GenerateSparkAddress)
         ));
         assert!(matches!(
-            build_spark_command_for_action(SparkPaneAction::GenerateBitcoinAddress, "", "", ""),
+            build_spark_command_for_action(SparkPaneAction::GenerateBitcoinAddress, "", "", "", ""),
             Ok(SparkWalletCommand::GenerateBitcoinAddress)
         ));
         assert!(matches!(
-            build_spark_command_for_action(SparkPaneAction::CopySparkAddress, "", "", ""),
+            build_spark_command_for_action(SparkPaneAction::CreateNewWallet, "", "", "", ""),
             Err(error) if error.contains("handled directly")
         ));
 
         assert!(matches!(
-            build_spark_command_for_action(SparkPaneAction::CreateInvoice, "1500", "", ""),
+            build_spark_command_for_action(SparkPaneAction::CreateInvoice, "", "1500", "", ""),
             Ok(SparkWalletCommand::CreateBolt11Invoice {
                 amount_sats: 1500,
                 description: Some(_),
@@ -4676,6 +4679,7 @@ mod tests {
         assert!(matches!(
             build_spark_command_for_action(
                 SparkPaneAction::SendPayment,
+                "",
                 "",
                 "lnbc1example",
                 "250"
@@ -4689,6 +4693,7 @@ mod tests {
         assert!(matches!(
             build_spark_command_for_action(
                 SparkPaneAction::SendPayment,
+                "",
                 "",
                 "not-an-invoice",
                 ""
@@ -4708,7 +4713,7 @@ mod tests {
         );
         let action = hit_action(pane_layout, click).expect("create-invoice button should hit");
 
-        let command = build_spark_command_for_action(action, "2100", "", "")
+        let command = build_spark_command_for_action(action, "", "2100", "", "")
             .expect("command dispatch should succeed");
         assert!(matches!(
             command,

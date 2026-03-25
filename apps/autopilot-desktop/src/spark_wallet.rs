@@ -52,6 +52,13 @@ pub(crate) fn decode_lightning_invoice_payment_hash(bolt11: &str) -> Option<Stri
 pub enum SparkWalletCommand {
     Refresh,
     Reload,
+    SetIdentityPathOverride {
+        path: Option<PathBuf>,
+    },
+    UseTransientMnemonic {
+        phrase: String,
+        allow_create_new: bool,
+    },
     ConfigureEnv {
         vars: Vec<(String, String)>,
     },
@@ -179,6 +186,9 @@ pub struct SparkPaneState {
     startup_convergence_refreshes_remaining: u8,
     startup_convergence_next_refresh_epoch_seconds: Option<u64>,
     env_overrides: HashMap<String, String>,
+    identity_path_override: Option<PathBuf>,
+    transient_mnemonic_override: Option<String>,
+    allow_wallet_create_on_next_init: bool,
     last_refresh_started_at: Option<std::time::Instant>,
 }
 
@@ -207,6 +217,9 @@ impl Clone for SparkPaneState {
             startup_convergence_next_refresh_epoch_seconds: self
                 .startup_convergence_next_refresh_epoch_seconds,
             env_overrides: self.env_overrides.clone(),
+            identity_path_override: self.identity_path_override.clone(),
+            transient_mnemonic_override: None,
+            allow_wallet_create_on_next_init: false,
             last_refresh_started_at: self.last_refresh_started_at,
         }
     }
@@ -240,6 +253,9 @@ impl SparkPaneState {
             startup_convergence_refreshes_remaining: 0,
             startup_convergence_next_refresh_epoch_seconds: None,
             env_overrides: HashMap::new(),
+            identity_path_override: None,
+            transient_mnemonic_override: None,
+            allow_wallet_create_on_next_init: false,
             last_refresh_started_at: None,
         }
     }
@@ -344,6 +360,15 @@ impl SparkPaneState {
         match command {
             SparkWalletCommand::Refresh => self.refresh(runtime),
             SparkWalletCommand::Reload => self.reload(runtime),
+            SparkWalletCommand::SetIdentityPathOverride { path } => {
+                self.set_identity_path_override(path)
+            }
+            SparkWalletCommand::UseTransientMnemonic {
+                phrase,
+                allow_create_new,
+            } => {
+                self.use_transient_mnemonic(phrase, allow_create_new)
+            }
             SparkWalletCommand::ConfigureEnv { vars } => self.configure_env(vars),
             SparkWalletCommand::GenerateSparkAddress => self.request_spark_address(runtime),
             SparkWalletCommand::GenerateBitcoinAddress => self.request_bitcoin_address(runtime),
@@ -397,6 +422,53 @@ impl SparkPaneState {
         self.wallet = None;
         self.last_error = None;
         self.last_action = Some("Updated Spark credential env overrides".to_string());
+    }
+
+    fn set_identity_path_override(&mut self, path: Option<PathBuf>) {
+        if self.identity_path_override == path {
+            return;
+        }
+        self.identity_path_override = path.clone();
+        self.transient_mnemonic_override = None;
+        self.wallet = None;
+        self.last_error = None;
+        self.last_action = Some(match path {
+            Some(path) => format!("Using wallet seed path {}", path.display()),
+            None => "Using default wallet seed path".to_string(),
+        });
+    }
+
+    fn use_transient_mnemonic(&mut self, phrase: String, allow_create_new: bool) {
+        let trimmed = phrase.trim();
+        if trimmed.is_empty() {
+            self.last_error = Some("Mnemonic cannot be empty".to_string());
+            return;
+        }
+        let words = trimmed.split_whitespace().count();
+        if words != 12 && words != 24 {
+            self.last_error = Some("Mnemonic must be 12 or 24 words".to_string());
+            return;
+        }
+        if let Err(error) = SparkSigner::from_mnemonic(trimmed, "") {
+            self.last_error = Some(format!("Failed to derive Spark signer: {error}"));
+            return;
+        }
+
+        self.transient_mnemonic_override = Some(trimmed.to_string());
+        if let Err(error) = persist_default_identity_mnemonic(trimmed) {
+            self.last_error = Some(error);
+        }
+        self.allow_wallet_create_on_next_init = allow_create_new;
+        self.identity_path_override = None;
+        self.identity_path = None;
+        self.wallet = None;
+        if !self
+            .last_action
+            .as_deref()
+            .is_some_and(|message| message.starts_with("New wallet mnemonic:"))
+        {
+            self.last_action = Some("Using wallet from pasted mnemonic (session only)".to_string());
+        }
     }
 
     fn refresh(&mut self, runtime: &Runtime) {
@@ -676,29 +748,48 @@ impl SparkPaneState {
             return Ok(());
         }
 
-        let identity_path = identity_mnemonic_path()
-            .map_err(|error| format!("Failed to resolve identity path: {error}"))?;
-        if !identity_path.exists() {
-            return Err(format!(
-                "No identity mnemonic found at {}. Open Nostr pane and regenerate keys first.",
-                identity_path.display()
-            ));
-        }
+        let (signer, identity_path_for_display, storage_dir) =
+            if let Some(mnemonic) = self.transient_mnemonic_override.as_deref() {
+                let signer = SparkSigner::from_mnemonic(mnemonic, "")
+                    .map_err(|error| format!("Failed to derive Spark signer: {error}"))?;
+                let base_dir = identity_mnemonic_path()
+                    .ok()
+                    .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+                    .or_else(|| dirs::home_dir().map(|home| home.join(".openagents").join("pylon")))
+                    .unwrap_or_else(|| PathBuf::from(".openagents/pylon"));
+                (signer, None, base_dir.join("spark"))
+            } else {
+                let identity_path = if let Some(path) = self.identity_path_override.clone() {
+                    path
+                } else {
+                    identity_mnemonic_path().map_err(|error| {
+                        format!("Failed to resolve identity path: {error}")
+                    })?
+                };
+                if !identity_path.exists() {
+                    return Err(format!(
+                        "No identity mnemonic found at {}. Open Nostr pane and regenerate keys first.",
+                        identity_path.display()
+                    ));
+                }
 
-        let mnemonic = read_mnemonic(identity_path.as_path())?;
-        let signer = SparkSigner::from_mnemonic(&mnemonic, "")
-            .map_err(|error| format!("Failed to derive Spark signer: {error}"))?;
-
-        let storage_dir = identity_path
-            .parent()
-            .map(|parent| parent.join("spark"))
-            .unwrap_or_else(|| PathBuf::from(".openagents/spark"));
+                let mnemonic = read_mnemonic(identity_path.as_path())?;
+                let signer = SparkSigner::from_mnemonic(&mnemonic, "")
+                    .map_err(|error| format!("Failed to derive Spark signer: {error}"))?;
+                let storage_dir = identity_path
+                    .parent()
+                    .map(|parent| parent.join("spark"))
+                    .unwrap_or_else(|| PathBuf::from(".openagents/spark"));
+                (signer, Some(identity_path), storage_dir)
+            };
         std::fs::create_dir_all(storage_dir.as_path()).map_err(|error| {
             format!(
                 "Failed to create Spark storage directory {}: {error}",
                 storage_dir.display()
             )
         })?;
+        let network_storage_dir = storage_dir.join(self.network_name());
+        let buckets_before = wallet_bucket_ids(network_storage_dir.as_path());
 
         let config = WalletConfig {
             network: self.network,
@@ -712,8 +803,25 @@ impl SparkPaneState {
             SparkWallet::new(signer, config),
         )
         .map_err(|error| format!("Failed to initialize Spark wallet: {error}"))?;
+        let buckets_after = wallet_bucket_ids(network_storage_dir.as_path());
+        let created_buckets = buckets_after
+            .difference(&buckets_before)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !self.allow_wallet_create_on_next_init && !created_buckets.is_empty() {
+            for bucket in created_buckets.iter() {
+                let bucket_path = network_storage_dir.join(bucket);
+                let _ = std::fs::remove_dir_all(&bucket_path);
+            }
+            self.wallet = None;
+            return Err(format!(
+                "Refusing to auto-create wallet bucket(s) {}. Load the correct mnemonic for your existing wallet.",
+                created_buckets.join(", ")
+            ));
+        }
+        self.allow_wallet_create_on_next_init = false;
 
-        self.identity_path = Some(identity_path);
+        self.identity_path = identity_path_for_display;
         self.wallet = Some(wallet);
 
         Ok(())
@@ -814,6 +922,27 @@ impl SparkPaneState {
             ));
         }
     }
+}
+
+fn persist_default_identity_mnemonic(mnemonic: &str) -> Result<(), String> {
+    let path = identity_mnemonic_path()
+        .map_err(|error| format!("Failed to resolve default identity path: {error}"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Failed to create wallet seed directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    std::fs::write(&path, format!("{mnemonic}\n"))
+        .map_err(|error| format!("Failed to write wallet seed file {}: {error}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
 
 pub(crate) fn is_settled_wallet_payment_status(status: &str) -> bool {
@@ -992,6 +1121,23 @@ fn current_epoch_seconds() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
+}
+
+fn wallet_bucket_ids(network_storage_dir: &Path) -> std::collections::BTreeSet<String> {
+    let mut ids = std::collections::BTreeSet::new();
+    let Ok(entries) = std::fs::read_dir(network_storage_dir) else {
+        return ids;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if let Some(name) = path.file_name().and_then(|value| value.to_str()) {
+            ids.insert(name.to_string());
+        }
+    }
+    ids
 }
 
 fn next_wallet_worker_command(
