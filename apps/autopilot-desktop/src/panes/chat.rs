@@ -31,7 +31,8 @@ use crate::pane_system::{
     chat_thread_rail_bounds, chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds,
     chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
     chat_transcript_bounds, chat_visible_thread_row_count, chat_workspace_rail_bounds,
-    chat_workspace_rail_toggle_button_bounds, pane_content_bounds, set_chat_shell_layout_state,
+    chat_workspace_rail_toggle_button_bounds, chat_workspace_row_bounds, pane_content_bounds,
+    set_chat_shell_layout_state,
 };
 use crate::ui_style::{self, AppSpacingRole, AppTextRole};
 use wgpui::components::sections::TerminalStream;
@@ -1395,6 +1396,59 @@ fn compact_hex_label(value: &str, prefix_chars: usize) -> String {
         prefix
     } else {
         format!("{prefix}…")
+    }
+}
+
+fn compact_hex_bookend(value: &str, n: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    if chars.len() <= n * 2 + 1 {
+        return trimmed.to_string();
+    }
+    let prefix: String = chars[..n].iter().collect();
+    let suffix: String = chars[chars.len() - n..].iter().collect();
+    format!("{prefix}…{suffix}")
+}
+
+fn format_managed_chat_relative_timestamp(created_at: u64, now_secs: u64) -> String {
+    if created_at == 0 {
+        return String::new();
+    }
+    let age = now_secs.saturating_sub(created_at);
+    if age < 60 {
+        "just now".to_string()
+    } else if age < 3600 {
+        format!("{}m ago", age / 60)
+    } else if age < 86400 {
+        format!("{}h ago", age / 3600)
+    } else if age < 172800 {
+        "yesterday".to_string()
+    } else {
+        format_thread_timestamp(created_at as i64)
+            .unwrap_or_else(|| compact_hex_label(&created_at.to_string(), 10))
+    }
+}
+
+fn avatar_color_index(pubkey: &str) -> usize {
+    pubkey
+        .bytes()
+        .fold(0usize, |acc, b| acc.wrapping_add(b as usize))
+        % 4
+}
+
+fn author_label_color(pubkey: &str, is_own: bool) -> wgpui::Hsla {
+    if is_own {
+        theme::accent::SECONDARY
+    } else {
+        match avatar_color_index(pubkey) {
+            0 => theme::accent::PRIMARY,
+            1 => theme::accent::GREEN,
+            2 => theme::accent::PURPLE,
+            _ => theme::status::SUCCESS,
+        }
     }
 }
 
@@ -3311,6 +3365,21 @@ fn paint_chat_shell(
                 chat_thread_row_bounds(content_bounds, index, autopilot_chat.thread_tools_expanded);
             let is_hovered =
                 entry.thread_id.is_some() && entry.thread_id.as_deref() == hovered_thread_id;
+            let row_inner = Bounds::new(
+                row_bounds.origin.x + 2.0,
+                row_bounds.origin.y + 1.0,
+                (row_bounds.size.width - 8.0).max(0.0),
+                (row_bounds.size.height - 2.0).max(0.0),
+            );
+            let row_padding = chat_spacing(AppSpacingRole::RowPadding);
+            let badge_reserved_width = if entry.badge_count > 0 { 44.0 } else { 18.0 };
+            let text_width =
+                (row_inner.size.width - row_padding * 2.0 - badge_reserved_width).max(60.0);
+            let has_subtitle = entry
+                .subtitle
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty());
             let background = if entry.is_category {
                 chat_mission_panel_header_color().with_alpha(0.12)
             } else if is_hovered {
@@ -4182,6 +4251,8 @@ pub fn paint(
                     }
                     y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
+                prev_author_pubkey = Some(message.author_pubkey.clone());
+                prev_created_at = message.created_at;
                 y += 8.0;
             }
         }

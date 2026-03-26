@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use nostr::{
@@ -13,6 +13,14 @@ use nostr::{
 use serde::{Deserialize, Serialize};
 
 use super::PaneLoadState;
+
+/// Resolved kind-0 (user metadata) for a single Nostr pubkey.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Kind0Metadata {
+    pub display_name: Option<String>,
+    pub name: Option<String>,
+    pub picture: Option<String>,
+}
 
 const MANAGED_CHAT_PROJECTION_SCHEMA_VERSION: u16 = 1;
 const MANAGED_CHAT_PROJECTION_STREAM_ID: &str = "stream.managed_chat_projection.v1";
@@ -154,6 +162,7 @@ pub struct ManagedChatProjectionSnapshot {
     pub groups: Vec<ManagedChatGroupProjection>,
     pub channels: Vec<ManagedChatChannelProjection>,
     pub messages: BTreeMap<String, ManagedChatMessageProjection>,
+    pub author_metadata: HashMap<String, Kind0Metadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -915,6 +924,7 @@ fn rebuild_managed_chat_projection(
     let mut channels = BTreeMap::<String, MutableChannelProjection>::new();
     let mut messages = BTreeMap::<String, ManagedChatMessageProjection>::new();
     let mut reaction_candidates = Vec::<ReactionCandidate>::new();
+    let mut author_metadata_raw: HashMap<String, (u64, Kind0Metadata)> = HashMap::new();
 
     for event in relay_events
         .iter()
@@ -926,6 +936,30 @@ fn rebuild_managed_chat_projection(
         }
 
         match event.kind {
+            0 => {
+                let is_newer = author_metadata_raw
+                    .get(&event.pubkey)
+                    .map_or(true, |(ts, _)| event.created_at > *ts);
+                if is_newer {
+                    if let Ok(meta) =
+                        serde_json::from_str::<serde_json::Value>(&event.content)
+                    {
+                        author_metadata_raw.insert(
+                            event.pubkey.clone(),
+                            (
+                                event.created_at,
+                                Kind0Metadata {
+                                    display_name: meta["display_name"]
+                                        .as_str()
+                                        .map(|s| s.to_string()),
+                                    name: meta["name"].as_str().map(|s| s.to_string()),
+                                    picture: meta["picture"].as_str().map(|s| s.to_string()),
+                                },
+                            ),
+                        );
+                    }
+                }
+            }
             39000 => {
                 if let Ok(parsed) = GroupMetadataEvent::from_event(event) {
                     let group = groups.entry(parsed.group_id).or_default();
@@ -1466,10 +1500,14 @@ fn rebuild_managed_chat_projection(
         .collect::<Vec<_>>();
     group_rows.sort_by(|left, right| left.group_id.cmp(&right.group_id));
 
+    let author_metadata: HashMap<String, Kind0Metadata> =
+        author_metadata_raw.into_iter().map(|(k, (_, v))| (k, v)).collect();
+
     ManagedChatProjectionSnapshot {
         groups: group_rows,
         channels: channel_rows,
         messages,
+        author_metadata,
     }
 }
 
