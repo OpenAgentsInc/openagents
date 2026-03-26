@@ -1,5 +1,5 @@
 use wgpui::{
-    Bounds, Component, PaintContext, Point, Quad, RiveFitMode, RiveHandle, RiveSurface, theme,
+    Bounds, PaintContext, Point, Quad, RiveFitMode, RiveHandle, RiveSurface, theme,
 };
 
 use crate::app_state::{
@@ -12,7 +12,7 @@ use crate::app_state::{
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_renderer::{
-    mission_control_blocker_detail, paint_action_button, paint_source_badge, split_text_for_display,
+    mission_control_blocker_detail, paint_action_button, split_text_for_display,
 };
 use crate::pane_system::{
     provider_control_inventory_toggle_button_bounds, provider_control_local_fm_test_button_bounds,
@@ -36,8 +36,6 @@ pub fn paint_provider_control_pane(
     inventory_status: &DesktopControlInventoryStatus,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
-
     let runtime_view = mission_control_local_runtime_view_model(
         desktop_shell_mode,
         provider_runtime,
@@ -205,9 +203,6 @@ pub fn paint_provider_control_pane(
     paint_provider_control_hud_shell(hud_bounds, paint);
     ensure_provider_control_hud_loaded(provider_control_hud_runtime);
     sync_provider_control_hud_runtime(provider_control_hud_runtime);
-    if let Some(surface) = provider_control_hud_runtime.surface.as_mut() {
-        surface.paint(hud_bounds, paint);
-    }
     paint_provider_control_hud_overlay(
         hud_bounds,
         provider_runtime,
@@ -246,15 +241,6 @@ pub fn paint_provider_control_pane(
     }
     paint.scene.pop_clip();
 
-    let footer_y = viewport.max_y() - 18.0;
-    if footer_y > viewport.origin.y {
-        paint.scene.draw_text(paint.text.layout(
-            "Scroll for runtime detail and advertised inventory",
-            Point::new(content_bounds.origin.x + 12.0, footer_y),
-            10.0,
-            theme::text::MUTED,
-        ));
-    }
 }
 
 fn paint_provider_control_hud_shell(bounds: Bounds, paint: &mut PaintContext) {
@@ -363,7 +349,7 @@ fn paint_provider_control_hud_overlay(
     ));
     paint.scene.draw_text(paint.text.layout(
         runtime_view.model_label.as_str(),
-        Point::new(top_panel.origin.x + 126.0, top_panel.origin.y + 26.0),
+        Point::new(top_panel.origin.x + 168.0, top_panel.origin.y + 26.0),
         11.0,
         theme::text::MUTED,
     ));

@@ -8,7 +8,6 @@ use crate::app_state::{
 use crate::nip90_compute_flow::build_buyer_request_flow_snapshot;
 use crate::pane_renderer::{
     MissionControlBuyModePanelState, mission_control_buy_mode_panel_state, paint_action_button,
-    paint_source_badge,
 };
 use crate::pane_system::{
     buy_mode_payments_copy_button_bounds, buy_mode_payments_ledger_bounds,
@@ -24,6 +23,21 @@ const LEDGER_HEADER_HEIGHT: f32 = 26.0;
 const LEDGER_ROW_HEIGHT: f32 = 62.0;
 const LEDGER_ROW_GAP: f32 = 8.0;
 const DETAIL_PANEL_MIN_WIDTH: f32 = 260.0;
+
+fn compact_text_for_width(value: &str, width_px: f32, mono_char_px: f32) -> String {
+    let max_chars = ((width_px.max(8.0)) / mono_char_px).floor() as usize;
+    if max_chars == 0 {
+        return String::new();
+    }
+    let char_count = value.chars().count();
+    if char_count <= max_chars {
+        return value.to_string();
+    }
+    let keep = max_chars.saturating_sub(1).max(1);
+    let mut output = value.chars().take(keep).collect::<String>();
+    output.push('…');
+    output
+}
 
 pub fn paint(
     content_bounds: Bounds,
@@ -46,7 +60,6 @@ pub fn paint(
     );
     let ledger_view = build_visual_ledger_view(payment_facts, network_requests, spark_wallet);
 
-    paint_source_badge(content_bounds, "buy+facts", paint);
     pane_state.sync_rows(network_requests, spark_wallet);
 
     paint_buy_mode_button(
@@ -64,12 +77,13 @@ pub fn paint(
         .as_ref()
         .map(|state| state.summary.as_str())
         .unwrap_or("Buy Mode is disabled for this session.");
+    let summary_left = content_bounds.origin.x + 12.0;
+    let summary_right = buy_mode_payments_copy_button_bounds(content_bounds).origin.x - 8.0;
+    let summary_width = (summary_right - summary_left).max(40.0);
+    let summary_compact = compact_text_for_width(summary, summary_width, 6.2);
     paint.scene.draw_text(paint.text.layout_mono(
-        summary,
-        Point::new(
-            content_bounds.origin.x + 12.0,
-            content_bounds.origin.y + 40.0,
-        ),
+        summary_compact.as_str(),
+        Point::new(summary_left, content_bounds.origin.y + 40.0),
         11.0,
         theme::text::PRIMARY,
     ));
@@ -87,8 +101,9 @@ pub fn paint(
     let status_lines =
         buy_mode_payments_status_lines(pane_state, network_requests, spark_wallet, now);
     for (index, line) in status_lines.iter().take(2).enumerate() {
+        let compact_line = compact_text_for_width(line.as_str(), content_bounds.size.width - 24.0, 5.8);
         paint.scene.draw_text(paint.text.layout_mono(
-            line,
+            compact_line.as_str(),
             Point::new(
                 content_bounds.origin.x + 12.0,
                 content_bounds.origin.y + 132.0 + (index as f32 * 14.0),
@@ -447,13 +462,13 @@ fn paint_ledger_row(
         theme::text::PRIMARY,
     ));
     paint_status_chip(
-        Bounds::new(bounds.max_x() - 166.0, bounds.origin.y + 8.0, 74.0, 18.0),
+        Bounds::new(bounds.max_x() - 170.0, bounds.origin.y + 8.0, 78.0, 18.0),
         row.status_label.as_str(),
         accent,
         paint,
     );
     paint_status_chip(
-        Bounds::new(bounds.max_x() - 84.0, bounds.origin.y + 8.0, 72.0, 18.0),
+        Bounds::new(bounds.max_x() - 88.0, bounds.origin.y + 8.0, 76.0, 18.0),
         row.source_label.as_str(),
         if row.degraded {
             Hsla::from_hex(0xffbf69)
@@ -572,6 +587,8 @@ fn paint_ledger_detail(
     ));
 
     let mut y = bounds.origin.y + 58.0;
+    let value_x = bounds.origin.x + 100.0;
+    let value_width = (bounds.max_x() - value_x - 12.0).max(32.0);
     for (label, value) in [
         ("Request", row.request_id.as_str()),
         ("Payment ptr", row.payment_pointer.as_str()),
@@ -589,9 +606,10 @@ fn paint_ledger_detail(
             8.8,
             theme::text::MUTED,
         ));
+        let compact_value = compact_text_for_width(value, value_width, 5.3);
         paint.scene.draw_text(paint.text.layout_mono(
-            value,
-            Point::new(bounds.origin.x + 100.0, y),
+            compact_value.as_str(),
+            Point::new(value_x, y),
             8.8,
             theme::text::PRIMARY,
         ));
@@ -615,12 +633,16 @@ fn paint_status_chip(bounds: Bounds, label: &str, color: Hsla, paint: &mut Paint
             .with_border(color.with_alpha(0.4), 1.0)
             .with_corner_radius(7.0),
     );
-    paint.scene.draw_text(paint.text.layout_mono(
-        label,
-        Point::new(bounds.origin.x + 8.0, bounds.origin.y + 11.0),
-        8.5,
-        color.with_alpha(0.96),
-    ));
+    let compact_label = compact_text_for_width(label, bounds.size.width - 10.0, 5.4);
+    let mut label_run = paint.text.layout_mono(compact_label.as_str(), Point::ZERO, 8.0, color.with_alpha(0.96));
+    let label_bounds = label_run.bounds();
+    label_run.origin = Point::new(
+        bounds.origin.x + ((bounds.size.width - label_bounds.size.width).max(0.0) * 0.5)
+            - label_bounds.origin.x,
+        bounds.origin.y + ((bounds.size.height - label_bounds.size.height).max(0.0) * 0.5)
+            - label_bounds.origin.y,
+    );
+    paint.scene.draw_text(label_run);
 }
 
 fn row_status_color(row: &BuyModeVisualLedgerRow) -> Hsla {
@@ -717,8 +739,9 @@ fn paint_status_row(
             9.0,
             theme::text::MUTED,
         ));
+        let compact_value = compact_text_for_width(value, cell_bounds.size.width - 14.0, 5.8);
         paint.scene.draw_text(paint.text.layout_mono(
-            value,
+            compact_value.as_str(),
             Point::new(cell_bounds.origin.x + 8.0, cell_bounds.origin.y + 18.0),
             10.0,
             theme::text::PRIMARY,
