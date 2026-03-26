@@ -9930,6 +9930,24 @@ pub(super) fn run_mission_control_action(
             }
             true
         }
+        MissionControlPaneAction::OpenLoadFundsPopup => {
+            state.mission_control.open_load_funds_popup();
+            state.mission_control.record_action("Opened load funds");
+            true
+        }
+        MissionControlPaneAction::CloseLoadFundsPopup => {
+            state.mission_control.close_load_funds_popup();
+            true
+        }
+        MissionControlPaneAction::OpenBuyModePopup => {
+            state.mission_control.open_buy_mode_popup();
+            state.mission_control.record_action("Opened buy mode");
+            true
+        }
+        MissionControlPaneAction::CloseBuyModePopup => {
+            state.mission_control.close_buy_mode_popup();
+            true
+        }
         MissionControlPaneAction::CreateLightningReceiveTarget => {
             let amount_sats = match parse_positive_amount_str(
                 state.mission_control.load_funds_amount_sats.get_value(),
@@ -14268,6 +14286,24 @@ pub(super) fn run_spark_action(
         return true;
     }
 
+    if action == SparkPaneAction::CopySparkAddress {
+        state.spark_wallet.last_error = None;
+        let notice = match state.spark_wallet.spark_address.as_deref() {
+            Some(address) if !address.trim().is_empty() => match copy_to_clipboard(address) {
+                Ok(()) => "Copied Spark address to clipboard".to_string(),
+                Err(error) => format!("Failed to copy Spark address: {error}"),
+            },
+            _ => "No Spark address available yet. Generate one first.".to_string(),
+        };
+
+        if notice.starts_with("Failed") || notice.starts_with("No Spark address available") {
+            state.spark_wallet.last_error = Some(notice);
+        } else {
+            state.spark_wallet.last_action = Some(notice);
+        }
+        return true;
+    }
+
     let command = match build_spark_command_for_action(
         action,
         state.spark_inputs.identity_path.get_value(),
@@ -14373,6 +14409,9 @@ pub(super) fn build_spark_command_for_action(
         SparkPaneAction::GenerateBitcoinAddress => Ok(SparkWalletCommand::GenerateBitcoinAddress),
         SparkPaneAction::CreateNewWallet => {
             Err("Create wallet action is handled directly in UI".to_string())
+        }
+        SparkPaneAction::CopySparkAddress => {
+            Err("Copy Spark address action is handled directly in UI".to_string())
         }
         SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateBolt11Invoice {
             amount_sats: parse_positive_amount_str(invoice_amount, "Invoice amount")?,

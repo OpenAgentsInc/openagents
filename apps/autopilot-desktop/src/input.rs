@@ -68,7 +68,10 @@ use crate::pane_system::{
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
     dispatch_log_stream_scroll_event, dispatch_mission_control_input_event,
     dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
-    dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
+    dispatch_nostr_identity_scroll_event, dispatch_earnings_scoreboard_scroll_event,
+    dispatch_pay_invoice_input_event,
+    dispatch_provider_control_scroll_event,
+    dispatch_spark_wallet_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, dispatch_wallet_scroll_event,
     dispatch_voice_playground_input_event, pane_content_bounds, pane_indices_by_z_desc,
@@ -2913,6 +2916,15 @@ fn dispatch_mouse_scroll(
                 handled |= dispatch_provider_control_scroll_event(state, point, *dy);
             }
             if !handled {
+                handled |= dispatch_nostr_identity_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_earnings_scoreboard_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_spark_wallet_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_buy_mode_payments_scroll_event(state, point, event);
             }
             if !handled {
@@ -3209,6 +3221,48 @@ fn finish_chat_transcript_selection_drag(
 }
 
 fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &InputEvent) -> bool {
+    let event_point = match event {
+        InputEvent::MouseDown { x, y, .. }
+        | InputEvent::MouseUp { x, y, .. }
+        | InputEvent::MouseMove { x, y } => Some(Point::new(*x, *y)),
+        InputEvent::Scroll { .. } => Some(state.cursor_position),
+        _ => None,
+    };
+
+    if let Some(point) = event_point {
+        let topmost_pane_kind = pane_indices_by_z_desc(state)
+            .into_iter()
+            .find_map(|pane_idx| {
+                let pane = &state.panes[pane_idx];
+                pane.bounds.contains(point).then_some(pane.kind)
+            });
+
+        return match topmost_pane_kind {
+            Some(PaneKind::SparkWallet) => dispatch_spark_input_event(state, event),
+            Some(PaneKind::GoOnline) => dispatch_mission_control_input_event(state, event),
+            Some(PaneKind::SparkPayInvoice) => dispatch_pay_invoice_input_event(state, event),
+            Some(PaneKind::SparkCreateInvoice) => dispatch_create_invoice_input_event(state, event),
+            Some(PaneKind::RelayConnections) => dispatch_relay_connections_input_event(state, event),
+            Some(PaneKind::NetworkRequests) => dispatch_network_requests_input_event(state, event),
+            Some(PaneKind::VoicePlayground) => dispatch_voice_playground_input_event(state, event),
+            Some(PaneKind::LocalInference) => dispatch_local_inference_input_event(state, event),
+            Some(PaneKind::RivePreview) => dispatch_rive_preview_input_event(state, event),
+            Some(PaneKind::AppleFmWorkbench) => {
+                dispatch_apple_fm_workbench_input_event(state, event)
+            }
+            Some(PaneKind::AppleAdapterTraining) => {
+                dispatch_apple_adapter_training_input_event(state, event)
+            }
+            Some(PaneKind::Settings) => dispatch_settings_input_event(state, event),
+            Some(PaneKind::Credentials) => dispatch_credentials_input_event(state, event),
+            Some(PaneKind::AutopilotChat) => dispatch_chat_input_event(state, event),
+            Some(PaneKind::DataSeller) => dispatch_data_seller_input_event(state, event),
+            Some(PaneKind::Calculator) => dispatch_calculator_input_event(state, event),
+            Some(PaneKind::JobHistory) => dispatch_job_history_input_event(state, event),
+            _ => false,
+        };
+    }
+
     let mut handled = dispatch_spark_input_event(state, event);
     handled |= dispatch_mission_control_input_event(state, event);
     handled |= dispatch_pay_invoice_input_event(state, event);
