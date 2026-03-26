@@ -194,6 +194,12 @@ pub(super) fn toggle_command_palette(state: &mut crate::app_state::RenderState) 
     if state.command_palette.is_open() {
         state.command_palette.close();
     } else {
+        state
+            .command_palette
+            .set_commands(command_registry(state.pane_search_filter));
+        state
+            .command_palette
+            .set_aux_button_label(Some(state.pane_search_filter.button_label()));
         state.command_palette.open();
     }
 }
@@ -292,6 +298,18 @@ pub(super) fn dispatch_command_palette_actions(state: &mut crate::app_state::Ren
 
     let mut changed = false;
     for action in action_ids {
+        if action == COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION {
+            state.pane_search_filter = state.pane_search_filter.cycle();
+            state
+                .command_palette
+                .set_commands(command_registry(state.pane_search_filter));
+            state
+                .command_palette
+                .set_aux_button_label(Some(state.pane_search_filter.button_label()));
+            changed = true;
+            continue;
+        }
+
         if let Some(cad_action) = crate::pane_system::cad_palette_action_for_command_id(&action) {
             let _ = PaneController::create_for_kind(state, PaneKind::CadDemo);
             changed |= reducers::run_cad_demo_action(state, cad_action);
