@@ -10312,6 +10312,17 @@ pub(super) fn run_log_stream_action(
             }
             true
         }
+        LogStreamPaneAction::CycleLevelFilter => {
+            let level = state.log_stream.cycle_level_filter();
+            let label = match level {
+                crate::app_state::LogStreamLevelFilter::Debug => "Log stream filter: DEBUG",
+                crate::app_state::LogStreamLevelFilter::Info => "Log stream filter: INFO",
+                crate::app_state::LogStreamLevelFilter::Warn => "Log stream filter: WARN",
+                crate::app_state::LogStreamLevelFilter::Error => "Log stream filter: ERROR",
+            };
+            state.mission_control.record_action(label);
+            true
+        }
     }
 }
 
