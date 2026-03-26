@@ -270,7 +270,7 @@ impl PaneRenderer {
         let mut pane_paint_samples = Vec::with_capacity(panes.len());
         for idx in indices {
             paint.scene.set_layer(next_layer);
-            next_layer = next_layer.saturating_add(1);
+            next_layer = next_layer.saturating_add(2);
 
             let pane = &mut panes[idx];
             let pane_is_active = active_id == Some(pane.id);
