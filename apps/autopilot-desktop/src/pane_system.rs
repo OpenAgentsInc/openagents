@@ -70,6 +70,14 @@ const CHAT_SHELL_ROW_HEIGHT: f32 = 34.0;
 const CHAT_SHELL_ROW_GAP: f32 = ui_style::spacing::SECTION_GAP * 0.5;
 const CHAT_MAX_THREAD_ROWS: usize = 16;
 pub const CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT: usize = 64;
+const PROVIDER_CONTROL_PANEL_PADDING: f32 = ui_style::spacing::PANEL_PADDING;
+const PROVIDER_CONTROL_SECTION_HEADER_HEIGHT: f32 = 28.0;
+const PROVIDER_CONTROL_SECTION_HEADER_GAP: f32 = 10.0;
+const PROVIDER_CONTROL_SECTION_GAP: f32 = ui_style::spacing::SECTION_GAP;
+const PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT: f32 = 24.0;
+const PROVIDER_CONTROL_ACTION_COLUMN_GAP: f32 = 10.0;
+const PROVIDER_CONTROL_ACTION_ROW_GAP: f32 = 8.0;
+const PROVIDER_CONTROL_ACTION_PANEL_BOTTOM_PADDING: f32 = 12.0;
 const CALCULATOR_INPUT_HEIGHT: f32 = 30.0;
 const CAST_BUTTON_HEIGHT: f32 = 28.0;
 const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
@@ -2401,13 +2409,18 @@ pub fn chat_transcript_body_bounds_with_height(
 }
 
 pub fn provider_control_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
-    let column_gap = 8.0;
-    let width = ((content_bounds.size.width - 24.0 - column_gap) * 0.5).max(0.0);
+    let width = ((content_bounds.size.width
+        - PROVIDER_CONTROL_PANEL_PADDING * 2.0
+        - PROVIDER_CONTROL_ACTION_COLUMN_GAP)
+        * 0.5)
+        .max(0.0);
     Bounds::new(
-        content_bounds.origin.x + 12.0,
-        content_bounds.origin.y + 12.0,
+        content_bounds.origin.x + PROVIDER_CONTROL_PANEL_PADDING,
+        content_bounds.origin.y
+            + PROVIDER_CONTROL_SECTION_HEADER_HEIGHT
+            + PROVIDER_CONTROL_SECTION_HEADER_GAP,
         width,
-        22.0,
+        PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT,
     )
 }
 
@@ -2415,10 +2428,10 @@ pub fn provider_control_local_model_button_bounds(content_bounds: Bounds) -> Bou
     let toggle = provider_control_toggle_button_bounds(content_bounds);
     let width = toggle.size.width;
     Bounds::new(
-        toggle.max_x() + 8.0,
+        toggle.max_x() + PROVIDER_CONTROL_ACTION_COLUMN_GAP,
         toggle.origin.y,
         width,
-        22.0,
+        PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT,
     )
 }
 
@@ -2426,9 +2439,9 @@ pub fn provider_control_local_fm_test_button_bounds(content_bounds: Bounds) -> B
     let toggle = provider_control_toggle_button_bounds(content_bounds);
     Bounds::new(
         toggle.origin.x,
-        toggle.max_y() + 8.0,
+        toggle.max_y() + PROVIDER_CONTROL_ACTION_ROW_GAP,
         toggle.size.width,
-        22.0,
+        PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT,
     )
 }
 
@@ -2439,7 +2452,7 @@ pub fn provider_control_training_button_bounds(content_bounds: Bounds) -> Bounds
         local_model.origin.x,
         local_fm_test.origin.y,
         local_model.size.width,
-        22.0,
+        PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT,
     )
 }
 
@@ -2450,13 +2463,16 @@ pub fn provider_control_inventory_toggle_button_bounds(
     let toggle = provider_control_toggle_button_bounds(content_bounds);
     let row = row_index / 2;
     let column = row_index % 2;
-    let row_origin_y = provider_control_local_fm_test_button_bounds(content_bounds).max_y() + 10.0;
-    let row_step = 26.0;
+    let row_origin_y = provider_control_local_fm_test_button_bounds(content_bounds).max_y()
+        + PROVIDER_CONTROL_ACTION_ROW_GAP
+        + 4.0;
+    let row_step = PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT + PROVIDER_CONTROL_ACTION_ROW_GAP;
     Bounds::new(
-        toggle.origin.x + column as f32 * (toggle.size.width + 8.0),
+        toggle.origin.x
+            + column as f32 * (toggle.size.width + PROVIDER_CONTROL_ACTION_COLUMN_GAP),
         row_origin_y + row as f32 * row_step,
         toggle.size.width,
-        22.0,
+        PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT,
     )
 }
 
@@ -2467,12 +2483,13 @@ pub fn provider_control_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds
         toggle_count.saturating_sub(1),
     )
     .max_y()
-        + 16.0;
+        + PROVIDER_CONTROL_ACTION_PANEL_BOTTOM_PADDING
+        + PROVIDER_CONTROL_SECTION_GAP;
     Bounds::new(
-        content_bounds.origin.x + 8.0,
+        content_bounds.origin.x,
         origin_y,
-        (content_bounds.size.width - 16.0).max(0.0),
-        (content_bounds.max_y() - 34.0 - origin_y).max(0.0),
+        content_bounds.size.width.max(0.0),
+        (content_bounds.max_y() - origin_y).max(0.0),
     )
 }
 
