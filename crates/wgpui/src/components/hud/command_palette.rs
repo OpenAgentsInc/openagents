@@ -6,6 +6,7 @@ use crate::{Bounds, InputEvent, Point, Quad, theme};
 
 type CommandSelectHandler = Box<dyn FnMut(&Command) + 'static>;
 type CommandCloseHandler = Box<dyn FnMut() + 'static>;
+type CommandAuxButtonHandler = Box<dyn FnMut() + 'static>;
 
 #[derive(Clone, Debug)]
 pub struct Command {
@@ -56,6 +57,8 @@ pub struct CommandPalette {
     mono: bool,
     on_select: Option<CommandSelectHandler>,
     on_close: Option<CommandCloseHandler>,
+    aux_button_label: Option<String>,
+    on_aux_button: Option<CommandAuxButtonHandler>,
 }
 
 impl CommandPalette {
@@ -77,6 +80,8 @@ impl CommandPalette {
             mono: false,
             on_select: None,
             on_close: None,
+            aux_button_label: None,
+            on_aux_button: None,
         }
     }
 
@@ -115,6 +120,23 @@ impl CommandPalette {
         F: FnMut() + 'static,
     {
         self.on_close = Some(Box::new(f));
+        self
+    }
+
+    pub fn aux_button_label(mut self, label: impl Into<String>) -> Self {
+        self.aux_button_label = Some(label.into());
+        self
+    }
+
+    pub fn set_aux_button_label(&mut self, label: Option<&str>) {
+        self.aux_button_label = label.map(ToString::to_string);
+    }
+
+    pub fn on_aux_button<F>(mut self, f: F) -> Self
+    where
+        F: FnMut() + 'static,
+    {
+        self.on_aux_button = Some(Box::new(f));
         self
     }
 
@@ -295,6 +317,19 @@ impl CommandPalette {
         )
     }
 
+    fn aux_button_bounds(&self, palette_bounds: Bounds) -> Option<Bounds> {
+        self.aux_button_label.as_ref()?;
+        let input_height = 48.0;
+        let padding = theme::spacing::XS;
+        let button_size = (input_height - padding * 2.0).max(16.0);
+        Some(Bounds::new(
+            palette_bounds.max_x() - button_size - padding,
+            palette_bounds.origin.y + padding,
+            button_size,
+            button_size,
+        ))
+    }
+
     fn scroll_by_pixels(&mut self, delta_pixels: f32) -> bool {
         if self.filtered_commands.len() <= self.max_visible_items
             || !delta_pixels.is_finite()
@@ -365,13 +400,60 @@ impl Component for CommandPalette {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
+        let input_right_inset = self
+            .aux_button_bounds(palette_bounds)
+            .map(|button| (palette_bounds.max_x() - button.origin.x) + padding)
+            .unwrap_or(padding);
         let input_bounds = Bounds::new(
             palette_bounds.origin.x + padding,
             palette_bounds.origin.y + padding,
-            palette_bounds.size.width - padding * 2.0,
+            (palette_bounds.size.width - padding - input_right_inset).max(60.0),
             input_height - padding * 2.0,
         );
         self.search_input.paint(input_bounds, cx);
+
+        if let (Some(button_bounds), Some(label)) = (
+            self.aux_button_bounds(palette_bounds),
+            self.aux_button_label.as_deref(),
+        ) {
+            cx.scene.draw_quad(
+                Quad::new(button_bounds)
+                    .with_background(theme::bg::ELEVATED)
+                    .with_border(theme::border::DEFAULT, 1.0)
+                    .with_corner_radius(4.0),
+            );
+            let label_width = if self.mono {
+                cx.text.measure_styled_mono(
+                    label,
+                    theme::font_size::XS,
+                    FontStyle::default(),
+                )
+            } else {
+                cx.text
+                    .measure_styled(label, theme::font_size::XS, FontStyle::default())
+            };
+            let label_origin = Point::new(
+                button_bounds.origin.x + (button_bounds.size.width - label_width) * 0.5,
+                button_bounds.origin.y + (button_bounds.size.height - theme::font_size::XS) * 0.5,
+            );
+            let label_run = if self.mono {
+                cx.text.layout_styled_mono(
+                    label,
+                    label_origin,
+                    theme::font_size::XS,
+                    theme::text::PRIMARY,
+                    FontStyle::default(),
+                )
+            } else {
+                cx.text.layout_mono(
+                    label,
+                    label_origin,
+                    theme::font_size::XS,
+                    theme::text::PRIMARY,
+                )
+            };
+            cx.scene.draw_text(label_run);
+        }
 
         let visible_end =
             (self.scroll_offset + self.max_visible_items).min(self.filtered_commands.len());
@@ -579,6 +661,15 @@ impl Component for CommandPalette {
                     return EventResult::Handled;
                 }
 
+                if let Some(button_bounds) = self.aux_button_bounds(palette_bounds)
+                    && button_bounds.contains(point)
+                {
+                    if let Some(callback) = &mut self.on_aux_button {
+                        callback();
+                    }
+                    return EventResult::Handled;
+                }
+
                 let visible_end =
                     (self.scroll_offset + self.max_visible_items).min(self.filtered_commands.len());
                 for vis_index in self.scroll_offset..visible_end {
@@ -604,7 +695,13 @@ impl Component for CommandPalette {
         let input_bounds = Bounds::new(
             palette_bounds.origin.x + padding,
             palette_bounds.origin.y + padding,
-            palette_bounds.size.width - padding * 2.0,
+            (palette_bounds.size.width
+                - padding
+                - self
+                    .aux_button_bounds(palette_bounds)
+                    .map(|button| (palette_bounds.max_x() - button.origin.x) + padding)
+                    .unwrap_or(padding))
+            .max(60.0),
             48.0 - padding * 2.0,
         );
 

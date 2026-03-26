@@ -5765,7 +5765,23 @@ pub struct LogStreamPaneState {
     copy_button_clicked_at_epoch_ms: u64,
     /// Dedupe keys for already-rendered runtime log entries.
     rendered_log_content: Vec<String>,
+    rendered_log_lines: Vec<LogStreamRenderedLine>,
+    active_level_filter: Option<LogStreamLevelFilter>,
     last_mirrored_trace_id: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LogStreamLevelFilter {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+#[derive(Clone, Debug)]
+struct LogStreamRenderedLine {
+    line: TerminalLine,
+    level: LogStreamLevelFilter,
 }
 
 impl Default for LogStreamPaneState {
@@ -5777,6 +5793,8 @@ impl Default for LogStreamPaneState {
                 .code_block_style(true),
             copy_button_clicked_at_epoch_ms: 0,
             rendered_log_content: Vec::new(),
+            rendered_log_lines: Vec::new(),
+            active_level_filter: Some(LogStreamLevelFilter::Info),
             last_mirrored_trace_id: 0,
         }
     }
@@ -5784,6 +5802,7 @@ impl Default for LogStreamPaneState {
 
 impl LogStreamPaneState {
     const ICON_CLICK_FEEDBACK_DURATION_MS: u64 = 650;
+    const MAX_STORED_LOG_LINES: usize = 2000;
 
     fn icon_click_feedback_intensity(clicked_at_epoch_ms: u64, now_epoch_ms: u64) -> f32 {
         if clicked_at_epoch_ms == 0 {
@@ -5805,13 +5824,125 @@ impl LogStreamPaneState {
         Self::icon_click_feedback_intensity(self.copy_button_clicked_at_epoch_ms, now_epoch_ms)
     }
 
-    fn push_persisted_log_line(&mut self, line: TerminalLine) {
+    pub fn active_level_filter(&self) -> Option<LogStreamLevelFilter> {
+        self.active_level_filter
+    }
+
+    pub fn set_level_filter(&mut self, filter: Option<LogStreamLevelFilter>) {
+        if self.active_level_filter != filter {
+            self.active_level_filter = filter;
+            self.rebuild_visible_terminal();
+        }
+    }
+
+    pub fn cycle_level_filter(&mut self) -> LogStreamLevelFilter {
+        let next = match self.active_level_filter.unwrap_or(LogStreamLevelFilter::Info) {
+            LogStreamLevelFilter::Debug => LogStreamLevelFilter::Info,
+            LogStreamLevelFilter::Info => LogStreamLevelFilter::Warn,
+            LogStreamLevelFilter::Warn => LogStreamLevelFilter::Error,
+            LogStreamLevelFilter::Error => LogStreamLevelFilter::Debug,
+        };
+        self.set_level_filter(Some(next));
+        next
+    }
+
+    fn level_matches_filter(&self, level: LogStreamLevelFilter) -> bool {
+        match self.active_level_filter {
+            None => true,
+            Some(active) => Self::level_rank(level) >= Self::level_rank(active),
+        }
+    }
+
+    fn level_rank(level: LogStreamLevelFilter) -> u8 {
+        match level {
+            LogStreamLevelFilter::Debug => 0,
+            LogStreamLevelFilter::Info => 1,
+            LogStreamLevelFilter::Warn => 2,
+            LogStreamLevelFilter::Error => 3,
+        }
+    }
+
+    fn rebuild_visible_terminal(&mut self) {
+        self.terminal.clear();
+        for entry in self.rendered_log_lines.iter() {
+            if self.level_matches_filter(entry.level) {
+                self.terminal.push_line(entry.line.clone());
+            }
+        }
+    }
+
+    fn classify_terminal_line_level(stream: &TerminalStream, text: &str) -> LogStreamLevelFilter {
+        let lowered = text.to_ascii_lowercase();
+        if matches!(stream, TerminalStream::Stderr)
+            || lowered.contains("error")
+            || lowered.contains("failed")
+            || lowered.contains("panic")
+            || lowered.contains("fatal")
+            || lowered.contains("rejected")
+            || lowered.contains("status=error")
+        {
+            return LogStreamLevelFilter::Error;
+        }
+        if lowered.contains("warn")
+            || lowered.contains("warning")
+            || lowered.contains("degraded")
+            || lowered.contains("retry")
+            || lowered.contains("payment-required")
+            || lowered.contains("blocked")
+            || lowered.contains("status=payment-required")
+        {
+            return LogStreamLevelFilter::Warn;
+        }
+        if lowered.contains("debug") || lowered.contains("trace") {
+            return LogStreamLevelFilter::Debug;
+        }
+        LogStreamLevelFilter::Info
+    }
+
+    fn tracing_level_to_filter(level: tracing::Level) -> LogStreamLevelFilter {
+        match level {
+            tracing::Level::ERROR => LogStreamLevelFilter::Error,
+            tracing::Level::WARN => LogStreamLevelFilter::Warn,
+            tracing::Level::INFO => LogStreamLevelFilter::Info,
+            tracing::Level::DEBUG | tracing::Level::TRACE => LogStreamLevelFilter::Debug,
+        }
+    }
+
+    fn push_persisted_log_line(&mut self, line: TerminalLine, level: LogStreamLevelFilter) {
         crate::runtime_log::record_mission_control_line(
             line.stream.clone(),
             line.text.clone(),
             line.key.as_deref(),
         );
-        self.terminal.push_line(line);
+        if let Some(key) = line.key.as_deref()
+            && let Some(existing) = self
+                .rendered_log_lines
+                .iter_mut()
+                .find(|existing| existing.line.key.as_deref() == Some(key))
+        {
+            existing.line = line;
+            existing.level = level;
+            self.rebuild_visible_terminal();
+            return;
+        }
+
+        let line_clone = line.clone();
+        self.rendered_log_lines
+            .push(LogStreamRenderedLine { line, level });
+
+        let overflow = self
+            .rendered_log_lines
+            .len()
+            .saturating_sub(Self::MAX_STORED_LOG_LINES);
+        if overflow > 0 {
+            self.rendered_log_lines.drain(0..overflow);
+            self.rebuild_visible_terminal();
+            return;
+        }
+
+        if self.level_matches_filter(level) {
+            self.terminal.push_line(line_clone);
+        }
     }
 
     fn build_runtime_terminal_line(
@@ -5836,7 +5967,9 @@ impl LogStreamPaneState {
     }
 
     pub fn push_runtime_log_line(&mut self, stream: TerminalStream, text: impl Into<String>) {
-        self.push_persisted_log_line(self.build_runtime_terminal_line(stream, text, None));
+        let line = self.build_runtime_terminal_line(stream, text, None);
+        let level = Self::classify_terminal_line_level(&line.stream, line.text.as_str());
+        self.push_persisted_log_line(line, level);
     }
 
     pub fn upsert_runtime_log_line(
@@ -5845,11 +5978,9 @@ impl LogStreamPaneState {
         stream: TerminalStream,
         text: impl Into<String>,
     ) {
-        self.push_persisted_log_line(self.build_runtime_terminal_line(
-            stream,
-            text,
-            Some(key.into()),
-        ));
+        let line = self.build_runtime_terminal_line(stream, text, Some(key.into()));
+        let level = Self::classify_terminal_line_level(&line.stream, line.text.as_str());
+        self.push_persisted_log_line(line, level);
     }
 
     pub fn has_pending_mirrored_trace_logs(&self) -> bool {
@@ -5885,7 +6016,8 @@ impl LogStreamPaneState {
         );
         for (line, entry) in lines.into_iter().zip(content.into_iter()) {
             if !self.rendered_log_content.contains(&entry) {
-                self.push_persisted_log_line(line);
+                let level = Self::classify_terminal_line_level(&line.stream, line.text.as_str());
+                self.push_persisted_log_line(line, level);
                 self.rendered_log_content.push(entry);
             }
         }
@@ -5896,14 +6028,16 @@ impl LogStreamPaneState {
                     TerminalStream::Stdout
                 }
             };
-            self.terminal.push_line(TerminalLine::new(
+            let line = TerminalLine::new(
                 stream,
                 format!(
                     "{}  {}",
                     mission_control_log_timestamp(entry.at_epoch_seconds),
                     entry.line
                 ),
-            ));
+            );
+            let level = Self::tracing_level_to_filter(entry.level);
+            self.push_persisted_log_line(line, level);
             self.last_mirrored_trace_id = entry.id;
         }
     }
@@ -15623,6 +15757,7 @@ pub struct RenderState {
     pub onboarding: crate::onboarding::OnboardingState,
     pub command_palette: CommandPalette,
     pub command_palette_actions: Rc<RefCell<Vec<String>>>,
+    pub pane_search_filter: crate::pane_registry::PaneSearchFilter,
 }
 
 impl RenderState {

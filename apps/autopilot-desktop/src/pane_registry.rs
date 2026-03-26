@@ -43,6 +43,91 @@ pub struct PaneSpec {
     pub hotbar: Option<PaneHotbarSpec>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaneSearchTier {
+    Release,
+    Experimental,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaneSearchFilter {
+    Release,
+    Experimental,
+    All,
+}
+
+impl PaneSearchFilter {
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::Release => Self::Experimental,
+            Self::Experimental => Self::All,
+            Self::All => Self::Release,
+        }
+    }
+
+    pub const fn button_label(self) -> &'static str {
+        match self {
+            Self::Release => "REL",
+            Self::Experimental => "EXP",
+            Self::All => "ALL",
+        }
+    }
+
+    pub const fn includes(self, tier: PaneSearchTier) -> bool {
+        match self {
+            Self::All => true,
+            Self::Release => matches!(tier, PaneSearchTier::Release),
+            Self::Experimental => matches!(tier, PaneSearchTier::Experimental),
+        }
+    }
+}
+
+pub const fn pane_search_tier(kind: PaneKind) -> PaneSearchTier {
+    match kind {
+        PaneKind::ProjectOps
+        | PaneKind::CodexAccount
+        | PaneKind::CodexModels
+        | PaneKind::CodexConfig
+        | PaneKind::CodexMcp
+        | PaneKind::CodexApps
+        | PaneKind::CodexLabs
+        | PaneKind::CodexDiagnostics
+        | PaneKind::PsionicViz
+        | PaneKind::PsionicRemoteTraining
+        | PaneKind::AttnResLab
+        | PaneKind::TassadarLab
+        | PaneKind::RivePreview
+        | PaneKind::Presentation
+        | PaneKind::FrameDebugger
+        | PaneKind::AppleFmWorkbench
+        | PaneKind::AppleAdapterTraining
+        | PaneKind::NetworkRequests
+        | PaneKind::StarterJobs
+        | PaneKind::ReciprocalLoop
+        | PaneKind::ActivityFeed
+        | PaneKind::AlertsRecovery
+        | PaneKind::Settings
+        | PaneKind::Credentials
+        | PaneKind::AgentProfileState
+        | PaneKind::AgentScheduleTick
+        | PaneKind::TrajectoryAudit
+        | PaneKind::CastControl
+        | PaneKind::SkillRegistry
+        | PaneKind::SkillTrustRevocation
+        | PaneKind::CreditDesk
+        | PaneKind::CreditSettlementLedger
+        | PaneKind::Calculator
+        | PaneKind::CadDemo
+        | PaneKind::BuyerRaceMatrix
+        | PaneKind::SellerEarningsTimeline
+        | PaneKind::SettlementLadder
+        | PaneKind::KeyLedger
+        | PaneKind::SettlementAtlas
+        | PaneKind::RelayChoreography => PaneSearchTier::Experimental,
+        _ => PaneSearchTier::Release,
+    }
+}
+
 pub fn pane_specs() -> &'static [PaneSpec] {
     &PANE_SPECS
 }
@@ -256,7 +341,7 @@ const PANE_SPECS: [PaneSpec; 64] = [
         kind: PaneKind::ProviderControl,
         title: "Provider Control",
         default_width: 760.0,
-        default_height: 520.0,
+        default_height: 600.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {

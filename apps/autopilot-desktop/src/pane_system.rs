@@ -456,6 +456,7 @@ pub enum EarningsScoreboardPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LogStreamPaneAction {
     CopyAll,
+    CycleLevelFilter,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -469,6 +470,7 @@ pub enum MissionControlPaneAction {
     CreateLightningReceiveTarget,
     CopyLightningReceiveTarget,
     CopyLogStream,
+    CycleLogLevelFilter,
     SendLightningPayment,
     CopySeedPhrase,
     OpenLocalModelWorkbench,
@@ -1272,7 +1274,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         | PaneKind::CodexLabs
         | PaneKind::CodexDiagnostics => pane_size_for_content(920.0, 420.0),
         PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
-        PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
+        PaneKind::ProviderControl => pane_size_for_content(760.0, 560.0),
         PaneKind::VoicePlayground => pane_size_for_content(1040.0, 620.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
@@ -2395,39 +2397,45 @@ pub fn chat_transcript_body_bounds_with_height(
 }
 
 pub fn provider_control_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
+    let column_gap = 8.0;
+    let width = ((content_bounds.size.width - 24.0 - column_gap) * 0.5).max(0.0);
     Bounds::new(
         content_bounds.origin.x + 12.0,
         content_bounds.origin.y + 12.0,
-        (content_bounds.size.width - 24.0).max(0.0),
-        34.0,
+        width,
+        22.0,
     )
 }
 
 pub fn provider_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
+    let toggle = provider_control_toggle_button_bounds(content_bounds);
+    let width = toggle.size.width;
     Bounds::new(
-        content_bounds.origin.x + 12.0,
-        provider_control_toggle_button_bounds(content_bounds).max_y() + 10.0,
-        (content_bounds.size.width - 24.0).max(0.0),
+        toggle.max_x() + 8.0,
+        toggle.origin.y,
+        width,
         22.0,
     )
 }
 
 pub fn provider_control_local_fm_test_button_bounds(content_bounds: Bounds) -> Bounds {
+    let toggle = provider_control_toggle_button_bounds(content_bounds);
     Bounds::new(
-        content_bounds.origin.x + 12.0,
-        provider_control_local_model_button_bounds(content_bounds).max_y() + 8.0,
-        ((content_bounds.size.width - 28.0) * 0.5).max(0.0),
+        toggle.origin.x,
+        toggle.max_y() + 8.0,
+        toggle.size.width,
         22.0,
     )
 }
 
 pub fn provider_control_training_button_bounds(content_bounds: Bounds) -> Bounds {
+    let local_model = provider_control_local_model_button_bounds(content_bounds);
     let local_fm_test = provider_control_local_fm_test_button_bounds(content_bounds);
     Bounds::new(
-        local_fm_test.max_x() + 4.0,
+        local_model.origin.x,
         local_fm_test.origin.y,
-        (content_bounds.max_x() - 12.0 - (local_fm_test.max_x() + 4.0)).max(0.0),
-        local_fm_test.size.height,
+        local_model.size.width,
+        22.0,
     )
 }
 
@@ -2435,12 +2443,15 @@ pub fn provider_control_inventory_toggle_button_bounds(
     content_bounds: Bounds,
     row_index: usize,
 ) -> Bounds {
+    let toggle = provider_control_toggle_button_bounds(content_bounds);
+    let row = row_index / 2;
+    let column = row_index % 2;
+    let row_origin_y = provider_control_local_fm_test_button_bounds(content_bounds).max_y() + 10.0;
+    let row_step = 26.0;
     Bounds::new(
-        content_bounds.origin.x + 12.0,
-        provider_control_local_fm_test_button_bounds(content_bounds).max_y()
-            + 12.0
-            + row_index as f32 * 30.0,
-        (content_bounds.size.width - 24.0).max(0.0),
+        toggle.origin.x + column as f32 * (toggle.size.width + 8.0),
+        row_origin_y + row as f32 * row_step,
+        toggle.size.width,
         22.0,
     )
 }
@@ -2457,7 +2468,7 @@ pub fn provider_control_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds
         content_bounds.origin.x + 8.0,
         origin_y,
         (content_bounds.size.width - 16.0).max(0.0),
-        (content_bounds.max_y() - 12.0 - origin_y).max(0.0),
+        (content_bounds.max_y() - 34.0 - origin_y).max(0.0),
     )
 }
 
@@ -2467,6 +2478,17 @@ pub fn log_stream_copy_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + 8.0,
         108.0,
         22.0,
+    )
+}
+
+pub fn log_stream_filter_button_bounds(content_bounds: Bounds) -> Bounds {
+    let copy_button = log_stream_copy_button_bounds(content_bounds);
+    let button_width = 46.0;
+    Bounds::new(
+        copy_button.origin.x - 8.0 - button_width,
+        copy_button.origin.y,
+        button_width,
+        copy_button.size.height,
     )
 }
 
@@ -3455,6 +3477,20 @@ pub fn mission_control_copy_log_stream_button_bounds(
         log_stream.origin.y + 7.0,
         size,
         size,
+    )
+}
+
+pub fn mission_control_log_stream_filter_button_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    let copy_button = mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled);
+    let button_width = 46.0;
+    Bounds::new(
+        copy_button.origin.x - 8.0 - button_width,
+        copy_button.origin.y - 1.0,
+        button_width,
+        16.0,
     )
 }
 
@@ -6890,6 +6926,10 @@ fn pane_hit_action_for_pane(
         PaneKind::LogStream => {
             if log_stream_copy_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::LogStream(LogStreamPaneAction::CopyAll))
+            } else if log_stream_filter_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::LogStream(
+                    LogStreamPaneAction::CycleLevelFilter,
+                ))
             } else {
                 None
             }
@@ -6922,51 +6962,6 @@ fn pane_hit_action_for_pane(
                 .nostr_identity
                 .as_ref()
                 .is_some_and(|identity| !identity.mnemonic.trim().is_empty());
-            let alert_signature = crate::pane_renderer::mission_control_current_alert_signature(
-                &state.mission_control,
-                state.desktop_shell_mode,
-                &state.provider_runtime,
-                &state.gpt_oss_execution,
-                provider_blockers.as_slice(),
-                &state.spark_wallet,
-            );
-            if mission_control_alert_dismiss_button_bounds(content_bounds).contains(point)
-                && !state
-                    .mission_control
-                    .alert_is_dismissed(alert_signature.as_str())
-            {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::DismissAlert,
-                ));
-            }
-            if go_online_toggle_button_bounds(content_bounds).contains(point) {
-                if matches!(
-                    state.provider_runtime.mode,
-                    crate::app_state::ProviderMode::Offline
-                        | crate::app_state::ProviderMode::Degraded
-                ) && !state.mission_control_go_online_enabled()
-                {
-                    return None;
-                }
-                return Some(PaneHitAction::GoOnlineToggle);
-            }
-            if mission_control_wallet_refresh_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::RefreshWallet,
-                ));
-            }
-            if mission_control_wallet_load_funds_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::OpenLoadFundsPopup,
-                ));
-            }
-            if mission_control_wallet_buy_mode_button_bounds(content_bounds).contains(point)
-                && state.mission_control_buy_mode_enabled()
-            {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::OpenBuyModePopup,
-                ));
-            }
             if state.mission_control.load_funds_popup_open() {
                 let popup_bounds = mission_control_load_funds_popup_bounds(content_bounds);
                 if !popup_bounds.contains(point) {
@@ -7033,11 +7028,63 @@ fn pane_hit_action_for_pane(
                 }
                 return None;
             }
+            let alert_signature = crate::pane_renderer::mission_control_current_alert_signature(
+                &state.mission_control,
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+                provider_blockers.as_slice(),
+                &state.spark_wallet,
+            );
+            if mission_control_alert_dismiss_button_bounds(content_bounds).contains(point)
+                && !state
+                    .mission_control
+                    .alert_is_dismissed(alert_signature.as_str())
+            {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::DismissAlert,
+                ));
+            }
+            if go_online_toggle_button_bounds(content_bounds).contains(point) {
+                if matches!(
+                    state.provider_runtime.mode,
+                    crate::app_state::ProviderMode::Offline
+                        | crate::app_state::ProviderMode::Degraded
+                ) && !state.mission_control_go_online_enabled()
+                {
+                    return None;
+                }
+                return Some(PaneHitAction::GoOnlineToggle);
+            }
+            if mission_control_wallet_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::RefreshWallet,
+                ));
+            }
+            if mission_control_wallet_load_funds_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::OpenLoadFundsPopup,
+                ));
+            }
+            if mission_control_wallet_buy_mode_button_bounds(content_bounds).contains(point)
+                && state.mission_control_buy_mode_enabled()
+            {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::OpenBuyModePopup,
+                ));
+            }
             if mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled)
                 .contains(point)
             {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopyLogStream,
+                ));
+            }
+            if mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled)
+                .contains(point)
+            {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::CycleLogLevelFilter,
                 ));
             }
             if mission_control_show_local_model_button(
@@ -9610,12 +9657,17 @@ mod tests {
     fn log_stream_copy_button_sits_above_terminal() {
         let content_bounds = Bounds::new(0.0, 0.0, 980.0, 560.0);
         let button = super::log_stream_copy_button_bounds(content_bounds);
+        let filter = super::log_stream_filter_button_bounds(content_bounds);
         let terminal = super::log_stream_terminal_bounds(content_bounds);
 
         assert!(button.origin.x >= content_bounds.origin.x);
         assert!(button.origin.y >= content_bounds.origin.y);
         assert!(button.max_x() <= content_bounds.max_x());
         assert!(button.max_y() <= terminal.origin.y);
+        assert!(filter.origin.x >= content_bounds.origin.x);
+        assert!(filter.origin.y >= content_bounds.origin.y);
+        assert!(filter.max_x() <= button.origin.x);
+        assert!(filter.max_y() <= terminal.origin.y);
     }
 
     #[test]
