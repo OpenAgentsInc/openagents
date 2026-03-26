@@ -8383,6 +8383,7 @@ fn desktop_control_nip28_status(
     let browse_mode = match chat.chat_browse_mode() {
         crate::app_state::ChatBrowseMode::Autopilot => "autopilot",
         crate::app_state::ChatBrowseMode::Managed => "managed",
+        crate::app_state::ChatBrowseMode::ManagedSystem => "managed_system",
         crate::app_state::ChatBrowseMode::DirectMessages => "direct_messages",
     }
     .to_string();
