@@ -256,7 +256,7 @@ const PANE_SPECS: [PaneSpec; 64] = [
         kind: PaneKind::ProviderControl,
         title: "Provider Control",
         default_width: 760.0,
-        default_height: 520.0,
+        default_height: 600.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
