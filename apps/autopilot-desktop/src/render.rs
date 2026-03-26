@@ -1552,6 +1552,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
 
         let mission_control_last_action = state.mission_control.last_action.clone();
         let mission_control_last_error = state.mission_control.last_error.clone();
+        let spark_wallet_scroll_offset = state.spark_wallet_pane.scroll_offset();
         pane_paint_report = PaneRenderer::paint(
             &mut state.panes,
             Bounds::new(0.0, 0.0, width, height),
@@ -1623,7 +1624,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &state.credit_settlement_ledger,
             &state.cad_demo,
             &state.spark_wallet,
-            state.spark_wallet_scroll_offset,
+            spark_wallet_scroll_offset,
             &provider_inventory,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,

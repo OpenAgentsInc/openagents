@@ -28,8 +28,6 @@ pub fn paint_wallet_pane(
     details_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "wallet", paint);
-
     let scroll_content_bounds = spark_pane::scroll_content_bounds(content_bounds);
     let viewport = spark_pane::scroll_viewport_bounds(content_bounds);
     let content_height = spark_wallet_content_height(scroll_content_bounds, spark_wallet);
@@ -91,8 +89,8 @@ pub fn paint_wallet_pane(
         "Refresh state or copy your Spark address.",
         paint,
     );
-    paint_tertiary_button(layout.refresh_button, "Refresh wallet", paint);
-    paint_tertiary_button(layout.copy_spark_address_button, "Copy Spark", paint);
+    paint_secondary_button(layout.refresh_button, "Refresh wallet", paint);
+    paint_secondary_button(layout.copy_spark_address_button, "Copy Spark", paint);
 
     paint_wallet_flow_section(
         layout.receive_section_bounds,
@@ -800,7 +798,7 @@ fn paint_wallet_scrollbar(
     }
     let max_offset = (content_height - viewport.size.height).max(0.0);
     let track_bounds = Bounds::new(
-        viewport.max_x() - 4.0,
+        viewport.max_x() - 2.0,
         viewport.origin.y,
         2.0,
         viewport.size.height,
