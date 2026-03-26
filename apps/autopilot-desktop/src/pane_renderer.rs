@@ -110,7 +110,7 @@ pub struct PanePaintReport {
     pub pane_paint_samples: Vec<PanePaintTimingSample>,
 }
 
-const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.2;
+const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.0;
 const ACTIVE_PANE_FOCUS_CLEARANCE: f32 = 8.0;
 const MISSION_CONTROL_LABEL_ROW_LINE_HEIGHT: f32 = 18.0;
 const MISSION_CONTROL_BODY_BLOCK_LINE_HEIGHT: f32 = 16.0;
@@ -278,10 +278,6 @@ impl PaneRenderer {
             let pane_title = pane.title.clone();
             let pane_paint_start = std::time::Instant::now();
 
-            paint
-                .scene
-                .draw_quad(Quad::new(pane.bounds).with_background(theme::bg::APP));
-
             let content_bounds = pane_content_bounds_for_pane(pane);
             if pane.presentation.uses_window_chrome() {
                 pane.frame.set_title(&pane.title);
@@ -305,6 +301,8 @@ impl PaneRenderer {
                     .scene
                     .draw_quad(Quad::new(content_bounds).with_background(theme::bg::SURFACE));
             }
+
+            paint.scene.push_clip(content_bounds);
 
             if !pane_is_active
                 && paint_inactive_pane_preview_if_needed(
@@ -337,6 +335,7 @@ impl PaneRenderer {
                     paint,
                 )
             {
+                paint.scene.pop_clip();
                 pane_paint_samples.push(PanePaintTimingSample {
                     pane_kind: pane_kind_label,
                     pane_title,
@@ -765,6 +764,7 @@ impl PaneRenderer {
                     paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
                 }
             }
+            paint.scene.pop_clip();
 
             pane_paint_samples.push(PanePaintTimingSample {
                 pane_kind: pane_kind_label,
@@ -789,7 +789,7 @@ impl PaneRenderer {
             );
         }
 
-        if dim_inactive_panes {
+        if dim_inactive_panes && INACTIVE_PANE_OVERLAY_ALPHA > 0.0 {
             let Some(active_bounds) = panes
                 .iter()
                 .find(|pane| Some(pane.id) == active_id)
