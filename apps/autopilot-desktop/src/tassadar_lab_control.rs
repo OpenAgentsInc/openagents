@@ -50,6 +50,21 @@ pub(crate) fn ensure_loaded(pane_state: &mut TassadarLabPaneState) {
 
     let path = tassadar_lab_state_path();
     load_persisted_from_path(pane_state, &path);
+    if pane_state.load_state == crate::app_state::PaneLoadState::Loading {
+        if let Err(error) = reload_current_source(
+            pane_state,
+            format!(
+                "Loaded {} // {}",
+                pane_state.selected_source_mode.hero_label(),
+                pane_state.current_source_label()
+            ),
+        ) {
+            pane_state.push_local_event(format!("Load error // {error}"));
+            let _ = pane_state.pane_set_error(error);
+            pane_state.playback_running = false;
+            pane_state.playback_state = TassadarLabPlaybackState::Paused;
+        }
+    }
 }
 
 fn load_persisted_from_path(pane_state: &mut TassadarLabPaneState, path: &Path) {
@@ -399,7 +414,12 @@ pub(crate) fn toggle_help(pane_state: &mut TassadarLabPaneState) {
 }
 
 pub(crate) fn background_tick(pane_state: &mut TassadarLabPaneState) -> bool {
-    ensure_loaded(pane_state);
+    if !pane_state.persistence_loaded {
+        return false;
+    }
+    if pane_state.load_state == crate::app_state::PaneLoadState::Loading {
+        return false;
+    }
     if !pane_state.playback_running {
         return false;
     }
