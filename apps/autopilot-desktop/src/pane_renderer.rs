@@ -12,7 +12,7 @@ use crate::app_state::{
     DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState, DesktopPane,
     EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
     JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
-    LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
+    LocalInferencePaneInputs, LocalInferencePaneState, LogStreamLevelFilter, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
     NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
     PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
@@ -55,6 +55,7 @@ use crate::pane_system::{
     mission_control_buy_mode_history_button_bounds_for_panel,
     mission_control_buy_mode_popup_bounds, mission_control_buy_mode_popup_close_button_bounds,
     mission_control_copy_log_stream_button_bounds, mission_control_layout_for_mode,
+    mission_control_log_stream_filter_button_bounds,
     mission_control_load_funds_popup_bounds, mission_control_load_funds_popup_close_button_bounds,
     mission_control_load_funds_popup_layout_with_scroll,
     mission_control_load_funds_popup_scroll_viewport_bounds,
@@ -2716,6 +2717,15 @@ fn paint_go_online_pane(
         log_copy_clicked,
         paint,
     );
+    let filter_bounds = mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled);
+    let filter_hovered = pointer_in_pane && filter_bounds.contains(cursor_position);
+    let filter_label = match log_stream.active_level_filter().unwrap_or(LogStreamLevelFilter::Info) {
+        LogStreamLevelFilter::Debug => "DBG",
+        LogStreamLevelFilter::Info => "INF",
+        LogStreamLevelFilter::Warn => "WRN",
+        LogStreamLevelFilter::Error => "ERR",
+    };
+    paint_mission_control_log_filter_button(filter_bounds, filter_label, filter_hovered, paint);
     let log_body_bounds = mission_control_section_scroll_viewport_bounds(layout.log_stream);
     paint.scene.draw_quad(
         Quad::new(log_body_bounds)
@@ -3226,6 +3236,12 @@ fn paint_mission_control_alert_band(
         .with_corner_radius(4.0),
     );
     if show_alert {
+        let text_left = bounds.origin.x + 28.0;
+        let legend_max_chars = (((bounds.size.width - 24.0).max(60.0)) / 5.9).floor() as usize;
+        let target_right_x = bounds.origin.x + 16.0 + legend_max_chars as f32 * 5.9;
+        let top_text_width = (target_right_x - text_left).max(24.0);
+        let text_max_chars = ((top_text_width / 6.4).floor() as usize).max(8);
+        let compact_alert_text = mission_control_compact_single_line(alert.text.as_str(), text_max_chars);
         paint.scene.draw_text(paint.text.layout_mono(
             "!",
             Point::new(bounds.origin.x + 12.0, bounds.origin.y + 5.0),
@@ -3233,8 +3249,8 @@ fn paint_mission_control_alert_band(
             accent,
         ));
         paint.scene.draw_text(paint.text.layout_mono(
-            alert.text.as_str(),
-            Point::new(bounds.origin.x + 28.0, bounds.origin.y + 8.0),
+            compact_alert_text.as_str(),
+            Point::new(text_left, bounds.origin.y + 8.0),
             11.0,
             mission_control_text_color(),
         ));
@@ -3278,8 +3294,13 @@ fn paint_mission_control_alert_band(
                 .with_background(accent.with_alpha(0.30)),
         );
     }
-    paint.scene.draw_text(paint.text.layout_mono(
+    let legend_max_chars = (((bounds.size.width - 24.0).max(60.0)) / 5.9).floor() as usize;
+    let compact_legend = mission_control_compact_single_line(
         mission_control_truth_legend(),
+        legend_max_chars.max(10),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        compact_legend.as_str(),
         Point::new(bounds.origin.x + 16.0, bounds.origin.y + 22.0),
         9.0,
         mission_control_muted_color(),
@@ -3288,6 +3309,54 @@ fn paint_mission_control_alert_band(
 
 fn mission_control_truth_legend() -> &'static str {
     "LEGEND // PROV=SELECTED PROVIDER // WORK=MARKET FLOW // PAY=WALLET FLOW // NEXT=EXPECTED EVENT"
+}
+
+fn mission_control_compact_single_line(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let keep = max_chars.saturating_sub(1).max(1);
+    let truncated: String = value.chars().take(keep).collect();
+    format!("{truncated}…")
+}
+
+fn paint_mission_control_log_filter_button(
+    bounds: Bounds,
+    label: &str,
+    hovered: bool,
+    paint: &mut PaintContext,
+) {
+    let accent = mission_control_orange_color();
+    let bg = if hovered {
+        accent.with_alpha(0.16)
+    } else {
+        mission_control_background_color().with_alpha(0.22)
+    };
+    let border = if hovered {
+        accent.with_alpha(0.56)
+    } else {
+        mission_control_muted_color().with_alpha(0.44)
+    };
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(bg)
+            .with_border(border, 1.0)
+            .with_corner_radius(3.0),
+    );
+    let mut label_run = paint.text.layout_mono(
+        label,
+        Point::ZERO,
+        8.0,
+        mission_control_text_color(),
+    );
+    let label_bounds = label_run.bounds();
+    label_run.origin = Point::new(
+        bounds.origin.x + ((bounds.size.width - label_bounds.size.width).max(0.0) * 0.5)
+            - label_bounds.origin.x,
+        bounds.origin.y + ((bounds.size.height - label_bounds.size.height).max(0.0) * 0.5)
+            - label_bounds.origin.y,
+    );
+    paint.scene.draw_text(label_run);
 }
 
 struct MissionControlAlertDescriptor {
@@ -4195,12 +4264,18 @@ fn mission_control_backend_label(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    crate::app_state::mission_control_local_runtime_view_model(
+    let backend = crate::app_state::mission_control_local_runtime_view_model(
         desktop_shell_mode,
         provider_runtime,
         local_inference_runtime,
     )
-    .backend_label
+    .backend_label;
+    let normalized = backend.trim().to_ascii_uppercase();
+    if normalized.starts_with("APPLE FM BRIDGE") {
+        "APPLE FM".to_string()
+    } else {
+        backend
+    }
 }
 
 fn mission_control_model_load_status(
