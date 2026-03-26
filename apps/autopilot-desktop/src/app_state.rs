@@ -8297,6 +8297,7 @@ pub enum ManagedChatChannelRailRow {
 pub enum ChatBrowseMode {
     Autopilot,
     Managed,
+    ManagedSystem,
     DirectMessages,
 }
 
@@ -8304,8 +8305,12 @@ pub enum ChatBrowseMode {
 pub enum ChatWorkspaceSelection {
     Autopilot,
     ManagedGroup(String),
+    ManagedSystem,
     DirectMessages,
 }
+
+const MANAGED_SYSTEM_TRANSCRIPT_PAGE_SIZE: usize = 12;
+const MANAGED_SYSTEM_TRANSCRIPT_PRELOAD_THRESHOLD_PX: f32 = 36.0;
 
 pub struct AutopilotChatState {
     pub connection_status: String,
@@ -8383,6 +8388,7 @@ pub struct AutopilotChatState {
     thread_hover_preview_started_at: Option<Instant>,
     pub thread_hover_preview_visible: bool,
     pub thread_rename_counter: u64,
+    pub managed_system_visible_count: usize,
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
     pub transcript_selection: Option<ChatTranscriptSelectionState>,
@@ -8525,6 +8531,7 @@ impl Default for AutopilotChatState {
             thread_hover_preview_started_at: None,
             thread_hover_preview_visible: false,
             thread_rename_counter: 1,
+            managed_system_visible_count: MANAGED_SYSTEM_TRANSCRIPT_PAGE_SIZE,
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
             transcript_selection: None,
@@ -8955,6 +8962,10 @@ impl AutopilotChatState {
         self.transcript_follow_tail = true;
     }
 
+    pub fn reset_managed_system_visible_window(&mut self) {
+        self.managed_system_visible_count = MANAGED_SYSTEM_TRANSCRIPT_PAGE_SIZE;
+    }
+
     pub fn clear_transcript_selection(&mut self) {
         self.transcript_selection = None;
     }
@@ -8982,6 +8993,25 @@ impl AutopilotChatState {
         offset = offset.clamp(0.0, max_scroll);
         self.transcript_scroll_offset = offset;
         self.transcript_follow_tail = (max_scroll - offset).abs() <= 1.0;
+    }
+
+    pub fn preserve_transcript_anchor_after_prepend(
+        &mut self,
+        current_offset: f32,
+        added_height: f32,
+        max_scroll: f32,
+    ) {
+        let max_scroll = max_scroll.max(0.0);
+        let mut offset = current_offset.max(0.0) + added_height.max(0.0);
+        if !offset.is_finite() {
+            offset = max_scroll;
+        }
+        self.transcript_scroll_offset = offset.clamp(0.0, max_scroll);
+        self.transcript_follow_tail = false;
+    }
+
+    pub fn managed_system_transcript_preload_threshold_px(&self) -> f32 {
+        MANAGED_SYSTEM_TRANSCRIPT_PRELOAD_THRESHOLD_PX
     }
 
     pub fn current_model(&self) -> &str {
@@ -9833,6 +9863,20 @@ impl AutopilotChatState {
             && !self.managed_chat_projection.snapshot.channels.is_empty()
     }
 
+    pub fn has_managed_system_browseable_content(&self) -> bool {
+        self.managed_chat_projection
+            .snapshot
+            .messages
+            .values()
+            .any(|message| {
+                matches!(
+                    message.message_class,
+                    crate::chat_message_classifier::ChatMessageClass::PresenceEvent
+                        | crate::chat_message_classifier::ChatMessageClass::DebugEvent
+                )
+            })
+    }
+
     /// Auto-selects the first managed chat workspace when no workspace is selected yet.
     /// No-op if the user has already selected a workspace or if there is no content.
     pub fn maybe_auto_select_default_nip28_channel(&mut self) -> bool {
@@ -9844,7 +9888,9 @@ impl AutopilotChatState {
     }
 
     pub fn chat_has_browseable_content(&self) -> bool {
-        self.has_managed_chat_browseable_content() || self.has_direct_message_browseable_content()
+        self.has_managed_chat_browseable_content()
+            || self.has_managed_system_browseable_content()
+            || self.has_direct_message_browseable_content()
     }
 
     pub fn chat_browse_mode(&self) -> ChatBrowseMode {
@@ -9861,6 +9907,11 @@ impl AutopilotChatState {
                     .any(|group| group.group_id == *group_id) =>
             {
                 return ChatBrowseMode::Managed;
+            }
+            ChatWorkspaceSelection::ManagedSystem
+                if self.has_managed_system_browseable_content() =>
+            {
+                return ChatBrowseMode::ManagedSystem;
             }
             ChatWorkspaceSelection::DirectMessages
                 if self.has_direct_message_browseable_content() =>
@@ -9894,6 +9945,9 @@ impl AutopilotChatState {
             {
                 entries.push(ChatWorkspaceSelection::ManagedGroup(group.group_id.clone()));
             }
+        }
+        if self.has_managed_system_browseable_content() {
+            entries.push(ChatWorkspaceSelection::ManagedSystem);
         }
         if self.has_direct_message_browseable_content() {
             entries.push(ChatWorkspaceSelection::DirectMessages);
@@ -9935,6 +9989,14 @@ impl AutopilotChatState {
                         false
                     }
                 }
+            }
+            ChatWorkspaceSelection::ManagedSystem => {
+                self.selected_workspace = ChatWorkspaceSelection::ManagedSystem;
+                self.thread_rail_scroll_row_offset = 0;
+                self.reset_managed_system_visible_window();
+                self.reset_transcript_scroll();
+                self.last_error = None;
+                true
             }
             ChatWorkspaceSelection::DirectMessages => {
                 let room_id = self
@@ -10142,6 +10204,54 @@ impl AutopilotChatState {
                     .get(message_id)
             })
             .collect()
+    }
+
+    pub fn active_managed_system_messages(&self) -> Vec<&ManagedChatMessageProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::ManagedSystem {
+            return Vec::new();
+        }
+        let mut messages = self
+            .managed_chat_projection
+            .snapshot
+            .messages
+            .values()
+            .filter(|message| {
+                matches!(
+                    message.message_class,
+                    crate::chat_message_classifier::ChatMessageClass::PresenceEvent
+                        | crate::chat_message_classifier::ChatMessageClass::DebugEvent
+                )
+            })
+            .collect::<Vec<_>>();
+        messages.sort_by(|left, right| {
+            left.created_at
+                .cmp(&right.created_at)
+                .then_with(|| left.event_id.cmp(&right.event_id))
+        });
+        messages
+    }
+
+    pub fn visible_managed_system_messages(&self) -> Vec<&ManagedChatMessageProjection> {
+        let messages = self.active_managed_system_messages();
+        let visible = self.managed_system_visible_count.min(messages.len());
+        let start = messages.len().saturating_sub(visible);
+        messages.into_iter().skip(start).collect()
+    }
+
+    pub fn has_more_managed_system_history(&self) -> bool {
+        self.active_managed_system_messages().len() > self.managed_system_visible_count
+    }
+
+    pub fn reveal_more_managed_system_history(&mut self) -> bool {
+        let total = self.active_managed_system_messages().len();
+        if total <= self.managed_system_visible_count {
+            return false;
+        }
+        self.managed_system_visible_count = self
+            .managed_system_visible_count
+            .saturating_add(MANAGED_SYSTEM_TRANSCRIPT_PAGE_SIZE)
+            .min(total);
+        true
     }
 
     pub fn active_managed_chat_message_tail(
@@ -21032,6 +21142,348 @@ mod tests {
             Some("beta")
         );
         assert_eq!(chat.active_managed_chat_messages().len(), 1);
+    }
+
+    #[test]
+    fn chat_state_exposes_managed_system_workspace_and_preserves_channel_selection() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-chat.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            "oa-main",
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel_id = repeated_hex('b', 64);
+        let channel = nostr::ManagedChannelCreateEvent::new(
+            "oa-main",
+            nostr::ChannelMetadata::new("alpha", "", ""),
+            20,
+        )
+        .expect("channel");
+        let human_message = nostr::ManagedChannelMessageEvent::new(
+            "oa-main",
+            channel_id.clone(),
+            "wss://relay.openagents.test",
+            "hello",
+            30,
+        )
+        .expect("human message");
+        let presence_content = format!(
+            r#"{{"type":"{}","pubkey":"{}","mode":"provider-online","capabilities":[]}}"#,
+            crate::autopilot_peer_roster::AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+            repeated_hex('9', 64)
+        );
+        let presence_message = nostr::ManagedChannelMessageEvent::new(
+            "oa-main",
+            channel_id.clone(),
+            "wss://relay.openagents.test",
+            &presence_content,
+            31,
+        )
+        .expect("presence message");
+
+        chat.managed_chat_projection.record_relay_events(vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel.to_tags().expect("channel tags"),
+                channel.content().expect("channel content"),
+            ),
+            signed_event(
+                'c',
+                '3',
+                30,
+                42,
+                human_message.to_tags().expect("human message tags"),
+                "hello".to_string(),
+            ),
+            signed_event(
+                'd',
+                '4',
+                31,
+                42,
+                presence_message.to_tags().expect("presence message tags"),
+                presence_content.clone(),
+            ),
+        ]);
+
+        let workspace_entries = chat.chat_workspace_entries();
+        let managed_index = workspace_entries
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    super::ChatWorkspaceSelection::ManagedGroup(group_id)
+                        if group_id == "oa-main"
+                )
+            })
+            .expect("managed workspace entry");
+        let system_index = workspace_entries
+            .iter()
+            .position(|entry| matches!(entry, super::ChatWorkspaceSelection::ManagedSystem))
+            .expect("managed system workspace entry");
+
+        assert!(chat.select_chat_workspace_by_index(managed_index));
+        assert_eq!(chat.chat_browse_mode(), ChatBrowseMode::Managed);
+        assert_eq!(
+            chat.managed_chat_projection
+                .local_state
+                .selected_channel_id
+                .as_deref(),
+            Some(channel_id.as_str())
+        );
+
+        assert!(chat.select_chat_workspace_by_index(system_index));
+        assert_eq!(chat.chat_browse_mode(), ChatBrowseMode::ManagedSystem);
+        assert_eq!(
+            chat.managed_chat_projection
+                .local_state
+                .selected_channel_id
+                .as_deref(),
+            Some(channel_id.as_str())
+        );
+        let system_messages = chat.active_managed_system_messages();
+        assert_eq!(system_messages.len(), 1);
+        assert_eq!(system_messages[0].content, presence_content);
+    }
+
+    #[test]
+    fn managed_system_workspace_limits_visible_history_and_resets_on_reentry() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-system-window.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+        let group_id = "oa-main".to_string();
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            group_id.as_str(),
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel_id = repeated_hex('b', 64);
+        let channel = nostr::ManagedChannelCreateEvent::new(
+            group_id.as_str(),
+            nostr::ChannelMetadata::new("ops", "", ""),
+            20,
+        )
+        .expect("channel");
+
+        let mut events = vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel.to_tags().expect("channel tags"),
+                channel.content().expect("channel content"),
+            ),
+        ];
+
+        for index in 0..15_u64 {
+            let content = format!(
+                r#"{{"type":"{}","pubkey":"{}","mode":"provider-online","capabilities":[],"seq":{index}}}"#,
+                crate::autopilot_peer_roster::AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                repeated_hex('9', 64)
+            );
+            let message = nostr::ManagedChannelMessageEvent::new(
+                group_id.clone(),
+                channel_id.clone(),
+                "wss://relay.openagents.test",
+                &content,
+                30 + index,
+            )
+            .expect("presence message");
+            events.push(signed_event(
+                char::from_u32('c' as u32 + index as u32).expect("event id char"),
+                '4',
+                30 + index,
+                42,
+                message.to_tags().expect("message tags"),
+                content,
+            ));
+        }
+        chat.managed_chat_projection.record_relay_events(events);
+
+        let workspace_entries = chat.chat_workspace_entries();
+        let managed_index = workspace_entries
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    super::ChatWorkspaceSelection::ManagedGroup(group_id)
+                        if group_id == "oa-main"
+                )
+            })
+            .expect("managed workspace entry");
+        let system_index = workspace_entries
+            .iter()
+            .position(|entry| matches!(entry, super::ChatWorkspaceSelection::ManagedSystem))
+            .expect("managed system workspace entry");
+
+        assert!(chat.select_chat_workspace_by_index(system_index));
+        let visible = chat.visible_managed_system_messages();
+        assert_eq!(visible.len(), 12);
+        assert!(chat.has_more_managed_system_history());
+        assert!(visible[0].content.contains(r#""seq":3"#));
+        assert!(visible[11].content.contains(r#""seq":14"#));
+
+        assert!(chat.reveal_more_managed_system_history());
+        assert_eq!(chat.visible_managed_system_messages().len(), 15);
+        assert!(!chat.has_more_managed_system_history());
+
+        assert!(chat.select_chat_workspace_by_index(managed_index));
+        assert!(chat.select_chat_workspace_by_index(system_index));
+        assert_eq!(chat.managed_system_visible_count, 12);
+        assert_eq!(chat.visible_managed_system_messages().len(), 12);
+    }
+
+    #[test]
+    fn managed_system_workspace_shows_all_rows_when_history_is_short() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-system-short.json");
+        let mut chat = AutopilotChatState::default();
+        chat.managed_chat_projection =
+            super::ManagedChatProjectionState::from_projection_path_for_tests(path);
+        let group_id = "oa-main".to_string();
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            group_id.as_str(),
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel_id = repeated_hex('b', 64);
+        let channel = nostr::ManagedChannelCreateEvent::new(
+            group_id.as_str(),
+            nostr::ChannelMetadata::new("ops", "", ""),
+            20,
+        )
+        .expect("channel");
+
+        let mut events = vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel.to_tags().expect("channel tags"),
+                channel.content().expect("channel content"),
+            ),
+        ];
+        for index in 0..5_u64 {
+            let content = format!(
+                r#"{{"type":"{}","pubkey":"{}","mode":"provider-online","capabilities":[],"seq":{index}}}"#,
+                crate::autopilot_peer_roster::AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                repeated_hex('9', 64)
+            );
+            let message = nostr::ManagedChannelMessageEvent::new(
+                group_id.clone(),
+                channel_id.clone(),
+                "wss://relay.openagents.test",
+                &content,
+                30 + index,
+            )
+            .expect("presence message");
+            events.push(signed_event(
+                char::from_u32('c' as u32 + index as u32).expect("event id char"),
+                '4',
+                30 + index,
+                42,
+                message.to_tags().expect("message tags"),
+                content,
+            ));
+        }
+        chat.managed_chat_projection.record_relay_events(events);
+
+        let workspace_entries = chat.chat_workspace_entries();
+        let system_index = workspace_entries
+            .iter()
+            .position(|entry| matches!(entry, super::ChatWorkspaceSelection::ManagedSystem))
+            .expect("managed system workspace entry");
+
+        assert!(chat.select_chat_workspace_by_index(system_index));
+        assert_eq!(chat.visible_managed_system_messages().len(), 5);
+        assert!(!chat.has_more_managed_system_history());
+        assert!(!chat.reveal_more_managed_system_history());
     }
 
     #[test]
