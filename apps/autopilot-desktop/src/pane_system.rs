@@ -6934,51 +6934,6 @@ fn pane_hit_action_for_pane(
                 .nostr_identity
                 .as_ref()
                 .is_some_and(|identity| !identity.mnemonic.trim().is_empty());
-            let alert_signature = crate::pane_renderer::mission_control_current_alert_signature(
-                &state.mission_control,
-                state.desktop_shell_mode,
-                &state.provider_runtime,
-                &state.gpt_oss_execution,
-                provider_blockers.as_slice(),
-                &state.spark_wallet,
-            );
-            if mission_control_alert_dismiss_button_bounds(content_bounds).contains(point)
-                && !state
-                    .mission_control
-                    .alert_is_dismissed(alert_signature.as_str())
-            {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::DismissAlert,
-                ));
-            }
-            if go_online_toggle_button_bounds(content_bounds).contains(point) {
-                if matches!(
-                    state.provider_runtime.mode,
-                    crate::app_state::ProviderMode::Offline
-                        | crate::app_state::ProviderMode::Degraded
-                ) && !state.mission_control_go_online_enabled()
-                {
-                    return None;
-                }
-                return Some(PaneHitAction::GoOnlineToggle);
-            }
-            if mission_control_wallet_refresh_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::RefreshWallet,
-                ));
-            }
-            if mission_control_wallet_load_funds_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::OpenLoadFundsPopup,
-                ));
-            }
-            if mission_control_wallet_buy_mode_button_bounds(content_bounds).contains(point)
-                && state.mission_control_buy_mode_enabled()
-            {
-                return Some(PaneHitAction::MissionControl(
-                    MissionControlPaneAction::OpenBuyModePopup,
-                ));
-            }
             if state.mission_control.load_funds_popup_open() {
                 let popup_bounds = mission_control_load_funds_popup_bounds(content_bounds);
                 if !popup_bounds.contains(point) {
@@ -7044,6 +6999,51 @@ fn pane_hit_action_for_pane(
                     ));
                 }
                 return None;
+            }
+            let alert_signature = crate::pane_renderer::mission_control_current_alert_signature(
+                &state.mission_control,
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+                provider_blockers.as_slice(),
+                &state.spark_wallet,
+            );
+            if mission_control_alert_dismiss_button_bounds(content_bounds).contains(point)
+                && !state
+                    .mission_control
+                    .alert_is_dismissed(alert_signature.as_str())
+            {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::DismissAlert,
+                ));
+            }
+            if go_online_toggle_button_bounds(content_bounds).contains(point) {
+                if matches!(
+                    state.provider_runtime.mode,
+                    crate::app_state::ProviderMode::Offline
+                        | crate::app_state::ProviderMode::Degraded
+                ) && !state.mission_control_go_online_enabled()
+                {
+                    return None;
+                }
+                return Some(PaneHitAction::GoOnlineToggle);
+            }
+            if mission_control_wallet_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::RefreshWallet,
+                ));
+            }
+            if mission_control_wallet_load_funds_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::OpenLoadFundsPopup,
+                ));
+            }
+            if mission_control_wallet_buy_mode_button_bounds(content_bounds).contains(point)
+                && state.mission_control_buy_mode_enabled()
+            {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::OpenBuyModePopup,
+                ));
             }
             if mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled)
                 .contains(point)
