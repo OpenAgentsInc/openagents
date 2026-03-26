@@ -461,6 +461,7 @@ pub enum EarningsScoreboardPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LogStreamPaneAction {
     CopyAll,
+    CycleLevelFilter,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2481,6 +2482,17 @@ pub fn log_stream_copy_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + 8.0,
         108.0,
         22.0,
+    )
+}
+
+pub fn log_stream_filter_button_bounds(content_bounds: Bounds) -> Bounds {
+    let copy_button = log_stream_copy_button_bounds(content_bounds);
+    let button_width = 46.0;
+    Bounds::new(
+        copy_button.origin.x - 8.0 - button_width,
+        copy_button.origin.y,
+        button_width,
+        copy_button.size.height,
     )
 }
 
@@ -6915,6 +6927,10 @@ fn pane_hit_action_for_pane(
         PaneKind::LogStream => {
             if log_stream_copy_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::LogStream(LogStreamPaneAction::CopyAll))
+            } else if log_stream_filter_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::LogStream(
+                    LogStreamPaneAction::CycleLevelFilter,
+                ))
             } else {
                 None
             }
@@ -9642,12 +9658,17 @@ mod tests {
     fn log_stream_copy_button_sits_above_terminal() {
         let content_bounds = Bounds::new(0.0, 0.0, 980.0, 560.0);
         let button = super::log_stream_copy_button_bounds(content_bounds);
+        let filter = super::log_stream_filter_button_bounds(content_bounds);
         let terminal = super::log_stream_terminal_bounds(content_bounds);
 
         assert!(button.origin.x >= content_bounds.origin.x);
         assert!(button.origin.y >= content_bounds.origin.y);
         assert!(button.max_x() <= content_bounds.max_x());
         assert!(button.max_y() <= terminal.origin.y);
+        assert!(filter.origin.x >= content_bounds.origin.x);
+        assert!(filter.origin.y >= content_bounds.origin.y);
+        assert!(filter.max_x() <= button.origin.x);
+        assert!(filter.max_y() <= terminal.origin.y);
     }
 
     #[test]
