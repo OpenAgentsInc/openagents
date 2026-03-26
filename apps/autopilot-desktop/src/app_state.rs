@@ -15647,6 +15647,7 @@ pub struct RenderState {
     pub onboarding: crate::onboarding::OnboardingState,
     pub command_palette: CommandPalette,
     pub command_palette_actions: Rc<RefCell<Vec<String>>>,
+    pub pane_search_filter: crate::pane_registry::PaneSearchFilter,
 }
 
 impl RenderState {
