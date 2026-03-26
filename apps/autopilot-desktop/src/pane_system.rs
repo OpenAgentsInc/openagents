@@ -28,11 +28,16 @@ use crate::ui_style;
 pub const PANE_TITLE_HEIGHT: f32 = 36.0;
 pub const PANE_MIN_WIDTH: f32 = 220.0;
 pub const PANE_MIN_HEIGHT: f32 = 140.0;
+const PANE_CONTENT_INSET: f32 = 10.0;
 /// Default target width for the global sidebar when open.
 pub const SIDEBAR_DEFAULT_WIDTH: f32 = 300.0;
 pub const RIGHT_SIDEBAR_ENABLED: bool = false;
 const PANE_FRAME_HORIZONTAL_CHROME: f32 = 2.0;
 const PANE_MARGIN: f32 = 18.0;
+#[cfg(target_os = "macos")]
+const PANE_TOP_SAFE_INSET: f32 = 48.0;
+#[cfg(not(target_os = "macos"))]
+const PANE_TOP_SAFE_INSET: f32 = PANE_MARGIN;
 const PANE_CASCADE_X: f32 = 26.0;
 const PANE_CASCADE_Y: f32 = 22.0;
 const PANE_HOTBAR_CLEARANCE: f32 = 16.0;
@@ -1341,7 +1346,7 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     let presentation = effective_pane_presentation(state, descriptor.presentation);
     let tier = (id as usize - 1) % 10;
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
-    let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
+    let y = PANE_TOP_SAFE_INSET + tier as f32 * PANE_CASCADE_Y;
     let min_size = pane_minimum_size(descriptor.kind);
     let initial_size = initial_pane_size(&state.pane_size_memory, descriptor);
     let bounds = if presentation.uses_window_chrome() {
@@ -1942,12 +1947,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 }
 
 pub fn pane_content_bounds(bounds: Bounds) -> Bounds {
-    let border = 1.0;
     Bounds::new(
-        bounds.origin.x + border,
-        bounds.origin.y + PANE_TITLE_HEIGHT,
-        (bounds.size.width - border * 2.0).max(0.0),
-        (bounds.size.height - PANE_TITLE_HEIGHT - border).max(0.0),
+        bounds.origin.x + PANE_CONTENT_INSET,
+        bounds.origin.y + PANE_TITLE_HEIGHT + PANE_CONTENT_INSET,
+        (bounds.size.width - PANE_CONTENT_INSET * 2.0).max(0.0),
+        (bounds.size.height - PANE_TITLE_HEIGHT - PANE_CONTENT_INSET * 2.0).max(0.0),
     )
 }
 

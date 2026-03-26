@@ -9,10 +9,12 @@ use wgpui::components::Text;
 use wgpui::components::hud::{Command, CommandPalette};
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, Component, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
+    Bounds, Component, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
 };
 use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
+#[cfg(target_os = "macos")]
+use winit::platform::macos::WindowAttributesExtMacOS;
 
 use crate::app_state::{
     PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
@@ -51,6 +53,37 @@ const SIDEBAR_HANDLE_ICON_TOP_PAD: f32 = 12.0;
 const SIDEBAR_HANDLE_ICON_LEFT_INSET: f32 = 2.0;
 const SIDEBAR_COLLAPSED_RAIL_WIDTH: f32 = 28.0;
 const LOCAL_SIM_RUNTIME_BOOTSTRAP_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_SIMULATION_LANES";
+
+fn app_glass_overlay_color() -> Hsla {
+    Hsla::from_hex(0x08111A)
+}
+
+fn app_glass_sidebar_color() -> Hsla {
+    Hsla::from_hex(0x10202D)
+}
+
+fn preferred_surface_alpha_mode(
+    alpha_modes: &[wgpu::CompositeAlphaMode],
+) -> wgpu::CompositeAlphaMode {
+    #[cfg(target_os = "macos")]
+    {
+        for preferred in [
+            wgpu::CompositeAlphaMode::PreMultiplied,
+            wgpu::CompositeAlphaMode::PostMultiplied,
+            wgpu::CompositeAlphaMode::Inherit,
+            wgpu::CompositeAlphaMode::Auto,
+        ] {
+            if alpha_modes.contains(&preferred) {
+                return preferred;
+            }
+        }
+    }
+
+    alpha_modes
+        .first()
+        .copied()
+        .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+}
 const BACKDROP_BLUR_SHADER: &str = r#"
 struct BlurUniforms {
     texel_size: vec2<f32>,
@@ -317,7 +350,7 @@ impl BackdropBlurRenderer {
             output_view,
             texel_size,
             [0.0, 1.0],
-            wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
         );
     }
 
@@ -474,13 +507,21 @@ pub fn init_state(
     let window_attrs = Window::default_attributes()
         .with_title(WINDOW_TITLE)
         .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+        .with_transparent(cfg!(target_os = "macos"))
+        .with_blur(cfg!(target_os = "macos"))
         .with_visible(window_visible);
+    #[cfg(target_os = "macos")]
+    let window_attrs = window_attrs
+        .with_titlebar_transparent(true)
+        .with_fullsize_content_view(true);
 
     let window = Arc::new(
         event_loop
             .create_window(window_attrs)
             .context("failed to create window")?,
     );
+    #[cfg(target_os = "macos")]
+    window.set_blur(true);
 
     pollster::block_on(async move {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -522,11 +563,7 @@ pub fn init_state(
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: surface_caps
-                .alpha_modes
-                .first()
-                .copied()
-                .unwrap_or(wgpu::CompositeAlphaMode::Auto),
+            alpha_mode: preferred_surface_alpha_mode(&surface_caps.alpha_modes),
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
@@ -1220,15 +1257,26 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     let fullscreen_pane_active = pane_fullscreen_active(state);
 
     let mut scene = Scene::new();
-    scene
-        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+    #[cfg(target_os = "macos")]
+    scene.draw_quad(
+        Quad::new(Bounds::new(0.0, 0.0, width, height))
+            .with_background(app_glass_overlay_color().with_alpha(0.70)),
+    );
+    #[cfg(not(target_os = "macos"))]
+    scene.draw_quad(
+        Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP),
+    );
 
     // Sidebar UI is intentionally disabled for now; keep the underlying code path intact.
     let panel_width = sidebar_reserved_width(state);
     let sidebar_x = (width - panel_width).max(0.0);
 
     if RIGHT_SIDEBAR_ENABLED && panel_width > 0.0 {
+        #[cfg(target_os = "macos")]
+        let sidebar_color = app_glass_sidebar_color().with_alpha(0.486);
+        #[cfg(not(target_os = "macos"))]
         let sidebar_color = theme::bg::ELEVATED;
+
         scene.draw_quad(
             Quad::new(Bounds::new(sidebar_x, 0.0, panel_width, height))
                 .with_background(sidebar_color),
@@ -1897,6 +1945,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
                 state.renderer.render_overlay(&mut encoder, &view);
             }
         } else {
+            #[cfg(target_os = "macos")]
+            state
+                .renderer
+                .render_with_clear(&mut encoder, &view, wgpu::Color::TRANSPARENT);
+            #[cfg(not(target_os = "macos"))]
             state.renderer.render(&mut encoder, &view);
             if let Some(overlay_scene) = overlay_scene.as_ref() {
                 state.renderer.prepare(
@@ -1909,6 +1962,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             }
         }
     } else {
+        #[cfg(target_os = "macos")]
+        state
+            .renderer
+            .render_with_clear(&mut encoder, &view, wgpu::Color::TRANSPARENT);
+        #[cfg(not(target_os = "macos"))]
         state.renderer.render(&mut encoder, &view);
         if let Some(overlay_scene) = overlay_scene.as_ref() {
             state.renderer.prepare(
