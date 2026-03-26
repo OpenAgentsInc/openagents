@@ -6,8 +6,10 @@ use crate::app_state::{
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_renderer::{
-    earnings_scoreboard_amount_display, format_bps_percent, paint_action_button, paint_label_line,
-    paint_source_badge, paint_state_summary, paint_wrapped_label_line, split_text_for_display,
+    app_text_style, earnings_scoreboard_amount_display, format_bps_percent,
+    mission_control_panel_border_color, mission_control_panel_color,
+    mission_control_panel_header_color, paint_secondary_button, paint_source_badge,
+    paint_state_summary, paint_tertiary_button, split_text_for_display,
 };
 use crate::pane_system::{
     earnings_scoreboard_active_job_button_bounds, earnings_scoreboard_history_button_bounds,
@@ -16,11 +18,15 @@ use crate::pane_system::{
 use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Hsla, PaintContext, Point, Quad, theme};
 
-const SECTION_GAP: f32 = 12.0;
-const SECTION_PADDING: f32 = 12.0;
-const SECTION_HEADER_HEIGHT: f32 = 24.0;
-const METRIC_CARD_HEIGHT: f32 = 54.0;
-const PREVIEW_ROW_HEIGHT: f32 = 32.0;
+const SECTION_GAP: f32 = 16.0;
+const SECTION_PADDING: f32 = 16.0;
+const SECTION_HEADER_HEIGHT: f32 = 26.0;
+const PANEL_RADIUS: f32 = 3.0;
+const METRIC_CARD_HEIGHT: f32 = 68.0;
+const PREVIEW_ROW_HEIGHT: f32 = 40.0;
+const DETAIL_ROW_LABEL_WIDTH: f32 = 156.0;
+const SECTION_SCROLLBAR_GUTTER: f32 = 10.0;
+const SECTION_SCROLLBAR_WIDTH: f32 = 3.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MissionControlActiveJobsPanelState {
@@ -203,7 +209,7 @@ pub fn paint_earnings_jobs_pane(
     content_bounds: Bounds,
     pane_is_active: bool,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
-    earnings_scoreboard: &EarningsScoreboardState,
+    earnings_scoreboard: &mut EarningsScoreboardState,
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
     job_inbox: &JobInboxState,
@@ -229,22 +235,22 @@ pub fn paint_earnings_jobs_pane(
 
     paint_source_badge(content_bounds, "runtime+wallet+receipts", paint);
 
-    paint_action_button(
+    paint_tertiary_button(
         earnings_scoreboard_refresh_button_bounds(content_bounds),
         "Refresh metrics",
         paint,
     );
-    paint_action_button(
+    paint_secondary_button(
         earnings_scoreboard_job_inbox_button_bounds(content_bounds),
         "Open Job Inbox",
         paint,
     );
-    paint_action_button(
+    paint_secondary_button(
         earnings_scoreboard_active_job_button_bounds(content_bounds),
         "Open Active Job",
         paint,
     );
-    paint_action_button(
+    paint_secondary_button(
         earnings_scoreboard_history_button_bounds(content_bounds),
         "Open Job History",
         paint,
@@ -266,12 +272,12 @@ pub fn paint_earnings_jobs_pane(
         earnings_scoreboard.last_error.as_deref(),
     );
 
-    let grid_top = summary_bottom + 8.0;
+    let grid_top = summary_bottom + 18.0;
     let inner_width = (content_bounds.size.width - SECTION_PADDING * 2.0).max(0.0);
     let column_width = ((inner_width - SECTION_GAP) / 2.0).max(0.0);
     let remaining_height = (content_bounds.max_y() - grid_top - SECTION_PADDING).max(0.0);
-    let top_row_height = (remaining_height * 0.52).clamp(188.0, 248.0);
-    let bottom_row_height = (remaining_height - top_row_height - SECTION_GAP).max(120.0);
+    let top_row_height = (remaining_height * 0.62).clamp(236.0, 340.0);
+    let bottom_row_height = (remaining_height - top_row_height - SECTION_GAP).max(104.0);
     let left_x = content_bounds.origin.x + SECTION_PADDING;
     let right_x = left_x + column_width + SECTION_GAP;
 
@@ -316,6 +322,43 @@ pub fn paint_earnings_jobs_pane(
         paint,
     );
     paint_history_section(history_bounds, job_history, paint);
+}
+
+fn scoreboard_summary_bottom(
+    content_bounds: Bounds,
+    earnings_scoreboard: &EarningsScoreboardState,
+) -> f32 {
+    let stale = earnings_scoreboard.is_stale(std::time::Instant::now());
+    let stale_suffix = if stale { " (stale)" } else { "" };
+    let button_bottom = earnings_scoreboard_history_button_bounds(content_bounds).max_y();
+    button_bottom
+        + 12.0
+        + 16.0
+        + if earnings_scoreboard.last_action.is_some() {
+            16.0
+        } else {
+            0.0
+        }
+        + if earnings_scoreboard.last_error.is_some() {
+            16.0
+        } else {
+            0.0
+        }
+        + if stale_suffix.is_empty() { 0.0 } else { 0.0 }
+}
+
+pub fn earnings_section_panel_bounds(
+    content_bounds: Bounds,
+    earnings_scoreboard: &EarningsScoreboardState,
+) -> Bounds {
+    let summary_bottom = scoreboard_summary_bottom(content_bounds, earnings_scoreboard);
+    let grid_top = summary_bottom + 18.0;
+    let inner_width = (content_bounds.size.width - SECTION_PADDING * 2.0).max(0.0);
+    let column_width = ((inner_width - SECTION_GAP) / 2.0).max(0.0);
+    let remaining_height = (content_bounds.max_y() - grid_top - SECTION_PADDING).max(0.0);
+    let top_row_height = (remaining_height * 0.62).clamp(236.0, 340.0);
+    let left_x = content_bounds.origin.x + SECTION_PADDING;
+    Bounds::new(left_x, grid_top, column_width, top_row_height)
 }
 
 fn paint_inactive_preview(
@@ -405,19 +448,14 @@ fn paint_inactive_preview(
 fn paint_section_panel(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(theme::bg::SURFACE)
-            .with_border(accent.with_alpha(0.45), 1.0)
-            .with_corner_radius(8.0),
+            .with_background(mission_control_panel_color())
+            .with_border(mission_control_panel_border_color().with_alpha(0.72), 1.0)
+            .with_corner_radius(PANEL_RADIUS),
     );
     paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y,
-            bounds.size.width,
-            SECTION_HEADER_HEIGHT,
-        ))
-        .with_background(theme::bg::APP.with_alpha(0.72))
-        .with_corner_radius(8.0),
+        Quad::new(bounds)
+            .with_border(accent.with_alpha(0.06), 1.0)
+            .with_corner_radius(PANEL_RADIUS),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
@@ -427,25 +465,84 @@ fn paint_section_panel(bounds: Bounds, title: &str, accent: Hsla, paint: &mut Pa
             bounds.size.height,
         ))
         .with_background(accent.with_alpha(0.9))
-        .with_corner_radius(8.0),
+        .with_corner_radius(PANEL_RADIUS),
     );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 4.0,
+            bounds.origin.y,
+            (bounds.size.width - 4.0).max(0.0),
+            SECTION_HEADER_HEIGHT,
+        ))
+        .with_background(mission_control_panel_header_color().with_alpha(0.88)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 4.0,
+            bounds.origin.y,
+            (bounds.size.width - 4.0).max(0.0),
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.22)),
+    );
+    let heading_style = app_text_style(crate::ui_style::AppTextRole::SectionHeading);
+    let marker_origin = Point::new(bounds.origin.x + 14.0, bounds.origin.y + 8.0);
+    let marker = paint
+        .text
+        .layout_mono("\\\\", marker_origin, heading_style.font_size, accent);
+    let marker_width = marker.bounds().size.width;
+    paint.scene.draw_text(marker);
     paint.scene.draw_text(paint.text.layout_mono(
-        title,
-        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 6.0),
-        10.0,
-        theme::text::PRIMARY,
+        &title.to_ascii_uppercase(),
+        Point::new(marker_origin.x + marker_width + 6.0, marker_origin.y),
+        heading_style.font_size,
+        heading_style.color,
     ));
+}
+
+fn section_content_clip_bounds(bounds: Bounds) -> Bounds {
+    Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + SECTION_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(0.0),
+        (bounds.size.height - SECTION_HEADER_HEIGHT - 12.0).max(0.0),
+    )
+}
+
+pub fn earnings_scroll_viewport_bounds(
+    content_bounds: Bounds,
+    earnings_scoreboard: &EarningsScoreboardState,
+) -> Bounds {
+    let bounds = earnings_section_panel_bounds(content_bounds, earnings_scoreboard);
+    let clip = section_content_clip_bounds(bounds);
+    Bounds::new(
+        clip.origin.x,
+        clip.origin.y,
+        (clip.size.width - SECTION_SCROLLBAR_GUTTER).max(0.0),
+        clip.size.height,
+    )
 }
 
 fn paint_earnings_section(
     bounds: Bounds,
-    earnings_scoreboard: &EarningsScoreboardState,
+    earnings_scoreboard: &mut EarningsScoreboardState,
     paint: &mut PaintContext,
 ) {
+    let viewport = Bounds::new(
+        section_content_clip_bounds(bounds).origin.x,
+        section_content_clip_bounds(bounds).origin.y,
+        (section_content_clip_bounds(bounds).size.width - SECTION_SCROLLBAR_GUTTER).max(0.0),
+        section_content_clip_bounds(bounds).size.height,
+    );
+    paint.scene.push_clip(viewport);
     let inner_x = bounds.origin.x + SECTION_PADDING;
-    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 10.0;
-    let card_gap = 8.0;
-    let card_width = ((bounds.size.width - SECTION_PADDING * 2.0 - card_gap * 2.0) / 3.0).max(0.0);
+    let row_width = viewport.size.width - SECTION_PADDING * 2.0;
+    let content_height = earnings_section_content_height(earnings_scoreboard, row_width);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = earnings_scoreboard.clamp_scroll_offset(max_scroll);
+    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 16.0 - scroll_offset;
+    let card_gap = 10.0;
+    let card_width = ((viewport.size.width - SECTION_PADDING * 2.0 - card_gap * 2.0) / 3.0).max(0.0);
     let today_display = earnings_scoreboard_amount_display(
         earnings_scoreboard.load_state,
         format_sats_amount(earnings_scoreboard.sats_today),
@@ -475,67 +572,75 @@ fn paint_earnings_section(
             paint,
         );
     }
-    y += METRIC_CARD_HEIGHT + 12.0;
-    y = paint_label_line(
+    y += METRIC_CARD_HEIGHT + 16.0;
+    y = paint_earnings_detail_row(
         paint,
         inner_x,
         y,
+        row_width,
         "Jobs today",
         &earnings_value_or_loading(
             earnings_scoreboard.load_state,
             earnings_scoreboard.jobs_today.to_string(),
         ),
     );
-    y = paint_wrapped_label_line(
+    y = paint_earnings_detail_row(
         paint,
         inner_x,
         y,
+        row_width,
         "Last job result",
         &earnings_value_or_loading(
             earnings_scoreboard.load_state,
             earnings_scoreboard.last_job_result.clone(),
         ),
-        44,
     );
-    y = paint_label_line(
+    y = paint_earnings_detail_row(
         paint,
         inner_x,
         y,
+        row_width,
         "Completion ratio",
         &format_bps_percent(earnings_scoreboard.completion_ratio_bps),
     );
-    y = paint_label_line(
+    y = paint_earnings_detail_row(
         paint,
         inner_x,
         y,
+        row_width,
         "Payout success",
         &format_bps_percent(earnings_scoreboard.payout_success_ratio_bps),
     );
-    y = paint_label_line(
+    y = paint_earnings_detail_row(
         paint,
         inner_x,
         y,
+        row_width,
         "First job latency (s)",
         &earnings_scoreboard
             .first_job_latency_seconds
             .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
     );
-    y = paint_label_line(
+    y = paint_earnings_detail_row(
         paint,
         inner_x,
         y,
+        row_width,
         "Wallet confirm avg (s)",
         &earnings_scoreboard
             .avg_wallet_confirmation_latency_seconds
             .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
     );
-    let _ = paint_label_line(
+    let _ = paint_earnings_detail_row(
         paint,
         inner_x,
         y,
+        row_width,
         "Online uptime (s)",
         &earnings_scoreboard.online_uptime_seconds.to_string(),
     );
+    paint.scene.pop_clip();
+    paint_earnings_scrollbar(bounds, viewport, content_height, scroll_offset, paint);
 }
 
 fn paint_active_section(
@@ -549,6 +654,7 @@ fn paint_active_section(
     spark_wallet: &SparkPaneState,
     paint: &mut PaintContext,
 ) {
+    paint.scene.push_clip(section_content_clip_bounds(bounds));
     let panel = active_jobs_panel_state(
         desktop_shell_mode,
         provider_runtime,
@@ -566,14 +672,14 @@ fn paint_active_section(
         _ => theme::text::PRIMARY,
     };
     let x = bounds.origin.x + SECTION_PADDING;
-    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 8.0;
+    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 20.0;
     paint.scene.draw_text(paint.text.layout_mono(
         panel.headline.as_str(),
         Point::new(x, y),
-        18.0,
+        20.0,
         headline_color,
     ));
-    y += 28.0;
+    y += 34.0;
     let chunk_len =
         (((bounds.size.width - SECTION_PADDING * 2.0).max(96.0) / 6.4).floor() as usize).max(18);
     let max_lines = if active_job.job.is_some() { 9 } else { 6 };
@@ -582,10 +688,10 @@ fn paint_active_section(
             paint.scene.draw_text(paint.text.layout_mono(
                 &chunk,
                 Point::new(x, y),
-                9.5,
+                10.5,
                 theme::text::PRIMARY,
             ));
-            y += 14.0;
+            y += 18.0;
         }
     }
     if panel.lines.len() > max_lines {
@@ -596,6 +702,7 @@ fn paint_active_section(
             theme::text::MUTED,
         ));
     }
+    paint.scene.pop_clip();
 }
 
 fn paint_inbox_section(
@@ -604,8 +711,9 @@ fn paint_inbox_section(
     provider_runtime: &ProviderRuntimeState,
     paint: &mut PaintContext,
 ) {
+    paint.scene.push_clip(section_content_clip_bounds(bounds));
     let x = bounds.origin.x + SECTION_PADDING;
-    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 8.0;
+    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 20.0;
     let summary = format!(
         "Observed {} request(s){}",
         job_inbox.requests.len(),
@@ -620,7 +728,7 @@ fn paint_inbox_section(
             .text
             .layout(&summary, Point::new(x, y), 10.0, theme::text::MUTED),
     );
-    y += 18.0;
+    y += 22.0;
 
     if job_inbox.load_state == PaneLoadState::Loading && job_inbox.requests.is_empty() {
         paint.scene.draw_text(paint.text.layout(
@@ -646,7 +754,7 @@ fn paint_inbox_section(
     for (index, request) in job_inbox.requests.iter().take(3).enumerate() {
         let row_bounds = Bounds::new(
             x,
-            y + index as f32 * (PREVIEW_ROW_HEIGHT + 6.0),
+            y + index as f32 * (PREVIEW_ROW_HEIGHT + 10.0),
             bounds.size.width - SECTION_PADDING * 2.0,
             PREVIEW_ROW_HEIGHT,
         );
@@ -655,19 +763,19 @@ fn paint_inbox_section(
         paint.scene.draw_quad(
             Quad::new(row_bounds)
                 .with_background(if selected {
-                    theme::bg::APP.with_alpha(0.84)
+                    theme::accent::PRIMARY.with_alpha(0.14)
                 } else {
-                    theme::bg::APP.with_alpha(0.65)
+                    theme::bg::APP.with_alpha(0.74)
                 })
                 .with_border(
                     if selected {
-                        theme::accent::PRIMARY
+                        theme::accent::PRIMARY.with_alpha(0.78)
                     } else {
-                        theme::border::DEFAULT
+                        mission_control_panel_border_color().with_alpha(0.46)
                     },
                     1.0,
                 )
-                .with_corner_radius(6.0),
+                .with_corner_radius(PANEL_RADIUS),
         );
         paint.scene.draw_text(paint.text.layout_mono(
             &format!(
@@ -677,8 +785,8 @@ fn paint_inbox_section(
                 format_sats_amount(request.price_sats),
                 request.validation.label()
             ),
-            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 7.0),
-            9.0,
+            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 10.0),
+            10.0,
             theme::text::PRIMARY,
         ));
         paint.scene.draw_text(paint.text.layout(
@@ -688,8 +796,8 @@ fn paint_inbox_section(
                 request.demand_source.label(),
                 request.decision.label()
             ),
-            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 18.0),
-            8.5,
+            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 25.0),
+            8.8,
             theme::text::MUTED,
         ));
     }
@@ -700,11 +808,13 @@ fn paint_inbox_section(
         10.0,
         theme::text::MUTED,
     ));
+    paint.scene.pop_clip();
 }
 
 fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &mut PaintContext) {
+    paint.scene.push_clip(section_content_clip_bounds(bounds));
     let x = bounds.origin.x + SECTION_PADDING;
-    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 8.0;
+    let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 20.0;
     paint.scene.draw_text(paint.text.layout(
         &format!(
             "Rows: {} | filter={} | range={}",
@@ -716,7 +826,7 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
         10.0,
         theme::text::MUTED,
     ));
-    y += 18.0;
+    y += 22.0;
 
     if job_history.load_state == PaneLoadState::Loading && job_history.rows.is_empty() {
         paint.scene.draw_text(paint.text.layout(
@@ -741,7 +851,7 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
     for (index, row) in job_history.rows.iter().take(3).enumerate() {
         let row_bounds = Bounds::new(
             x,
-            y + index as f32 * (PREVIEW_ROW_HEIGHT + 6.0),
+            y + index as f32 * (PREVIEW_ROW_HEIGHT + 10.0),
             bounds.size.width - SECTION_PADDING * 2.0,
             PREVIEW_ROW_HEIGHT,
         );
@@ -752,9 +862,9 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
         };
         paint.scene.draw_quad(
             Quad::new(row_bounds)
-                .with_background(theme::bg::APP.with_alpha(0.7))
-                .with_border(accent.with_alpha(0.6), 1.0)
-                .with_corner_radius(6.0),
+                .with_background(theme::bg::APP.with_alpha(0.72))
+                .with_border(accent.with_alpha(0.54), 1.0)
+                .with_corner_radius(PANEL_RADIUS),
         );
         paint.scene.draw_text(paint.text.layout_mono(
             &format!(
@@ -763,8 +873,8 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
                 row.status.label(),
                 format_sats_amount(row.payout_sats)
             ),
-            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 7.0),
-            9.0,
+            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 10.0),
+            10.0,
             accent,
         ));
         paint.scene.draw_text(paint.text.layout(
@@ -774,8 +884,8 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
                 compact_identity(row.requester_nostr_pubkey.as_deref()),
                 compact_identity(row.provider_nostr_pubkey.as_deref())
             ),
-            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 18.0),
-            8.5,
+            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 25.0),
+            8.8,
             theme::text::MUTED,
         ));
     }
@@ -786,6 +896,7 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
         10.0,
         theme::text::MUTED,
     ));
+    paint.scene.pop_clip();
 }
 
 fn paint_metric_card(
@@ -797,22 +908,156 @@ fn paint_metric_card(
 ) {
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(theme::bg::APP.with_alpha(0.72))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(6.0),
+            .with_background(theme::bg::APP.with_alpha(0.74))
+            .with_border(mission_control_panel_border_color().with_alpha(0.52), 1.0)
+            .with_corner_radius(PANEL_RADIUS),
     );
     paint.scene.draw_text(paint.text.layout(
         label,
-        Point::new(bounds.origin.x + 8.0, bounds.origin.y + 8.0),
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 10.0),
         10.0,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         value,
-        Point::new(bounds.origin.x + 8.0, bounds.origin.y + 26.0),
-        13.0,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 36.0),
+        15.0,
         value_color,
     ));
+}
+
+fn earnings_detail_row_height(value: &str, row_width: f32) -> f32 {
+    let value_width = (row_width - DETAIL_ROW_LABEL_WIDTH).max(40.0);
+    let wrap_chars = ((value_width / 8.0).floor() as usize).max(10);
+    let lines = split_text_for_display(value, wrap_chars).len().clamp(1, 2) as f32;
+    let line_y = 16.0 * lines;
+    let divider_y = line_y.max(16.0) + 8.0;
+    divider_y + 10.0
+}
+
+fn earnings_section_content_height(
+    earnings_scoreboard: &EarningsScoreboardState,
+    row_width: f32,
+) -> f32 {
+    let mut height = 16.0 + METRIC_CARD_HEIGHT + 16.0;
+    height += earnings_detail_row_height(
+        &earnings_value_or_loading(
+            earnings_scoreboard.load_state,
+            earnings_scoreboard.jobs_today.to_string(),
+        ),
+        row_width,
+    );
+    height += earnings_detail_row_height(
+        &earnings_value_or_loading(
+            earnings_scoreboard.load_state,
+            earnings_scoreboard.last_job_result.clone(),
+        ),
+        row_width,
+    );
+    height += earnings_detail_row_height(
+        &format_bps_percent(earnings_scoreboard.completion_ratio_bps),
+        row_width,
+    );
+    height += earnings_detail_row_height(
+        &format_bps_percent(earnings_scoreboard.payout_success_ratio_bps),
+        row_width,
+    );
+    height += earnings_detail_row_height(
+        &earnings_scoreboard
+            .first_job_latency_seconds
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
+        row_width,
+    );
+    height += earnings_detail_row_height(
+        &earnings_scoreboard
+            .avg_wallet_confirmation_latency_seconds
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
+        row_width,
+    );
+    height += earnings_detail_row_height(
+        &earnings_scoreboard.online_uptime_seconds.to_string(),
+        row_width,
+    );
+    height + 12.0
+}
+
+fn paint_earnings_scrollbar(
+    bounds: Bounds,
+    viewport: Bounds,
+    content_height: f32,
+    scroll_offset: f32,
+    paint: &mut PaintContext,
+) {
+    if viewport.size.height <= 0.0 || content_height <= viewport.size.height + 0.5 {
+        return;
+    }
+    let max_offset = (content_height - viewport.size.height).max(0.0);
+    let track_bounds = Bounds::new(
+        bounds.max_x() - 8.0,
+        viewport.origin.y,
+        SECTION_SCROLLBAR_WIDTH,
+        viewport.size.height,
+    );
+    let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
+        .clamp(18.0, viewport.size.height.max(0.0));
+    let thumb_y = viewport.origin.y
+        + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+    paint.scene.draw_quad(
+        Quad::new(track_bounds)
+            .with_background(theme::bg::APP.with_alpha(0.42))
+            .with_corner_radius(1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            track_bounds.origin.x,
+            thumb_y,
+            track_bounds.size.width,
+            thumb_height,
+        ))
+        .with_background(theme::text::MUTED.with_alpha(0.82))
+        .with_corner_radius(1.0),
+    );
+}
+
+fn paint_earnings_detail_row(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    row_width: f32,
+    label: &str,
+    value: &str,
+) -> f32 {
+    let label_style = app_text_style(crate::ui_style::AppTextRole::FormLabel);
+    let value_style = app_text_style(crate::ui_style::AppTextRole::FormValue);
+    let value_x = x + DETAIL_ROW_LABEL_WIDTH;
+    let value_width = (row_width - DETAIL_ROW_LABEL_WIDTH).max(40.0);
+    let wrap_chars = ((value_width / 8.0).floor() as usize).max(10);
+
+    paint.scene.draw_text(paint.text.layout(
+        label,
+        Point::new(x, y),
+        label_style.font_size,
+        label_style.color,
+    ));
+
+    let mut line_y = y;
+    for chunk in split_text_for_display(value, wrap_chars).into_iter().take(2) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(value_x, line_y),
+            value_style.font_size,
+            value_style.color,
+        ));
+        line_y += 16.0;
+    }
+
+    let divider_y = line_y.max(y + 16.0) + 8.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
+            .with_background(mission_control_panel_border_color().with_alpha(0.32)),
+    );
+
+    divider_y + 10.0
 }
 
 fn earnings_value_or_loading(load_state: PaneLoadState, value: String) -> String {

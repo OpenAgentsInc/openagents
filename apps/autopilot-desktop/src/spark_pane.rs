@@ -10,6 +10,21 @@ pub const PAY_INVOICE_PANE_HEIGHT: f32 = 240.0;
 const PAD: f32 = 12.0;
 const GAP: f32 = 8.0;
 const CONTROL_HEIGHT: f32 = 30.0;
+const RIGHT_SCROLLBAR_GUTTER: f32 = 14.0;
+const OVERVIEW_HEIGHT: f32 = 132.0;
+const UTILITY_SECTION_HEIGHT: f32 = 94.0;
+const FLOW_SECTION_INSET: f32 = 15.0;
+const SECTION_HEADER_HEIGHT: f32 = 38.0;
+const SECTION_HEADER_TO_CONTROLS_GAP: f32 = 16.0;
+const FORM_LABEL_TOP_MARGIN: f32 = 30.0;
+const FORM_LABEL_STACK_HEIGHT: f32 = 20.0;
+const SECTION_CONTROLS_TO_FORM_GAP: f32 = FORM_LABEL_TOP_MARGIN + FORM_LABEL_STACK_HEIGHT;
+const SECTION_HEADER_TO_FORM_GAP: f32 =
+    SECTION_HEADER_HEIGHT + FORM_LABEL_TOP_MARGIN + FORM_LABEL_STACK_HEIGHT;
+const SECTION_CTA_ROW_GAP: f32 = FORM_LABEL_TOP_MARGIN + FORM_LABEL_STACK_HEIGHT;
+const FLOW_SECTION_BOTTOM_PADDING: f32 = 16.0;
+const SECTION_TO_SECTION_GAP: f32 = 24.0;
+const SUPPORTING_SECTION_HEADER_HEIGHT: f32 = 48.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SparkPaneAction {
@@ -20,6 +35,7 @@ pub enum SparkPaneAction {
     GenerateSparkAddress,
     GenerateBitcoinAddress,
     CreateNewWallet,
+    CopySparkAddress,
     CreateInvoice,
     SendPayment,
 }
@@ -37,21 +53,20 @@ pub enum CreateInvoicePaneAction {
 
 #[derive(Clone, Copy)]
 pub struct SparkPaneLayout {
+    pub overview_bounds: Bounds,
+    pub utility_section_bounds: Bounds,
     pub refresh_button: Bounds,
-    pub use_identity_path_button: Bounds,
-    pub use_default_identity_button: Bounds,
-    pub identity_path_input: Bounds,
-    pub mnemonic_phrase_input: Bounds,
-    pub use_mnemonic_phrase_button: Bounds,
     pub spark_address_button: Bounds,
     pub bitcoin_address_button: Bounds,
-    pub create_wallet_button: Bounds,
+    pub copy_spark_address_button: Bounds,
+    pub receive_section_bounds: Bounds,
+    pub send_section_bounds: Bounds,
     pub invoice_amount_input: Bounds,
     pub create_invoice_button: Bounds,
     pub send_request_input: Bounds,
-    pub send_request_copy_button: Bounds,
     pub send_amount_input: Bounds,
     pub send_payment_button: Bounds,
+    pub details_section_bounds: Bounds,
     pub details_origin: Point,
 }
 
@@ -73,118 +88,134 @@ pub struct CreateInvoicePaneLayout {
     pub details_origin: Point,
 }
 
-pub fn layout(content_bounds: Bounds) -> SparkPaneLayout {
-    let origin_x = content_bounds.origin.x + PAD;
-    let origin_y = content_bounds.origin.y + PAD;
-    let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
+pub fn scroll_content_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x,
+        content_bounds.origin.y,
+        (content_bounds.size.width - RIGHT_SCROLLBAR_GUTTER).max(120.0),
+        content_bounds.size.height.max(1.0),
+    )
+}
 
-    let top_button_width = ((usable_width - GAP * 3.0) / 4.0).max(88.0);
-    let refresh_button = Bounds::new(origin_x, origin_y, top_button_width, CONTROL_HEIGHT);
-    let spark_address_button = Bounds::new(
+pub fn scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let scroll_bounds = scroll_content_bounds(content_bounds);
+    Bounds::new(
+        scroll_bounds.origin.x + 8.0,
+        scroll_bounds.origin.y + 8.0,
+        (scroll_bounds.size.width - 16.0).max(120.0),
+        (scroll_bounds.size.height - 16.0).max(1.0),
+    )
+}
+
+pub fn layout(content_bounds: Bounds) -> SparkPaneLayout {
+    layout_with_scroll(content_bounds, 0.0)
+}
+
+pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPaneLayout {
+    let origin_x = content_bounds.origin.x + PAD;
+    let origin_y = content_bounds.origin.y + PAD - scroll_offset;
+    let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
+    let overview_bounds = Bounds::new(origin_x, origin_y, usable_width, OVERVIEW_HEIGHT);
+
+    let utility_section_y = overview_bounds.max_y() + 18.0;
+    let utility_section_bounds =
+        Bounds::new(origin_x, utility_section_y, usable_width, UTILITY_SECTION_HEIGHT);
+    let utility_content_x = utility_section_bounds.origin.x + FLOW_SECTION_INSET;
+    let utility_width = (usable_width * 0.24).clamp(138.0, 186.0);
+    let controls_y = utility_section_bounds.origin.y + 52.0;
+    let refresh_button = Bounds::new(utility_content_x, controls_y, utility_width, CONTROL_HEIGHT);
+    let copy_spark_address_button = Bounds::new(
         refresh_button.origin.x + refresh_button.size.width + GAP,
-        origin_y,
-        top_button_width,
+        controls_y,
+        utility_width,
+        CONTROL_HEIGHT,
+    );
+
+    let receive_section_y = utility_section_bounds.max_y() + SECTION_TO_SECTION_GAP;
+    let receive_section_height = SECTION_HEADER_HEIGHT
+        + SECTION_HEADER_TO_CONTROLS_GAP
+        + CONTROL_HEIGHT
+        + SECTION_CONTROLS_TO_FORM_GAP
+        + CONTROL_HEIGHT
+        + FLOW_SECTION_BOTTOM_PADDING;
+    let receive_section_bounds =
+        Bounds::new(origin_x, receive_section_y, usable_width, receive_section_height);
+    let receive_content_x = receive_section_bounds.origin.x + FLOW_SECTION_INSET;
+    let receive_content_width =
+        (receive_section_bounds.size.width - FLOW_SECTION_INSET * 2.0).max(180.0);
+    let receive_y = receive_section_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
+    let receive_width = ((receive_content_width - GAP) / 2.0).max(140.0);
+    let spark_address_button = Bounds::new(
+        receive_content_x,
+        receive_y,
+        receive_width,
         CONTROL_HEIGHT,
     );
     let bitcoin_address_button = Bounds::new(
         spark_address_button.origin.x + spark_address_button.size.width + GAP,
-        origin_y,
-        top_button_width,
-        CONTROL_HEIGHT,
-    );
-    let create_wallet_button = Bounds::new(
-        bitcoin_address_button.origin.x + bitcoin_address_button.size.width + GAP,
-        origin_y,
-        top_button_width,
+        receive_y,
+        receive_width,
         CONTROL_HEIGHT,
     );
 
-    let identity_row_y = origin_y + CONTROL_HEIGHT + 10.0;
-    let apply_width = (usable_width * 0.22).clamp(104.0, 184.0);
-    let reset_width = (usable_width * 0.18).clamp(96.0, 164.0);
-    let identity_path_width = (usable_width - apply_width - reset_width - GAP * 2.0).max(120.0);
-    let identity_path_input = Bounds::new(origin_x, identity_row_y, identity_path_width, CONTROL_HEIGHT);
-    let use_identity_path_button = Bounds::new(
-        identity_path_input.max_x() + GAP,
-        identity_row_y,
-        apply_width,
-        CONTROL_HEIGHT,
-    );
-    let use_default_identity_button = Bounds::new(
-        use_identity_path_button.max_x() + GAP,
-        identity_row_y,
-        reset_width,
-        CONTROL_HEIGHT,
-    );
-    let mnemonic_row_y = identity_row_y + CONTROL_HEIGHT + 10.0;
-    let use_mnemonic_phrase_width = (usable_width * 0.28).clamp(130.0, 220.0);
-    let mnemonic_phrase_input = Bounds::new(
-        origin_x,
-        mnemonic_row_y,
-        (usable_width - use_mnemonic_phrase_width - GAP).max(120.0),
-        CONTROL_HEIGHT,
-    );
-    let use_mnemonic_phrase_button = Bounds::new(
-        mnemonic_phrase_input.max_x() + GAP,
-        mnemonic_row_y,
-        use_mnemonic_phrase_width,
-        CONTROL_HEIGHT,
-    );
-
-    let invoice_row_y = mnemonic_row_y + CONTROL_HEIGHT + 10.0;
-    let invoice_input_width = (usable_width * 0.28).clamp(110.0, 180.0);
+    let invoice_row_y = receive_y + CONTROL_HEIGHT + SECTION_CONTROLS_TO_FORM_GAP;
+    let invoice_input_width = (receive_content_width * 0.28).clamp(110.0, 180.0);
     let invoice_amount_input =
-        Bounds::new(origin_x, invoice_row_y, invoice_input_width, CONTROL_HEIGHT);
+        Bounds::new(receive_content_x, invoice_row_y, invoice_input_width, CONTROL_HEIGHT);
     let create_invoice_button = Bounds::new(
         invoice_amount_input.origin.x + invoice_amount_input.size.width + GAP,
         invoice_row_y,
-        (usable_width - invoice_input_width - GAP).max(120.0),
+        (receive_content_width - invoice_input_width - GAP).max(120.0),
         CONTROL_HEIGHT,
     );
 
-    let send_request_y = invoice_row_y + CONTROL_HEIGHT + 10.0;
-    let send_request_copy_width = 24.0;
-    let send_request_input = Bounds::new(
-        origin_x,
-        send_request_y,
-        (usable_width - send_request_copy_width - GAP).max(120.0),
-        CONTROL_HEIGHT,
-    );
-    let send_request_copy_button = Bounds::new(
-        send_request_input.max_x() + GAP,
-        send_request_y + ((CONTROL_HEIGHT - send_request_copy_width).max(0.0) * 0.5),
-        send_request_copy_width,
-        send_request_copy_width,
-    );
+    let send_section_y = receive_section_bounds.max_y() + SECTION_TO_SECTION_GAP;
+    let send_section_height = SECTION_HEADER_TO_FORM_GAP
+        + CONTROL_HEIGHT
+        + SECTION_CTA_ROW_GAP
+        + CONTROL_HEIGHT
+        + FLOW_SECTION_BOTTOM_PADDING;
+    let send_section_bounds =
+        Bounds::new(origin_x, send_section_y, usable_width, send_section_height);
+    let send_content_x = send_section_bounds.origin.x + FLOW_SECTION_INSET;
+    let send_content_width =
+        (send_section_bounds.size.width - FLOW_SECTION_INSET * 2.0).max(180.0);
+    let send_request_y = send_section_y + SECTION_HEADER_TO_FORM_GAP;
+    let send_request_input =
+        Bounds::new(send_content_x, send_request_y, send_content_width, CONTROL_HEIGHT);
 
-    let send_row_y = send_request_y + CONTROL_HEIGHT + 10.0;
-    let send_amount_width = (usable_width * 0.28).clamp(110.0, 180.0);
-    let send_amount_input = Bounds::new(origin_x, send_row_y, send_amount_width, CONTROL_HEIGHT);
+    let send_row_y = send_request_y + CONTROL_HEIGHT + SECTION_CTA_ROW_GAP;
+    let send_amount_width = (send_content_width * 0.28).clamp(110.0, 180.0);
+    let send_amount_input =
+        Bounds::new(send_content_x, send_row_y, send_amount_width, CONTROL_HEIGHT);
     let send_payment_button = Bounds::new(
         send_amount_input.origin.x + send_amount_input.size.width + GAP,
         send_row_y,
-        (usable_width - send_amount_width - GAP).max(120.0),
+        (send_content_width - send_amount_width - GAP).max(120.0),
         CONTROL_HEIGHT,
     );
 
-    let details_origin = Point::new(origin_x, send_row_y + CONTROL_HEIGHT + 14.0);
+    let details_section_y = send_section_bounds.max_y() + SECTION_TO_SECTION_GAP;
+    let details_section_height = (content_bounds.max_y() - details_section_y - PAD).max(92.0);
+    let details_section_bounds =
+        Bounds::new(origin_x, details_section_y, usable_width, details_section_height);
+    let details_origin = Point::new(origin_x + 12.0, details_section_y + SUPPORTING_SECTION_HEADER_HEIGHT);
 
     SparkPaneLayout {
+        overview_bounds,
+        utility_section_bounds,
         refresh_button,
-        use_identity_path_button,
-        use_default_identity_button,
-        identity_path_input,
-        mnemonic_phrase_input,
-        use_mnemonic_phrase_button,
         spark_address_button,
         bitcoin_address_button,
-        create_wallet_button,
+        copy_spark_address_button,
+        receive_section_bounds,
+        send_section_bounds,
         invoice_amount_input,
         create_invoice_button,
         send_request_input,
-        send_request_copy_button,
         send_amount_input,
         send_payment_button,
+        details_section_bounds,
         details_origin,
     }
 }
@@ -193,22 +224,15 @@ pub fn hit_action(layout: SparkPaneLayout, point: Point) -> Option<SparkPaneActi
     if layout.refresh_button.contains(point) {
         return Some(SparkPaneAction::Refresh);
     }
-    if layout.use_identity_path_button.contains(point) {
-        return Some(SparkPaneAction::UseIdentityPath);
-    }
-    if layout.use_default_identity_button.contains(point) {
-        return Some(SparkPaneAction::UseDefaultIdentity);
-    }
-    if layout.use_mnemonic_phrase_button.contains(point) {
-        return Some(SparkPaneAction::UseMnemonicPhrase);
-    }
     if layout.spark_address_button.contains(point) {
         return Some(SparkPaneAction::GenerateSparkAddress);
     }
     if layout.bitcoin_address_button.contains(point) {
         return Some(SparkPaneAction::GenerateBitcoinAddress);
     }
-    // Create New Wallet is intentionally disabled in the UI for now.
+    if layout.copy_spark_address_button.contains(point) {
+        return Some(SparkPaneAction::CopySparkAddress);
+    }
     if layout.create_invoice_button.contains(point) {
         return Some(SparkPaneAction::CreateInvoice);
     }
@@ -222,34 +246,35 @@ pub fn create_invoice_layout(content_bounds: Bounds) -> CreateInvoicePaneLayout 
     let origin_x = content_bounds.origin.x + PAD;
     let origin_y = content_bounds.origin.y + PAD;
     let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
+    let form_row_y = origin_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
 
     let amount_width = (usable_width * 0.22).clamp(120.0, 180.0);
     let expiry_width = (usable_width * 0.22).clamp(120.0, 180.0);
     let create_invoice_button = Bounds::new(
         origin_x + amount_width + GAP + expiry_width + GAP,
-        origin_y,
+        form_row_y,
         (usable_width - amount_width - expiry_width - GAP * 2.0).max(140.0),
         CONTROL_HEIGHT,
     );
-    let amount_input = Bounds::new(origin_x, origin_y, amount_width, CONTROL_HEIGHT);
+    let amount_input = Bounds::new(origin_x, form_row_y, amount_width, CONTROL_HEIGHT);
     let expiry_input = Bounds::new(
         amount_input.origin.x + amount_input.size.width + GAP,
-        origin_y,
+        form_row_y,
         expiry_width,
         CONTROL_HEIGHT,
     );
 
-    let description_y = origin_y + CONTROL_HEIGHT + 10.0;
+    let description_y = form_row_y + CONTROL_HEIGHT + SECTION_CONTROLS_TO_FORM_GAP;
     let description_input = Bounds::new(origin_x, description_y, usable_width, CONTROL_HEIGHT);
 
-    let copy_y = description_y + CONTROL_HEIGHT + 10.0;
+    let copy_y = description_y + CONTROL_HEIGHT + 18.0;
     let copy_invoice_button = Bounds::new(
         origin_x,
         copy_y,
         (usable_width * 0.34).clamp(140.0, 240.0),
         CONTROL_HEIGHT,
     );
-    let details_origin = Point::new(origin_x, copy_y + CONTROL_HEIGHT + 14.0);
+    let details_origin = Point::new(origin_x, copy_y + CONTROL_HEIGHT + 18.0);
 
     CreateInvoicePaneLayout {
         amount_input,
@@ -285,10 +310,10 @@ pub fn pay_invoice_layout(content_bounds: Bounds) -> PayInvoicePaneLayout {
     let origin_y = content_bounds.origin.y + PAD;
     let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
 
-    let request_y = origin_y;
+    let request_y = origin_y + SECTION_HEADER_TO_FORM_GAP;
     let payment_request_input = Bounds::new(origin_x, request_y, usable_width, CONTROL_HEIGHT);
 
-    let send_row_y = request_y + CONTROL_HEIGHT + 10.0;
+    let send_row_y = request_y + CONTROL_HEIGHT + SECTION_CTA_ROW_GAP;
     let amount_width = (usable_width * 0.28).clamp(110.0, 180.0);
     let amount_input = Bounds::new(origin_x, send_row_y, amount_width, CONTROL_HEIGHT);
     let send_payment_button = Bounds::new(
@@ -297,7 +322,7 @@ pub fn pay_invoice_layout(content_bounds: Bounds) -> PayInvoicePaneLayout {
         (usable_width - amount_width - GAP).max(120.0),
         CONTROL_HEIGHT,
     );
-    let details_origin = Point::new(origin_x, send_row_y + CONTROL_HEIGHT + 14.0);
+    let details_origin = Point::new(origin_x, send_row_y + CONTROL_HEIGHT + 18.0);
 
     PayInvoicePaneLayout {
         payment_request_input,
@@ -322,9 +347,7 @@ pub fn hits_pay_invoice_input(layout: PayInvoicePaneLayout, point: Point) -> boo
 }
 
 pub fn hits_input(layout: SparkPaneLayout, point: Point) -> bool {
-    layout.identity_path_input.contains(point)
-        || layout.mnemonic_phrase_input.contains(point)
-        || layout.invoice_amount_input.contains(point)
+    layout.invoice_amount_input.contains(point)
         || layout.send_request_input.contains(point)
         || layout.send_amount_input.contains(point)
 }
@@ -366,11 +389,14 @@ mod tests {
         );
         assert_eq!(hit_action(layout, send), Some(SparkPaneAction::SendPayment));
 
-        let create = Point::new(
-            layout.create_wallet_button.origin.x + 3.0,
-            layout.create_wallet_button.origin.y + 3.0,
+        let copy = Point::new(
+            layout.copy_spark_address_button.origin.x + 3.0,
+            layout.copy_spark_address_button.origin.y + 3.0,
         );
-        assert_eq!(hit_action(layout, create), None);
+        assert_eq!(
+            hit_action(layout, copy),
+            Some(SparkPaneAction::CopySparkAddress)
+        );
     }
 
     #[test]
