@@ -228,6 +228,7 @@ pub(super) fn run_chat_submit_action_with_trigger(
     }
     match state.autopilot_chat.chat_browse_mode() {
         crate::app_state::ChatBrowseMode::Managed => return run_managed_chat_submit_action(state),
+        crate::app_state::ChatBrowseMode::ManagedSystem => return false,
         crate::app_state::ChatBrowseMode::DirectMessages => {
             return run_direct_message_submit_action(state, None);
         }
@@ -1411,6 +1412,7 @@ fn resolve_active_chat_wallet_message(
                 content: message.content.clone(),
             })
         }
+        crate::app_state::ChatBrowseMode::ManagedSystem => None,
         crate::app_state::ChatBrowseMode::DirectMessages => {
             let message = resolve_direct_message_reference(autopilot_chat, reference)?;
             let position = autopilot_chat
@@ -6185,6 +6187,7 @@ pub(super) fn run_chat_select_thread_action(
         crate::app_state::ChatBrowseMode::Managed => state
             .autopilot_chat
             .select_managed_chat_channel_row_by_index(index),
+        crate::app_state::ChatBrowseMode::ManagedSystem => false,
         crate::app_state::ChatBrowseMode::DirectMessages => state
             .autopilot_chat
             .select_direct_message_room_by_index(index),
