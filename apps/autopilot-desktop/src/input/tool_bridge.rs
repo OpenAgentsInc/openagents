@@ -4296,6 +4296,9 @@ fn pane_action_to_hit_action(
             "copy" | "copy_all" | "copy_logs" => Ok(PaneHitAction::LogStream(
                 crate::pane_system::LogStreamPaneAction::CopyAll,
             )),
+            "filter" | "cycle_filter" | "cycle_log_filter" => Ok(PaneHitAction::LogStream(
+                crate::pane_system::LogStreamPaneAction::CycleLevelFilter,
+            )),
             _ => unsupported(),
         },
         PaneKind::Nip90SentPayments => match action {
