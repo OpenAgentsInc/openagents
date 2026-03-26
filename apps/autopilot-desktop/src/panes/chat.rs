@@ -953,7 +953,7 @@ fn paint_cached_rich_message_attachments(
 fn paint_rich_message_attachments(
     content: &str,
     x: f32,
-    mut y: f32,
+    y: f32,
     width: f32,
     paint: &mut PaintContext,
 ) -> f32 {
@@ -2431,7 +2431,7 @@ fn active_thread_supporting_context(
             ) {
                 parts.push(presence);
             }
-            return parts.join("  •  ");
+            return Some(parts.join("  •  "));
         }
         ChatBrowseMode::DirectMessages => {
             if let Some(room) = autopilot_chat.active_direct_message_room() {
@@ -5471,6 +5471,8 @@ fn maybe_expand_managed_system_history_window(
     if current_offset > autopilot_chat.managed_system_transcript_preload_threshold_px() {
         return None;
     }
+    let previous_count = previous_messages.len();
+    drop(previous_messages);
     if !autopilot_chat.reveal_more_managed_system_history() {
         return None;
     }
@@ -5478,7 +5480,7 @@ fn maybe_expand_managed_system_history_window(
     let expanded_messages = autopilot_chat.visible_managed_system_messages();
     let newly_revealed_count = expanded_messages
         .len()
-        .saturating_sub(previous_messages.len());
+        .saturating_sub(previous_count);
     let added_layouts = managed_system_visible_row_layouts(
         &expanded_messages[..newly_revealed_count],
         markdown_width,
