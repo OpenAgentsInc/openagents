@@ -1273,7 +1273,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         | PaneKind::CodexLabs
         | PaneKind::CodexDiagnostics => pane_size_for_content(920.0, 420.0),
         PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
-        PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
+        PaneKind::ProviderControl => pane_size_for_content(760.0, 560.0),
         PaneKind::VoicePlayground => pane_size_for_content(1040.0, 620.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
@@ -2396,39 +2396,45 @@ pub fn chat_transcript_body_bounds_with_height(
 }
 
 pub fn provider_control_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
+    let column_gap = 8.0;
+    let width = ((content_bounds.size.width - 24.0 - column_gap) * 0.5).max(0.0);
     Bounds::new(
         content_bounds.origin.x + 12.0,
         content_bounds.origin.y + 12.0,
-        (content_bounds.size.width - 24.0).max(0.0),
-        34.0,
+        width,
+        22.0,
     )
 }
 
 pub fn provider_control_local_model_button_bounds(content_bounds: Bounds) -> Bounds {
+    let toggle = provider_control_toggle_button_bounds(content_bounds);
+    let width = toggle.size.width;
     Bounds::new(
-        content_bounds.origin.x + 12.0,
-        provider_control_toggle_button_bounds(content_bounds).max_y() + 10.0,
-        (content_bounds.size.width - 24.0).max(0.0),
+        toggle.max_x() + 8.0,
+        toggle.origin.y,
+        width,
         22.0,
     )
 }
 
 pub fn provider_control_local_fm_test_button_bounds(content_bounds: Bounds) -> Bounds {
+    let toggle = provider_control_toggle_button_bounds(content_bounds);
     Bounds::new(
-        content_bounds.origin.x + 12.0,
-        provider_control_local_model_button_bounds(content_bounds).max_y() + 8.0,
-        ((content_bounds.size.width - 28.0) * 0.5).max(0.0),
+        toggle.origin.x,
+        toggle.max_y() + 8.0,
+        toggle.size.width,
         22.0,
     )
 }
 
 pub fn provider_control_training_button_bounds(content_bounds: Bounds) -> Bounds {
+    let local_model = provider_control_local_model_button_bounds(content_bounds);
     let local_fm_test = provider_control_local_fm_test_button_bounds(content_bounds);
     Bounds::new(
-        local_fm_test.max_x() + 4.0,
+        local_model.origin.x,
         local_fm_test.origin.y,
-        (content_bounds.max_x() - 12.0 - (local_fm_test.max_x() + 4.0)).max(0.0),
-        local_fm_test.size.height,
+        local_model.size.width,
+        22.0,
     )
 }
 
@@ -2436,12 +2442,15 @@ pub fn provider_control_inventory_toggle_button_bounds(
     content_bounds: Bounds,
     row_index: usize,
 ) -> Bounds {
+    let toggle = provider_control_toggle_button_bounds(content_bounds);
+    let row = row_index / 2;
+    let column = row_index % 2;
+    let row_origin_y = provider_control_local_fm_test_button_bounds(content_bounds).max_y() + 10.0;
+    let row_step = 26.0;
     Bounds::new(
-        content_bounds.origin.x + 12.0,
-        provider_control_local_fm_test_button_bounds(content_bounds).max_y()
-            + 12.0
-            + row_index as f32 * 30.0,
-        (content_bounds.size.width - 24.0).max(0.0),
+        toggle.origin.x + column as f32 * (toggle.size.width + 8.0),
+        row_origin_y + row as f32 * row_step,
+        toggle.size.width,
         22.0,
     )
 }
@@ -2458,7 +2467,7 @@ pub fn provider_control_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds
         content_bounds.origin.x + 8.0,
         origin_y,
         (content_bounds.size.width - 16.0).max(0.0),
-        (content_bounds.max_y() - 12.0 - origin_y).max(0.0),
+        (content_bounds.max_y() - 34.0 - origin_y).max(0.0),
     )
 }
 
