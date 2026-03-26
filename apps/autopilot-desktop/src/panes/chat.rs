@@ -1,5 +1,8 @@
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::{Mutex, OnceLock};
+
 use reqwest::Url;
-use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
+use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
 use crate::app_state::{
@@ -53,6 +56,7 @@ const CHAT_ATTACHMENT_CARD_GAP: f32 = ui_style::spacing::BUTTON_GAP;
 const CHAT_ATTACHMENT_LABEL_LINE_HEIGHT: f32 = 10.0;
 const CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ATTACHMENT_DETAIL_LINE_HEIGHT: f32 = 10.0;
+const MANAGED_SYSTEM_LAYOUT_CACHE_LIMIT: usize = 128;
 const CHAT_MESSAGE_BUBBLE_PAD_X: f32 = ui_style::spacing::ROW_PADDING;
 const CHAT_MESSAGE_BUBBLE_PAD_Y: f32 = ui_style::spacing::SECTION_GAP - 2.0;
 const CHAT_MESSAGE_BUBBLE_GAP: f32 = ui_style::spacing::SECTION_GAP;
@@ -324,6 +328,66 @@ struct RichMessageAttachment {
     label: String,
     summary: String,
     detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ManagedSystemTranscriptLayoutCacheKey {
+    event_id: String,
+    markdown_width_px: u32,
+}
+
+#[derive(Clone)]
+struct ManagedSystemTranscriptLayoutCacheEntry {
+    markdown_document: MarkdownDocument,
+    attachments: Vec<RichMessageAttachment>,
+    markdown_height: f32,
+    attachment_height: f32,
+    row_height: f32,
+}
+
+#[derive(Default)]
+struct ManagedSystemTranscriptLayoutCache {
+    entries:
+        BTreeMap<ManagedSystemTranscriptLayoutCacheKey, ManagedSystemTranscriptLayoutCacheEntry>,
+    lru: VecDeque<ManagedSystemTranscriptLayoutCacheKey>,
+}
+
+impl ManagedSystemTranscriptLayoutCache {
+    fn get(
+        &mut self,
+        key: &ManagedSystemTranscriptLayoutCacheKey,
+    ) -> Option<ManagedSystemTranscriptLayoutCacheEntry> {
+        let entry = self.entries.get(key).cloned()?;
+        self.touch(key.clone());
+        Some(entry)
+    }
+
+    fn insert(
+        &mut self,
+        key: ManagedSystemTranscriptLayoutCacheKey,
+        entry: ManagedSystemTranscriptLayoutCacheEntry,
+    ) {
+        self.entries.insert(key.clone(), entry);
+        self.touch(key);
+        while self.entries.len() > MANAGED_SYSTEM_LAYOUT_CACHE_LIMIT {
+            let Some(oldest) = self.lru.pop_front() else {
+                break;
+            };
+            self.entries.remove(&oldest);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.lru.clear();
+    }
+
+    fn touch(&mut self, key: ManagedSystemTranscriptLayoutCacheKey) {
+        if let Some(index) = self.lru.iter().position(|existing| existing == &key) {
+            self.lru.remove(index);
+        }
+        self.lru.push_back(key);
+    }
 }
 
 fn notification_badge(unread_count: usize, mention_count: usize) -> Option<(usize, bool)> {
@@ -791,9 +855,32 @@ fn rich_message_attachments(content: &str) -> Vec<RichMessageAttachment> {
     attachments
 }
 
-fn rich_message_attachments_height(content: &str) -> f32 {
-    rich_message_attachments(content)
-        .into_iter()
+fn managed_system_layout_cache() -> &'static Mutex<ManagedSystemTranscriptLayoutCache> {
+    static MANAGED_SYSTEM_LAYOUT_CACHE: OnceLock<Mutex<ManagedSystemTranscriptLayoutCache>> =
+        OnceLock::new();
+    MANAGED_SYSTEM_LAYOUT_CACHE
+        .get_or_init(|| Mutex::new(ManagedSystemTranscriptLayoutCache::default()))
+}
+
+fn clear_managed_system_layout_cache() {
+    if let Ok(mut cache) = managed_system_layout_cache().lock() {
+        cache.clear();
+    }
+}
+
+fn managed_system_layout_cache_key(
+    event_id: &str,
+    markdown_width: f32,
+) -> ManagedSystemTranscriptLayoutCacheKey {
+    ManagedSystemTranscriptLayoutCacheKey {
+        event_id: event_id.to_string(),
+        markdown_width_px: markdown_width.max(0.0).round() as u32,
+    }
+}
+
+fn rich_message_attachments_height_for_attachments(attachments: &[RichMessageAttachment]) -> f32 {
+    attachments
+        .iter()
         .map(|attachment| {
             CHAT_ATTACHMENT_LABEL_LINE_HEIGHT
                 + CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT
@@ -808,15 +895,20 @@ fn rich_message_attachments_height(content: &str) -> f32 {
         .sum()
 }
 
-fn paint_rich_message_attachments(
-    content: &str,
+fn rich_message_attachments_height(content: &str) -> f32 {
+    let attachments = rich_message_attachments(content);
+    rich_message_attachments_height_for_attachments(&attachments)
+}
+
+fn paint_cached_rich_message_attachments(
+    attachments: &[RichMessageAttachment],
     x: f32,
     mut y: f32,
     width: f32,
     paint: &mut PaintContext,
 ) -> f32 {
     let start_y = y;
-    for attachment in rich_message_attachments(content) {
+    for attachment in attachments {
         let height = CHAT_ATTACHMENT_LABEL_LINE_HEIGHT
             + CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT
             + if attachment.detail.is_some() {
@@ -856,6 +948,77 @@ fn paint_rich_message_attachments(
         y += height + CHAT_ATTACHMENT_CARD_GAP;
     }
     y - start_y
+}
+
+fn paint_rich_message_attachments(
+    content: &str,
+    x: f32,
+    mut y: f32,
+    width: f32,
+    paint: &mut PaintContext,
+) -> f32 {
+    let attachments = rich_message_attachments(content);
+    paint_cached_rich_message_attachments(&attachments, x, y, width, paint)
+}
+
+fn managed_system_cached_row_layout(
+    message: &ManagedChatMessageProjection,
+    markdown_width: f32,
+    markdown_parser: &MarkdownParser,
+    markdown_renderer: &MarkdownRenderer,
+    text_system: &mut wgpui::TextSystem,
+) -> ManagedSystemTranscriptLayoutCacheEntry {
+    let key = managed_system_layout_cache_key(&message.event_id, markdown_width);
+    if let Ok(mut cache) = managed_system_layout_cache().lock()
+        && let Some(entry) = cache.get(&key)
+    {
+        return entry;
+    }
+
+    let markdown_source = managed_message_markdown_source(message);
+    let markdown_document = markdown_parser.parse(&markdown_source);
+    let markdown_height = markdown_renderer
+        .measure(&markdown_document, markdown_width, text_system)
+        .height
+        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+    let attachments = rich_message_attachments(&markdown_source);
+    let attachment_height = rich_message_attachments_height_for_attachments(&attachments);
+    let entry = ManagedSystemTranscriptLayoutCacheEntry {
+        markdown_document,
+        attachments,
+        markdown_height,
+        attachment_height,
+        row_height: CHAT_ACTIVITY_ROW_LINE_HEIGHT
+            + CHAT_TRANSCRIPT_LINE_HEIGHT
+            + markdown_height
+            + attachment_height
+            + 8.0,
+    };
+    if let Ok(mut cache) = managed_system_layout_cache().lock() {
+        cache.insert(key, entry.clone());
+    }
+    entry
+}
+
+fn managed_system_visible_row_layouts(
+    messages: &[&ManagedChatMessageProjection],
+    markdown_width: f32,
+    markdown_parser: &MarkdownParser,
+    markdown_renderer: &MarkdownRenderer,
+    text_system: &mut wgpui::TextSystem,
+) -> Vec<ManagedSystemTranscriptLayoutCacheEntry> {
+    messages
+        .iter()
+        .map(|message| {
+            managed_system_cached_row_layout(
+                message,
+                markdown_width,
+                markdown_parser,
+                markdown_renderer,
+                text_system,
+            )
+        })
+        .collect()
 }
 
 fn message_markdown_source(message: &AutopilotMessage) -> String {
@@ -1121,14 +1284,15 @@ fn transcript_content_height(
             return height + 8.0;
         }
         ChatBrowseMode::ManagedSystem => {
-            return managed_system_transcript_content_height(
-                height,
-                autopilot_chat.visible_managed_system_messages(),
+            let messages = autopilot_chat.visible_managed_system_messages();
+            let layouts = managed_system_visible_row_layouts(
+                messages.as_slice(),
                 markdown_width,
                 &markdown_parser,
                 &markdown_renderer,
                 text_system,
             );
+            return managed_system_transcript_content_height(height, &layouts);
         }
         ChatBrowseMode::DirectMessages => {
             for message in autopilot_chat.active_direct_message_messages() {
@@ -1186,24 +1350,16 @@ fn transcript_content_height(
 
 fn managed_system_transcript_content_height(
     mut height: f32,
-    messages: Vec<&ManagedChatMessageProjection>,
-    markdown_width: f32,
-    markdown_parser: &MarkdownParser,
-    markdown_renderer: &MarkdownRenderer,
-    text_system: &mut wgpui::TextSystem,
+    layouts: &[ManagedSystemTranscriptLayoutCacheEntry],
 ) -> f32 {
-    for message in messages {
-        height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
-        height += CHAT_TRANSCRIPT_LINE_HEIGHT;
-        let markdown_source = managed_message_markdown_source(message);
-        let markdown_document = markdown_parser.parse(&markdown_source);
-        let markdown_size =
-            markdown_renderer.measure(&markdown_document, markdown_width, text_system);
-        height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
-        height += rich_message_attachments_height(&markdown_source);
-        height += 8.0;
-    }
+    height += managed_system_transcript_rows_height(layouts);
     height + 8.0
+}
+
+fn managed_system_transcript_rows_height(
+    layouts: &[ManagedSystemTranscriptLayoutCacheEntry],
+) -> f32 {
+    layouts.iter().map(|layout| layout.row_height).sum()
 }
 
 fn message_display_content(message: &AutopilotMessage) -> String {
@@ -1631,20 +1787,7 @@ fn managed_status_text(autopilot_chat: &AutopilotChatState) -> String {
 }
 
 fn managed_system_status_text(autopilot_chat: &AutopilotChatState) -> String {
-    let mut presence = 0usize;
-    let mut debug = 0usize;
-    for message in autopilot_chat
-        .managed_chat_projection
-        .snapshot
-        .messages
-        .values()
-    {
-        match message.message_class {
-            crate::chat_message_classifier::ChatMessageClass::PresenceEvent => presence += 1,
-            crate::chat_message_classifier::ChatMessageClass::DebugEvent => debug += 1,
-            _ => {}
-        }
-    }
+    let (presence, debug) = autopilot_chat.managed_system_kind_counts();
     let mut parts = vec![format!("{presence} presence"), format!("{debug} debug")];
     if !autopilot_chat
         .managed_chat_lane
@@ -2280,7 +2423,7 @@ fn active_thread_supporting_context(
         ChatBrowseMode::ManagedSystem => {
             let mut parts = vec![format!(
                 "{} system event(s)",
-                autopilot_chat.active_managed_system_messages().len()
+                autopilot_chat.managed_system_event_count()
             )];
             if let Some(presence) = crate::chat_spacetime::active_chat_presence_summary(
                 autopilot_chat,
@@ -4191,6 +4334,9 @@ pub fn paint(
     paint: &mut PaintContext,
 ) {
     let browse_mode = autopilot_chat.chat_browse_mode();
+    if browse_mode != ChatBrowseMode::ManagedSystem {
+        clear_managed_system_layout_cache();
+    }
     let composer_value = chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
     let transcript_body_bounds =
@@ -4400,6 +4546,13 @@ pub fn paint(
         }
         ChatBrowseMode::ManagedSystem => {
             let managed_messages = autopilot_chat.visible_managed_system_messages();
+            let managed_layouts = managed_system_visible_row_layouts(
+                managed_messages.as_slice(),
+                markdown_width,
+                &markdown_parser,
+                &markdown_renderer,
+                paint.text,
+            );
             if managed_messages.is_empty() {
                 let empty_state = "No managed system traffic observed yet.";
                 let empty_state_font_size = 18.0;
@@ -4430,7 +4583,10 @@ pub fn paint(
                 .snapshot
                 .author_metadata;
 
-            for message in managed_messages {
+            for (message, layout) in managed_messages
+                .into_iter()
+                .zip(managed_layouts.into_iter())
+            {
                 let context_label = managed_system_message_context_label(autopilot_chat, message);
                 paint.scene.draw_text(paint.text.layout_mono(
                     &context_label,
@@ -4453,21 +4609,19 @@ pub fn paint(
                     y += CHAT_TRANSCRIPT_LINE_HEIGHT;
                 }
 
-                let markdown_source = managed_message_markdown_source(message);
-                let markdown_document = markdown_parser.parse(&markdown_source);
                 let markdown_height = markdown_renderer
                     .render(
-                        &markdown_document,
+                        &layout.markdown_document,
                         Point::new(transcript_scroll_clip.origin.x, y),
                         markdown_width,
                         paint.text,
                         paint.scene,
                     )
                     .height
-                    .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    .max(layout.markdown_height);
                 y += markdown_height;
-                y += paint_rich_message_attachments(
-                    &markdown_source,
+                y += paint_cached_rich_message_attachments(
+                    &layout.attachments,
                     transcript_scroll_clip.origin.x,
                     y,
                     markdown_width,
@@ -5216,20 +5370,21 @@ pub fn dispatch_transcript_scroll_event(
         return false;
     }
 
-    let _ = maybe_expand_managed_system_history_window(
+    let content_height = maybe_expand_managed_system_history_window(
         &mut state.autopilot_chat,
         content_bounds,
         composer_height,
         scroll_dy,
         &mut state.text_system,
-    );
-
-    let content_height = transcript_content_height(
-        content_bounds,
-        composer_height,
-        &state.autopilot_chat,
-        &mut state.text_system,
-    );
+    )
+    .unwrap_or_else(|| {
+        transcript_content_height(
+            content_bounds,
+            composer_height,
+            &state.autopilot_chat,
+            &mut state.text_system,
+        )
+    });
     let max_scroll = (content_height - clip.size.height).max(0.0);
     if max_scroll <= 0.0 {
         return false;
@@ -5289,36 +5444,57 @@ fn maybe_expand_managed_system_history_window(
     composer_height: f32,
     scroll_dy: f32,
     text_system: &mut wgpui::TextSystem,
-) -> bool {
+) -> Option<f32> {
     if autopilot_chat.chat_browse_mode() != ChatBrowseMode::ManagedSystem
         || scroll_dy >= 0.0
         || !autopilot_chat.has_more_managed_system_history()
     {
-        return false;
+        return None;
     }
 
     let clip = transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
+    let markdown_width = markdown_body_width(clip);
+    let markdown_parser = MarkdownParser::new();
+    let markdown_renderer = MarkdownRenderer::with_config(chat_markdown_config());
+    let previous_messages = autopilot_chat.visible_managed_system_messages();
+    let previous_layouts = managed_system_visible_row_layouts(
+        previous_messages.as_slice(),
+        markdown_width,
+        &markdown_parser,
+        &markdown_renderer,
+        text_system,
+    );
     let previous_content_height =
-        transcript_content_height(content_bounds, composer_height, autopilot_chat, text_system);
+        managed_system_transcript_content_height(8.0, previous_layouts.as_slice());
     let previous_max_scroll = (previous_content_height - clip.size.height).max(0.0);
     let current_offset = autopilot_chat.transcript_effective_scroll_offset(previous_max_scroll);
     if current_offset > autopilot_chat.managed_system_transcript_preload_threshold_px() {
-        return false;
+        return None;
     }
     if !autopilot_chat.reveal_more_managed_system_history() {
-        return false;
+        return None;
     }
 
-    let new_content_height =
-        transcript_content_height(content_bounds, composer_height, autopilot_chat, text_system);
+    let expanded_messages = autopilot_chat.visible_managed_system_messages();
+    let newly_revealed_count = expanded_messages
+        .len()
+        .saturating_sub(previous_messages.len());
+    let added_layouts = managed_system_visible_row_layouts(
+        &expanded_messages[..newly_revealed_count],
+        markdown_width,
+        &markdown_parser,
+        &markdown_renderer,
+        text_system,
+    );
+    let added_height = managed_system_transcript_rows_height(added_layouts.as_slice());
+    let new_content_height = previous_content_height + added_height;
     let new_max_scroll = (new_content_height - clip.size.height).max(0.0);
-    let added_height = (new_content_height - previous_content_height).max(0.0);
     autopilot_chat.preserve_transcript_anchor_after_prepend(
         current_offset,
         added_height,
         new_max_scroll,
     );
-    true
+    Some(new_content_height)
 }
 
 #[cfg(test)]
@@ -5842,13 +6018,16 @@ mod tests {
             transcript_content_height(content_bounds, composer_height, &chat, &mut text_system);
         let before_offset = chat.transcript_scroll_offset;
 
-        assert!(maybe_expand_managed_system_history_window(
-            &mut chat,
-            content_bounds,
-            composer_height,
-            -24.0,
-            &mut text_system,
-        ));
+        assert!(
+            maybe_expand_managed_system_history_window(
+                &mut chat,
+                content_bounds,
+                composer_height,
+                -24.0,
+                &mut text_system,
+            )
+            .is_some()
+        );
         let after_height =
             transcript_content_height(content_bounds, composer_height, &chat, &mut text_system);
 

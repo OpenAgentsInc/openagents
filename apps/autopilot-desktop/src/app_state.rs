@@ -8530,10 +8530,19 @@ pub struct AutopilotChatState {
     pub copy_notice: Option<String>,
     pub copy_notice_until: Option<Instant>,
     pub buy_mode_last_targeted_peer_pubkey: Option<String>,
+    managed_system_view_cache: RefCell<Option<ManagedSystemViewCacheEntry>>,
     autopilot_peer_presence_index_cache: RefCell<Option<AutopilotPeerPresenceIndexCacheEntry>>,
     autopilot_peer_roster_cache: RefCell<Option<AutopilotPeerRosterCacheEntry>>,
     buy_mode_target_selection_cache: RefCell<Option<AutopilotBuyModeTargetSelectionCacheEntry>>,
     artifact_projection_file_path: PathBuf,
+}
+
+#[derive(Clone)]
+struct ManagedSystemViewCacheEntry {
+    projection_revision: u64,
+    ordered_event_ids: Vec<String>,
+    presence_count: usize,
+    debug_count: usize,
 }
 
 #[derive(Clone)]
@@ -8673,6 +8682,7 @@ impl Default for AutopilotChatState {
             copy_notice: None,
             copy_notice_until: None,
             buy_mode_last_targeted_peer_pubkey: None,
+            managed_system_view_cache: RefCell::new(None),
             autopilot_peer_presence_index_cache: RefCell::new(None),
             autopilot_peer_roster_cache: RefCell::new(None),
             buy_mode_target_selection_cache: RefCell::new(None),
@@ -10344,25 +10354,11 @@ impl AutopilotChatState {
         if self.chat_browse_mode() != ChatBrowseMode::ManagedSystem {
             return Vec::new();
         }
-        let mut messages = self
-            .managed_chat_projection
-            .snapshot
-            .messages
-            .values()
-            .filter(|message| {
-                matches!(
-                    message.message_class,
-                    crate::chat_message_classifier::ChatMessageClass::PresenceEvent
-                        | crate::chat_message_classifier::ChatMessageClass::DebugEvent
-                )
-            })
-            .collect::<Vec<_>>();
-        messages.sort_by(|left, right| {
-            left.created_at
-                .cmp(&right.created_at)
-                .then_with(|| left.event_id.cmp(&right.event_id))
-        });
-        messages
+        let view = self.managed_system_view_cache_entry();
+        view.ordered_event_ids
+            .iter()
+            .filter_map(|event_id| self.managed_chat_projection.snapshot.messages.get(event_id))
+            .collect()
     }
 
     pub fn visible_managed_system_messages(&self) -> Vec<&ManagedChatMessageProjection> {
@@ -10373,11 +10369,11 @@ impl AutopilotChatState {
     }
 
     pub fn has_more_managed_system_history(&self) -> bool {
-        self.active_managed_system_messages().len() > self.managed_system_visible_count
+        self.managed_system_event_count() > self.managed_system_visible_count
     }
 
     pub fn reveal_more_managed_system_history(&mut self) -> bool {
-        let total = self.active_managed_system_messages().len();
+        let total = self.managed_system_event_count();
         if total <= self.managed_system_visible_count {
             return false;
         }
@@ -10386,6 +10382,64 @@ impl AutopilotChatState {
             .saturating_add(MANAGED_SYSTEM_TRANSCRIPT_PAGE_SIZE)
             .min(total);
         true
+    }
+
+    pub fn managed_system_event_count(&self) -> usize {
+        let view = self.managed_system_view_cache_entry();
+        view.ordered_event_ids.len()
+    }
+
+    pub fn managed_system_kind_counts(&self) -> (usize, usize) {
+        let view = self.managed_system_view_cache_entry();
+        (view.presence_count, view.debug_count)
+    }
+
+    pub fn managed_system_latest_event_id(&self) -> Option<String> {
+        let view = self.managed_system_view_cache_entry();
+        view.ordered_event_ids.last().cloned()
+    }
+
+    fn managed_system_view_cache_entry(&self) -> std::cell::Ref<'_, ManagedSystemViewCacheEntry> {
+        let projection_revision = self.managed_chat_projection.projection_revision();
+        let rebuild = self
+            .managed_system_view_cache
+            .borrow()
+            .as_ref()
+            .map(|cache| cache.projection_revision != projection_revision)
+            .unwrap_or(true);
+        if rebuild {
+            let mut ordered_messages = Vec::new();
+            let mut presence_count = 0usize;
+            let mut debug_count = 0usize;
+            for message in self.managed_chat_projection.snapshot.messages.values() {
+                match message.message_class {
+                    crate::chat_message_classifier::ChatMessageClass::PresenceEvent => {
+                        presence_count += 1;
+                    }
+                    crate::chat_message_classifier::ChatMessageClass::DebugEvent => {
+                        debug_count += 1;
+                    }
+                    _ => continue,
+                }
+                ordered_messages.push((message.event_id.clone(), message.created_at));
+            }
+            ordered_messages
+                .sort_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)));
+            *self.managed_system_view_cache.borrow_mut() = Some(ManagedSystemViewCacheEntry {
+                projection_revision,
+                ordered_event_ids: ordered_messages
+                    .into_iter()
+                    .map(|(event_id, _)| event_id)
+                    .collect(),
+                presence_count,
+                debug_count,
+            });
+        }
+        std::cell::Ref::map(self.managed_system_view_cache.borrow(), |cache| {
+            cache
+                .as_ref()
+                .expect("managed system cache should exist after rebuild")
+        })
     }
 
     pub fn active_managed_chat_message_tail(
@@ -21411,6 +21465,8 @@ mod tests {
         let system_messages = chat.active_managed_system_messages();
         assert_eq!(system_messages.len(), 1);
         assert_eq!(system_messages[0].content, presence_content);
+        assert_eq!(chat.managed_system_event_count(), 1);
+        assert_eq!(chat.managed_system_kind_counts(), (1, 0));
     }
 
     #[test]
