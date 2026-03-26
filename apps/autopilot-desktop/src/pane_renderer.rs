@@ -6405,17 +6405,25 @@ fn paint_nostr_identity_pane(
     let regenerate_bounds = nostr_regenerate_button_bounds(content_bounds);
     let reveal_bounds = nostr_reveal_button_bounds(content_bounds);
     let copy_secret_bounds = nostr_copy_secret_button_bounds(content_bounds);
-    paint_nostr_danger_button(regenerate_bounds, "Regenerate keys", paint);
-    paint_secondary_button(
+    paint_nostr_danger_button(regenerate_bounds, "REGENERATE KEYS", paint);
+    paint_mission_control_command_button(
         reveal_bounds,
         if secrets_revealed {
-            "Hide secrets"
+            "HIDE SECRETS"
         } else {
-            "Reveal 12s"
+            "REVEAL 12S"
         },
+        theme::accent::PRIMARY,
+        true,
         paint,
     );
-    paint_secondary_button(copy_secret_bounds, "Copy nsec", paint);
+    paint_mission_control_command_button(
+        copy_secret_bounds,
+        "COPY NSEC",
+        theme::accent::PRIMARY,
+        true,
+        paint,
+    );
 
     let viewport = nostr_identity_scroll_viewport_bounds(content_bounds);
     let section_x = viewport.origin.x;
@@ -6463,45 +6471,33 @@ fn paint_nostr_identity_pane(
         } else {
             mask_mnemonic(&identity.mnemonic)
         };
-        let section_gap = 16.0;
+        let section_gap = NOSTR_SECTION_GAP;
         let public_section_y = y;
-        let public_section_height = 12.0
-            + 14.0
-            + 8.0
-            + nostr_value_row_height(&identity.npub, wrapped_chunk_len)
-            + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len)
-            + 8.0;
-        paint_nostr_section_surface(
-            Bounds::new(section_x, public_section_y, section_width, public_section_height),
-            theme::accent::PRIMARY.with_alpha(0.34),
-            paint,
-        );
-        let mut public_y = public_section_y + 12.0;
-        public_y = paint_nostr_section_heading(
-            paint,
-            section_x + 12.0,
-            public_y,
-            "Public identity",
-            section_width - 24.0,
-        );
+        let public_body_height = nostr_value_row_height(&identity.npub, wrapped_chunk_len)
+            + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len);
+        let public_section_height = nostr_section_total_height(public_body_height);
+        let public_bounds = Bounds::new(section_x, public_section_y, section_width, public_section_height);
+        paint_nostr_section_panel(public_bounds, "PUBLIC IDENTITY", theme::accent::PRIMARY, paint);
+        let public_inner = nostr_section_body_bounds(public_bounds);
+        let mut public_y = public_inner.origin.y;
         public_y = paint_nostr_value_row(
             paint,
-            section_x + 12.0,
+            public_inner.origin.x,
             public_y,
             "npub",
             &identity.npub,
             wrapped_chunk_len,
-            section_width - 24.0,
+            public_inner.size.width,
             app_text_style(AppTextRole::FormValue).color,
         );
         let _ = paint_nostr_value_row(
             paint,
-            section_x + 12.0,
+            public_inner.origin.x,
             public_y,
             "Public key (hex)",
             &identity.public_key_hex,
             wrapped_chunk_len,
-            section_width - 24.0,
+            public_inner.size.width,
             app_text_style(AppTextRole::SecondaryMetadata)
                 .color
                 .with_alpha(0.82),
@@ -6543,28 +6539,27 @@ fn paint_nostr_identity_pane(
         } else {
             "Secrets stay masked until revealed. Copy action affects nsec only."
         };
-        let sensitive_panel_height = 12.0
-            + 20.0
-            + 14.0
-            + 14.0
-            + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
-            + nostr_value_row_height(&private_hex_display, sensitive_chunk_len)
-            + 10.0;
+        let sensitive_panel_height = nostr_section_total_height(
+            18.0
+                + 10.0
+                + 18.0
+                + 10.0
+                + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
+                + nostr_value_row_height(&private_hex_display, sensitive_chunk_len),
+        );
         let sensitive_bounds = Bounds::new(
             section_x,
             sensitive_panel_y,
             section_width,
             sensitive_panel_height,
         );
-        paint_nostr_sensitive_section_panel(sensitive_bounds, sensitive_accent, paint);
-        let mut sensitive_y = sensitive_bounds.origin.y + 10.0;
-        let heading_style = app_text_style(AppTextRole::SectionHeading);
-        paint.scene.draw_text(paint.text.layout_mono(
-            "Sensitive material",
-            Point::new(sensitive_inner_x, sensitive_y),
-            heading_style.font_size,
-            heading_style.color.with_alpha(0.94),
-        ));
+        paint_nostr_section_panel(
+            sensitive_bounds,
+            "SENSITIVE MATERIAL",
+            sensitive_accent,
+            paint,
+        );
+        let mut sensitive_y = nostr_section_body_bounds(sensitive_bounds).origin.y;
         let chip_gap = 8.0;
         let visibility_chip_width = 92.0;
         let clipboard_chip_width = 88.0;
@@ -6594,7 +6589,7 @@ fn paint_nostr_identity_pane(
             },
             paint,
         );
-        sensitive_y += 14.0;
+        sensitive_y += 18.0;
         paint.scene.draw_text(paint.text.layout_mono(
             &nostr_compact_detail(
                 sensitive_detail,
@@ -6606,7 +6601,7 @@ fn paint_nostr_identity_pane(
                 .color
                 .with_alpha(0.76),
         ));
-        sensitive_y += 24.0;
+        sensitive_y += 28.0;
         y = paint_nostr_value_row(
             paint,
             sensitive_inner_x,
@@ -6632,32 +6627,19 @@ fn paint_nostr_identity_pane(
         y = sensitive_bounds.max_y() + section_gap;
 
         let recovery_panel_y = y;
-        let recovery_panel_height = 12.0
-            + 14.0
-            + 20.0
-            + nostr_multiline_value_row_height(&mnemonic_display, sensitive_chunk_len)
-            + 10.0;
+        let recovery_panel_height = nostr_section_total_height(
+            18.0 + 10.0 + nostr_multiline_value_row_height(&mnemonic_display, sensitive_chunk_len),
+        );
         let recovery_bounds = Bounds::new(
             section_x,
             recovery_panel_y,
             section_width,
             recovery_panel_height,
         );
-        paint_nostr_section_surface(
-            recovery_bounds,
-            theme::status::WARNING.with_alpha(0.30),
-            paint,
-        );
+        paint_nostr_section_panel(recovery_bounds, "RECOVERY PHRASE", theme::status::WARNING, paint);
         let recovery_inner_x = section_x + 12.0;
         let recovery_inner_width = (section_width - 24.0).max(200.0);
-        let mut recovery_y = recovery_bounds.origin.y + 12.0;
-        recovery_y = paint_nostr_section_heading(
-            paint,
-            recovery_inner_x,
-            recovery_y,
-            "Recovery phrase",
-            recovery_inner_width,
-        );
+        let recovery_y = nostr_section_body_bounds(recovery_bounds).origin.y;
         paint.scene.draw_text(paint.text.layout_mono(
             &nostr_compact_detail(
                 if secrets_revealed {
@@ -6676,7 +6658,7 @@ fn paint_nostr_identity_pane(
         let _ = paint_nostr_multiline_value_row(
             paint,
             recovery_inner_x,
-            recovery_y + 24.0,
+            recovery_y + 28.0,
             "Mnemonic",
             &mnemonic_display,
             sensitive_chunk_len,
@@ -6691,45 +6673,33 @@ fn paint_nostr_identity_pane(
             Err(error) => format!("error:{error}"),
         };
         let derived_section_y = y;
-        let derived_section_height = 12.0
-            + 14.0
-            + 8.0
-            + nostr_value_row_height(&agent_preview, wrapped_chunk_len)
-            + nostr_value_row_height(&skill_preview, wrapped_chunk_len)
-            + 8.0;
-        paint_nostr_section_surface(
-            Bounds::new(section_x, derived_section_y, section_width, derived_section_height),
-            theme::accent::PRIMARY.with_alpha(0.22),
-            paint,
-        );
-        let mut derived_y = derived_section_y + 12.0;
-        derived_y = paint_nostr_section_heading(
-            paint,
-            section_x + 12.0,
-            derived_y,
-            "Derived accounts",
-            section_width - 24.0,
-        );
+        let derived_body_height = nostr_value_row_height(&agent_preview, wrapped_chunk_len)
+            + nostr_value_row_height(&skill_preview, wrapped_chunk_len);
+        let derived_section_height = nostr_section_total_height(derived_body_height);
+        let derived_bounds = Bounds::new(section_x, derived_section_y, section_width, derived_section_height);
+        paint_nostr_section_panel(derived_bounds, "DERIVED ACCOUNTS", theme::accent::PRIMARY, paint);
+        let derived_inner = nostr_section_body_bounds(derived_bounds);
+        let mut derived_y = derived_inner.origin.y;
         derived_y = paint_nostr_value_row(
             paint,
-            section_x + 12.0,
+            derived_inner.origin.x,
             derived_y,
             "Agent account[0]",
             &agent_preview,
             wrapped_chunk_len,
-            section_width - 24.0,
+            derived_inner.size.width,
             app_text_style(AppTextRole::SecondaryMetadata)
                 .color
                 .with_alpha(0.82),
         );
         let _ = paint_nostr_value_row(
             paint,
-            section_x + 12.0,
+            derived_inner.origin.x,
             derived_y,
             "Skill[agent0:1:0]",
             &skill_preview,
             wrapped_chunk_len,
-            section_width - 24.0,
+            derived_inner.size.width,
             app_text_style(AppTextRole::SecondaryMetadata)
                 .color
                 .with_alpha(0.82),
@@ -6789,28 +6759,25 @@ fn nostr_identity_content_height(
         } else {
             mask_mnemonic(&identity.mnemonic)
         };
-        let section_gap = 16.0;
-        let public_section_height = 12.0
-            + 14.0
-            + 8.0
-            + nostr_value_row_height(&identity.npub, wrapped_chunk_len)
-            + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len)
-            + 8.0;
+        let section_gap = NOSTR_SECTION_GAP;
+        let public_section_height = nostr_section_total_height(
+            nostr_value_row_height(&identity.npub, wrapped_chunk_len)
+                + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len),
+        );
         let sensitive_inner_width = (section_width - 24.0).max(200.0);
         let sensitive_chunk_len =
             ((sensitive_inner_width - 134.0).max(120.0) / 7.0).floor() as usize;
-        let sensitive_panel_height = 12.0
-            + 20.0
-            + 14.0
-            + 14.0
-            + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
-            + nostr_value_row_height(&private_hex_display, sensitive_chunk_len)
-            + 10.0;
-        let recovery_panel_height = 12.0
-            + 14.0
-            + 20.0
-            + nostr_multiline_value_row_height(&mnemonic_display, sensitive_chunk_len)
-            + 10.0;
+        let sensitive_panel_height = nostr_section_total_height(
+            18.0
+                + 10.0
+                + 18.0
+                + 10.0
+                + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
+                + nostr_value_row_height(&private_hex_display, sensitive_chunk_len),
+        );
+        let recovery_panel_height = nostr_section_total_height(
+            18.0 + 10.0 + nostr_multiline_value_row_height(&mnemonic_display, sensitive_chunk_len),
+        );
         let agent_preview = match nostr::derive_agent_keypair(&identity.mnemonic, 0)
             .and_then(|keypair| keypair.npub())
         {
@@ -6823,12 +6790,10 @@ fn nostr_identity_content_height(
             Ok(value) => value,
             Err(error) => format!("error:{error}"),
         };
-        let derived_section_height = 12.0
-            + 14.0
-            + 8.0
-            + nostr_value_row_height(&agent_preview, wrapped_chunk_len)
-            + nostr_value_row_height(&skill_preview, wrapped_chunk_len)
-            + 8.0;
+        let derived_section_height = nostr_section_total_height(
+            nostr_value_row_height(&agent_preview, wrapped_chunk_len)
+                + nostr_value_row_height(&skill_preview, wrapped_chunk_len),
+        );
         y += public_section_height + section_gap;
         y += sensitive_panel_height + section_gap;
         y += recovery_panel_height + section_gap;
@@ -6853,25 +6818,34 @@ fn paint_nostr_danger_button(bounds: Bounds, label: &str, paint: &mut PaintConte
     let accent = theme::status::WARNING;
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(theme::bg::HOVER.with_alpha(0.54))
-            .with_border(accent.with_alpha(0.72), 1.0)
-            .with_corner_radius(ui_style::button::SECONDARY_CORNER_RADIUS),
+            .with_background(mission_control_panel_header_color().with_alpha(0.38))
+            .with_border(accent.with_alpha(0.62), 1.0)
+            .with_corner_radius(6.0),
     );
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
-            3.0,
+            bounds.size.width,
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.10)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            4.0,
             bounds.size.height,
         ))
         .with_background(accent.with_alpha(0.90))
-        .with_corner_radius(3.0),
+        .with_corner_radius(6.0),
     );
-    paint_button_label(
+    paint_button_label_mono(
         bounds,
         label,
-        ui_style::button::label_font_size(AppButtonRole::Secondary),
-        theme::text::PRIMARY,
+        12.0,
+        mission_control_text_color(),
         paint,
     );
 }
@@ -6879,37 +6853,41 @@ fn paint_nostr_danger_button(bounds: Bounds, label: &str, paint: &mut PaintConte
 fn paint_nostr_state_chip(bounds: Bounds, label: &str, accent: Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(accent.with_alpha(0.12))
-            .with_border(accent.with_alpha(0.30), 1.0)
-            .with_corner_radius(9.0),
+            .with_background(mission_control_panel_header_color().with_alpha(0.88))
+            .with_border(accent.with_alpha(0.28), 1.0)
+            .with_corner_radius(6.0),
     );
     let text_style = app_text_style(AppTextRole::Helper);
     paint_button_label(
         bounds,
         label,
         text_style.font_size,
-        accent.with_alpha(0.92),
-        paint,
+            accent.with_alpha(0.92),
+            paint,
     );
 }
 
-fn paint_nostr_section_surface(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.18))
-            .with_border(theme::border::DEFAULT.with_alpha(0.14), 1.0)
-            .with_corner_radius(10.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y + 8.0,
-            2.0,
-            (bounds.size.height - 16.0).max(0.0),
-        ))
-        .with_background(accent.with_alpha(0.90))
-        .with_corner_radius(2.0),
-    );
+const NOSTR_SECTION_GAP: f32 = 18.0;
+const NOSTR_SECTION_BODY_PADDING: f32 = 12.0;
+
+fn nostr_section_total_height(body_height: f32) -> f32 {
+    MISSION_CONTROL_SECTION_HEADER_HEIGHT + NOSTR_SECTION_BODY_PADDING * 2.0 + body_height
+}
+
+fn nostr_section_body_bounds(bounds: Bounds) -> Bounds {
+    Bounds::new(
+        bounds.origin.x + 12.0,
+        bounds.origin.y + MISSION_CONTROL_SECTION_HEADER_HEIGHT + NOSTR_SECTION_BODY_PADDING,
+        (bounds.size.width - 24.0).max(0.0),
+        (bounds.size.height
+            - MISSION_CONTROL_SECTION_HEADER_HEIGHT
+            - NOSTR_SECTION_BODY_PADDING * 2.0)
+            .max(0.0),
+    )
+}
+
+fn paint_nostr_section_panel(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
+    paint_mission_control_section_panel(bounds, title, accent, false, paint);
 }
 
 fn paint_nostr_section_heading(
@@ -6943,41 +6921,32 @@ fn paint_nostr_status_summary(
     row_width: f32,
     state_color: Hsla,
 ) -> f32 {
-    let bounds = Bounds::new(x, y, row_width.max(0.0), 40.0);
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.18))
-            .with_border(theme::border::DEFAULT.with_alpha(0.14), 1.0)
-            .with_corner_radius(10.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x + 10.0,
-            bounds.origin.y + 11.0,
-            8.0,
-            8.0,
-        ))
-        .with_background(state_color.with_alpha(0.88))
-        .with_corner_radius(4.0),
-    );
-    paint.scene.draw_text(paint.text.layout_mono(
+    let inner_width = row_width.max(0.0);
+    let chunk_len = ((inner_width - 134.0).max(120.0) / 7.0).floor() as usize;
+    let body_height = 18.0 + 8.0 + nostr_value_row_height(supporting_detail, chunk_len);
+    let bounds = Bounds::new(x, y, inner_width, nostr_section_total_height(body_height));
+    paint_nostr_section_panel(bounds, "IDENTITY STATUS", state_color, paint);
+    let inner = nostr_section_body_bounds(bounds);
+    let chip_width = 96.0;
+    paint_nostr_state_chip(
+        Bounds::new(inner.origin.x, inner.origin.y, chip_width, 18.0),
         state_label,
-        Point::new(bounds.origin.x + 24.0, bounds.origin.y + 7.0),
-        app_text_style(AppTextRole::FormValue).font_size,
         state_color,
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        &nostr_compact_detail(
-            supporting_detail,
-            (((bounds.size.width - 36.0).max(120.0)) / 6.2).floor() as usize,
-        ),
-        Point::new(bounds.origin.x + 24.0, bounds.origin.y + 22.0),
-        app_text_style(AppTextRole::SecondaryMetadata).font_size,
+        paint,
+    );
+    let _ = paint_nostr_value_row(
+        paint,
+        inner.origin.x,
+        inner.origin.y + 26.0,
+        "Identity path",
+        supporting_detail,
+        chunk_len,
+        inner.size.width,
         app_text_style(AppTextRole::SecondaryMetadata)
             .color
-            .with_alpha(0.72),
-    ));
-    bounds.max_y() + 14.0
+            .with_alpha(0.82),
+    );
+    bounds.max_y() + NOSTR_SECTION_GAP
 }
 
 fn nostr_compact_detail(value: &str, max_chars: usize) -> String {
@@ -7015,7 +6984,7 @@ fn paint_nostr_value_row(
         &format!("{label}:"),
         Point::new(x, y),
         label_style.font_size,
-        label_style.color,
+        label_style.color.with_alpha(0.92),
     ));
 
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
@@ -7031,7 +7000,7 @@ fn paint_nostr_value_row(
     let divider_y = line_y + 2.0;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
-            .with_background(theme::border::DEFAULT.with_alpha(0.08)),
+            .with_background(mission_control_panel_border_color().with_alpha(0.18)),
     );
     divider_y + 11.0
 }
@@ -7061,7 +7030,7 @@ fn paint_nostr_multiline_value_row(
         &format!("{label}:"),
         Point::new(x, y),
         label_style.font_size,
-        label_style.color,
+        label_style.color.with_alpha(0.92),
     ));
 
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
@@ -7077,42 +7046,9 @@ fn paint_nostr_multiline_value_row(
     let divider_y = line_y + 2.0;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
-            .with_background(theme::border::DEFAULT.with_alpha(0.08)),
+            .with_background(mission_control_panel_border_color().with_alpha(0.18)),
     );
     divider_y + 11.0
-}
-
-fn paint_nostr_sensitive_section_panel(
-    bounds: Bounds,
-    accent: Hsla,
-    paint: &mut PaintContext,
-) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.22))
-            .with_border(accent.with_alpha(0.20), 1.0)
-            .with_corner_radius(10.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y + 8.0,
-            2.0,
-            (bounds.size.height - 16.0).max(0.0),
-        ))
-        .with_background(accent.with_alpha(0.82))
-        .with_corner_radius(2.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x + 2.0,
-            bounds.origin.y,
-            (bounds.size.width - 2.0).max(0.0),
-            24.0,
-        ))
-        .with_background(theme::bg::SURFACE.with_alpha(0.12))
-        .with_corner_radius(9.0),
-    );
 }
 
 fn nostr_identity_view_state(
@@ -8457,7 +8393,7 @@ pub(crate) fn paint_mission_control_go_online_button(
     );
 }
 
-fn paint_mission_control_command_button(
+pub(crate) fn paint_mission_control_command_button(
     bounds: Bounds,
     label: &str,
     accent: Hsla,

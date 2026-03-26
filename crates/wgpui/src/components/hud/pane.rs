@@ -161,9 +161,9 @@ impl Component for PaneFrame {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let pane_border_width = 1.0;
         let border_color = if self.active {
-            theme::border::ACTIVE
+            Hsla::from_hex(0x5A687A).with_alpha(0.18)
         } else {
-            theme::border::STRONG
+            Hsla::from_hex(0x46556B).with_alpha(0.14)
         };
 
         cx.scene.draw_quad(
@@ -172,7 +172,7 @@ impl Component for PaneFrame {
                 .with_border(border_color, pane_border_width)
                 .with_corner_radius(self.corner_radius),
         );
-        // Reinforce the outer shell edges so the bottom rounded corners close cleanly.
+        // Reinforce the shell edges just enough to keep the rounded corners visually closed.
         cx.scene.draw_quad(
             Quad::new(Bounds::new(
                 bounds.origin.x,
@@ -216,7 +216,7 @@ impl Component for PaneFrame {
                 .with_border(border_color, pane_border_width)
                 .with_corner_radius(self.corner_radius),
         );
-        // Keep the header border on top/left/right only by masking out the bottom edge.
+        // Flatten the header bottom edge so it blends seamlessly into the pane body.
         cx.scene.draw_quad(
             Quad::new(Bounds::new(
                 title_bounds.origin.x,

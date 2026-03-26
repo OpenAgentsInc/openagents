@@ -67,23 +67,23 @@ pub(super) fn credentials_button_bounds(content_bounds: Bounds, row: usize, col:
 pub(super) fn nostr_button_bounds(content_bounds: Bounds) -> (Bounds, Bounds, Bounds) {
     let gap = 8.0;
     let start_x = content_bounds.origin.x + 12.0;
-    let y = content_bounds.origin.y + 12.0;
+    let y = content_bounds.origin.y + 32.0;
     let available_width = (content_bounds.size.width - 24.0).max(300.0);
     let utility_width = ((available_width * 0.34) - gap).clamp(110.0, 168.0);
     let regenerate_width = (available_width - utility_width * 2.0 - gap * 2.0).max(118.0);
 
-    let regenerate_bounds = Bounds::new(start_x, y, regenerate_width, 30.0);
+    let regenerate_bounds = Bounds::new(start_x, y, regenerate_width, 34.0);
     let reveal_bounds = Bounds::new(
         regenerate_bounds.origin.x + regenerate_width + gap,
         y,
         utility_width,
-        30.0,
+        34.0,
     );
     let copy_bounds = Bounds::new(
         reveal_bounds.origin.x + utility_width + gap,
         y,
         utility_width,
-        30.0,
+        34.0,
     );
 
     (regenerate_bounds, reveal_bounds, copy_bounds)

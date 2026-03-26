@@ -2,7 +2,7 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult, TextInput};
 use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
-use crate::{Bounds, InputEvent, Point, Quad, theme};
+use crate::{Bounds, InputEvent, Point, Quad, color::Hsla, theme};
 
 type CommandSelectHandler = Box<dyn FnMut(&Command) + 'static>;
 type CommandCloseHandler = Box<dyn FnMut() + 'static>;
@@ -69,14 +69,17 @@ impl CommandPalette {
             filtered_commands: Vec::new(),
             search_input: TextInput::new()
                 .placeholder("Type a command...")
-                .background(theme::theme().colors.overlay)
-                .border_color(theme::border::DEFAULT)
-                .border_color_focused(theme::border::FOCUS),
+                .background(theme::bg::APP.with_alpha(0.78))
+                .border_color(Hsla::from_hex(0x46556B).with_alpha(0.14))
+                .border_color_focused(Hsla::from_hex(0x5A687A).with_alpha(0.18))
+                .placeholder_color(theme::text::MUTED)
+                .text_color(theme::text::PRIMARY)
+                .padding(theme::spacing::MD, theme::spacing::SM),
             selected_index: 0,
             is_open: false,
             max_visible_items: 8,
             scroll_offset: 0,
-            item_height: 40.0,
+            item_height: 56.0,
             mono: false,
             on_select: None,
             on_close: None,
@@ -238,18 +241,118 @@ impl CommandPalette {
     }
 
     fn item_bounds(&self, bounds: &Bounds, index: usize) -> Bounds {
-        let input_height = 48.0;
-        let padding = theme::spacing::XS;
+        let input_height = self.header_height();
+        let padding = theme::spacing::SM;
+        let row_gap = self.item_gap();
         let y = bounds.origin.y
             + input_height
             + padding
-            + (index - self.scroll_offset) as f32 * self.item_height;
+            + (index - self.scroll_offset) as f32 * (self.item_height + row_gap);
 
         Bounds::new(
             bounds.origin.x + padding,
             y,
             bounds.size.width - padding * 2.0,
             self.item_height,
+        )
+    }
+
+    fn header_height(&self) -> f32 {
+        56.0
+    }
+
+    fn item_gap(&self) -> f32 {
+        4.0
+    }
+
+    fn corner_radius(&self) -> f32 {
+        6.0
+    }
+
+    fn shell_color(&self) -> Hsla {
+        Hsla::from_hex(0x0D121A)
+    }
+
+    fn shell_border_color(&self) -> Hsla {
+        Hsla::from_hex(0x263245)
+    }
+
+    fn header_color(&self) -> Hsla {
+        Hsla::from_hex(0x121924)
+    }
+
+    fn title_color(&self) -> Hsla {
+        Hsla::from_hex(0xD8DFF0)
+    }
+
+    fn muted_color(&self) -> Hsla {
+        Hsla::from_hex(0x8A909E)
+    }
+
+    fn selected_fill_color(&self) -> Hsla {
+        Hsla::from_hex(0x284559)
+    }
+
+    fn divider_color(&self) -> Hsla {
+        self.shell_border_color().with_alpha(0.42)
+    }
+
+    fn shell_outline_color(&self) -> Hsla {
+        Hsla::from_hex(0x46556B).with_alpha(0.14)
+    }
+
+    fn shell_outline_active_color(&self) -> Hsla {
+        Hsla::from_hex(0x5A687A).with_alpha(0.18)
+    }
+
+    fn input_bounds(&self, palette_bounds: Bounds) -> Bounds {
+        let padding = theme::spacing::SM;
+        let input_right_inset = self
+            .aux_button_bounds(palette_bounds)
+            .map(|button| (palette_bounds.max_x() - button.origin.x) + padding)
+            .unwrap_or(padding);
+        Bounds::new(
+            palette_bounds.origin.x + padding,
+            palette_bounds.origin.y + padding,
+            (palette_bounds.size.width - padding - input_right_inset).max(60.0),
+            self.header_height() - padding * 2.0,
+        )
+    }
+
+    fn list_bounds(&self, palette_bounds: Bounds) -> Bounds {
+        let padding = theme::spacing::SM;
+        let footer_height = self.footer_height();
+        let footer_gap = if footer_height > 0.0 {
+            theme::spacing::XS
+        } else {
+            0.0
+        };
+        let list_top = palette_bounds.origin.y + self.header_height() + padding;
+        let list_bottom = palette_bounds.max_y() - footer_height - footer_gap - padding;
+        Bounds::new(
+            palette_bounds.origin.x + padding,
+            list_top,
+            (palette_bounds.size.width - padding * 2.0).max(0.0),
+            (list_bottom - list_top).max(0.0),
+        )
+    }
+
+    fn footer_bounds(&self, palette_bounds: Bounds) -> Bounds {
+        let footer_height = self.footer_height();
+        Bounds::new(
+            palette_bounds.origin.x,
+            palette_bounds.max_y() - footer_height,
+            palette_bounds.size.width,
+            footer_height,
+        )
+    }
+
+    fn header_band_bounds(&self, palette_bounds: Bounds) -> Bounds {
+        Bounds::new(
+            palette_bounds.origin.x + 4.0,
+            palette_bounds.origin.y,
+            (palette_bounds.size.width - 4.0).max(0.0),
+            self.header_height(),
         )
     }
 
@@ -296,18 +399,25 @@ impl CommandPalette {
 
     fn footer_height(&self) -> f32 {
         if self.filtered_commands.len() > self.max_visible_items {
-            20.0
+            26.0
         } else {
             0.0
         }
     }
 
     fn palette_bounds(&self, bounds: Bounds) -> Bounds {
-        let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
-        let input_height = 48.0;
-        let padding = theme::spacing::XS;
-        let list_height = self.visible_item_count() as f32 * self.item_height;
-        let palette_height = input_height + padding + list_height + padding + self.footer_height();
+        let palette_width = 860.0_f32.min((bounds.size.width - 40.0).max(320.0));
+        let header_height = self.header_height();
+        let padding = theme::spacing::SM;
+        let visible_count = self.visible_item_count();
+        let list_height = if visible_count == 0 {
+            64.0
+        } else {
+            visible_count as f32 * self.item_height
+                + visible_count.saturating_sub(1) as f32 * self.item_gap()
+        };
+        let palette_height =
+            header_height + padding + list_height + padding + self.footer_height();
 
         Bounds::new(
             bounds.origin.x + (bounds.size.width - palette_width) / 2.0,
@@ -319,8 +429,8 @@ impl CommandPalette {
 
     fn aux_button_bounds(&self, palette_bounds: Bounds) -> Option<Bounds> {
         self.aux_button_label.as_ref()?;
-        let input_height = 48.0;
-        let padding = theme::spacing::XS;
+        let input_height = self.header_height();
+        let padding = theme::spacing::SM;
         let button_size = (input_height - padding * 2.0).max(16.0);
         Some(Bounds::new(
             palette_bounds.max_x() - button_size - padding,
@@ -390,26 +500,31 @@ impl Component for CommandPalette {
         cx.scene
             .draw_quad(Quad::new(bounds).with_background(theme::theme().colors.overlay_scrim));
 
-        let input_height = 48.0;
-        let padding = theme::spacing::XS;
         let palette_bounds = self.palette_bounds(bounds);
+        let header_bounds = self.header_band_bounds(palette_bounds);
+        let list_bounds = self.list_bounds(palette_bounds);
+        let footer_bounds = self.footer_bounds(palette_bounds);
 
         cx.scene.draw_quad(
             Quad::new(palette_bounds)
-                .with_background(theme::bg::SURFACE)
-                .with_border(theme::border::DEFAULT, 1.0),
+                .with_background(self.shell_color())
+                .with_border(self.shell_outline_active_color(), 1.0)
+                .with_corner_radius(self.corner_radius()),
+        );
+        cx.scene.draw_quad(
+            Quad::new(header_bounds).with_background(self.header_color().with_alpha(0.92)),
+        );
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(
+                list_bounds.origin.x,
+                header_bounds.max_y(),
+                list_bounds.size.width,
+                1.0,
+            ))
+            .with_background(self.divider_color()),
         );
 
-        let input_right_inset = self
-            .aux_button_bounds(palette_bounds)
-            .map(|button| (palette_bounds.max_x() - button.origin.x) + padding)
-            .unwrap_or(padding);
-        let input_bounds = Bounds::new(
-            palette_bounds.origin.x + padding,
-            palette_bounds.origin.y + padding,
-            (palette_bounds.size.width - padding - input_right_inset).max(60.0),
-            input_height - padding * 2.0,
-        );
+        let input_bounds = self.input_bounds(palette_bounds);
         self.search_input.paint(input_bounds, cx);
 
         if let (Some(button_bounds), Some(label)) = (
@@ -418,9 +533,9 @@ impl Component for CommandPalette {
         ) {
             cx.scene.draw_quad(
                 Quad::new(button_bounds)
-                    .with_background(theme::bg::ELEVATED)
-                    .with_border(theme::border::DEFAULT, 1.0)
-                    .with_corner_radius(4.0),
+                    .with_background(self.header_color())
+                    .with_border(self.shell_outline_color(), 1.0)
+                    .with_corner_radius(self.corner_radius()),
             );
             let label_width = if self.mono {
                 cx.text.measure_styled_mono(
@@ -441,7 +556,7 @@ impl Component for CommandPalette {
                     label,
                     label_origin,
                     theme::font_size::XS,
-                    theme::text::PRIMARY,
+                    self.title_color(),
                     FontStyle::default(),
                 )
             } else {
@@ -449,7 +564,7 @@ impl Component for CommandPalette {
                     label,
                     label_origin,
                     theme::font_size::XS,
-                    theme::text::PRIMARY,
+                    self.title_color(),
                 )
             };
             cx.scene.draw_text(label_run);
@@ -457,95 +572,128 @@ impl Component for CommandPalette {
 
         let visible_end =
             (self.scroll_offset + self.max_visible_items).min(self.filtered_commands.len());
+        cx.scene.push_clip(list_bounds);
 
         for vis_index in self.scroll_offset..visible_end {
             if let Some(&cmd_index) = self.filtered_commands.get(vis_index) {
                 let item_bounds = self.item_bounds(&palette_bounds, vis_index);
                 let command = &self.commands[cmd_index];
                 let is_selected = vis_index == self.selected_index;
+                let key_width = command
+                    .keybinding
+                    .as_ref()
+                    .map(|keys| {
+                        if self.mono {
+                            cx.text.measure_styled_mono(
+                                keys,
+                                theme::font_size::XS,
+                                FontStyle::default(),
+                            )
+                        } else {
+                            cx.text.measure_styled(
+                                keys,
+                                theme::font_size::XS,
+                                FontStyle::default(),
+                            )
+                        }
+                    })
+                    .unwrap_or(0.0);
+                let reserved_right = if key_width > 0.0 {
+                    key_width + theme::spacing::MD
+                } else {
+                    0.0
+                };
+                let text_max_width = (item_bounds.size.width
+                    - theme::spacing::MD * 2.0
+                    - reserved_right)
+                    .max(0.0);
+                let label_text = self.truncate_description(
+                    cx,
+                    &command.label,
+                    theme::font_size::BASE,
+                    text_max_width,
+                );
 
                 if is_selected {
                     cx.scene.draw_quad(
                         Quad::new(item_bounds)
-                            .with_background(theme::bg::HOVER)
-                            .with_border(theme::border::DEFAULT, 1.0),
+                    .with_background(self.selected_fill_color())
+                            .with_corner_radius(4.0),
+                    );
+                } else {
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(
+                            item_bounds.origin.x + theme::spacing::XS,
+                            item_bounds.max_y() + self.item_gap() * 0.5,
+                            (item_bounds.size.width - theme::spacing::SM).max(0.0),
+                            1.0,
+                        ))
+                        .with_background(self.divider_color().with_alpha(0.55)),
                     );
                 }
 
                 let label_origin = Point::new(
-                    item_bounds.origin.x + theme::spacing::SM,
-                    item_bounds.origin.y + theme::spacing::XS,
+                    item_bounds.origin.x + theme::spacing::MD,
+                    item_bounds.origin.y + 7.0,
                 );
                 let label_run = if self.mono {
                     cx.text.layout_styled_mono(
-                        &command.label,
+                        &label_text,
                         label_origin,
-                        theme::font_size::SM,
-                        theme::text::PRIMARY,
+                        theme::font_size::BASE,
+                        self.title_color(),
                         FontStyle::default(),
                     )
                 } else {
                     cx.text.layout_mono(
-                        &command.label,
+                        &label_text,
                         label_origin,
-                        theme::font_size::SM,
-                        theme::text::PRIMARY,
+                        theme::font_size::BASE,
+                        self.title_color(),
                     )
                 };
                 cx.scene.draw_text(label_run);
 
                 if let Some(desc) = &command.description {
-                    let desc_max_width =
-                        (item_bounds.size.width - 2.0 * theme::spacing::SM).max(0.0);
+                    let desc_max_width = text_max_width;
                     let desc_truncated =
-                        self.truncate_description(cx, desc, theme::font_size::XS, desc_max_width);
+                        self.truncate_description(cx, desc, theme::font_size::SM, desc_max_width);
                     let desc_origin = Point::new(
-                        item_bounds.origin.x + theme::spacing::SM,
-                        item_bounds.origin.y + theme::spacing::XS + theme::font_size::SM + 2.0,
+                        item_bounds.origin.x + theme::spacing::MD,
+                        item_bounds.origin.y + 31.0,
                     );
                     let desc_run = if self.mono {
                         cx.text.layout_styled_mono(
                             &desc_truncated,
                             desc_origin,
-                            theme::font_size::XS,
-                            theme::text::MUTED,
+                            theme::font_size::SM,
+                            self.muted_color(),
                             FontStyle::default(),
                         )
                     } else {
                         cx.text.layout_mono(
                             &desc_truncated,
                             desc_origin,
-                            theme::font_size::XS,
-                            theme::text::MUTED,
+                            theme::font_size::SM,
+                            self.muted_color(),
                         )
                     };
                     cx.scene.draw_text(desc_run);
                 }
 
                 if let Some(keys) = &command.keybinding {
-                    let key_width = if self.mono {
-                        cx.text.measure_styled_mono(
-                            keys,
-                            theme::font_size::XS,
-                            FontStyle::default(),
-                        )
-                    } else {
-                        cx.text
-                            .measure_styled(keys, theme::font_size::XS, FontStyle::default())
-                    };
                     let key_origin = Point::new(
                         item_bounds.origin.x + item_bounds.size.width
                             - key_width
-                            - theme::spacing::SM,
-                        item_bounds.origin.y
-                            + (item_bounds.size.height - theme::font_size::XS) / 2.0,
+                            - theme::spacing::MD,
+                        item_bounds.origin.y + 18.0,
                     );
                     let key_run = if self.mono {
                         cx.text.layout_styled_mono(
                             keys,
                             key_origin,
                             theme::font_size::XS,
-                            theme::text::DISABLED,
+                            self.muted_color(),
                             FontStyle::default(),
                         )
                     } else {
@@ -553,13 +701,14 @@ impl Component for CommandPalette {
                             keys,
                             key_origin,
                             theme::font_size::XS,
-                            theme::text::DISABLED,
+                            self.muted_color(),
                         )
                     };
                     cx.scene.draw_text(key_run);
                 }
             }
         }
+        cx.scene.pop_clip();
 
         if self.filtered_commands.is_empty() {
             let empty_text = "No matching commands";
@@ -571,15 +720,15 @@ impl Component for CommandPalette {
                     .measure_styled(empty_text, theme::font_size::SM, FontStyle::default())
             };
             let empty_origin = Point::new(
-                palette_bounds.origin.x + (palette_bounds.size.width - empty_width) / 2.0,
-                palette_bounds.origin.y + input_height + padding + theme::spacing::MD,
+                list_bounds.origin.x + (list_bounds.size.width - empty_width) / 2.0,
+                list_bounds.origin.y + theme::spacing::LG,
             );
             let empty_run = if self.mono {
                 cx.text.layout_styled_mono(
                     empty_text,
                     empty_origin,
                     theme::font_size::SM,
-                    theme::text::MUTED,
+                    self.muted_color(),
                     FontStyle::default(),
                 )
             } else {
@@ -587,13 +736,22 @@ impl Component for CommandPalette {
                     empty_text,
                     empty_origin,
                     theme::font_size::SM,
-                    theme::text::MUTED,
+                    self.muted_color(),
                 )
             };
             cx.scene.draw_text(empty_run);
         }
 
         if self.filtered_commands.len() > self.max_visible_items {
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    footer_bounds.origin.x + theme::spacing::SM,
+                    footer_bounds.origin.y,
+                    (footer_bounds.size.width - theme::spacing::SM * 2.0).max(0.0),
+                    1.0,
+                ))
+                .with_background(self.divider_color()),
+            );
             let footer_label = format!(
                 "Showing {}-{} of {}  •  scroll for more",
                 self.scroll_offset + 1,
@@ -601,15 +759,15 @@ impl Component for CommandPalette {
                 self.filtered_commands.len()
             );
             let footer_origin = Point::new(
-                palette_bounds.origin.x + theme::spacing::SM,
-                palette_bounds.max_y() - self.footer_height() + 4.0,
+                footer_bounds.origin.x + theme::spacing::MD,
+                footer_bounds.origin.y + 7.0,
             );
             let footer_run = if self.mono {
                 cx.text.layout_styled_mono(
                     &footer_label,
                     footer_origin,
                     theme::font_size::XS,
-                    theme::text::MUTED,
+                    self.muted_color(),
                     FontStyle::default(),
                 )
             } else {
@@ -617,7 +775,7 @@ impl Component for CommandPalette {
                     &footer_label,
                     footer_origin,
                     theme::font_size::XS,
-                    theme::text::MUTED,
+                    self.muted_color(),
                 )
             };
             cx.scene.draw_text(footer_run);
@@ -690,20 +848,7 @@ impl Component for CommandPalette {
         }
 
         let palette_bounds = self.palette_bounds(bounds);
-        let padding = theme::spacing::XS;
-
-        let input_bounds = Bounds::new(
-            palette_bounds.origin.x + padding,
-            palette_bounds.origin.y + padding,
-            (palette_bounds.size.width
-                - padding
-                - self
-                    .aux_button_bounds(palette_bounds)
-                    .map(|button| (palette_bounds.max_x() - button.origin.x) + padding)
-                    .unwrap_or(padding))
-            .max(60.0),
-            48.0 - padding * 2.0,
-        );
+        let input_bounds = self.input_bounds(palette_bounds);
 
         let old_value = self.search_input.get_value().to_string();
         let result = self.search_input.event(event, input_bounds, cx);
