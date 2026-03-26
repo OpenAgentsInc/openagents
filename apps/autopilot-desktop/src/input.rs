@@ -80,8 +80,9 @@ use crate::pane_system::{
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
 use crate::render::{
-    logical_size, pane_fullscreen_active, render_frame, sidebar_go_online_button_bounds,
-    sidebar_handle_bounds, wallet_balance_sats_label_bounds,
+    COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION, command_registry, logical_size,
+    pane_fullscreen_active, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
+    wallet_balance_sats_label_bounds,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLifecycleCommand,
