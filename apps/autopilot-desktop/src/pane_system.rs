@@ -469,6 +469,7 @@ pub enum MissionControlPaneAction {
     CreateLightningReceiveTarget,
     CopyLightningReceiveTarget,
     CopyLogStream,
+    CycleLogLevelFilter,
     SendLightningPayment,
     CopySeedPhrase,
     OpenLocalModelWorkbench,
@@ -3455,6 +3456,20 @@ pub fn mission_control_copy_log_stream_button_bounds(
         log_stream.origin.y + 7.0,
         size,
         size,
+    )
+}
+
+pub fn mission_control_log_stream_filter_button_bounds(
+    content_bounds: Bounds,
+    buy_mode_enabled: bool,
+) -> Bounds {
+    let copy_button = mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled);
+    let button_width = 46.0;
+    Bounds::new(
+        copy_button.origin.x - 8.0 - button_width,
+        copy_button.origin.y - 1.0,
+        button_width,
+        16.0,
     )
 }
 
@@ -7035,6 +7050,13 @@ fn pane_hit_action_for_pane(
             {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopyLogStream,
+                ));
+            }
+            if mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled)
+                .contains(point)
+            {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::CycleLogLevelFilter,
                 ));
             }
             if mission_control_show_local_model_button(

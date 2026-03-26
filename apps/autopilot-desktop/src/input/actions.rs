@@ -10035,6 +10035,17 @@ pub(super) fn run_mission_control_action(
             }
             true
         }
+        MissionControlPaneAction::CycleLogLevelFilter => {
+            let level = state.log_stream.cycle_level_filter();
+            let label = match level {
+                crate::app_state::LogStreamLevelFilter::Debug => "Log stream filter: DEBUG",
+                crate::app_state::LogStreamLevelFilter::Info => "Log stream filter: INFO",
+                crate::app_state::LogStreamLevelFilter::Warn => "Log stream filter: WARN",
+                crate::app_state::LogStreamLevelFilter::Error => "Log stream filter: ERROR",
+            };
+            state.mission_control.record_action(label);
+            true
+        }
         MissionControlPaneAction::SendLightningPayment => {
             let command = match build_pay_invoice_command(
                 PayInvoicePaneAction::SendPayment,
