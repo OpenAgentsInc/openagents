@@ -29,7 +29,9 @@ use crate::local_inference_runtime::{
     initial_local_inference_runtime_snapshot,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
+use crate::pane_registry::{
+    PaneSearchFilter, enabled_pane_specs, pane_search_tier, startup_pane_kinds,
+};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, RIGHT_SIDEBAR_ENABLED,
@@ -84,6 +86,7 @@ fn preferred_surface_alpha_mode(
         .copied()
         .unwrap_or(wgpu::CompositeAlphaMode::Auto)
 }
+pub(crate) const COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION: &str = "pane.search_filter.cycle";
 const BACKDROP_BLUR_SHADER: &str = r#"
 struct BlurUniforms {
     texel_size: vec2<f32>,
@@ -643,13 +646,23 @@ pub fn init_state(
         sync_health.cursor_position = sync_health.last_applied_event_seq;
         sync_health.cursor_target_position = sync_health.last_applied_event_seq;
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
+        let default_pane_search_filter = PaneSearchFilter::Release;
         let mut command_palette = CommandPalette::new()
             .mono(true)
-            .commands(command_registry());
+            .commands(command_registry(default_pane_search_filter))
+            .aux_button_label(default_pane_search_filter.button_label());
         {
             let action_queue = Rc::clone(&command_palette_actions);
             command_palette = command_palette.on_select(move |command| {
                 action_queue.borrow_mut().push(command.id.clone());
+            });
+        }
+        {
+            let action_queue = Rc::clone(&command_palette_actions);
+            command_palette = command_palette.on_aux_button(move || {
+                action_queue
+                    .borrow_mut()
+                    .push(COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION.to_string());
             });
         }
 
@@ -835,6 +848,7 @@ pub fn init_state(
             onboarding: crate::onboarding::OnboardingState::load_or_default(),
             command_palette,
             command_palette_actions,
+            pane_search_filter: default_pane_search_filter,
         };
         rehydrate_startup_earnings_history(&mut state);
         apply_spacetime_sync_bootstrap(&mut state);
@@ -2125,8 +2139,9 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
     Bounds::new(sidebar_x + 12.0, 72.0, width, 34.0)
 }
 
-fn command_registry() -> Vec<Command> {
+pub(crate) fn command_registry(pane_filter: PaneSearchFilter) -> Vec<Command> {
     let mut commands: Vec<Command> = enabled_pane_specs()
+        .filter(|spec| pane_filter.includes(pane_search_tier(spec.kind)))
         .filter_map(|spec| {
             let command = spec.command?;
             let mut entry = Command::new(command.id, command.label)
@@ -2139,15 +2154,17 @@ fn command_registry() -> Vec<Command> {
         })
         .collect();
 
-    commands.extend(cad_palette_command_specs().iter().map(|spec| {
-        let mut command = Command::new(spec.id, spec.label)
-            .description(spec.description)
-            .category("CAD");
-        if let Some(keys) = spec.keybinding {
-            command = command.keybinding(keys);
-        }
-        command
-    }));
+    if pane_filter.includes(crate::pane_registry::PaneSearchTier::Experimental) {
+        commands.extend(cad_palette_command_specs().iter().map(|spec| {
+            let mut command = Command::new(spec.id, spec.label)
+                .description(spec.description)
+                .category("CAD");
+            if let Some(keys) = spec.keybinding {
+                command = command.keybinding(keys);
+            }
+            command
+        }));
+    }
 
     commands
 }
@@ -2158,18 +2175,22 @@ mod tests {
         command_registry, pane_fullscreen_active_for_panes, wallet_balance_chip_bounds_for_logical,
     };
     use crate::app_state::{DesktopPane, PaneKind, PanePresentation};
-    use crate::pane_registry::{enabled_pane_specs, pane_spec_by_command_id, startup_pane_kinds};
+    use crate::pane_registry::{
+        PaneSearchFilter, enabled_pane_specs, pane_search_tier, pane_spec_by_command_id,
+        startup_pane_kinds,
+    };
     use crate::pane_system::cad_palette_command_specs;
     use std::collections::BTreeSet;
     use wgpui::{Bounds, Size};
 
     #[test]
     fn command_registry_matches_pane_specs() {
-        let commands = command_registry();
+        let commands = command_registry(PaneSearchFilter::All);
         let command_ids: BTreeSet<&str> =
             commands.iter().map(|command| command.id.as_str()).collect();
 
         let pane_command_ids: BTreeSet<&str> = enabled_pane_specs()
+            .filter(|spec| PaneSearchFilter::All.includes(pane_search_tier(spec.kind)))
             .filter_map(|spec| spec.command.map(|command| command.id))
             .collect();
         let cad_command_ids: BTreeSet<&str> = cad_palette_command_specs()
@@ -2196,7 +2217,7 @@ mod tests {
 
     #[test]
     fn command_registry_includes_job_inbox_command() {
-        let commands = command_registry();
+        let commands = command_registry(PaneSearchFilter::All);
         assert!(
             commands
                 .iter()
