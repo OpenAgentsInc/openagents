@@ -251,14 +251,12 @@ fn active_chat_fingerprint(autopilot_chat: &AutopilotChatState) -> String {
             )
         }
         ChatBrowseMode::ManagedSystem => {
-            let messages = autopilot_chat.active_managed_system_messages();
             format!(
                 "managed-system:{}:{}",
-                messages.len(),
-                messages
-                    .last()
-                    .map(|message| message.event_id.as_str())
-                    .unwrap_or("none")
+                autopilot_chat.managed_system_event_count(),
+                autopilot_chat
+                    .managed_system_latest_event_id()
+                    .unwrap_or_else(|| "none".to_string())
             )
         }
         ChatBrowseMode::DirectMessages => {

@@ -941,9 +941,7 @@ fn rebuild_managed_chat_projection(
                     .get(&event.pubkey)
                     .map_or(true, |(ts, _)| event.created_at > *ts);
                 if is_newer {
-                    if let Ok(meta) =
-                        serde_json::from_str::<serde_json::Value>(&event.content)
-                    {
+                    if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&event.content) {
                         author_metadata_raw.insert(
                             event.pubkey.clone(),
                             (
@@ -1500,8 +1498,10 @@ fn rebuild_managed_chat_projection(
         .collect::<Vec<_>>();
     group_rows.sort_by(|left, right| left.group_id.cmp(&right.group_id));
 
-    let author_metadata: HashMap<String, Kind0Metadata> =
-        author_metadata_raw.into_iter().map(|(k, (_, v))| (k, v)).collect();
+    let author_metadata: HashMap<String, Kind0Metadata> = author_metadata_raw
+        .into_iter()
+        .map(|(k, (_, v))| (k, v))
+        .collect();
 
     ManagedChatProjectionSnapshot {
         groups: group_rows,
