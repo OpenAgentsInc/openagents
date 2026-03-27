@@ -71,6 +71,8 @@ use crate::pane_system::{
     dispatch_nostr_identity_scroll_event, dispatch_earnings_scoreboard_scroll_event,
     dispatch_pay_invoice_input_event,
     dispatch_provider_control_scroll_event,
+    dispatch_provider_status_scroll_event,
+    dispatch_sync_health_scroll_event,
     dispatch_spark_wallet_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, dispatch_wallet_scroll_event,
@@ -2915,6 +2917,12 @@ fn dispatch_mouse_scroll(
             }
             if !handled {
                 handled |= dispatch_provider_control_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_provider_status_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_sync_health_scroll_event(state, point, *dy);
             }
             if !handled {
                 handled |= dispatch_nostr_identity_scroll_event(state, point, *dy);
