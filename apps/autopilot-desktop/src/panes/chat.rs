@@ -1,5 +1,8 @@
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::{Mutex, OnceLock};
+
 use reqwest::Url;
-use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
+use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
 use crate::app_state::{
@@ -53,6 +56,7 @@ const CHAT_ATTACHMENT_CARD_GAP: f32 = ui_style::spacing::BUTTON_GAP;
 const CHAT_ATTACHMENT_LABEL_LINE_HEIGHT: f32 = 10.0;
 const CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ATTACHMENT_DETAIL_LINE_HEIGHT: f32 = 10.0;
+const MANAGED_SYSTEM_LAYOUT_CACHE_LIMIT: usize = 128;
 const CHAT_MESSAGE_BUBBLE_PAD_X: f32 = ui_style::spacing::ROW_PADDING;
 const CHAT_MESSAGE_BUBBLE_PAD_Y: f32 = ui_style::spacing::SECTION_GAP - 2.0;
 const CHAT_MESSAGE_BUBBLE_GAP: f32 = ui_style::spacing::SECTION_GAP;
@@ -324,6 +328,66 @@ struct RichMessageAttachment {
     label: String,
     summary: String,
     detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ManagedSystemTranscriptLayoutCacheKey {
+    event_id: String,
+    markdown_width_px: u32,
+}
+
+#[derive(Clone)]
+struct ManagedSystemTranscriptLayoutCacheEntry {
+    markdown_document: MarkdownDocument,
+    attachments: Vec<RichMessageAttachment>,
+    markdown_height: f32,
+    attachment_height: f32,
+    row_height: f32,
+}
+
+#[derive(Default)]
+struct ManagedSystemTranscriptLayoutCache {
+    entries:
+        BTreeMap<ManagedSystemTranscriptLayoutCacheKey, ManagedSystemTranscriptLayoutCacheEntry>,
+    lru: VecDeque<ManagedSystemTranscriptLayoutCacheKey>,
+}
+
+impl ManagedSystemTranscriptLayoutCache {
+    fn get(
+        &mut self,
+        key: &ManagedSystemTranscriptLayoutCacheKey,
+    ) -> Option<ManagedSystemTranscriptLayoutCacheEntry> {
+        let entry = self.entries.get(key).cloned()?;
+        self.touch(key.clone());
+        Some(entry)
+    }
+
+    fn insert(
+        &mut self,
+        key: ManagedSystemTranscriptLayoutCacheKey,
+        entry: ManagedSystemTranscriptLayoutCacheEntry,
+    ) {
+        self.entries.insert(key.clone(), entry);
+        self.touch(key);
+        while self.entries.len() > MANAGED_SYSTEM_LAYOUT_CACHE_LIMIT {
+            let Some(oldest) = self.lru.pop_front() else {
+                break;
+            };
+            self.entries.remove(&oldest);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.lru.clear();
+    }
+
+    fn touch(&mut self, key: ManagedSystemTranscriptLayoutCacheKey) {
+        if let Some(index) = self.lru.iter().position(|existing| existing == &key) {
+            self.lru.remove(index);
+        }
+        self.lru.push_back(key);
+    }
 }
 
 fn notification_badge(unread_count: usize, mention_count: usize) -> Option<(usize, bool)> {
@@ -791,9 +855,32 @@ fn rich_message_attachments(content: &str) -> Vec<RichMessageAttachment> {
     attachments
 }
 
-fn rich_message_attachments_height(content: &str) -> f32 {
-    rich_message_attachments(content)
-        .into_iter()
+fn managed_system_layout_cache() -> &'static Mutex<ManagedSystemTranscriptLayoutCache> {
+    static MANAGED_SYSTEM_LAYOUT_CACHE: OnceLock<Mutex<ManagedSystemTranscriptLayoutCache>> =
+        OnceLock::new();
+    MANAGED_SYSTEM_LAYOUT_CACHE
+        .get_or_init(|| Mutex::new(ManagedSystemTranscriptLayoutCache::default()))
+}
+
+fn clear_managed_system_layout_cache() {
+    if let Ok(mut cache) = managed_system_layout_cache().lock() {
+        cache.clear();
+    }
+}
+
+fn managed_system_layout_cache_key(
+    event_id: &str,
+    markdown_width: f32,
+) -> ManagedSystemTranscriptLayoutCacheKey {
+    ManagedSystemTranscriptLayoutCacheKey {
+        event_id: event_id.to_string(),
+        markdown_width_px: markdown_width.max(0.0).round() as u32,
+    }
+}
+
+fn rich_message_attachments_height_for_attachments(attachments: &[RichMessageAttachment]) -> f32 {
+    attachments
+        .iter()
         .map(|attachment| {
             CHAT_ATTACHMENT_LABEL_LINE_HEIGHT
                 + CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT
@@ -808,15 +895,20 @@ fn rich_message_attachments_height(content: &str) -> f32 {
         .sum()
 }
 
-fn paint_rich_message_attachments(
-    content: &str,
+fn rich_message_attachments_height(content: &str) -> f32 {
+    let attachments = rich_message_attachments(content);
+    rich_message_attachments_height_for_attachments(&attachments)
+}
+
+fn paint_cached_rich_message_attachments(
+    attachments: &[RichMessageAttachment],
     x: f32,
     mut y: f32,
     width: f32,
     paint: &mut PaintContext,
 ) -> f32 {
     let start_y = y;
-    for attachment in rich_message_attachments(content) {
+    for attachment in attachments {
         let height = CHAT_ATTACHMENT_LABEL_LINE_HEIGHT
             + CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT
             + if attachment.detail.is_some() {
@@ -856,6 +948,77 @@ fn paint_rich_message_attachments(
         y += height + CHAT_ATTACHMENT_CARD_GAP;
     }
     y - start_y
+}
+
+fn paint_rich_message_attachments(
+    content: &str,
+    x: f32,
+    y: f32,
+    width: f32,
+    paint: &mut PaintContext,
+) -> f32 {
+    let attachments = rich_message_attachments(content);
+    paint_cached_rich_message_attachments(&attachments, x, y, width, paint)
+}
+
+fn managed_system_cached_row_layout(
+    message: &ManagedChatMessageProjection,
+    markdown_width: f32,
+    markdown_parser: &MarkdownParser,
+    markdown_renderer: &MarkdownRenderer,
+    text_system: &mut wgpui::TextSystem,
+) -> ManagedSystemTranscriptLayoutCacheEntry {
+    let key = managed_system_layout_cache_key(&message.event_id, markdown_width);
+    if let Ok(mut cache) = managed_system_layout_cache().lock()
+        && let Some(entry) = cache.get(&key)
+    {
+        return entry;
+    }
+
+    let markdown_source = managed_message_markdown_source(message);
+    let markdown_document = markdown_parser.parse(&markdown_source);
+    let markdown_height = markdown_renderer
+        .measure(&markdown_document, markdown_width, text_system)
+        .height
+        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+    let attachments = rich_message_attachments(&markdown_source);
+    let attachment_height = rich_message_attachments_height_for_attachments(&attachments);
+    let entry = ManagedSystemTranscriptLayoutCacheEntry {
+        markdown_document,
+        attachments,
+        markdown_height,
+        attachment_height,
+        row_height: CHAT_ACTIVITY_ROW_LINE_HEIGHT
+            + CHAT_TRANSCRIPT_LINE_HEIGHT
+            + markdown_height
+            + attachment_height
+            + 8.0,
+    };
+    if let Ok(mut cache) = managed_system_layout_cache().lock() {
+        cache.insert(key, entry.clone());
+    }
+    entry
+}
+
+fn managed_system_visible_row_layouts(
+    messages: &[&ManagedChatMessageProjection],
+    markdown_width: f32,
+    markdown_parser: &MarkdownParser,
+    markdown_renderer: &MarkdownRenderer,
+    text_system: &mut wgpui::TextSystem,
+) -> Vec<ManagedSystemTranscriptLayoutCacheEntry> {
+    messages
+        .iter()
+        .map(|message| {
+            managed_system_cached_row_layout(
+                message,
+                markdown_width,
+                markdown_parser,
+                markdown_renderer,
+                text_system,
+            )
+        })
+        .collect()
 }
 
 fn message_markdown_source(message: &AutopilotMessage) -> String {
@@ -1120,6 +1283,17 @@ fn transcript_content_height(
             }
             return height + 8.0;
         }
+        ChatBrowseMode::ManagedSystem => {
+            let messages = autopilot_chat.visible_managed_system_messages();
+            let layouts = managed_system_visible_row_layouts(
+                messages.as_slice(),
+                markdown_width,
+                &markdown_parser,
+                &markdown_renderer,
+                text_system,
+            );
+            return managed_system_transcript_content_height(height, &layouts);
+        }
         ChatBrowseMode::DirectMessages => {
             for message in autopilot_chat.active_direct_message_messages() {
                 height += CHAT_TRANSCRIPT_LINE_HEIGHT;
@@ -1172,6 +1346,20 @@ fn transcript_content_height(
     }
 
     height + 8.0
+}
+
+fn managed_system_transcript_content_height(
+    mut height: f32,
+    layouts: &[ManagedSystemTranscriptLayoutCacheEntry],
+) -> f32 {
+    height += managed_system_transcript_rows_height(layouts);
+    height + 8.0
+}
+
+fn managed_system_transcript_rows_height(
+    layouts: &[ManagedSystemTranscriptLayoutCacheEntry],
+) -> f32 {
+    layouts.iter().map(|layout| layout.row_height).sum()
 }
 
 fn message_display_content(message: &AutopilotMessage) -> String {
@@ -1596,6 +1784,52 @@ fn managed_status_text(autopilot_chat: &AutopilotChatState) -> String {
         parts.push(format!("{failed} failed"));
     }
     parts.join("  •  ")
+}
+
+fn managed_system_status_text(autopilot_chat: &AutopilotChatState) -> String {
+    let (presence, debug) = autopilot_chat.managed_system_kind_counts();
+    let mut parts = vec![format!("{presence} presence"), format!("{debug} debug")];
+    if !autopilot_chat
+        .managed_chat_lane
+        .configured_relays
+        .is_empty()
+    {
+        parts.push(format!(
+            "{} / {} relay(s) live",
+            autopilot_chat.managed_chat_lane.connected_relay_count,
+            autopilot_chat.managed_chat_lane.configured_relays.len()
+        ));
+    }
+    parts.join("  •  ")
+}
+
+fn managed_system_message_context_label(
+    autopilot_chat: &AutopilotChatState,
+    message: &ManagedChatMessageProjection,
+) -> String {
+    let kind = match message.message_class {
+        crate::chat_message_classifier::ChatMessageClass::PresenceEvent => "presence",
+        crate::chat_message_classifier::ChatMessageClass::DebugEvent => "debug",
+        crate::chat_message_classifier::ChatMessageClass::SystemNotice => "notice",
+        crate::chat_message_classifier::ChatMessageClass::HumanMessage => "message",
+    };
+    let group = autopilot_chat
+        .managed_chat_projection
+        .snapshot
+        .groups
+        .iter()
+        .find(|group| group.group_id == message.group_id)
+        .map(managed_group_label)
+        .unwrap_or_else(|| compact_shell_label(&message.group_id));
+    let channel = autopilot_chat
+        .managed_chat_projection
+        .snapshot
+        .channels
+        .iter()
+        .find(|channel| channel.channel_id == message.channel_id)
+        .map(managed_channel_label)
+        .unwrap_or_else(|| compact_shell_label(&message.channel_id));
+    format!("[{kind}] {group} / {channel}")
 }
 
 fn current_epoch_seconds() -> u64 {
@@ -2129,6 +2363,9 @@ fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
                 return managed_channel_label(channel);
             }
         }
+        ChatBrowseMode::ManagedSystem => {
+            return "Managed system".to_string();
+        }
         ChatBrowseMode::DirectMessages => {
             if let Some(room) = autopilot_chat.active_direct_message_room() {
                 let local_pubkey = autopilot_chat.direct_message_projection.local_pubkey();
@@ -2182,6 +2419,19 @@ fn active_thread_supporting_context(
                 }
                 return Some(parts.join("  •  "));
             }
+        }
+        ChatBrowseMode::ManagedSystem => {
+            let mut parts = vec![format!(
+                "{} system event(s)",
+                autopilot_chat.managed_system_event_count()
+            )];
+            if let Some(presence) = crate::chat_spacetime::active_chat_presence_summary(
+                autopilot_chat,
+                spacetime_presence,
+            ) {
+                parts.push(presence);
+            }
+            return Some(parts.join("  •  "));
         }
         ChatBrowseMode::DirectMessages => {
             if let Some(room) = autopilot_chat.active_direct_message_room() {
@@ -2836,6 +3086,19 @@ fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspa
             badge_urgent,
         });
     }
+    if autopilot_chat.has_managed_system_browseable_content() {
+        workspaces.push(ChatShellWorkspace {
+            label: "System".to_string(),
+            initials: "SY".to_string(),
+            accent: chat_mission_orange_color(),
+            active: matches!(
+                autopilot_chat.selected_workspace,
+                crate::app_state::ChatWorkspaceSelection::ManagedSystem
+            ),
+            badge_count: 0,
+            badge_urgent: false,
+        });
+    }
     if autopilot_chat.has_direct_message_browseable_content() {
         let unread_count = autopilot_chat
             .direct_message_projection
@@ -2929,6 +3192,7 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                 })
                 .collect();
         }
+        ChatBrowseMode::ManagedSystem => return Vec::new(),
         ChatBrowseMode::DirectMessages => {
             let active_room_id = autopilot_chat
                 .active_direct_message_room()
@@ -3162,6 +3426,7 @@ fn paint_chat_shell(
 
     let (shell_mode_label, rail_title) = match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Managed => ("OPENAGENTS / GROUP CHAT", "Channels"),
+        ChatBrowseMode::ManagedSystem => ("OPENAGENTS / MANAGED SYSTEM", "Events"),
         ChatBrowseMode::DirectMessages => ("OPENAGENTS / DIRECT MESSAGES", "Rooms"),
         ChatBrowseMode::Autopilot => ("OPENAGENTS / AUTOPILOT", "THREADS"),
     };
@@ -3542,6 +3807,7 @@ fn paint_chat_shell(
 
     let transcript_panel_label = match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Managed => "GROUP CHAT",
+        ChatBrowseMode::ManagedSystem => "MANAGED SYSTEM",
         ChatBrowseMode::DirectMessages => "DIRECT MESSAGES",
         ChatBrowseMode::Autopilot => "CHAT",
     };
@@ -3801,6 +4067,25 @@ fn paint_chat_shell(
                 ));
             }
         }
+        ChatBrowseMode::ManagedSystem => {
+            let status_text = managed_system_status_text(autopilot_chat);
+            let status_width = (header_bounds.size.width * 0.45).max(150.0);
+            let status_x = header_bounds.max_x() - status_width - 10.0;
+            let mut status_y = header_bounds.origin.y + 12.0;
+            let max_chars = ((status_width / 6.2).floor() as usize).max(12);
+            for chunk in split_text_for_display(&status_text, max_chars)
+                .into_iter()
+                .take(3)
+            {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &chunk,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    chat_mission_cyan_color(),
+                ));
+                status_y += 12.0;
+            }
+        }
         ChatBrowseMode::DirectMessages => {
             let status_text = direct_status_text(autopilot_chat);
             let status_width = (header_bounds.size.width * 0.45).max(150.0);
@@ -4049,6 +4334,9 @@ pub fn paint(
     paint: &mut PaintContext,
 ) {
     let browse_mode = autopilot_chat.chat_browse_mode();
+    if browse_mode != ChatBrowseMode::ManagedSystem {
+        clear_managed_system_layout_cache();
+    }
     let composer_value = chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
     let transcript_body_bounds =
@@ -4253,6 +4541,92 @@ pub fn paint(
                 }
                 prev_author_pubkey = Some(message.author_pubkey.clone());
                 prev_created_at = message.created_at;
+                y += 8.0;
+            }
+        }
+        ChatBrowseMode::ManagedSystem => {
+            let managed_messages = autopilot_chat.visible_managed_system_messages();
+            let managed_layouts = managed_system_visible_row_layouts(
+                managed_messages.as_slice(),
+                markdown_width,
+                &markdown_parser,
+                &markdown_renderer,
+                paint.text,
+            );
+            if managed_messages.is_empty() {
+                let empty_state = "No managed system traffic observed yet.";
+                let empty_state_font_size = 18.0;
+                let empty_state_width = paint.text.measure(empty_state, empty_state_font_size);
+                let empty_state_x = transcript_scroll_clip.origin.x
+                    + (transcript_scroll_clip.size.width - empty_state_width) * 0.5;
+                let empty_state_y = transcript_scroll_clip.origin.y
+                    + transcript_scroll_clip.size.height * 0.5
+                    - empty_state_font_size * 0.5;
+                paint.scene.draw_text(paint.text.layout(
+                    empty_state,
+                    Point::new(
+                        empty_state_x.max(transcript_scroll_clip.origin.x),
+                        empty_state_y,
+                    ),
+                    empty_state_font_size,
+                    theme::text::MUTED,
+                ));
+            }
+
+            let now_secs = current_epoch_seconds();
+            let local_pubkey = autopilot_chat
+                .managed_chat_projection
+                .local_pubkey()
+                .map(|s| s.to_string());
+            let author_metadata = &autopilot_chat
+                .managed_chat_projection
+                .snapshot
+                .author_metadata;
+
+            for (message, layout) in managed_messages
+                .into_iter()
+                .zip(managed_layouts.into_iter())
+            {
+                let context_label = managed_system_message_context_label(autopilot_chat, message);
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &context_label,
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let is_own = local_pubkey.as_deref() == Some(message.author_pubkey.as_str());
+                if let Some(role_label) =
+                    managed_message_role_label(message, author_metadata, false, is_own, now_secs)
+                {
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &role_label,
+                        Point::new(transcript_scroll_clip.origin.x, y),
+                        10.0,
+                        author_label_color(&message.author_pubkey, is_own),
+                    ));
+                    y += CHAT_TRANSCRIPT_LINE_HEIGHT;
+                }
+
+                let markdown_height = markdown_renderer
+                    .render(
+                        &layout.markdown_document,
+                        Point::new(transcript_scroll_clip.origin.x, y),
+                        markdown_width,
+                        paint.text,
+                        paint.scene,
+                    )
+                    .height
+                    .max(layout.markdown_height);
+                y += markdown_height;
+                y += paint_cached_rich_message_attachments(
+                    &layout.attachments,
+                    transcript_scroll_clip.origin.x,
+                    y,
+                    markdown_width,
+                    paint,
+                );
                 y += 8.0;
             }
         }
@@ -4607,17 +4981,25 @@ pub fn paint(
     paint.scene.pop_clip();
 
     let mut footer_y = transcript_body_bounds.max_y() - 12.0;
-    if browse_mode == ChatBrowseMode::Managed || browse_mode == ChatBrowseMode::DirectMessages {
+    if browse_mode == ChatBrowseMode::Managed
+        || browse_mode == ChatBrowseMode::ManagedSystem
+        || browse_mode == ChatBrowseMode::DirectMessages
+    {
         let hint = if browse_mode == ChatBrowseMode::Managed {
             managed_chat_composer_hint(autopilot_chat, &composer_value)
+        } else if browse_mode == ChatBrowseMode::ManagedSystem {
+            "Managed system traffic is read-only. Select a group channel to send messages."
+                .to_string()
         } else {
             direct_message_composer_hint(autopilot_chat, &composer_value)
         };
-        if let Some(typing) = crate::chat_spacetime::active_chat_typing_summary(
-            autopilot_chat,
-            &composer_value,
-            spacetime_presence,
-        ) {
+        if browse_mode != ChatBrowseMode::ManagedSystem
+            && let Some(typing) = crate::chat_spacetime::active_chat_typing_summary(
+                autopilot_chat,
+                &composer_value,
+                spacetime_presence,
+            )
+        {
             paint.scene.draw_text(paint.text.layout_mono(
                 &typing,
                 Point::new(transcript_body_bounds.origin.x, footer_y),
@@ -4706,7 +5088,33 @@ pub fn paint(
         .managed_chat_projection
         .local_pubkey()
         .is_some();
-    if browse_mode == ChatBrowseMode::Managed && !managed_has_identity {
+    if browse_mode == ChatBrowseMode::ManagedSystem {
+        chat_inputs.composer_identity_link_bounds = None;
+        paint.scene.draw_quad(
+            Quad::new(composer_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.18))
+                .with_border(chat_mission_panel_border_color().with_alpha(0.85), 1.0)
+                .with_corner_radius(3.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            "Managed system workspace is read-only",
+            Point::new(
+                composer_bounds.origin.x + 8.0,
+                composer_bounds.origin.y + 10.0,
+            ),
+            11.0,
+            chat_mission_muted_color(),
+        ));
+        paint.scene.draw_text(paint.text.layout_mono(
+            "Select a group channel to send messages",
+            Point::new(
+                composer_bounds.origin.x + 8.0,
+                composer_bounds.origin.y + 24.0,
+            ),
+            11.0,
+            chat_mission_cyan_color(),
+        ));
+    } else if browse_mode == ChatBrowseMode::Managed && !managed_has_identity {
         // Block state — no signing identity configured for managed chat.
         chat_inputs.composer_identity_link_bounds = None;
         paint.scene.draw_quad(
@@ -4755,6 +5163,7 @@ pub fn paint(
             managed_has_identity
                 && autopilot_chat.managed_chat_can_send(chat_inputs.composer.get_value())
         }
+        ChatBrowseMode::ManagedSystem => false,
         ChatBrowseMode::DirectMessages => {
             autopilot_chat.direct_message_can_send(chat_inputs.composer.get_value())
         }
@@ -4783,11 +5192,15 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
     let composer_value = state.chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
-    let mut handled = state
-        .chat_inputs
-        .composer
-        .event(event, composer_bounds, &mut state.event_context)
-        .is_handled();
+    let mut handled = if state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::ManagedSystem {
+        false
+    } else {
+        state
+            .chat_inputs
+            .composer
+            .event(event, composer_bounds, &mut state.event_context)
+            .is_handled()
+    };
     if state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::Autopilot
         && !state.autopilot_chat.thread_rail_collapsed
     {
@@ -4957,12 +5370,21 @@ pub fn dispatch_transcript_scroll_event(
         return false;
     }
 
-    let content_height = transcript_content_height(
+    let content_height = maybe_expand_managed_system_history_window(
+        &mut state.autopilot_chat,
         content_bounds,
         composer_height,
-        &state.autopilot_chat,
+        scroll_dy,
         &mut state.text_system,
-    );
+    )
+    .unwrap_or_else(|| {
+        transcript_content_height(
+            content_bounds,
+            composer_height,
+            &state.autopilot_chat,
+            &mut state.text_system,
+        )
+    });
     let max_scroll = (content_height - clip.size.height).max(0.0);
     if max_scroll <= 0.0 {
         return false;
@@ -5016,18 +5438,80 @@ fn sanitize_chat_text(text: &str) -> String {
     output
 }
 
+fn maybe_expand_managed_system_history_window(
+    autopilot_chat: &mut AutopilotChatState,
+    content_bounds: Bounds,
+    composer_height: f32,
+    scroll_dy: f32,
+    text_system: &mut wgpui::TextSystem,
+) -> Option<f32> {
+    if autopilot_chat.chat_browse_mode() != ChatBrowseMode::ManagedSystem
+        || scroll_dy >= 0.0
+        || !autopilot_chat.has_more_managed_system_history()
+    {
+        return None;
+    }
+
+    let clip = transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
+    let markdown_width = markdown_body_width(clip);
+    let markdown_parser = MarkdownParser::new();
+    let markdown_renderer = MarkdownRenderer::with_config(chat_markdown_config());
+    let previous_messages = autopilot_chat.visible_managed_system_messages();
+    let previous_layouts = managed_system_visible_row_layouts(
+        previous_messages.as_slice(),
+        markdown_width,
+        &markdown_parser,
+        &markdown_renderer,
+        text_system,
+    );
+    let previous_content_height =
+        managed_system_transcript_content_height(8.0, previous_layouts.as_slice());
+    let previous_max_scroll = (previous_content_height - clip.size.height).max(0.0);
+    let current_offset = autopilot_chat.transcript_effective_scroll_offset(previous_max_scroll);
+    if current_offset > autopilot_chat.managed_system_transcript_preload_threshold_px() {
+        return None;
+    }
+    let previous_count = previous_messages.len();
+    drop(previous_messages);
+    if !autopilot_chat.reveal_more_managed_system_history() {
+        return None;
+    }
+
+    let expanded_messages = autopilot_chat.visible_managed_system_messages();
+    let newly_revealed_count = expanded_messages
+        .len()
+        .saturating_sub(previous_count);
+    let added_layouts = managed_system_visible_row_layouts(
+        &expanded_messages[..newly_revealed_count],
+        markdown_width,
+        &markdown_parser,
+        &markdown_renderer,
+        text_system,
+    );
+    let added_height = managed_system_transcript_rows_height(added_layouts.as_slice());
+    let new_content_height = previous_content_height + added_height;
+    let new_max_scroll = (new_content_height - clip.size.height).max(0.0);
+    autopilot_chat.preserve_transcript_anchor_after_prepend(
+        current_offset,
+        added_height,
+        new_max_scroll,
+    );
+    Some(new_content_height)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         byte_offset_for_char_index, chat_tool_activity_lines, clamp_to_char_boundary,
-        is_tool_activity_event, managed_message_delivery_note, message_progress_height,
-        progress_status_color, rich_message_attachments, sanitize_chat_text,
+        is_tool_activity_event, managed_message_delivery_note,
+        maybe_expand_managed_system_history_window, message_progress_height, progress_status_color,
+        rich_message_attachments, sanitize_chat_text, transcript_content_height,
         wrap_transcript_text_lines,
     };
     use crate::app_state::{
         AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
         AutopilotProgressRow, AutopilotRole, AutopilotStructuredMessage, AutopilotToolCallRequest,
-        AutopilotTurnMetadata, DirectMessageRoomProjection,
+        AutopilotTurnMetadata, ChatWorkspaceSelection, DirectMessageRoomProjection,
     };
     use crate::labor_orchestrator::{
         CodexLaborBinding, CodexLaborClaimState, CodexLaborProvenanceBundle,
@@ -5041,7 +5525,7 @@ mod tests {
     };
     use openagents_kernel_core::receipts::TraceContext;
     use serde_json::json;
-    use wgpui::theme;
+    use wgpui::{Bounds, TextSystem, theme};
 
     fn fixture_progress_message(status: &str) -> AutopilotMessage {
         AutopilotMessage {
@@ -5443,5 +5927,115 @@ mod tests {
         )
         .unwrap();
         assert!(n.contains("retry"), "got: {n:?}");
+    }
+
+    #[test]
+    fn managed_system_scroll_reveals_older_history_and_preserves_anchor() {
+        fn repeated_hex(ch: char, len: usize) -> String {
+            std::iter::repeat_n(ch, len).collect()
+        }
+
+        fn signed_event(
+            id_ch: char,
+            pubkey_ch: char,
+            created_at: u64,
+            kind: u16,
+            tags: Vec<Vec<String>>,
+            content: String,
+        ) -> nostr::Event {
+            nostr::Event {
+                id: repeated_hex(id_ch, 64),
+                pubkey: repeated_hex(pubkey_ch, 64),
+                created_at,
+                kind,
+                tags,
+                content,
+                sig: repeated_hex('f', 128),
+            }
+        }
+
+        let mut chat = AutopilotChatState::default();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("managed-system-scroll.json");
+        chat.managed_chat_projection =
+            crate::app_state::ManagedChatProjectionState::from_projection_path_for_tests(path);
+        let group_metadata = nostr::GroupMetadataEvent::new(
+            "oa-main",
+            nostr::GroupMetadata::new().with_name("Ops"),
+            10,
+        )
+        .expect("group metadata");
+        let channel_id = repeated_hex('b', 64);
+        let channel = nostr::ManagedChannelCreateEvent::new(
+            "oa-main",
+            nostr::ChannelMetadata::new("ops", "", ""),
+            20,
+        )
+        .expect("channel");
+
+        let mut events = vec![
+            signed_event('a', '1', 10, 39000, group_metadata.to_tags(), String::new()),
+            signed_event(
+                'b',
+                '2',
+                20,
+                40,
+                channel.to_tags().expect("channel tags"),
+                channel.content().expect("channel content"),
+            ),
+        ];
+        for index in 0..18_u64 {
+            let content = format!(
+                r#"{{"type":"{}","pubkey":"{}","mode":"provider-online","capabilities":[],"seq":{index}}}"#,
+                crate::autopilot_peer_roster::AUTOPILOT_COMPUTE_PRESENCE_TYPE,
+                repeated_hex('9', 64)
+            );
+            let message = nostr::ManagedChannelMessageEvent::new(
+                "oa-main",
+                channel_id.clone(),
+                "wss://relay.openagents.test",
+                &content,
+                30 + index,
+            )
+            .expect("presence message");
+            events.push(signed_event(
+                char::from_u32('c' as u32 + index as u32).expect("event id char"),
+                '4',
+                30 + index,
+                42,
+                message.to_tags().expect("message tags"),
+                content,
+            ));
+        }
+        chat.managed_chat_projection.record_relay_events(events);
+        chat.selected_workspace = ChatWorkspaceSelection::ManagedSystem;
+        chat.reset_managed_system_visible_window();
+        chat.transcript_follow_tail = false;
+        chat.transcript_scroll_offset = 10.0;
+
+        let content_bounds = Bounds::new(0.0, 0.0, 900.0, 640.0);
+        let composer_height = 0.0;
+        let mut text_system = TextSystem::new(1.0);
+        let before_height =
+            transcript_content_height(content_bounds, composer_height, &chat, &mut text_system);
+        let before_offset = chat.transcript_scroll_offset;
+
+        assert!(
+            maybe_expand_managed_system_history_window(
+                &mut chat,
+                content_bounds,
+                composer_height,
+                -24.0,
+                &mut text_system,
+            )
+            .is_some()
+        );
+        let after_height =
+            transcript_content_height(content_bounds, composer_height, &chat, &mut text_system);
+
+        assert_eq!(chat.visible_managed_system_messages().len(), 18);
+        assert!(after_height > before_height);
+        assert!(chat.transcript_scroll_offset > before_offset);
+        assert!(!chat.transcript_follow_tail);
     }
 }
