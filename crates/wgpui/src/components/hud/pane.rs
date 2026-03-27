@@ -161,40 +161,44 @@ impl Component for PaneFrame {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let pane_border_width = 1.0;
         let border_color = if self.active {
-            theme::border::ACTIVE
+            Hsla::from_hex(0x5A687A).with_alpha(0.18)
         } else {
-            theme::border::STRONG
+            Hsla::from_hex(0x46556B).with_alpha(0.14)
         };
-        if self.active {
-            let glow_outer_spread = 6.0;
-            let glow_inner_spread = 3.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    bounds.origin.x - glow_outer_spread,
-                    bounds.origin.y - glow_outer_spread,
-                    bounds.size.width + glow_outer_spread * 2.0,
-                    bounds.size.height + glow_outer_spread * 2.0,
-                ))
-                .with_border(theme::border::ACTIVE.with_alpha(0.16), 1.0)
-                .with_corner_radius(self.corner_radius + glow_outer_spread),
-            );
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    bounds.origin.x - glow_inner_spread,
-                    bounds.origin.y - glow_inner_spread,
-                    bounds.size.width + glow_inner_spread * 2.0,
-                    bounds.size.height + glow_inner_spread * 2.0,
-                ))
-                .with_border(theme::border::ACTIVE.with_alpha(0.30), 1.0)
-                .with_corner_radius(self.corner_radius + glow_inner_spread),
-            );
-        }
 
         cx.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(theme::bg::APP.with_alpha(0.99))
+                .with_background(theme::bg::APP)
                 .with_border(border_color, pane_border_width)
                 .with_corner_radius(self.corner_radius),
+        );
+        // Reinforce the shell edges just enough to keep the rounded corners visually closed.
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y + self.corner_radius,
+                pane_border_width,
+                (bounds.size.height - self.corner_radius * 2.0).max(0.0),
+            ))
+            .with_background(border_color),
+        );
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.max_x() - pane_border_width,
+                bounds.origin.y + self.corner_radius,
+                pane_border_width,
+                (bounds.size.height - self.corner_radius * 2.0).max(0.0),
+            ))
+            .with_background(border_color),
+        );
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x + self.corner_radius,
+                bounds.max_y() - pane_border_width,
+                (bounds.size.width - self.corner_radius * 2.0).max(0.0),
+                pane_border_width,
+            ))
+            .with_background(border_color),
         );
 
         let title_bounds = Bounds::new(
@@ -204,7 +208,7 @@ impl Component for PaneFrame {
             self.title_height,
         );
         self.title_bounds = title_bounds;
-        let header_bg = theme::bg::APP.with_alpha(0.99);
+        let header_bg = theme::bg::APP;
 
         cx.scene.draw_quad(
             Quad::new(title_bounds)
@@ -212,7 +216,7 @@ impl Component for PaneFrame {
                 .with_border(border_color, pane_border_width)
                 .with_corner_radius(self.corner_radius),
         );
-        // Keep the header border on top/left/right only by masking out the bottom edge.
+        // Flatten the header bottom edge so it blends seamlessly into the pane body.
         cx.scene.draw_quad(
             Quad::new(Bounds::new(
                 title_bounds.origin.x,
@@ -260,8 +264,25 @@ impl Component for PaneFrame {
             .with_background(border_color),
         );
 
+        let button_size = (self.title_height - theme::spacing::SM).max(18.0);
+        let button_y = title_bounds.origin.y + (title_bounds.size.height - button_size) * 0.5;
+        let right_edge = title_bounds.origin.x + title_bounds.size.width - theme::spacing::SM;
+        let action_slot_width = button_size + theme::spacing::XS;
+        let mut title_clip_right = right_edge;
+        if self.dismissable {
+            title_clip_right -= action_slot_width;
+        }
+        if self.header_action.is_some() {
+            title_clip_right -= action_slot_width;
+        }
         let title_font_size = theme::font_size::SM + 2.0;
         let title_text_x = title_bounds.origin.x + self.padding;
+        let title_clip_bounds = Bounds::new(
+            title_text_x,
+            title_bounds.origin.y,
+            (title_clip_right - title_text_x).max(0.0),
+            title_bounds.size.height,
+        );
         let mut title_run = cx.text.layout_mono(
             &self.title,
             Point::ZERO,
@@ -277,11 +298,10 @@ impl Component for PaneFrame {
                 - title_run_bounds.origin.y
                 + title_visual_nudge_y,
         );
+        cx.scene.push_clip(title_clip_bounds);
         cx.scene.draw_text(title_run);
+        cx.scene.pop_clip();
 
-        let button_size = (self.title_height - theme::spacing::SM).max(18.0);
-        let button_y = title_bounds.origin.y + (title_bounds.size.height - button_size) * 0.5;
-        let right_edge = title_bounds.origin.x + title_bounds.size.width - theme::spacing::SM;
         if self.dismissable {
             let close_bounds =
                 Bounds::new(right_edge - button_size, button_y, button_size, button_size);

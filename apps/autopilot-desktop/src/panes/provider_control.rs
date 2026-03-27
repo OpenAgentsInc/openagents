@@ -12,7 +12,11 @@ use crate::app_state::{
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_renderer::{
-    mission_control_blocker_detail, paint_action_button, split_text_for_display,
+    mission_control_blocker_detail, mission_control_cyan_color, mission_control_green_color,
+    mission_control_muted_color, mission_control_panel_border_color,
+    mission_control_panel_header_color, mission_control_text_color, paint_disabled_button,
+    paint_mission_control_command_button, paint_mission_control_go_online_button,
+    paint_mission_control_section_panel, split_text_for_display,
 };
 use crate::pane_system::{
     provider_control_inventory_toggle_button_bounds, provider_control_local_fm_test_button_bounds,
@@ -22,6 +26,19 @@ use crate::pane_system::{
 use crate::provider_inventory::DesktopControlInventoryStatus;
 use crate::rive_assets::simple_fui_hud_asset;
 use crate::spark_wallet::SparkPaneState;
+use crate::ui_style;
+
+const PROVIDER_CONTROL_SECTION_HEADER_HEIGHT: f32 = 28.0;
+const PROVIDER_CONTROL_SECTION_HEADER_MARGIN_BOTTOM: f32 = 10.0;
+const PROVIDER_CONTROL_SECTION_BOTTOM_PADDING: f32 = 15.0;
+const PROVIDER_CONTROL_SECTION_CONTENT_TOP: f32 =
+    PROVIDER_CONTROL_SECTION_HEADER_HEIGHT + PROVIDER_CONTROL_SECTION_HEADER_MARGIN_BOTTOM;
+const PROVIDER_CONTROL_SECTION_GAP: f32 = ui_style::spacing::SECTION_GAP;
+const PROVIDER_CONTROL_ROW_LINE_HEIGHT: f32 = 18.0;
+const PROVIDER_CONTROL_ROW_DIVIDER_TOP_GAP: f32 = 10.0;
+const PROVIDER_CONTROL_ROW_DIVIDER_HEIGHT: f32 = 1.0;
+const PROVIDER_CONTROL_ROW_DIVIDER_BOTTOM_GAP: f32 = 10.0;
+const PROVIDER_CONTROL_SELL_PANEL_HEIGHT: f32 = 158.0;
 
 pub fn paint_provider_control_pane(
     content_bounds: Bounds,
@@ -56,13 +73,26 @@ pub fn paint_provider_control_pane(
     } else {
         "GO OFFLINE"
     };
-
-    paint_action_button(
+    let actions_panel = provider_control_actions_panel_bounds(content_bounds);
+    paint_mission_control_section_panel(
+        actions_panel,
+        "CONTROL ACTIONS",
+        mission_control_cyan_color(),
+        false,
+        paint,
+    );
+    paint_mission_control_go_online_button(
         provider_control_toggle_button_bounds(content_bounds),
         if go_online_enabled {
             toggle_label
         } else {
             "GO ONLINE (BLOCKED)"
+        },
+        go_online_enabled,
+        if wants_online {
+            mission_control_green_color()
+        } else {
+            theme::status::WARNING
         },
         paint,
     );
@@ -72,20 +102,28 @@ pub fn paint_provider_control_pane(
         provider_runtime,
         local_inference_runtime,
     ) {
-        let label = if mission_control_local_model_button_enabled(
+        let local_model_enabled = mission_control_local_model_button_enabled(
             desktop_shell_mode,
             provider_runtime,
             local_inference_runtime,
-        ) {
+        );
+        let label = if local_model_enabled {
             runtime_view.local_model_button_label.as_str()
         } else {
             "LOCAL RUNTIME UNAVAILABLE"
         };
-        paint_action_button(
-            provider_control_local_model_button_bounds(content_bounds),
-            label,
-            paint,
-        );
+        let local_model_bounds = provider_control_local_model_button_bounds(content_bounds);
+        if local_model_enabled {
+            paint_mission_control_command_button(
+                local_model_bounds,
+                label,
+                mission_control_cyan_color(),
+                true,
+                paint,
+            );
+        } else {
+            paint_disabled_button(local_model_bounds, label, paint);
+        }
     }
 
     if mission_control_local_runtime_lane(desktop_shell_mode, local_inference_runtime)
@@ -98,14 +136,25 @@ pub fn paint_provider_control_pane(
         } else {
             "LOCAL FM NOT READY"
         };
-        paint_action_button(
-            provider_control_local_fm_test_button_bounds(content_bounds),
-            test_label,
-            paint,
-        );
-        paint_action_button(
+        let test_enabled =
+            provider_control.local_fm_summary_is_pending() || provider_runtime.apple_fm.is_ready();
+        let test_bounds = provider_control_local_fm_test_button_bounds(content_bounds);
+        if test_enabled {
+            paint_mission_control_command_button(
+                test_bounds,
+                test_label,
+                mission_control_cyan_color(),
+                true,
+                paint,
+            );
+        } else {
+            paint_disabled_button(test_bounds, test_label, paint);
+        }
+        paint_mission_control_command_button(
             provider_control_training_button_bounds(content_bounds),
             "OPEN TRAINING",
+            theme::status::WARNING,
+            true,
             paint,
         );
     }
@@ -120,91 +169,137 @@ pub fn paint_provider_control_pane(
         } else {
             format!("Enable {}", target.display_label())
         };
-        paint_action_button(
+        paint_mission_control_command_button(
             provider_control_inventory_toggle_button_bounds(content_bounds, row_index),
             &label,
+            if enabled {
+                theme::status::WARNING
+            } else {
+                mission_control_cyan_color()
+            },
+            true,
             paint,
         );
     }
 
     let viewport = provider_control_scroll_viewport_bounds(content_bounds);
-    let hud_height = 126.0;
-    let mut detail_lines = vec![
-        format!("Mode: {}", provider_runtime.mode.label()),
-        format!("Model: {}", runtime_view.model_label),
-        format!("Backend: {}", runtime_view.backend_label),
-        format!("Load: {}", runtime_view.load_label),
-        format!(
-            "Control: {}",
-            provider_runtime.control_authority_label(backend_kernel_authority)
+    let mut detail_rows = vec![
+        ("Mode".to_string(), provider_runtime.mode.label().to_string()),
+        ("Model".to_string(), runtime_view.model_label.clone()),
+        ("Backend".to_string(), runtime_view.backend_label.clone()),
+        ("Load".to_string(), runtime_view.load_label.clone()),
+        (
+            "Control".to_string(),
+            provider_runtime
+                .control_authority_label(backend_kernel_authority)
+                .to_string(),
         ),
-        format!(
-            "Preflight: {}",
+        (
+            "Preflight".to_string(),
             if provider_blockers.is_empty() {
                 "clear".to_string()
             } else {
                 format!("{} blocker(s)", provider_blockers.len())
-            }
+            },
         ),
     ];
     if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
-        detail_lines.push(format!(
-            "Uptime: {}s",
-            provider_runtime.uptime_seconds(std::time::Instant::now())
+        detail_rows.push((
+            "Uptime".to_string(),
+            format!("{}s", provider_runtime.uptime_seconds(std::time::Instant::now())),
         ));
     }
+
+    let mut detail_notes = Vec::<(String, wgpui::Hsla)>::new();
     if let Some(blocker) = provider_blockers.first().copied() {
-        detail_lines.extend(
-            split_text_for_display(
-                &format!(
-                    "Blocker: {}",
-                    mission_control_blocker_detail(blocker, spark_wallet, provider_runtime)
-                ),
-                96,
-            )
-            .into_iter(),
-        );
+        detail_notes.push((
+            format!(
+                "Blocker: {}",
+                mission_control_blocker_detail(blocker, spark_wallet, provider_runtime)
+            ),
+            theme::status::WARNING,
+        ));
     }
     if let Some(action) = provider_control.last_action.as_deref() {
-        detail_lines
-            .extend(split_text_for_display(&format!("Last action: {action}"), 96).into_iter());
+        detail_notes.push((format!("Last action: {action}"), mission_control_text_color()));
     }
     if let Some(error) = provider_control.last_error.as_deref() {
-        detail_lines.extend(split_text_for_display(&format!("Error: {error}"), 96).into_iter());
+        detail_notes.push((format!("Error: {error}"), theme::status::ERROR));
     }
     if !provider_control.local_fm_summary_text.trim().is_empty() {
-        detail_lines.extend(
-            split_text_for_display(
-                &format!(
-                    "Local FM summary: {}",
-                    provider_control.local_fm_summary_text.trim()
-                ),
-                96,
-            )
-            .into_iter(),
-        );
+        detail_notes.push((
+            format!("Local FM summary: {}", provider_control.local_fm_summary_text.trim()),
+            mission_control_text_color(),
+        ));
     }
     for line in crate::provider_inventory::inventory_detail_lines(inventory_status) {
-        detail_lines.extend(split_text_for_display(&line, 96).into_iter());
+        detail_notes.push((line, mission_control_muted_color()));
     }
 
-    let content_height = hud_height + 18.0 + (detail_lines.len() as f32 * 16.0) + 16.0;
+    let detail_value_chunk_len = provider_control_value_chunk_len(viewport.size.width);
+    let detail_note_chunk_len = provider_control_note_chunk_len(viewport.size.width);
+    let detail_rows_height = detail_rows
+        .iter()
+        .enumerate()
+        .map(|(index, (_, value))| {
+            provider_control_detail_row_height(
+                value,
+                detail_value_chunk_len,
+                index + 1 != detail_rows.len() || !detail_notes.is_empty(),
+            )
+        })
+        .sum::<f32>();
+    let detail_notes_height = if detail_notes.is_empty() {
+        0.0
+    } else {
+        20.0
+            + detail_notes
+                .iter()
+                .enumerate()
+                .map(|(index, (text, _))| {
+                    provider_control_note_block_height(
+                        text,
+                        detail_note_chunk_len,
+                        index + 1 != detail_notes.len(),
+                    )
+                })
+                .sum::<f32>()
+    };
+    let details_panel_height = (PROVIDER_CONTROL_SECTION_CONTENT_TOP
+        + detail_rows_height
+        + detail_notes_height
+        + PROVIDER_CONTROL_SECTION_BOTTOM_PADDING)
+        .max(220.0);
+    let content_height =
+        PROVIDER_CONTROL_SELL_PANEL_HEIGHT + PROVIDER_CONTROL_SECTION_GAP + details_panel_height;
     let max_scroll = (content_height - viewport.size.height).max(0.0);
     let scroll = provider_control.clamp_scroll_offset_to(max_scroll);
 
-    let hud_bounds = Bounds::new(
-        viewport.origin.x + 4.0,
+    let sell_panel_bounds = Bounds::new(
+        viewport.origin.x,
         viewport.origin.y - scroll,
-        (viewport.size.width - 8.0).max(0.0),
-        hud_height,
+        viewport.size.width.max(0.0),
+        PROVIDER_CONTROL_SELL_PANEL_HEIGHT,
+    );
+    let details_panel_bounds = Bounds::new(
+        viewport.origin.x,
+        sell_panel_bounds.max_y() + PROVIDER_CONTROL_SECTION_GAP,
+        viewport.size.width.max(0.0),
+        details_panel_height,
     );
 
     paint.scene.push_clip(viewport);
-    paint_provider_control_hud_shell(hud_bounds, paint);
+    paint_mission_control_section_panel(
+        sell_panel_bounds,
+        "SELL COMPUTE",
+        mission_control_green_color(),
+        matches!(provider_runtime.mode, ProviderMode::Offline),
+        paint,
+    );
     ensure_provider_control_hud_loaded(provider_control_hud_runtime);
     sync_provider_control_hud_runtime(provider_control_hud_runtime);
     paint_provider_control_hud_overlay(
-        hud_bounds,
+        sell_panel_bounds,
         provider_runtime,
         &runtime_view,
         go_online_enabled,
@@ -216,50 +311,223 @@ pub fn paint_provider_control_pane(
         paint,
     );
 
-    let mut y = hud_bounds.max_y() + 12.0;
-    paint.scene.draw_text(paint.text.layout(
-        "Provider details",
-        Point::new(viewport.origin.x + 4.0, y),
-        11.0,
-        theme::text::MUTED,
-    ));
-    y += 18.0;
-    for line in detail_lines {
-        paint.scene.draw_text(paint.text.layout_mono(
-            &line,
-            Point::new(viewport.origin.x + 4.0, y),
-            10.0,
-            if line.starts_with("Error:") {
-                theme::status::ERROR
-            } else if line.starts_with("Blocker:") {
-                theme::status::WARNING
-            } else {
-                theme::text::PRIMARY
-            },
-        ));
-        y += 16.0;
-    }
+    paint_mission_control_section_panel(
+        details_panel_bounds,
+        "PROVIDER DETAILS",
+        mission_control_cyan_color(),
+        false,
+        paint,
+    );
+    paint_provider_control_details_panel(
+        details_panel_bounds,
+        &detail_rows,
+        &detail_notes,
+        detail_value_chunk_len,
+        detail_note_chunk_len,
+        paint,
+    );
     paint.scene.pop_clip();
-
 }
 
-fn paint_provider_control_hud_shell(bounds: Bounds, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(theme::bg::APP.with_alpha(0.94))
-            .with_border(theme::accent::PRIMARY.with_alpha(0.24), 1.0)
-            .with_corner_radius(12.0),
+fn provider_control_actions_panel_bounds(content_bounds: Bounds) -> Bounds {
+    let toggle_count = crate::app_state::ProviderInventoryProductToggleTarget::all().len();
+    let last_button = provider_control_inventory_toggle_button_bounds(
+        content_bounds,
+        toggle_count.saturating_sub(1),
     );
+    Bounds::new(
+        content_bounds.origin.x,
+        content_bounds.origin.y,
+        content_bounds.size.width.max(0.0),
+        (last_button.max_y() - content_bounds.origin.y + ui_style::spacing::PANEL_PADDING)
+            .max(0.0),
+    )
+}
+
+fn provider_control_section_body_bounds(bounds: Bounds) -> Bounds {
+    Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + PROVIDER_CONTROL_SECTION_CONTENT_TOP,
+        (bounds.size.width - 16.0).max(0.0),
+        (bounds.size.height
+            - PROVIDER_CONTROL_SECTION_CONTENT_TOP
+            - PROVIDER_CONTROL_SECTION_BOTTOM_PADDING)
+            .max(0.0),
+    )
+}
+
+fn provider_control_value_chunk_len(panel_width: f32) -> usize {
+    (((panel_width - 164.0).max(80.0)) / 7.2).floor().max(12.0) as usize
+}
+
+fn provider_control_note_chunk_len(panel_width: f32) -> usize {
+    ((panel_width.max(120.0)) / 7.0).floor().max(18.0) as usize
+}
+
+fn provider_control_value_x_offset(label: &str) -> f32 {
+    132.0_f32.max(label.chars().count() as f32 * 8.0 + 24.0)
+}
+
+fn provider_control_row_divider(
+    paint: &mut PaintContext,
+    x: f32,
+    row_bottom: f32,
+    row_width: f32,
+) -> f32 {
+    let divider_y = row_bottom + PROVIDER_CONTROL_ROW_DIVIDER_TOP_GAP;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
-            bounds.origin.x + 6.0,
-            bounds.origin.y + 6.0,
-            (bounds.size.width - 12.0).max(0.0),
-            (bounds.size.height - 12.0).max(0.0),
+            x,
+            divider_y,
+            row_width.max(0.0),
+            PROVIDER_CONTROL_ROW_DIVIDER_HEIGHT,
         ))
-        .with_background(theme::bg::SURFACE.with_alpha(0.24))
-        .with_corner_radius(10.0),
+        .with_background(mission_control_panel_border_color().with_alpha(0.38)),
     );
+    divider_y + PROVIDER_CONTROL_ROW_DIVIDER_HEIGHT + PROVIDER_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+}
+
+fn paint_provider_control_detail_row(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_chunk_len: usize,
+    row_width: f32,
+    show_divider: bool,
+) -> f32 {
+    let label_x = x;
+    let value_x = x + provider_control_value_x_offset(label);
+    let label_style = ui_style::app_text_style(crate::ui_style::AppTextRole::FormLabel);
+    let value_style = ui_style::app_text_style(crate::ui_style::AppTextRole::FormValue);
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("{label}:"),
+        Point::new(label_x, y),
+        label_style.font_size,
+        mission_control_muted_color(),
+    ));
+
+    let mut line_y = y;
+    for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(value_x, line_y),
+            value_style.font_size,
+            mission_control_text_color(),
+        ));
+        line_y += PROVIDER_CONTROL_ROW_LINE_HEIGHT;
+    }
+    let row_bottom = line_y.max(y + PROVIDER_CONTROL_ROW_LINE_HEIGHT);
+    if show_divider {
+        provider_control_row_divider(paint, x, row_bottom, row_width)
+    } else {
+        row_bottom + PROVIDER_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+    }
+}
+
+fn provider_control_detail_row_height(
+    value: &str,
+    value_chunk_len: usize,
+    show_divider: bool,
+) -> f32 {
+    let line_count = split_text_for_display(value, value_chunk_len.max(1))
+        .len()
+        .max(1) as f32;
+    line_count * PROVIDER_CONTROL_ROW_LINE_HEIGHT
+        + if show_divider {
+            PROVIDER_CONTROL_ROW_DIVIDER_TOP_GAP
+                + PROVIDER_CONTROL_ROW_DIVIDER_HEIGHT
+                + PROVIDER_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+        } else {
+            PROVIDER_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+        }
+}
+
+fn paint_provider_control_note_block(
+    bounds: Bounds,
+    text: &str,
+    color: wgpui::Hsla,
+    y: f32,
+    chunk_len: usize,
+    show_divider: bool,
+    paint: &mut PaintContext,
+) -> f32 {
+    let helper_style = ui_style::app_text_style(crate::ui_style::AppTextRole::Helper);
+    let mut line_y = y;
+    for chunk in split_text_for_display(text, chunk_len.max(1)) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(bounds.origin.x, line_y),
+            helper_style.font_size,
+            color,
+        ));
+        line_y += 16.0;
+    }
+    let bottom = line_y.max(y + 16.0);
+    if show_divider {
+        provider_control_row_divider(paint, bounds.origin.x, bottom, bounds.size.width)
+    } else {
+        bottom + 8.0
+    }
+}
+
+fn provider_control_note_block_height(text: &str, chunk_len: usize, show_divider: bool) -> f32 {
+    let line_count = split_text_for_display(text, chunk_len.max(1)).len().max(1) as f32;
+    line_count * 16.0
+        + if show_divider {
+            PROVIDER_CONTROL_ROW_DIVIDER_TOP_GAP
+                + PROVIDER_CONTROL_ROW_DIVIDER_HEIGHT
+                + PROVIDER_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+        } else {
+            8.0
+        }
+}
+
+fn paint_provider_control_details_panel(
+    bounds: Bounds,
+    rows: &[(String, String)],
+    notes: &[(String, wgpui::Hsla)],
+    value_chunk_len: usize,
+    note_chunk_len: usize,
+    paint: &mut PaintContext,
+) {
+    let body = provider_control_section_body_bounds(bounds);
+    paint.scene.push_clip(body);
+    let mut y = body.origin.y;
+    for (index, (label, value)) in rows.iter().enumerate() {
+        y = paint_provider_control_detail_row(
+            paint,
+            body.origin.x,
+            y,
+            label,
+            value,
+            value_chunk_len,
+            body.size.width,
+            index + 1 != rows.len() || !notes.is_empty(),
+        );
+    }
+    if !notes.is_empty() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            "Operational notes",
+            Point::new(body.origin.x, y),
+            9.0,
+            mission_control_cyan_color(),
+        ));
+        y += 20.0;
+        for (index, (text, color)) in notes.iter().enumerate() {
+            y = paint_provider_control_note_block(
+                body,
+                text,
+                *color,
+                y,
+                note_chunk_len,
+                index + 1 != notes.len(),
+                paint,
+            );
+        }
+    }
+    paint.scene.pop_clip();
 }
 
 fn ensure_provider_control_hud_loaded(runtime: &mut ProviderControlHudRuntimeState) {
@@ -312,47 +580,8 @@ fn paint_provider_control_hud_overlay(
     hud_error: Option<&str>,
     paint: &mut PaintContext,
 ) {
-    let top_panel = Bounds::new(
-        bounds.origin.x + 12.0,
-        bounds.origin.y + 12.0,
-        (bounds.size.width - 24.0).max(0.0),
-        46.0,
-    );
-    let bottom_panel = Bounds::new(
-        bounds.origin.x + 12.0,
-        bounds.max_y() - 42.0,
-        (bounds.size.width - 24.0).max(0.0),
-        30.0,
-    );
-    paint.scene.draw_quad(
-        Quad::new(top_panel)
-            .with_background(theme::bg::APP.with_alpha(0.74))
-            .with_corner_radius(8.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(bottom_panel)
-            .with_background(theme::bg::APP.with_alpha(0.8))
-            .with_corner_radius(8.0),
-    );
-
-    paint.scene.draw_text(paint.text.layout_mono(
-        "PACKAGED HUD // WGPUI RIVE",
-        Point::new(top_panel.origin.x + 10.0, top_panel.origin.y + 9.0),
-        9.0,
-        theme::accent::PRIMARY,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Sell compute",
-        Point::new(top_panel.origin.x + 10.0, top_panel.origin.y + 24.0),
-        17.0,
-        theme::text::PRIMARY,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        runtime_view.model_label.as_str(),
-        Point::new(top_panel.origin.x + 168.0, top_panel.origin.y + 26.0),
-        11.0,
-        theme::text::MUTED,
-    ));
+    let body = provider_control_section_body_bounds(bounds);
+    paint.scene.push_clip(body);
 
     let wallet_label = spark_wallet
         .total_balance_sats()
@@ -389,14 +618,54 @@ fn paint_provider_control_hud_overlay(
         ),
         (inventory_label, theme::text::MUTED),
     ];
-    let mut chip_x = bounds.origin.x + 12.0;
-    let chip_y = top_panel.max_y() + 12.0;
+    let mut chip_x = body.origin.x;
+    let mut chip_y = body.origin.y;
+    let chip_right = body.max_x();
     for (label, color) in chip_specs {
         let width = (label.len() as f32 * 6.5) + 18.0;
-        let chip_bounds = Bounds::new(chip_x, chip_y, width.min(bounds.size.width - 24.0), 22.0);
+        let chip_width = width.min(body.size.width.max(48.0));
+        if chip_x + chip_width > chip_right && chip_x > body.origin.x {
+            chip_x = body.origin.x;
+            chip_y += 28.0;
+        }
+        let chip_bounds = Bounds::new(chip_x, chip_y, chip_width, 22.0);
         paint_provider_control_hud_chip(chip_bounds, label.as_str(), color, paint);
         chip_x = chip_bounds.max_x() + 8.0;
     }
+
+    let summary_bounds = Bounds::new(
+        body.origin.x,
+        chip_y + 32.0,
+        body.size.width.max(0.0),
+        64.0,
+    );
+    paint.scene.draw_quad(
+        Quad::new(summary_bounds)
+            .with_background(mission_control_panel_header_color().with_alpha(0.42))
+            .with_border(
+                provider_mode_color(provider_runtime.mode).with_alpha(0.28),
+                1.0,
+            )
+            .with_corner_radius(6.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        runtime_view.model_label.as_str(),
+        Point::new(summary_bounds.origin.x + 12.0, summary_bounds.origin.y + 12.0),
+        16.0,
+        mission_control_text_color(),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        runtime_view.backend_label.as_str(),
+        Point::new(summary_bounds.origin.x + 12.0, summary_bounds.origin.y + 32.0),
+        10.0,
+        mission_control_muted_color(),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        format!("control {control_label}").as_str(),
+        Point::new(summary_bounds.origin.x + 12.0, summary_bounds.origin.y + 48.0),
+        9.0,
+        mission_control_cyan_color(),
+    ));
 
     let footer_label = provider_control_hud_footer(
         provider_runtime,
@@ -413,14 +682,15 @@ fn paint_provider_control_hud_overlay(
     {
         theme::status::WARNING
     } else {
-        theme::text::PRIMARY
+        mission_control_text_color()
     };
     paint.scene.draw_text(paint.text.layout(
         footer_label.as_str(),
-        Point::new(bottom_panel.origin.x + 10.0, bottom_panel.origin.y + 10.0),
+        Point::new(body.origin.x, summary_bounds.max_y() + 14.0),
         10.0,
         footer_color,
     ));
+    paint.scene.pop_clip();
 }
 
 fn paint_provider_control_hud_chip(

@@ -67,23 +67,23 @@ pub(super) fn credentials_button_bounds(content_bounds: Bounds, row: usize, col:
 pub(super) fn nostr_button_bounds(content_bounds: Bounds) -> (Bounds, Bounds, Bounds) {
     let gap = 8.0;
     let start_x = content_bounds.origin.x + 12.0;
-    let y = content_bounds.origin.y + 12.0;
+    let y = content_bounds.origin.y + 32.0;
     let available_width = (content_bounds.size.width - 24.0).max(300.0);
     let utility_width = ((available_width * 0.34) - gap).clamp(110.0, 168.0);
     let regenerate_width = (available_width - utility_width * 2.0 - gap * 2.0).max(118.0);
 
-    let regenerate_bounds = Bounds::new(start_x, y, regenerate_width, 30.0);
+    let regenerate_bounds = Bounds::new(start_x, y, regenerate_width, 34.0);
     let reveal_bounds = Bounds::new(
         regenerate_bounds.origin.x + regenerate_width + gap,
         y,
         utility_width,
-        30.0,
+        34.0,
     );
     let copy_bounds = Bounds::new(
         reveal_bounds.origin.x + utility_width + gap,
         y,
         utility_width,
-        30.0,
+        34.0,
     );
 
     (regenerate_bounds, reveal_bounds, copy_bounds)
@@ -117,19 +117,20 @@ pub(super) fn clamp_bounds_to_window(
     // Keep panes within the main canvas area and out from under the right sidebar.
     let reserved_sidebar = sidebar_width.max(0.0);
     let available_width = window_size.width - reserved_sidebar - PANE_MARGIN * 2.0;
+    let top_inset = PANE_TOP_SAFE_INSET;
     let min_width = min_size.width.max(PANE_MIN_WIDTH);
     let max_width = available_width.max(min_width);
     let width = bounds.size.width.clamp(min_width, max_width);
 
     let min_height = min_size.height.max(PANE_MIN_HEIGHT);
-    let max_height = (window_size.height - PANE_MARGIN - PANE_BOTTOM_RESERVED).max(min_height);
+    let max_height = (window_size.height - top_inset - PANE_BOTTOM_RESERVED).max(min_height);
     let height = bounds.size.height.clamp(min_height, max_height);
 
     let max_x = (window_size.width - reserved_sidebar - width - PANE_MARGIN).max(PANE_MARGIN);
-    let max_y = (window_size.height - height - PANE_BOTTOM_RESERVED).max(PANE_MARGIN);
+    let max_y = (window_size.height - height - PANE_BOTTOM_RESERVED).max(top_inset);
 
     let x = bounds.origin.x.clamp(PANE_MARGIN, max_x);
-    let y = bounds.origin.y.clamp(PANE_MARGIN, max_y);
+    let y = bounds.origin.y.clamp(top_inset, max_y);
 
     Bounds::new(x, y, width, height)
 }
