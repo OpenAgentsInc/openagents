@@ -7380,6 +7380,8 @@ fn pane_hit_action_for_pane(
             };
             let channel_count = if let Some(rows) = managed_channel_rows.as_ref() {
                 rows.len()
+            } else if browse_mode == crate::app_state::ChatBrowseMode::ManagedSystem {
+                0
             } else if browse_mode == crate::app_state::ChatBrowseMode::DirectMessages {
                 direct_room_count
             } else if state.autopilot_chat.thread_rail_collapsed {
@@ -7422,6 +7424,7 @@ fn pane_hit_action_for_pane(
                 crate::app_state::ChatBrowseMode::Managed => state
                     .autopilot_chat
                     .managed_chat_can_send(state.chat_inputs.composer.get_value()),
+                crate::app_state::ChatBrowseMode::ManagedSystem => false,
                 crate::app_state::ChatBrowseMode::DirectMessages => state
                     .autopilot_chat
                     .direct_message_can_send(state.chat_inputs.composer.get_value()),
