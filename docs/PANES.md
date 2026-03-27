@@ -59,7 +59,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Shows canonical failure taxonomy class (`relay`, `execution`, `payment`, `reconciliation`) with concise diagnostics sourced from runtime/wallet/reconciliation authority.
   - Action: read-only operational visibility.
 - `Tailnet Status`
-  - Tailnet status pane for the current tailnet name, backend state, device roster, relay/IP diagnostics, traffic counters, and last-seen handshake fields sourced from `tailscale status --json`.
+  - Tailnet status pane for the current tailnet name and the auto-discovered device roster sourced from `tailscale status --json`.
   - Action: read-only operator visibility into the current Tailnet device set.
 - `GPT-OSS Workbench`
   - GPT-OSS local inference workbench for the app-owned runtime seam.
