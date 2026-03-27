@@ -9,7 +9,9 @@ use crate::app_state::{
     RelayDatasetListingProjection, RelayDatasetOfferProjection,
     RelayDatasetSettlementMatchProjection,
 };
-use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
+use crate::pane_renderer::{
+    paint_action_button, paint_label_line, split_text_for_display,
+};
 use crate::pane_system::{
     data_buyer_next_asset_button_bounds, data_buyer_previous_asset_button_bounds,
     data_buyer_publish_button_bounds, data_buyer_refresh_button_bounds,
@@ -19,7 +21,7 @@ use crate::state::operations::{NetworkRequestsState, SubmittedNetworkRequest};
 const PADDING: f32 = 12.0;
 const HEADER_BOTTOM: f32 = 146.0;
 const CARD_GAP: f32 = 12.0;
-const CARD_HEADER_HEIGHT: f32 = 28.0;
+const CARD_HEADER_HEIGHT: f32 = 38.0;
 const ROW_HEIGHT: f32 = 18.0;
 
 pub fn paint(
@@ -29,7 +31,6 @@ pub fn paint(
     network_requests: &NetworkRequestsState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "buyer.data_access.v1", paint);
     paint_action_button(
         data_buyer_refresh_button_bounds(content_bounds),
         "Refresh",
@@ -51,17 +52,22 @@ pub fn paint(
         paint,
     );
 
-    paint.scene.draw_text(paint.text.layout(
+    let intro_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(24.0) as usize;
+    let mut intro_y = content_bounds.origin.y + 42.0;
+    for line in split_text_for_display(
         "Buyer-side DS discovery surface. This pane selects a relay-visible dataset listing, publishes a targeted DS-DVM request, and tracks relay contracts, results, and wallet settlement.",
-        Point::new(
-            content_bounds.origin.x + PADDING,
-            content_bounds.origin.y + 42.0,
-        ),
-        11.0,
-        theme::text::SECONDARY,
-    ));
+        intro_chunk_len,
+    ) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(content_bounds.origin.x + PADDING, intro_y),
+            11.0,
+            theme::text::SECONDARY,
+        ));
+        intro_y += 14.0;
+    }
 
-    let mut status_y = content_bounds.origin.y + 60.0;
+    let mut status_y = intro_y + 6.0;
     status_y = paint_label_line(
         paint,
         content_bounds.origin.x + PADDING,
@@ -79,48 +85,55 @@ pub fn paint(
             .as_deref()
             .unwrap_or("unconfigured"),
     );
-    let _ = paint_label_line(
+    let mut status_end_y = paint_label_line(
         paint,
         content_bounds.origin.x + PADDING,
         status_y,
         "status line",
         &pane_state.status_line,
     );
+    let status_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(24.0) as usize;
     if let Some(action) = pane_state.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(
-                content_bounds.origin.x + PADDING,
-                content_bounds.origin.y + 114.0,
-            ),
-            11.0,
-            theme::text::SECONDARY,
-        ));
+        for line in split_text_for_display(action, status_chunk_len).into_iter().take(2) {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(content_bounds.origin.x + PADDING, status_end_y),
+                11.0,
+                theme::text::SECONDARY,
+            ));
+            status_end_y += 14.0;
+        }
     }
     if let Some(error) = pane_state.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(
-                content_bounds.origin.x + PADDING,
-                content_bounds.origin.y + 132.0,
-            ),
-            11.0,
-            theme::status::ERROR,
-        ));
+        for line in split_text_for_display(error, status_chunk_len).into_iter().take(2) {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(content_bounds.origin.x + PADDING, status_end_y),
+                11.0,
+                theme::status::ERROR,
+            ));
+            status_end_y += 14.0;
+        }
     }
 
+    let content_top = (status_end_y + 10.0).max(content_bounds.origin.y + HEADER_BOTTOM);
+    let available_height = (content_bounds.max_y() - content_top - PADDING).max(320.0);
     let left_width = ((content_bounds.size.width - PADDING * 2.0 - CARD_GAP) * 0.54).max(360.0);
     let right_width =
         (content_bounds.size.width - PADDING * 2.0 - CARD_GAP - left_width).max(280.0);
-    let top_height =
-        ((content_bounds.size.height - HEADER_BOTTOM - PADDING * 2.0 - CARD_GAP) * 0.5).max(180.0);
-    let bottom_height =
-        (content_bounds.size.height - HEADER_BOTTOM - PADDING * 2.0 - CARD_GAP - top_height)
-            .max(180.0);
+    let top_height = (available_height * 0.40).max(220.0);
+    let bottom_height = buyer_truth_min_height()
+        .max(available_height - top_height - CARD_GAP)
+        .max(280.0);
+
+    let viewport = scroll_viewport_bounds_with_top(content_bounds, content_top);
+    let content_height = content_height(top_height, bottom_height);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = pane_state.scroll_offset_px.min(max_scroll);
 
     let asset_bounds = Bounds::new(
         content_bounds.origin.x + PADDING,
-        content_bounds.origin.y + HEADER_BOTTOM,
+        content_top - scroll_offset,
         left_width,
         top_height,
     );
@@ -157,6 +170,7 @@ pub fn paint(
     let relay_result = pane_state.latest_relay_result(market_state);
     let relay_settlement = pane_state.latest_wallet_settlement(market_state);
 
+    paint.scene.push_clip(viewport);
     paint_asset_card(
         asset_bounds,
         selected_listing,
@@ -177,6 +191,31 @@ pub fn paint(
         relay_settlement,
         paint,
     );
+    paint.scene.pop_clip();
+    paint_scrollbar(viewport, content_height, scroll_offset, paint);
+}
+
+pub fn scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    scroll_viewport_bounds_with_top(content_bounds, content_bounds.origin.y + HEADER_BOTTOM)
+}
+
+fn scroll_viewport_bounds_with_top(content_bounds: Bounds, content_top: f32) -> Bounds {
+    let top = content_top;
+    Bounds::new(
+        content_bounds.origin.x + 8.0,
+        top,
+        (content_bounds.size.width - 16.0).max(1.0),
+        (content_bounds.max_y() - top - 8.0).max(1.0),
+    )
+}
+
+fn content_height(top_height: f32, bottom_height: f32) -> f32 {
+    top_height + bottom_height + CARD_GAP + PADDING * 2.0
+}
+
+fn buyer_truth_min_height() -> f32 {
+    let rows = 11.0;
+    CARD_HEADER_HEIGHT + 16.0 + (rows * ROW_HEIGHT) + 18.0
 }
 
 fn paint_asset_card(
@@ -204,6 +243,13 @@ fn paint_asset_card(
         return;
     }
 
+    let clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + CARD_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - CARD_HEADER_HEIGHT - 10.0).max(1.0),
+    );
+    paint.scene.push_clip(clip);
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     let title = listing
         .map(|listing| compact_text(listing.title.as_str(), 44))
@@ -403,6 +449,7 @@ fn paint_asset_card(
         revocation_label.as_str(),
         paint,
     );
+    paint.scene.pop_clip();
 }
 
 fn paint_draft_card(
@@ -429,16 +476,24 @@ fn paint_draft_card(
         return;
     };
 
+    let clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + CARD_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - CARD_HEADER_HEIGHT - 10.0).max(1.0),
+    );
+    paint.scene.push_clip(clip);
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     for (label, value) in [
-        ("provider", draft.provider_id.as_str().to_string()),
-        ("asset_ref", draft.asset_ref.as_str().to_string()),
-        ("bridge_asset", draft.asset_id.as_str().to_string()),
+        ("provider", compact_text(draft.provider_id.as_str(), 56)),
+        ("asset_ref", compact_text(draft.asset_ref.as_str(), 56)),
+        ("bridge_asset", compact_text(draft.asset_id.as_str(), 56)),
         (
             "listing",
             draft
                 .listing_coordinate
                 .clone()
+                .map(|value| compact_text(value.as_str(), 56))
                 .unwrap_or_else(|| "none".to_string()),
         ),
         (
@@ -446,6 +501,7 @@ fn paint_draft_card(
             draft
                 .offer_grant_id
                 .clone()
+                .map(|value| compact_text(value.as_str(), 56))
                 .unwrap_or_else(|| "none".to_string()),
         ),
         (
@@ -453,6 +509,7 @@ fn paint_draft_card(
             draft
                 .offer_coordinate
                 .clone()
+                .map(|value| compact_text(value.as_str(), 56))
                 .unwrap_or_else(|| "none".to_string()),
         ),
         ("delivery_mode", draft.delivery_mode.as_str().to_string()),
@@ -466,6 +523,7 @@ fn paint_draft_card(
     ] {
         row_y = paint_row(bounds, row_y, label, value.as_str(), paint);
     }
+    paint.scene.pop_clip();
 }
 
 fn paint_truth_card(
@@ -484,6 +542,13 @@ fn paint_truth_card(
         "Published request plus relay contract, result, and wallet posture",
         paint,
     );
+    let clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + CARD_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - CARD_HEADER_HEIGHT - 10.0).max(1.0),
+    );
+    paint.scene.push_clip(clip);
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
 
     let request_id = pane_state
@@ -585,6 +650,7 @@ fn paint_truth_card(
             .unwrap_or("none"),
         paint,
     );
+    paint.scene.pop_clip();
 }
 
 fn paint_card(bounds: Bounds, title: &str, subtitle: &str, paint: &mut PaintContext) {
@@ -594,18 +660,23 @@ fn paint_card(bounds: Bounds, title: &str, subtitle: &str, paint: &mut PaintCont
             .with_border(theme::border::DEFAULT, 1.0)
             .with_corner_radius(8.0),
     );
-    paint.scene.draw_text(paint.text.layout(
+    paint.scene.draw_text(paint.text.layout_mono(
         title,
         Point::new(bounds.origin.x + 10.0, bounds.origin.y + 8.0),
         11.0,
         theme::text::SECONDARY,
     ));
-    paint.scene.draw_text(paint.text.layout(
-        subtitle,
-        Point::new(bounds.origin.x + 96.0, bounds.origin.y + 8.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    let chunk_len = ((bounds.size.width - 20.0) / 7.0).max(16.0) as usize;
+    let mut subtitle_y = bounds.origin.y + 21.0;
+    for line in split_text_for_display(subtitle, chunk_len).into_iter().take(2) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(bounds.origin.x + 10.0, subtitle_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        subtitle_y += 11.0;
+    }
 }
 
 fn paint_row(
@@ -615,19 +686,47 @@ fn paint_row(
     value: &str,
     paint: &mut PaintContext,
 ) -> f32 {
+    let value_chunk_len = ((bounds.max_x() - (bounds.origin.x + 128.0) - 10.0) / 7.0).max(14.0)
+        as usize;
     paint.scene.draw_text(paint.text.layout_mono(
         label,
         Point::new(bounds.origin.x + 10.0, row_y),
         10.0,
         theme::text::MUTED,
     ));
-    paint.scene.draw_text(paint.text.layout(
-        value,
-        Point::new(bounds.origin.x + 128.0, row_y),
-        11.0,
-        theme::text::PRIMARY,
-    ));
-    row_y + ROW_HEIGHT
+    let mut y = row_y;
+    for line in split_text_for_display(value, value_chunk_len).into_iter().take(2) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(bounds.origin.x + 128.0, y),
+            11.0,
+            theme::text::PRIMARY,
+        ));
+        y += 12.0;
+    }
+    y + 6.0
+}
+
+fn paint_scrollbar(viewport: Bounds, content_height: f32, scroll_offset: f32, paint: &mut PaintContext) {
+    if viewport.size.height <= 0.0 || content_height <= viewport.size.height + 0.5 {
+        return;
+    }
+    let max_offset = (content_height - viewport.size.height).max(0.0);
+    let track_bounds = Bounds::new(viewport.max_x() - 2.0, viewport.origin.y, 2.0, viewport.size.height);
+    let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
+        .clamp(16.0, viewport.size.height.max(0.0));
+    let thumb_y =
+        viewport.origin.y + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+    paint.scene.draw_quad(
+        Quad::new(track_bounds)
+            .with_background(theme::border::DEFAULT.with_alpha(0.45))
+            .with_corner_radius(1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height))
+            .with_background(theme::text::MUTED.with_alpha(0.75))
+            .with_corner_radius(1.0),
+    );
 }
 
 fn format_money(money: &openagents_kernel_core::receipts::Money) -> String {
