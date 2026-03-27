@@ -243,35 +243,55 @@ pub fn hit_action(layout: SparkPaneLayout, point: Point) -> Option<SparkPaneActi
 }
 
 pub fn create_invoice_layout(content_bounds: Bounds) -> CreateInvoicePaneLayout {
-    let origin_x = content_bounds.origin.x + PAD;
-    let origin_y = content_bounds.origin.y + PAD;
-    let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
-    let form_row_y = origin_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
+    create_invoice_layout_with_scroll(content_bounds, 0.0)
+}
 
-    let amount_width = (usable_width * 0.22).clamp(120.0, 180.0);
-    let expiry_width = (usable_width * 0.22).clamp(120.0, 180.0);
-    let create_invoice_button = Bounds::new(
-        origin_x + amount_width + GAP + expiry_width + GAP,
-        form_row_y,
-        (usable_width - amount_width - expiry_width - GAP * 2.0).max(140.0),
-        CONTROL_HEIGHT,
-    );
+pub fn create_invoice_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let scroll_bounds = scroll_content_bounds(content_bounds);
+    Bounds::new(
+        scroll_bounds.origin.x + 8.0,
+        scroll_bounds.origin.y + 8.0,
+        (scroll_bounds.size.width - 16.0).max(120.0),
+        (scroll_bounds.size.height - 16.0).max(1.0),
+    )
+}
+
+pub fn create_invoice_layout_with_scroll(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> CreateInvoicePaneLayout {
+    let pane_origin_x = content_bounds.origin.x + PAD;
+    let origin_y = content_bounds.origin.y + PAD - scroll_offset;
+    let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
+    let form_width = (usable_width * 0.82).clamp(300.0, 620.0);
+    let origin_x = pane_origin_x + ((usable_width - form_width) * 0.5);
+    let form_row_y = origin_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP + 8.0;
+
+    let amount_width = (form_width * 0.18).clamp(96.0, 132.0);
+    let expiry_width = (form_width * 0.19).clamp(100.0, 136.0);
+    let create_width = (form_width * 0.42).clamp(210.0, 280.0);
     let amount_input = Bounds::new(origin_x, form_row_y, amount_width, CONTROL_HEIGHT);
     let expiry_input = Bounds::new(
-        amount_input.origin.x + amount_input.size.width + GAP,
+        amount_input.max_x() + GAP,
         form_row_y,
         expiry_width,
         CONTROL_HEIGHT,
     );
+    let create_invoice_button = Bounds::new(
+        expiry_input.max_x() + GAP,
+        form_row_y,
+        create_width.min((origin_x + form_width - (expiry_input.max_x() + GAP)).max(160.0)),
+        CONTROL_HEIGHT,
+    );
 
     let description_y = form_row_y + CONTROL_HEIGHT + SECTION_CONTROLS_TO_FORM_GAP;
-    let description_input = Bounds::new(origin_x, description_y, usable_width, CONTROL_HEIGHT);
+    let description_input = Bounds::new(origin_x, description_y, form_width, CONTROL_HEIGHT);
 
     let copy_y = description_y + CONTROL_HEIGHT + 18.0;
     let copy_invoice_button = Bounds::new(
         origin_x,
         copy_y,
-        (usable_width * 0.34).clamp(140.0, 240.0),
+        (form_width * 0.34).clamp(132.0, 196.0),
         CONTROL_HEIGHT,
     );
     let details_origin = Point::new(origin_x, copy_y + CONTROL_HEIGHT + 18.0);
@@ -306,20 +326,40 @@ pub fn hits_create_invoice_input(layout: CreateInvoicePaneLayout, point: Point) 
 }
 
 pub fn pay_invoice_layout(content_bounds: Bounds) -> PayInvoicePaneLayout {
-    let origin_x = content_bounds.origin.x + PAD;
-    let origin_y = content_bounds.origin.y + PAD;
+    pay_invoice_layout_with_scroll(content_bounds, 0.0)
+}
+
+pub fn pay_invoice_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let scroll_bounds = scroll_content_bounds(content_bounds);
+    Bounds::new(
+        scroll_bounds.origin.x + 8.0,
+        scroll_bounds.origin.y + 8.0,
+        (scroll_bounds.size.width - 16.0).max(120.0),
+        (scroll_bounds.size.height - 16.0).max(1.0),
+    )
+}
+
+pub fn pay_invoice_layout_with_scroll(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> PayInvoicePaneLayout {
+    let pane_origin_x = content_bounds.origin.x + PAD;
+    let origin_y = content_bounds.origin.y + PAD - scroll_offset;
     let usable_width = (content_bounds.size.width - PAD * 2.0).max(240.0);
+    let form_width = (usable_width * 0.82).clamp(300.0, 620.0);
+    let origin_x = pane_origin_x + ((usable_width - form_width) * 0.5);
 
     let request_y = origin_y + SECTION_HEADER_TO_FORM_GAP;
-    let payment_request_input = Bounds::new(origin_x, request_y, usable_width, CONTROL_HEIGHT);
+    let payment_request_input = Bounds::new(origin_x, request_y, form_width, CONTROL_HEIGHT);
 
     let send_row_y = request_y + CONTROL_HEIGHT + SECTION_CTA_ROW_GAP;
-    let amount_width = (usable_width * 0.28).clamp(110.0, 180.0);
+    let amount_width = (form_width * 0.24).clamp(110.0, 148.0);
+    let send_width = (form_width * 0.34).clamp(152.0, 208.0);
     let amount_input = Bounds::new(origin_x, send_row_y, amount_width, CONTROL_HEIGHT);
     let send_payment_button = Bounds::new(
-        amount_input.origin.x + amount_input.size.width + GAP,
+        amount_input.max_x() + GAP,
         send_row_y,
-        (usable_width - amount_width - GAP).max(120.0),
+        send_width.min((origin_x + form_width - (amount_input.max_x() + GAP)).max(132.0)),
         CONTROL_HEIGHT,
     );
     let details_origin = Point::new(origin_x, send_row_y + CONTROL_HEIGHT + 18.0);
