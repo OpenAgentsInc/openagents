@@ -28,6 +28,12 @@ pub struct StarterDemandOffer {
     pub execution_expires_at_unix_ms: Option<u64>,
     pub last_heartbeat_at_unix_ms: Option<u64>,
     pub next_heartbeat_due_at_unix_ms: Option<u64>,
+    #[serde(default)]
+    pub settlement_bolt11: Option<String>,
+    #[serde(default)]
+    pub settlement_payment_hash: Option<String>,
+    #[serde(default)]
+    pub settlement_binding_kind: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -98,6 +104,12 @@ pub struct StarterDemandFailResponse {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct StarterDemandCompleteRequest {
     pub payment_pointer: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_bolt11: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_payment_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_binding_kind: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -105,6 +117,12 @@ pub struct StarterDemandCompleteResponse {
     pub request_id: String,
     pub status: String,
     pub payment_pointer: String,
+    #[serde(default)]
+    pub settlement_bolt11: Option<String>,
+    #[serde(default)]
+    pub settlement_payment_hash: Option<String>,
+    #[serde(default)]
+    pub settlement_binding_kind: Option<String>,
     pub completed_at_unix_ms: u64,
     pub budget_cap_sats: u64,
     pub budget_allocated_sats: u64,
@@ -221,6 +239,9 @@ pub fn complete_starter_demand_offer_blocking(
     bearer_auth: &str,
     request_id: &str,
     payment_pointer: &str,
+    settlement_bolt11: Option<&str>,
+    settlement_payment_hash: Option<&str>,
+    settlement_binding_kind: Option<&str>,
 ) -> Result<StarterDemandCompleteResponse, String> {
     let endpoint = canonical_starter_demand_complete_endpoint(control_base_url, request_id)?;
     send_control_json_request(
@@ -229,6 +250,18 @@ pub fn complete_starter_demand_offer_blocking(
         bearer_auth,
         &StarterDemandCompleteRequest {
             payment_pointer: payment_pointer.trim().to_string(),
+            settlement_bolt11: settlement_bolt11
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            settlement_payment_hash: settlement_payment_hash
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            settlement_binding_kind: settlement_binding_kind
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
         },
         "starter demand completion",
     )
@@ -492,6 +525,9 @@ mod tests {
             session.access_token.as_str(),
             offer.request_id.as_str(),
             payment_pointer.as_str(),
+            None,
+            None,
+            None,
         )
         .expect("complete live starter demand offer");
         assert_eq!(completion.request_id, offer.request_id);

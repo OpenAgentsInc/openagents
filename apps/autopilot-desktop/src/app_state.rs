@@ -19236,6 +19236,9 @@ mod tests {
             eligible,
             status,
             payout_pointer: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
+            settlement_binding_kind: None,
             start_confirm_by_unix_ms: None,
             execution_started_at_unix_ms: None,
             execution_expires_at_unix_ms: None,
@@ -24640,7 +24643,12 @@ mod tests {
             .start_selected_execution()
             .expect("eligible starter job should start");
         let (_job_id, _payout, pointer) = starter_jobs
-            .complete_selected_with_payment("wallet:payment:starter-001")
+            .complete_selected_with_payment(
+                "wallet:payment:starter-001",
+                None,
+                None,
+                Some("proof_bound"),
+            )
             .expect("wallet-confirmed payout should complete");
         let job = starter_jobs
             .jobs
@@ -24649,6 +24657,7 @@ mod tests {
             .expect("job should remain present");
         assert_eq!(job.status, StarterJobStatus::Completed);
         assert_eq!(job.payout_pointer.as_deref(), Some(pointer.as_str()));
+        assert_eq!(job.settlement_binding_kind.as_deref(), Some("proof_bound"));
     }
 
     #[test]

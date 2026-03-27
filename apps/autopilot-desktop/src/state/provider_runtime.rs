@@ -192,9 +192,10 @@ impl ProviderAppleFmRuntimeState {
                     self.availability_message
                         .clone()
                         .filter(|message| !is_positive_apple_fm_availability_message(message))
+                        .map(|message| humanize_apple_fm_availability_message(message.as_str()))
                         .or_else(|| {
                             self.unavailable_reason
-                                .map(|reason| format!("Apple FM unavailable: {}", reason.label()))
+                                .map(humanize_apple_fm_unavailable_reason)
                         })
                 })
                 .flatten()
@@ -206,13 +207,20 @@ impl ProviderAppleFmRuntimeState {
             return None;
         }
         self.availability_error_message().or_else(|| {
-            if self.reachable {
-                Some(
+            match self.bridge_status.as_deref() {
+                Some("starting") => {
+                    Some("Apple Foundation Models bridge is starting.".to_string())
+                }
+                Some("failed") => Some(
+                    "Apple Foundation Models bridge failed to start. Build and launch `swift/foundation-bridge`.".to_string(),
+                ),
+                _ if self.reachable => Some(
                     "Apple Foundation Models bridge reachable; waiting for model inventory."
                         .to_string(),
-                )
-            } else {
-                Some("Apple Foundation Models bridge is not running.".to_string())
+                ),
+                _ => Some(
+                    "Apple Foundation Models bridge is not running. Build and launch `swift/foundation-bridge`.".to_string(),
+                ),
             }
         })
     }
@@ -303,6 +311,48 @@ fn is_positive_apple_fm_availability_message(message: &str) -> bool {
     message
         .trim()
         .eq_ignore_ascii_case("Foundation Models is available")
+}
+
+fn humanize_apple_fm_unavailable_reason(
+    reason: AppleFmSystemLanguageModelUnavailableReason,
+) -> String {
+    match reason {
+        AppleFmSystemLanguageModelUnavailableReason::AppleIntelligenceNotEnabled => {
+            "Apple Intelligence is disabled. Enable it in System Settings > Apple Intelligence."
+                .to_string()
+        }
+        AppleFmSystemLanguageModelUnavailableReason::DeviceNotEligible => {
+            "This Mac is not eligible for Apple Foundation Models.".to_string()
+        }
+        AppleFmSystemLanguageModelUnavailableReason::ModelNotReady => {
+            "Apple Foundation Models is still downloading or preparing the system model."
+                .to_string()
+        }
+        AppleFmSystemLanguageModelUnavailableReason::Unknown => {
+            "Apple Foundation Models is unavailable.".to_string()
+        }
+    }
+}
+
+fn humanize_apple_fm_availability_message(message: &str) -> String {
+    let normalized = message.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "apple_intelligence_not_enabled" => humanize_apple_fm_unavailable_reason(
+            AppleFmSystemLanguageModelUnavailableReason::AppleIntelligenceNotEnabled,
+        ),
+        "device_not_eligible" => humanize_apple_fm_unavailable_reason(
+            AppleFmSystemLanguageModelUnavailableReason::DeviceNotEligible,
+        ),
+        "model_not_ready" | "downloading" | "preparing" => {
+            humanize_apple_fm_unavailable_reason(
+                AppleFmSystemLanguageModelUnavailableReason::ModelNotReady,
+            )
+        }
+        "bridge_unreachable" => {
+            "Apple Foundation Models bridge is not running. Build and launch `swift/foundation-bridge`.".to_string()
+        }
+        _ => format!("Apple Foundation Models unavailable: {}", message.trim()),
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -726,7 +776,35 @@ mod tests {
 
         assert_eq!(
             runtime.availability_error_message().as_deref(),
-            Some("Apple FM unavailable: apple_intelligence_not_enabled")
+            Some(
+                "Apple Intelligence is disabled. Enable it in System Settings > Apple Intelligence."
+            )
+        );
+    }
+
+    #[test]
+    fn apple_fm_availability_error_humanizes_model_not_ready() {
+        let runtime = super::ProviderAppleFmRuntimeState {
+            reachable: true,
+            model_available: false,
+            unavailable_reason: Some(AppleFmSystemLanguageModelUnavailableReason::ModelNotReady),
+            ..super::ProviderAppleFmRuntimeState::default()
+        };
+
+        assert_eq!(
+            runtime.availability_error_message().as_deref(),
+            Some("Apple Foundation Models is still downloading or preparing the system model.")
+        );
+    }
+
+    #[test]
+    fn apple_fm_readiness_block_reason_explains_missing_bridge() {
+        let runtime = super::ProviderAppleFmRuntimeState::default();
+        assert_eq!(
+            runtime.readiness_block_reason().as_deref(),
+            Some(
+                "Apple Foundation Models bridge is not running. Build and launch `swift/foundation-bridge`."
+            )
         );
     }
 
