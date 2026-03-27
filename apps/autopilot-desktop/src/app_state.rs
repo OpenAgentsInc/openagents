@@ -804,6 +804,70 @@ impl ProviderControlPaneState {
     }
 }
 
+pub struct ProviderStatusPaneState {
+    scroll_offset_px: f32,
+}
+
+impl Default for ProviderStatusPaneState {
+    fn default() -> Self {
+        Self {
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl ProviderStatusPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
+    }
+}
+
+pub struct SyncHealthPaneState {
+    scroll_offset_px: f32,
+}
+
+impl Default for SyncHealthPaneState {
+    fn default() -> Self {
+        Self {
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl SyncHealthPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
+    }
+}
+
 pub struct NostrIdentityPaneState {
     scroll_offset_px: f32,
 }
@@ -1213,6 +1277,7 @@ pub struct DataMarketPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub scroll_offset_px: f32,
     pub last_refreshed_at_ms: Option<i64>,
     pub assets: Vec<DataAsset>,
     pub grants: Vec<AccessGrant>,
@@ -1496,11 +1561,12 @@ pub struct DataBuyerRequestDraft {
     pub timeout_seconds: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DataBuyerPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub scroll_offset_px: f32,
     pub status_line: String,
     pub local_buyer_id: Option<String>,
     pub selected_asset_id: Option<String>,
@@ -1519,6 +1585,7 @@ impl Default for DataBuyerPaneState {
                 "Data Buyer pane ready; refresh the relay catalog to select a dataset listing."
                     .to_string(),
             ),
+            scroll_offset_px: 0.0,
             status_line: "Waiting for a relay dataset listing before issuing a targeted request."
                 .to_string(),
             local_buyer_id: None,
@@ -1532,6 +1599,10 @@ impl Default for DataBuyerPaneState {
 }
 
 impl DataBuyerPaneState {
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
     pub fn requires_nip90_response_tracking(&self) -> bool {
         self.last_published_request_id
             .as_deref()
@@ -3178,6 +3249,7 @@ pub struct DataSellerPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub scroll_offset_px: f32,
     pub status_line: String,
     pub preview_enabled: bool,
     pub confirm_enabled: bool,
@@ -3218,6 +3290,7 @@ impl Default for DataSellerPaneState {
                 "Data Seller draft ready; fill the remaining required fields before preview"
                     .to_string(),
             ),
+            scroll_offset_px: 0.0,
             status_line: format!(
                 "Structured draft loaded. {}",
                 draft.blocker_summary()
@@ -3267,6 +3340,10 @@ impl Default for DataSellerPaneState {
 }
 
 impl DataSellerPaneState {
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
     fn sort_inventory(&mut self) {
         self.published_assets.sort_by(|left, right| {
             right
@@ -5174,6 +5251,7 @@ impl Default for DataMarketPaneState {
             last_action: Some(
                 "Data Market pane ready; refresh to load the DS relay catalog".to_string(),
             ),
+            scroll_offset_px: 0.0,
             last_refreshed_at_ms: None,
             assets: Vec::new(),
             grants: Vec::new(),
@@ -5191,6 +5269,10 @@ impl Default for DataMarketPaneState {
 }
 
 impl DataMarketPaneState {
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
     pub fn mark_opened(&mut self) {
         self.last_error = None;
         if !self.has_snapshot() {
@@ -15522,6 +15604,8 @@ pub struct RenderState {
     pub calculator_inputs: CalculatorPaneInputs,
     pub provider_control: ProviderControlPaneState,
     pub mission_control: MissionControlPaneState,
+    pub provider_status_pane: ProviderStatusPaneState,
+    pub sync_health_pane: SyncHealthPaneState,
     pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
     pub nip90_sent_payments: Nip90SentPaymentsPaneState,
@@ -19170,6 +19254,9 @@ mod tests {
             eligible,
             status,
             payout_pointer: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
+            settlement_binding_kind: None,
             start_confirm_by_unix_ms: None,
             execution_started_at_unix_ms: None,
             execution_expires_at_unix_ms: None,
@@ -24574,7 +24661,12 @@ mod tests {
             .start_selected_execution()
             .expect("eligible starter job should start");
         let (_job_id, _payout, pointer) = starter_jobs
-            .complete_selected_with_payment("wallet:payment:starter-001")
+            .complete_selected_with_payment(
+                "wallet:payment:starter-001",
+                None,
+                None,
+                Some("proof_bound"),
+            )
             .expect("wallet-confirmed payout should complete");
         let job = starter_jobs
             .jobs
@@ -24583,6 +24675,7 @@ mod tests {
             .expect("job should remain present");
         assert_eq!(job.status, StarterJobStatus::Completed);
         assert_eq!(job.payout_pointer.as_deref(), Some(pointer.as_str()));
+        assert_eq!(job.settlement_binding_kind.as_deref(), Some("proof_bound"));
     }
 
     #[test]

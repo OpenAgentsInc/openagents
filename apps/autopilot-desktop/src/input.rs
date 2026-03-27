@@ -65,12 +65,16 @@ use crate::pane_system::{
     dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_data_seller_input_event,
+    dispatch_data_buyer_scroll_event, dispatch_data_market_scroll_event,
+    dispatch_data_seller_scroll_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
     dispatch_log_stream_scroll_event, dispatch_mission_control_input_event,
     dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
     dispatch_nostr_identity_scroll_event, dispatch_earnings_scoreboard_scroll_event,
     dispatch_pay_invoice_input_event,
     dispatch_provider_control_scroll_event,
+    dispatch_provider_status_scroll_event,
+    dispatch_sync_health_scroll_event,
     dispatch_spark_wallet_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, dispatch_wallet_scroll_event,
@@ -2917,6 +2921,12 @@ fn dispatch_mouse_scroll(
                 handled |= dispatch_provider_control_scroll_event(state, point, *dy);
             }
             if !handled {
+                handled |= dispatch_provider_status_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_sync_health_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_nostr_identity_scroll_event(state, point, *dy);
             }
             if !handled {
@@ -2927,6 +2937,15 @@ fn dispatch_mouse_scroll(
             }
             if !handled {
                 handled |= dispatch_buy_mode_payments_scroll_event(state, point, event);
+            }
+            if !handled {
+                handled |= dispatch_data_buyer_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_data_seller_scroll_event(state, point, *dy);
+            }
+            if !handled {
+                handled |= dispatch_data_market_scroll_event(state, point, *dy);
             }
             if !handled {
                 handled |= dispatch_apple_fm_workbench_log_scroll_event(state, point, event);

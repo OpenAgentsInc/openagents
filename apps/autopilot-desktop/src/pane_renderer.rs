@@ -14,17 +14,17 @@ use crate::app_state::{
     JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
     LocalInferencePaneInputs, LocalInferencePaneState, LogStreamLevelFilter, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
-    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
-    PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
-    ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
-    ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
-    RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
-    SparkWalletPaneState, StarterJobStatus, StarterJobsState, SyncHealthState, TassadarLabPaneState,
+    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrIdentityPaneState, NostrSecretState,
+    PaneKind, PaneLoadState, PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState,
+    PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState,
+    ProviderControlPaneState, ProviderRuntimeState, ProviderStatusPaneState, ReciprocalLoopState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
+    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState,
+    StarterJobStatus, StarterJobsState, SyncHealthPaneState, SyncHealthState, TassadarLabPaneState,
     TrajectoryAuditPaneState, VoicePlaygroundPaneInputs, VoicePlaygroundPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
     mission_control_show_local_model_button,
-    NostrIdentityPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -55,15 +55,13 @@ use crate::pane_system::{
     mission_control_buy_mode_history_button_bounds_for_panel,
     mission_control_buy_mode_popup_bounds, mission_control_buy_mode_popup_close_button_bounds,
     mission_control_copy_log_stream_button_bounds, mission_control_layout_for_mode,
-    mission_control_log_stream_filter_button_bounds,
     mission_control_load_funds_popup_bounds, mission_control_load_funds_popup_close_button_bounds,
     mission_control_load_funds_popup_layout_with_scroll,
     mission_control_load_funds_popup_scroll_viewport_bounds,
     mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
-    mission_control_sell_scroll_viewport_bounds,
+    mission_control_log_stream_filter_button_bounds, mission_control_sell_scroll_viewport_bounds,
     mission_control_wallet_buy_mode_button_bounds, mission_control_wallet_load_funds_button_bounds,
-    mission_control_wallet_refresh_button_bounds,
-    network_requests_accept_button_bounds,
+    mission_control_wallet_refresh_button_bounds, network_requests_accept_button_bounds,
     network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
     network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
     network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
@@ -71,13 +69,14 @@ use crate::pane_system::{
     network_requests_type_input_bounds, network_requests_visible_quote_count,
     nostr_copy_secret_button_bounds, nostr_identity_scroll_viewport_bounds,
     nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds_for_pane,
-    provider_inventory_toggle_button_bounds,
+    provider_inventory_toggle_button_bounds, provider_status_scroll_viewport_bounds,
     reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
     reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
     settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
+    sync_health_scroll_viewport_bounds,
 };
 use crate::panes::{
     agent as agent_pane, apple_adapter_training as apple_adapter_training_pane,
@@ -238,6 +237,8 @@ impl PaneRenderer {
         calculator_inputs: &mut CalculatorPaneInputs,
         mission_control: &mut MissionControlPaneState,
         provider_control: &mut ProviderControlPaneState,
+        provider_status_pane: &mut ProviderStatusPaneState,
+        sync_health_pane: &mut SyncHealthPaneState,
         log_stream_last_action: Option<&str>,
         log_stream_last_error: Option<&str>,
         log_stream: &mut LogStreamPaneState,
@@ -432,6 +433,7 @@ impl PaneRenderer {
                 PaneKind::ProviderStatus => {
                     paint_provider_status_pane(
                         content_bounds,
+                        provider_status_pane,
                         provider_runtime,
                         earn_job_lifecycle_projection,
                         backend_kernel_authority,
@@ -546,7 +548,7 @@ impl PaneRenderer {
                     );
                 }
                 PaneKind::SyncHealth => {
-                    paint_sync_health_pane(content_bounds, sync_health, paint);
+                    paint_sync_health_pane(content_bounds, sync_health, sync_health_pane, paint);
                 }
                 PaneKind::NetworkRequests => {
                     paint_network_requests_pane(
@@ -757,11 +759,18 @@ impl PaneRenderer {
                         content_bounds,
                         spark_wallet,
                         create_invoice_inputs,
+                        spark_wallet_scroll_offset,
                         paint,
                     );
                 }
                 PaneKind::SparkPayInvoice => {
-                    paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
+                    paint_pay_invoice_pane(
+                        content_bounds,
+                        spark_wallet,
+                        pay_invoice_inputs,
+                        spark_wallet_scroll_offset,
+                        paint,
+                    );
                 }
             }
             paint.scene.pop_clip();
@@ -2421,10 +2430,7 @@ fn paint_go_online_pane(
         format_mission_control_amount(earnings_scoreboard.lifetime_sats),
     );
     let now_epoch_seconds = mission_control_now_epoch_seconds();
-    let wallet_pending_delta_sats = crate::spark_wallet::pending_wallet_delta_sats(
-        &spark_wallet.recent_payments,
-        now_epoch_seconds,
-    );
+    let wallet_pending_delta_sats = spark_wallet.pending_wallet_delta_sats(now_epoch_seconds);
     let current_wallet_total_sats = spark_wallet
         .balance
         .as_ref()
@@ -2461,7 +2467,8 @@ fn paint_go_online_pane(
         false,
         MISSION_CONTROL_FINAL_ROW_TRAILING_GAP,
     );
-    let wallet_rows_height = 41.0 + 41.0
+    let wallet_rows_height = 41.0
+        + 41.0
         + mission_control_wrapped_row_height(&wallet_network, wallet_value_chunk_len, true)
         + wallet_status_height
         + wallet_target_height;
@@ -2717,9 +2724,13 @@ fn paint_go_online_pane(
         log_copy_clicked,
         paint,
     );
-    let filter_bounds = mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled);
+    let filter_bounds =
+        mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled);
     let filter_hovered = pointer_in_pane && filter_bounds.contains(cursor_position);
-    let filter_label = match log_stream.active_level_filter().unwrap_or(LogStreamLevelFilter::Info) {
+    let filter_label = match log_stream
+        .active_level_filter()
+        .unwrap_or(LogStreamLevelFilter::Info)
+    {
         LogStreamLevelFilter::Debug => "DBG",
         LogStreamLevelFilter::Info => "INF",
         LogStreamLevelFilter::Warn => "WRN",
@@ -2739,7 +2750,8 @@ fn paint_go_online_pane(
         let base_layer = paint.scene.layer();
         paint.scene.set_layer(base_layer.saturating_add(1));
         let popup_bounds = mission_control_load_funds_popup_bounds(content_bounds);
-        let popup_viewport = mission_control_load_funds_popup_scroll_viewport_bounds(content_bounds);
+        let popup_viewport =
+            mission_control_load_funds_popup_scroll_viewport_bounds(content_bounds);
         let popup_close_bounds =
             mission_control_load_funds_popup_close_button_bounds(content_bounds);
         let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
@@ -2767,10 +2779,8 @@ fn paint_go_online_pane(
             &lightning_target_text,
             &recent_receive_history,
         );
-        let load_funds_max_scroll = mission_control_max_scroll_for_viewport(
-            popup_viewport,
-            load_funds_content_height,
-        );
+        let load_funds_max_scroll =
+            mission_control_max_scroll_for_viewport(popup_viewport, load_funds_content_height);
         let load_funds_scroll =
             mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
         let load_funds_layout =
@@ -2783,9 +2793,9 @@ fn paint_go_online_pane(
             .ok()
             .is_some_and(|value| value > 0);
 
-        paint.scene.draw_quad(
-            Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)),
-        );
+        paint
+            .scene
+            .draw_quad(Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)));
         paint_mission_control_section_panel(
             popup_bounds,
             "LOAD FUNDS",
@@ -2844,7 +2854,8 @@ fn paint_go_online_pane(
         let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
         let lightning_withdraw_label_bottom = load_funds_layout.send_invoice_input.origin.y - 8.0;
         lightning_withdraw_label.origin = Point::new(
-            load_funds_layout.send_invoice_input.origin.x - lightning_withdraw_label_bounds.origin.x,
+            load_funds_layout.send_invoice_input.origin.x
+                - lightning_withdraw_label_bounds.origin.x,
             lightning_withdraw_label_bottom
                 - lightning_withdraw_label_bounds.size.height
                 - lightning_withdraw_label_bounds.origin.y,
@@ -2941,9 +2952,9 @@ fn paint_go_online_pane(
         paint.scene.set_layer(base_layer.saturating_add(1));
         let popup_bounds = mission_control_buy_mode_popup_bounds(content_bounds);
         let popup_close_bounds = mission_control_buy_mode_popup_close_button_bounds(content_bounds);
-        paint.scene.draw_quad(
-            Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)),
-        );
+        paint
+            .scene
+            .draw_quad(Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)));
         paint_mission_control_section_panel(
             popup_bounds,
             "BUY MODE",
@@ -3241,7 +3252,8 @@ fn paint_mission_control_alert_band(
         let target_right_x = bounds.origin.x + 16.0 + legend_max_chars as f32 * 5.9;
         let top_text_width = (target_right_x - text_left).max(24.0);
         let text_max_chars = ((top_text_width / 6.4).floor() as usize).max(8);
-        let compact_alert_text = mission_control_compact_single_line(alert.text.as_str(), text_max_chars);
+        let compact_alert_text =
+            mission_control_compact_single_line(alert.text.as_str(), text_max_chars);
         paint.scene.draw_text(paint.text.layout_mono(
             "!",
             Point::new(bounds.origin.x + 12.0, bounds.origin.y + 5.0),
@@ -3343,12 +3355,10 @@ fn paint_mission_control_log_filter_button(
             .with_border(border, 1.0)
             .with_corner_radius(3.0),
     );
-    let mut label_run = paint.text.layout_mono(
-        label,
-        Point::ZERO,
-        8.0,
-        mission_control_text_color(),
-    );
+    let mut label_run =
+        paint
+            .text
+            .layout_mono(label, Point::ZERO, 8.0, mission_control_text_color());
     let label_bounds = label_run.bounds();
     label_run.origin = Point::new(
         bounds.origin.x + ((bounds.size.width - label_bounds.size.width).max(0.0) * 0.5)
@@ -3477,13 +3487,12 @@ fn paint_mission_control_buy_mode_panel(
     let content_y = mission_control_section_content_y(panel_bounds);
     let inner_x = panel_bounds.origin.x + 12.0;
     let inner_width = (panel_bounds.size.width - 24.0).max(0.0);
-    let button_top = primary_button_bounds.origin.y.min(history_button_bounds.origin.y);
-    let summary_chunk_len = mission_control_body_chunk_len(Bounds::new(
-        inner_x,
-        content_y,
-        inner_width,
-        0.0,
-    ));
+    let button_top = primary_button_bounds
+        .origin
+        .y
+        .min(history_button_bounds.origin.y);
+    let summary_chunk_len =
+        mission_control_body_chunk_len(Bounds::new(inner_x, content_y, inner_width, 0.0));
     let summary_lines = split_text_for_display(panel_state.summary.as_str(), summary_chunk_len);
     let summary_line_height = 14.0;
     for (index, line) in summary_lines.iter().enumerate() {
@@ -3508,11 +3517,9 @@ fn paint_mission_control_buy_mode_panel(
         2
     };
     let rows = 5_usize.div_ceil(columns);
-    let cell_width = ((inner_width - cell_gap * (columns.saturating_sub(1) as f32))
-        / columns as f32)
-        .max(0.0);
-    let cell_height = ((available_cell_height
-        - cell_gap * (rows.saturating_sub(1) as f32))
+    let cell_width =
+        ((inner_width - cell_gap * (columns.saturating_sub(1) as f32)) / columns as f32).max(0.0);
+    let cell_height = ((available_cell_height - cell_gap * (rows.saturating_sub(1) as f32))
         / rows as f32)
         .clamp(34.0, 44.0);
     let values = [
@@ -4306,332 +4313,39 @@ fn mission_control_go_online_hint(
 
 fn paint_provider_status_pane(
     content_bounds: Bounds,
+    provider_status_pane: &mut ProviderStatusPaneState,
     provider_runtime: &ProviderRuntimeState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     backend_kernel_authority: bool,
     provider_blockers: &[ProviderBlocker],
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
-
     let now = std::time::Instant::now();
     let heartbeat_age = provider_runtime
         .heartbeat_age_seconds(now)
         .map_or_else(|| "n/a".to_string(), |age| age.to_string());
-    paint.scene.draw_text(paint.text.layout(
-        "Launch inventory controls",
-        Point::new(
-            content_bounds.origin.x + 12.0,
-            content_bounds.origin.y + 12.0,
-        ),
-        11.0,
-        theme::text::MUTED,
-    ));
+
     for (row_index, target) in crate::app_state::ProviderInventoryProductToggleTarget::all()
         .iter()
+        .take(3)
         .enumerate()
     {
         let button_bounds = provider_inventory_toggle_button_bounds(content_bounds, row_index);
         let enabled = provider_runtime.inventory_controls.is_advertised(*target);
-        let button_label = if enabled {
-            format!("Disable {}", target.display_label())
-        } else {
-            format!("Enable {}", target.display_label())
+        let short_label = match target {
+            crate::app_state::ProviderInventoryProductToggleTarget::GptOssInference => "GPT",
+            crate::app_state::ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
+                "APPLE"
+            }
+            crate::app_state::ProviderInventoryProductToggleTarget::AppleFoundationModelsAdapterHosting => {
+                "ADAPTER"
+            }
+            _ => "INVENTORY",
         };
+        let button_label = format!("{}: {}", short_label, if enabled { "ON" } else { "OFF" });
         paint_action_button(button_bounds, button_label.as_str(), paint);
     }
 
-    let inventory_heading_y = content_bounds.origin.y + 136.0;
-    paint.scene.draw_text(paint.text.layout(
-        "Live launch inventory",
-        Point::new(content_bounds.origin.x + 12.0, inventory_heading_y),
-        11.0,
-        theme::text::MUTED,
-    ));
-    let mut inventory_y = inventory_heading_y + 18.0;
-    for row in provider_runtime.inventory_rows.iter().take(3) {
-        let line = format!(
-            "{} [{}] backend_ready={} lot={} open={} reserved={} available={} delivery={} floor={} terms={} source={}",
-            row.target.display_label(),
-            if row.enabled { "enabled" } else { "disabled" },
-            if row.backend_ready { "yes" } else { "no" },
-            row.capacity_lot_id.as_deref().unwrap_or("n/a"),
-            row.total_quantity,
-            row.reserved_quantity,
-            row.available_quantity,
-            row.delivery_state,
-            format_sats_amount(row.price_floor_sats),
-            row.terms_label,
-            row.source_badge,
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &line,
-            Point::new(content_bounds.origin.x + 12.0, inventory_y),
-            10.0,
-            if row.eligible {
-                theme::text::PRIMARY
-            } else {
-                theme::text::MUTED
-            },
-        ));
-        inventory_y += 14.0;
-        paint.scene.draw_text(paint.text.layout_mono(
-            row.capability_summary.as_str(),
-            Point::new(content_bounds.origin.x + 12.0, inventory_y),
-            9.0,
-            theme::text::MUTED,
-        ));
-        inventory_y += 18.0;
-        if let Some(forward_lot_id) = row.forward_capacity_lot_id.as_deref() {
-            let forward_line = format!(
-                "forward lot={} open={} reserved={} available={} window={} terms={}",
-                forward_lot_id,
-                row.forward_total_quantity,
-                row.forward_reserved_quantity,
-                row.forward_available_quantity,
-                row.forward_delivery_window_label
-                    .as_deref()
-                    .unwrap_or("n/a"),
-                row.forward_terms_label.as_deref().unwrap_or("n/a"),
-            );
-            paint.scene.draw_text(paint.text.layout_mono(
-                &forward_line,
-                Point::new(content_bounds.origin.x + 12.0, inventory_y),
-                9.0,
-                theme::text::MUTED,
-            ));
-            inventory_y += 18.0;
-        }
-    }
-    if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, inventory_y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        inventory_y += 16.0;
-    }
-    if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, inventory_y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        inventory_y += 16.0;
-    }
-
-    let mut y = inventory_y + 10.0;
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Lane",
-        provider_runtime.execution_lane_label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Execution backend",
-        provider_runtime.execution_backend_label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Control authority",
-        provider_runtime.control_authority_label(backend_kernel_authority),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Projection stream",
-        if earn_job_lifecycle_projection.authority == "non-authoritative" {
-            provider_runtime.projection_authority_label()
-        } else {
-            earn_job_lifecycle_projection.authority.as_str()
-        },
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Settlement truth",
-        provider_runtime.settlement_truth_label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Mode",
-        provider_runtime.mode.label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Uptime (s)",
-        &provider_runtime.uptime_seconds(now).to_string(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Heartbeat age (s)",
-        &heartbeat_age,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Queue depth",
-        &provider_runtime.queue_depth.to_string(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Active backend",
-        provider_runtime.execution_backend_label(),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Local inference",
-        if provider_runtime.gpt_oss.is_ready() {
-            "ready"
-        } else if provider_runtime.gpt_oss.reachable {
-            "degraded"
-        } else {
-            "offline"
-        },
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Apple FM",
-        if provider_runtime.apple_fm.is_ready() {
-            "ready"
-        } else if provider_runtime.apple_fm.reachable {
-            "degraded"
-        } else {
-            "offline"
-        },
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Configured local model",
-        provider_runtime
-            .gpt_oss
-            .configured_model
-            .as_deref()
-            .unwrap_or("none"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Serving model",
-        provider_runtime
-            .active_inference_backend()
-            .and_then(|backend| match backend {
-                crate::state::provider_runtime::LocalInferenceBackend::AppleFoundationModels => {
-                    provider_runtime.apple_fm.ready_model.as_deref()
-                }
-                crate::state::provider_runtime::LocalInferenceBackend::GptOss => provider_runtime
-                    .gpt_oss
-                    .ready_model
-                    .as_deref()
-                    .or(provider_runtime.gpt_oss.configured_model.as_deref()),
-                crate::state::provider_runtime::LocalInferenceBackend::PsionicTrain => {
-                    Some("psionic_train")
-                }
-            })
-            .unwrap_or("none"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Apple model",
-        provider_runtime
-            .apple_fm
-            .ready_model
-            .as_deref()
-            .unwrap_or("none"),
-    );
-    if let Some(last_completed) = provider_runtime.last_completed_job_at {
-        let seconds = now
-            .checked_duration_since(last_completed)
-            .map_or(0, |duration| duration.as_secs());
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last completed job (s ago)",
-            &seconds.to_string(),
-        );
-    } else {
-        y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            y,
-            "Last completed job",
-            "none",
-        );
-    }
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Last result",
-        provider_runtime.last_result.as_deref().unwrap_or("none"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Authority status",
-        provider_runtime
-            .last_authoritative_status
-            .as_deref()
-            .unwrap_or("n/a"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Authority event",
-        provider_runtime
-            .last_authoritative_event_id
-            .as_deref()
-            .unwrap_or("n/a"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Authority error class",
-        provider_runtime
-            .last_authoritative_error_class
-            .map(crate::app_state::EarnFailureClass::label)
-            .unwrap_or("n/a"),
-    );
-
-    paint.scene.draw_text(paint.text.layout(
-        "Dependencies",
-        Point::new(content_bounds.origin.x + 12.0, y + 4.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-    let mut dep_y = y + 20.0;
     let identity_status = if provider_blockers.contains(&ProviderBlocker::IdentityMissing) {
         "degraded"
     } else {
@@ -4657,51 +4371,248 @@ fn paint_provider_status_pane(
     } else {
         "ready"
     };
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format!("identity: {identity_status}"),
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        10.0,
-        theme::text::PRIMARY,
-    ));
-    dep_y += 14.0;
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format!("wallet: {wallet_status}"),
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        10.0,
-        theme::text::PRIMARY,
-    ));
-    dep_y += 14.0;
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format!("local_inference: {gpt_oss_status}"),
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        10.0,
-        theme::text::PRIMARY,
-    ));
-    dep_y += 14.0;
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format!("apple_fm: {apple_fm_status}"),
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        10.0,
-        theme::text::PRIMARY,
-    ));
-    dep_y += 14.0;
-    paint.scene.draw_text(paint.text.layout_mono(
-        "relay: unknown (lane pending)",
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        10.0,
-        theme::text::PRIMARY,
-    ));
-    dep_y += 18.0;
 
-    paint.scene.draw_text(paint.text.layout(
-        "Local inference inventory",
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        11.0,
-        theme::text::MUTED,
+    let mut lines: Vec<(String, Hsla)> = Vec::new();
+    lines.push(("Live launch inventory".to_string(), theme::text::MUTED));
+    for row in provider_runtime.inventory_rows.iter().take(3) {
+        lines.push((
+            format!(
+                "{} [{}] backend_ready={} lot={} open={} reserved={} available={} delivery={} floor={} terms={} source={}",
+                row.target.display_label(),
+                if row.enabled { "enabled" } else { "disabled" },
+                if row.backend_ready { "yes" } else { "no" },
+                row.capacity_lot_id.as_deref().unwrap_or("n/a"),
+                row.total_quantity,
+                row.reserved_quantity,
+                row.available_quantity,
+                row.delivery_state,
+                format_sats_amount(row.price_floor_sats),
+                row.terms_label,
+                row.source_badge,
+            ),
+            if row.eligible {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        ));
+        lines.push((row.capability_summary.clone(), theme::text::MUTED));
+        if let Some(forward_lot_id) = row.forward_capacity_lot_id.as_deref() {
+            lines.push((
+                format!(
+                    "forward lot={} open={} reserved={} available={} window={} terms={}",
+                    forward_lot_id,
+                    row.forward_total_quantity,
+                    row.forward_reserved_quantity,
+                    row.forward_available_quantity,
+                    row.forward_delivery_window_label
+                        .as_deref()
+                        .unwrap_or("n/a"),
+                    row.forward_terms_label.as_deref().unwrap_or("n/a"),
+                ),
+                theme::text::MUTED,
+            ));
+        }
+        lines.push((String::new(), theme::text::MUTED));
+    }
+    if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
+        lines.push((action.to_string(), theme::text::MUTED));
+    }
+    if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
+        lines.push((error.to_string(), theme::status::ERROR));
+    }
+
+    lines.push((String::new(), theme::text::MUTED));
+    lines.push((
+        format!("Lane: {}", provider_runtime.execution_lane_label()),
+        theme::text::PRIMARY,
     ));
-    dep_y += 16.0;
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format!(
+    lines.push((
+        format!(
+            "Execution backend: {}",
+            provider_runtime.execution_backend_label()
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Control authority: {}",
+            provider_runtime.control_authority_label(backend_kernel_authority)
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Projection stream: {}",
+            if earn_job_lifecycle_projection.authority == "non-authoritative" {
+                provider_runtime.projection_authority_label()
+            } else {
+                earn_job_lifecycle_projection.authority.as_str()
+            }
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Settlement truth: {}",
+            provider_runtime.settlement_truth_label()
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!("Mode: {}", provider_runtime.mode.label()),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!("Uptime (s): {}", provider_runtime.uptime_seconds(now)),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!("Heartbeat age (s): {heartbeat_age}"),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!("Queue depth: {}", provider_runtime.queue_depth),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Local inference: {}",
+            if provider_runtime.gpt_oss.is_ready() {
+                "ready"
+            } else if provider_runtime.gpt_oss.reachable {
+                "degraded"
+            } else {
+                "offline"
+            }
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Apple FM: {}",
+            if provider_runtime.apple_fm.is_ready() {
+                "ready"
+            } else if provider_runtime.apple_fm.reachable {
+                "degraded"
+            } else {
+                "offline"
+            }
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Configured local model: {}",
+            provider_runtime
+                .gpt_oss
+                .configured_model
+                .as_deref()
+                .unwrap_or("none")
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Serving model: {}",
+            provider_runtime
+                .active_inference_backend()
+                .and_then(|backend| match backend {
+                    crate::state::provider_runtime::LocalInferenceBackend::AppleFoundationModels => {
+                        provider_runtime.apple_fm.ready_model.as_deref()
+                    }
+                    crate::state::provider_runtime::LocalInferenceBackend::GptOss => provider_runtime
+                        .gpt_oss
+                        .ready_model
+                        .as_deref()
+                        .or(provider_runtime.gpt_oss.configured_model.as_deref()),
+                    crate::state::provider_runtime::LocalInferenceBackend::PsionicTrain => {
+                        Some("psionic_train")
+                    }
+                })
+                .unwrap_or("none")
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Apple model: {}",
+            provider_runtime
+                .apple_fm
+                .ready_model
+                .as_deref()
+                .unwrap_or("none")
+        ),
+        theme::text::PRIMARY,
+    ));
+
+    if let Some(last_completed) = provider_runtime.last_completed_job_at {
+        let seconds = now
+            .checked_duration_since(last_completed)
+            .map_or(0, |duration| duration.as_secs());
+        lines.push((
+            format!("Last completed job (s ago): {seconds}"),
+            theme::text::PRIMARY,
+        ));
+    } else {
+        lines.push(("Last completed job: none".to_string(), theme::text::PRIMARY));
+    }
+    lines.push((
+        format!(
+            "Last result: {}",
+            provider_runtime.last_result.as_deref().unwrap_or("none")
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Authority status: {}",
+            provider_runtime
+                .last_authoritative_status
+                .as_deref()
+                .unwrap_or("n/a")
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Authority event: {}",
+            provider_runtime
+                .last_authoritative_event_id
+                .as_deref()
+                .unwrap_or("n/a")
+        ),
+        theme::text::PRIMARY,
+    ));
+    lines.push((
+        format!(
+            "Authority error class: {}",
+            provider_runtime
+                .last_authoritative_error_class
+                .map(crate::app_state::EarnFailureClass::label)
+                .unwrap_or("n/a")
+        ),
+        theme::text::PRIMARY,
+    ));
+
+    lines.push((String::new(), theme::text::MUTED));
+    lines.push(("Dependencies".to_string(), theme::text::MUTED));
+    lines.push((format!("identity: {identity_status}"), theme::text::PRIMARY));
+    lines.push((format!("wallet: {wallet_status}"), theme::text::PRIMARY));
+    lines.push((
+        format!("local_inference: {gpt_oss_status}"),
+        theme::text::PRIMARY,
+    ));
+    lines.push((format!("apple_fm: {apple_fm_status}"), theme::text::PRIMARY));
+    lines.push((
+        "relay: unknown (lane pending)".to_string(),
+        theme::text::PRIMARY,
+    ));
+
+    lines.push((String::new(), theme::text::MUTED));
+    lines.push(("Local inference inventory".to_string(), theme::text::MUTED));
+    lines.push((
+        format!(
             "installed: {}",
             if provider_runtime.gpt_oss.available_models.is_empty() {
                 "none".to_string()
@@ -4709,13 +4620,10 @@ fn paint_provider_status_pane(
                 provider_runtime.gpt_oss.available_models.join(", ")
             }
         ),
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        10.0,
         theme::text::PRIMARY,
     ));
-    dep_y += 14.0;
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format!(
+    lines.push((
+        format!(
             "loaded: {}",
             if provider_runtime.gpt_oss.loaded_models.is_empty() {
                 "none".to_string()
@@ -4723,24 +4631,18 @@ fn paint_provider_status_pane(
                 provider_runtime.gpt_oss.loaded_models.join(", ")
             }
         ),
-        Point::new(content_bounds.origin.x + 12.0, dep_y),
-        10.0,
         theme::text::PRIMARY,
     ));
-    dep_y += 14.0;
     if let Some(metrics) = provider_runtime.gpt_oss.last_metrics.as_ref() {
         let total_ms = metrics
             .total_duration_ns
             .map(|ns| ns / 1_000_000)
             .unwrap_or(0);
         let eval_tokens = metrics.eval_count.unwrap_or(0);
-        paint.scene.draw_text(paint.text.layout_mono(
-            &format!("last gen: total={}ms eval_tokens={}", total_ms, eval_tokens),
-            Point::new(content_bounds.origin.x + 12.0, dep_y),
-            10.0,
+        lines.push((
+            format!("last gen: total={}ms eval_tokens={}", total_ms, eval_tokens),
             theme::text::PRIMARY,
         ));
-        dep_y += 14.0;
     }
 
     if let Some(error) = provider_runtime
@@ -4749,23 +4651,52 @@ fn paint_provider_status_pane(
         .as_deref()
         .or(provider_runtime.last_error_detail.as_deref())
     {
-        paint.scene.draw_text(paint.text.layout(
-            "Last error",
-            Point::new(content_bounds.origin.x + 12.0, dep_y + 18.0),
-            11.0,
-            theme::status::ERROR,
-        ));
-        let mut error_y = dep_y + 34.0;
-        for line in split_text_for_display(error, 82) {
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(content_bounds.origin.x + 12.0, error_y),
-                11.0,
-                theme::status::ERROR,
-            ));
-            error_y += 14.0;
+        lines.push((String::new(), theme::text::MUTED));
+        lines.push(("Last error".to_string(), theme::status::ERROR));
+        lines.push((error.to_string(), theme::status::ERROR));
+    }
+
+    let viewport = provider_status_scroll_viewport_bounds(content_bounds);
+    let chars_per_line = ((viewport.size.width - 8.0) / 6.2).max(24.0) as usize;
+    let mut wrapped: Vec<(String, Hsla)> = Vec::new();
+    for (line, color) in lines {
+        if line.trim().is_empty() {
+            wrapped.push((String::new(), color));
+            continue;
+        }
+        for chunk in split_text_for_display(line.as_str(), chars_per_line) {
+            wrapped.push((chunk, color));
         }
     }
+
+    let line_height = 14.0;
+    let content_height = (wrapped.len() as f32 * line_height + 4.0).max(viewport.size.height);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = provider_status_pane.clamp_scroll_offset_to(max_scroll);
+    let start_line = (scroll_offset / line_height).floor() as usize;
+    let mut y = viewport.origin.y - (scroll_offset - start_line as f32 * line_height);
+
+    paint.scene.push_clip(viewport);
+    for (line, color) in wrapped.iter().skip(start_line) {
+        if y > viewport.max_y() {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(viewport.origin.x, y),
+            10.0,
+            *color,
+        ));
+        y += line_height;
+    }
+    paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        content_bounds,
+        viewport,
+        content_height,
+        scroll_offset,
+        paint,
+    );
 }
 
 fn paint_earnings_scoreboard_pane(
@@ -4833,6 +4764,7 @@ fn paint_relay_connections_pane(
 fn paint_sync_health_pane(
     content_bounds: Bounds,
     sync_health: &SyncHealthState,
+    sync_health_pane: &mut SyncHealthPaneState,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, sync_health.source_tag.as_str(), paint);
@@ -4845,194 +4777,184 @@ fn paint_sync_health_pane(
         PaneLoadState::Loading => theme::accent::PRIMARY,
         PaneLoadState::Error => theme::status::ERROR,
     };
-    let mut y = rebootstrap_bounds.max_y() + 12.0;
-    paint.scene.draw_text(paint.text.layout(
-        &format!("State: {}", sync_health.load_state.label()),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
+    let viewport = sync_health_scroll_viewport_bounds(content_bounds);
+    let mut lines: Vec<(String, Hsla)> = Vec::new();
+    lines.push((
+        format!("State: {}", sync_health.load_state.label()),
         state_color,
     ));
-    y += 16.0;
-
     if let Some(action) = sync_health.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::text::MUTED,
-        ));
-        y += 16.0;
+        lines.push((action.to_string(), theme::text::MUTED));
     }
     if let Some(error) = sync_health.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(content_bounds.origin.x + 12.0, y),
-            10.0,
-            theme::status::ERROR,
-        ));
-        y += 16.0;
+        lines.push((error.to_string(), theme::status::ERROR));
     }
-
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "Source",
-        &sync_health.source_tag,
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    lines.push((String::new(), theme::text::MUTED));
+    fn push_sync_health_line(lines: &mut Vec<(String, Hsla)>, label: &str, value: String) {
+        lines.push((format!("{label}: {value}"), theme::text::PRIMARY));
+    }
+    push_sync_health_line(&mut lines, "Source", sync_health.source_tag.clone());
+    push_sync_health_line(
+        &mut lines,
         "Spacetime connection",
-        &sync_health.spacetime_connection,
+        sync_health.spacetime_connection.clone(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Subscription",
-        &sync_health.subscription_state,
+        sync_health.subscription_state.clone(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Reconnect posture",
-        &sync_health.reconnect_posture,
+        sync_health.reconnect_posture.clone(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Cursor position",
-        &sync_health.cursor_position.to_string(),
+        sync_health.cursor_position.to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Cursor target",
-        &sync_health.cursor_target_position.to_string(),
+        sync_health.cursor_target_position.to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Cursor age (s)",
-        &sync_health.cursor_last_advanced_seconds_ago.to_string(),
+        sync_health.cursor_last_advanced_seconds_ago.to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Stale threshold (s)",
-        &sync_health.cursor_stale_after_seconds.to_string(),
+        sync_health.cursor_stale_after_seconds.to_string(),
     );
-
-    let stale = if sync_health.cursor_is_stale() {
-        "yes"
-    } else {
-        "no"
-    };
-    let stale_color = if sync_health.cursor_is_stale() {
-        theme::status::ERROR
-    } else {
-        theme::status::SUCCESS
-    };
-    paint.scene.draw_text(paint.text.layout(
-        &format!("Cursor stale: {stale}"),
-        Point::new(content_bounds.origin.x + 12.0, y),
-        11.0,
-        stale_color,
+    lines.push((
+        format!(
+            "Cursor stale: {}",
+            if sync_health.cursor_is_stale() {
+                "yes"
+            } else {
+                "no"
+            }
+        ),
+        if sync_health.cursor_is_stale() {
+            theme::status::ERROR
+        } else {
+            theme::status::SUCCESS
+        },
     ));
-    y += 16.0;
-
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Recovery phase",
-        sync_health.recovery_phase.label(),
+        sync_health.recovery_phase.label().to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Replay progress",
-        &sync_health
+        sync_health
             .replay_progress_percent
             .map_or_else(|| "n/a".to_string(), |value| format!("{value}%")),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Replay lag",
-        &sync_health
+        sync_health
             .replay_lag_seq
             .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Next retry (ms)",
-        &sync_health
+        sync_health
             .next_retry_ms
             .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Token refresh (s)",
-        &sync_health
+        sync_health
             .token_refresh_after_in_seconds
             .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Disconnect reason",
-        sync_health.disconnect_reason.as_deref().unwrap_or("n/a"),
+        sync_health
+            .disconnect_reason
+            .as_deref()
+            .unwrap_or("n/a")
+            .to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Stale reason",
-        sync_health.stale_cursor_reason.as_deref().unwrap_or("n/a"),
+        sync_health
+            .stale_cursor_reason
+            .as_deref()
+            .unwrap_or("n/a")
+            .to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Last applied seq",
-        &sync_health.last_applied_event_seq.to_string(),
+        sync_health.last_applied_event_seq.to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Duplicate drops",
-        &sync_health.duplicate_drop_count.to_string(),
+        sync_health.duplicate_drop_count.to_string(),
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
+    push_sync_health_line(
+        &mut lines,
         "Replay count",
-        &sync_health.replay_count.to_string(),
+        sync_health.replay_count.to_string(),
     );
-
-    paint.scene.draw_text(paint.text.layout(
-        "Legacy websocket compatibility data: intentionally not shown.",
-        Point::new(content_bounds.origin.x + 12.0, y),
-        10.0,
+    lines.push((
+        "Legacy websocket compatibility data: intentionally not shown.".to_string(),
         theme::text::MUTED,
     ));
+
+    let chars_per_line = ((viewport.size.width - 8.0) / 6.2).max(24.0) as usize;
+    let mut wrapped: Vec<(String, Hsla)> = Vec::new();
+    for (line, color) in lines {
+        if line.trim().is_empty() {
+            wrapped.push((String::new(), color));
+            continue;
+        }
+        for chunk in split_text_for_display(line.as_str(), chars_per_line) {
+            wrapped.push((chunk, color));
+        }
+    }
+
+    let line_height = 14.0;
+    let content_height = (wrapped.len() as f32 * line_height + 4.0).max(viewport.size.height);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = sync_health_pane.clamp_scroll_offset_to(max_scroll);
+    let start_line = (scroll_offset / line_height).floor() as usize;
+    let mut y = viewport.origin.y - (scroll_offset - start_line as f32 * line_height);
+
+    paint.scene.push_clip(viewport);
+    for (line, color) in wrapped.iter().skip(start_line) {
+        if y > viewport.max_y() {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(viewport.origin.x, y),
+            10.0,
+            *color,
+        ));
+        y += line_height;
+    }
+    paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        content_bounds,
+        viewport,
+        content_height,
+        scroll_offset,
+        paint,
+    );
 }
 
 fn paint_network_requests_pane(
@@ -6566,7 +6488,12 @@ fn paint_nostr_identity_pane(
         let clipboard_chip_x = sensitive_bounds.max_x() - 12.0 - clipboard_chip_width;
         let visibility_chip_x = clipboard_chip_x - chip_gap - visibility_chip_width;
         paint_nostr_state_chip(
-            Bounds::new(visibility_chip_x, sensitive_y - 4.0, visibility_chip_width, 18.0),
+            Bounds::new(
+                visibility_chip_x,
+                sensitive_y - 4.0,
+                visibility_chip_width,
+                18.0,
+            ),
             &visibility_status,
             if secrets_revealed {
                 sensitive_accent.with_alpha(0.78)
@@ -6578,7 +6505,12 @@ fn paint_nostr_identity_pane(
             paint,
         );
         paint_nostr_state_chip(
-            Bounds::new(clipboard_chip_x, sensitive_y - 4.0, clipboard_chip_width, 18.0),
+            Bounds::new(
+                clipboard_chip_x,
+                sensitive_y - 4.0,
+                clipboard_chip_width,
+                18.0,
+            ),
             &clipboard_status,
             if nostr_secret_state.copy_notice.is_some() {
                 theme::accent::PRIMARY.with_alpha(0.82)
@@ -7093,6 +7025,7 @@ fn paint_job_inbox_pane(
         },
         paint,
     );
+    paint.scene.push_clip(content_bounds);
 
     let mut y = paint_state_summary(
         paint,
@@ -7122,6 +7055,7 @@ fn paint_job_inbox_pane(
                 11.0,
                 theme::text::MUTED,
             ));
+            paint.scene.pop_clip();
             return;
         }
         PaneLoadState::Error | PaneLoadState::Ready => {}
@@ -7135,10 +7069,13 @@ fn paint_job_inbox_pane(
             11.0,
             theme::text::MUTED,
         ));
+        paint.scene.pop_clip();
         return;
     }
 
     let now_epoch_seconds = mission_control_now_epoch_seconds();
+    let row_chunk_len =
+        ((job_inbox_row_bounds(content_bounds, 0).size.width - 16.0) / 6.2).max(20.0) as usize;
     for row_index in 0..visible_rows {
         let request = &job_inbox.requests[row_index];
         let demand_risk = request.demand_risk_assessment_at(now_epoch_seconds);
@@ -7169,104 +7106,145 @@ fn paint_job_inbox_pane(
             request.decision.label(),
             request.eligibility_label(provider_runtime.mode)
         );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &summary,
-            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
-            10.0,
-            if selected {
-                theme::text::PRIMARY
-            } else {
-                status_color
-            },
-        ));
+        let mut wrapped = split_text_for_display(&summary, row_chunk_len.max(1));
+        if wrapped.len() > 2 {
+            let mut second = wrapped[1].clone();
+            if second.len() > 3 {
+                second.truncate(second.len().saturating_sub(3));
+            }
+            wrapped.truncate(2);
+            wrapped[1] = format!("{second}...");
+        }
+        let mut row_y = row_bounds.origin.y + 6.0;
+        for line in wrapped {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &line,
+                Point::new(row_bounds.origin.x + 8.0, row_y),
+                10.0,
+                if selected {
+                    theme::text::PRIMARY
+                } else {
+                    status_color
+                },
+            ));
+            row_y += 11.0;
+        }
     }
 
     if let Some(selected) = job_inbox.selected_request() {
         let selected_demand_risk = selected.demand_risk_assessment_at(now_epoch_seconds);
+        let decision_label = selected.decision.label();
         let details_y =
             job_inbox_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
         let x = content_bounds.origin.x + 12.0;
+        let value_chunk_len =
+            (((content_bounds.max_x() - 12.0) - (x + 122.0)) / 6.2).max(12.0) as usize;
         let mut line_y = details_y;
-        line_y = paint_label_line(paint, x, line_y, "Selected requester", &selected.requester);
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
+            paint,
+            x,
+            line_y,
+            "Selected requester",
+            &selected.requester,
+            value_chunk_len,
+        );
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Selected request id",
             &selected.request_id,
+            value_chunk_len,
         );
-        line_y = paint_label_line(paint, x, line_y, "Decision", &selected.decision.label());
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
+            paint,
+            x,
+            line_y,
+            "Decision",
+            &decision_label,
+            value_chunk_len,
+        );
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Eligibility",
             selected.eligibility_label(provider_runtime.mode),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Demand source",
             selected.demand_source.label(),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Request freshness",
             request_freshness_summary(selected, now_epoch_seconds).as_str(),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Request created",
             &format_epoch_seconds_option(selected.created_at_epoch_seconds),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Request expires",
             &format_epoch_seconds_option(selected.expires_at_epoch_seconds),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Demand risk",
             selected_demand_risk.class.label(),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Risk policy",
             selected_demand_risk.disposition.label(),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Risk note",
             selected_demand_risk.note.as_str(),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "Skill scope",
             selected.skill_scope_id.as_deref().unwrap_or("none"),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "SKL manifest a",
             selected.skl_manifest_a.as_deref().unwrap_or("none"),
+            value_chunk_len,
         );
-        line_y = paint_label_line(
+        line_y = paint_wrapped_label_line(
             paint,
             x,
             line_y,
@@ -7275,15 +7253,18 @@ fn paint_job_inbox_pane(
                 .sa_tick_request_event_id
                 .as_deref()
                 .unwrap_or("none"),
+            value_chunk_len,
         );
-        let _ = paint_label_line(
+        let _ = paint_wrapped_label_line(
             paint,
             x,
             line_y,
             "AC envelope",
             selected.ac_envelope_event_id.as_deref().unwrap_or("none"),
+            value_chunk_len,
         );
     }
+    paint.scene.pop_clip();
 }
 
 fn format_epoch_seconds_option(epoch_seconds: Option<u64>) -> String {
@@ -8119,12 +8100,14 @@ fn paint_create_invoice_pane(
     content_bounds: Bounds,
     spark_wallet: &SparkPaneState,
     create_invoice_inputs: &mut CreateInvoicePaneInputs,
+    spark_wallet_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     wallet_pane::paint_create_invoice_pane(
         content_bounds,
         spark_wallet,
         create_invoice_inputs,
+        spark_wallet_scroll_offset,
         paint,
     );
 }
@@ -8138,9 +8121,16 @@ fn paint_pay_invoice_pane(
     content_bounds: Bounds,
     spark_wallet: &SparkPaneState,
     pay_invoice_inputs: &mut PayInvoicePaneInputs,
+    spark_wallet_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
-    wallet_pane::paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
+    wallet_pane::paint_pay_invoice_pane(
+        content_bounds,
+        spark_wallet,
+        pay_invoice_inputs,
+        spark_wallet_scroll_offset,
+        paint,
+    );
 }
 
 #[cfg(test)]
@@ -8481,11 +8471,7 @@ fn paint_mission_control_wallet_refresh_icon_button(
     );
 }
 
-fn paint_mission_control_close_icon_button(
-    bounds: Bounds,
-    color: Hsla,
-    paint: &mut PaintContext,
-) {
+fn paint_mission_control_close_icon_button(bounds: Bounds, color: Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(mission_control_panel_header_color().with_alpha(0.88))
@@ -8595,7 +8581,9 @@ fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut Pai
             );
             paint.scene.draw_quad(
                 Quad::new(bounds)
-                    .with_background(Hsla::from_hex(ui_style::button::PRIMARY_BACKGROUND).with_alpha(0.85))
+                    .with_background(
+                        Hsla::from_hex(ui_style::button::PRIMARY_BACKGROUND).with_alpha(0.85),
+                    )
                     .with_border(Hsla::from_hex(ui_style::button::PRIMARY_BORDER), 1.0)
                     .with_corner_radius(ui_style::button::PRIMARY_CORNER_RADIUS),
             );
