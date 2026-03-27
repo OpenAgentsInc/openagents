@@ -45,6 +45,9 @@ When remote access is enabled, Desktop keeps a tokenless base URL and a pairing
 URL with `#token=...` in app-owned state. The pairing URL is copied to the
 clipboard on enable and token rotation.
 
+The owner-only `control` iOS app should pair from that full pairing URL. It is
+not supposed to ask the operator for a separate base URL and bearer token.
+
 ## Bind Safety
 
 Remote binds are restricted to:
@@ -74,6 +77,7 @@ Remote v2 extends that with:
 - git branch and dirty/clean truth
 - cached worktree inventory for the active repo
 - read-only visibility into the active thread terminal session
+- Tailnet roster visibility so a paired phone can discover the current device set
 
 Remote v1 intentionally does not support:
 
