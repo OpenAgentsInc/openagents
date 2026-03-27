@@ -2555,7 +2555,9 @@ fn derive_codex_readiness_summary(
             .error
             .as_deref()
             .map(|error| format!("blocked: {error}"))
-            .unwrap_or_else(|| "blocked: codex executable not found".to_string());
+            .unwrap_or_else(|| {
+                "blocked: Codex app-server is unavailable. Install `codex` or `codex-app-server`, make sure it is on PATH, or set `CODEX_BIN` / `CODEX_APP_SERVER`.".to_string()
+            });
     }
 
     match lane.lifecycle {
@@ -3137,20 +3139,24 @@ mod tests {
         let lane = CodexLaneSnapshot {
             lifecycle: CodexLaneLifecycle::Error,
             active_thread_id: None,
-            last_error: Some("Codex lane startup failed: codex executable not found".to_string()),
+            last_error: Some(
+                "Codex lane startup failed: Codex app-server is unavailable. Install `codex` or `codex-app-server`, make sure it is on PATH, or set `CODEX_BIN` / `CODEX_APP_SERVER`.".to_string(),
+            ),
             last_status: Some("Codex lane unavailable".to_string()),
             install_probe: CodexInstallationProbe {
                 available: false,
                 invocation: None,
                 resolved_program: None,
                 version: None,
-                error: Some("codex executable not found".to_string()),
+                error: Some(
+                    "Codex app-server is unavailable. Install `codex` or `codex-app-server`, make sure it is on PATH, or set `CODEX_BIN` / `CODEX_APP_SERVER`.".to_string(),
+                ),
             },
         };
 
         assert_eq!(
             derive_codex_readiness_summary(&account, &config, &lane),
-            "blocked: codex executable not found".to_string()
+            "blocked: Codex app-server is unavailable. Install `codex` or `codex-app-server`, make sure it is on PATH, or set `CODEX_BIN` / `CODEX_APP_SERVER`.".to_string()
         );
     }
 }

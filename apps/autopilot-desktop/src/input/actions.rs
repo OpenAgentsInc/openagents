@@ -11929,6 +11929,9 @@ fn run_hosted_starter_demand_sync(
             eligible: true,
             status: hosted_offer_status_to_starter_job_status(offer.status.as_str()),
             payout_pointer: None,
+            settlement_bolt11: offer.settlement_bolt11.clone(),
+            settlement_payment_hash: offer.settlement_payment_hash.clone(),
+            settlement_binding_kind: offer.settlement_binding_kind.clone(),
             start_confirm_by_unix_ms: offer.start_confirm_by_unix_ms,
             execution_started_at_unix_ms: offer.execution_started_at_unix_ms,
             execution_expires_at_unix_ms: offer.execution_expires_at_unix_ms,
@@ -12817,11 +12820,14 @@ pub(super) fn run_starter_jobs_action(
             }
             match state.starter_jobs.start_selected_execution() {
                 Ok((job_id, payout_sats)) => {
-                    let payout_pointer =
-                        resolve_wallet_settlement_pointer_for_starter_payout(state, payout_sats);
-                    let Some(payout_pointer) = payout_pointer else {
+                    let payout_settlement = resolve_wallet_settlement_pointer_for_starter_payout(
+                        state,
+                        job_id.as_str(),
+                        payout_sats,
+                    );
+                    let Some(payout_settlement) = payout_settlement else {
                         state.starter_jobs.last_error = Some(format!(
-                            "Starter quest {} is running but payout is not wallet-confirmed yet",
+                            "Starter quest {} is running but payout settlement evidence is missing or ambiguous",
                             job_id
                         ));
                         state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
@@ -12831,18 +12837,23 @@ pub(super) fn run_starter_jobs_action(
                         ));
                         return true;
                     };
-                    match state
-                        .starter_jobs
-                        .complete_selected_with_payment(&payout_pointer)
-                    {
+                    match state.starter_jobs.complete_selected_with_payment(
+                        payout_settlement.payment_pointer.as_str(),
+                        payout_settlement.settlement_bolt11.as_deref(),
+                        payout_settlement.settlement_payment_hash.as_deref(),
+                        Some(payout_settlement.binding_kind),
+                    ) {
                         Ok((job_id, payout_sats, payout_pointer)) => {
                             state.spark_wallet.last_payment_id = Some(payout_pointer.clone());
                             state.spark_wallet.last_action = Some(format!(
-                                "Starter quest payout wallet-confirmed for {job_id} ({})",
-                                format_sats_amount(payout_sats)
+                                "Starter quest payout wallet-confirmed for {job_id} ({}) via {} settlement binding",
+                                format_sats_amount(payout_sats),
+                                payout_settlement.binding_kind
                             ));
-                            state.provider_runtime.last_result =
-                                Some(format!("completed starter quest {}", job_id));
+                            state.provider_runtime.last_result = Some(format!(
+                                "completed starter quest {} via {} settlement binding",
+                                job_id, payout_settlement.binding_kind
+                            ));
                             let receipt_row = crate::app_state::JobHistoryReceiptRow {
                                 job_id: job_id.clone(),
                                 status: crate::app_state::JobHistoryStatus::Succeeded,
@@ -12906,8 +12917,11 @@ pub(super) fn run_starter_jobs_action(
                                     source_tag: "starter.quest".to_string(),
                                     summary: "Starter quest payout wallet-confirmed".to_string(),
                                     detail: format!(
-                                        "job={} payout_sats={} payment_pointer={}",
-                                        job_id, payout_sats, payout_pointer
+                                        "job={} payout_sats={} payment_pointer={} binding_kind={}",
+                                        job_id,
+                                        payout_sats,
+                                        payout_pointer,
+                                        payout_settlement.binding_kind
                                     ),
                                     occurred_at_epoch_seconds: std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
@@ -12929,23 +12943,111 @@ pub(super) fn run_starter_jobs_action(
     }
 }
 
+struct StarterPayoutSettlementResolution {
+    payment_pointer: String,
+    settlement_bolt11: Option<String>,
+    settlement_payment_hash: Option<String>,
+    binding_kind: &'static str,
+}
+
 fn resolve_wallet_settlement_pointer_for_starter_payout(
     state: &crate::app_state::RenderState,
+    job_id: &str,
     payout_sats: u64,
-) -> Option<String> {
-    state
-        .spark_wallet
-        .recent_payments
+) -> Option<StarterPayoutSettlementResolution> {
+    let starter_job = state
+        .starter_jobs
+        .jobs
         .iter()
+        .find(|job| job.job_id == job_id)?;
+    let used_pointers = state
+        .job_history
+        .rows
+        .iter()
+        .map(|row| row.payment_pointer.clone())
+        .chain(
+            state
+                .starter_jobs
+                .jobs
+                .iter()
+                .filter(|job| job.job_id != job_id)
+                .filter_map(|job| job.payout_pointer.clone()),
+        )
+        .collect::<std::collections::HashSet<_>>();
+    let expected_invoice = starter_job
+        .settlement_bolt11
+        .as_deref()
+        .and_then(normalize_lightning_invoice_ref);
+    let expected_payment_hash = starter_job
+        .settlement_payment_hash
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase);
+
+    let candidate_payments = state.spark_wallet.recent_payments.iter().filter(|payment| {
+        payment.direction.eq_ignore_ascii_case("receive")
+            && is_settled_wallet_payment_status(payment.status.as_str())
+            && !payment.id.trim().is_empty()
+            && !used_pointers.contains(payment.id.as_str())
+            && !is_synthetic_local_payment_pointer(payment.id.as_str())
+    });
+
+    let exact_identity_match = candidate_payments
+        .clone()
         .filter(|payment| {
-            payment.direction.eq_ignore_ascii_case("receive")
-                && payment.status.eq_ignore_ascii_case("succeeded")
-                && payment.amount_sats == payout_sats
-                && !payment.id.trim().is_empty()
-                && !is_synthetic_local_payment_pointer(payment.id.as_str())
+            expected_invoice.as_deref().is_some_and(|expected_invoice| {
+                payment
+                    .invoice
+                    .as_deref()
+                    .and_then(normalize_lightning_invoice_ref)
+                    .is_some_and(|candidate_invoice| candidate_invoice == expected_invoice)
+            }) || expected_payment_hash
+                .as_deref()
+                .is_some_and(|expected_hash| {
+                    payment
+                        .payment_hash
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_ascii_lowercase)
+                        .is_some_and(|candidate_hash| candidate_hash == expected_hash)
+                })
         })
         .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
-        .map(|payment| payment.id.clone())
+        .map(|payment| StarterPayoutSettlementResolution {
+            payment_pointer: payment.id.clone(),
+            settlement_bolt11: payment.invoice.clone(),
+            settlement_payment_hash: payment.payment_hash.clone(),
+            binding_kind: "proof_bound",
+        });
+    if exact_identity_match.is_some()
+        || expected_invoice.is_some()
+        || expected_payment_hash.is_some()
+    {
+        return exact_identity_match;
+    }
+
+    let execution_started_at_epoch_seconds = starter_job
+        .execution_started_at_unix_ms
+        .map(|started_at| started_at / 1000);
+    let heuristic_candidates = candidate_payments
+        .filter(|payment| {
+            payment.amount_sats == payout_sats
+                && execution_started_at_epoch_seconds
+                    .is_some_and(|started_at| payment.timestamp >= started_at.saturating_sub(5))
+        })
+        .collect::<Vec<_>>();
+    if heuristic_candidates.len() != 1 {
+        return None;
+    }
+    let payment = heuristic_candidates[0];
+    Some(StarterPayoutSettlementResolution {
+        payment_pointer: payment.id.clone(),
+        settlement_bolt11: payment.invoice.clone(),
+        settlement_payment_hash: payment.payment_hash.clone(),
+        binding_kind: "heuristic_start_window",
+    })
 }
 
 fn is_synthetic_local_payment_pointer(pointer: &str) -> bool {
@@ -13176,11 +13278,17 @@ fn complete_hosted_starter_offer_if_configured(
         bearer_auth.as_str(),
         request_id,
         payment_pointer,
+        None,
+        None,
+        None,
     ) {
         Ok(response) => {
             state.starter_jobs.mark_completed(
                 response.request_id.as_str(),
                 response.payment_pointer.as_str(),
+                response.settlement_bolt11.as_deref(),
+                response.settlement_payment_hash.as_deref(),
+                response.settlement_binding_kind.as_deref(),
             );
             state.starter_jobs.budget_cap_sats = response.budget_cap_sats;
             state.starter_jobs.budget_allocated_sats = response.budget_allocated_sats;
@@ -14767,6 +14875,7 @@ mod tests {
         parse_managed_chat_mention_prefix, parse_shell_like_words,
         resolve_apple_fm_workbench_session_id, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
+        resolve_wallet_settlement_pointer_for_starter_payout,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
     };
@@ -15081,6 +15190,145 @@ mod tests {
             payments.as_slice(),
         );
         assert_eq!(pointer, None);
+    }
+
+    fn fixture_starter_job_row(job_id: &str, payout_sats: u64) -> crate::app_state::StarterJobRow {
+        crate::app_state::StarterJobRow {
+            job_id: job_id.to_string(),
+            summary: "starter payout".to_string(),
+            payout_sats,
+            eligible: true,
+            status: crate::app_state::StarterJobStatus::Running,
+            payout_pointer: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
+            settlement_binding_kind: None,
+            start_confirm_by_unix_ms: None,
+            execution_started_at_unix_ms: Some(1_762_700_010_000),
+            execution_expires_at_unix_ms: None,
+            last_heartbeat_at_unix_ms: None,
+            next_heartbeat_due_at_unix_ms: None,
+        }
+    }
+
+    fn fixture_starter_payout_state(
+        starter_job: crate::app_state::StarterJobRow,
+        payments: Vec<openagents_spark::PaymentSummary>,
+        history_rows: Vec<crate::app_state::JobHistoryReceiptRow>,
+    ) -> crate::app_state::RenderState {
+        let mut state = crate::app_state::RenderState::default();
+        state.starter_jobs.selected_job_id = Some(starter_job.job_id.clone());
+        state.starter_jobs.jobs.push(starter_job);
+        state.spark_wallet.recent_payments = payments;
+        state.job_history.rows = history_rows;
+        state
+    }
+
+    #[test]
+    fn starter_payout_resolution_prefers_exact_invoice_or_hash_binding() {
+        let mut starter_job = fixture_starter_job_row("starter-quest-0001", 120);
+        starter_job.settlement_payment_hash = Some("hash-proof-001".to_string());
+        let state = fixture_starter_payout_state(
+            starter_job,
+            vec![
+                openagents_spark::PaymentSummary {
+                    id: "wallet-wrong-001".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 120,
+                    timestamp: 1_762_700_020,
+                    payment_hash: Some("hash-other-001".to_string()),
+                    ..Default::default()
+                },
+                openagents_spark::PaymentSummary {
+                    id: "wallet-proof-001".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 120,
+                    timestamp: 1_762_700_021,
+                    payment_hash: Some("HASH-PROOF-001".to_string()),
+                    ..Default::default()
+                },
+            ],
+            vec![],
+        );
+
+        let resolution =
+            resolve_wallet_settlement_pointer_for_starter_payout(&state, "starter-quest-0001", 120)
+                .expect("expected proof-bound starter payout match");
+        assert_eq!(resolution.payment_pointer, "wallet-proof-001");
+        assert_eq!(resolution.binding_kind, "proof_bound");
+    }
+
+    #[test]
+    fn starter_payout_resolution_requires_unique_heuristic_candidate_after_start() {
+        let state = fixture_starter_payout_state(
+            fixture_starter_job_row("starter-quest-0002", 120),
+            vec![
+                openagents_spark::PaymentSummary {
+                    id: "wallet-before-start-001".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 120,
+                    timestamp: 1_762_700_005,
+                    ..Default::default()
+                },
+                openagents_spark::PaymentSummary {
+                    id: "wallet-after-start-001".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 120,
+                    timestamp: 1_762_700_020,
+                    ..Default::default()
+                },
+                openagents_spark::PaymentSummary {
+                    id: "wallet-after-start-002".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 120,
+                    timestamp: 1_762_700_021,
+                    ..Default::default()
+                },
+            ],
+            vec![],
+        );
+
+        assert_eq!(
+            resolve_wallet_settlement_pointer_for_starter_payout(&state, "starter-quest-0002", 120,),
+            None
+        );
+    }
+
+    #[test]
+    fn starter_payout_resolution_labels_unique_post_start_fallback_as_heuristic() {
+        let state = fixture_starter_payout_state(
+            fixture_starter_job_row("starter-quest-0003", 120),
+            vec![
+                openagents_spark::PaymentSummary {
+                    id: "wallet-before-start-001".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 120,
+                    timestamp: 1_762_700_005,
+                    ..Default::default()
+                },
+                openagents_spark::PaymentSummary {
+                    id: "wallet-after-start-001".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 120,
+                    timestamp: 1_762_700_021,
+                    ..Default::default()
+                },
+            ],
+            vec![fixture_history_row("wallet-used-001")],
+        );
+
+        let resolution =
+            resolve_wallet_settlement_pointer_for_starter_payout(&state, "starter-quest-0003", 120)
+                .expect("expected unique heuristic starter payout match");
+        assert_eq!(resolution.payment_pointer, "wallet-after-start-001");
+        assert_eq!(resolution.binding_kind, "heuristic_start_window");
     }
 
     #[test]
