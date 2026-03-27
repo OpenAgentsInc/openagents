@@ -7,7 +7,9 @@ use crate::app_state::{
     AutopilotChatState, AutopilotMessage, AutopilotRole, DataSellerPaneInputs, DataSellerPaneState,
     DataSellerShellSpeaker, PaneKind, RenderState,
 };
-use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
+use crate::pane_renderer::{
+    paint_action_button, paint_label_line, paint_source_badge, split_text_for_display,
+};
 use crate::pane_system::{
     data_seller_composer_input_bounds, data_seller_confirm_button_bounds,
     data_seller_preview_button_bounds, data_seller_publish_button_bounds,
@@ -20,6 +22,7 @@ const COLUMN_GAP: f32 = 12.0;
 const CARD_RADIUS: f32 = 8.0;
 const CARD_HEADER_HEIGHT: f32 = 36.0;
 const TRANSCRIPT_ROW_HEIGHT: f32 = 72.0;
+const LABEL_ROW_HEIGHT: f32 = 15.0;
 
 pub fn paint(
     content_bounds: Bounds,
@@ -50,17 +53,22 @@ pub fn paint(
         paint,
     );
 
-    paint.scene.draw_text(paint.text.layout(
+    let intro_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 6.2).max(28.0) as usize;
+    let mut intro_y = content_bounds.origin.y + 42.0;
+    for line in split_text_for_display(
         "Conversational authoring surface for truthful data listings. Asset and grant publication remain separate economic actions even though the seller flow shares one pane.",
-        Point::new(
-            content_bounds.origin.x + PADDING,
-            content_bounds.origin.y + 42.0,
-        ),
-        11.0,
-        theme::text::SECONDARY,
-    ));
+        intro_chunk_len,
+    ) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(content_bounds.origin.x + PADDING, intro_y),
+            11.0,
+            theme::text::SECONDARY,
+        ));
+        intro_y += 14.0;
+    }
 
-    let mut status_y = content_bounds.origin.y + 60.0;
+    let mut status_y = intro_y + 4.0;
     status_y = paint_label_line(
         paint,
         content_bounds.origin.x + PADDING,
@@ -96,7 +104,7 @@ pub fn paint(
         "codex session",
         pane_state.codex_session_phase.label(),
     );
-    let _ = paint_label_line(
+    let mut status_end_y = paint_label_line(
         paint,
         content_bounds.origin.x + PADDING,
         status_y,
@@ -104,27 +112,28 @@ pub fn paint(
         &pane_state.status_line,
     );
 
+    let status_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 6.2).max(28.0) as usize;
     if let Some(action) = pane_state.last_action.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            action,
-            Point::new(
-                content_bounds.origin.x + PADDING,
-                content_bounds.origin.y + 114.0,
-            ),
-            11.0,
-            theme::text::SECONDARY,
-        ));
+        for line in split_text_for_display(action, status_chunk_len).into_iter().take(2) {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(content_bounds.origin.x + PADDING, status_end_y),
+                11.0,
+                theme::text::SECONDARY,
+            ));
+            status_end_y += 14.0;
+        }
     }
     if let Some(error) = pane_state.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(
-                content_bounds.origin.x + PADDING,
-                content_bounds.origin.y + 132.0,
-            ),
-            11.0,
-            theme::status::ERROR,
-        ));
+        for line in split_text_for_display(error, status_chunk_len).into_iter().take(2) {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(content_bounds.origin.x + PADDING, status_end_y),
+                11.0,
+                theme::status::ERROR,
+            ));
+            status_end_y += 14.0;
+        }
     }
 
     let composer_bounds = data_seller_composer_input_bounds(content_bounds);
@@ -139,15 +148,24 @@ pub fn paint(
         theme::text::MUTED,
     ));
 
-    let available_height =
-        (composer_bounds.origin.y - HEADER_BOTTOM - COLUMN_GAP - PADDING).max(220.0);
+    let content_top = (status_end_y + 10.0).max(content_bounds.origin.y + HEADER_BOTTOM);
+    let available_height = (composer_bounds.origin.y - content_top - COLUMN_GAP - PADDING).max(260.0);
+    let draft_height = draft_card_height(pane_state).max(220.0);
+    let preview_height = preview_card_height().max(170.0);
+    let status_height = inventory_card_height(pane_state).max(260.0);
+    let right_column_total_height = draft_height + preview_height + status_height + COLUMN_GAP * 2.0;
     let transcript_width =
-        ((content_bounds.size.width - PADDING * 2.0 - COLUMN_GAP) * 0.57).max(360.0);
+        ((content_bounds.size.width - PADDING * 2.0 - COLUMN_GAP) * 0.52).max(340.0);
     let side_width =
         (content_bounds.size.width - PADDING * 2.0 - COLUMN_GAP - transcript_width).max(260.0);
+    let viewport = scroll_viewport_bounds(content_bounds, content_top, composer_bounds.origin.y);
+    let content_height = content_height(available_height, right_column_total_height);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = pane_state.scroll_offset_px.min(max_scroll);
+
     let transcript_bounds = Bounds::new(
         content_bounds.origin.x + PADDING,
-        content_bounds.origin.y + HEADER_BOTTOM,
+        content_top - scroll_offset,
         transcript_width,
         available_height,
     );
@@ -155,25 +173,70 @@ pub fn paint(
         transcript_bounds.max_x() + COLUMN_GAP,
         transcript_bounds.origin.y,
         side_width,
-        available_height * 0.44,
+        draft_height,
     );
     let preview_bounds = Bounds::new(
         draft_bounds.origin.x,
         draft_bounds.max_y() + COLUMN_GAP,
         side_width,
-        available_height * 0.24,
+        preview_height,
     );
     let status_bounds = Bounds::new(
         draft_bounds.origin.x,
         preview_bounds.max_y() + COLUMN_GAP,
         side_width,
-        (transcript_bounds.max_y() - preview_bounds.max_y() - COLUMN_GAP).max(150.0),
+        status_height,
     );
 
+    paint.scene.push_clip(viewport);
     paint_transcript_shell(transcript_bounds, pane_state, autopilot_chat, paint);
     paint_draft_shell_card(draft_bounds, pane_state, paint);
     paint_asset_preview_card(preview_bounds, pane_state, paint);
     paint_publication_status_card(status_bounds, pane_state, paint);
+    paint.scene.pop_clip();
+    paint_scrollbar(viewport, content_height, scroll_offset, paint);
+}
+
+pub fn scroll_viewport_bounds(content_bounds: Bounds, content_top: f32, composer_top_y: f32) -> Bounds {
+    let top = content_top;
+    Bounds::new(
+        content_bounds.origin.x + 8.0,
+        top,
+        (content_bounds.size.width - 16.0).max(1.0),
+        (composer_top_y - top - 8.0).max(1.0),
+    )
+}
+
+fn content_height(available_height: f32, right_column_total_height: f32) -> f32 {
+    right_column_total_height.max(available_height) + PADDING * 2.0
+}
+
+fn draft_card_height(pane_state: &DataSellerPaneState) -> f32 {
+    let mut rows = 12.0;
+    rows += 1.0; // status line summary
+    rows += if pane_state.active_draft.readiness_blockers.is_empty() {
+        1.0
+    } else {
+        2.0
+    };
+    rows += 3.0; // footer guidance lines
+    CARD_HEADER_HEIGHT + 16.0 + rows * LABEL_ROW_HEIGHT + 16.0
+}
+
+fn preview_card_height() -> f32 {
+    let rows = 9.0 + 3.0; // details + explanatory lines
+    CARD_HEADER_HEIGHT + 16.0 + rows * LABEL_ROW_HEIGHT + 14.0
+}
+
+fn inventory_card_height(pane_state: &DataSellerPaneState) -> f32 {
+    let mut rows = 7.0; // base rows before latest request
+    rows += if pane_state.latest_incoming_request().is_some() {
+        5.0
+    } else {
+        1.0
+    };
+    rows += 5.0; // warning + latest request summary lines
+    CARD_HEADER_HEIGHT + 16.0 + rows * LABEL_ROW_HEIGHT + 16.0
 }
 
 fn paint_transcript_shell(
@@ -198,6 +261,13 @@ fn paint_transcript_shell(
         paint,
     );
 
+    let content_clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + CARD_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - CARD_HEADER_HEIGHT - 12.0).max(1.0),
+    );
+    paint.scene.push_clip(content_clip);
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     if let Some(messages) = thread_messages {
         for message in messages.iter().rev().take(4).rev() {
@@ -233,16 +303,23 @@ fn paint_transcript_shell(
         }
     }
 
-    paint.scene.draw_text(paint.text.layout(
-        if has_thread_transcript {
-            "Seller prompts now run on the dedicated Codex thread. Typed tools update the draft while the thread asks bounded follow-up questions."
-        } else {
-            "Send a seller prompt to start the dedicated Codex conversation and draft-normalization loop."
-        },
-        Point::new(bounds.origin.x + 10.0, bounds.max_y() - 18.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    let footer_chunk = ((bounds.size.width - 20.0) / 6.2).max(20.0) as usize;
+    let footer = if has_thread_transcript {
+        "Seller prompts now run on the dedicated Codex thread. Typed tools update the draft while the thread asks bounded follow-up questions."
+    } else {
+        "Send a seller prompt to start the dedicated Codex conversation and draft-normalization loop."
+    };
+    let mut footer_y = bounds.max_y() - 30.0;
+    for line in split_text_for_display(footer, footer_chunk).into_iter().take(2) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(bounds.origin.x + 10.0, footer_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        footer_y += 11.0;
+    }
+    paint.scene.pop_clip();
 }
 
 fn paint_transcript_row(
@@ -252,6 +329,7 @@ fn paint_transcript_row(
     content: &str,
     paint: &mut PaintContext,
 ) {
+    paint.scene.push_clip(row_bounds);
     paint.scene.draw_quad(
         Quad::new(row_bounds)
             .with_background(theme::bg::HOVER)
@@ -264,12 +342,18 @@ fn paint_transcript_row(
         10.0,
         label_color,
     ));
-    paint.scene.draw_text(paint.text.layout(
-        content,
-        Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 28.0),
-        11.0,
-        theme::text::PRIMARY,
-    ));
+    let chunk_len = ((row_bounds.size.width - 28.0) / 7.1).max(14.0) as usize;
+    let mut y = row_bounds.origin.y + 28.0;
+    for line in split_text_for_display(content, chunk_len).into_iter().take(3) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(row_bounds.origin.x + 10.0, y),
+            11.0,
+            theme::text::PRIMARY,
+        ));
+        y += 12.0;
+    }
+    paint.scene.pop_clip();
 }
 
 fn paint_draft_shell_card(
@@ -279,6 +363,13 @@ fn paint_draft_shell_card(
 ) {
     paint_card(bounds, "Draft card", "Structured local truth object", paint);
 
+    let clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + CARD_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - CARD_HEADER_HEIGHT - 10.0).max(1.0),
+    );
+    paint.scene.push_clip(clip);
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     let title = option_label(pane_state.active_draft.title.as_deref());
     row_y = paint_label_line(paint, bounds.origin.x + 10.0, row_y, "title", &title);
@@ -394,6 +485,7 @@ fn paint_draft_shell_card(
         10.0,
         theme::text::MUTED,
     ));
+    paint.scene.pop_clip();
 }
 
 fn paint_publication_status_card(
@@ -408,6 +500,13 @@ fn paint_publication_status_card(
         paint,
     );
 
+    let clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + CARD_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - CARD_HEADER_HEIGHT - 10.0).max(1.0),
+    );
+    paint.scene.push_clip(clip);
     let published_asset = pane_state.last_published_asset.as_ref();
     let published_grant = pane_state.last_published_grant.as_ref();
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
@@ -630,6 +729,7 @@ fn paint_publication_status_card(
             theme::text::MUTED,
         ));
     }
+    paint.scene.pop_clip();
 }
 
 fn paint_asset_preview_card(
@@ -644,6 +744,13 @@ fn paint_asset_preview_card(
         paint,
     );
 
+    let clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + CARD_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - CARD_HEADER_HEIGHT - 10.0).max(1.0),
+    );
+    paint.scene.push_clip(clip);
     let asset_payload = pane_state
         .active_draft
         .last_previewed_asset_payload
@@ -735,6 +842,7 @@ fn paint_asset_preview_card(
         10.0,
         theme::text::MUTED,
     ));
+    paint.scene.pop_clip();
 }
 
 fn paint_card(bounds: Bounds, title: &str, subtitle: &str, paint: &mut PaintContext) {
@@ -750,12 +858,39 @@ fn paint_card(bounds: Bounds, title: &str, subtitle: &str, paint: &mut PaintCont
         11.0,
         theme::text::SECONDARY,
     ));
-    paint.scene.draw_text(paint.text.layout(
-        subtitle,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 22.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    let chunk_len = ((bounds.size.width - 20.0) / 6.2).max(18.0) as usize;
+    let mut subtitle_y = bounds.origin.y + 22.0;
+    for line in split_text_for_display(subtitle, chunk_len).into_iter().take(2) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(bounds.origin.x + 10.0, subtitle_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        subtitle_y += 11.0;
+    }
+}
+
+fn paint_scrollbar(viewport: Bounds, content_height: f32, scroll_offset: f32, paint: &mut PaintContext) {
+    if viewport.size.height <= 0.0 || content_height <= viewport.size.height + 0.5 {
+        return;
+    }
+    let max_offset = (content_height - viewport.size.height).max(0.0);
+    let track_bounds = Bounds::new(viewport.max_x() - 2.0, viewport.origin.y, 2.0, viewport.size.height);
+    let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
+        .clamp(16.0, viewport.size.height.max(0.0));
+    let thumb_y =
+        viewport.origin.y + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+    paint.scene.draw_quad(
+        Quad::new(track_bounds)
+            .with_background(theme::border::DEFAULT.with_alpha(0.45))
+            .with_corner_radius(1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height))
+            .with_background(theme::text::MUTED.with_alpha(0.75))
+            .with_corner_radius(1.0),
+    );
 }
 
 fn gate_label(enabled: bool) -> &'static str {

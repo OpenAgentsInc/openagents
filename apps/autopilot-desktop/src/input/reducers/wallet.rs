@@ -11,10 +11,17 @@ pub(super) fn drain_spark_worker_updates(state: &mut RenderState) -> bool {
     let previous_invoice = state.spark_wallet.last_invoice.clone();
     let previous_payment_id = state.spark_wallet.last_payment_id.clone();
     let previous_error = state.spark_wallet.last_error.clone();
+    let previous_operation_error = state.spark_wallet.last_operation_error.clone();
     if !state.spark_worker.drain_updates(&mut state.spark_wallet) {
         return false;
     }
-    reconcile_spark_wallet_update(state, previous_invoice, previous_payment_id, previous_error);
+    reconcile_spark_wallet_update(
+        state,
+        previous_invoice,
+        previous_payment_id,
+        previous_error,
+        previous_operation_error,
+    );
     true
 }
 
@@ -23,6 +30,7 @@ fn reconcile_spark_wallet_update(
     previous_invoice: Option<String>,
     previous_payment_id: Option<String>,
     previous_error: Option<String>,
+    previous_operation_error: Option<String>,
 ) {
     if state.spark_wallet.last_invoice != previous_invoice
         && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
@@ -69,6 +77,7 @@ fn reconcile_spark_wallet_update(
         &state.spark_wallet,
         previous_invoice.as_deref(),
         previous_error.as_deref(),
+        previous_operation_error.as_deref(),
     );
 
     crate::data_seller_control::reconcile_data_seller_wallet_update(
@@ -81,6 +90,7 @@ fn reconcile_spark_wallet_update(
         state,
         previous_payment_id.as_deref(),
         previous_error.as_deref(),
+        previous_operation_error.as_deref(),
     );
 
     if state.spark_wallet.last_error.is_some() {
@@ -110,6 +120,7 @@ fn reconcile_pending_buyer_payment_confirmation(
     state: &mut RenderState,
     previous_payment_id: Option<&str>,
     previous_error: Option<&str>,
+    previous_operation_error: Option<&str>,
 ) {
     let Some(request_id) = state
         .network_requests
@@ -123,8 +134,9 @@ fn reconcile_pending_buyer_payment_confirmation(
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
 
-    if state.spark_wallet.last_error.as_deref() != previous_error
-        && let Some(error) = state.spark_wallet.last_error.as_deref()
+    let _ = previous_error;
+    if state.spark_wallet.last_operation_error.as_deref() != previous_operation_error
+        && let Some(error) = state.spark_wallet.last_operation_error.as_deref()
         && state
             .spark_wallet
             .last_action
@@ -326,6 +338,7 @@ fn reconcile_provider_settlement_invoice_state(
     spark_wallet: &crate::spark_wallet::SparkPaneState,
     previous_invoice: Option<&str>,
     previous_error: Option<&str>,
+    previous_operation_error: Option<&str>,
 ) {
     if active_job.payment_required_invoice_requested
         && spark_wallet.last_invoice.as_deref() != previous_invoice
@@ -346,9 +359,10 @@ fn reconcile_provider_settlement_invoice_state(
         );
     }
 
+    let _ = previous_error;
     if active_job.payment_required_invoice_requested
-        && spark_wallet.last_error.as_deref() != previous_error
-        && let Some(error) = spark_wallet.last_error.as_deref()
+        && spark_wallet.last_operation_error.as_deref() != previous_operation_error
+        && let Some(error) = spark_wallet.last_operation_error.as_deref()
     {
         active_job.payment_required_invoice_requested = false;
         active_job.payment_required_failed = true;
@@ -431,6 +445,7 @@ mod tests {
             &spark_wallet,
             None,
             None,
+            None,
         );
 
         assert!(!active_job.payment_required_invoice_requested);
@@ -471,6 +486,7 @@ mod tests {
             &spark_wallet,
             None,
             None,
+            None,
         );
 
         assert!(!active_job.payment_required_invoice_requested);
@@ -495,12 +511,13 @@ mod tests {
         let mut provider_runtime = ProviderRuntimeState::default();
         let mut spark_wallet = SparkPaneState::default();
         active_job.payment_required_invoice_requested = true;
-        spark_wallet.last_error = Some("spark timeout".to_string());
+        spark_wallet.last_operation_error = Some("spark timeout".to_string());
 
         reconcile_provider_settlement_invoice_state(
             &mut active_job,
             &mut provider_runtime,
             &spark_wallet,
+            None,
             None,
             None,
         );

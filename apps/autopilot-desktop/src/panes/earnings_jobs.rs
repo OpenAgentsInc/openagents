@@ -737,6 +737,7 @@ fn paint_inbox_section(
             10.0,
             theme::text::MUTED,
         ));
+        paint.scene.pop_clip();
         return;
     }
 
@@ -747,6 +748,7 @@ fn paint_inbox_section(
             10.0,
             theme::text::MUTED,
         ));
+        paint.scene.pop_clip();
         return;
     }
 
@@ -835,6 +837,7 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
             10.0,
             theme::text::MUTED,
         ));
+        paint.scene.pop_clip();
         return;
     }
 
@@ -845,6 +848,7 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
             10.0,
             theme::text::MUTED,
         ));
+        paint.scene.pop_clip();
         return;
     }
 

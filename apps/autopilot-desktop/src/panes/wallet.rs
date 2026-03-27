@@ -6,7 +6,7 @@ use crate::app_state::{
 };
 use crate::pane_renderer::{
     app_text_style, mission_control_muted_color, mission_control_panel_header_color,
-    paint_primary_button, paint_secondary_button, paint_source_badge, paint_tertiary_button,
+    paint_primary_button, paint_secondary_button, paint_source_badge,
     split_text_for_display,
 };
 use crate::pane_system::pane_content_bounds;
@@ -41,10 +41,7 @@ pub fn paint_wallet_pane(
         PaneLoadState::Error => theme::status::ERROR,
     };
     let now_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
-    let pending_delta_sats = crate::spark_wallet::pending_wallet_delta_sats(
-        &spark_wallet.recent_payments,
-        now_epoch_seconds,
-    );
+    let pending_delta_sats = spark_wallet.pending_wallet_delta_sats(now_epoch_seconds);
     let pending_line = if spark_wallet.balance.is_some() {
         crate::spark_wallet::format_wallet_delta_sats(pending_delta_sats)
     } else {
@@ -252,6 +249,34 @@ pub fn paint_wallet_pane(
                 .with_alpha(0.82),
         );
     }
+    if let Some(source) = spark_wallet.wallet_identity_source.as_deref() {
+        y = paint_wallet_data_row(
+            paint,
+            row_x,
+            y,
+            "Identity source",
+            source,
+            row_chunk_len,
+            row_width,
+            app_text_style(AppTextRole::Helper).color.with_alpha(0.72),
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.82),
+        );
+    }
+    if let Some(fingerprint) = spark_wallet.wallet_fingerprint_label() {
+        y = paint_wallet_data_row(
+            paint,
+            row_x,
+            y,
+            "Wallet fingerprint",
+            fingerprint.as_str(),
+            row_chunk_len,
+            row_width,
+            app_text_style(AppTextRole::Helper).color.with_alpha(0.72),
+            app_text_style(AppTextRole::FormValue).color,
+        );
+    }
     y = paint_wallet_data_row(
         paint,
         row_x,
@@ -348,6 +373,42 @@ pub fn paint_wallet_pane(
                 Point::new(row_x, y),
                 11.0,
                 theme::status::ERROR,
+            ));
+            y += 16.0;
+        }
+    }
+    if let Some(error) = spark_wallet.last_operation_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "Last wallet operation error:",
+            Point::new(row_x, y),
+            11.0,
+            theme::status::WARNING,
+        ));
+        y += 16.0;
+        for line in split_text_for_display(error, 88) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(row_x, y),
+                11.0,
+                theme::status::WARNING,
+            ));
+            y += 16.0;
+        }
+    }
+    if let Some(warning) = spark_wallet.wallet_context_warning.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "Wallet continuity warning:",
+            Point::new(row_x, y),
+            11.0,
+            theme::status::WARNING,
+        ));
+        y += 16.0;
+        for line in split_text_for_display(warning, 88) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(row_x, y),
+                11.0,
+                theme::status::WARNING,
             ));
             y += 16.0;
         }
@@ -452,7 +513,12 @@ fn paint_wallet_overview(
     let right_x = bounds.origin.x + bounds.size.width - card_width - 18.0;
     let network_bounds = Bounds::new(right_x, balance_y + 2.0, card_width, card_height);
     let connection_bounds = Bounds::new(right_x, balance_y + 44.0, card_width, card_height);
-    paint_wallet_summary_card(network_bounds, "Network", &network.to_ascii_uppercase(), paint);
+    paint_wallet_summary_card(
+        network_bounds,
+        "Network",
+        &network.to_ascii_uppercase(),
+        paint,
+    );
     paint_wallet_summary_card(connection_bounds, "Connection", connection, paint);
 }
 
@@ -475,12 +541,7 @@ fn paint_wallet_utility_section(
     ));
 }
 
-fn paint_wallet_flow_section(
-    bounds: Bounds,
-    title: &str,
-    helper: &str,
-    paint: &mut PaintContext,
-) {
+fn paint_wallet_flow_section(bounds: Bounds, title: &str, helper: &str, paint: &mut PaintContext) {
     paint_wallet_panel_shell(bounds, theme::accent::PRIMARY, 0.18, true, paint);
     paint_wallet_panel_heading(bounds, title, theme::accent::PRIMARY, true, paint);
 
@@ -697,7 +758,17 @@ fn paint_wallet_input_label(
     label: &str,
     style: crate::ui_style::AppTextStyle,
 ) {
-    let label_y = input_bounds.origin.y - (style.font_size + 10.0);
+    paint_wallet_input_label_with_offset(paint, input_bounds, label, style, 0.0);
+}
+
+fn paint_wallet_input_label_with_offset(
+    paint: &mut PaintContext,
+    input_bounds: Bounds,
+    label: &str,
+    style: crate::ui_style::AppTextStyle,
+    y_offset: f32,
+) {
+    let label_y = input_bounds.origin.y - (style.font_size + 10.0) + y_offset;
     paint.scene.draw_text(paint.text.layout_mono(
         label,
         Point::new(input_bounds.origin.x, label_y),
@@ -718,14 +789,29 @@ fn wallet_supporting_details_height(
         height += 16.0;
     }
     height += 22.0;
-    height += wallet_data_row_height(&spark_wallet.balance.as_ref().map_or("LOADING".to_string(), |b| b.spark_sats.to_string()), row_chunk_len);
-    height += wallet_data_row_height(&spark_wallet.balance.as_ref().map_or("LOADING".to_string(), |b| b.lightning_sats.to_string()), row_chunk_len);
-    height += wallet_data_row_height(&spark_wallet.balance.as_ref().map_or("LOADING".to_string(), |b| b.onchain_sats.to_string()), row_chunk_len);
-    let now_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
-    let pending_delta_sats = crate::spark_wallet::pending_wallet_delta_sats(
-        &spark_wallet.recent_payments,
-        now_epoch_seconds,
+    height += wallet_data_row_height(
+        &spark_wallet
+            .balance
+            .as_ref()
+            .map_or("LOADING".to_string(), |b| b.spark_sats.to_string()),
+        row_chunk_len,
     );
+    height += wallet_data_row_height(
+        &spark_wallet
+            .balance
+            .as_ref()
+            .map_or("LOADING".to_string(), |b| b.lightning_sats.to_string()),
+        row_chunk_len,
+    );
+    height += wallet_data_row_height(
+        &spark_wallet
+            .balance
+            .as_ref()
+            .map_or("LOADING".to_string(), |b| b.onchain_sats.to_string()),
+        row_chunk_len,
+    );
+    let now_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
+    let pending_delta_sats = spark_wallet.pending_wallet_delta_sats(now_epoch_seconds);
     let pending_line = if spark_wallet.balance.is_some() {
         crate::spark_wallet::format_wallet_delta_sats(pending_delta_sats)
     } else {
@@ -744,6 +830,12 @@ fn wallet_supporting_details_height(
     height += 8.0 + 22.0;
     if let Some(path) = spark_wallet.identity_path.as_ref() {
         height += wallet_data_row_height(&path.display().to_string(), row_chunk_len);
+    }
+    if let Some(source) = spark_wallet.wallet_identity_source.as_deref() {
+        height += wallet_data_row_height(source, row_chunk_len);
+    }
+    if let Some(fingerprint) = spark_wallet.wallet_fingerprint_label() {
+        height += wallet_data_row_height(fingerprint.as_str(), row_chunk_len);
     }
     height += wallet_data_row_height(
         "Mnemonic and nsec handling live in the Nostr Identity pane.",
@@ -767,6 +859,12 @@ fn wallet_supporting_details_height(
     if let Some(error) = spark_wallet.last_error.as_deref() {
         height += 16.0 + split_text_for_display(error, 88).len() as f32 * 16.0;
     }
+    if let Some(error) = spark_wallet.last_operation_error.as_deref() {
+        height += 16.0 + split_text_for_display(error, 88).len() as f32 * 16.0;
+    }
+    if let Some(warning) = spark_wallet.wallet_context_warning.as_deref() {
+        height += 16.0 + split_text_for_display(warning, 88).len() as f32 * 16.0;
+    }
     if !spark_wallet.recent_payments.is_empty() {
         height += 16.0 + spark_wallet.recent_payments.iter().take(6).count() as f32 * 14.0;
     }
@@ -776,8 +874,11 @@ fn wallet_supporting_details_height(
 fn spark_wallet_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneState) -> f32 {
     let layout = spark_pane::layout_with_scroll(content_bounds, 0.0);
     let state = spark_wallet_view_state(spark_wallet);
-    let details_height =
-        wallet_supporting_details_height(layout.details_section_bounds.size.width, spark_wallet, state);
+    let details_height = wallet_supporting_details_height(
+        layout.details_section_bounds.size.width,
+        spark_wallet,
+        state,
+    );
     let content_top = content_bounds.origin.y + 12.0;
     let content_bottom = layout.details_section_bounds.origin.y + details_height;
     (content_bottom - content_top).max(0.0)
@@ -813,9 +914,14 @@ fn paint_wallet_scrollbar(
             .with_corner_radius(1.0),
     );
     paint.scene.draw_quad(
-        Quad::new(Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height))
-            .with_background(mission_control_muted_color().with_alpha(0.72))
-            .with_corner_radius(1.0),
+        Quad::new(Bounds::new(
+            track_bounds.origin.x,
+            thumb_y,
+            track_bounds.size.width,
+            thumb_height,
+        ))
+        .with_background(mission_control_muted_color().with_alpha(0.72))
+        .with_corner_radius(1.0),
     );
 }
 
@@ -862,11 +968,16 @@ pub fn paint_create_invoice_pane(
     content_bounds: wgpui::Bounds,
     spark_wallet: &SparkPaneState,
     create_invoice_inputs: &mut CreateInvoicePaneInputs,
+    details_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "wallet", paint);
+    paint.scene.push_clip(content_bounds);
 
-    let layout = spark_pane::create_invoice_layout(content_bounds);
+    let viewport = spark_pane::create_invoice_scroll_viewport_bounds(content_bounds);
+    let content_height = create_invoice_content_height(content_bounds, spark_wallet);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = details_scroll_offset.clamp(0.0, max_scroll);
+    let layout = spark_pane::create_invoice_layout_with_scroll(content_bounds, scroll_offset);
     let state = create_invoice_view_state(spark_wallet);
     let state_color = match state {
         PaneLoadState::Ready => theme::status::SUCCESS,
@@ -899,8 +1010,9 @@ pub fn paint_create_invoice_pane(
         "Status, generated invoice output, and recent wallet activity.",
         paint,
     );
+    paint.scene.push_clip(viewport);
     paint_primary_button(layout.create_invoice_button, "Create Lightning invoice", paint);
-    paint_tertiary_button(layout.copy_invoice_button, "Copy Lightning invoice", paint);
+    paint_secondary_button(layout.copy_invoice_button, "Copy Lightning invoice", paint);
 
     create_invoice_inputs
         .amount_sats
@@ -922,16 +1034,29 @@ pub fn paint_create_invoice_pane(
         .expiry_seconds
         .paint(layout.expiry_input, paint);
 
-    paint_wallet_input_label(paint, layout.amount_input, "Lightning invoice sats", label_style);
-    paint_wallet_input_label(paint, layout.expiry_input, "Expiry (seconds)", label_style);
-    paint_wallet_input_label(
+    paint_wallet_input_label_with_offset(
+        paint,
+        layout.amount_input,
+        "Invoice sats",
+        label_style,
+        4.0,
+    );
+    paint_wallet_input_label_with_offset(
+        paint,
+        layout.expiry_input,
+        "Expiry (s)",
+        label_style,
+        4.0,
+    );
+    paint_wallet_input_label_with_offset(
         paint,
         layout.description_input,
         "Description (optional)",
         label_style,
+        4.0,
     );
 
-    let mut y = layout.details_origin.y;
+    let mut y = details_section_bounds.origin.y + 48.0;
     y = paint_wallet_status_summary(
         Bounds::new(
             content_bounds.origin.x + 24.0,
@@ -1020,17 +1145,25 @@ pub fn paint_create_invoice_pane(
             y += 16.0;
         }
     }
+    paint.scene.pop_clip();
+    paint_wallet_scrollbar(viewport, content_height, scroll_offset, paint);
+    paint.scene.pop_clip();
 }
 
 pub fn paint_pay_invoice_pane(
     content_bounds: wgpui::Bounds,
     spark_wallet: &SparkPaneState,
     pay_invoice_inputs: &mut PayInvoicePaneInputs,
+    details_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "wallet", paint);
 
-    let layout = spark_pane::pay_invoice_layout(content_bounds);
+    let viewport = spark_pane::pay_invoice_scroll_viewport_bounds(content_bounds);
+    let content_height = pay_invoice_content_height(content_bounds, spark_wallet);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = details_scroll_offset.clamp(0.0, max_scroll);
+    let layout = spark_pane::pay_invoice_layout_with_scroll(content_bounds, scroll_offset);
     let state = pay_invoice_view_state(spark_wallet);
     let state_color = match state {
         PaneLoadState::Ready => theme::status::SUCCESS,
@@ -1063,6 +1196,7 @@ pub fn paint_pay_invoice_pane(
         "Connection status, payment outcome, and recent wallet activity.",
         paint,
     );
+    paint.scene.push_clip(viewport);
     paint_primary_button(layout.send_payment_button, "Pay invoice", paint);
 
     pay_invoice_inputs
@@ -1085,7 +1219,12 @@ pub fn paint_pay_invoice_pane(
         "Lightning invoice / payment request",
         label_style,
     );
-    paint_wallet_input_label(paint, layout.amount_input, "Send sats (optional)", label_style);
+    paint_wallet_input_label(
+        paint,
+        layout.amount_input,
+        "Send sats (optional)",
+        label_style,
+    );
 
     let mut y = layout.details_origin.y;
     y = paint_wallet_status_summary(
@@ -1198,6 +1337,8 @@ pub fn paint_pay_invoice_pane(
             y += 16.0;
         }
     }
+    paint.scene.pop_clip();
+    paint_wallet_scrollbar(viewport, content_height, scroll_offset, paint);
 }
 
 pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -1249,7 +1390,10 @@ pub fn dispatch_create_invoice_input_event(state: &mut RenderState, event: &Inpu
     };
 
     let content_bounds = pane_content_bounds(bounds);
-    let layout = spark_pane::create_invoice_layout(content_bounds);
+    let layout = spark_pane::create_invoice_layout_with_scroll(
+        content_bounds,
+        state.spark_wallet_pane.scroll_offset(),
+    );
     let mut handled = false;
 
     handled |= state
@@ -1283,7 +1427,10 @@ pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEv
     };
 
     let content_bounds = pane_content_bounds(bounds);
-    let layout = spark_pane::pay_invoice_layout(content_bounds);
+    let layout = spark_pane::pay_invoice_layout_with_scroll(
+        content_bounds,
+        state.spark_wallet_pane.scroll_offset(),
+    );
     let mut handled = false;
 
     handled |= state
@@ -1336,6 +1483,53 @@ pub fn pay_invoice_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
     }
 
     PaneLoadState::Ready
+}
+
+fn create_invoice_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneState) -> f32 {
+    let layout = spark_pane::create_invoice_layout_with_scroll(content_bounds, 0.0);
+    let mut height = (layout.details_origin.y - content_bounds.origin.y).max(0.0);
+    let row_chunk_len = 84usize;
+
+    height += 34.0 + 8.0;
+    if spark_wallet.last_invoice.is_none() {
+        height += 16.0;
+    }
+    if let Some(invoice) = spark_wallet.last_invoice.as_deref() {
+        height += wallet_data_row_height(invoice, row_chunk_len);
+        height += wallet_data_row_height(invoice, row_chunk_len);
+    }
+    if let Some(last_action) = spark_wallet.last_action.as_deref() {
+        height += wallet_data_row_height(last_action, row_chunk_len);
+    }
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        height += 16.0 + split_text_for_display(error, 88).len() as f32 * 16.0;
+    }
+    height + 16.0
+}
+
+fn pay_invoice_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneState) -> f32 {
+    let layout = spark_pane::pay_invoice_layout_with_scroll(content_bounds, 0.0);
+    let mut height = (layout.details_origin.y - content_bounds.origin.y).max(0.0);
+    let row_width = (content_bounds.size.width - 48.0).max(180.0);
+    let row_chunk_len = ((row_width - 122.0) / 6.1).max(18.0) as usize;
+
+    height += 34.0 + 8.0;
+    if pay_invoice_view_state(spark_wallet) == PaneLoadState::Loading {
+        height += 16.0;
+    }
+    height += wallet_data_row_height(spark_wallet.network_name(), row_chunk_len);
+    height += wallet_data_row_height(spark_wallet.network_status_label(), row_chunk_len);
+    height += wallet_data_row_height(payment_terminal_status(spark_wallet), row_chunk_len);
+    if let Some(payment_id) = spark_wallet.last_payment_id.as_deref() {
+        height += wallet_data_row_height(payment_id, row_chunk_len);
+    }
+    if let Some(last_action) = spark_wallet.last_action.as_deref() {
+        height += wallet_data_row_height(last_action, row_chunk_len);
+    }
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        height += 16.0 + split_text_for_display(error, 88).len() as f32 * 16.0;
+    }
+    height + 16.0
 }
 
 pub fn payment_terminal_status(spark_wallet: &SparkPaneState) -> &str {
