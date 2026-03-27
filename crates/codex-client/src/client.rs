@@ -1117,7 +1117,7 @@ fn resolve_app_server_command() -> Result<AppServerCommand> {
         });
     }
 
-    let program = find_codex_executable().context("codex executable not found")?;
+    let program = find_codex_executable().context(missing_codex_installation_message())?;
 
     Ok(AppServerCommand {
         program,
@@ -1138,7 +1138,11 @@ fn find_codex_executable() -> Result<PathBuf> {
         return Ok(path);
     }
 
-    Err(anyhow::anyhow!("codex executable not found"))
+    Err(anyhow::anyhow!(missing_codex_installation_message()))
+}
+
+fn missing_codex_installation_message() -> &'static str {
+    "Codex app-server is unavailable. Install `codex` or `codex-app-server`, make sure it is on PATH, or set `CODEX_BIN` / `CODEX_APP_SERVER`."
 }
 
 /// Check if Codex app-server is available on this system.
