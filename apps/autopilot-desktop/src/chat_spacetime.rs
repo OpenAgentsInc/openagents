@@ -188,6 +188,18 @@ fn rebuild_search_index(autopilot_chat: &AutopilotChatState, fingerprint: &str) 
                 lowered_content: message.content.to_ascii_lowercase(),
             })
             .collect(),
+        ChatBrowseMode::ManagedSystem => autopilot_chat
+            .active_managed_system_messages()
+            .into_iter()
+            .enumerate()
+            .map(|(index, message)| ChatSearchEntry {
+                position: index,
+                reference_label: format!("#{}", index + 1),
+                message_id: message.event_id.clone(),
+                preview: compact_search_preview(&message.content),
+                lowered_content: message.content.to_ascii_lowercase(),
+            })
+            .collect(),
         ChatBrowseMode::DirectMessages => autopilot_chat
             .active_direct_message_messages()
             .into_iter()
@@ -216,6 +228,7 @@ fn active_chat_cache_key(autopilot_chat: &AutopilotChatState) -> Option<String> 
             let channel = autopilot_chat.active_managed_chat_channel()?;
             Some(format!("managed:{}:{}", group.group_id, channel.channel_id))
         }
+        ChatBrowseMode::ManagedSystem => Some("managed-system".to_string()),
         ChatBrowseMode::DirectMessages => {
             let room = autopilot_chat.active_direct_message_room()?;
             Some(format!("dm:{}", room.room_id))
@@ -235,6 +248,15 @@ fn active_chat_fingerprint(autopilot_chat: &AutopilotChatState) -> String {
                     .last()
                     .map(|message| message.event_id.as_str())
                     .unwrap_or("none")
+            )
+        }
+        ChatBrowseMode::ManagedSystem => {
+            format!(
+                "managed-system:{}:{}",
+                autopilot_chat.managed_system_event_count(),
+                autopilot_chat
+                    .managed_system_latest_event_id()
+                    .unwrap_or_else(|| "none".to_string())
             )
         }
         ChatBrowseMode::DirectMessages => {
@@ -267,6 +289,7 @@ fn active_chat_read_cursor_position(autopilot_chat: &AutopilotChatState) -> Opti
                 .into_iter()
                 .position(|message| message.event_id == cursor_id)
         }
+        ChatBrowseMode::ManagedSystem => None,
         ChatBrowseMode::DirectMessages => {
             let room = autopilot_chat.active_direct_message_room()?;
             let cursor_id = autopilot_chat
