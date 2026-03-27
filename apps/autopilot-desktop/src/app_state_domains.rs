@@ -2881,6 +2881,7 @@ pub struct CodexRemoteState {
     pub base_url: Option<String>,
     pub pairing_url: Option<String>,
     pub auth_token_preview: Option<String>,
+    pub bonjour_status: Option<String>,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
 }
@@ -2894,6 +2895,7 @@ impl Default for CodexRemoteState {
             base_url: None,
             pairing_url: None,
             auth_token_preview: None,
+            bonjour_status: None,
             last_error: None,
             last_action: Some("Remote companion disabled".to_string()),
         }
