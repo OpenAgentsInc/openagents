@@ -48,6 +48,12 @@ clipboard on enable and token rotation.
 The owner-only `control` iOS app should pair from that full pairing URL. It is
 not supposed to ask the operator for a separate base URL and bearer token.
 
+When the remote companion is bound to a non-loopback LAN or Tailnet-reachable
+address, Desktop also advertises `_openagents-control._tcp` over Bonjour on the
+local network. The `control` iOS app can browse that service and consume the
+advertised pairing URL directly, while loopback-only binds intentionally remain
+non-discoverable.
+
 ## Bind Safety
 
 Remote binds are restricted to:

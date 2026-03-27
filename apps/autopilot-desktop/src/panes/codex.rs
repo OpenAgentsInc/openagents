@@ -685,6 +685,13 @@ pub fn paint_labs_pane(
         "Remote token",
         remote_state.auth_token_preview.as_deref().unwrap_or("n/a"),
     );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote Bonjour",
+        remote_state.bonjour_status.as_deref().unwrap_or("n/a"),
+    );
     let _ = paint_multiline_phrase(
         paint,
         content_bounds.origin.x + 12.0,

@@ -15,6 +15,7 @@ use codex_client::{
     AppServerRequestId, ApprovalDecision, CommandExecutionRequestApprovalResponse,
     FileChangeRequestApprovalResponse, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
 };
+use mdns_sd::{ServiceDaemon, ServiceInfo};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 
@@ -27,6 +28,10 @@ use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 
 const REMOTE_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const REMOTE_WORKTREE_CACHE_TTL: Duration = Duration::from_secs(5);
+const REMOTE_BONJOUR_SERVICE_TYPE: &str = "_openagents-control._tcp.local.";
+const REMOTE_BONJOUR_SERVICE_TYPE_LABEL: &str = "_openagents-control._tcp";
+const REMOTE_BONJOUR_TXT_VERSION: &str = "1";
+const REMOTE_BONJOUR_INSTANCE_NAME_MAX_LEN: usize = 30;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexRemoteRuntimeConfig {
@@ -301,10 +306,57 @@ struct CodexRemoteHttpState {
     update_tx: Sender<CodexRemoteRuntimeUpdate>,
 }
 
+struct CodexRemoteBonjourAnnouncement {
+    service_info: ServiceInfo,
+    status_label: String,
+}
+
+struct CodexRemoteBonjourAdvertisement {
+    daemon: ServiceDaemon,
+    service_fullname: String,
+    status_label: String,
+}
+
+impl CodexRemoteBonjourAdvertisement {
+    fn new(announcement: CodexRemoteBonjourAnnouncement) -> Result<Self, String> {
+        let daemon = ServiceDaemon::new()
+            .map_err(|error| format!("Failed to start Bonjour advertisement: {error}"))?;
+        let service_fullname = announcement.service_info.get_fullname().to_string();
+        daemon
+            .register(announcement.service_info)
+            .map_err(|error| format!("Failed to register Bonjour advertisement: {error}"))?;
+        Ok(Self {
+            daemon,
+            service_fullname,
+            status_label: announcement.status_label,
+        })
+    }
+
+    fn update(&mut self, announcement: CodexRemoteBonjourAnnouncement) -> Result<(), String> {
+        self.service_fullname = announcement.service_info.get_fullname().to_string();
+        self.status_label = announcement.status_label;
+        self.daemon
+            .register(announcement.service_info)
+            .map_err(|error| format!("Failed to refresh Bonjour advertisement: {error}"))
+    }
+
+    fn status_line(&self) -> String {
+        self.status_label.clone()
+    }
+}
+
+impl Drop for CodexRemoteBonjourAdvertisement {
+    fn drop(&mut self) {
+        let _ = self.daemon.unregister(self.service_fullname.as_str());
+        let _ = self.daemon.shutdown();
+    }
+}
+
 pub struct DesktopCodexRemoteRuntime {
     command_tx: tokio_mpsc::UnboundedSender<CodexRemoteRuntimeCommand>,
     update_rx: Receiver<CodexRemoteRuntimeUpdate>,
     listen_addr: SocketAddr,
+    bonjour_advertisement: Option<CodexRemoteBonjourAdvertisement>,
     join_handle: Option<JoinHandle<()>>,
 }
 
@@ -323,6 +375,7 @@ impl DesktopCodexRemoteRuntime {
             command_tx,
             update_rx,
             listen_addr,
+            bonjour_advertisement: None,
             join_handle: Some(join_handle),
         })
     }
@@ -341,6 +394,29 @@ impl DesktopCodexRemoteRuntime {
         self.command_tx
             .send(CodexRemoteRuntimeCommand::RotateToken(auth_token))
             .map_err(|error| format!("Remote runtime offline: {error}"))
+    }
+
+    fn set_bonjour_advertisement(&mut self, advertisement: CodexRemoteBonjourAdvertisement) {
+        self.bonjour_advertisement = Some(advertisement);
+    }
+
+    fn update_bonjour_advertisement(
+        &mut self,
+        announcement: CodexRemoteBonjourAnnouncement,
+    ) -> Result<String, String> {
+        if let Some(advertisement) = self.bonjour_advertisement.as_mut() {
+            advertisement.update(announcement)?;
+            Ok(advertisement.status_line())
+        } else {
+            let advertisement = CodexRemoteBonjourAdvertisement::new(announcement)?;
+            let status_line = advertisement.status_line();
+            self.bonjour_advertisement = Some(advertisement);
+            Ok(status_line)
+        }
+    }
+
+    fn clear_bonjour_advertisement(&mut self) {
+        self.bonjour_advertisement = None;
     }
 
     pub fn drain_updates(&mut self) -> Vec<CodexRemoteRuntimeUpdate> {
@@ -405,13 +481,29 @@ pub fn enable_remote_runtime(
     )?;
     let auth_token = generate_remote_auth_token()?;
     disable_remote_runtime(state);
-    let runtime = DesktopCodexRemoteRuntime::spawn(CodexRemoteRuntimeConfig {
+    let mut runtime = DesktopCodexRemoteRuntime::spawn(CodexRemoteRuntimeConfig {
         listen_addr: bind_addr,
         auth_token: auth_token.clone(),
     })?;
     let listen_addr = runtime.listen_addr();
     let base_url = remote_base_url(listen_addr);
     let pairing_url = remote_pairing_url(listen_addr, &auth_token);
+    let bonjour_status = match remote_bonjour_announcement(
+        state,
+        listen_addr,
+        base_url.as_str(),
+        pairing_url.as_str(),
+    ) {
+        Ok(announcement) => match CodexRemoteBonjourAdvertisement::new(announcement) {
+            Ok(advertisement) => {
+                let status_line = advertisement.status_line();
+                runtime.set_bonjour_advertisement(advertisement);
+                Some(status_line)
+            }
+            Err(error) => Some(format!("Unavailable: {error}")),
+        },
+        Err(error) => Some(format!("Unavailable: {error}")),
+    };
     runtime.sync_snapshot(snapshot_for_state(state))?;
     state.codex_remote.enabled = true;
     state.codex_remote.requested_bind_addr = bind_addr.to_string();
@@ -419,15 +511,21 @@ pub fn enable_remote_runtime(
     state.codex_remote.base_url = Some(base_url.clone());
     state.codex_remote.pairing_url = Some(pairing_url.clone());
     state.codex_remote.auth_token_preview = Some(auth_token_preview(&auth_token));
+    state.codex_remote.bonjour_status = bonjour_status.clone();
     state.codex_remote.last_error = None;
     state.codex_remote.last_action = Some(format!("Remote companion listening on {listen_addr}"));
     state.codex_remote_runtime = Some(runtime);
     state.codex_remote_last_sync_signature = None;
     state.codex_remote_last_sync_at = None;
-    Ok(format!(
+    let mut message = format!(
         "Remote companion enabled on {listen_addr}. URL: {base_url} token={}",
         auth_token_preview(&auth_token)
-    ))
+    );
+    if let Some(status_line) = bonjour_status {
+        message.push_str(". Bonjour: ");
+        message.push_str(status_line.as_str());
+    }
+    Ok(message)
 }
 
 pub fn disable_remote_runtime(state: &mut RenderState) -> String {
@@ -439,6 +537,7 @@ pub fn disable_remote_runtime(state: &mut RenderState) -> String {
     state.codex_remote.base_url = None;
     state.codex_remote.pairing_url = None;
     state.codex_remote.auth_token_preview = None;
+    state.codex_remote.bonjour_status = None;
     state.codex_remote.last_error = None;
     state.codex_remote.last_action = Some("Remote companion disabled".to_string());
     state.codex_remote_last_sync_signature = None;
@@ -447,20 +546,39 @@ pub fn disable_remote_runtime(state: &mut RenderState) -> String {
 }
 
 pub fn rotate_remote_runtime_token(state: &mut RenderState) -> Result<String, String> {
-    let Some(runtime) = state.codex_remote_runtime.as_ref() else {
+    if state.codex_remote_runtime.is_none() {
         return Err("Remote companion is not enabled".to_string());
-    };
-    let auth_token = generate_remote_auth_token()?;
-    runtime.rotate_token(auth_token.clone())?;
+    }
     let Some(listen_addr) = state.codex_remote.listen_addr.as_deref() else {
         return Err("Remote companion is missing its listen address".to_string());
     };
     let listen_addr = listen_addr
         .parse::<SocketAddr>()
         .map_err(|error| format!("Invalid remote listen address state: {error}"))?;
+    let auth_token = generate_remote_auth_token()?;
+    let base_url = remote_base_url(listen_addr);
     let pairing_url = remote_pairing_url(listen_addr, &auth_token);
+    let bonjour_announcement =
+        remote_bonjour_announcement(state, listen_addr, base_url.as_str(), pairing_url.as_str());
+    let Some(runtime) = state.codex_remote_runtime.as_mut() else {
+        return Err("Remote companion is not enabled".to_string());
+    };
+    runtime.rotate_token(auth_token.clone())?;
     state.codex_remote.pairing_url = Some(pairing_url.clone());
     state.codex_remote.auth_token_preview = Some(auth_token_preview(&auth_token));
+    state.codex_remote.bonjour_status = match bonjour_announcement {
+        Ok(announcement) => match runtime.update_bonjour_advertisement(announcement) {
+            Ok(status_line) => Some(status_line),
+            Err(error) => {
+                runtime.clear_bonjour_advertisement();
+                Some(format!("Unavailable: {error}"))
+            }
+        },
+        Err(error) => {
+            runtime.clear_bonjour_advertisement();
+            Some(format!("Unavailable: {error}"))
+        }
+    };
     state.codex_remote.last_error = None;
     state.codex_remote.last_action = Some("Remote auth token rotated".to_string());
     Ok(format!(
@@ -492,6 +610,9 @@ pub fn remote_status_lines(state: &RenderState) -> Vec<String> {
     }
     if let Some(token_preview) = state.codex_remote.auth_token_preview.as_deref() {
         lines.push(format!("Pairing token: {token_preview}"));
+    }
+    if let Some(bonjour_status) = state.codex_remote.bonjour_status.as_deref() {
+        lines.push(format!("Bonjour: {bonjour_status}"));
     }
     if let Some(error) = state.codex_remote.last_error.as_deref() {
         lines.push(format!("Error: {error}"));
@@ -1427,6 +1548,60 @@ fn allowed_remote_bind_ip(ip: IpAddr) -> bool {
     }
 }
 
+fn remote_bonjour_announcement(
+    state: &RenderState,
+    listen_addr: SocketAddr,
+    base_url: &str,
+    pairing_url: &str,
+) -> Result<CodexRemoteBonjourAnnouncement, String> {
+    if listen_addr.ip().is_loopback() {
+        return Err("loopback binds are not LAN-discoverable".to_string());
+    }
+
+    let workspace = workspace_context_for_state(state);
+    let project_name = workspace
+        .as_ref()
+        .and_then(|context| context.project_name.as_ref())
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Autopilot");
+    let host_label = remote_bonjour_host_label();
+    let instance_name = remote_bonjour_instance_name(project_name, host_label.as_str());
+    let host_name = format!("{host_label}.local.");
+    let display_name = remote_bonjour_display_name(project_name, listen_addr);
+
+    let tailnet = desktop_control_tailnet_status()
+        .current_tailnet
+        .unwrap_or_default();
+    let properties = remote_bonjour_properties(
+        project_name,
+        if tailnet.is_empty() {
+            None
+        } else {
+            Some(tailnet.as_str())
+        },
+        display_name.as_str(),
+        base_url,
+        pairing_url,
+        listen_addr,
+    );
+
+    let service_info = ServiceInfo::new(
+        REMOTE_BONJOUR_SERVICE_TYPE,
+        instance_name.as_str(),
+        host_name.as_str(),
+        listen_addr.ip().to_string(),
+        listen_addr.port(),
+        properties,
+    )
+    .map_err(|error| format!("Failed to build Bonjour service info: {error}"))?;
+
+    Ok(CodexRemoteBonjourAnnouncement {
+        service_info,
+        status_label: format!("advertising {display_name} via {REMOTE_BONJOUR_SERVICE_TYPE_LABEL}"),
+    })
+}
+
 fn shared_cgnat(ip: Ipv4Addr) -> bool {
     let octets = ip.octets();
     octets[0] == 100 && (64..=127).contains(&octets[1])
@@ -1447,6 +1622,81 @@ fn auth_token_preview(auth_token: &str) -> String {
             &trimmed[trimmed.len().saturating_sub(4)..]
         )
     }
+}
+
+fn remote_bonjour_host_label() -> String {
+    let value = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "autopilot".to_string());
+    let sanitized = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if sanitized.is_empty() {
+        "autopilot".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn remote_bonjour_instance_name(project_name: &str, host_label: &str) -> String {
+    let project_label = project_name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let base = if project_label.is_empty() {
+        format!("autopilot-{host_label}")
+    } else {
+        format!("{project_label}-{host_label}")
+    };
+    base.chars()
+        .take(REMOTE_BONJOUR_INSTANCE_NAME_MAX_LEN)
+        .collect()
+}
+
+fn remote_bonjour_display_name(project_name: &str, listen_addr: SocketAddr) -> String {
+    format!("{project_name} @ {}", listen_addr.ip())
+}
+
+fn remote_bonjour_properties(
+    project_name: &str,
+    tailnet: Option<&str>,
+    display_name: &str,
+    base_url: &str,
+    pairing_url: &str,
+    listen_addr: SocketAddr,
+) -> HashMap<String, String> {
+    let mut properties = HashMap::new();
+    properties.insert(
+        "version".to_string(),
+        REMOTE_BONJOUR_TXT_VERSION.to_string(),
+    );
+    properties.insert("mode".to_string(), "codex_remote".to_string());
+    properties.insert("display_name".to_string(), display_name.to_string());
+    properties.insert("project_name".to_string(), project_name.to_string());
+    properties.insert("base_url".to_string(), base_url.to_string());
+    properties.insert("pairing_url".to_string(), pairing_url.to_string());
+    properties.insert("listen_addr".to_string(), listen_addr.to_string());
+    if let Some(tailnet) = tailnet.filter(|value| !value.is_empty()) {
+        properties.insert("tailnet".to_string(), tailnet.to_string());
+    }
+    properties
 }
 
 fn remote_request_id_value(request_id: &AppServerRequestId) -> String {
@@ -2473,5 +2723,46 @@ mod tests {
             .send()
             .expect("send new token");
         assert_eq!(new.status(), reqwest::StatusCode::OK);
+    }
+
+    #[test]
+    fn remote_bonjour_instance_name_truncates_to_service_limit() {
+        let instance = remote_bonjour_instance_name(
+            "openagents-codex-remote-companion",
+            "my-very-long-macbook-hostname",
+        );
+
+        assert!(instance.len() <= REMOTE_BONJOUR_INSTANCE_NAME_MAX_LEN);
+        assert!(instance.starts_with("openagents"));
+    }
+
+    #[test]
+    fn remote_bonjour_properties_publish_pairing_url() {
+        let listen_addr: SocketAddr = "192.168.1.25:4848".parse().unwrap();
+        let properties = remote_bonjour_properties(
+            "openagents",
+            Some("yak-bebop.ts.net"),
+            "openagents @ 192.168.1.25",
+            "http://192.168.1.25:4848/",
+            "http://192.168.1.25:4848/#token=secret-token",
+            listen_addr,
+        );
+
+        assert_eq!(
+            properties.get("mode").map(String::as_str),
+            Some("codex_remote")
+        );
+        assert_eq!(
+            properties.get("pairing_url").map(String::as_str),
+            Some("http://192.168.1.25:4848/#token=secret-token")
+        );
+        assert_eq!(
+            properties.get("tailnet").map(String::as_str),
+            Some("yak-bebop.ts.net")
+        );
+        assert_eq!(
+            properties.get("listen_addr").map(String::as_str),
+            Some("192.168.1.25:4848")
+        );
     }
 }
