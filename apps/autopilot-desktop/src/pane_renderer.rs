@@ -28,7 +28,10 @@ use crate::app_state::{
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
-use crate::desktop_control::{DesktopControlRemoteTrainingStatus, DesktopControlTrainingStatus};
+use crate::desktop_control::{
+    DesktopControlRemoteTrainingStatus, DesktopControlTrainingStatus,
+    desktop_control_tailnet_status,
+};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
 use crate::pane_system::{
@@ -5460,6 +5463,7 @@ fn paint_provider_status_pane(
     } else {
         "ready"
     };
+    let tailnet = desktop_control_tailnet_status();
     let apple_fm_status = if provider_blockers
         .contains(&ProviderBlocker::AppleFoundationModelsUnavailable)
         || provider_blockers.contains(&ProviderBlocker::AppleFoundationModelsModelUnavailable)
@@ -5705,6 +5709,90 @@ fn paint_provider_status_pane(
         "relay: unknown (lane pending)".to_string(),
         theme::text::PRIMARY,
     ));
+
+    lines.push((String::new(), theme::text::MUTED));
+    lines.push(("Tailnet".to_string(), theme::text::MUTED));
+    lines.push((
+        format!(
+            "tailnet={} backend={} online_devices={}/{}",
+            tailnet.current_tailnet.as_deref().unwrap_or("n/a"),
+            tailnet.backend_state.as_deref().unwrap_or("n/a"),
+            tailnet.online_device_count,
+            tailnet.device_count
+        ),
+        if tailnet.available {
+            theme::text::PRIMARY
+        } else {
+            theme::status::ERROR
+        },
+    ));
+    lines.push((
+        format!(
+            "magic_dns={} version={} client_version={}",
+            tailnet.magic_dns_suffix.as_deref().unwrap_or("n/a"),
+            tailnet.version.as_deref().unwrap_or("n/a"),
+            tailnet.client_version.as_deref().unwrap_or("n/a"),
+        ),
+        theme::text::PRIMARY,
+    ));
+    if let Some(device) = tailnet.self_device.as_ref() {
+        lines.push((
+            format!(
+                "self={} os={} online={} active={} relay={} addr={} ips={}",
+                device.display_name,
+                device.os,
+                device.online,
+                device.active,
+                device.relay.as_deref().unwrap_or("n/a"),
+                device.current_address.as_deref().unwrap_or("n/a"),
+                if device.tailscale_ips.is_empty() {
+                    "n/a".to_string()
+                } else {
+                    device.tailscale_ips.join(", ")
+                }
+            ),
+            if device.online {
+                theme::status::SUCCESS
+            } else {
+                theme::text::MUTED
+            },
+        ));
+    }
+    for device in &tailnet.peers {
+        lines.push((
+            format!(
+                "peer={} os={} online={} active={} relay={} addr={} ips={} rx={} tx={} last_seen={}",
+                device.display_name,
+                device.os,
+                device.online,
+                device.active,
+                device.relay.as_deref().unwrap_or("n/a"),
+                device.current_address.as_deref().unwrap_or("n/a"),
+                if device.tailscale_ips.is_empty() {
+                    "n/a".to_string()
+                } else {
+                    device.tailscale_ips.join(", ")
+                },
+                device.rx_bytes,
+                device.tx_bytes,
+                device.last_seen.as_deref().unwrap_or("n/a"),
+            ),
+            if device.online {
+                theme::status::SUCCESS
+            } else {
+                theme::text::MUTED
+            },
+        ));
+    }
+    if !tailnet.health.is_empty() {
+        lines.push((
+            format!("health: {}", tailnet.health.join(" | ")),
+            theme::status::WARNING,
+        ));
+    }
+    if let Some(error) = tailnet.last_error.as_deref() {
+        lines.push((format!("tailnet error: {error}"), theme::status::ERROR));
+    }
 
     lines.push((String::new(), theme::text::MUTED));
     lines.push(("Local inference inventory".to_string(), theme::text::MUTED));

@@ -143,6 +143,10 @@ enum Command {
         #[command(subcommand)]
         command: TunnelCommand,
     },
+    Tailnet {
+        #[command(subcommand)]
+        command: TailnetCommand,
+    },
     Chat {
         #[command(subcommand)]
         command: ChatCommand,
@@ -556,6 +560,11 @@ enum Nip90PaymentsCommand {
 
 #[derive(Subcommand, Debug)]
 enum TunnelCommand {
+    Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum TailnetCommand {
     Status,
 }
 
@@ -2052,6 +2061,16 @@ fn main() -> Result<()> {
                     print_json(&snapshot.tunnels)?;
                 } else {
                     print_tunnels_text(&snapshot);
+                }
+            }
+        },
+        Command::Tailnet { command } => match command {
+            TailnetCommand::Status => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.tailnet)?;
+                } else {
+                    print_tailnet_text(&snapshot);
                 }
             }
         },
@@ -4439,6 +4458,19 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.wallet.can_withdraw
     );
     println!(
+        "tailnet: available={} tailnet={} online_devices={}/{} health={} last_error={}",
+        snapshot.tailnet.available,
+        snapshot.tailnet.current_tailnet.as_deref().unwrap_or("-"),
+        snapshot.tailnet.online_device_count,
+        snapshot.tailnet.device_count,
+        if snapshot.tailnet.health.is_empty() {
+            "-".to_string()
+        } else {
+            snapshot.tailnet.health.join(" | ")
+        },
+        snapshot.tailnet.last_error.as_deref().unwrap_or("-")
+    );
+    println!(
         "tunnels: available={} approved_services={} active_services={} open_tunnels={}",
         snapshot.tunnels.available,
         snapshot.tunnels.approved_service_count,
@@ -5210,6 +5242,64 @@ fn print_tunnels_text(snapshot: &DesktopControlSnapshot) {
             tunnel.bytes_received,
             tunnel.close_reason.as_deref().unwrap_or("-"),
             tunnel.last_error.as_deref().unwrap_or("-")
+        );
+    }
+}
+
+fn print_tailnet_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "tailnet: available={} backend={} tailnet={} magic_dns={} version={} client_version={} online_devices={}/{} last_error={}",
+        snapshot.tailnet.available,
+        snapshot.tailnet.backend_state.as_deref().unwrap_or("-"),
+        snapshot.tailnet.current_tailnet.as_deref().unwrap_or("-"),
+        snapshot.tailnet.magic_dns_suffix.as_deref().unwrap_or("-"),
+        snapshot.tailnet.version.as_deref().unwrap_or("-"),
+        snapshot.tailnet.client_version.as_deref().unwrap_or("-"),
+        snapshot.tailnet.online_device_count,
+        snapshot.tailnet.device_count,
+        snapshot.tailnet.last_error.as_deref().unwrap_or("-")
+    );
+    if !snapshot.tailnet.health.is_empty() {
+        println!("tailnet health: {}", snapshot.tailnet.health.join(" | "));
+    }
+    if let Some(device) = snapshot.tailnet.self_device.as_ref() {
+        println!(
+            "self: name={} os={} online={} active={} relay={} addr={} ips={} rx={} tx={} last_seen={} last_handshake={}",
+            device.display_name,
+            device.os,
+            device.online,
+            device.active,
+            device.relay.as_deref().unwrap_or("-"),
+            device.current_address.as_deref().unwrap_or("-"),
+            if device.tailscale_ips.is_empty() {
+                "-".to_string()
+            } else {
+                device.tailscale_ips.join(",")
+            },
+            device.rx_bytes,
+            device.tx_bytes,
+            device.last_seen.as_deref().unwrap_or("-"),
+            device.last_handshake.as_deref().unwrap_or("-")
+        );
+    }
+    for device in &snapshot.tailnet.peers {
+        println!(
+            "peer={} os={} online={} active={} relay={} addr={} ips={} rx={} tx={} last_seen={} last_handshake={}",
+            device.display_name,
+            device.os,
+            device.online,
+            device.active,
+            device.relay.as_deref().unwrap_or("-"),
+            device.current_address.as_deref().unwrap_or("-"),
+            if device.tailscale_ips.is_empty() {
+                "-".to_string()
+            } else {
+                device.tailscale_ips.join(",")
+            },
+            device.rx_bytes,
+            device.tx_bytes,
+            device.last_seen.as_deref().unwrap_or("-"),
+            device.last_handshake.as_deref().unwrap_or("-")
         );
     }
 }

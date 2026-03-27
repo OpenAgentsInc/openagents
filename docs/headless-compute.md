@@ -51,6 +51,8 @@ It can:
 - create, upload, start, wait on, and inspect desktop-owned sandbox jobs
 - download sandbox workspace files and declared sandbox artifacts through the
   control plane
+- inspect the current Tailnet roster (`tailnet`) sourced from `tailscale status --json`
+  through the same desktop-control snapshot the provider-status pane now uses
 - inspect the current tunnel-status surface (`tunnels`) that will eventually
   reflect Psionic-backed service exposure when the desktop app starts owning
   those flows directly
@@ -120,6 +122,7 @@ autopilotctl chat messages --tail 20
 autopilotctl buy-mode status
 autopilotctl nip90-payments daily --date 2026-03-14
 autopilotctl nip90-payments window --start 2026-03-14T05:00:00+00:00 --end 2026-03-15T05:00:00+00:00 --json
+autopilotctl tailnet status
 autopilotctl tunnels status
 autopilotctl cluster status
 autopilotctl sandbox status
@@ -171,6 +174,12 @@ It also prints the app-owned buyer procurement summary for compute RFQs and
 quotes, including the active quote mode, selected quote IDs, and the quoted
 backend, topology, proof posture, environment ref, and sandbox profile where
 those fields are present.
+
+`autopilotctl tailnet status` is the focused operator view for the same Tailnet
+roster now surfaced in the desktop `Provider + Tailnet` pane. It shells out to
+`tailscale status --json`, normalizes the local node plus peer devices into the
+desktop-control snapshot, and prints relay, IP, traffic, and last-seen fields
+without requiring a second remote-only control path.
 
 `autopilotctl training status` now surfaces the app-owned training operator
 projection sourced from kernel authority and the current desktop runtime. The
