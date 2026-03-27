@@ -22,6 +22,7 @@ use crate::app_state::{
     AutopilotChatCollaborationMode, AutopilotChatPersonality, AutopilotChatServiceTier,
     AutopilotMessageStatus, AutopilotRole, ProviderMode, RenderState, SnapshotTimingSample,
 };
+use crate::desktop_control::{DesktopControlTailnetStatus, desktop_control_tailnet_status};
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 
 const REMOTE_SYNC_INTERVAL: Duration = Duration::from_millis(250);
@@ -45,6 +46,7 @@ pub struct CodexRemoteSnapshot {
     pub artifacts: CodexRemoteArtifacts,
     pub wallet: CodexRemoteWalletSummary,
     pub provider: CodexRemoteProviderSummary,
+    pub tailnet: DesktopControlTailnetStatus,
     pub workspace: Option<CodexRemoteWorkspaceContext>,
     pub terminal: Option<CodexRemoteTerminalSnapshot>,
 }
@@ -1080,6 +1082,7 @@ pub fn snapshot_for_state(state: &RenderState) -> CodexRemoteSnapshot {
         artifacts: CodexRemoteArtifacts { plan, latest_diff },
         wallet,
         provider,
+        tailnet: desktop_control_tailnet_status(),
         workspace: workspace_context_for_state(state),
         terminal: terminal_snapshot_for_state(state),
     }
@@ -2330,6 +2333,13 @@ mod tests {
                 last_action: None,
                 last_error: None,
             },
+            tailnet: DesktopControlTailnetStatus {
+                available: true,
+                current_tailnet: Some("openagents".to_string()),
+                device_count: 2,
+                online_device_count: 1,
+                ..DesktopControlTailnetStatus::default()
+            },
             workspace: None,
             terminal: None,
         }
@@ -2393,6 +2403,10 @@ mod tests {
             .json::<CodexRemoteSnapshot>()
             .expect("decode snapshot");
         assert_eq!(snapshot.wallet.total_sats, 77);
+        assert_eq!(
+            snapshot.tailnet.current_tailnet.as_deref(),
+            Some("openagents")
+        );
 
         let join = std::thread::spawn({
             let client = client.clone();
