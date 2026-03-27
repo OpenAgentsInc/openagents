@@ -11,13 +11,17 @@ use openagents_spark::{
     Balance, Network, NetworkStatus, NetworkStatusReport, PaymentSummary, SparkSigner, SparkWallet,
     WalletConfig,
 };
+use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 use crate::bitcoin_display::format_sats_amount;
 
 pub const ENV_SPARK_NETWORK: &str = "OPENAGENTS_SPARK_NETWORK";
 pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
-const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+pub const ENV_SPARK_ACTION_TIMEOUT_SECONDS: &str = "OPENAGENTS_SPARK_ACTION_TIMEOUT_SECONDS";
+const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(90);
+const SPARK_ACTION_TIMEOUT_SECONDS_MIN: u64 = 5;
+const SPARK_ACTION_TIMEOUT_SECONDS_MAX: u64 = 300;
 const SPARK_TRANSIENT_RETRY_ATTEMPTS: u8 = 3;
 const SPARK_TRANSIENT_RETRY_DELAY: Duration = Duration::from_millis(350);
 const STARTUP_CONVERGENCE_REFRESH_INTERVAL_SECONDS: u64 = 2;
@@ -173,6 +177,7 @@ pub struct SparkPaneState {
     pub network_status: Option<NetworkStatusReport>,
     pub balance: Option<Balance>,
     pub pending_balance_confirmation_payment_id: Option<String>,
+    pub tracked_pending_payment_ids: Vec<String>,
     pub spark_address: Option<String>,
     pub bitcoin_address: Option<String>,
     pub recent_payments: Vec<PaymentSummary>,
@@ -180,8 +185,12 @@ pub struct SparkPaneState {
     pub last_invoice_created_at_epoch_seconds: Option<u64>,
     pub last_invoice_expiry_seconds: Option<u64>,
     pub last_payment_id: Option<String>,
+    pub wallet_fingerprint: Option<String>,
+    pub wallet_identity_source: Option<String>,
+    pub wallet_context_warning: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+    pub last_operation_error: Option<String>,
     startup_convergence_active: bool,
     startup_convergence_refreshes_remaining: u8,
     startup_convergence_next_refresh_epoch_seconds: Option<u64>,
@@ -203,6 +212,7 @@ impl Clone for SparkPaneState {
             pending_balance_confirmation_payment_id: self
                 .pending_balance_confirmation_payment_id
                 .clone(),
+            tracked_pending_payment_ids: self.tracked_pending_payment_ids.clone(),
             spark_address: self.spark_address.clone(),
             bitcoin_address: self.bitcoin_address.clone(),
             recent_payments: self.recent_payments.clone(),
@@ -210,8 +220,12 @@ impl Clone for SparkPaneState {
             last_invoice_created_at_epoch_seconds: self.last_invoice_created_at_epoch_seconds,
             last_invoice_expiry_seconds: self.last_invoice_expiry_seconds,
             last_payment_id: self.last_payment_id.clone(),
+            wallet_fingerprint: self.wallet_fingerprint.clone(),
+            wallet_identity_source: self.wallet_identity_source.clone(),
+            wallet_context_warning: self.wallet_context_warning.clone(),
             last_action: self.last_action.clone(),
             last_error: self.last_error.clone(),
+            last_operation_error: self.last_operation_error.clone(),
             startup_convergence_active: self.startup_convergence_active,
             startup_convergence_refreshes_remaining: self.startup_convergence_refreshes_remaining,
             startup_convergence_next_refresh_epoch_seconds: self
@@ -240,6 +254,7 @@ impl SparkPaneState {
             network_status: None,
             balance: None,
             pending_balance_confirmation_payment_id: None,
+            tracked_pending_payment_ids: Vec::new(),
             spark_address: None,
             bitcoin_address: None,
             recent_payments: Vec::new(),
@@ -247,8 +262,12 @@ impl SparkPaneState {
             last_invoice_created_at_epoch_seconds: None,
             last_invoice_expiry_seconds: None,
             last_payment_id: None,
+            wallet_fingerprint: None,
+            wallet_identity_source: None,
+            wallet_context_warning: None,
             last_action: None,
             last_error: None,
+            last_operation_error: None,
             startup_convergence_active: false,
             startup_convergence_refreshes_remaining: 0,
             startup_convergence_next_refresh_epoch_seconds: None,
@@ -278,7 +297,25 @@ impl SparkPaneState {
     }
 
     pub fn balance_reconciling(&self) -> bool {
-        self.startup_convergence_active || self.pending_balance_confirmation_payment_id.is_some()
+        self.startup_convergence_active || !self.tracked_pending_payment_ids.is_empty()
+    }
+
+    pub fn pending_wallet_delta_sats(&self, now_epoch_seconds: u64) -> i64 {
+        pending_wallet_delta_sats(
+            self.recent_payments.as_slice(),
+            self.tracked_pending_payment_ids.as_slice(),
+            now_epoch_seconds,
+        )
+    }
+
+    pub fn wallet_fingerprint_label(&self) -> Option<String> {
+        self.wallet_fingerprint
+            .as_deref()
+            .map(format_wallet_fingerprint_label)
+    }
+
+    fn action_timeout(&self) -> Duration {
+        configured_spark_action_timeout(&self.env_overrides)
     }
 
     pub fn network_status_label(&self) -> &'static str {
@@ -356,6 +393,66 @@ impl SparkPaneState {
         }
     }
 
+    fn track_pending_payment_id(&mut self, payment_id: String) {
+        self.pending_balance_confirmation_payment_id = Some(payment_id.clone());
+        if !self
+            .tracked_pending_payment_ids
+            .iter()
+            .any(|existing| existing == &payment_id)
+        {
+            self.tracked_pending_payment_ids.push(payment_id);
+        }
+    }
+
+    fn clear_tracked_pending_payment_id(&mut self, payment_id: &str) {
+        self.tracked_pending_payment_ids
+            .retain(|tracked| tracked != payment_id);
+        if self.pending_balance_confirmation_payment_id.as_deref() == Some(payment_id) {
+            self.pending_balance_confirmation_payment_id = None;
+        }
+    }
+
+    fn refresh_wallet_health(&mut self, runtime: &Runtime) -> Result<(), String> {
+        if let Err(error) = self.ensure_wallet(runtime) {
+            return Err(error);
+        }
+
+        let Some(wallet) = self.wallet.as_ref() else {
+            return Err("Spark wallet missing after initialization".to_string());
+        };
+
+        let (status, _attempts) = run_with_transient_retry_value(
+            runtime,
+            "Spark network status",
+            self.action_timeout(),
+            || wallet.network_status(),
+        )?;
+        let connectivity_error = status
+            .detail
+            .as_ref()
+            .map(|detail| format!("Spark connectivity: {detail}"));
+        self.network_status = Some(status);
+
+        let balance_error = self.refresh_balance_and_payments(runtime).err();
+        match balance_error.or(connectivity_error) {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
+    fn record_operation_error(
+        &mut self,
+        runtime: &Runtime,
+        operation_error: String,
+        failure_action_label: &str,
+    ) {
+        self.last_operation_error = Some(operation_error);
+        if !failure_action_label.trim().is_empty() {
+            self.last_action = Some(failure_action_label.trim().to_string());
+        }
+        self.last_error = self.refresh_wallet_health(runtime).err();
+    }
+
     fn apply_command(&mut self, runtime: &Runtime, command: SparkWalletCommand) {
         match command {
             SparkWalletCommand::Refresh => self.refresh(runtime),
@@ -393,6 +490,9 @@ impl SparkPaneState {
             }
             SparkWalletCommand::CancelPending => {
                 self.last_error = None;
+                self.last_operation_error = None;
+                self.pending_balance_confirmation_payment_id = None;
+                self.tracked_pending_payment_ids.clear();
                 self.last_action = Some("Cancelled pending Spark actions".to_string());
             }
         }
@@ -418,7 +518,11 @@ impl SparkPaneState {
 
         self.env_overrides = next;
         self.wallet = None;
+        self.wallet_fingerprint = None;
+        self.wallet_identity_source = None;
+        self.wallet_context_warning = None;
         self.last_error = None;
+        self.last_operation_error = None;
         self.last_action = Some("Updated Spark credential env overrides".to_string());
     }
 
@@ -429,7 +533,11 @@ impl SparkPaneState {
         self.identity_path_override = path.clone();
         self.transient_mnemonic_override = None;
         self.wallet = None;
+        self.wallet_fingerprint = None;
+        self.wallet_identity_source = None;
+        self.wallet_context_warning = None;
         self.last_error = None;
+        self.last_operation_error = None;
         self.last_action = Some(match path {
             Some(path) => format!("Using wallet seed path {}", path.display()),
             None => "Using default wallet seed path".to_string(),
@@ -457,6 +565,10 @@ impl SparkPaneState {
         self.identity_path_override = None;
         self.identity_path = None;
         self.wallet = None;
+        self.wallet_fingerprint = None;
+        self.wallet_identity_source = None;
+        self.wallet_context_warning = None;
+        self.last_operation_error = None;
         if !self
             .last_action
             .as_deref()
@@ -472,39 +584,9 @@ impl SparkPaneState {
         }
         self.last_refresh_started_at = Some(std::time::Instant::now());
         self.last_error = None;
-
-        if let Err(error) = self.ensure_wallet(runtime) {
+        if let Err(error) = self.refresh_wallet_health(runtime) {
             self.last_error = Some(error);
-            self.complete_startup_convergence_after_refresh();
-            return;
         }
-
-        let Some(wallet) = self.wallet.as_ref() else {
-            self.last_error = Some("Spark wallet missing after initialization".to_string());
-            self.complete_startup_convergence_after_refresh();
-            return;
-        };
-
-        let status = match run_with_timeout_value(
-            runtime,
-            "Spark network status",
-            SPARK_ACTION_TIMEOUT,
-            wallet.network_status(),
-        ) {
-            Ok(status) => status,
-            Err(error) => {
-                self.last_error = Some(error);
-                self.complete_startup_convergence_after_refresh();
-                return;
-            }
-        };
-
-        if let Some(detail) = status.detail.as_ref() {
-            self.last_error = Some(format!("Spark connectivity: {detail}"));
-        }
-        self.network_status = Some(status);
-
-        self.refresh_balance_and_payments(runtime);
         self.complete_startup_convergence_after_refresh();
         self.last_action = Some("Wallet refreshed".to_string());
     }
@@ -513,6 +595,9 @@ impl SparkPaneState {
         self.last_refresh_started_at = None;
         self.wallet = None;
         self.network_status = None;
+        self.wallet_fingerprint = None;
+        self.wallet_identity_source = None;
+        self.wallet_context_warning = None;
         self.refresh(runtime);
     }
 
@@ -535,7 +620,7 @@ impl SparkPaneState {
         let Some(last_refresh_started_at) = self.last_refresh_started_at else {
             return false;
         };
-        if self.pending_balance_confirmation_payment_id.is_some() || self.last_error.is_some() {
+        if !self.tracked_pending_payment_ids.is_empty() || self.last_error.is_some() {
             return false;
         }
         if self.startup_convergence_active && !self.startup_convergence_satisfied() {
@@ -546,6 +631,7 @@ impl SparkPaneState {
 
     fn request_spark_address(&mut self, runtime: &Runtime) {
         self.last_error = None;
+        self.last_operation_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
             return;
@@ -559,7 +645,7 @@ impl SparkPaneState {
         match run_with_timeout(
             runtime,
             "Generate Spark address",
-            SPARK_ACTION_TIMEOUT,
+            self.action_timeout(),
             wallet.get_spark_address(),
         ) {
             Ok(address) => {
@@ -567,13 +653,18 @@ impl SparkPaneState {
                 self.last_action = Some("Generated Spark receive address".to_string());
             }
             Err(error) => {
-                self.last_error = Some(format!("Failed to get Spark address: {error}"));
+                self.record_operation_error(
+                    runtime,
+                    format!("Failed to get Spark address: {error}"),
+                    "Spark address request failed",
+                );
             }
         }
     }
 
     fn request_bitcoin_address(&mut self, runtime: &Runtime) {
         self.last_error = None;
+        self.last_operation_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
             return;
@@ -587,7 +678,7 @@ impl SparkPaneState {
         match run_with_timeout(
             runtime,
             "Generate Bitcoin address",
-            SPARK_ACTION_TIMEOUT,
+            self.action_timeout(),
             wallet.get_bitcoin_address(),
         ) {
             Ok(address) => {
@@ -595,7 +686,11 @@ impl SparkPaneState {
                 self.last_action = Some("Generated Bitcoin receive address".to_string());
             }
             Err(error) => {
-                self.last_error = Some(format!("Failed to get Bitcoin address: {error}"));
+                self.record_operation_error(
+                    runtime,
+                    format!("Failed to get Bitcoin address: {error}"),
+                    "Bitcoin address request failed",
+                );
             }
         }
     }
@@ -608,6 +703,7 @@ impl SparkPaneState {
         expiry_seconds: Option<u64>,
     ) -> Option<String> {
         self.last_error = None;
+        self.last_operation_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
             return None;
@@ -621,12 +717,16 @@ impl SparkPaneState {
         let invoice = match run_with_timeout(
             runtime,
             "Create Spark invoice",
-            SPARK_ACTION_TIMEOUT,
+            self.action_timeout(),
             wallet.create_invoice(amount_sats, description, expiry_seconds),
         ) {
             Ok(value) => value,
             Err(error) => {
-                self.last_error = Some(format!("Failed to create invoice: {error}"));
+                self.record_operation_error(
+                    runtime,
+                    format!("Failed to create invoice: {error}"),
+                    "Spark invoice creation failed",
+                );
                 return None;
             }
         };
@@ -638,7 +738,9 @@ impl SparkPaneState {
             "Created invoice for {}",
             format_sats_amount(amount_sats)
         ));
-        self.refresh_balance_and_payments(runtime);
+        if let Err(error) = self.refresh_balance_and_payments(runtime) {
+            self.last_error = Some(error);
+        }
         Some(invoice)
     }
 
@@ -650,6 +752,7 @@ impl SparkPaneState {
         expiry_seconds: Option<u32>,
     ) -> Option<String> {
         self.last_error = None;
+        self.last_operation_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
             return None;
@@ -663,12 +766,16 @@ impl SparkPaneState {
         let (invoice, attempts) = match run_with_transient_retry(
             runtime,
             "Create Lightning bolt11 invoice",
-            SPARK_ACTION_TIMEOUT,
+            self.action_timeout(),
             || wallet.create_bolt11_invoice(amount_sats, description.clone(), expiry_seconds),
         ) {
             Ok(value) => value,
             Err(error) => {
-                self.last_error = Some(format!("Failed to create Lightning invoice: {error}"));
+                self.record_operation_error(
+                    runtime,
+                    format!("Failed to create Lightning invoice: {error}"),
+                    "Lightning invoice creation failed",
+                );
                 return None;
             }
         };
@@ -688,7 +795,9 @@ impl SparkPaneState {
                 format_sats_amount(amount_sats)
             )
         });
-        self.refresh_balance_and_payments(runtime);
+        if let Err(error) = self.refresh_balance_and_payments(runtime) {
+            self.last_error = Some(error);
+        }
         Some(invoice)
     }
 
@@ -699,6 +808,7 @@ impl SparkPaneState {
         amount_sats: Option<u64>,
     ) -> Option<String> {
         self.last_error = None;
+        self.last_operation_error = None;
         if let Err(error) = self.ensure_wallet(runtime) {
             self.last_error = Some(error);
             return None;
@@ -711,30 +821,35 @@ impl SparkPaneState {
 
         let request = payment_request.trim();
         if request.is_empty() {
-            self.last_error = Some("Payment request cannot be empty".to_string());
+            self.last_operation_error = Some("Payment request cannot be empty".to_string());
             return None;
         }
 
         let payment_id = match run_with_timeout(
             runtime,
             "Send Spark payment",
-            SPARK_ACTION_TIMEOUT,
+            self.action_timeout(),
             wallet.send_payment_simple(request, amount_sats),
         ) {
             Ok(id) => id,
             Err(error) => {
-                self.last_action = Some("Payment send failed".to_string());
-                self.last_error = Some(format!("Failed to send payment: {error}"));
+                self.record_operation_error(
+                    runtime,
+                    format!("Failed to send payment: {error}"),
+                    "Payment send failed",
+                );
                 return None;
             }
         };
 
         self.last_payment_id = Some(payment_id.clone());
-        self.pending_balance_confirmation_payment_id = Some(payment_id.clone());
+        self.track_pending_payment_id(payment_id.clone());
         self.last_action = Some(format!(
             "Payment sent ({payment_id}); awaiting Spark confirmation for balance refresh"
         ));
-        self.refresh_balance_and_payments(runtime);
+        if let Err(error) = self.refresh_balance_and_payments(runtime) {
+            self.last_error = Some(error);
+        }
         Some(payment_id)
     }
 
@@ -743,7 +858,9 @@ impl SparkPaneState {
             return Ok(());
         }
 
-        let (signer, identity_path_for_display, storage_dir) = if let Some(mnemonic) =
+        let (signer, identity_path_for_display, identity_source, storage_dir) = if let Some(
+            mnemonic,
+        ) =
             self.transient_mnemonic_override.as_deref()
         {
             let signer = SparkSigner::from_mnemonic(mnemonic, "")
@@ -753,7 +870,12 @@ impl SparkPaneState {
                 .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
                 .or_else(|| dirs::home_dir().map(|home| home.join(".openagents").join("pylon")))
                 .unwrap_or_else(|| PathBuf::from(".openagents/pylon"));
-            (signer, None, base_dir.join("spark"))
+            (
+                signer,
+                None,
+                "session mnemonic override".to_string(),
+                base_dir.join("spark"),
+            )
         } else {
             let identity_path = if let Some(path) = self.identity_path_override.clone() {
                 path
@@ -775,7 +897,12 @@ impl SparkPaneState {
                 .parent()
                 .map(|parent| parent.join("spark"))
                 .unwrap_or_else(|| PathBuf::from(".openagents/spark"));
-            (signer, Some(identity_path), storage_dir)
+            (
+                signer,
+                Some(identity_path),
+                "identity mnemonic file".to_string(),
+                storage_dir,
+            )
         };
         std::fs::create_dir_all(storage_dir.as_path()).map_err(|error| {
             format!(
@@ -787,6 +914,7 @@ impl SparkPaneState {
         let buckets_before = wallet_bucket_ids(network_storage_dir.as_path());
         let wallet_creation_allowed =
             wallet_creation_allowed(self.allow_wallet_create_on_next_init, &buckets_before);
+        let wallet_public_key_hex = signer.public_key_hex();
 
         let config = WalletConfig {
             network: self.network,
@@ -796,7 +924,7 @@ impl SparkPaneState {
         let wallet = run_with_timeout(
             runtime,
             "Spark wallet initialization",
-            SPARK_ACTION_TIMEOUT,
+            self.action_timeout(),
             SparkWallet::new(signer, config),
         )
         .map_err(|error| format!("Failed to initialize Spark wallet: {error}"))?;
@@ -819,47 +947,53 @@ impl SparkPaneState {
         self.allow_wallet_create_on_next_init = false;
 
         self.identity_path = identity_path_for_display;
+        self.wallet_fingerprint = Some(wallet_public_key_hex.clone());
+        self.wallet_identity_source = Some(identity_source);
         self.wallet = Some(wallet);
+        self.wallet_context_warning = reconcile_wallet_context(
+            network_storage_dir.as_path(),
+            PersistedSparkWalletContext::from_runtime_state(
+                self.network_name(),
+                self.identity_path.as_ref(),
+                self.wallet_identity_source.as_deref(),
+                wallet_public_key_hex.as_str(),
+                buckets_after.iter().cloned().collect(),
+            ),
+        );
 
         Ok(())
     }
 
-    fn refresh_balance_and_payments(&mut self, runtime: &Runtime) {
+    fn refresh_balance_and_payments(&mut self, runtime: &Runtime) -> Result<(), String> {
         let Some(wallet) = self.wallet.as_ref() else {
-            return;
+            return Ok(());
         };
+        let action_timeout = self.action_timeout();
 
-        let fetched_balance = match run_with_timeout(
-            runtime,
-            "Fetch Spark balance",
-            SPARK_ACTION_TIMEOUT,
-            wallet.get_balance(),
-        ) {
-            Ok(balance) => Some(balance),
-            Err(error) => {
-                self.last_error = Some(format!("Failed to fetch balance: {error}"));
-                None
-            }
-        };
+        let fetched_balance =
+            match run_with_transient_retry(runtime, "Fetch Spark balance", action_timeout, || {
+                wallet.get_balance()
+            }) {
+                Ok((balance, _attempts)) => Some(balance),
+                Err(error) => return Err(format!("Failed to fetch balance: {error}")),
+            };
 
-        match run_with_timeout(
-            runtime,
-            "List Spark payments",
-            SPARK_ACTION_TIMEOUT,
-            wallet.list_all_payments(),
-        ) {
-            Ok(payments) => {
+        match run_with_transient_retry(runtime, "List Spark payments", action_timeout, || {
+            wallet.list_all_payments()
+        }) {
+            Ok((payments, _attempts)) => {
                 self.apply_balance_refresh_with_payment_confirmation(
                     fetched_balance,
                     payments.as_slice(),
                 );
                 self.recent_payments = payments;
+                Ok(())
             }
             Err(error) => {
-                self.last_error = Some(format!("Failed to list payments: {error}"));
                 if let Some(balance) = fetched_balance {
                     self.balance = Some(balance);
                 }
+                Err(format!("Failed to list payments: {error}"))
             }
         }
     }
@@ -902,7 +1036,7 @@ impl SparkPaneState {
         }
 
         self.balance = Some(balance);
-        self.pending_balance_confirmation_payment_id = None;
+        self.clear_tracked_pending_payment_id(payment_id.as_str());
         if is_settled_wallet_payment_status(payment.status.as_str()) {
             self.last_action = Some(format!(
                 "Payment settled ({payment_id}); wallet confirmed; {}",
@@ -956,8 +1090,16 @@ pub(crate) fn wallet_payment_net_delta_sats(payment: &PaymentSummary) -> i64 {
 
 pub(crate) fn include_wallet_pending_in_balance(
     payment: &PaymentSummary,
+    tracked_pending_payment_ids: &[String],
     now_epoch_seconds: u64,
 ) -> bool {
+    if tracked_pending_payment_ids.is_empty()
+        || !tracked_pending_payment_ids
+            .iter()
+            .any(|tracked| tracked == &payment.id)
+    {
+        return false;
+    }
     if is_terminal_wallet_payment_status(payment.status.as_str()) {
         return false;
     }
@@ -970,11 +1112,18 @@ pub(crate) fn include_wallet_pending_in_balance(
 
 pub(crate) fn pending_wallet_delta_sats(
     payments: &[PaymentSummary],
+    tracked_pending_payment_ids: &[String],
     now_epoch_seconds: u64,
 ) -> i64 {
     payments
         .iter()
-        .filter(|payment| include_wallet_pending_in_balance(payment, now_epoch_seconds))
+        .filter(|payment| {
+            include_wallet_pending_in_balance(
+                payment,
+                tracked_pending_payment_ids,
+                now_epoch_seconds,
+            )
+        })
         .fold(0_i64, |acc, payment| {
             acc.saturating_add(wallet_payment_net_delta_sats(payment))
         })
@@ -1008,6 +1157,121 @@ pub(crate) fn wallet_payment_amount_summary(payment: &PaymentSummary) -> String 
 
 fn timeout_message(action: &str, timeout: Duration) -> String {
     format!("{action} timed out after {timeout:?}")
+}
+
+fn configured_spark_action_timeout(env_overrides: &HashMap<String, String>) -> Duration {
+    let seconds = env_overrides
+        .get(ENV_SPARK_ACTION_TIMEOUT_SECONDS)
+        .cloned()
+        .or_else(|| std::env::var(ENV_SPARK_ACTION_TIMEOUT_SECONDS).ok())
+        .as_deref()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|seconds| {
+            seconds.clamp(
+                SPARK_ACTION_TIMEOUT_SECONDS_MIN,
+                SPARK_ACTION_TIMEOUT_SECONDS_MAX,
+            )
+        })
+        .unwrap_or_else(|| SPARK_ACTION_TIMEOUT.as_secs());
+    Duration::from_secs(seconds)
+}
+
+fn format_wallet_fingerprint_label(public_key_hex: &str) -> String {
+    let trimmed = public_key_hex.trim();
+    if trimmed.len() <= 18 {
+        return trimmed.to_string();
+    }
+    format!("{}..{}", &trimmed[..10], &trimmed[trimmed.len() - 8..])
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct PersistedSparkWalletContext {
+    network: String,
+    wallet_public_key_hex: String,
+    identity_path: Option<String>,
+    identity_source: Option<String>,
+    bucket_ids: Vec<String>,
+}
+
+impl PersistedSparkWalletContext {
+    fn from_runtime_state(
+        network: &str,
+        identity_path: Option<&PathBuf>,
+        identity_source: Option<&str>,
+        wallet_public_key_hex: &str,
+        bucket_ids: Vec<String>,
+    ) -> Self {
+        Self {
+            network: network.to_string(),
+            wallet_public_key_hex: wallet_public_key_hex.to_string(),
+            identity_path: identity_path.map(|path| path.display().to_string()),
+            identity_source: identity_source.map(str::to_string),
+            bucket_ids,
+        }
+    }
+}
+
+fn persisted_wallet_context_path(network_storage_dir: &Path) -> PathBuf {
+    network_storage_dir.join("wallet_context.json")
+}
+
+fn reconcile_wallet_context(
+    network_storage_dir: &Path,
+    current: PersistedSparkWalletContext,
+) -> Option<String> {
+    let context_path = persisted_wallet_context_path(network_storage_dir);
+    let previous = std::fs::read_to_string(context_path.as_path())
+        .ok()
+        .and_then(|contents| serde_json::from_str::<PersistedSparkWalletContext>(&contents).ok());
+    let warning = previous.as_ref().and_then(|previous| {
+        if previous.wallet_public_key_hex == current.wallet_public_key_hex {
+            return None;
+        }
+        let previous_fingerprint =
+            format_wallet_fingerprint_label(previous.wallet_public_key_hex.as_str());
+        let current_fingerprint =
+            format_wallet_fingerprint_label(current.wallet_public_key_hex.as_str());
+        let previous_identity = previous.identity_path.as_deref().unwrap_or("session mnemonic");
+        let current_identity = current.identity_path.as_deref().unwrap_or("session mnemonic");
+        Some(format!(
+            "Wallet context changed since last run: {previous_fingerprint} -> {current_fingerprint} ({previous_identity} -> {current_identity})"
+        ))
+    });
+
+    if let Ok(serialized) = serde_json::to_string_pretty(&current) {
+        if let Err(error) = std::fs::write(context_path.as_path(), serialized) {
+            tracing::warn!(
+                target: "autopilot_desktop::spark_wallet",
+                "failed to persist wallet context {}: {}",
+                context_path.display(),
+                error
+            );
+        }
+    }
+
+    tracing::info!(
+        target: "autopilot_desktop::spark_wallet",
+        "Spark wallet context network={} identity_path={} fingerprint={}",
+        current.network,
+        current
+            .identity_path
+            .as_deref()
+            .unwrap_or("session mnemonic"),
+        format_wallet_fingerprint_label(current.wallet_public_key_hex.as_str())
+    );
+
+    if let Some(previous) = previous.as_ref() {
+        if previous.wallet_public_key_hex != current.wallet_public_key_hex {
+            tracing::warn!(
+                target: "autopilot_desktop::spark_wallet",
+                "wallet context changed since last run previous_fingerprint={} current_fingerprint={}",
+                format_wallet_fingerprint_label(previous.wallet_public_key_hex.as_str()),
+                format_wallet_fingerprint_label(current.wallet_public_key_hex.as_str())
+            );
+        }
+    }
+
+    warning
 }
 
 fn is_transient_wallet_network_error(error: &str) -> bool {
@@ -1060,6 +1324,37 @@ where
     let mut attempt = 1;
     loop {
         match run_with_timeout(runtime, action, timeout, future_factory()) {
+            Ok(value) => return Ok((value, attempt)),
+            Err(error)
+                if attempt < SPARK_TRANSIENT_RETRY_ATTEMPTS
+                    && is_transient_wallet_network_error(error.as_str()) =>
+            {
+                std::thread::sleep(SPARK_TRANSIENT_RETRY_DELAY);
+                attempt += 1;
+            }
+            Err(error) => {
+                if attempt > 1 {
+                    return Err(format!("{error} after {attempt} Spark network attempts"));
+                }
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn run_with_transient_retry_value<R, F, Factory>(
+    runtime: &Runtime,
+    action: &str,
+    timeout: Duration,
+    mut future_factory: Factory,
+) -> Result<(R, u8), String>
+where
+    F: Future<Output = R>,
+    Factory: FnMut() -> F,
+{
+    let mut attempt = 1;
+    loop {
+        match run_with_timeout_value(runtime, action, timeout, future_factory()) {
             Ok(value) => return Ok((value, attempt)),
             Err(error)
                 if attempt < SPARK_TRANSIENT_RETRY_ATTEMPTS
@@ -1233,12 +1528,13 @@ fn read_mnemonic(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_OPENAGENTS_SPARK_API_KEY, ENV_SPARK_API_KEY, ENV_SPARK_NETWORK, Network,
-        NetworkStatus, NetworkStatusReport, SPARK_ACTION_TIMEOUT, SparkInvoiceState,
-        SparkPaneState, SparkWalletCommand, SparkWalletWorker, coalesce_refresh_like_command_burst,
-        configured_api_key, configured_network, is_settled_wallet_payment_status,
-        is_terminal_wallet_payment_status, run_with_timeout, run_with_transient_retry,
-        timeout_message, wallet_creation_allowed,
+        DEFAULT_OPENAGENTS_SPARK_API_KEY, ENV_SPARK_ACTION_TIMEOUT_SECONDS, ENV_SPARK_API_KEY,
+        ENV_SPARK_NETWORK, Network, NetworkStatus, NetworkStatusReport, SPARK_ACTION_TIMEOUT,
+        SparkInvoiceState, SparkPaneState, SparkWalletCommand, SparkWalletWorker,
+        coalesce_refresh_like_command_burst, configured_api_key, configured_network,
+        configured_spark_action_timeout, is_settled_wallet_payment_status,
+        is_terminal_wallet_payment_status, pending_wallet_delta_sats, run_with_timeout,
+        run_with_transient_retry, timeout_message, wallet_creation_allowed,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
@@ -1338,6 +1634,35 @@ mod tests {
         match previous {
             Some(value) => unsafe { std::env::set_var(ENV_SPARK_API_KEY, value) },
             None => unsafe { std::env::remove_var(ENV_SPARK_API_KEY) },
+        }
+    }
+
+    #[test]
+    fn configured_spark_action_timeout_prefers_override_and_clamps_bounds() {
+        let _guard = ENV_LOCK.lock().expect("env mutex poisoned");
+        let previous = std::env::var(ENV_SPARK_ACTION_TIMEOUT_SECONDS).ok();
+        unsafe {
+            std::env::set_var(ENV_SPARK_ACTION_TIMEOUT_SECONDS, "1");
+        }
+
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            ENV_SPARK_ACTION_TIMEOUT_SECONDS.to_string(),
+            "500".to_string(),
+        );
+
+        assert_eq!(
+            configured_spark_action_timeout(&overrides),
+            Duration::from_secs(300)
+        );
+        assert_eq!(
+            configured_spark_action_timeout(&HashMap::new()),
+            Duration::from_secs(5)
+        );
+
+        match previous {
+            Some(value) => unsafe { std::env::set_var(ENV_SPARK_ACTION_TIMEOUT_SECONDS, value) },
+            None => unsafe { std::env::remove_var(ENV_SPARK_ACTION_TIMEOUT_SECONDS) },
         }
     }
 
@@ -1786,6 +2111,37 @@ mod tests {
         assert!(is_terminal_wallet_payment_status("completed"));
         assert!(is_terminal_wallet_payment_status("failed"));
         assert!(!is_terminal_wallet_payment_status("pending"));
+    }
+
+    #[test]
+    fn pending_wallet_delta_only_counts_explicitly_tracked_payment_ids() {
+        let payments = vec![
+            PaymentSummary {
+                id: "tracked-send-001".to_string(),
+                direction: "send".to_string(),
+                status: "pending".to_string(),
+                amount_sats: 25,
+                timestamp: 10_000,
+                ..Default::default()
+            },
+            PaymentSummary {
+                id: "untracked-receive-001".to_string(),
+                direction: "receive".to_string(),
+                status: "pending".to_string(),
+                amount_sats: 50,
+                timestamp: 10_000,
+                ..Default::default()
+            },
+        ];
+
+        assert_eq!(
+            pending_wallet_delta_sats(
+                payments.as_slice(),
+                &["tracked-send-001".to_string()],
+                10_030,
+            ),
+            -25
+        );
     }
 
     fn with_missing_identity_env(test: impl FnOnce()) {

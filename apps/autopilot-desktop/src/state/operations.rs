@@ -3066,6 +3066,9 @@ pub struct StarterJobRow {
     pub eligible: bool,
     pub status: StarterJobStatus,
     pub payout_pointer: Option<String>,
+    pub settlement_bolt11: Option<String>,
+    pub settlement_payment_hash: Option<String>,
+    pub settlement_binding_kind: Option<String>,
     pub start_confirm_by_unix_ms: Option<u64>,
     pub execution_started_at_unix_ms: Option<u64>,
     pub execution_expires_at_unix_ms: Option<u64>,
@@ -3197,6 +3200,15 @@ impl StarterJobsState {
                     if job.payout_pointer.is_none() {
                         job.payout_pointer = existing.payout_pointer.clone();
                     }
+                    if job.settlement_bolt11.is_none() {
+                        job.settlement_bolt11 = existing.settlement_bolt11.clone();
+                    }
+                    if job.settlement_payment_hash.is_none() {
+                        job.settlement_payment_hash = existing.settlement_payment_hash.clone();
+                    }
+                    if job.settlement_binding_kind.is_none() {
+                        job.settlement_binding_kind = existing.settlement_binding_kind.clone();
+                    }
                     if job.execution_started_at_unix_ms.is_none() {
                         job.execution_started_at_unix_ms = existing.execution_started_at_unix_ms;
                     }
@@ -3281,6 +3293,9 @@ impl StarterJobsState {
                 job.execution_expires_at_unix_ms = execution_expires_at_unix_ms;
                 job.last_heartbeat_at_unix_ms = last_heartbeat_at_unix_ms;
                 job.next_heartbeat_due_at_unix_ms = next_heartbeat_due_at_unix_ms;
+                job.settlement_bolt11 = None;
+                job.settlement_payment_hash = None;
+                job.settlement_binding_kind = None;
                 job.job_id.clone()
             });
         if let Some(updated_job_id) = updated_job_id {
@@ -3304,6 +3319,9 @@ impl StarterJobsState {
             job.last_heartbeat_at_unix_ms = Some(last_heartbeat_at_unix_ms);
             job.next_heartbeat_due_at_unix_ms = Some(next_heartbeat_due_at_unix_ms);
             job.execution_expires_at_unix_ms = Some(execution_expires_at_unix_ms);
+            job.settlement_bolt11 = None;
+            job.settlement_payment_hash = None;
+            job.settlement_binding_kind = None;
             self.active_hosted_request_id = Some(job_id.to_string());
             self.next_hosted_heartbeat_due_at = next_heartbeat_due_at;
             self.pane_set_ready(format!("Hosted starter lease heartbeat {}", job_id));
@@ -3325,7 +3343,14 @@ impl StarterJobsState {
         ));
     }
 
-    pub fn mark_completed(&mut self, job_id: &str, payment_pointer: &str) {
+    pub fn mark_completed(
+        &mut self,
+        job_id: &str,
+        payment_pointer: &str,
+        settlement_bolt11: Option<&str>,
+        settlement_payment_hash: Option<&str>,
+        settlement_binding_kind: Option<&str>,
+    ) {
         let updated_job_id = self
             .jobs
             .iter_mut()
@@ -3333,7 +3358,20 @@ impl StarterJobsState {
             .map(|job| {
                 job.status = StarterJobStatus::Completed;
                 job.payout_pointer = Some(payment_pointer.to_string());
+                job.settlement_bolt11 = settlement_bolt11
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                job.settlement_payment_hash = settlement_payment_hash
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
                 job.next_heartbeat_due_at_unix_ms = None;
+                job.settlement_binding_kind = settlement_binding_kind
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .or_else(|| Some("proof_bound".to_string()));
                 job.job_id.clone()
             });
         if let Some(updated_job_id) = updated_job_id {
@@ -3428,6 +3466,9 @@ impl StarterJobsState {
             eligible: true,
             status: StarterJobStatus::Queued,
             payout_pointer: None,
+            settlement_bolt11: None,
+            settlement_payment_hash: None,
+            settlement_binding_kind: None,
             start_confirm_by_unix_ms: None,
             execution_started_at_unix_ms: None,
             execution_expires_at_unix_ms: None,
@@ -3477,6 +3518,9 @@ impl StarterJobsState {
             .as_deref()
             .ok_or_else(|| "Select a starter job first".to_string())?
             .to_string();
+        let started_at_unix_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_millis() as u64);
         let (job_id, payout_sats) = {
             let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == selected) else {
                 return Err(self.pane_set_error("Selected starter job no longer exists"));
@@ -3490,6 +3534,10 @@ impl StarterJobsState {
 
             job.status = StarterJobStatus::Running;
             job.payout_pointer = None;
+            job.settlement_bolt11 = None;
+            job.settlement_payment_hash = None;
+            job.settlement_binding_kind = None;
+            job.execution_started_at_unix_ms = Some(started_at_unix_ms);
             (job.job_id.clone(), job.payout_sats)
         };
         self.pane_set_ready(format!("Starter quest execution started for {}", job_id));
@@ -3499,6 +3547,9 @@ impl StarterJobsState {
     pub fn complete_selected_with_payment(
         &mut self,
         payment_pointer: &str,
+        settlement_bolt11: Option<&str>,
+        settlement_payment_hash: Option<&str>,
+        settlement_binding_kind: Option<&str>,
     ) -> Result<(String, u64, String), String> {
         let selected = self
             .selected_job_id
@@ -3530,6 +3581,18 @@ impl StarterJobsState {
 
             job.status = StarterJobStatus::Completed;
             job.payout_pointer = Some(payment_pointer.to_string());
+            job.settlement_bolt11 = settlement_bolt11
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            job.settlement_payment_hash = settlement_payment_hash
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            job.settlement_binding_kind = settlement_binding_kind
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             (
                 job.job_id.clone(),
                 job.payout_sats,

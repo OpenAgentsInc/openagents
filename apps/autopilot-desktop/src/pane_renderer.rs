@@ -14,19 +14,17 @@ use crate::app_state::{
     JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
     LocalInferencePaneInputs, LocalInferencePaneState, LogStreamLevelFilter, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
-    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
-    PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
-    ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
-    ProviderRuntimeState, ProviderStatusPaneState, ReciprocalLoopState,
+    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrIdentityPaneState, NostrSecretState,
+    PaneKind, PaneLoadState, PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState,
+    PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState,
+    ProviderControlPaneState, ProviderRuntimeState, ProviderStatusPaneState, ReciprocalLoopState,
     RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
-    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
-    SparkWalletPaneState, StarterJobStatus, StarterJobsState, SyncHealthPaneState,
-    SyncHealthState, TassadarLabPaneState,
+    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState,
+    StarterJobStatus, StarterJobsState, SyncHealthPaneState, SyncHealthState, TassadarLabPaneState,
     TrajectoryAuditPaneState, VoicePlaygroundPaneInputs, VoicePlaygroundPaneState,
     mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
     mission_control_show_local_model_button,
-    NostrIdentityPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -57,15 +55,13 @@ use crate::pane_system::{
     mission_control_buy_mode_history_button_bounds_for_panel,
     mission_control_buy_mode_popup_bounds, mission_control_buy_mode_popup_close_button_bounds,
     mission_control_copy_log_stream_button_bounds, mission_control_layout_for_mode,
-    mission_control_log_stream_filter_button_bounds,
     mission_control_load_funds_popup_bounds, mission_control_load_funds_popup_close_button_bounds,
     mission_control_load_funds_popup_layout_with_scroll,
     mission_control_load_funds_popup_scroll_viewport_bounds,
     mission_control_local_fm_test_button_bounds, mission_control_local_model_button_bounds,
-    mission_control_sell_scroll_viewport_bounds,
+    mission_control_log_stream_filter_button_bounds, mission_control_sell_scroll_viewport_bounds,
     mission_control_wallet_buy_mode_button_bounds, mission_control_wallet_load_funds_button_bounds,
-    mission_control_wallet_refresh_button_bounds,
-    network_requests_accept_button_bounds,
+    mission_control_wallet_refresh_button_bounds, network_requests_accept_button_bounds,
     network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
     network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
     network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
@@ -2427,10 +2423,7 @@ fn paint_go_online_pane(
         format_mission_control_amount(earnings_scoreboard.lifetime_sats),
     );
     let now_epoch_seconds = mission_control_now_epoch_seconds();
-    let wallet_pending_delta_sats = crate::spark_wallet::pending_wallet_delta_sats(
-        &spark_wallet.recent_payments,
-        now_epoch_seconds,
-    );
+    let wallet_pending_delta_sats = spark_wallet.pending_wallet_delta_sats(now_epoch_seconds);
     let current_wallet_total_sats = spark_wallet
         .balance
         .as_ref()
@@ -2467,7 +2460,8 @@ fn paint_go_online_pane(
         false,
         MISSION_CONTROL_FINAL_ROW_TRAILING_GAP,
     );
-    let wallet_rows_height = 41.0 + 41.0
+    let wallet_rows_height = 41.0
+        + 41.0
         + mission_control_wrapped_row_height(&wallet_network, wallet_value_chunk_len, true)
         + wallet_status_height
         + wallet_target_height;
@@ -2723,9 +2717,13 @@ fn paint_go_online_pane(
         log_copy_clicked,
         paint,
     );
-    let filter_bounds = mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled);
+    let filter_bounds =
+        mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled);
     let filter_hovered = pointer_in_pane && filter_bounds.contains(cursor_position);
-    let filter_label = match log_stream.active_level_filter().unwrap_or(LogStreamLevelFilter::Info) {
+    let filter_label = match log_stream
+        .active_level_filter()
+        .unwrap_or(LogStreamLevelFilter::Info)
+    {
         LogStreamLevelFilter::Debug => "DBG",
         LogStreamLevelFilter::Info => "INF",
         LogStreamLevelFilter::Warn => "WRN",
@@ -2745,7 +2743,8 @@ fn paint_go_online_pane(
         let base_layer = paint.scene.layer();
         paint.scene.set_layer(base_layer.saturating_add(1));
         let popup_bounds = mission_control_load_funds_popup_bounds(content_bounds);
-        let popup_viewport = mission_control_load_funds_popup_scroll_viewport_bounds(content_bounds);
+        let popup_viewport =
+            mission_control_load_funds_popup_scroll_viewport_bounds(content_bounds);
         let popup_close_bounds =
             mission_control_load_funds_popup_close_button_bounds(content_bounds);
         let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
@@ -2773,10 +2772,8 @@ fn paint_go_online_pane(
             &lightning_target_text,
             &recent_receive_history,
         );
-        let load_funds_max_scroll = mission_control_max_scroll_for_viewport(
-            popup_viewport,
-            load_funds_content_height,
-        );
+        let load_funds_max_scroll =
+            mission_control_max_scroll_for_viewport(popup_viewport, load_funds_content_height);
         let load_funds_scroll =
             mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
         let load_funds_layout =
@@ -2789,9 +2786,9 @@ fn paint_go_online_pane(
             .ok()
             .is_some_and(|value| value > 0);
 
-        paint.scene.draw_quad(
-            Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)),
-        );
+        paint
+            .scene
+            .draw_quad(Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)));
         paint_mission_control_section_panel(
             popup_bounds,
             "LOAD FUNDS",
@@ -2850,7 +2847,8 @@ fn paint_go_online_pane(
         let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
         let lightning_withdraw_label_bottom = load_funds_layout.send_invoice_input.origin.y - 8.0;
         lightning_withdraw_label.origin = Point::new(
-            load_funds_layout.send_invoice_input.origin.x - lightning_withdraw_label_bounds.origin.x,
+            load_funds_layout.send_invoice_input.origin.x
+                - lightning_withdraw_label_bounds.origin.x,
             lightning_withdraw_label_bottom
                 - lightning_withdraw_label_bounds.size.height
                 - lightning_withdraw_label_bounds.origin.y,
@@ -2947,9 +2945,9 @@ fn paint_go_online_pane(
         paint.scene.set_layer(base_layer.saturating_add(1));
         let popup_bounds = mission_control_buy_mode_popup_bounds(content_bounds);
         let popup_close_bounds = mission_control_buy_mode_popup_close_button_bounds(content_bounds);
-        paint.scene.draw_quad(
-            Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)),
-        );
+        paint
+            .scene
+            .draw_quad(Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)));
         paint_mission_control_section_panel(
             popup_bounds,
             "BUY MODE",
@@ -3247,7 +3245,8 @@ fn paint_mission_control_alert_band(
         let target_right_x = bounds.origin.x + 16.0 + legend_max_chars as f32 * 5.9;
         let top_text_width = (target_right_x - text_left).max(24.0);
         let text_max_chars = ((top_text_width / 6.4).floor() as usize).max(8);
-        let compact_alert_text = mission_control_compact_single_line(alert.text.as_str(), text_max_chars);
+        let compact_alert_text =
+            mission_control_compact_single_line(alert.text.as_str(), text_max_chars);
         paint.scene.draw_text(paint.text.layout_mono(
             "!",
             Point::new(bounds.origin.x + 12.0, bounds.origin.y + 5.0),
@@ -3349,12 +3348,10 @@ fn paint_mission_control_log_filter_button(
             .with_border(border, 1.0)
             .with_corner_radius(3.0),
     );
-    let mut label_run = paint.text.layout_mono(
-        label,
-        Point::ZERO,
-        8.0,
-        mission_control_text_color(),
-    );
+    let mut label_run =
+        paint
+            .text
+            .layout_mono(label, Point::ZERO, 8.0, mission_control_text_color());
     let label_bounds = label_run.bounds();
     label_run.origin = Point::new(
         bounds.origin.x + ((bounds.size.width - label_bounds.size.width).max(0.0) * 0.5)
@@ -3483,13 +3480,12 @@ fn paint_mission_control_buy_mode_panel(
     let content_y = mission_control_section_content_y(panel_bounds);
     let inner_x = panel_bounds.origin.x + 12.0;
     let inner_width = (panel_bounds.size.width - 24.0).max(0.0);
-    let button_top = primary_button_bounds.origin.y.min(history_button_bounds.origin.y);
-    let summary_chunk_len = mission_control_body_chunk_len(Bounds::new(
-        inner_x,
-        content_y,
-        inner_width,
-        0.0,
-    ));
+    let button_top = primary_button_bounds
+        .origin
+        .y
+        .min(history_button_bounds.origin.y);
+    let summary_chunk_len =
+        mission_control_body_chunk_len(Bounds::new(inner_x, content_y, inner_width, 0.0));
     let summary_lines = split_text_for_display(panel_state.summary.as_str(), summary_chunk_len);
     let summary_line_height = 14.0;
     for (index, line) in summary_lines.iter().enumerate() {
@@ -3514,11 +3510,9 @@ fn paint_mission_control_buy_mode_panel(
         2
     };
     let rows = 5_usize.div_ceil(columns);
-    let cell_width = ((inner_width - cell_gap * (columns.saturating_sub(1) as f32))
-        / columns as f32)
-        .max(0.0);
-    let cell_height = ((available_cell_height
-        - cell_gap * (rows.saturating_sub(1) as f32))
+    let cell_width =
+        ((inner_width - cell_gap * (columns.saturating_sub(1) as f32)) / columns as f32).max(0.0);
+    let cell_height = ((available_cell_height - cell_gap * (rows.saturating_sub(1) as f32))
         / rows as f32)
         .clamp(34.0, 44.0);
     let values = [
@@ -4341,11 +4335,7 @@ fn paint_provider_status_pane(
             }
             _ => "INVENTORY",
         };
-        let button_label = format!(
-            "{}: {}",
-            short_label,
-            if enabled { "ON" } else { "OFF" }
-        );
+        let button_label = format!("{}: {}", short_label, if enabled { "ON" } else { "OFF" });
         paint_action_button(button_bounds, button_label.as_str(), paint);
     }
 
@@ -4431,7 +4421,10 @@ fn paint_provider_status_pane(
         theme::text::PRIMARY,
     ));
     lines.push((
-        format!("Execution backend: {}", provider_runtime.execution_backend_label()),
+        format!(
+            "Execution backend: {}",
+            provider_runtime.execution_backend_label()
+        ),
         theme::text::PRIMARY,
     ));
     lines.push((
@@ -4453,7 +4446,10 @@ fn paint_provider_status_pane(
         theme::text::PRIMARY,
     ));
     lines.push((
-        format!("Settlement truth: {}", provider_runtime.settlement_truth_label()),
+        format!(
+            "Settlement truth: {}",
+            provider_runtime.settlement_truth_label()
+        ),
         theme::text::PRIMARY,
     ));
     lines.push((
@@ -4596,7 +4592,10 @@ fn paint_provider_status_pane(
     lines.push(("Dependencies".to_string(), theme::text::MUTED));
     lines.push((format!("identity: {identity_status}"), theme::text::PRIMARY));
     lines.push((format!("wallet: {wallet_status}"), theme::text::PRIMARY));
-    lines.push((format!("local_inference: {gpt_oss_status}"), theme::text::PRIMARY));
+    lines.push((
+        format!("local_inference: {gpt_oss_status}"),
+        theme::text::PRIMARY,
+    ));
     lines.push((format!("apple_fm: {apple_fm_status}"), theme::text::PRIMARY));
     lines.push((
         "relay: unknown (lane pending)".to_string(),
@@ -4793,7 +4792,11 @@ fn paint_sync_health_pane(
         "Spacetime connection",
         sync_health.spacetime_connection.clone(),
     );
-    push_sync_health_line(&mut lines, "Subscription", sync_health.subscription_state.clone());
+    push_sync_health_line(
+        &mut lines,
+        "Subscription",
+        sync_health.subscription_state.clone(),
+    );
     push_sync_health_line(
         &mut lines,
         "Reconnect posture",
@@ -4895,7 +4898,11 @@ fn paint_sync_health_pane(
         "Duplicate drops",
         sync_health.duplicate_drop_count.to_string(),
     );
-    push_sync_health_line(&mut lines, "Replay count", sync_health.replay_count.to_string());
+    push_sync_health_line(
+        &mut lines,
+        "Replay count",
+        sync_health.replay_count.to_string(),
+    );
     lines.push((
         "Legacy websocket compatibility data: intentionally not shown.".to_string(),
         theme::text::MUTED,
@@ -6380,7 +6387,12 @@ fn paint_nostr_identity_pane(
             + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len)
             + 8.0;
         paint_nostr_section_surface(
-            Bounds::new(section_x, public_section_y, section_width, public_section_height),
+            Bounds::new(
+                section_x,
+                public_section_y,
+                section_width,
+                public_section_height,
+            ),
             theme::accent::PRIMARY.with_alpha(0.34),
             paint,
         );
@@ -6479,7 +6491,12 @@ fn paint_nostr_identity_pane(
         let clipboard_chip_x = sensitive_bounds.max_x() - 12.0 - clipboard_chip_width;
         let visibility_chip_x = clipboard_chip_x - chip_gap - visibility_chip_width;
         paint_nostr_state_chip(
-            Bounds::new(visibility_chip_x, sensitive_y - 4.0, visibility_chip_width, 18.0),
+            Bounds::new(
+                visibility_chip_x,
+                sensitive_y - 4.0,
+                visibility_chip_width,
+                18.0,
+            ),
             &visibility_status,
             if secrets_revealed {
                 sensitive_accent.with_alpha(0.78)
@@ -6491,7 +6508,12 @@ fn paint_nostr_identity_pane(
             paint,
         );
         paint_nostr_state_chip(
-            Bounds::new(clipboard_chip_x, sensitive_y - 4.0, clipboard_chip_width, 18.0),
+            Bounds::new(
+                clipboard_chip_x,
+                sensitive_y - 4.0,
+                clipboard_chip_width,
+                18.0,
+            ),
             &clipboard_status,
             if nostr_secret_state.copy_notice.is_some() {
                 theme::accent::PRIMARY.with_alpha(0.82)
@@ -6503,17 +6525,19 @@ fn paint_nostr_identity_pane(
             paint,
         );
         sensitive_y += 14.0;
-        paint.scene.draw_text(paint.text.layout_mono(
-            &nostr_compact_detail(
-                sensitive_detail,
-                (((sensitive_inner_width - 4.0).max(120.0)) / 6.2).floor() as usize,
+        paint.scene.draw_text(
+            paint.text.layout_mono(
+                &nostr_compact_detail(
+                    sensitive_detail,
+                    (((sensitive_inner_width - 4.0).max(120.0)) / 6.2).floor() as usize,
+                ),
+                Point::new(sensitive_inner_x, sensitive_y + 12.0),
+                app_text_style(AppTextRole::SecondaryMetadata).font_size,
+                app_text_style(AppTextRole::SecondaryMetadata)
+                    .color
+                    .with_alpha(0.76),
             ),
-            Point::new(sensitive_inner_x, sensitive_y + 12.0),
-            app_text_style(AppTextRole::SecondaryMetadata).font_size,
-            app_text_style(AppTextRole::SecondaryMetadata)
-                .color
-                .with_alpha(0.76),
-        ));
+        );
         sensitive_y += 24.0;
         y = paint_nostr_value_row(
             paint,
@@ -6606,7 +6630,12 @@ fn paint_nostr_identity_pane(
             + nostr_value_row_height(&skill_preview, wrapped_chunk_len)
             + 8.0;
         paint_nostr_section_surface(
-            Bounds::new(section_x, derived_section_y, section_width, derived_section_height),
+            Bounds::new(
+                section_x,
+                derived_section_y,
+                section_width,
+                derived_section_height,
+            ),
             theme::accent::PRIMARY.with_alpha(0.22),
             paint,
         );
@@ -6874,17 +6903,19 @@ fn paint_nostr_status_summary(
         app_text_style(AppTextRole::FormValue).font_size,
         state_color,
     ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        &nostr_compact_detail(
-            supporting_detail,
-            (((bounds.size.width - 36.0).max(120.0)) / 6.2).floor() as usize,
+    paint.scene.draw_text(
+        paint.text.layout_mono(
+            &nostr_compact_detail(
+                supporting_detail,
+                (((bounds.size.width - 36.0).max(120.0)) / 6.2).floor() as usize,
+            ),
+            Point::new(bounds.origin.x + 24.0, bounds.origin.y + 22.0),
+            app_text_style(AppTextRole::SecondaryMetadata).font_size,
+            app_text_style(AppTextRole::SecondaryMetadata)
+                .color
+                .with_alpha(0.72),
         ),
-        Point::new(bounds.origin.x + 24.0, bounds.origin.y + 22.0),
-        app_text_style(AppTextRole::SecondaryMetadata).font_size,
-        app_text_style(AppTextRole::SecondaryMetadata)
-            .color
-            .with_alpha(0.72),
-    ));
+    );
     bounds.max_y() + 14.0
 }
 
@@ -6990,11 +7021,7 @@ fn paint_nostr_multiline_value_row(
     divider_y + 11.0
 }
 
-fn paint_nostr_sensitive_section_panel(
-    bounds: Bounds,
-    accent: Hsla,
-    paint: &mut PaintContext,
-) {
+fn paint_nostr_sensitive_section_panel(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(theme::bg::SURFACE.with_alpha(0.22))
@@ -7114,8 +7141,8 @@ fn paint_job_inbox_pane(
     }
 
     let now_epoch_seconds = mission_control_now_epoch_seconds();
-    let row_chunk_len = ((job_inbox_row_bounds(content_bounds, 0).size.width - 16.0) / 6.2)
-        .max(20.0) as usize;
+    let row_chunk_len =
+        ((job_inbox_row_bounds(content_bounds, 0).size.width - 16.0) / 6.2).max(20.0) as usize;
     for row_index in 0..visible_rows {
         let request = &job_inbox.requests[row_index];
         let demand_risk = request.demand_risk_assessment_at(now_epoch_seconds);
@@ -7177,8 +7204,8 @@ fn paint_job_inbox_pane(
         let details_y =
             job_inbox_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 12.0;
         let x = content_bounds.origin.x + 12.0;
-        let value_chunk_len = (((content_bounds.max_x() - 12.0) - (x + 122.0)) / 6.2).max(12.0)
-            as usize;
+        let value_chunk_len =
+            (((content_bounds.max_x() - 12.0) - (x + 122.0)) / 6.2).max(12.0) as usize;
         let mut line_y = details_y;
         line_y = paint_wrapped_label_line(
             paint,
@@ -8502,11 +8529,7 @@ fn paint_mission_control_wallet_refresh_icon_button(
     );
 }
 
-fn paint_mission_control_close_icon_button(
-    bounds: Bounds,
-    color: Hsla,
-    paint: &mut PaintContext,
-) {
+fn paint_mission_control_close_icon_button(bounds: Bounds, color: Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(mission_control_panel_header_color().with_alpha(0.88))
@@ -8616,7 +8639,9 @@ fn paint_button(bounds: Bounds, label: &str, style: ButtonStyle, paint: &mut Pai
             );
             paint.scene.draw_quad(
                 Quad::new(bounds)
-                    .with_background(Hsla::from_hex(ui_style::button::PRIMARY_BACKGROUND).with_alpha(0.85))
+                    .with_background(
+                        Hsla::from_hex(ui_style::button::PRIMARY_BACKGROUND).with_alpha(0.85),
+                    )
                     .with_border(Hsla::from_hex(ui_style::button::PRIMARY_BORDER), 1.0)
                     .with_corner_radius(ui_style::button::PRIMARY_CORNER_RADIUS),
             );
