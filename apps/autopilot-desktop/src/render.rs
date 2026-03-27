@@ -22,7 +22,10 @@ use crate::app_state::{
 use crate::apple_fm_bridge::{AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
-use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
+use crate::hotbar::{
+    HOTBAR_DRAG_HANDLE_SIZE, configure_hotbar, hotbar_bounds, hotbar_drag_handle_bounds,
+    new_hotbar,
+};
 use crate::input::{bootstrap_startup_cad_mesh, ensure_mission_control_local_runtime_preflight};
 use crate::local_inference_runtime::{
     LocalInferenceRuntimeCommand, default_local_inference_runtime,
@@ -579,7 +582,8 @@ pub fn init_state(
         let text_system = TextSystem::new(scale_factor);
 
         let hotbar = new_hotbar();
-        let initial_hotbar_bounds = hotbar_bounds(logical_size(&config, scale_factor));
+        let initial_logical = logical_size(&config, scale_factor);
+        let initial_hotbar_bounds = hotbar_bounds(initial_logical, initial_logical.width, None);
 
         let (nostr_identity, nostr_identity_error) = match load_or_create_identity() {
             Ok(identity) => (Some(identity), None),
@@ -687,6 +691,8 @@ pub fn init_state(
             buy_mode_enabled: crate::desktop_shell::buy_mode_enabled_from_env(),
             hotbar,
             hotbar_bounds: initial_hotbar_bounds,
+            hotbar_custom_origin: None,
+            hotbar_drag_state: crate::app_state::HotbarDragState::default(),
             cursor_position: Point::ZERO,
             event_context,
             input_modifiers: wgpui::Modifiers::default(),
@@ -1380,6 +1386,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     let provider_inventory = crate::provider_inventory::inventory_status_for_state(state);
     let training_status = crate::desktop_control::current_training_status(state);
     let remote_training_status = crate::desktop_control::current_remote_training_status(state);
+    let pane_area_width = (logical.width - sidebar_reserved_width(state)).max(0.0);
     let pane_paint_report;
     {
         let buy_mode_enabled = state.mission_control_buy_mode_enabled();
@@ -1795,10 +1802,18 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
                 theme::text::PRIMARY,
             ));
 
-            let bar_bounds = hotbar_bounds(logical);
+            let bar_bounds = hotbar_bounds(logical, pane_area_width, state.hotbar_custom_origin);
             state.hotbar_bounds = bar_bounds;
+            if state.hotbar_custom_origin.is_some() {
+                state.hotbar_custom_origin = Some(bar_bounds.origin);
+            }
             configure_hotbar(&mut state.hotbar);
             state.hotbar.paint(bar_bounds, &mut paint);
+            paint_hotbar_drag_handle(
+                &mut paint,
+                bar_bounds,
+                state.hotbar_drag_state.is_pressed || state.hotbar_drag_state.is_dragging,
+            );
         }
 
         state
@@ -2113,6 +2128,27 @@ pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
         label_width.max(1.0) + 4.0,
         wallet_label_font_size + 8.0,
     )
+}
+
+fn paint_hotbar_drag_handle(paint: &mut PaintContext<'_>, bar_bounds: Bounds, active: bool) {
+    let handle = hotbar_drag_handle_bounds(bar_bounds);
+    let alpha = if active { 0.95 } else { 0.72 };
+    let triangle_svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{s}" height="{s}" viewBox="0 0 {s} {s}"><polygon points="{mid},0 {s},{s} 0,{s}" fill="#FFFFFF"/></svg>"##,
+        s = HOTBAR_DRAG_HANDLE_SIZE as i32,
+        mid = (HOTBAR_DRAG_HANDLE_SIZE * 0.5) as i32,
+    );
+    paint.scene.draw_svg(
+        SvgQuad::new(handle, std::sync::Arc::<[u8]>::from(triangle_svg.into_bytes()))
+            .with_tint(wgpui::Hsla::white().with_alpha(alpha)),
+    );
+}
+
+pub fn hotbar_drag_handle_bounds_for_state(state: &RenderState) -> Bounds {
+    if pane_fullscreen_active(state) {
+        return Bounds::ZERO;
+    }
+    hotbar_drag_handle_bounds(state.hotbar_bounds)
 }
 
 /// Bounds of the sidebar resize handle in logical coordinates. Used for hit-testing and cursor.

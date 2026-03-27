@@ -9,7 +9,6 @@ use crate::app_state::{
     PaneKind, PanePresentation, RenderState, mission_control_local_model_button_enabled,
     mission_control_show_local_model_button,
 };
-use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
 use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
@@ -19,8 +18,8 @@ use crate::panes::{
     voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::render::{
-    logical_size, pane_fullscreen_active, sidebar_go_online_button_bounds, sidebar_handle_bounds,
-    wallet_balance_sats_label_bounds,
+    hotbar_drag_handle_bounds_for_state, logical_size, pane_fullscreen_active,
+    sidebar_go_online_button_bounds, sidebar_handle_bounds, wallet_balance_sats_label_bounds,
 };
 use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::ui_style;
@@ -35,16 +34,14 @@ pub const RIGHT_SIDEBAR_ENABLED: bool = false;
 const MISSION_CONTROL_DOCKED_MIN_WIDTH: f32 = 310.0;
 const MISSION_CONTROL_DOCKED_MAX_WIDTH: f32 = 560.0;
 const PANE_FRAME_HORIZONTAL_CHROME: f32 = 2.0;
-const PANE_MARGIN: f32 = 18.0;
+const PANE_MARGIN: f32 = 0.0;
 #[cfg(target_os = "macos")]
-const PANE_TOP_SAFE_INSET: f32 = 48.0;
+const PANE_TOP_SAFE_INSET: f32 = 28.0;
 #[cfg(not(target_os = "macos"))]
 const PANE_TOP_SAFE_INSET: f32 = PANE_MARGIN;
 const PANE_CASCADE_X: f32 = 26.0;
 const PANE_CASCADE_Y: f32 = 22.0;
-const PANE_HOTBAR_CLEARANCE: f32 = 16.0;
-const PANE_BOTTOM_RESERVED: f32 =
-    HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN + PANE_HOTBAR_CLEARANCE;
+const PANE_BOTTOM_RESERVED: f32 = PANE_MARGIN;
 const CHAT_PAD: f32 = ui_style::spacing::PANEL_PADDING;
 const CHAT_WORKSPACE_RAIL_WIDTH: f32 = 108.0;
 const CHAT_WORKSPACE_SLOT_HEIGHT: f32 = 48.0;
@@ -1844,6 +1841,15 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
     }
 
     if !pane_fullscreen_active(state) {
+        let hotbar_handle_bounds = hotbar_drag_handle_bounds_for_state(state);
+        if hotbar_handle_bounds.size.width > 0.0 && hotbar_handle_bounds.contains(point) {
+            return if state.hotbar_drag_state.is_pressed && state.hotbar_drag_state.is_dragging {
+                CursorIcon::Grabbing
+            } else {
+                CursorIcon::Grab
+            };
+        }
+
         let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
         if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
             return CursorIcon::Pointer;
@@ -3154,10 +3160,10 @@ pub fn mission_control_docked_layout(
     let active_jobs_panel =
         Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 176.0);
     y = active_jobs_panel.max_y() + panel_gap;
-    let log_stream = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 312.0);
-    y = log_stream.max_y() + panel_gap;
     let actions_panel = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 92.0);
-    y = actions_panel.max_y() + outer_pad;
+    y = actions_panel.max_y() + panel_gap;
+    let log_stream = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 312.0);
+    y = log_stream.max_y() + outer_pad;
 
     MissionControlDockedLayout {
         scroll_viewport: viewport,
@@ -3661,10 +3667,26 @@ fn mission_control_wallet_footer_button_bounds(content_bounds: Bounds, index: us
 }
 
 pub fn mission_control_load_funds_popup_bounds(content_bounds: Bounds) -> Bounds {
-    let width = (content_bounds.size.width * 0.64).clamp(480.0, 760.0);
-    let height = (content_bounds.size.height * 0.56).clamp(320.0, 440.0);
+    let is_docked_layout = content_bounds.size.width < 900.0;
+    let max_width = (content_bounds.size.width - 16.0).max(220.0);
+    let max_height = (content_bounds.size.height - 16.0).max(220.0);
+    let width = if is_docked_layout {
+        max_width
+    } else {
+        (content_bounds.size.width * 0.64).clamp(480.0, 760.0).min(max_width)
+    };
+    let height = if is_docked_layout {
+        (content_bounds.size.height * 0.82).clamp(360.0, 760.0).min(max_height)
+    } else {
+        (content_bounds.size.height * 0.56).clamp(320.0, 440.0).min(max_height)
+    };
+    let x = if is_docked_layout {
+        (content_bounds.max_x() - width - 8.0).max(8.0)
+    } else {
+        content_bounds.origin.x + ((content_bounds.size.width - width).max(0.0) * 0.5)
+    };
     Bounds::new(
-        content_bounds.origin.x + ((content_bounds.size.width - width).max(0.0) * 0.5),
+        x,
         content_bounds.origin.y + ((content_bounds.size.height - height).max(0.0) * 0.5),
         width,
         height,
@@ -3684,10 +3706,26 @@ pub fn mission_control_load_funds_popup_close_button_bounds(content_bounds: Boun
 }
 
 pub fn mission_control_buy_mode_popup_bounds(content_bounds: Bounds) -> Bounds {
-    let width = (content_bounds.size.width * 0.62).clamp(500.0, 760.0);
-    let height = (content_bounds.size.height * 0.40).clamp(220.0, 300.0);
+    let is_docked_layout = content_bounds.size.width < 900.0;
+    let max_width = (content_bounds.size.width - 16.0).max(220.0);
+    let max_height = (content_bounds.size.height - 16.0).max(220.0);
+    let width = if is_docked_layout {
+        max_width
+    } else {
+        (content_bounds.size.width * 0.62).clamp(500.0, 760.0).min(max_width)
+    };
+    let height = if is_docked_layout {
+        (content_bounds.size.height * 0.72).clamp(300.0, 600.0).min(max_height)
+    } else {
+        (content_bounds.size.height * 0.40).clamp(220.0, 300.0).min(max_height)
+    };
+    let x = if is_docked_layout {
+        (content_bounds.max_x() - width - 8.0).max(8.0)
+    } else {
+        content_bounds.origin.x + ((content_bounds.size.width - width).max(0.0) * 0.5)
+    };
     Bounds::new(
-        content_bounds.origin.x + ((content_bounds.size.width - width).max(0.0) * 0.5),
+        x,
         content_bounds.origin.y + ((content_bounds.size.height - height).max(0.0) * 0.5),
         width,
         height,

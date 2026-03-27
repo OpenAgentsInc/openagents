@@ -45,6 +45,7 @@ use crate::app_state::{
 use crate::apple_fm_bridge::AppleFmBridgeCommand;
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
+    hotbar_bounds,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
@@ -88,6 +89,7 @@ use crate::render::{
     COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION, command_registry, logical_size,
     pane_fullscreen_active, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
     wallet_balance_sats_label_bounds,
+    hotbar_drag_handle_bounds_for_state,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLifecycleCommand,
@@ -2493,6 +2495,10 @@ fn mirror_ui_errors_to_console(state: &crate::app_state::RenderState) {
 }
 
 fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    if handle_hotbar_drag_mouse_move(state, point) {
+        return true;
+    }
+
     let mut handled = handle_sidebar_mouse_move(state, point);
     if handled {
         return true;
@@ -2527,6 +2533,10 @@ fn dispatch_mouse_down(
     button: MouseButton,
     event: &InputEvent,
 ) -> bool {
+    if handle_hotbar_drag_mouse_down(state, point, button) {
+        return true;
+    }
+
     // Sidebar handle gets first chance at mouse-down so panes don't steal drags.
     if handle_sidebar_mouse_down(state, point, button) {
         return true;
@@ -2592,6 +2602,10 @@ fn dispatch_mouse_up(
     point: Point,
     event: &InputEvent,
 ) -> bool {
+    if handle_hotbar_drag_mouse_up(state, point) {
+        return true;
+    }
+
     let mut handled = finish_chat_transcript_selection_drag(state, point);
     let camera_drag_consumed_click = finish_cad_camera_drag(state);
     handled |= camera_drag_consumed_click;
@@ -3372,6 +3386,65 @@ fn sidebar_settings_icon_bounds(state: &crate::app_state::RenderState) -> Bounds
     let icon_x = sidebar_x + panel_width - icon_size - padding;
     let icon_y = height - icon_size - padding;
     Bounds::new(icon_x, icon_y, icon_size, icon_size)
+}
+
+fn handle_hotbar_drag_mouse_down(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+    button: MouseButton,
+) -> bool {
+    if button != MouseButton::Left || pane_fullscreen_active(state) {
+        return false;
+    }
+    let handle_bounds = hotbar_drag_handle_bounds_for_state(state);
+    if !handle_bounds.contains(point) {
+        return false;
+    }
+    state.hotbar_drag_state.is_pressed = true;
+    state.hotbar_drag_state.is_dragging = false;
+    state.hotbar_drag_state.start_mouse = point;
+    state.hotbar_drag_state.start_bounds = state.hotbar_bounds;
+    true
+}
+
+fn handle_hotbar_drag_mouse_move(
+    state: &mut crate::app_state::RenderState,
+    point: Point,
+) -> bool {
+    if !state.hotbar_drag_state.is_pressed {
+        return false;
+    }
+
+    let delta_x = point.x - state.hotbar_drag_state.start_mouse.x;
+    let delta_y = point.y - state.hotbar_drag_state.start_mouse.y;
+    const HOTBAR_DRAG_THRESHOLD: f32 = 6.0;
+    if !state.hotbar_drag_state.is_dragging {
+        if delta_x.abs() < HOTBAR_DRAG_THRESHOLD && delta_y.abs() < HOTBAR_DRAG_THRESHOLD {
+            return true;
+        }
+        state.hotbar_drag_state.is_dragging = true;
+    }
+
+    let origin = Point::new(
+        state.hotbar_drag_state.start_bounds.origin.x + delta_x,
+        state.hotbar_drag_state.start_bounds.origin.y + delta_y,
+    );
+    let logical = logical_size(&state.config, state.scale_factor);
+    let pane_area_width =
+        (logical.width - crate::pane_system::sidebar_reserved_width(state)).max(0.0);
+    let clamped_bounds = hotbar_bounds(logical, pane_area_width, Some(origin));
+    state.hotbar_bounds = clamped_bounds;
+    state.hotbar_custom_origin = Some(clamped_bounds.origin);
+    true
+}
+
+fn handle_hotbar_drag_mouse_up(state: &mut crate::app_state::RenderState, _point: Point) -> bool {
+    if !state.hotbar_drag_state.is_pressed {
+        return false;
+    }
+    state.hotbar_drag_state.is_pressed = false;
+    state.hotbar_drag_state.is_dragging = false;
+    true
 }
 
 fn handle_sidebar_mouse_down(
