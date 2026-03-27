@@ -5,8 +5,8 @@ use wgpui::{Bounds, Button, Component, InputEvent, Modifiers, MouseButton, Point
 use winit::window::CursorIcon;
 
 use crate::app_state::{
-    ActivityFeedFilter, ChatWorkspaceSelection, DesktopPane, PaneDragMode, PaneKind,
-    PanePresentation, RenderState, mission_control_local_model_button_enabled,
+    ActivityFeedFilter, ChatHeaderMenuKind, ChatWorkspaceSelection, DesktopPane, PaneDragMode,
+    PaneKind, PanePresentation, RenderState, mission_control_local_model_button_enabled,
     mission_control_show_local_model_button,
 };
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
@@ -32,6 +32,8 @@ const PANE_CONTENT_INSET: f32 = 10.0;
 /// Default target width for the global sidebar when open.
 pub const SIDEBAR_DEFAULT_WIDTH: f32 = 300.0;
 pub const RIGHT_SIDEBAR_ENABLED: bool = false;
+const MISSION_CONTROL_DOCKED_MIN_WIDTH: f32 = 310.0;
+const MISSION_CONTROL_DOCKED_MAX_WIDTH: f32 = 560.0;
 const PANE_FRAME_HORIZONTAL_CHROME: f32 = 2.0;
 const PANE_MARGIN: f32 = 18.0;
 #[cfg(target_os = "macos")]
@@ -54,10 +56,14 @@ const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
 const CHAT_SEND_WIDTH: f32 = 34.0;
 const DATA_SELLER_COMPOSER_HEIGHT: f32 = 30.0;
 const DATA_SELLER_SEND_WIDTH: f32 = 72.0;
-const CHAT_HEADER_BUTTON_HEIGHT: f32 = 22.0;
+const CHAT_HEADER_BUTTON_HEIGHT: f32 = 28.0;
 const CHAT_HEADER_BUTTON_WIDTH: f32 = 96.0;
 const CHAT_HEADER_BUTTON_MIN_WIDTH: f32 = 70.0;
 const CHAT_HEADER_BUTTON_GAP: f32 = ui_style::spacing::BUTTON_GAP;
+const CHAT_HEADER_BUTTON_ROW_GAP: f32 = 8.0;
+const CHAT_HEADER_MENU_ROW_HEIGHT: f32 = 28.0;
+const CHAT_HEADER_MENU_PADDING: f32 = 6.0;
+const CHAT_HEADER_MENU_GAP: f32 = 8.0;
 /// Compact + button next to "Threads" to start a new thread
 const CHAT_NEW_THREAD_BUTTON_SIZE: f32 = 26.0;
 const CHAT_THREAD_SEARCH_INPUT_HEIGHT: f32 = 24.0;
@@ -163,15 +169,89 @@ fn chat_thread_rail_width() -> f32 {
 }
 
 pub fn sidebar_reserved_width(state: &RenderState) -> f32 {
+    let logical = logical_size(&state.config, state.scale_factor);
+    if mission_control_docked_visible(state) {
+        return mission_control_docked_width_for_logical(state, logical);
+    }
+
     if !RIGHT_SIDEBAR_ENABLED {
         return 0.0;
     }
 
-    let logical = logical_size(&state.config, state.scale_factor);
     if state.sidebar.is_open {
         state.sidebar.width.min(logical.width.max(0.0))
     } else {
         0.0
+    }
+}
+
+pub fn mission_control_docked_visible(state: &RenderState) -> bool {
+    state
+        .panes
+        .iter()
+        .any(|pane| pane.kind == PaneKind::GoOnline && pane.presentation.is_docked_right())
+}
+
+fn mission_control_docked_width_for_logical(state: &RenderState, logical: Size) -> f32 {
+    let max_width = mission_control_docked_max_width_for_logical(logical);
+    state
+        .sidebar
+        .width
+        .clamp(crate::app_state::SidebarState::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH, max_width)
+}
+
+fn mission_control_docked_max_width_for_logical(logical: Size) -> f32 {
+    (logical.width * 0.46).clamp(MISSION_CONTROL_DOCKED_MIN_WIDTH, MISSION_CONTROL_DOCKED_MAX_WIDTH)
+}
+
+fn mission_control_docked_expanded_width_for_logical(state: &RenderState, logical: Size) -> f32 {
+    state.sidebar.docked_mission_control_expanded_width().clamp(
+        MISSION_CONTROL_DOCKED_MIN_WIDTH,
+        mission_control_docked_max_width_for_logical(logical),
+    )
+}
+
+pub fn toggle_mission_control_docked_panel(state: &mut RenderState) {
+    let logical = logical_size(&state.config, state.scale_factor);
+    let expanded_width = mission_control_docked_expanded_width_for_logical(state, logical);
+    state
+        .sidebar
+        .toggle_docked_mission_control(expanded_width, std::time::Instant::now());
+}
+
+pub fn tick_mission_control_docked_panel_animation(
+    state: &mut RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let logical = logical_size(&state.config, state.scale_factor);
+    let expanded_width = mission_control_docked_expanded_width_for_logical(state, logical);
+    state
+        .sidebar
+        .tick_docked_mission_control_animation(now, expanded_width)
+}
+
+pub fn mission_control_docked_toggle_button_bounds(pane_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        pane_bounds.max_x() - 28.0,
+        pane_bounds.origin.y + 8.0,
+        18.0,
+        18.0,
+    )
+}
+
+fn docked_right_pane_bounds_for_kind_with_width(
+    kind: PaneKind,
+    logical: Size,
+    width: f32,
+) -> Bounds {
+    match kind {
+        PaneKind::GoOnline => Bounds::new(
+            (logical.width - width).max(0.0),
+            0.0,
+            width,
+            logical.height.max(0.0),
+        ),
+        _ => fullscreen_pane_bounds(logical, 0.0),
     }
 }
 
@@ -474,6 +554,7 @@ pub enum LogStreamPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
+    ToggleDockedPanel,
     DismissAlert,
     RefreshWallet,
     OpenLoadFundsPopup,
@@ -1100,6 +1181,31 @@ pub fn cad_palette_action_for_command_id(command_id: &str) -> Option<CadDemoPane
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ChatHeaderMoreMenuItem {
+    ReasoningEffort,
+    ServiceTier,
+    Personality,
+    CollaborationMode,
+    ApprovalMode,
+    SandboxMode,
+    ReviewOrImplement,
+}
+
+const CHAT_HEADER_MORE_MENU_ITEMS: [ChatHeaderMoreMenuItem; 7] = [
+    ChatHeaderMoreMenuItem::ReasoningEffort,
+    ChatHeaderMoreMenuItem::ServiceTier,
+    ChatHeaderMoreMenuItem::Personality,
+    ChatHeaderMoreMenuItem::CollaborationMode,
+    ChatHeaderMoreMenuItem::ApprovalMode,
+    ChatHeaderMoreMenuItem::SandboxMode,
+    ChatHeaderMoreMenuItem::ReviewOrImplement,
+];
+
+pub fn chat_header_more_menu_items() -> &'static [ChatHeaderMoreMenuItem] {
+    &CHAT_HEADER_MORE_MENU_ITEMS
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaneHitAction {
     NostrRegenerate,
     NostrReveal,
@@ -1107,6 +1213,10 @@ pub enum PaneHitAction {
     ChatSend,
     ChatRefreshThreads,
     ChatNewThread,
+    ChatToggleModelMenu,
+    ChatToggleMoreMenu,
+    ChatSelectModel(usize),
+    ChatMoreMenuSelect(ChatHeaderMoreMenuItem),
     ChatCycleModel,
     ChatCycleReasoningEffort,
     ChatCycleServiceTier,
@@ -1223,7 +1333,7 @@ impl PaneDescriptor {
 
 pub const fn default_pane_presentation(kind: PaneKind) -> PanePresentation {
     match kind {
-        PaneKind::GoOnline => PanePresentation::Windowed,
+        PaneKind::GoOnline => PanePresentation::DockedRight,
         _ => PanePresentation::Windowed,
     }
 }
@@ -1248,10 +1358,9 @@ pub fn pane_content_bounds_for_presentation(
     bounds: Bounds,
     presentation: PanePresentation,
 ) -> Bounds {
-    if presentation.uses_window_chrome() {
-        pane_content_bounds(bounds)
-    } else {
-        bounds
+    match presentation {
+        PanePresentation::Windowed | PanePresentation::DockedRight => pane_content_bounds(bounds),
+        PanePresentation::Fullscreen => bounds,
     }
 }
 
@@ -1358,15 +1467,19 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     let y = PANE_TOP_SAFE_INSET + tier as f32 * PANE_CASCADE_Y;
     let min_size = pane_minimum_size(descriptor.kind);
     let initial_size = initial_pane_size(&state.pane_size_memory, descriptor);
-    let bounds = if presentation.uses_window_chrome() {
-        clamp_bounds_to_window(
+    let bounds = match presentation {
+        PanePresentation::Windowed => clamp_bounds_to_window(
             Bounds::new(x, y, initial_size.width, initial_size.height),
             logical,
             sidebar_width,
             min_size,
-        )
-    } else {
-        fullscreen_pane_bounds(logical, sidebar_width)
+        ),
+        PanePresentation::Fullscreen => fullscreen_pane_bounds(logical, sidebar_width),
+        PanePresentation::DockedRight => docked_right_pane_bounds_for_kind_with_width(
+            descriptor.kind,
+            logical,
+            mission_control_docked_width_for_logical(state, logical),
+        ),
     };
 
     let title = pane_title(descriptor.kind, id);
@@ -1601,6 +1714,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
 
     let logical = logical_size(&state.config, state.scale_factor);
     let sidebar_width = sidebar_reserved_width(state);
+    let docked_width = mission_control_docked_width_for_logical(state, logical);
 
     match mode {
         PaneDragMode::Moving {
@@ -1612,8 +1726,13 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
             let dy = current_mouse.y - start_mouse.y;
 
             if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
-                if !pane.presentation.uses_window_chrome() {
+                if pane.presentation == PanePresentation::Fullscreen {
                     pane.bounds = fullscreen_pane_bounds(logical, sidebar_width);
+                    return true;
+                }
+                if pane.presentation.is_docked_right() {
+                    pane.bounds =
+                        docked_right_pane_bounds_for_kind_with_width(pane.kind, logical, docked_width);
                     return true;
                 }
                 let min_size = pane_minimum_size(pane.kind);
@@ -1635,8 +1754,13 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
             start_bounds,
         } => {
             if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
-                if !pane.presentation.uses_window_chrome() {
+                if pane.presentation == PanePresentation::Fullscreen {
                     pane.bounds = fullscreen_pane_bounds(logical, sidebar_width);
+                    return true;
+                }
+                if pane.presentation.is_docked_right() {
+                    pane.bounds =
+                        docked_right_pane_bounds_for_kind_with_width(pane.kind, logical, docked_width);
                     return true;
                 }
                 let min_size = pane_minimum_size(pane.kind);
@@ -1656,7 +1780,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
 
 pub fn close_pane(state: &mut RenderState, pane_id: u64) {
     if let Some(pane) = state.panes.iter().find(|pane| pane.id == pane_id)
-        && !pane.presentation.uses_window_chrome()
+        && pane.presentation == PanePresentation::Fullscreen
     {
         set_pane_presentation(state, pane_id, PanePresentation::Windowed);
         return;
@@ -1691,6 +1815,18 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             PaneDragMode::Moving { .. } => CursorIcon::Move,
             PaneDragMode::Resizing { edge, .. } => cursor_icon_for_resize_edge(edge),
         };
+    }
+
+    if let Some(docked_mission_control_bounds) = state
+        .panes
+        .iter()
+        .find(|pane| pane.kind == PaneKind::GoOnline && pane.presentation.is_docked_right())
+        .map(|pane| pane.bounds)
+    {
+        if mission_control_docked_toggle_button_bounds(docked_mission_control_bounds).contains(point)
+        {
+            return CursorIcon::Pointer;
+        }
     }
 
     let handle_bounds = sidebar_handle_bounds(state);
@@ -2057,20 +2193,55 @@ pub fn chat_thread_search_input_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-fn chat_header_button_bounds(
-    content_bounds: Bounds,
-    start_y: f32,
-    index: usize,
-    total: usize,
-) -> Bounds {
+fn chat_primary_header_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
     let transcript = chat_transcript_bounds(content_bounds);
+    let controls_top = transcript.origin.y + 66.0;
+    let available_width = (transcript.size.width - 20.0).max(0.0);
+    let gap = CHAT_HEADER_BUTTON_GAP;
+    let total_width = (available_width - gap * 2.0).max(0.0);
+    let total_weight = 3.4;
+    let unit = if total_weight > 0.0 {
+        total_width / total_weight
+    } else {
+        0.0
+    };
+    let model_width = unit * 1.45;
+    let interrupt_width = unit * 1.0;
+    let more_width = (total_width - model_width - interrupt_width).max(0.0);
+    let origin_x = transcript.origin.x + 10.0;
+    match index {
+        0 => Bounds::new(origin_x, controls_top, model_width, CHAT_HEADER_BUTTON_HEIGHT),
+        1 => Bounds::new(
+            origin_x + model_width + gap,
+            controls_top,
+            interrupt_width,
+            CHAT_HEADER_BUTTON_HEIGHT,
+        ),
+        _ => Bounds::new(
+            origin_x + model_width + gap + interrupt_width + gap,
+            controls_top,
+            more_width,
+            CHAT_HEADER_BUTTON_HEIGHT,
+        ),
+    }
+}
+
+fn chat_primary_header_row_count(_content_bounds: Bounds) -> usize {
+    1
+}
+
+fn chat_secondary_header_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let transcript = chat_transcript_bounds(content_bounds);
+    let primary_rows = chat_primary_header_row_count(content_bounds);
+    let start_y = primary_rows as f32 * (CHAT_HEADER_BUTTON_HEIGHT + CHAT_HEADER_BUTTON_ROW_GAP);
     let controls_top = transcript.origin.y + 66.0 + start_y;
+    let total = 7_usize;
     let available_width = (transcript.size.width - 20.0).max(CHAT_HEADER_BUTTON_MIN_WIDTH);
     let cols = (((available_width + CHAT_HEADER_BUTTON_GAP)
         / (CHAT_HEADER_BUTTON_MIN_WIDTH + CHAT_HEADER_BUTTON_GAP))
         .floor() as usize)
         .max(1)
-        .min(total.max(1));
+        .min(total);
     let width = ((available_width - CHAT_HEADER_BUTTON_GAP * (cols.saturating_sub(1) as f32))
         / cols as f32)
         .clamp(CHAT_HEADER_BUTTON_MIN_WIDTH, CHAT_HEADER_BUTTON_WIDTH);
@@ -2078,25 +2249,10 @@ fn chat_header_button_bounds(
     let col = index % cols;
     Bounds::new(
         transcript.origin.x + 10.0 + col as f32 * (width + CHAT_HEADER_BUTTON_GAP),
-        controls_top + row as f32 * (CHAT_HEADER_BUTTON_HEIGHT + 6.0),
+        controls_top + row as f32 * (CHAT_HEADER_BUTTON_HEIGHT + CHAT_HEADER_BUTTON_ROW_GAP),
         width,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
-}
-
-fn chat_primary_header_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
-    chat_header_button_bounds(content_bounds, 0.0, index, 3)
-}
-
-fn chat_primary_header_row_count(content_bounds: Bounds) -> usize {
-    let transcript = chat_transcript_bounds(content_bounds);
-    let available_width = (transcript.size.width - 20.0).max(CHAT_HEADER_BUTTON_MIN_WIDTH);
-    let cols = (((available_width + CHAT_HEADER_BUTTON_GAP)
-        / (CHAT_HEADER_BUTTON_MIN_WIDTH + CHAT_HEADER_BUTTON_GAP))
-        .floor() as usize)
-        .max(1)
-        .min(3);
-    3_usize.div_ceil(cols)
 }
 
 pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -2105,12 +2261,6 @@ pub fn chat_cycle_model_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_cycle_service_tier_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_secondary_header_button_bounds(content_bounds, 1)
-}
-
-fn chat_secondary_header_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
-    let primary_rows = chat_primary_header_row_count(content_bounds);
-    let start_y = primary_rows as f32 * (CHAT_HEADER_BUTTON_HEIGHT + 6.0);
-    chat_header_button_bounds(content_bounds, start_y, index, 7)
 }
 
 pub fn chat_cycle_personality_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -2147,6 +2297,64 @@ pub fn chat_review_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_primary_header_button_bounds(content_bounds, 2)
+}
+
+fn chat_header_menu_bounds_for_anchor(
+    content_bounds: Bounds,
+    anchor: Bounds,
+    item_count: usize,
+    min_width: f32,
+    align_right: bool,
+) -> Bounds {
+    let transcript = chat_transcript_bounds(content_bounds);
+    let height = item_count as f32 * CHAT_HEADER_MENU_ROW_HEIGHT + CHAT_HEADER_MENU_PADDING * 2.0;
+    let max_width = (transcript.size.width - 16.0).max(min_width);
+    let width = anchor.size.width.max(min_width).min(max_width);
+    let min_x = transcript.origin.x + 8.0;
+    let max_x = (transcript.max_x() - width - 8.0).max(min_x);
+    let desired_x = if align_right {
+        anchor.max_x() - width
+    } else {
+        anchor.origin.x
+    };
+    let x = desired_x.clamp(min_x, max_x);
+    let below_y = anchor.max_y() + CHAT_HEADER_MENU_GAP;
+    let above_y = (anchor.origin.y - CHAT_HEADER_MENU_GAP - height).max(content_bounds.origin.y);
+    let y = if below_y + height <= content_bounds.max_y() - 6.0 {
+        below_y
+    } else {
+        above_y
+    };
+    Bounds::new(x, y, width, height)
+}
+
+pub fn chat_model_menu_bounds(content_bounds: Bounds, item_count: usize) -> Bounds {
+    chat_header_menu_bounds_for_anchor(
+        content_bounds,
+        chat_cycle_model_button_bounds(content_bounds),
+        item_count,
+        220.0,
+        false,
+    )
+}
+
+pub fn chat_more_menu_bounds(content_bounds: Bounds, item_count: usize) -> Bounds {
+    chat_header_menu_bounds_for_anchor(
+        content_bounds,
+        chat_compact_button_bounds(content_bounds),
+        item_count,
+        236.0,
+        true,
+    )
+}
+
+pub fn chat_header_menu_row_bounds(menu_bounds: Bounds, index: usize) -> Bounds {
+    Bounds::new(
+        menu_bounds.origin.x + CHAT_HEADER_MENU_PADDING,
+        menu_bounds.origin.y + CHAT_HEADER_MENU_PADDING + index as f32 * CHAT_HEADER_MENU_ROW_HEIGHT,
+        (menu_bounds.size.width - CHAT_HEADER_MENU_PADDING * 2.0).max(0.0),
+        CHAT_HEADER_MENU_ROW_HEIGHT,
+    )
 }
 
 // pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
@@ -2877,6 +3085,19 @@ pub struct MissionControlPaneLayout {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct MissionControlDockedLayout {
+    pub scroll_viewport: Bounds,
+    pub status_row: Bounds,
+    pub alert_band: Bounds,
+    pub sell_panel: Bounds,
+    pub earnings_panel: Bounds,
+    pub active_jobs_panel: Bounds,
+    pub log_stream: Bounds,
+    pub actions_panel: Bounds,
+    pub total_content_height: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct MissionControlLoadFundsLayout {
     pub panel: Bounds,
     pub controls_column: Bounds,
@@ -2891,6 +3112,236 @@ pub struct MissionControlLoadFundsLayout {
 
 pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayout {
     mission_control_layout_for_mode(content_bounds, false)
+}
+
+pub fn mission_control_docked_layout(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> MissionControlDockedLayout {
+    let outer_pad = 12.0;
+    let panel_gap = 12.0;
+    let status_gap = 10.0;
+    let status_cell_height = 42.0;
+    let status_row_height = status_cell_height * 2.0 + status_gap;
+    let alert_height = 40.0;
+    let section_width = (content_bounds.size.width - outer_pad * 2.0).max(0.0);
+    let viewport = Bounds::new(
+        content_bounds.origin.x,
+        content_bounds.origin.y,
+        content_bounds.size.width,
+        content_bounds.size.height,
+    );
+    let mut y = content_bounds.origin.y + outer_pad - scroll_offset;
+    let status_row = Bounds::new(
+        content_bounds.origin.x + outer_pad,
+        y,
+        section_width,
+        status_row_height,
+    );
+    y = status_row.max_y() + 8.0;
+    let alert_band = Bounds::new(
+        content_bounds.origin.x + outer_pad,
+        y,
+        section_width,
+        alert_height,
+    );
+    y = alert_band.max_y() + 14.0;
+    let sell_panel = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 252.0);
+    y = sell_panel.max_y() + panel_gap;
+    let earnings_panel =
+        Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 286.0);
+    y = earnings_panel.max_y() + panel_gap;
+    let active_jobs_panel =
+        Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 176.0);
+    y = active_jobs_panel.max_y() + panel_gap;
+    let log_stream = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 312.0);
+    y = log_stream.max_y() + panel_gap;
+    let actions_panel = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 92.0);
+    y = actions_panel.max_y() + outer_pad;
+
+    MissionControlDockedLayout {
+        scroll_viewport: viewport,
+        status_row,
+        alert_band,
+        sell_panel,
+        earnings_panel,
+        active_jobs_panel,
+        log_stream,
+        actions_panel,
+        total_content_height: (y - content_bounds.origin.y + scroll_offset).max(0.0),
+    }
+}
+
+pub fn mission_control_docked_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    content_bounds
+}
+
+pub fn mission_control_docked_alert_dismiss_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    let alert_band = mission_control_docked_layout(content_bounds, scroll_offset).alert_band;
+    Bounds::new(
+        alert_band.max_x() - 26.0,
+        alert_band.origin.y + 4.0,
+        20.0,
+        16.0,
+    )
+}
+
+pub fn mission_control_docked_go_online_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    let panel = mission_control_docked_layout(content_bounds, scroll_offset).sell_panel;
+    let top_inset = 34.0;
+    let bottom_inset = 16.0;
+    let available_height = (panel.size.height - top_inset - bottom_inset).max(0.0);
+    let button_height = if available_height >= 48.0 {
+        available_height.min(56.0).max(48.0)
+    } else {
+        available_height.min(56.0)
+    };
+    Bounds::new(
+        panel.origin.x + 14.0,
+        panel.origin.y + top_inset,
+        (panel.size.width - 28.0).max(0.0),
+        button_height,
+    )
+}
+
+pub fn mission_control_docked_sell_detail_viewport_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    const SECTION_CONTENT_TOP: f32 = 38.0;
+    const SECTION_BOTTOM_PADDING: f32 = 15.0;
+    let panel = mission_control_docked_layout(content_bounds, scroll_offset).sell_panel;
+    let go_online = mission_control_docked_go_online_button_bounds(content_bounds, scroll_offset);
+    let top = (go_online.max_y() + 14.0).max(panel.origin.y + SECTION_CONTENT_TOP);
+    Bounds::new(
+        panel.origin.x + 8.0,
+        top,
+        (panel.size.width - 16.0).max(0.0),
+        (panel.max_y() - top - SECTION_BOTTOM_PADDING).max(0.0),
+    )
+}
+
+pub fn mission_control_docked_wallet_refresh_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    let panel = mission_control_docked_layout(content_bounds, scroll_offset).earnings_panel;
+    let size = 14.0;
+    Bounds::new(
+        panel.max_x() - size - 10.0,
+        panel.origin.y + 7.0,
+        size,
+        size,
+    )
+}
+
+fn mission_control_docked_wallet_footer_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+    index: usize,
+) -> Bounds {
+    let panel = mission_control_docked_layout(content_bounds, scroll_offset).earnings_panel;
+    let height = 18.0;
+    let bottom_inset = 15.0;
+    let gap = 8.0;
+    let row_width = (panel.size.width - 28.0).max(0.0);
+    let button_width = ((row_width - gap) / 2.0).max(0.0);
+    let clamped_index = index.min(1) as f32;
+    Bounds::new(
+        panel.origin.x + 14.0 + clamped_index * (button_width + gap),
+        panel.max_y() - bottom_inset - height,
+        button_width,
+        height,
+    )
+}
+
+pub fn mission_control_docked_wallet_load_funds_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    mission_control_docked_wallet_footer_button_bounds(content_bounds, scroll_offset, 0)
+}
+
+pub fn mission_control_docked_wallet_buy_mode_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    mission_control_docked_wallet_footer_button_bounds(content_bounds, scroll_offset, 1)
+}
+
+fn mission_control_docked_top_action_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+    row: usize,
+) -> Bounds {
+    let panel = mission_control_docked_layout(content_bounds, scroll_offset).actions_panel;
+    let top_inset = 28.0;
+    let row_gap = 8.0;
+    let button_height = 18.0;
+    let clamped_row = row.min(1) as f32;
+    let y = panel.origin.y + top_inset + clamped_row * (button_height + row_gap);
+    Bounds::new(
+        panel.origin.x + 14.0,
+        y,
+        (panel.size.width - 28.0).max(0.0),
+        button_height,
+    )
+}
+
+pub fn mission_control_docked_local_model_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    mission_control_docked_top_action_button_bounds(content_bounds, scroll_offset, 0)
+}
+
+pub fn mission_control_docked_local_fm_test_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    mission_control_docked_top_action_button_bounds(content_bounds, scroll_offset, 1)
+}
+
+pub fn mission_control_docked_log_stream_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    mission_control_docked_layout(content_bounds, scroll_offset).log_stream
+}
+
+pub fn mission_control_docked_copy_log_stream_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    let log_stream = mission_control_docked_log_stream_bounds(content_bounds, scroll_offset);
+    let size = 14.0;
+    Bounds::new(
+        log_stream.max_x() - size - 10.0,
+        log_stream.origin.y + 7.0,
+        size,
+        size,
+    )
+}
+
+pub fn mission_control_docked_log_stream_filter_button_bounds(
+    content_bounds: Bounds,
+    scroll_offset: f32,
+) -> Bounds {
+    let copy_button =
+        mission_control_docked_copy_log_stream_button_bounds(content_bounds, scroll_offset);
+    let button_width = 46.0;
+    Bounds::new(
+        copy_button.origin.x - 8.0 - button_width,
+        copy_button.origin.y - 1.0,
+        button_width,
+        16.0,
+    )
 }
 
 pub fn mission_control_layout_for_mode(
@@ -5733,6 +6184,11 @@ pub fn job_inbox_visible_row_count(request_count: usize) -> usize {
     request_count.min(JOB_INBOX_MAX_ROWS)
 }
 
+const ACTIVE_JOB_ACTION_TOP_OFFSET: f32 = 22.0;
+const ACTIVE_JOB_CONTROLS_TO_SUMMARY_GAP: f32 = 16.0;
+const ACTIVE_JOB_SUMMARY_HEIGHT: f32 = 118.0;
+const ACTIVE_JOB_SUMMARY_TO_SCROLL_GAP: f32 = 16.0;
+
 pub fn active_job_advance_button_bounds(content_bounds: Bounds) -> Bounds {
     let available_width = (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0);
     let width = ((available_width - JOB_INBOX_BUTTON_GAP * 2.0) / 3.0)
@@ -5740,7 +6196,7 @@ pub fn active_job_advance_button_bounds(content_bounds: Bounds) -> Bounds {
         .min(196.0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD + ACTIVE_JOB_ACTION_TOP_OFFSET,
         width,
         JOB_INBOX_BUTTON_HEIGHT,
     )
@@ -5766,12 +6222,28 @@ pub fn active_job_copy_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn active_job_summary_bounds(content_bounds: Bounds, runtime_supports_abort: bool) -> Bounds {
+    let buttons = active_job_copy_button_bounds(content_bounds);
+    let top = buttons.max_y() + ACTIVE_JOB_CONTROLS_TO_SUMMARY_GAP;
+    let height = if runtime_supports_abort {
+        ACTIVE_JOB_SUMMARY_HEIGHT
+    } else {
+        ACTIVE_JOB_SUMMARY_HEIGHT + 12.0
+    };
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        top,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0),
+        height,
+    )
+}
+
 pub fn active_job_scroll_viewport_bounds(
     content_bounds: Bounds,
     runtime_supports_abort: bool,
 ) -> Bounds {
-    let buttons = active_job_copy_button_bounds(content_bounds);
-    let top = buttons.max_y() + if runtime_supports_abort { 12.0 } else { 24.0 };
+    let summary = active_job_summary_bounds(content_bounds, runtime_supports_abort);
+    let top = summary.max_y() + ACTIVE_JOB_SUMMARY_TO_SCROLL_GAP;
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         top,
@@ -6797,6 +7269,24 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::ChatToggleThreadRail);
             }
             if browse_mode == crate::app_state::ChatBrowseMode::Autopilot {
+                if state.autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::Model) {
+                    let menu_bounds =
+                        chat_model_menu_bounds(content_bounds, state.autopilot_chat.models.len());
+                    for index in 0..state.autopilot_chat.models.len() {
+                        if chat_header_menu_row_bounds(menu_bounds, index).contains(point) {
+                            return Some(PaneHitAction::ChatSelectModel(index));
+                        }
+                    }
+                }
+                if state.autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::More) {
+                    let menu_bounds =
+                        chat_more_menu_bounds(content_bounds, chat_header_more_menu_items().len());
+                    for (index, item) in chat_header_more_menu_items().iter().enumerate() {
+                        if chat_header_menu_row_bounds(menu_bounds, index).contains(point) {
+                            return Some(PaneHitAction::ChatMoreMenuSelect(*item));
+                        }
+                    }
+                }
                 if !state.autopilot_chat.thread_rail_collapsed {
                     if chat_new_thread_button_bounds(content_bounds).contains(point) {
                         return Some(PaneHitAction::ChatNewThread);
@@ -6806,42 +7296,16 @@ fn pane_hit_action_for_pane(
                     }
                 }
                 if chat_cycle_model_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleModel);
+                    return Some(PaneHitAction::ChatToggleModelMenu);
                 }
                 if chat_help_toggle_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatToggleHelpHint);
                 }
                 if chat_compact_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatToggleHeaderControls);
+                    return Some(PaneHitAction::ChatToggleMoreMenu);
                 }
                 if chat_interrupt_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatInterruptTurn);
-                }
-                if state.autopilot_chat.header_controls_expanded {
-                    if chat_cycle_reasoning_effort_button_bounds(content_bounds).contains(point) {
-                        return Some(PaneHitAction::ChatCycleReasoningEffort);
-                    }
-                    if chat_cycle_service_tier_button_bounds(content_bounds).contains(point) {
-                        return Some(PaneHitAction::ChatCycleServiceTier);
-                    }
-                    if chat_cycle_personality_button_bounds(content_bounds).contains(point) {
-                        return Some(PaneHitAction::ChatCyclePersonality);
-                    }
-                    if chat_cycle_collaboration_mode_button_bounds(content_bounds).contains(point) {
-                        return Some(PaneHitAction::ChatCycleCollaborationMode);
-                    }
-                    if chat_cycle_approval_mode_button_bounds(content_bounds).contains(point) {
-                        return Some(PaneHitAction::ChatCycleApprovalMode);
-                    }
-                    if chat_cycle_sandbox_mode_button_bounds(content_bounds).contains(point) {
-                        return Some(PaneHitAction::ChatCycleSandboxMode);
-                    }
-                    if chat_review_button_bounds(content_bounds).contains(point) {
-                        if state.autopilot_chat.active_plan_artifact().is_some() {
-                            return Some(PaneHitAction::ChatImplementPlan);
-                        }
-                        return Some(PaneHitAction::ChatReviewThread);
-                    }
                 }
                 if !state.autopilot_chat.thread_rail_collapsed
                     && chat_thread_filter_archived_button_bounds(content_bounds).contains(point)
@@ -6983,6 +7447,17 @@ fn pane_hit_action_for_pane(
             }
         }
         PaneKind::GoOnline => {
+            let docked = pane.presentation.is_docked_right();
+            let docked_compact = docked && pane.bounds.size.width <= 140.0;
+            let mission_column_scroll = state.mission_control.column_scroll_offset();
+            if docked && mission_control_docked_toggle_button_bounds(pane.bounds).contains(point) {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::ToggleDockedPanel,
+                ));
+            }
+            if docked_compact {
+                return None;
+            }
             let buy_mode_enabled = state.mission_control_buy_mode_enabled();
             let provider_blockers = state.provider_blockers();
             let lightning_amount_valid = state
@@ -7084,7 +7559,15 @@ fn pane_hit_action_for_pane(
                 provider_blockers.as_slice(),
                 &state.spark_wallet,
             );
-            if mission_control_alert_dismiss_button_bounds(content_bounds).contains(point)
+            let alert_dismiss_bounds = if docked {
+                mission_control_docked_alert_dismiss_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
+            } else {
+                mission_control_alert_dismiss_button_bounds(content_bounds)
+            };
+            if alert_dismiss_bounds.contains(point)
                 && !state
                     .mission_control
                     .alert_is_dismissed(alert_signature.as_str())
@@ -7093,7 +7576,12 @@ fn pane_hit_action_for_pane(
                     MissionControlPaneAction::DismissAlert,
                 ));
             }
-            if go_online_toggle_button_bounds(content_bounds).contains(point) {
+            let go_online_bounds = if docked {
+                mission_control_docked_go_online_button_bounds(content_bounds, mission_column_scroll)
+            } else {
+                go_online_toggle_button_bounds(content_bounds)
+            };
+            if go_online_bounds.contains(point) {
                 if matches!(
                     state.provider_runtime.mode,
                     crate::app_state::ProviderMode::Offline
@@ -7104,32 +7592,70 @@ fn pane_hit_action_for_pane(
                 }
                 return Some(PaneHitAction::GoOnlineToggle);
             }
-            if mission_control_wallet_refresh_button_bounds(content_bounds).contains(point) {
+            let wallet_refresh_bounds = if docked {
+                mission_control_docked_wallet_refresh_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
+            } else {
+                mission_control_wallet_refresh_button_bounds(content_bounds)
+            };
+            if wallet_refresh_bounds.contains(point) {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::RefreshWallet,
                 ));
             }
-            if mission_control_wallet_load_funds_button_bounds(content_bounds).contains(point) {
+            let load_funds_bounds = if docked {
+                mission_control_docked_wallet_load_funds_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
+            } else {
+                mission_control_wallet_load_funds_button_bounds(content_bounds)
+            };
+            if load_funds_bounds.contains(point) {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenLoadFundsPopup,
                 ));
             }
-            if mission_control_wallet_buy_mode_button_bounds(content_bounds).contains(point)
+            let buy_mode_bounds = if docked {
+                mission_control_docked_wallet_buy_mode_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
+            } else {
+                mission_control_wallet_buy_mode_button_bounds(content_bounds)
+            };
+            if buy_mode_bounds.contains(point)
                 && state.mission_control_buy_mode_enabled()
             {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenBuyModePopup,
                 ));
             }
-            if mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled)
-                .contains(point)
+            let copy_log_bounds = if docked {
+                mission_control_docked_copy_log_stream_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
+            } else {
+                mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled)
+            };
+            if copy_log_bounds.contains(point)
             {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopyLogStream,
                 ));
             }
-            if mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled)
-                .contains(point)
+            let filter_log_bounds = if docked {
+                mission_control_docked_log_stream_filter_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
+            } else {
+                mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled)
+            };
+            if filter_log_bounds.contains(point)
             {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CycleLogLevelFilter,
@@ -7143,7 +7669,15 @@ fn pane_hit_action_for_pane(
                 state.desktop_shell_mode,
                 &state.provider_runtime,
                 &state.gpt_oss_execution,
-            ) && mission_control_local_model_button_bounds(content_bounds).contains(point)
+            ) && if docked {
+                mission_control_docked_local_model_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
+                .contains(point)
+            } else {
+                mission_control_local_model_button_bounds(content_bounds).contains(point)
+            }
             {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenLocalModelWorkbench,
@@ -7153,7 +7687,15 @@ fn pane_hit_action_for_pane(
                 state.desktop_shell_mode,
                 &state.gpt_oss_execution,
             ) == Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
-                && mission_control_local_fm_test_button_bounds(content_bounds).contains(point)
+                && if docked {
+                    mission_control_docked_local_fm_test_button_bounds(
+                        content_bounds,
+                        mission_column_scroll,
+                    )
+                    .contains(point)
+                } else {
+                    mission_control_local_fm_test_button_bounds(content_bounds).contains(point)
+                }
                 && state.provider_runtime.apple_fm.is_ready()
                 && !state.provider_control.local_fm_summary_is_pending()
             {
@@ -8792,6 +9334,56 @@ pub fn dispatch_mission_control_log_scroll_event(
     }
 
     let content_bounds = pane_content_bounds_for_pane(pane);
+    let docked = pane.presentation.is_docked_right();
+    if docked && pane.bounds.size.width <= 140.0 {
+        return false;
+    }
+    let mission_column_scroll = state.mission_control.column_scroll_offset();
+    if docked {
+        if let InputEvent::Scroll { dy, .. } = event {
+            if state.mission_control.load_funds_popup_open() {
+                if mission_control_load_funds_popup_scroll_viewport_bounds(content_bounds)
+                    .contains(cursor_position)
+                {
+                    state.mission_control.scroll_load_funds_by(*dy);
+                    return true;
+                }
+                return false;
+            }
+            if state.mission_control.buy_mode_popup_open() {
+                return mission_control_buy_mode_popup_bounds(content_bounds)
+                    .contains(cursor_position);
+            }
+
+            let log_bounds =
+                mission_control_docked_log_stream_bounds(content_bounds, mission_column_scroll);
+            if log_bounds.contains(cursor_position) {
+                return state
+                    .log_stream
+                    .terminal
+                    .event(event, log_bounds, &mut state.event_context)
+                    .is_handled();
+            }
+
+            if mission_control_docked_sell_detail_viewport_bounds(
+                content_bounds,
+                mission_column_scroll,
+            )
+            .contains(cursor_position)
+            {
+                state.mission_control.scroll_sell_by(*dy);
+                return true;
+            }
+
+            if mission_control_docked_scroll_viewport_bounds(content_bounds).contains(cursor_position)
+            {
+                state.mission_control.scroll_column_by(*dy);
+                return true;
+            }
+        }
+        return false;
+    }
+
     let log_bounds = mission_control_log_stream_bounds_for_mode(
         content_bounds,
         state.mission_control_buy_mode_enabled(),
@@ -9494,16 +10086,19 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
 pub fn clamp_all_panes_to_window(state: &mut RenderState) {
     let logical = logical_size(&state.config, state.scale_factor);
     let sidebar_width = sidebar_reserved_width(state);
+    let docked_width = mission_control_docked_width_for_logical(state, logical);
     for pane in state.panes.iter_mut() {
-        pane.bounds = if pane.presentation.uses_window_chrome() {
-            clamp_bounds_to_window(
+        pane.bounds = match pane.presentation {
+            PanePresentation::Windowed => clamp_bounds_to_window(
                 pane.bounds,
                 logical,
                 sidebar_width,
                 pane_minimum_size(pane.kind),
-            )
-        } else {
-            fullscreen_pane_bounds(logical, sidebar_width)
+            ),
+            PanePresentation::Fullscreen => fullscreen_pane_bounds(logical, sidebar_width),
+            PanePresentation::DockedRight => {
+                docked_right_pane_bounds_for_kind_with_width(pane.kind, logical, docked_width)
+            }
         };
         if pane.presentation.uses_window_chrome() {
             pane.windowed_bounds = pane.bounds;
@@ -9536,6 +10131,7 @@ pub fn set_pane_presentation(
 ) {
     let logical = logical_size(&state.config, state.scale_factor);
     let sidebar_width = sidebar_reserved_width(state);
+    let docked_width = mission_control_docked_width_for_logical(state, logical);
     let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) else {
         return;
     };
@@ -9548,15 +10144,17 @@ pub fn set_pane_presentation(
     }
 
     pane.presentation = presentation;
-    pane.bounds = if presentation.uses_window_chrome() {
-        clamp_bounds_to_window(
+    pane.bounds = match presentation {
+        PanePresentation::Windowed => clamp_bounds_to_window(
             pane.windowed_bounds,
             logical,
             sidebar_width,
             pane_minimum_size(pane.kind),
-        )
-    } else {
-        fullscreen_pane_bounds(logical, sidebar_width)
+        ),
+        PanePresentation::Fullscreen => fullscreen_pane_bounds(logical, sidebar_width),
+        PanePresentation::DockedRight => {
+            docked_right_pane_bounds_for_kind_with_width(pane.kind, logical, docked_width)
+        }
     };
     if presentation.uses_window_chrome() {
         pane.windowed_bounds = pane.bounds;
@@ -10274,9 +10872,11 @@ mod tests {
     fn active_job_scroll_viewport_stays_below_controls() {
         let content = Bounds::new(0.0, 0.0, 860.0, 420.0);
         let copy = active_job_copy_button_bounds(content);
+        let summary = active_job_summary_bounds(content, false);
         let viewport = active_job_scroll_viewport_bounds(content, false);
 
-        assert!(copy.max_y() <= viewport.origin.y);
+        assert!(copy.max_y() < summary.origin.y);
+        assert!(summary.max_y() <= viewport.origin.y);
         assert!(content.contains(viewport.origin));
         assert!(viewport.max_x() <= content.max_x());
         assert!(viewport.max_y() <= content.max_y());

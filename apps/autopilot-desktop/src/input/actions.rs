@@ -14,6 +14,7 @@ use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
     BuyModePaymentsPaneAction, DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
+    ChatHeaderMoreMenuItem,
     LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
     Nip90SentPaymentsPaneAction, ProviderControlPaneAction, PsionicRemoteTrainingPaneAction,
     RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
@@ -5762,6 +5763,56 @@ pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderSta
     true
 }
 
+pub(crate) fn run_chat_toggle_model_menu_action(state: &mut crate::app_state::RenderState) -> bool {
+    let keyboard_index = (!state.autopilot_chat.models.is_empty())
+        .then_some(state.autopilot_chat.selected_model.min(state.autopilot_chat.models.len() - 1));
+    state.autopilot_chat.toggle_header_menu(
+        crate::app_state::ChatHeaderMenuKind::Model,
+        keyboard_index,
+    );
+    true
+}
+
+pub(crate) fn run_chat_toggle_more_menu_action(state: &mut crate::app_state::RenderState) -> bool {
+    state
+        .autopilot_chat
+        .toggle_header_menu(crate::app_state::ChatHeaderMenuKind::More, Some(0));
+    true
+}
+
+pub(crate) fn run_chat_select_model_action(
+    state: &mut crate::app_state::RenderState,
+    index: usize,
+) -> bool {
+    state.autopilot_chat.set_selected_model_index(index);
+    state.autopilot_chat.close_header_menu();
+    true
+}
+
+pub(crate) fn run_chat_activate_more_menu_item_action(
+    state: &mut crate::app_state::RenderState,
+    item: ChatHeaderMoreMenuItem,
+) -> bool {
+    state.autopilot_chat.close_header_menu();
+    match item {
+        ChatHeaderMoreMenuItem::ReasoningEffort => run_chat_cycle_reasoning_effort_action(state),
+        ChatHeaderMoreMenuItem::ServiceTier => run_chat_cycle_service_tier_action(state),
+        ChatHeaderMoreMenuItem::Personality => run_chat_cycle_personality_action(state),
+        ChatHeaderMoreMenuItem::CollaborationMode => {
+            run_chat_cycle_collaboration_mode_action(state)
+        }
+        ChatHeaderMoreMenuItem::ApprovalMode => run_chat_cycle_approval_mode_action(state),
+        ChatHeaderMoreMenuItem::SandboxMode => run_chat_cycle_sandbox_mode_action(state),
+        ChatHeaderMoreMenuItem::ReviewOrImplement => {
+            if state.autopilot_chat.active_plan_artifact().is_some() {
+                run_chat_implement_plan_action(state)
+            } else {
+                run_chat_review_action(state)
+            }
+        }
+    }
+}
+
 pub(super) fn run_chat_cycle_model_action(state: &mut crate::app_state::RenderState) -> bool {
     state.autopilot_chat.cycle_model();
     true
@@ -5817,6 +5868,7 @@ pub(super) fn run_chat_cycle_sandbox_mode_action(
 pub(super) fn run_chat_toggle_header_controls_action(
     state: &mut crate::app_state::RenderState,
 ) -> bool {
+    state.autopilot_chat.close_header_menu();
     state.autopilot_chat.header_controls_expanded = !state.autopilot_chat.header_controls_expanded;
     true
 }
@@ -5874,6 +5926,7 @@ pub(super) fn run_chat_cycle_provider_filter_action(
 }
 
 pub(super) fn run_chat_interrupt_turn_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.close_header_menu();
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
         state.autopilot_chat.last_error = Some("No active thread to interrupt".to_string());
         return true;
@@ -6091,6 +6144,7 @@ pub(super) fn run_chat_rollback_thread_action(state: &mut crate::app_state::Rend
 }
 
 pub(super) fn run_chat_implement_plan_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.close_header_menu();
     let Some(artifact) = state.autopilot_chat.active_plan_artifact().cloned() else {
         state.autopilot_chat.last_error =
             Some("No saved plan artifact available for this thread".to_string());
@@ -6131,6 +6185,7 @@ pub(super) fn run_chat_implement_plan_action(state: &mut crate::app_state::Rende
 }
 
 pub(super) fn run_chat_review_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.close_header_menu();
     let Some(thread_id) = active_thread_id(state) else {
         state.autopilot_chat.last_error = Some("No active thread to review".to_string());
         return true;
@@ -9892,6 +9947,10 @@ pub(super) fn run_mission_control_action(
     action: MissionControlPaneAction,
 ) -> bool {
     match action {
+        MissionControlPaneAction::ToggleDockedPanel => {
+            crate::pane_system::toggle_mission_control_docked_panel(state);
+            true
+        }
         MissionControlPaneAction::DismissAlert => {
             let provider_blockers = state.provider_blockers();
             let signature = mission_control_current_alert_signature(

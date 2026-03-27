@@ -15,11 +15,11 @@ use crate::app_state::{
     LocalInferencePaneInputs, LocalInferencePaneState, LogStreamLevelFilter, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
     NetworkRequestsState, Nip90SentPaymentsPaneState, NostrIdentityPaneState, NostrSecretState,
-    PaneKind, PaneLoadState, PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState,
+    PaneKind, PaneLoadState, PanePaintTimingSample, PanePresentation, PayInvoicePaneInputs, PresentationPaneState,
     PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState,
     ProviderControlPaneState, ProviderRuntimeState, ProviderStatusPaneState, ReciprocalLoopState,
     RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
-    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SidebarState, SkillRegistryPaneState,
     SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState,
     StarterJobStatus, StarterJobsState, SyncHealthPaneState, SyncHealthState, TassadarLabPaneState,
     TrajectoryAuditPaneState, VoicePlaygroundPaneInputs, VoicePlaygroundPaneState,
@@ -34,6 +34,7 @@ use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
+    active_job_summary_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
     activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
     activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
@@ -51,10 +52,22 @@ use crate::pane_system::{
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
     job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_alert_dismiss_button_bounds,
-    mission_control_buy_mode_button_bounds_for_panel,
+    mission_control_buy_mode_button_bounds_for_panel, mission_control_docked_layout,
+    mission_control_docked_alert_dismiss_button_bounds,
     mission_control_buy_mode_history_button_bounds_for_panel,
     mission_control_buy_mode_popup_bounds, mission_control_buy_mode_popup_close_button_bounds,
-    mission_control_copy_log_stream_button_bounds, mission_control_layout_for_mode,
+    mission_control_copy_log_stream_button_bounds,
+    mission_control_docked_copy_log_stream_button_bounds,
+    mission_control_docked_go_online_button_bounds,
+    mission_control_docked_local_fm_test_button_bounds,
+    mission_control_docked_local_model_button_bounds,
+    mission_control_docked_log_stream_filter_button_bounds,
+    mission_control_docked_sell_detail_viewport_bounds,
+    mission_control_docked_scroll_viewport_bounds,
+    mission_control_docked_toggle_button_bounds,
+    mission_control_docked_wallet_buy_mode_button_bounds,
+    mission_control_docked_wallet_load_funds_button_bounds,
+    mission_control_docked_wallet_refresh_button_bounds, mission_control_layout_for_mode,
     mission_control_load_funds_popup_bounds, mission_control_load_funds_popup_close_button_bounds,
     mission_control_load_funds_popup_layout_with_scroll,
     mission_control_load_funds_popup_scroll_viewport_bounds,
@@ -235,6 +248,7 @@ impl PaneRenderer {
         chat_inputs: &mut ChatPaneInputs,
         data_seller_inputs: &mut crate::app_state::DataSellerPaneInputs,
         calculator_inputs: &mut CalculatorPaneInputs,
+        sidebar: &SidebarState,
         mission_control: &mut MissionControlPaneState,
         provider_control: &mut ProviderControlPaneState,
         provider_status_pane: &mut ProviderStatusPaneState,
@@ -280,6 +294,11 @@ impl PaneRenderer {
             let pane_paint_start = std::time::Instant::now();
 
             let content_bounds = pane_content_bounds_for_pane(pane);
+            let docked_compact = pane.presentation.is_docked_right()
+                && (pane.bounds.size.width <= 140.0
+                    || sidebar.docked_mission_control_collapsed
+                        && pane.bounds.size.width
+                            <= SidebarState::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 8.0);
             if pane.presentation.uses_window_chrome() {
                 pane.frame.set_title(&pane.title);
                 pane.frame.set_active(pane_is_active);
@@ -298,14 +317,32 @@ impl PaneRenderer {
                         .with_corner_radius(6.0),
                 );
             } else {
-                paint
-                    .scene
-                    .draw_quad(Quad::new(content_bounds).with_background(theme::bg::SURFACE));
+                if pane.presentation.is_docked_right() {
+                    paint_docked_right_pane_shell(
+                        pane.bounds,
+                        pane.title.as_str(),
+                        docked_compact,
+                        sidebar.docked_mission_control_collapsed,
+                        paint,
+                    );
+                    if !docked_compact {
+                        paint.scene.draw_quad(
+                            Quad::new(content_bounds)
+                                .with_background(theme::bg::SURFACE)
+                                .with_corner_radius(8.0),
+                        );
+                    }
+                } else {
+                    paint
+                        .scene
+                        .draw_quad(Quad::new(content_bounds).with_background(theme::bg::SURFACE));
+                }
             }
 
             paint.scene.push_clip(content_bounds);
 
             if !pane_is_active
+                && !pane.presentation.is_docked_right()
                 && paint_inactive_pane_preview_if_needed(
                     inactive_pane_render_policy(pane.kind),
                     pane.title.as_str(),
@@ -352,6 +389,8 @@ impl PaneRenderer {
                 PaneKind::AutopilotChat => {
                     paint_autopilot_chat_pane(
                         content_bounds,
+                        pane_is_active,
+                        cursor_position,
                         autopilot_chat,
                         codex_account,
                         spacetime_presence,
@@ -389,6 +428,8 @@ impl PaneRenderer {
                 PaneKind::GoOnline => {
                     paint_go_online_pane(
                         content_bounds,
+                        pane.presentation,
+                        docked_compact,
                         pane_is_active,
                         cursor_position,
                         desktop_shell_mode,
@@ -2013,6 +2054,8 @@ fn compact_preview_text(value: &str, max_chars: usize) -> String {
 
 fn paint_autopilot_chat_pane(
     content_bounds: Bounds,
+    pane_is_active: bool,
+    cursor_position: Point,
     autopilot_chat: &AutopilotChatState,
     codex_account: &CodexAccountPaneState,
     spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
@@ -2021,6 +2064,8 @@ fn paint_autopilot_chat_pane(
 ) {
     chat_pane::paint(
         content_bounds,
+        pane_is_active,
+        cursor_position,
         autopilot_chat,
         codex_account.account_summary.as_str(),
         spacetime_presence,
@@ -2031,6 +2076,8 @@ fn paint_autopilot_chat_pane(
 
 fn paint_go_online_pane(
     content_bounds: Bounds,
+    pane_presentation: PanePresentation,
+    docked_collapsed: bool,
     pane_is_active: bool,
     cursor_position: Point,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
@@ -2056,6 +2103,41 @@ fn paint_go_online_pane(
     active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
+    if pane_presentation.is_docked_right() {
+        if docked_collapsed {
+            paint_go_online_docked_collapsed_pane(content_bounds, provider_runtime, paint);
+            return;
+        }
+        paint_go_online_docked_pane(
+            content_bounds,
+            pane_is_active,
+            cursor_position,
+            desktop_shell_mode,
+            buy_mode_enabled,
+            autopilot_chat,
+            nostr_identity,
+            mission_control,
+            provider_control,
+            provider_runtime,
+            local_inference_runtime,
+            log_stream,
+            buy_mode,
+            earn_job_lifecycle_projection,
+            sa_lane,
+            skl_lane,
+            ac_lane,
+            backend_kernel_authority,
+            provider_blockers,
+            earnings_scoreboard,
+            spark_wallet,
+            network_requests,
+            job_inbox,
+            active_job,
+            paint,
+        );
+        return;
+    }
+
     let layout = mission_control_layout_for_mode(content_bounds, buy_mode_enabled);
     let now = std::time::Instant::now();
     let now_epoch_ms = mission_control_now_epoch_millis();
@@ -2980,6 +3062,1019 @@ fn paint_go_online_pane(
     }
 }
 
+fn paint_docked_right_pane_shell(
+    bounds: Bounds,
+    title: &str,
+    compact: bool,
+    collapsed_target: bool,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(Hsla::from_hex(0x000000))
+            .with_border(theme::border::DEFAULT.with_alpha(0.16), 1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            PANE_TITLE_HEIGHT,
+        ))
+        .with_background(Hsla::from_hex(0x000000)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + PANE_TITLE_HEIGHT - 1.0,
+            bounds.size.width,
+            1.0,
+        ))
+        .with_background(theme::border::DEFAULT.with_alpha(0.22)),
+    );
+    let toggle_bounds = mission_control_docked_toggle_button_bounds(bounds);
+    paint.scene.draw_quad(
+        Quad::new(toggle_bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.4))
+            .with_border(theme::border::DEFAULT.with_alpha(0.18), 1.0)
+            .with_corner_radius(4.0),
+    );
+    let title_style = app_text_style(AppTextRole::Header);
+    if !compact {
+        paint.scene.draw_text(paint.text.layout_mono(
+            title,
+            Point::new(bounds.origin.x + 14.0, bounds.origin.y + 8.0),
+            title_style.font_size,
+            title_style.color,
+        ));
+    }
+    let toggle_symbol = if collapsed_target { "<" } else { ">" };
+    paint.scene.draw_text(paint.text.layout_mono(
+        toggle_symbol,
+        Point::new(toggle_bounds.origin.x + 5.0, toggle_bounds.origin.y + 1.0),
+        14.0,
+        theme::text::MUTED,
+    ));
+}
+
+fn paint_go_online_docked_collapsed_pane(
+    content_bounds: Bounds,
+    provider_runtime: &ProviderRuntimeState,
+    paint: &mut PaintContext,
+) {
+    let indicator_color = mission_control_mode_color(provider_runtime.mode);
+    let center_x = content_bounds.origin.x + content_bounds.size.width * 0.5;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(center_x - 4.0, content_bounds.origin.y + 16.0, 8.0, 8.0))
+            .with_background(indicator_color)
+            .with_corner_radius(4.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        "MC",
+        Point::new(content_bounds.origin.x + 8.0, content_bounds.origin.y + 34.0),
+        12.0,
+        theme::text::MUTED,
+    ));
+}
+
+#[expect(clippy::too_many_arguments, reason = "Mission Control docked paint mirrors runtime state inputs.")]
+fn paint_go_online_docked_pane(
+    content_bounds: Bounds,
+    pane_is_active: bool,
+    cursor_position: Point,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    buy_mode_enabled: bool,
+    autopilot_chat: &AutopilotChatState,
+    nostr_identity: Option<&nostr::NostrIdentity>,
+    mission_control: &mut MissionControlPaneState,
+    provider_control: &ProviderControlPaneState,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    log_stream: &mut LogStreamPaneState,
+    buy_mode: &BuyModePaymentsPaneState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
+    skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
+    ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
+    backend_kernel_authority: bool,
+    provider_blockers: &[ProviderBlocker],
+    earnings_scoreboard: &EarningsScoreboardState,
+    spark_wallet: &SparkPaneState,
+    network_requests: &NetworkRequestsState,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
+    paint: &mut PaintContext,
+) {
+    let layout_measure = mission_control_docked_layout(content_bounds, 0.0);
+    let viewport = mission_control_docked_scroll_viewport_bounds(content_bounds);
+    let max_scroll =
+        mission_control_max_scroll_for_viewport(viewport, layout_measure.total_content_height);
+    let column_scroll = mission_control.clamp_column_scroll_offset(max_scroll);
+    let layout = mission_control_docked_layout(content_bounds, column_scroll);
+    let now = std::time::Instant::now();
+    let now_epoch_ms = mission_control_now_epoch_millis();
+    let now_epoch_seconds = mission_control_now_epoch_seconds();
+    let status_label = provider_runtime.mode.label().to_ascii_uppercase();
+    let status_color = mission_control_mode_color(provider_runtime.mode);
+    let wallet_status = if spark_wallet.balance_reconciling() {
+        "RECONCILING"
+    } else {
+        match spark_wallet.network_status_label() {
+            "connected" => "CONNECTED",
+            "disconnected" => "DISCONNECTED",
+            _ => "UNKNOWN",
+        }
+    };
+    let preflight_value = if provider_blockers.is_empty() {
+        "CLEAR".to_string()
+    } else {
+        format!("{} BLOCKER(S)", provider_blockers.len())
+    };
+    let alert_message = mission_control_alert_message(
+        mission_control,
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+        provider_blockers,
+        spark_wallet,
+    );
+    let alert_visible = mission_control.should_show_alert(alert_message.signature.as_str());
+    let alert_dismiss_bounds =
+        mission_control_docked_alert_dismiss_button_bounds(content_bounds, column_scroll);
+    let pointer_in_pane = pane_is_active && content_bounds.contains(cursor_position);
+    let status_gap = 10.0;
+    let status_cell_height = 42.0;
+    let status_cell_width = ((layout.status_row.size.width - status_gap) / 2.0).max(0.0);
+    let mode_bounds = Bounds::new(
+        layout.status_row.origin.x,
+        layout.status_row.origin.y,
+        status_cell_width,
+        status_cell_height,
+    );
+    let backend_bounds = Bounds::new(
+        mode_bounds.max_x() + status_gap,
+        layout.status_row.origin.y,
+        status_cell_width,
+        status_cell_height,
+    );
+    let wallet_bounds = Bounds::new(
+        layout.status_row.origin.x,
+        mode_bounds.max_y() + status_gap,
+        status_cell_width,
+        status_cell_height,
+    );
+    let preflight_bounds = Bounds::new(
+        wallet_bounds.max_x() + status_gap,
+        wallet_bounds.origin.y,
+        status_cell_width,
+        status_cell_height,
+    );
+
+    let wallet_refresh_bounds =
+        mission_control_docked_wallet_refresh_button_bounds(content_bounds, column_scroll);
+    let wallet_refresh_hovered = pointer_in_pane && wallet_refresh_bounds.contains(cursor_position);
+    let wallet_refresh_clicked = mission_control.wallet_refresh_icon_click_feedback(now_epoch_ms);
+    let load_funds_trigger_bounds =
+        mission_control_docked_wallet_load_funds_button_bounds(content_bounds, column_scroll);
+    let buy_mode_trigger_bounds =
+        mission_control_docked_wallet_buy_mode_button_bounds(content_bounds, column_scroll);
+    let toggle_bounds = mission_control_docked_go_online_button_bounds(content_bounds, column_scroll);
+    let download_bounds =
+        mission_control_docked_local_model_button_bounds(content_bounds, column_scroll);
+    let test_bounds =
+        mission_control_docked_local_fm_test_button_bounds(content_bounds, column_scroll);
+    let log_copy_bounds =
+        mission_control_docked_copy_log_stream_button_bounds(content_bounds, column_scroll);
+    let filter_bounds =
+        mission_control_docked_log_stream_filter_button_bounds(content_bounds, column_scroll);
+
+    let wants_online = matches!(
+        provider_runtime.mode,
+        crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
+    );
+    let go_online_enabled = !wants_online
+        || mission_control_local_runtime_is_ready(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        );
+    let toggle_label = if wants_online {
+        "GO ONLINE"
+    } else {
+        "GO OFFLINE"
+    };
+    let toggle_accent = if wants_online {
+        mission_control_green_color()
+    } else {
+        mission_control_orange_color()
+    };
+    let primary_model_label = mission_control_primary_model_label(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    let backend_label = mission_control_backend_label(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    let load_status_label = mission_control_model_load_status(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    let control_label = provider_runtime
+        .control_authority_label(backend_kernel_authority)
+        .to_string();
+
+    paint
+        .scene
+        .draw_quad(Quad::new(content_bounds).with_background(mission_control_background_color()));
+    paint.scene.push_clip(viewport);
+
+    paint_mission_control_status_cell(
+        mode_bounds,
+        "MODE",
+        &status_label,
+        status_color,
+        12.0,
+        paint,
+    );
+    paint_mission_control_status_cell(
+        backend_bounds,
+        "BACKEND",
+        &mission_control_backend_label(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        ),
+        mission_control_cyan_color(),
+        12.0,
+        paint,
+    );
+    paint_mission_control_status_cell(
+        wallet_bounds,
+        "WALLET",
+        wallet_status,
+        if wallet_status == "CONNECTED" {
+            mission_control_green_color()
+        } else if wallet_status == "RECONCILING" {
+            mission_control_cyan_color()
+        } else {
+            mission_control_amber_color()
+        },
+        12.0,
+        paint,
+    );
+    paint_mission_control_status_cell(
+        preflight_bounds,
+        "PREFLIGHT",
+        &preflight_value,
+        if provider_blockers.is_empty() {
+            mission_control_green_color()
+        } else {
+            mission_control_orange_color()
+        },
+        12.0,
+        paint,
+    );
+    paint_mission_control_alert_band(
+        layout.alert_band,
+        alert_dismiss_bounds,
+        &alert_message,
+        alert_visible,
+        paint,
+    );
+
+    paint_mission_control_section_panel(
+        layout.sell_panel,
+        "SELL COMPUTE",
+        mission_control_green_color(),
+        matches!(provider_runtime.mode, crate::app_state::ProviderMode::Offline),
+        paint,
+    );
+    paint_mission_control_section_panel(
+        layout.earnings_panel,
+        "WALLET & EARNINGS",
+        mission_control_green_color(),
+        false,
+        paint,
+    );
+    paint_mission_control_section_panel(
+        layout.active_jobs_panel,
+        "ACTIVE JOBS",
+        status_color,
+        false,
+        paint,
+    );
+    paint_mission_control_section_panel(
+        layout.log_stream,
+        "LOG STREAM",
+        mission_control_orange_color(),
+        false,
+        paint,
+    );
+    paint_mission_control_section_panel(
+        layout.actions_panel,
+        "CONTROL",
+        mission_control_orange_color(),
+        false,
+        paint,
+    );
+
+    paint_mission_control_wallet_refresh_icon_button(
+        wallet_refresh_bounds,
+        mission_control_green_color(),
+        wallet_refresh_hovered,
+        wallet_refresh_clicked,
+        paint,
+    );
+    paint_mission_control_go_online_button(
+        toggle_bounds,
+        toggle_label,
+        go_online_enabled,
+        toggle_accent,
+        paint,
+    );
+
+    let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
+    let sell_viewport =
+        mission_control_docked_sell_detail_viewport_bounds(content_bounds, column_scroll);
+    let mut sell_content_height = 0.0;
+    for value in [
+        provider_runtime.mode.label().to_string(),
+        primary_model_label.clone(),
+        backend_label.clone(),
+        load_status_label.clone(),
+        control_label.clone(),
+        preflight_value.clone(),
+    ] {
+        sell_content_height +=
+            mission_control_wrapped_row_height(value.as_str(), sell_value_chunk_len, true);
+    }
+    if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
+        sell_content_height += mission_control_wrapped_row_height(
+            format!("{}s", provider_runtime.uptime_seconds(now)).as_str(),
+            sell_value_chunk_len,
+            false,
+        );
+    }
+    if sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline {
+        sell_content_height +=
+            mission_control_wrapped_row_height(sa_lane.mode.label(), sell_value_chunk_len, false);
+    }
+    if skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown {
+        sell_content_height += mission_control_wrapped_row_height(
+            skl_lane.trust_tier.label(),
+            sell_value_chunk_len,
+            false,
+        );
+    }
+    if ac_lane.credit_available {
+        sell_content_height +=
+            mission_control_wrapped_row_height("AVAILABLE", sell_value_chunk_len, false);
+    }
+    let sell_max_scroll =
+        mission_control_max_scroll_for_viewport(sell_viewport, sell_content_height);
+    let sell_scroll = mission_control.clamp_sell_scroll_offset(sell_max_scroll);
+    paint.scene.push_clip(sell_viewport);
+    let mut sell_y = sell_viewport.origin.y - sell_scroll;
+    sell_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Mode",
+        provider_runtime.mode.label(),
+        sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
+    );
+    sell_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Model",
+        &primary_model_label,
+        sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
+    );
+    sell_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Backend",
+        &backend_label,
+        sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
+    );
+    sell_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Load",
+        &load_status_label,
+        sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
+    );
+    sell_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Control",
+        &control_label,
+        sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
+    );
+    sell_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Preflight",
+        &preflight_value,
+        sell_value_chunk_len,
+        layout.sell_panel.size.width - 24.0,
+        true,
+    );
+    if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
+        sell_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
+            "Uptime",
+            &format!("{}s", provider_runtime.uptime_seconds(now)),
+            sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
+        );
+    }
+    if sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline {
+        sell_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
+            "Runner",
+            sa_lane.mode.label(),
+            sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
+        );
+    }
+    if skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown {
+        sell_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
+            "SKL Trust",
+            skl_lane.trust_tier.label(),
+            sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
+        );
+    }
+    if ac_lane.credit_available {
+        let _ = paint_wrapped_label_line_mission_control_label(
+            paint,
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
+            "Credit",
+            "AVAILABLE",
+            sell_value_chunk_len,
+            layout.sell_panel.size.width - 24.0,
+            false,
+        );
+    }
+    paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        layout.sell_panel,
+        sell_viewport,
+        sell_content_height,
+        sell_scroll,
+        paint,
+    );
+
+    const MISSION_CONTROL_PANEL_FONT_SIZE: f32 = 12.0;
+    let today_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_mission_control_amount(earnings_scoreboard.sats_today),
+    );
+    let month_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_mission_control_amount(earnings_scoreboard.sats_this_month),
+    );
+    let lifetime_display = earnings_scoreboard_amount_display(
+        earnings_scoreboard.load_state,
+        format_mission_control_amount(earnings_scoreboard.lifetime_sats),
+    );
+    let wallet_pending_delta_sats = spark_wallet.pending_wallet_delta_sats(now_epoch_seconds);
+    let current_wallet_total_sats = spark_wallet
+        .balance
+        .as_ref()
+        .map(|balance| balance.total_sats());
+    let wallet_display_balance_sats = mission_control.mission_control_wallet_display_balance_sats(
+        current_wallet_total_sats,
+        wallet_pending_delta_sats,
+        now_epoch_seconds,
+    );
+    let wallet_balance = spark_wallet
+        .balance
+        .as_ref()
+        .and(wallet_display_balance_sats)
+        .map(format_mission_control_amount)
+        .unwrap_or_else(|| "LOADING".to_string());
+    let wallet_pending = if spark_wallet.balance.is_some() {
+        crate::bitcoin_display::format_mission_control_signed_amount(wallet_pending_delta_sats)
+    } else {
+        "LOADING".to_string()
+    };
+    let wallet_address = spark_wallet
+        .spark_address
+        .as_deref()
+        .or(spark_wallet.bitcoin_address.as_deref())
+        .map(mask_secret)
+        .unwrap_or_else(|| "NOT GENERATED".to_string());
+    let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
+    let wallet_value_chunk_len = mission_control_value_chunk_len(layout.earnings_panel);
+    let earnings_viewport = mission_control_section_scroll_viewport_bounds_above_footer(
+        layout.earnings_panel,
+        load_funds_trigger_bounds,
+        12.0,
+    );
+    paint.scene.push_clip(earnings_viewport);
+    let mut earnings_y = earnings_viewport.origin.y;
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "Today",
+        &today_display,
+        mission_control_green_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "This Month",
+        &month_display,
+        mission_control_text_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "All Time",
+        &lifetime_display,
+        mission_control_cyan_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "Balance (₿)",
+        &wallet_balance,
+        mission_control_green_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_mission_control_amount_line(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "Pending (₿)",
+        &wallet_pending,
+        if wallet_pending_delta_sats == 0 {
+            mission_control_muted_color()
+        } else {
+            theme::status::WARNING
+        },
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "Network",
+        &wallet_network,
+        wallet_value_chunk_len,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    earnings_y = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "Status",
+        wallet_status,
+        wallet_value_chunk_len,
+        layout.earnings_panel.size.width - 24.0,
+        true,
+    );
+    let _ = paint_wrapped_label_line_mission_control_label(
+        paint,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "Target",
+        &wallet_address,
+        wallet_value_chunk_len,
+        layout.earnings_panel.size.width - 24.0,
+        false,
+    );
+    paint.scene.pop_clip();
+    paint_mission_control_command_button(
+        load_funds_trigger_bounds,
+        "LOAD FUNDS",
+        mission_control_cyan_color(),
+        true,
+        paint,
+    );
+    paint_mission_control_command_button(
+        buy_mode_trigger_bounds,
+        "BUY MODE",
+        mission_control_cyan_color(),
+        buy_mode_enabled,
+        paint,
+    );
+
+    let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
+    paint.scene.push_clip(active_clip);
+    let active_panel_state = mission_control_active_jobs_panel_state(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+        job_inbox,
+        active_job,
+        earn_job_lifecycle_projection,
+        spark_wallet,
+    );
+    let active_state = match active_panel_state.headline.as_str() {
+        "STANDBY" => ("STANDBY", mission_control_orange_color()),
+        "FAULT" => ("FAULT", mission_control_red_color()),
+        "ACTIVE" => ("ACTIVE", mission_control_green_color()),
+        _ => ("SCANNING", mission_control_cyan_color()),
+    };
+    let active_content_y = mission_control_section_content_y(layout.active_jobs_panel);
+    paint.scene.draw_text(paint.text.layout_mono(
+        active_state.0,
+        Point::new(layout.active_jobs_panel.origin.x + 12.0, active_content_y),
+        22.0,
+        active_state.1,
+    ));
+    for (index, line) in active_panel_state.lines.iter().enumerate() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(
+                layout.active_jobs_panel.origin.x + 12.0,
+                active_content_y + 30.0 + index as f32 * 17.0,
+            ),
+            10.0,
+            if index == 2 && active_job.job.is_some() {
+                mission_control_green_color()
+            } else {
+                mission_control_text_color()
+            },
+        ));
+    }
+    paint.scene.pop_clip();
+
+    let log_copy_hovered = pointer_in_pane && log_copy_bounds.contains(cursor_position);
+    let log_copy_clicked = log_stream.copy_button_click_feedback(now_epoch_ms);
+    let filter_hovered = pointer_in_pane && filter_bounds.contains(cursor_position);
+    let filter_label = match log_stream
+        .active_level_filter()
+        .unwrap_or(LogStreamLevelFilter::Info)
+    {
+        LogStreamLevelFilter::Debug => "DBG",
+        LogStreamLevelFilter::Info => "INF",
+        LogStreamLevelFilter::Warn => "WRN",
+        LogStreamLevelFilter::Error => "ERR",
+    };
+    paint_mission_control_log_copy_icon_button(
+        log_copy_bounds,
+        mission_control_orange_color(),
+        log_copy_hovered,
+        log_copy_clicked,
+        paint,
+    );
+    paint_mission_control_log_filter_button(filter_bounds, filter_label, filter_hovered, paint);
+    let log_body_bounds = mission_control_section_scroll_viewport_bounds(layout.log_stream);
+    paint.scene.draw_quad(
+        Quad::new(log_body_bounds)
+            .with_background(mission_control_background_color().with_alpha(0.75))
+            .with_corner_radius(4.0),
+    );
+    log_stream.terminal.set_title("");
+    log_stream.terminal.paint(log_body_bounds, paint);
+
+    if mission_control_show_local_model_button(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    ) {
+        let download_label = mission_control_local_model_button_label(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        );
+        let download_enabled = mission_control_local_action_enabled(
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        );
+        paint_mission_control_command_button(
+            download_bounds,
+            &download_label,
+            if download_enabled {
+                mission_control_orange_color()
+            } else {
+                mission_control_muted_color()
+            },
+            download_enabled,
+            paint,
+        );
+    }
+    if mission_control_local_fm_test_button_visible(desktop_shell_mode, local_inference_runtime) {
+        let test_enabled = mission_control_local_fm_test_enabled(
+            provider_control,
+            desktop_shell_mode,
+            provider_runtime,
+            local_inference_runtime,
+        );
+        paint_mission_control_command_button(
+            test_bounds,
+            &mission_control_local_fm_test_button_label(
+                provider_control,
+                provider_runtime,
+                local_inference_runtime,
+                desktop_shell_mode,
+            ),
+            if test_enabled {
+                mission_control_cyan_color()
+            } else {
+                mission_control_muted_color()
+            },
+            test_enabled,
+            paint,
+        );
+    }
+
+    paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        content_bounds,
+        viewport,
+        layout_measure.total_content_height,
+        column_scroll,
+        paint,
+    );
+
+    if mission_control.load_funds_popup_open() {
+        let base_layer = paint.scene.layer();
+        paint.scene.set_layer(base_layer.saturating_add(1));
+        let popup_bounds = mission_control_load_funds_popup_bounds(content_bounds);
+        let popup_viewport =
+            mission_control_load_funds_popup_scroll_viewport_bounds(content_bounds);
+        let popup_close_bounds =
+            mission_control_load_funds_popup_close_button_bounds(content_bounds);
+        let lightning_state = spark_wallet.last_invoice_state(mission_control_now_epoch_seconds());
+        let lightning_target_text = match lightning_state {
+            SparkInvoiceState::Ready => spark_wallet
+                .last_invoice
+                .as_deref()
+                .unwrap_or("Generate a Lightning invoice to fund this wallet.")
+                .to_string(),
+            SparkInvoiceState::Expired => {
+                "Previous Lightning invoice expired. Generate a fresh receive target.".to_string()
+            }
+            SparkInvoiceState::Empty => {
+                "Generate a Lightning invoice to fund this wallet.".to_string()
+            }
+        };
+        let recent_receive_history = mission_control_recent_receive_history(spark_wallet);
+        let load_funds_measurement_layout =
+            mission_control_load_funds_popup_layout_with_scroll(content_bounds, 0.0);
+        let load_funds_content_height = mission_control_load_funds_content_height(
+            &load_funds_measurement_layout,
+            &wallet_network,
+            wallet_status,
+            mission_control_lightning_receive_state_label(lightning_state),
+            &lightning_target_text,
+            &recent_receive_history,
+        );
+        let load_funds_max_scroll =
+            mission_control_max_scroll_for_viewport(popup_viewport, load_funds_content_height);
+        let load_funds_scroll =
+            mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
+        let load_funds_layout =
+            mission_control_load_funds_popup_layout_with_scroll(content_bounds, load_funds_scroll);
+        let lightning_amount_valid = mission_control
+            .load_funds_amount_sats
+            .get_value()
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .is_some_and(|value| value > 0);
+
+        paint
+            .scene
+            .draw_quad(Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)));
+        paint_mission_control_section_panel(
+            popup_bounds,
+            "LOAD FUNDS",
+            mission_control_cyan_color(),
+            false,
+            paint,
+        );
+        paint_mission_control_close_icon_button(
+            popup_close_bounds,
+            mission_control_text_color(),
+            paint,
+        );
+
+        paint.scene.push_clip(popup_viewport);
+        let mut lightning_sats_label = paint.text.layout_mono(
+            "LIGHTNING SATS (₿)",
+            Point::ZERO,
+            MISSION_CONTROL_PANEL_FONT_SIZE,
+            mission_control_muted_color(),
+        );
+        let lightning_sats_label_bounds = lightning_sats_label.bounds();
+        let lightning_sats_label_bottom = load_funds_layout.amount_input.origin.y - 8.0;
+        lightning_sats_label.origin = Point::new(
+            load_funds_layout.amount_input.origin.x - lightning_sats_label_bounds.origin.x,
+            lightning_sats_label_bottom
+                - lightning_sats_label_bounds.size.height
+                - lightning_sats_label_bounds.origin.y,
+        );
+        paint.scene.draw_text(lightning_sats_label);
+        mission_control
+            .load_funds_amount_sats
+            .set_max_width(load_funds_layout.amount_input.size.width);
+        mission_control
+            .load_funds_amount_sats
+            .paint(load_funds_layout.amount_input, paint);
+        paint_mission_control_command_button(
+            load_funds_layout.lightning_button,
+            "LIGHTNING RECEIVE",
+            mission_control_green_color(),
+            lightning_amount_valid,
+            paint,
+        );
+        paint_mission_control_command_button(
+            load_funds_layout.copy_lightning_button,
+            "COPY LIGHTNING",
+            mission_control_cyan_color(),
+            lightning_state == SparkInvoiceState::Ready,
+            paint,
+        );
+        let mut lightning_withdraw_label = paint.text.layout_mono(
+            "LIGHTNING WITHDRAW",
+            Point::ZERO,
+            MISSION_CONTROL_PANEL_FONT_SIZE,
+            mission_control_muted_color(),
+        );
+        let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
+        let lightning_withdraw_label_bottom = load_funds_layout.send_invoice_input.origin.y - 8.0;
+        lightning_withdraw_label.origin = Point::new(
+            load_funds_layout.send_invoice_input.origin.x
+                - lightning_withdraw_label_bounds.origin.x,
+            lightning_withdraw_label_bottom
+                - lightning_withdraw_label_bounds.size.height
+                - lightning_withdraw_label_bounds.origin.y,
+        );
+        paint.scene.draw_text(lightning_withdraw_label);
+        mission_control
+            .send_invoice
+            .set_max_width(load_funds_layout.send_invoice_input.size.width);
+        mission_control
+            .send_invoice
+            .paint(load_funds_layout.send_invoice_input, paint);
+        paint_mission_control_command_button(
+            load_funds_layout.send_lightning_button,
+            "LIGHTNING WITHDRAW",
+            mission_control_orange_color(),
+            !mission_control.send_invoice.get_value().trim().is_empty(),
+            paint,
+        );
+        paint_mission_control_command_button(
+            load_funds_layout.copy_seed_button,
+            "COPY SEED",
+            mission_control_cyan_color(),
+            nostr_identity.is_some_and(|identity| !identity.mnemonic.trim().is_empty()),
+            paint,
+        );
+        let load_funds_value_chunk_len =
+            mission_control_value_chunk_len(load_funds_layout.details_column);
+        let load_funds_body_chunk_len =
+            mission_control_body_chunk_len(load_funds_layout.details_column);
+        let mut load_funds_y = load_funds_layout.details_column.origin.y;
+        load_funds_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Network",
+            &wallet_network,
+            load_funds_value_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        load_funds_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Connection",
+            wallet_status,
+            load_funds_value_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        load_funds_y = paint_wrapped_label_line_mission_control_label(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Lightning",
+            mission_control_lightning_receive_state_label(lightning_state),
+            load_funds_value_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        load_funds_y = paint_mission_control_body_block(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Lightning target",
+            &lightning_target_text,
+            load_funds_body_chunk_len,
+            load_funds_layout.details_column.size.width,
+            true,
+        );
+        let _ = paint_mission_control_body_block(
+            paint,
+            load_funds_layout.details_column.origin.x,
+            load_funds_y,
+            "Recent receives",
+            &recent_receive_history,
+            load_funds_body_chunk_len,
+            load_funds_layout.details_column.size.width,
+            false,
+        );
+        paint.scene.pop_clip();
+        paint_mission_control_scrollbar_for_viewport(
+            popup_bounds,
+            popup_viewport,
+            load_funds_content_height,
+            load_funds_scroll,
+            paint,
+        );
+        paint.scene.set_layer(base_layer);
+    }
+
+    if mission_control.buy_mode_popup_open() {
+        let base_layer = paint.scene.layer();
+        paint.scene.set_layer(base_layer.saturating_add(1));
+        let popup_bounds = mission_control_buy_mode_popup_bounds(content_bounds);
+        let popup_close_bounds = mission_control_buy_mode_popup_close_button_bounds(content_bounds);
+        paint
+            .scene
+            .draw_quad(Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.42)));
+        paint_mission_control_section_panel(
+            popup_bounds,
+            "BUY MODE",
+            mission_control_cyan_color(),
+            false,
+            paint,
+        );
+        paint_mission_control_close_icon_button(
+            popup_close_bounds,
+            mission_control_text_color(),
+            paint,
+        );
+        paint_mission_control_buy_mode_panel(
+            popup_bounds,
+            autopilot_chat,
+            buy_mode,
+            network_requests,
+            spark_wallet,
+            now,
+            paint,
+        );
+        paint.scene.set_layer(base_layer);
+    }
+}
+
 pub(crate) fn paint_mission_control_sell_compute_focus(
     content_bounds: Bounds,
     cursor_position: Point,
@@ -3013,6 +4108,8 @@ pub(crate) fn paint_mission_control_sell_compute_focus(
     paint.scene.push_clip(focus_bounds);
     paint_go_online_pane(
         content_bounds,
+        PanePresentation::Windowed,
+        false,
         true,
         cursor_position,
         desktop_shell_mode,
@@ -3806,7 +4903,7 @@ pub(crate) fn mission_control_buy_mode_panel_state(
 }
 
 fn mission_control_background_color() -> Hsla {
-    Hsla::from_hex(0x070C14)
+    Hsla::from_hex(0x000000)
 }
 
 const MISSION_CONTROL_SECTION_HEADER_HEIGHT: f32 = 28.0;
@@ -7324,37 +8421,38 @@ fn paint_active_job_pane(
     } else {
         paint_disabled_button(abort_bounds, "Abort unsupported", paint);
     }
-    paint_action_button(copy_bounds, "Copy all", paint);
-    let viewport =
-        active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
-    paint.scene.push_clip(viewport);
-    let chunk_len = (((viewport.size.width - 8.0).max(48.0) / 6.2).floor() as usize).max(12);
-    let lines = build_active_job_scroll_lines(
+    paint_secondary_button(copy_bounds, "Copy all", paint);
+
+    let summary_bounds =
+        active_job_summary_bounds(content_bounds, active_job.runtime_supports_abort);
+    let summary = build_active_job_summary_card(
         active_job,
         earn_job_lifecycle_projection,
         spark_wallet,
-        chunk_len,
     );
-    let line_height = 14.0;
-    let content_height = (lines.len() as f32 * line_height).max(viewport.size.height);
+    paint_active_job_summary_panel(summary_bounds, &summary, paint);
+
+    let viewport =
+        active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
+    let sections = build_active_job_detail_sections(
+        active_job,
+        earn_job_lifecycle_projection,
+        spark_wallet,
+    );
+    let section_width = (viewport.size.width - 12.0).max(0.0);
+    let content_height = active_job_sections_content_height(&sections, section_width);
     let max_offset = (content_height - viewport.size.height).max(0.0);
     let scroll_offset = active_job.scroll_offset_px.clamp(0.0, max_offset);
-    let mut line_y = viewport.origin.y - scroll_offset;
-    for line in lines.iter() {
-        if line_y + line_height < viewport.origin.y {
-            line_y += line_height;
-            continue;
+    paint.scene.push_clip(viewport);
+    let mut section_y = viewport.origin.y - scroll_offset;
+    for section in sections.iter() {
+        let section_height = active_job_section_height(section, section_width);
+        let section_bounds = Bounds::new(viewport.origin.x, section_y, section_width, section_height);
+        if section_bounds.max_y() >= viewport.origin.y && section_bounds.origin.y <= viewport.max_y()
+        {
+            paint_active_job_detail_section(section_bounds, section, paint);
         }
-        if line_y > viewport.max_y() {
-            break;
-        }
-        paint.scene.draw_text(paint.text.layout_mono(
-            &line.text,
-            Point::new(viewport.origin.x, line_y),
-            10.0,
-            line.color,
-        ));
-        line_y += line_height;
+        section_y += section_height + ACTIVE_JOB_SECTION_GAP;
     }
     paint.scene.pop_clip();
 
@@ -7397,9 +8495,668 @@ pub(crate) fn active_job_clipboard_text(
     lines.join("\n")
 }
 
+const ACTIVE_JOB_SECTION_GAP: f32 = 14.0;
+const ACTIVE_JOB_SECTION_HORIZONTAL_INSET: f32 = 14.0;
+const ACTIVE_JOB_SECTION_NOTE_LINE_HEIGHT: f32 = 14.0;
+const ACTIVE_JOB_SECTION_NOTE_TRAILING_GAP: f32 = 10.0;
+
+struct ActiveJobSummaryCard {
+    state_label: String,
+    state_color: Hsla,
+    current_phase: String,
+    next_event: String,
+    current_action: String,
+    supporting_note: Option<(String, Hsla)>,
+}
+
+struct ActiveJobDetailSection {
+    title: &'static str,
+    accent: Hsla,
+    rows: Vec<ActiveJobDetailRow>,
+}
+
+enum ActiveJobDetailRow {
+    Block { label: String, value: String },
+    Note { text: String, color: Hsla },
+}
+
 struct ActiveJobRenderLine {
     text: String,
     color: Hsla,
+}
+
+fn active_job_state_color(active_job: &ActiveJobState) -> Hsla {
+    match active_job.load_state {
+        PaneLoadState::Ready => theme::status::SUCCESS,
+        PaneLoadState::Loading => theme::accent::PRIMARY,
+        PaneLoadState::Error => theme::status::ERROR,
+    }
+}
+
+fn build_active_job_summary_card(
+    active_job: &ActiveJobState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
+) -> ActiveJobSummaryCard {
+    let state_color = active_job_state_color(active_job);
+    let default_action = if active_job.load_state == PaneLoadState::Loading {
+        "Waiting for active-job replay frame...".to_string()
+    } else {
+        "Monitoring current provider execution".to_string()
+    };
+    let current_action = active_job
+        .last_action
+        .as_deref()
+        .map(|value| compact_preview_text(value, 72))
+        .unwrap_or(default_action);
+
+    let supporting_note = active_job
+        .last_error
+        .as_deref()
+        .map(|error| (compact_preview_text(error, 94), theme::status::ERROR))
+        .or_else(|| {
+            (!active_job.runtime_supports_abort).then(|| {
+                (
+                    "Abort disabled: runtime lane does not support cancel.".to_string(),
+                    theme::text::MUTED,
+                )
+            })
+        });
+
+    if active_job.load_state == PaneLoadState::Loading {
+        return ActiveJobSummaryCard {
+            state_label: active_job.load_state.label().to_ascii_uppercase(),
+            state_color,
+            current_phase: "Loading replay".to_string(),
+            next_event: "Awaiting active-job frame".to_string(),
+            current_action,
+            supporting_note,
+        };
+    }
+
+    let Some(job) = active_job.job.as_ref() else {
+        return ActiveJobSummaryCard {
+            state_label: active_job.load_state.label().to_ascii_uppercase(),
+            state_color,
+            current_phase: "Idle".to_string(),
+            next_event: "Waiting for accepted request".to_string(),
+            current_action,
+            supporting_note,
+        };
+    };
+
+    let flow_snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
+        active_job,
+        earn_job_lifecycle_projection,
+        spark_wallet,
+    )
+    .expect("active job snapshot should exist when job exists");
+
+    ActiveJobSummaryCard {
+        state_label: active_job.load_state.label().to_ascii_uppercase(),
+        state_color,
+        current_phase: format!(
+            "{} / {}",
+            flow_snapshot.authority.as_str().to_ascii_uppercase(),
+            flow_snapshot.phase.as_str().to_ascii_uppercase()
+        ),
+        next_event: compact_preview_text(&flow_snapshot.next_expected_event, 52),
+        current_action: if active_job.last_action.is_some() {
+            current_action
+        } else {
+            compact_preview_text(
+                &format!(
+                    "{} // {}",
+                    job.capability,
+                    active_job_stage_display(job.stage, flow_snapshot.phase)
+                ),
+                72,
+            )
+        },
+        supporting_note,
+    }
+}
+
+fn build_active_job_detail_sections(
+    active_job: &ActiveJobState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
+) -> Vec<ActiveJobDetailSection> {
+    let mut sections = Vec::new();
+
+    if active_job.load_state == PaneLoadState::Loading {
+        sections.push(ActiveJobDetailSection {
+            title: "STATUS DETAILS",
+            accent: theme::accent::PRIMARY,
+            rows: vec![ActiveJobDetailRow::Note {
+                text: "Waiting for active-job replay frame...".to_string(),
+                color: theme::text::MUTED,
+            }],
+        });
+        return sections;
+    }
+
+    let Some(job) = active_job.job.as_ref() else {
+        sections.push(ActiveJobDetailSection {
+            title: "JOB DETAILS",
+            accent: theme::accent::PRIMARY,
+            rows: vec![ActiveJobDetailRow::Note {
+                text: "No active job selected.".to_string(),
+                color: theme::text::MUTED,
+            }],
+        });
+        return sections;
+    };
+
+    let flow_snapshot = crate::nip90_compute_flow::build_active_job_flow_snapshot(
+        active_job,
+        earn_job_lifecycle_projection,
+        spark_wallet,
+    )
+    .expect("active job snapshot should exist when job exists");
+    let now_epoch_seconds = mission_control_now_epoch_seconds();
+    let pending_result_event_id = active_job
+        .pending_result_publish_event_id
+        .as_deref()
+        .unwrap_or("n/a");
+    let stage_display = active_job_stage_display(job.stage, flow_snapshot.phase);
+
+    sections.push(ActiveJobDetailSection {
+        title: "JOB IDENTIFIERS",
+        accent: theme::accent::PRIMARY,
+        rows: vec![
+            ActiveJobDetailRow::Block {
+                label: "Job ID".to_string(),
+                value: job.job_id.clone(),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Requester".to_string(),
+                value: job.requester.clone(),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Capability".to_string(),
+                value: job.capability.clone(),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Demand source".to_string(),
+                value: job.demand_source.label().to_string(),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Demand risk".to_string(),
+                value: job.demand_risk_class.label().to_string(),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Risk policy".to_string(),
+                value: job.demand_risk_disposition.label().to_string(),
+            },
+        ],
+    });
+
+    let mut flow_rows = vec![
+        ActiveJobDetailRow::Block {
+            label: "Stage".to_string(),
+            value: stage_display,
+        },
+        ActiveJobDetailRow::Block {
+            label: "Flow authority".to_string(),
+            value: flow_snapshot.authority.as_str().to_string(),
+        },
+        ActiveJobDetailRow::Block {
+            label: "Flow phase".to_string(),
+            value: flow_snapshot.phase.as_str().to_string(),
+        },
+        ActiveJobDetailRow::Block {
+            label: "Next event".to_string(),
+            value: flow_snapshot.next_expected_event.clone(),
+        },
+        ActiveJobDetailRow::Block {
+            label: "Result publish".to_string(),
+            value: flow_snapshot.result_publish_status.clone(),
+        },
+    ];
+    if !job.demand_risk_note.is_empty() {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Risk note".to_string(),
+            value: job.demand_risk_note.clone(),
+        });
+    }
+    if let Some(status) = flow_snapshot.settlement_status.as_deref() {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Settlement status".to_string(),
+            value: status.to_string(),
+        });
+    }
+    if let Some(method) = flow_snapshot.settlement_method.as_deref() {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Settlement method".to_string(),
+            value: method.to_string(),
+        });
+    }
+    if let Some(amount) = flow_snapshot.settlement_amount_sats {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Settlement amount".to_string(),
+            value: format!("{amount} sats"),
+        });
+    }
+    if let Some(fees) = flow_snapshot.settlement_fees_sats {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Settlement fees".to_string(),
+            value: format!("{fees} sats"),
+        });
+    }
+    if let Some(delta) = flow_snapshot.settlement_net_wallet_delta_sats {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Wallet delta".to_string(),
+            value: crate::spark_wallet::format_wallet_delta_sats(delta),
+        });
+    }
+    if let Some(window_seconds) = flow_snapshot.continuity_window_seconds {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Continuity window".to_string(),
+            value: format!("{window_seconds}s"),
+        });
+    }
+    if let Some(bolt11) = flow_snapshot.pending_bolt11.as_deref() {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Settlement invoice".to_string(),
+            value: crate::nip90_compute_flow::compact_payment_invoice(bolt11),
+        });
+    } else if matches!(
+        flow_snapshot.phase,
+        crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment
+            | crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+            | crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment
+            | crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid
+    ) {
+        flow_rows.push(ActiveJobDetailRow::Block {
+            label: "Settlement invoice".to_string(),
+            value: "none".to_string(),
+        });
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::RequestingPayment {
+        flow_rows.push(ActiveJobDetailRow::Note {
+            text: "Settlement outcome: compute completed and the result was delivered; preparing a Lightning invoice for buyer settlement".to_string(),
+            color: theme::text::PRIMARY,
+        });
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::AwaitingPayment {
+        flow_rows.push(ActiveJobDetailRow::Note {
+            text: "Settlement outcome: compute completed and the result was delivered; awaiting buyer Lightning payment".to_string(),
+            color: theme::text::PRIMARY,
+        });
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet {
+        flow_rows.push(ActiveJobDetailRow::Note {
+            text: "Settlement outcome: seller settlement appears confirmed, but local buyer wallet confirmation is still pending".to_string(),
+            color: theme::text::PRIMARY,
+        });
+    }
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::DeliveredUnpaid {
+        flow_rows.push(ActiveJobDetailRow::Note {
+            text: "Settlement outcome: compute completed and the result was delivered, but buyer settlement never arrived".to_string(),
+            color: theme::status::ERROR,
+        });
+    }
+    if let Some(reason) = job.failure_reason.as_deref() {
+        flow_rows.push(ActiveJobDetailRow::Note {
+            text: format!("Failure reason: {reason}"),
+            color: theme::status::ERROR,
+        });
+    }
+    sections.push(ActiveJobDetailSection {
+        title: "FLOW STATUS",
+        accent: theme::status::SUCCESS,
+        rows: flow_rows,
+    });
+
+    sections.push(ActiveJobDetailSection {
+        title: "TIMING & FRESHNESS",
+        accent: theme::accent::PRIMARY,
+        rows: vec![
+            ActiveJobDetailRow::Block {
+                label: "Request freshness".to_string(),
+                value: active_job_request_freshness_summary(job, now_epoch_seconds),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Request created".to_string(),
+                value: format_epoch_seconds_option(job.request_created_at_epoch_seconds),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Request expires".to_string(),
+                value: format_epoch_seconds_option(job.request_expires_at_epoch_seconds),
+            },
+        ],
+    });
+
+    sections.push(ActiveJobDetailSection {
+        title: "OPERATIONS & SESSION",
+        accent: theme::accent::PRIMARY,
+        rows: vec![
+            ActiveJobDetailRow::Block {
+                label: "Projection authority".to_string(),
+                value: flow_snapshot.projection_authority.as_str().to_string(),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Skill scope".to_string(),
+                value: job
+                    .skill_scope_id
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "SKL manifest".to_string(),
+                value: job
+                    .skl_manifest_a
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "SA tick request".to_string(),
+                value: job
+                    .sa_tick_request_event_id
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "SA tick result".to_string(),
+                value: job
+                    .sa_tick_result_event_id
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Trajectory session".to_string(),
+                value: job
+                    .sa_trajectory_session_id
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "AC envelope".to_string(),
+                value: job
+                    .ac_envelope_event_id
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "AC settlement".to_string(),
+                value: job
+                    .ac_settlement_event_id
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "AC default".to_string(),
+                value: job
+                    .ac_default_event_id
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Invoice ID".to_string(),
+                value: job.invoice_id.clone().unwrap_or_else(|| "n/a".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Payment ID".to_string(),
+                value: job.payment_id.clone().unwrap_or_else(|| "n/a".to_string()),
+            },
+            ActiveJobDetailRow::Block {
+                label: "Result event".to_string(),
+                value: pending_result_event_id.to_string(),
+            },
+        ],
+    });
+
+    let timeline_rows = [
+        JobLifecycleStage::Received,
+        JobLifecycleStage::Accepted,
+        JobLifecycleStage::Running,
+        JobLifecycleStage::Delivered,
+        JobLifecycleStage::Paid,
+    ]
+    .into_iter()
+    .map(|stage| {
+        let reached = active_job_timeline_stage_reached(active_job, stage);
+        ActiveJobDetailRow::Note {
+            text: format!("[{}] {}", if reached { "x" } else { " " }, stage.label()),
+            color: if reached {
+                theme::status::SUCCESS
+            } else {
+                theme::text::MUTED
+            },
+        }
+    })
+    .collect();
+    sections.push(ActiveJobDetailSection {
+        title: "TIMELINE",
+        accent: theme::status::SUCCESS,
+        rows: timeline_rows,
+    });
+
+    let execution_rows = if job.events.is_empty() {
+        vec![ActiveJobDetailRow::Note {
+            text: "No execution events recorded yet.".to_string(),
+            color: theme::text::MUTED,
+        }]
+    } else {
+        job.events
+            .iter()
+            .map(|event| ActiveJobDetailRow::Note {
+                text: format!("[#{:03}] {}", event.seq, event.message),
+                color: theme::text::PRIMARY,
+            })
+            .collect()
+    };
+    sections.push(ActiveJobDetailSection {
+        title: "EXECUTION LOG",
+        accent: theme::accent::PRIMARY,
+        rows: execution_rows,
+    });
+
+    sections
+}
+
+fn paint_active_job_summary_panel(
+    bounds: Bounds,
+    summary: &ActiveJobSummaryCard,
+    paint: &mut PaintContext,
+) {
+    paint_mission_control_section_panel(bounds, "JOB SUMMARY", summary.state_color, false, paint);
+
+    let body_x = bounds.origin.x + ACTIVE_JOB_SECTION_HORIZONTAL_INSET;
+    let body_width = (bounds.size.width - ACTIVE_JOB_SECTION_HORIZONTAL_INSET * 2.0).max(0.0);
+    let content_y = mission_control_section_content_y(bounds);
+    let label_style = app_text_style(AppTextRole::FormLabel);
+    let value_style = app_text_style(AppTextRole::FormValue);
+    let supporting_style = app_text_style(AppTextRole::Supporting);
+    let left_column_width = body_width.min(140.0);
+    let right_x = body_x + left_column_width + 18.0;
+    let right_width = (bounds.max_x() - ACTIVE_JOB_SECTION_HORIZONTAL_INSET - right_x).max(72.0);
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        "STATE",
+        Point::new(body_x, content_y),
+        label_style.font_size,
+        mission_control_muted_color(),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &summary.state_label,
+        Point::new(body_x, content_y + 18.0),
+        18.0,
+        summary.state_color,
+    ));
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        "CURRENT PHASE",
+        Point::new(right_x, content_y),
+        label_style.font_size,
+        mission_control_muted_color(),
+    ));
+    let phase_chunk_len = (((right_width - 6.0).max(72.0) / 6.4).floor() as usize).max(12);
+    let mut phase_y = content_y + 16.0;
+    for chunk in split_text_for_display(&summary.current_phase, phase_chunk_len) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(right_x, phase_y),
+            supporting_style.font_size,
+            mission_control_text_color(),
+        ));
+        phase_y += ACTIVE_JOB_SECTION_NOTE_LINE_HEIGHT;
+    }
+
+    let meta_y = content_y + 44.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(body_x, meta_y - 6.0, body_width, 1.0))
+            .with_background(mission_control_panel_border_color().with_alpha(0.46)),
+    );
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        "NEXT EVENT",
+        Point::new(body_x, meta_y + 6.0),
+        label_style.font_size,
+        mission_control_muted_color(),
+    ));
+    let next_chunk_len = (((body_width - 6.0).max(72.0) / 6.4).floor() as usize).max(12);
+    let next_value = compact_preview_text(&summary.next_event, next_chunk_len);
+    paint.scene.draw_text(paint.text.layout_mono(
+        &next_value,
+        Point::new(body_x, meta_y + 20.0),
+        supporting_style.font_size,
+        mission_control_text_color(),
+    ));
+
+    let action_y = meta_y + 40.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        "CURRENT ACTION",
+        Point::new(body_x, action_y),
+        label_style.font_size,
+        mission_control_muted_color(),
+    ));
+    let action_value = compact_preview_text(&summary.current_action, next_chunk_len);
+    paint.scene.draw_text(paint.text.layout_mono(
+        &action_value,
+        Point::new(body_x, action_y + 14.0),
+        value_style.font_size,
+        mission_control_text_color(),
+    ));
+
+    if let Some((note, color)) = summary.supporting_note.as_ref() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &compact_preview_text(note, next_chunk_len),
+            Point::new(body_x, action_y + 30.0),
+            supporting_style.font_size,
+            *color,
+        ));
+    }
+}
+
+fn active_job_section_note_height(text: &str, chunk_len: usize, show_divider: bool) -> f32 {
+    let line_count = split_text_for_display(text, chunk_len.max(1))
+        .len()
+        .max(1) as f32;
+    line_count * ACTIVE_JOB_SECTION_NOTE_LINE_HEIGHT
+        + if show_divider {
+            MISSION_CONTROL_ROW_DIVIDER_TOP_GAP
+                + MISSION_CONTROL_ROW_DIVIDER_HEIGHT
+                + MISSION_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+        } else {
+            ACTIVE_JOB_SECTION_NOTE_TRAILING_GAP
+        }
+}
+
+fn paint_active_job_section_note(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    text: &str,
+    color: Hsla,
+    chunk_len: usize,
+    row_width: f32,
+    show_divider: bool,
+) -> f32 {
+    let supporting_style = app_text_style(AppTextRole::Supporting);
+    let mut line_y = y;
+    for chunk in split_text_for_display(text, chunk_len.max(1)) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(x, line_y),
+            supporting_style.font_size,
+            color,
+        ));
+        line_y += ACTIVE_JOB_SECTION_NOTE_LINE_HEIGHT;
+    }
+    let row_bottom = line_y.max(y + ACTIVE_JOB_SECTION_NOTE_LINE_HEIGHT);
+    if show_divider {
+        paint_mission_control_row_divider(paint, x, row_bottom, row_width)
+    } else {
+        row_bottom + ACTIVE_JOB_SECTION_NOTE_TRAILING_GAP
+    }
+}
+
+fn active_job_section_height(section: &ActiveJobDetailSection, width: f32) -> f32 {
+    let row_width = (width - ACTIVE_JOB_SECTION_HORIZONTAL_INSET * 2.0).max(0.0);
+    let chunk_len = (((row_width - 6.0).max(72.0) / 6.2).floor() as usize).max(12);
+    let mut body_height = 0.0;
+    for (index, row) in section.rows.iter().enumerate() {
+        let show_divider = index + 1 < section.rows.len();
+        body_height += match row {
+            ActiveJobDetailRow::Block { value, .. } => {
+                mission_control_body_block_height(value, chunk_len, show_divider)
+            }
+            ActiveJobDetailRow::Note { text, .. } => {
+                active_job_section_note_height(text, chunk_len, show_divider)
+            }
+        };
+    }
+    MISSION_CONTROL_SECTION_CONTENT_TOP + body_height + MISSION_CONTROL_SECTION_BOTTOM_PADDING
+}
+
+fn active_job_sections_content_height(sections: &[ActiveJobDetailSection], width: f32) -> f32 {
+    let sections_height: f32 = sections
+        .iter()
+        .map(|section| active_job_section_height(section, width))
+        .sum();
+    let gaps = ACTIVE_JOB_SECTION_GAP * sections.len().saturating_sub(1) as f32;
+    (sections_height + gaps).max(0.0)
+}
+
+fn paint_active_job_detail_section(
+    bounds: Bounds,
+    section: &ActiveJobDetailSection,
+    paint: &mut PaintContext,
+) {
+    paint_mission_control_section_panel(bounds, section.title, section.accent, false, paint);
+
+    let row_x = bounds.origin.x + ACTIVE_JOB_SECTION_HORIZONTAL_INSET;
+    let row_width = (bounds.size.width - ACTIVE_JOB_SECTION_HORIZONTAL_INSET * 2.0).max(0.0);
+    let chunk_len = (((row_width - 6.0).max(72.0) / 6.2).floor() as usize).max(12);
+    let mut row_y = mission_control_section_content_y(bounds);
+
+    for (index, row) in section.rows.iter().enumerate() {
+        let show_divider = index + 1 < section.rows.len();
+        row_y = match row {
+            ActiveJobDetailRow::Block { label, value } => paint_mission_control_body_block(
+                paint,
+                row_x,
+                row_y,
+                label,
+                value,
+                chunk_len,
+                row_width,
+                show_divider,
+            ),
+            ActiveJobDetailRow::Note { text, color } => paint_active_job_section_note(
+                paint,
+                row_x,
+                row_y,
+                text,
+                *color,
+                chunk_len,
+                row_width,
+                show_divider,
+            ),
+        };
+    }
 }
 
 fn push_active_job_wrapped_line(
