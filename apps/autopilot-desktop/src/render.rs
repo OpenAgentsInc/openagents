@@ -35,7 +35,8 @@ use crate::pane_registry::{
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, RIGHT_SIDEBAR_ENABLED,
-    cad_palette_command_specs, clamp_all_panes_to_window, sidebar_reserved_width,
+    cad_palette_command_specs, clamp_all_panes_to_window, mission_control_docked_visible,
+    sidebar_reserved_width,
 };
 use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::runtime_lanes::{
@@ -61,7 +62,7 @@ fn app_glass_overlay_color() -> Hsla {
 }
 
 fn app_glass_sidebar_color() -> Hsla {
-    Hsla::from_hex(0x10202D)
+    Hsla::from_hex(0x333333)
 }
 
 fn preferred_surface_alpha_mode(
@@ -1133,6 +1134,32 @@ fn open_startup_pane(state: &mut RenderState, pane_kind: PaneKind) {
 }
 
 fn layout_split_shell_startup_panes(state: &mut RenderState) {
+    if mission_control_docked_visible(state) {
+        if let Some(chat_idx) = state
+            .panes
+            .iter()
+            .position(|pane| pane.kind == PaneKind::AutopilotChat)
+        {
+            let logical = logical_size(&state.config, state.scale_factor);
+            let usable_width = (logical.width - sidebar_reserved_width(state)).max(0.0);
+            let chat_bounds = state.panes[chat_idx].bounds;
+            state.panes[chat_idx].bounds = Bounds::new(
+                12.0,
+                56.0,
+                chat_bounds
+                    .size
+                    .width
+                    .min((usable_width - 24.0).max(PANE_MIN_WIDTH)),
+                chat_bounds
+                    .size
+                    .height
+                    .min((logical.height - 96.0).max(PANE_MIN_HEIGHT)),
+            );
+            clamp_all_panes_to_window(state);
+        }
+        return;
+    }
+
     let chat_idx = state
         .panes
         .iter()
@@ -1287,17 +1314,23 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     let panel_width = sidebar_reserved_width(state);
     let sidebar_x = (width - panel_width).max(0.0);
 
-    if RIGHT_SIDEBAR_ENABLED && panel_width > 0.0 {
+    if panel_width > 0.0 {
         #[cfg(target_os = "macos")]
-        let sidebar_color = app_glass_sidebar_color().with_alpha(0.486);
+        let sidebar_color = app_glass_sidebar_color().with_alpha(0.92);
         #[cfg(not(target_os = "macos"))]
-        let sidebar_color = theme::bg::ELEVATED;
+        let sidebar_color = app_glass_sidebar_color();
 
         scene.draw_quad(
             Quad::new(Bounds::new(sidebar_x, 0.0, panel_width, height))
                 .with_background(sidebar_color),
         );
+        scene.draw_quad(
+            Quad::new(Bounds::new(sidebar_x, 0.0, 1.0, height))
+                .with_background(theme::border::DEFAULT.with_alpha(0.28)),
+        );
+    }
 
+    if RIGHT_SIDEBAR_ENABLED && panel_width > 0.0 {
         // Settings icon in the bottom-right corner of the sidebar.
         let icon_size = 16.0;
         let padding = 12.0;
@@ -1705,6 +1738,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.chat_inputs,
             &mut state.data_seller_inputs,
             &mut state.calculator_inputs,
+            &state.sidebar,
             &mut state.mission_control,
             &mut state.provider_control,
             &mut state.provider_status_pane,
@@ -2026,7 +2060,7 @@ pub fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> S
 fn pane_fullscreen_active_for_panes(panes: &[crate::app_state::DesktopPane]) -> bool {
     panes
         .iter()
-        .any(|pane| !pane.presentation.uses_window_chrome())
+        .any(|pane| pane.presentation == crate::app_state::PanePresentation::Fullscreen)
 }
 
 pub fn pane_fullscreen_active(state: &RenderState) -> bool {
@@ -2376,5 +2410,21 @@ mod tests {
 
         panes.push(fullscreen_pane);
         assert!(pane_fullscreen_active_for_panes(&panes));
+    }
+
+    #[test]
+    fn pane_fullscreen_active_ignores_docked_panes() {
+        let docked_pane = DesktopPane {
+            id: 3,
+            title: "Docked".to_string(),
+            kind: PaneKind::GoOnline,
+            bounds: Bounds::ZERO,
+            windowed_bounds: Bounds::ZERO,
+            z_index: 1,
+            frame: wgpui::components::hud::PaneFrame::default(),
+            presentation: PanePresentation::DockedRight,
+        };
+
+        assert!(!pane_fullscreen_active_for_panes(&[docked_pane]));
     }
 }

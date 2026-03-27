@@ -3,12 +3,15 @@ use std::sync::{Mutex, OnceLock};
 
 use reqwest::Url;
 use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownParser, MarkdownRenderer};
-use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
+use wgpui::{
+    Bounds, Component, InputEvent, Key, NamedKey, PaintContext, Point, Quad, SvgQuad, theme,
+};
 
 use crate::app_state::{
     AutopilotChatState, AutopilotCompactionArtifact, AutopilotDiffArtifact, AutopilotMessage,
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
+    ChatHeaderMenuKind,
     ChatPaneInputs, ChatTranscriptSelectionState, DirectMessageMessageProjection,
     DirectMessageRoomProjection, ManagedChatChannelProjection, ManagedChatDeliveryState,
     ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
@@ -18,13 +21,12 @@ use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_renderer::split_text_for_display;
 use crate::pane_system::{
-    chat_compact_button_bounds, chat_composer_height_for_value,
-    chat_composer_input_bounds_with_height, chat_cycle_approval_mode_button_bounds,
-    chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
-    chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
-    chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
+    ChatHeaderMoreMenuItem, chat_compact_button_bounds, chat_composer_height_for_value,
+    chat_composer_input_bounds_with_height, chat_cycle_model_button_bounds,
+    chat_header_menu_row_bounds, chat_header_more_menu_items, chat_model_menu_bounds,
     chat_help_toggle_button_bounds, chat_interrupt_button_bounds, chat_new_thread_button_bounds,
-    chat_refresh_threads_button_bounds, chat_review_button_bounds, chat_send_button_bounds,
+    chat_more_menu_bounds,
+    chat_refresh_threads_button_bounds, chat_send_button_bounds,
     chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
     chat_thread_action_fork_button_bounds, chat_thread_action_open_editor_button_bounds,
     chat_thread_action_reload_button_bounds, chat_thread_action_rename_button_bounds,
@@ -2862,6 +2864,65 @@ fn sandbox_mode_label(mode: codex_client::SandboxMode) -> &'static str {
     }
 }
 
+fn chat_more_menu_item_label(
+    item: ChatHeaderMoreMenuItem,
+    autopilot_chat: &AutopilotChatState,
+) -> String {
+    match item {
+        ChatHeaderMoreMenuItem::ReasoningEffort => "Reasoning effort".to_string(),
+        ChatHeaderMoreMenuItem::ServiceTier => "Service tier".to_string(),
+        ChatHeaderMoreMenuItem::Personality => "Tone".to_string(),
+        ChatHeaderMoreMenuItem::CollaborationMode => "Collaboration".to_string(),
+        ChatHeaderMoreMenuItem::ApprovalMode => "Approval".to_string(),
+        ChatHeaderMoreMenuItem::SandboxMode => "Sandbox".to_string(),
+        ChatHeaderMoreMenuItem::ReviewOrImplement => {
+            if autopilot_chat.active_plan_artifact().is_some() {
+                if autopilot_chat.active_turn_id.is_some() {
+                    "Steer saved plan".to_string()
+                } else {
+                    "Implement saved plan".to_string()
+                }
+            } else {
+                "Review changes".to_string()
+            }
+        }
+    }
+}
+
+fn chat_more_menu_item_value(
+    item: ChatHeaderMoreMenuItem,
+    autopilot_chat: &AutopilotChatState,
+) -> Option<String> {
+    match item {
+        ChatHeaderMoreMenuItem::ReasoningEffort => Some(
+            autopilot_chat
+                .reasoning_effort
+                .as_deref()
+                .unwrap_or("auto")
+                .to_ascii_uppercase(),
+        ),
+        ChatHeaderMoreMenuItem::ServiceTier => {
+            Some(autopilot_chat.service_tier.label().to_ascii_uppercase())
+        }
+        ChatHeaderMoreMenuItem::Personality => {
+            Some(autopilot_chat.personality.label().to_ascii_uppercase())
+        }
+        ChatHeaderMoreMenuItem::CollaborationMode => Some(
+            autopilot_chat
+                .collaboration_mode
+                .label()
+                .to_ascii_uppercase(),
+        ),
+        ChatHeaderMoreMenuItem::ApprovalMode => {
+            Some(approval_mode_label(autopilot_chat.approval_mode).to_ascii_uppercase())
+        }
+        ChatHeaderMoreMenuItem::SandboxMode => {
+            Some(sandbox_mode_label(autopilot_chat.sandbox_mode).to_ascii_uppercase())
+        }
+        ChatHeaderMoreMenuItem::ReviewOrImplement => None,
+    }
+}
+
 fn git_state_summary(branch: Option<&str>, dirty: Option<bool>) -> String {
     match (branch, dirty) {
         (Some(branch), Some(true)) => format!("git:{}/dirty", compact_display_token(branch, 14)),
@@ -3028,20 +3089,272 @@ fn paint_thread_rail_button(
     ));
 }
 
-fn paint_header_chip(bounds: Bounds, label: &str, _accent: wgpui::Hsla, paint: &mut PaintContext) {
+fn paint_header_control_trigger(
+    bounds: Bounds,
+    eyebrow: &str,
+    value: &str,
+    accent: wgpui::Hsla,
+    show_chevron: bool,
+    open: bool,
+    hovered: bool,
+    disabled: bool,
+    paint: &mut PaintContext,
+) {
+    let background = if disabled {
+        chat_mission_panel_header_color().with_alpha(0.16)
+    } else if open {
+        chat_mission_panel_header_color().with_alpha(0.52)
+    } else if hovered {
+        chat_mission_panel_header_color().with_alpha(0.38)
+    } else {
+        chat_mission_panel_header_color().with_alpha(0.24)
+    };
+    let border = if disabled {
+        chat_mission_panel_border_color().with_alpha(0.10)
+    } else if open {
+        accent.with_alpha(0.34)
+    } else if hovered {
+        chat_mission_panel_border_color().with_alpha(0.30)
+    } else {
+        chat_mission_panel_border_color().with_alpha(0.18)
+    };
+    let eyebrow_color = if disabled {
+        chat_mission_muted_color().with_alpha(0.46)
+    } else if open {
+        accent.with_alpha(0.84)
+    } else {
+        chat_mission_muted_color().with_alpha(0.76)
+    };
+    let value_color = if disabled {
+        chat_mission_muted_color().with_alpha(0.58)
+    } else {
+        chat_mission_text_color().with_alpha(0.94)
+    };
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(chat_mission_panel_header_color().with_alpha(0.18))
-            .with_border(chat_mission_panel_border_color().with_alpha(0.12), 1.0)
+            .with_background(background)
+            .with_border(border, 1.0)
             .with_corner_radius(6.0),
     );
-    let clipped_label = truncate_for_width(label, bounds.size.width - 12.0);
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 1.0,
+            bounds.origin.y + 1.0,
+            (bounds.size.width - 2.0).max(0.0),
+            1.0,
+        ))
+        .with_background(accent.with_alpha(if open { 0.34 } else if hovered { 0.18 } else { 0.10 })),
+    );
     paint.scene.draw_text(paint.text.layout_mono(
-        &clipped_label,
-        Point::new(bounds.origin.x + 6.0, bounds.origin.y + 7.0),
-        9.0,
-        chat_mission_muted_color(),
+        eyebrow,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 4.0),
+        7.0,
+        eyebrow_color,
     ));
+    let chevron_reserved = if show_chevron { 16.0 } else { 0.0 };
+    let value_width = (bounds.size.width - 20.0 - chevron_reserved).max(24.0);
+    paint.scene.draw_text(paint.text.layout_mono(
+        &truncate_for_width(value, value_width),
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 15.0),
+        10.0,
+        value_color,
+    ));
+    if show_chevron {
+        paint.scene.draw_text(paint.text.layout_mono(
+            "▾",
+            Point::new(bounds.max_x() - 13.0, bounds.origin.y + 13.0),
+            10.0,
+            if disabled {
+                chat_mission_muted_color().with_alpha(0.42)
+            } else if open {
+                accent.with_alpha(0.92)
+            } else {
+                chat_mission_muted_color().with_alpha(0.76)
+            },
+        ));
+    }
+}
+
+fn paint_header_menu_shell(bounds: Bounds, accent: wgpui::Hsla, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 3.0,
+            bounds.origin.y + 6.0,
+            bounds.size.width,
+            bounds.size.height,
+        ))
+        .with_background(wgpui::Hsla::from_hex(0x000000).with_alpha(0.32))
+        .with_corner_radius(7.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(chat_mission_panel_color().with_alpha(1.0))
+            .with_border(chat_mission_panel_border_color().with_alpha(0.28), 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 1.0,
+            bounds.origin.y + 1.0,
+            (bounds.size.width - 2.0).max(0.0),
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.26)),
+    );
+}
+
+fn paint_header_menu_row(
+    bounds: Bounds,
+    label: &str,
+    trailing_value: Option<&str>,
+    highlighted: bool,
+    current: bool,
+    accent: wgpui::Hsla,
+    paint: &mut PaintContext,
+) {
+    let background = if highlighted {
+        chat_mission_panel_header_color().with_alpha(1.0)
+    } else if current {
+        chat_mission_panel_header_color().with_alpha(1.0)
+    } else {
+        chat_mission_panel_color().with_alpha(1.0)
+    };
+    let border = if highlighted {
+        accent.with_alpha(0.24)
+    } else if current {
+        chat_mission_panel_border_color().with_alpha(0.18)
+    } else {
+        chat_mission_panel_border_color().with_alpha(0.08)
+    };
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(background)
+            .with_border(border, 1.0)
+            .with_corner_radius(4.0),
+    );
+    if current {
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x + 1.0,
+                bounds.origin.y + 4.0,
+                2.0,
+                (bounds.size.height - 8.0).max(0.0),
+            ))
+            .with_background(accent.with_alpha(0.78))
+            .with_corner_radius(1.0),
+        );
+    }
+    let trailing_reserved = trailing_value.map(|_| 84.0).unwrap_or(18.0);
+    paint.scene.draw_text(paint.text.layout_mono(
+        &truncate_for_width(label, (bounds.size.width - 18.0 - trailing_reserved).max(36.0)),
+        Point::new(bounds.origin.x + if current { 11.0 } else { 10.0 }, bounds.origin.y + 8.0),
+        9.5,
+        if highlighted || current {
+            chat_mission_text_color().with_alpha(0.98)
+        } else {
+            chat_mission_text_color().with_alpha(0.84)
+        },
+    ));
+    if let Some(value) = trailing_value {
+        let value = truncate_for_width(value, 74.0);
+        let measured = paint.text.measure(&value, 8.5);
+        paint.scene.draw_text(paint.text.layout_mono(
+            &value,
+            Point::new(bounds.max_x() - measured - 10.0, bounds.origin.y + 9.0),
+            8.5,
+            if highlighted {
+                accent.with_alpha(0.92)
+            } else {
+                chat_mission_muted_color().with_alpha(0.84)
+            },
+        ));
+    } else if current {
+        paint.scene.draw_text(paint.text.layout_mono(
+            "✓",
+            Point::new(bounds.max_x() - 13.0, bounds.origin.y + 8.0),
+            9.5,
+            accent.with_alpha(0.92),
+        ));
+    }
+}
+
+fn chat_header_menu_hovered_index(
+    menu_bounds: Bounds,
+    item_count: usize,
+    pane_is_active: bool,
+    cursor_position: Point,
+) -> Option<usize> {
+    if !pane_is_active || !menu_bounds.contains(cursor_position) {
+        return None;
+    }
+    (0..item_count).find(|&index| chat_header_menu_row_bounds(menu_bounds, index).contains(cursor_position))
+}
+
+fn paint_open_chat_header_menu_overlay(
+    content_bounds: Bounds,
+    pane_is_active: bool,
+    cursor_position: Point,
+    autopilot_chat: &AutopilotChatState,
+    paint: &mut PaintContext,
+) {
+    let base_layer = paint.scene.layer();
+    paint.scene.set_layer(base_layer.saturating_add(1));
+    paint.scene.push_clip(content_bounds);
+    let model_open = autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::Model)
+        && !autopilot_chat.models.is_empty();
+    if model_open {
+        let menu_bounds = chat_model_menu_bounds(content_bounds, autopilot_chat.models.len());
+        let hovered_index = chat_header_menu_hovered_index(
+            menu_bounds,
+            autopilot_chat.models.len(),
+            pane_is_active,
+            cursor_position,
+        );
+        let selected_index = hovered_index.or(autopilot_chat.header_menu_keyboard_index);
+        paint_header_menu_shell(menu_bounds, theme::accent::PRIMARY, paint);
+        for (index, model) in autopilot_chat.models.iter().enumerate() {
+            paint_header_menu_row(
+                chat_header_menu_row_bounds(menu_bounds, index),
+                compact_display_token(model, 32).as_str(),
+                None,
+                selected_index == Some(index),
+                autopilot_chat
+                    .selected_model
+                    .min(autopilot_chat.models.len().saturating_sub(1))
+                    == index,
+                theme::accent::PRIMARY,
+                paint,
+            );
+        }
+    }
+
+    if autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::More) {
+        let menu_items = chat_header_more_menu_items();
+        let menu_bounds = chat_more_menu_bounds(content_bounds, menu_items.len());
+        let hovered_index = chat_header_menu_hovered_index(
+            menu_bounds,
+            menu_items.len(),
+            pane_is_active,
+            cursor_position,
+        );
+        let selected_index = hovered_index.or(autopilot_chat.header_menu_keyboard_index);
+        paint_header_menu_shell(menu_bounds, chat_mission_orange_color(), paint);
+        for (index, item) in menu_items.iter().enumerate() {
+            let label = chat_more_menu_item_label(*item, autopilot_chat);
+            let value = chat_more_menu_item_value(*item, autopilot_chat);
+            paint_header_menu_row(
+                chat_header_menu_row_bounds(menu_bounds, index),
+                label.as_str(),
+                value.as_deref(),
+                selected_index == Some(index),
+                false,
+                chat_mission_orange_color(),
+                paint,
+            );
+        }
+    }
+    paint.scene.pop_clip();
+    paint.scene.set_layer(base_layer);
 }
 
 fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
@@ -3283,6 +3596,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
 
 fn paint_chat_shell(
     content_bounds: Bounds,
+    pane_is_active: bool,
+    cursor_position: Point,
     autopilot_chat: &AutopilotChatState,
     _codex_account_summary: &str,
     spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
@@ -3896,104 +4211,51 @@ fn paint_chat_shell(
     }
     match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Autopilot => {
-            paint_header_chip(
-                chat_cycle_model_button_bounds(content_bounds),
-                format!(
-                    "Model {}",
-                    compact_display_token(autopilot_chat.current_model(), 16)
-                )
-                .as_str(),
+            let model_bounds = chat_cycle_model_button_bounds(content_bounds);
+            let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
+            let more_bounds = chat_compact_button_bounds(content_bounds);
+            let model_open =
+                autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::Model)
+                    && !autopilot_chat.models.is_empty();
+            let more_open = autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::More);
+
+            paint_header_control_trigger(
+                model_bounds,
+                "MODEL",
+                compact_display_token(autopilot_chat.current_model(), 18).as_str(),
                 theme::accent::PRIMARY,
+                true,
+                model_open,
+                pane_is_active && model_bounds.contains(cursor_position),
+                autopilot_chat.models.is_empty(),
                 paint,
             );
-            paint_header_chip(
-                chat_interrupt_button_bounds(content_bounds),
+            paint_header_control_trigger(
+                interrupt_bounds,
+                "ACTION",
                 if autopilot_chat.active_turn_id.is_some() {
                     "Interrupt turn"
                 } else {
-                    "Interrupt"
+                    "No turn running"
                 },
-                chat_mission_cyan_color(),
+                theme::status::WARNING,
+                false,
+                false,
+                pane_is_active && interrupt_bounds.contains(cursor_position),
+                autopilot_chat.active_turn_id.is_none(),
                 paint,
             );
-            paint_header_chip(
-                chat_compact_button_bounds(content_bounds),
-                if autopilot_chat.header_controls_expanded {
-                    "Less"
-                } else {
-                    "More"
-                },
+            paint_header_control_trigger(
+                more_bounds,
+                "MENU",
+                "Settings",
                 chat_mission_orange_color(),
+                true,
+                more_open,
+                pane_is_active && more_bounds.contains(cursor_position),
+                false,
                 paint,
             );
-            if autopilot_chat.header_controls_expanded {
-                paint_header_chip(
-                    chat_cycle_reasoning_effort_button_bounds(content_bounds),
-                    format!(
-                        "Effort {}",
-                        autopilot_chat.reasoning_effort.as_deref().unwrap_or("auto")
-                    )
-                    .as_str(),
-                    theme::status::INFO,
-                    paint,
-                );
-                paint_header_chip(
-                    chat_cycle_service_tier_button_bounds(content_bounds),
-                    format!("Tier {}", autopilot_chat.service_tier.label()).as_str(),
-                    chat_mission_green_color(),
-                    paint,
-                );
-                paint_header_chip(
-                    chat_cycle_personality_button_bounds(content_bounds),
-                    format!("Tone {}", autopilot_chat.personality.label()).as_str(),
-                    theme::status::WARNING,
-                    paint,
-                );
-                paint_header_chip(
-                    chat_cycle_collaboration_mode_button_bounds(content_bounds),
-                    format!("Mode {}", autopilot_chat.collaboration_mode.label()).as_str(),
-                    theme::accent::PRIMARY,
-                    paint,
-                );
-                paint_header_chip(
-                    chat_cycle_approval_mode_button_bounds(content_bounds),
-                    format!(
-                        "Approve {}",
-                        approval_mode_label(autopilot_chat.approval_mode)
-                    )
-                    .as_str(),
-                    theme::status::ERROR,
-                    paint,
-                );
-                paint_header_chip(
-                    chat_cycle_sandbox_mode_button_bounds(content_bounds),
-                    format!(
-                        "Sandbox {}",
-                        sandbox_mode_label(autopilot_chat.sandbox_mode)
-                    )
-                    .as_str(),
-                    theme::text::MUTED,
-                    paint,
-                );
-                paint_header_chip(
-                    chat_review_button_bounds(content_bounds),
-                    if autopilot_chat.active_plan_artifact().is_some() {
-                        if autopilot_chat.active_turn_id.is_some() {
-                            "Steer plan"
-                        } else {
-                            "Implement plan"
-                        }
-                    } else {
-                        "Review changes"
-                    },
-                    if autopilot_chat.active_plan_artifact().is_some() {
-                        chat_mission_green_color()
-                    } else {
-                        theme::status::WARNING
-                    },
-                    paint,
-                );
-            }
         }
         ChatBrowseMode::Managed => {
             let status_text = managed_status_text(autopilot_chat);
@@ -4327,6 +4589,8 @@ fn paint_message_selection_highlight(
 
 pub fn paint(
     content_bounds: Bounds,
+    pane_is_active: bool,
+    cursor_position: Point,
     autopilot_chat: &AutopilotChatState,
     codex_account_summary: &str,
     spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
@@ -4345,6 +4609,8 @@ pub fn paint(
     let send_bounds = chat_send_button_bounds(content_bounds);
     paint_chat_shell(
         content_bounds,
+        pane_is_active,
+        cursor_position,
         autopilot_chat,
         codex_account_summary,
         spacetime_presence,
@@ -5170,6 +5436,127 @@ pub fn paint(
         ChatBrowseMode::Autopilot => !chat_inputs.composer.get_value().trim().is_empty(),
     };
     paint_chat_send_button(send_bounds, can_send, paint);
+    if browse_mode == ChatBrowseMode::Autopilot {
+        paint_open_chat_header_menu_overlay(
+            content_bounds,
+            pane_is_active,
+            cursor_position,
+            autopilot_chat,
+            paint,
+        );
+    }
+}
+
+fn top_autopilot_chat_content_bounds(state: &RenderState) -> Option<Bounds> {
+    state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::AutopilotChat)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane_content_bounds(pane.bounds))
+}
+
+fn chat_header_menu_item_count(state: &RenderState) -> usize {
+    match state.autopilot_chat.header_open_menu {
+        Some(ChatHeaderMenuKind::Model) => state.autopilot_chat.models.len(),
+        Some(ChatHeaderMenuKind::More) => chat_header_more_menu_items().len(),
+        None => 0,
+    }
+}
+
+fn move_chat_header_menu_selection(state: &mut RenderState, step: isize) -> bool {
+    let item_count = chat_header_menu_item_count(state);
+    if item_count == 0 {
+        return false;
+    }
+    let current = state.autopilot_chat.header_menu_keyboard_index.unwrap_or_else(|| {
+        if step < 0 {
+            item_count.saturating_sub(1)
+        } else {
+            0
+        }
+    });
+    let next = if step < 0 {
+        if current == 0 {
+            item_count.saturating_sub(1)
+        } else {
+            current - 1
+        }
+    } else {
+        (current + 1) % item_count
+    };
+    state
+        .autopilot_chat
+        .set_header_menu_keyboard_index(Some(next));
+    true
+}
+
+fn activate_chat_header_menu_selection(state: &mut RenderState) -> bool {
+    match state.autopilot_chat.header_open_menu {
+        Some(ChatHeaderMenuKind::Model) => {
+            if state.autopilot_chat.models.is_empty() {
+                return false;
+            }
+            let index = state.autopilot_chat.header_menu_keyboard_index.unwrap_or_else(|| {
+                state
+                    .autopilot_chat
+                    .selected_model
+                    .min(state.autopilot_chat.models.len().saturating_sub(1))
+            });
+            crate::input::actions::run_chat_select_model_action(state, index)
+        }
+        Some(ChatHeaderMenuKind::More) => {
+            let items = chat_header_more_menu_items();
+            if items.is_empty() {
+                return false;
+            }
+            let index = state
+                .autopilot_chat
+                .header_menu_keyboard_index
+                .unwrap_or(0)
+                .min(items.len().saturating_sub(1));
+            crate::input::actions::run_chat_activate_more_menu_item_action(state, items[index])
+        }
+        None => false,
+    }
+}
+
+fn point_hits_chat_header_menu_target(
+    content_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
+    point: Point,
+) -> bool {
+    if chat_cycle_model_button_bounds(content_bounds).contains(point)
+        || chat_compact_button_bounds(content_bounds).contains(point)
+    {
+        return true;
+    }
+    match autopilot_chat.header_open_menu {
+        Some(ChatHeaderMenuKind::Model) if !autopilot_chat.models.is_empty() => {
+            chat_model_menu_bounds(content_bounds, autopilot_chat.models.len()).contains(point)
+        }
+        Some(ChatHeaderMenuKind::More) => {
+            chat_more_menu_bounds(content_bounds, chat_header_more_menu_items().len()).contains(point)
+        }
+        _ => false,
+    }
+}
+
+pub fn dismiss_header_menu_on_outside_click(state: &mut RenderState, point: Point) -> bool {
+    if state.autopilot_chat.chat_browse_mode() != ChatBrowseMode::Autopilot
+        || state.autopilot_chat.header_open_menu.is_none()
+    {
+        return false;
+    }
+    let Some(content_bounds) = top_autopilot_chat_content_bounds(state) else {
+        state.autopilot_chat.close_header_menu();
+        return true;
+    };
+    if point_hits_chat_header_menu_target(content_bounds, &state.autopilot_chat, point) {
+        return false;
+    }
+    state.autopilot_chat.close_header_menu();
+    true
 }
 
 pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -5188,6 +5575,27 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
     };
 
     let content_bounds = pane_content_bounds(bounds);
+    if state.autopilot_chat.header_open_menu.is_some()
+        && let InputEvent::KeyDown { key, .. } = event
+    {
+        match key {
+            Key::Named(NamedKey::Escape) => {
+                state.autopilot_chat.close_header_menu();
+                return true;
+            }
+            Key::Named(NamedKey::ArrowDown) => {
+                return move_chat_header_menu_selection(state, 1);
+            }
+            Key::Named(NamedKey::ArrowUp) => {
+                return move_chat_header_menu_selection(state, -1);
+            }
+            Key::Named(NamedKey::Enter) => {
+                return activate_chat_header_menu_selection(state);
+            }
+            _ => return true,
+        }
+    }
+
     let composer_before = state.chat_inputs.composer.get_value().to_string();
     let composer_value = state.chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
