@@ -176,7 +176,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 64] = [
+const PANE_SPECS: [PaneSpec; 65] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -359,15 +359,30 @@ const PANE_SPECS: [PaneSpec; 64] = [
     },
     PaneSpec {
         kind: PaneKind::ProviderStatus,
-        title: "Provider + Tailnet",
+        title: "Provider Status",
+        default_width: 700.0,
+        default_height: 360.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.provider_status",
+            label: "Provider Status",
+            description: "Open runtime health and heartbeat visibility pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::TailnetStatus,
+        title: "Tailnet Status",
         default_width: 700.0,
         default_height: 520.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
-            id: "pane.provider_status",
-            label: "Provider + Tailnet",
-            description: "Open runtime health, heartbeat visibility, and live Tailnet roster",
+            id: "pane.tailnet_status",
+            label: "Tailnet Status",
+            description: "Open the live Tailnet device roster and link diagnostics",
             keybinding: None,
         }),
         hotbar: None,

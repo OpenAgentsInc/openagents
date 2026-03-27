@@ -5028,7 +5028,7 @@ fn pane_action_to_hit_action(
             ))),
             _ => unsupported(),
         },
-        PaneKind::ProviderStatus | PaneKind::Empty => unsupported(),
+        PaneKind::ProviderStatus | PaneKind::TailnetStatus | PaneKind::Empty => unsupported(),
     }
 }
 
@@ -8230,6 +8230,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "provider_runtime",
             "runtime_control",
         ],
+        PaneKind::ProviderStatus => &[
+            "provider_status",
+            "provider_health",
+            "provider_runtime_status",
+        ],
+        PaneKind::TailnetStatus => &["tailnet", "tailnet_status", "tailscale", "device_roster"],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
@@ -8309,6 +8315,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::GoOnline => "go_online",
         PaneKind::ProviderControl => "provider_control",
         PaneKind::ProviderStatus => "provider_status",
+        PaneKind::TailnetStatus => "tailnet_status",
         PaneKind::VoicePlayground => "voice_playground",
         PaneKind::LocalInference => "local_inference",
         PaneKind::PsionicViz => "psionic_viz",

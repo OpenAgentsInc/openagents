@@ -388,6 +388,7 @@ For MVP, every user-facing feature must be reachable by one command-palette comm
 | Autopilot Chat | Autopilot Chat | `pane.autopilot_chat` | Personal agent chat thread + local execution UX |
 | Go Online | Go Online | `pane.go_online` | Provider mode toggle and lifecycle state |
 | Provider Status | Provider Status | `pane.provider_status` | Uptime, heartbeat, degraded/error visibility |
+| Tailnet Status | Tailnet Status | `pane.tailnet_status` | Live Tailnet device roster and link diagnostics |
 | Job Inbox | Job Inbox | `pane.job_inbox` | Incoming NIP-90 request intake |
 | Active Job | Active Job | `pane.active_job` | In-flight job lifecycle (`received -> running -> delivered -> paid`) |
 | Job History | Job History | `pane.job_history` | Deterministic job history and failure reasons |

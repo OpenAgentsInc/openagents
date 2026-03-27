@@ -15,8 +15,8 @@ use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
     chat as chat_pane, data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
-    local_inference as local_inference_pane, relay_connections as relay_connections_pane, rive as rive_pane,
-    voice_playground as voice_playground_pane, wallet as wallet_pane,
+    local_inference as local_inference_pane, relay_connections as relay_connections_pane,
+    rive as rive_pane, voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::render::{
     logical_size, pane_fullscreen_active, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -194,14 +194,17 @@ pub fn mission_control_docked_visible(state: &RenderState) -> bool {
 
 fn mission_control_docked_width_for_logical(state: &RenderState, logical: Size) -> f32 {
     let max_width = mission_control_docked_max_width_for_logical(logical);
-    state
-        .sidebar
-        .width
-        .clamp(crate::app_state::SidebarState::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH, max_width)
+    state.sidebar.width.clamp(
+        crate::app_state::SidebarState::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH,
+        max_width,
+    )
 }
 
 fn mission_control_docked_max_width_for_logical(logical: Size) -> f32 {
-    (logical.width * 0.46).clamp(MISSION_CONTROL_DOCKED_MIN_WIDTH, MISSION_CONTROL_DOCKED_MAX_WIDTH)
+    (logical.width * 0.46).clamp(
+        MISSION_CONTROL_DOCKED_MIN_WIDTH,
+        MISSION_CONTROL_DOCKED_MAX_WIDTH,
+    )
 }
 
 fn mission_control_docked_expanded_width_for_logical(state: &RenderState, logical: Size) -> f32 {
@@ -1731,8 +1734,11 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
                     return true;
                 }
                 if pane.presentation.is_docked_right() {
-                    pane.bounds =
-                        docked_right_pane_bounds_for_kind_with_width(pane.kind, logical, docked_width);
+                    pane.bounds = docked_right_pane_bounds_for_kind_with_width(
+                        pane.kind,
+                        logical,
+                        docked_width,
+                    );
                     return true;
                 }
                 let min_size = pane_minimum_size(pane.kind);
@@ -1759,8 +1765,11 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
                     return true;
                 }
                 if pane.presentation.is_docked_right() {
-                    pane.bounds =
-                        docked_right_pane_bounds_for_kind_with_width(pane.kind, logical, docked_width);
+                    pane.bounds = docked_right_pane_bounds_for_kind_with_width(
+                        pane.kind,
+                        logical,
+                        docked_width,
+                    );
                     return true;
                 }
                 let min_size = pane_minimum_size(pane.kind);
@@ -1823,7 +1832,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         .find(|pane| pane.kind == PaneKind::GoOnline && pane.presentation.is_docked_right())
         .map(|pane| pane.bounds)
     {
-        if mission_control_docked_toggle_button_bounds(docked_mission_control_bounds).contains(point)
+        if mission_control_docked_toggle_button_bounds(docked_mission_control_bounds)
+            .contains(point)
         {
             return CursorIcon::Pointer;
         }
@@ -2042,6 +2052,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::CodexDiagnostics
             | PaneKind::ProviderControl
             | PaneKind::ProviderStatus
+            | PaneKind::TailnetStatus
             | PaneKind::EarningsScoreboard
             | PaneKind::PsionicViz
             | PaneKind::PsionicRemoteTraining
@@ -2210,7 +2221,12 @@ fn chat_primary_header_button_bounds(content_bounds: Bounds, index: usize) -> Bo
     let more_width = (total_width - model_width - interrupt_width).max(0.0);
     let origin_x = transcript.origin.x + 10.0;
     match index {
-        0 => Bounds::new(origin_x, controls_top, model_width, CHAT_HEADER_BUTTON_HEIGHT),
+        0 => Bounds::new(
+            origin_x,
+            controls_top,
+            model_width,
+            CHAT_HEADER_BUTTON_HEIGHT,
+        ),
         1 => Bounds::new(
             origin_x + model_width + gap,
             controls_top,
@@ -2351,7 +2367,9 @@ pub fn chat_more_menu_bounds(content_bounds: Bounds, item_count: usize) -> Bound
 pub fn chat_header_menu_row_bounds(menu_bounds: Bounds, index: usize) -> Bounds {
     Bounds::new(
         menu_bounds.origin.x + CHAT_HEADER_MENU_PADDING,
-        menu_bounds.origin.y + CHAT_HEADER_MENU_PADDING + index as f32 * CHAT_HEADER_MENU_ROW_HEIGHT,
+        menu_bounds.origin.y
+            + CHAT_HEADER_MENU_PADDING
+            + index as f32 * CHAT_HEADER_MENU_ROW_HEIGHT,
         (menu_bounds.size.width - CHAT_HEADER_MENU_PADDING * 2.0).max(0.0),
         CHAT_HEADER_MENU_ROW_HEIGHT,
     )
@@ -2682,8 +2700,7 @@ pub fn provider_control_inventory_toggle_button_bounds(
         + 4.0;
     let row_step = PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT + PROVIDER_CONTROL_ACTION_ROW_GAP;
     Bounds::new(
-        toggle.origin.x
-            + column as f32 * (toggle.size.width + PROVIDER_CONTROL_ACTION_COLUMN_GAP),
+        toggle.origin.x + column as f32 * (toggle.size.width + PROVIDER_CONTROL_ACTION_COLUMN_GAP),
         row_origin_y + row as f32 * row_step,
         toggle.size.width,
         PROVIDER_CONTROL_ACTION_BUTTON_HEIGHT,
@@ -2903,6 +2920,15 @@ pub fn provider_status_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds 
         (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0),
         (content_bounds.size.height - (row.max_y() + 10.0 - content_bounds.origin.y) - CHAT_PAD)
             .max(0.0),
+    )
+}
+
+pub fn tailnet_status_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0),
+        (content_bounds.size.height - CHAT_PAD * 2.0).max(0.0),
     )
 }
 
@@ -3148,8 +3174,7 @@ pub fn mission_control_docked_layout(
     y = alert_band.max_y() + 14.0;
     let sell_panel = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 252.0);
     y = sell_panel.max_y() + panel_gap;
-    let earnings_panel =
-        Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 286.0);
+    let earnings_panel = Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 286.0);
     y = earnings_panel.max_y() + panel_gap;
     let active_jobs_panel =
         Bounds::new(content_bounds.origin.x + outer_pad, y, section_width, 176.0);
@@ -3794,7 +3819,8 @@ fn mission_control_load_funds_layout_from_panel(
         ((inner_height - control_top_inset - control_gap * 2.0 - send_section_gap) / 4.0)
             .clamp(if compact_layout { 18.0 } else { 20.0 }, 24.0)
     };
-    let controls_height = control_top_inset + control_height * 4.0 + control_gap * 2.0 + send_section_gap;
+    let controls_height =
+        control_top_inset + control_height * 4.0 + control_gap * 2.0 + send_section_gap;
     let controls_column = Bounds::new(
         inner_x,
         inner_y,
@@ -3975,7 +4001,8 @@ pub fn mission_control_log_stream_filter_button_bounds(
     content_bounds: Bounds,
     buy_mode_enabled: bool,
 ) -> Bounds {
-    let copy_button = mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled);
+    let copy_button =
+        mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled);
     let button_width = 46.0;
     Bounds::new(
         copy_button.origin.x - 8.0 - button_width,
@@ -7269,7 +7296,10 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::ChatToggleThreadRail);
             }
             if browse_mode == crate::app_state::ChatBrowseMode::Autopilot {
-                if state.autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::Model) {
+                if state
+                    .autopilot_chat
+                    .header_menu_is_open(ChatHeaderMenuKind::Model)
+                {
                     let menu_bounds =
                         chat_model_menu_bounds(content_bounds, state.autopilot_chat.models.len());
                     for index in 0..state.autopilot_chat.models.len() {
@@ -7278,7 +7308,10 @@ fn pane_hit_action_for_pane(
                         }
                     }
                 }
-                if state.autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::More) {
+                if state
+                    .autopilot_chat
+                    .header_menu_is_open(ChatHeaderMenuKind::More)
+                {
                     let menu_bounds =
                         chat_more_menu_bounds(content_bounds, chat_header_more_menu_items().len());
                     for (index, item) in chat_header_more_menu_items().iter().enumerate() {
@@ -7580,7 +7613,10 @@ fn pane_hit_action_for_pane(
                 ));
             }
             let go_online_bounds = if docked {
-                mission_control_docked_go_online_button_bounds(content_bounds, mission_column_scroll)
+                mission_control_docked_go_online_button_bounds(
+                    content_bounds,
+                    mission_column_scroll,
+                )
             } else {
                 go_online_toggle_button_bounds(content_bounds)
             };
@@ -7629,9 +7665,7 @@ fn pane_hit_action_for_pane(
             } else {
                 mission_control_wallet_buy_mode_button_bounds(content_bounds)
             };
-            if buy_mode_bounds.contains(point)
-                && state.mission_control_buy_mode_enabled()
-            {
+            if buy_mode_bounds.contains(point) && state.mission_control_buy_mode_enabled() {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenBuyModePopup,
                 ));
@@ -7644,8 +7678,7 @@ fn pane_hit_action_for_pane(
             } else {
                 mission_control_copy_log_stream_button_bounds(content_bounds, buy_mode_enabled)
             };
-            if copy_log_bounds.contains(point)
-            {
+            if copy_log_bounds.contains(point) {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CopyLogStream,
                 ));
@@ -7658,8 +7691,7 @@ fn pane_hit_action_for_pane(
             } else {
                 mission_control_log_stream_filter_button_bounds(content_bounds, buy_mode_enabled)
             };
-            if filter_log_bounds.contains(point)
-            {
+            if filter_log_bounds.contains(point) {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::CycleLogLevelFilter,
                 ));
@@ -7680,8 +7712,7 @@ fn pane_hit_action_for_pane(
                 .contains(point)
             } else {
                 mission_control_local_model_button_bounds(content_bounds).contains(point)
-            }
-            {
+            } {
                 return Some(PaneHitAction::MissionControl(
                     MissionControlPaneAction::OpenLocalModelWorkbench,
                 ));
@@ -8016,6 +8047,7 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::TailnetStatus => None,
         PaneKind::VoicePlayground => {
             if voice_playground_refresh_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::VoicePlayground(
@@ -9223,20 +9255,12 @@ pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &Inp
     let amount_handled = state
         .mission_control
         .load_funds_amount_sats
-        .event(
-            event,
-            amount_bounds,
-            &mut state.event_context,
-        )
+        .event(event, amount_bounds, &mut state.event_context)
         .is_handled();
     let send_handled = state
         .mission_control
         .send_invoice
-        .event(
-            event,
-            send_bounds,
-            &mut state.event_context,
-        )
+        .event(event, send_bounds, &mut state.event_context)
         .is_handled();
 
     amount_handled || send_handled
@@ -9270,18 +9294,16 @@ pub fn dispatch_wallet_scroll_event(
     if scroll_dy.abs() <= f32::EPSILON {
         return false;
     }
-    let Some(pane_idx) = pane_indices_by_z_desc(state)
-        .into_iter()
-        .find(|index| {
-            let pane = &state.panes[*index];
-            pane.kind == PaneKind::SparkWallet && pane.bounds.contains(cursor_position)
-        })
-    else {
+    let Some(pane_idx) = pane_indices_by_z_desc(state).into_iter().find(|index| {
+        let pane = &state.panes[*index];
+        pane.kind == PaneKind::SparkWallet && pane.bounds.contains(cursor_position)
+    }) else {
         return false;
     };
     let pane = &state.panes[pane_idx];
     let content_bounds = pane_content_bounds_for_pane(pane);
-    if !crate::panes::wallet::wallet_details_scroll_bounds(content_bounds).contains(cursor_position) {
+    if !crate::panes::wallet::wallet_details_scroll_bounds(content_bounds).contains(cursor_position)
+    {
         return false;
     }
     let next = (state.spark_wallet_scroll_offset - scroll_dy).clamp(0.0, 4000.0);
@@ -9378,7 +9400,8 @@ pub fn dispatch_mission_control_log_scroll_event(
                 return true;
             }
 
-            if mission_control_docked_scroll_viewport_bounds(content_bounds).contains(cursor_position)
+            if mission_control_docked_scroll_viewport_bounds(content_bounds)
+                .contains(cursor_position)
             {
                 state.mission_control.scroll_column_by(*dy);
                 return true;
@@ -9496,6 +9519,32 @@ pub fn dispatch_provider_status_scroll_event(
     true
 }
 
+pub fn dispatch_tailnet_status_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::TailnetStatus {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport = tailnet_status_scroll_viewport_bounds(content_bounds);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.tailnet_status_pane.scroll_by(scroll_dy);
+    true
+}
+
 pub fn dispatch_sync_health_scroll_event(
     state: &mut RenderState,
     cursor_position: Point,
@@ -9565,8 +9614,10 @@ pub fn dispatch_earnings_scoreboard_scroll_event(
     }
 
     let content_bounds = pane_content_bounds_for_pane(pane);
-    let viewport =
-        earnings_jobs_pane::earnings_scroll_viewport_bounds(content_bounds, &state.earnings_scoreboard);
+    let viewport = earnings_jobs_pane::earnings_scroll_viewport_bounds(
+        content_bounds,
+        &state.earnings_scoreboard,
+    );
     if !viewport.contains(cursor_position) {
         return false;
     }
@@ -9663,7 +9714,8 @@ pub fn dispatch_data_seller_scroll_event(
         .len()
         .max(1) as f32;
         let status_lines = 6.0;
-        let status_block_bottom = content_bounds.origin.y + 42.0 + intro_lines * 14.0 + 4.0 + status_lines * 18.0;
+        let status_block_bottom =
+            content_bounds.origin.y + 42.0 + intro_lines * 14.0 + 4.0 + status_lines * 18.0;
         (status_block_bottom + 10.0).max(content_bounds.origin.y + 156.0)
     };
     let viewport = crate::panes::data_seller::scroll_viewport_bounds(
@@ -9696,7 +9748,8 @@ pub fn dispatch_data_market_scroll_event(
     }
 
     let content_bounds = pane_content_bounds_for_pane(pane);
-    let metric_top = crate::panes::data_market::compute_metric_top(content_bounds, &state.data_market);
+    let metric_top =
+        crate::panes::data_market::compute_metric_top(content_bounds, &state.data_market);
     let viewport = crate::panes::data_market::scroll_viewport_bounds(content_bounds, metric_top);
     if !viewport.contains(cursor_position) {
         return false;

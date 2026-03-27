@@ -64,23 +64,20 @@ use crate::pane_system::{
     dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_data_seller_input_event,
-    dispatch_data_buyer_scroll_event, dispatch_data_market_scroll_event,
-    dispatch_data_seller_scroll_event,
+    dispatch_credentials_input_event, dispatch_data_buyer_scroll_event,
+    dispatch_data_market_scroll_event, dispatch_data_seller_input_event,
+    dispatch_data_seller_scroll_event, dispatch_earnings_scoreboard_scroll_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
     dispatch_log_stream_scroll_event, dispatch_mission_control_input_event,
     dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
-    dispatch_nostr_identity_scroll_event, dispatch_earnings_scoreboard_scroll_event,
-    dispatch_pay_invoice_input_event,
-    dispatch_provider_control_scroll_event,
-    dispatch_provider_status_scroll_event,
-    dispatch_sync_health_scroll_event,
-    dispatch_spark_wallet_scroll_event,
+    dispatch_nostr_identity_scroll_event, dispatch_pay_invoice_input_event,
+    dispatch_provider_control_scroll_event, dispatch_provider_status_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, dispatch_wallet_scroll_event,
-    dispatch_voice_playground_input_event, pane_content_bounds, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, tick_mission_control_docked_panel_animation,
-    topmost_pane_hit_action_in_order,
+    dispatch_settings_input_event, dispatch_spark_input_event, dispatch_spark_wallet_scroll_event,
+    dispatch_sync_health_scroll_event, dispatch_tailnet_status_scroll_event,
+    dispatch_voice_playground_input_event, dispatch_wallet_scroll_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count,
+    tick_mission_control_docked_panel_animation, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -601,8 +598,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             let provider_animating = provider_transition_animating(state.provider_runtime.mode);
             let rive_needs_redraw = open_rive_surface_needs_redraw(state);
             let onboarding_needs_redraw = crate::onboarding::animation_needs_redraw(state);
-            let mission_control_rail_animating =
-                state.sidebar.docked_mission_control_animating();
+            let mission_control_rail_animating = state.sidebar.docked_mission_control_animating();
             if flashing_now
                 || state.hotbar_flash_was_active
                 || provider_animating
@@ -887,7 +883,10 @@ fn provider_online_heartbeat_due(
     let heartbeat_visible = state.panes.iter().any(|pane| {
         matches!(
             pane.kind,
-            PaneKind::GoOnline | PaneKind::ProviderControl | PaneKind::ProviderStatus
+            PaneKind::GoOnline
+                | PaneKind::ProviderControl
+                | PaneKind::ProviderStatus
+                | PaneKind::TailnetStatus
         )
     });
     if !steady_online || !heartbeat_visible {
@@ -2944,6 +2943,9 @@ fn dispatch_mouse_scroll(
                 handled |= dispatch_provider_status_scroll_event(state, point, *dy);
             }
             if !handled {
+                handled |= dispatch_tailnet_status_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_sync_health_scroll_event(state, point, *dy);
             }
             if !handled {
@@ -3282,7 +3284,9 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
             Some(PaneKind::GoOnline) => dispatch_mission_control_input_event(state, event),
             Some(PaneKind::SparkPayInvoice) => dispatch_pay_invoice_input_event(state, event),
             Some(PaneKind::SparkCreateInvoice) => dispatch_create_invoice_input_event(state, event),
-            Some(PaneKind::RelayConnections) => dispatch_relay_connections_input_event(state, event),
+            Some(PaneKind::RelayConnections) => {
+                dispatch_relay_connections_input_event(state, event)
+            }
             Some(PaneKind::NetworkRequests) => dispatch_network_requests_input_event(state, event),
             Some(PaneKind::VoicePlayground) => dispatch_voice_playground_input_event(state, event),
             Some(PaneKind::LocalInference) => dispatch_local_inference_input_event(state, event),
