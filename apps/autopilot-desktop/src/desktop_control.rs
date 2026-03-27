@@ -86,7 +86,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 16;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 17;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -97,9 +97,12 @@ const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
 const DESKTOP_CONTROL_ACTION_TIMEOUT: Duration = Duration::from_secs(30);
 const DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS: u64 = 15_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT: usize = 8;
+const DESKTOP_CONTROL_TAILNET_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 
 pub const DESKTOP_CONTROL_MANIFEST_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_MANIFEST";
 pub const DESKTOP_CONTROL_BIND_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_BIND";
+
+static DESKTOP_CONTROL_TAILNET_CACHE: OnceLock<Mutex<DesktopControlTailnetCache>> = OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlRuntimeConfig {
@@ -121,6 +124,7 @@ pub struct DesktopControlSnapshot {
     pub gpt_oss: DesktopControlGptOssStatus,
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
+    pub tailnet: DesktopControlTailnetStatus,
     pub tunnels: DesktopControlTunnelsStatus,
     pub inventory: DesktopControlInventoryStatus,
     pub buyer_procurement: DesktopControlBuyerProcurementStatus,
@@ -135,6 +139,52 @@ pub struct DesktopControlSnapshot {
     pub nip28: DesktopControlNip28Status,
     pub recent_logs: Vec<String>,
     pub last_command: Option<DesktopControlLastCommandStatus>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTailnetDeviceStatus {
+    pub node_id: String,
+    pub display_name: String,
+    pub dns_name: String,
+    pub host_name: String,
+    pub os: String,
+    pub online: bool,
+    pub active: bool,
+    pub exit_node: bool,
+    pub relay: Option<String>,
+    pub current_address: Option<String>,
+    pub tailscale_ips: Vec<String>,
+    pub allowed_ips: Vec<String>,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+    pub created_at: Option<String>,
+    pub last_seen: Option<String>,
+    pub last_write: Option<String>,
+    pub last_handshake: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTailnetStatus {
+    pub available: bool,
+    pub backend_state: Option<String>,
+    pub version: Option<String>,
+    pub client_version: Option<String>,
+    pub current_tailnet: Option<String>,
+    pub magic_dns_suffix: Option<String>,
+    pub health: Vec<String>,
+    pub device_count: usize,
+    pub online_device_count: usize,
+    pub last_refreshed_at_epoch_ms: Option<u64>,
+    pub last_error: Option<String>,
+    pub self_device: Option<DesktopControlTailnetDeviceStatus>,
+    pub peers: Vec<DesktopControlTailnetDeviceStatus>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct DesktopControlTailnetCache {
+    snapshot: DesktopControlTailnetStatus,
+    refreshed_at: Option<Instant>,
+    last_attempt_at: Option<Instant>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -8577,6 +8627,7 @@ fn snapshot_for_state_with_signature(
     let inventory = crate::provider_inventory::inventory_status_for_state(state);
     let buyer_procurement = desktop_control_buyer_procurement_status(&state.network_requests);
     let gpt_oss = desktop_control_gpt_oss_status(state);
+    let tailnet = desktop_control_tailnet_status();
 
     let mut snapshot = DesktopControlSnapshot {
         schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
@@ -8644,6 +8695,7 @@ fn snapshot_for_state_with_signature(
             last_action: state.spark_wallet.last_action.clone(),
             last_error: state.spark_wallet.last_error.clone(),
         },
+        tailnet,
         tunnels: DesktopControlTunnelsStatus::default(),
         inventory,
         buyer_procurement,
@@ -9052,6 +9104,235 @@ fn runtime_event_batch(
     })
 }
 
+fn desktop_control_tailnet_cache() -> &'static Mutex<DesktopControlTailnetCache> {
+    DESKTOP_CONTROL_TAILNET_CACHE.get_or_init(|| Mutex::new(DesktopControlTailnetCache::default()))
+}
+
+pub fn desktop_control_tailnet_status() -> DesktopControlTailnetStatus {
+    let should_refresh = {
+        let cache = desktop_control_tailnet_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let stale = cache.refreshed_at.is_none_or(|refreshed_at| {
+            refreshed_at.elapsed() >= DESKTOP_CONTROL_TAILNET_REFRESH_INTERVAL
+        });
+        let recently_attempted = cache
+            .last_attempt_at
+            .is_some_and(|last_attempt| last_attempt.elapsed() < Duration::from_secs(2));
+        stale && !recently_attempted
+    };
+    if !should_refresh {
+        return desktop_control_tailnet_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .snapshot
+            .clone();
+    }
+
+    {
+        let mut cache = desktop_control_tailnet_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        cache.last_attempt_at = Some(Instant::now());
+    }
+
+    let result = load_desktop_control_tailnet_status();
+    let mut cache = desktop_control_tailnet_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    match result {
+        Ok(snapshot) => {
+            cache.snapshot = snapshot.clone();
+            cache.refreshed_at = Some(Instant::now());
+            cache.last_attempt_at = cache.refreshed_at;
+            snapshot
+        }
+        Err(error) => {
+            if cache.snapshot.last_refreshed_at_epoch_ms.is_some() {
+                cache.snapshot.last_error = Some(error);
+            } else {
+                cache.snapshot = DesktopControlTailnetStatus {
+                    last_error: Some(error),
+                    ..DesktopControlTailnetStatus::default()
+                };
+            }
+            cache.snapshot.clone()
+        }
+    }
+}
+
+fn load_desktop_control_tailnet_status() -> Result<DesktopControlTailnetStatus, String> {
+    let output = std::process::Command::new("tailscale")
+        .args(["status", "--json"])
+        .output()
+        .map_err(|error| format!("tailscale status --json failed: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("exit status {}", output.status)
+        };
+        return Err(format!("tailscale status --json returned {detail}"));
+    }
+    let payload = String::from_utf8(output.stdout)
+        .map_err(|error| format!("tailscale status stdout was not valid UTF-8: {error}"))?;
+    let value = serde_json::from_str::<Value>(payload.as_str())
+        .map_err(|error| format!("tailscale status JSON decode failed: {error}"))?;
+    Ok(parse_desktop_control_tailnet_status(&value))
+}
+
+fn parse_desktop_control_tailnet_status(value: &Value) -> DesktopControlTailnetStatus {
+    let self_device = value
+        .get("Self")
+        .and_then(Value::as_object)
+        .map(|device| desktop_control_tailnet_device_status("self", device));
+    let mut peers = value
+        .get("Peer")
+        .and_then(Value::as_object)
+        .map(|peers| {
+            peers
+                .iter()
+                .filter_map(|(node_id, device)| {
+                    device
+                        .as_object()
+                        .map(|device| desktop_control_tailnet_device_status(node_id, device))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    peers.sort_by(|left, right| {
+        right
+            .online
+            .cmp(&left.online)
+            .then_with(|| left.display_name.cmp(&right.display_name))
+            .then_with(|| left.node_id.cmp(&right.node_id))
+    });
+
+    let device_count = peers.len() + usize::from(self_device.is_some());
+    let online_device_count = peers.iter().filter(|device| device.online).count()
+        + usize::from(self_device.as_ref().is_some_and(|device| device.online));
+    DesktopControlTailnetStatus {
+        available: true,
+        backend_state: json_string(value, "BackendState"),
+        version: json_string(value, "Version"),
+        client_version: json_string(value, "ClientVersion"),
+        current_tailnet: value
+            .get("CurrentTailnet")
+            .and_then(Value::as_object)
+            .and_then(|tailnet| optional_json_string_value(tailnet.get("Name"))),
+        magic_dns_suffix: json_string(value, "MagicDNSSuffix").or_else(|| {
+            value
+                .get("CurrentTailnet")
+                .and_then(Value::as_object)
+                .and_then(|tailnet| optional_json_string_value(tailnet.get("MagicDNSSuffix")))
+        }),
+        health: value
+            .get("Health")
+            .and_then(Value::as_array)
+            .map(|health| {
+                health
+                    .iter()
+                    .filter_map(optional_json_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
+        device_count,
+        online_device_count,
+        last_refreshed_at_epoch_ms: Some(current_epoch_ms()),
+        last_error: None,
+        self_device,
+        peers,
+    }
+}
+
+fn desktop_control_tailnet_device_status(
+    node_id: &str,
+    device: &serde_json::Map<String, Value>,
+) -> DesktopControlTailnetDeviceStatus {
+    let dns_name = optional_json_string_value(device.get("DNSName"))
+        .map(|dns_name| dns_name.trim_end_matches('.').to_string())
+        .unwrap_or_default();
+    let host_name = optional_json_string_value(device.get("HostName")).unwrap_or_default();
+    let display_name = if !host_name.is_empty() {
+        host_name.clone()
+    } else if !dns_name.is_empty() {
+        dns_name
+            .split('.')
+            .next()
+            .map(|label| label.to_string())
+            .unwrap_or_else(|| dns_name.clone())
+    } else {
+        node_id.to_string()
+    };
+    DesktopControlTailnetDeviceStatus {
+        node_id: node_id.to_string(),
+        display_name,
+        dns_name,
+        host_name,
+        os: optional_json_string_value(device.get("OS")).unwrap_or_else(|| "unknown".to_string()),
+        online: device
+            .get("Online")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        active: device
+            .get("Active")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        exit_node: device
+            .get("ExitNode")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        relay: optional_json_string_value(device.get("Relay")),
+        current_address: optional_json_string_value(device.get("CurAddr")),
+        tailscale_ips: json_string_array(device.get("TailscaleIPs")),
+        allowed_ips: json_string_array(device.get("AllowedIPs")),
+        rx_bytes: device.get("RxBytes").and_then(Value::as_u64).unwrap_or(0),
+        tx_bytes: device.get("TxBytes").and_then(Value::as_u64).unwrap_or(0),
+        created_at: optional_json_timestamp(device.get("Created")),
+        last_seen: optional_json_timestamp(device.get("LastSeen")),
+        last_write: optional_json_timestamp(device.get("LastWrite")),
+        last_handshake: optional_json_timestamp(device.get("LastHandshake")),
+    }
+}
+
+fn json_string(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(optional_json_string)
+}
+
+fn json_string_array(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(optional_json_string).collect())
+        .unwrap_or_default()
+}
+
+fn optional_json_string(value: &Value) -> Option<String> {
+    value.as_str().and_then(normalize_optional_string)
+}
+
+fn optional_json_string_value(value: Option<&Value>) -> Option<String> {
+    value.and_then(optional_json_string)
+}
+
+fn optional_json_timestamp(value: Option<&Value>) -> Option<String> {
+    value.and_then(optional_json_string).and_then(|timestamp| {
+        if timestamp == "0001-01-01T00:00:00Z" {
+            None
+        } else {
+            Some(timestamp)
+        }
+    })
+}
+
+fn normalize_optional_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
 fn current_epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -9386,14 +9667,15 @@ mod tests {
         DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
         DesktopControlRemoteTrainingStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
         DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlTrainingParticipantStatus,
-        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
-        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
-        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
-        build_nip90_sent_payments_report_payload, build_settlement_history,
-        challenges_by_delivery_proof, command_outcome_event, command_received_event,
-        desktop_control_challenge_history_status, desktop_control_proof_history_status,
-        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlSnapshot, DesktopControlTailnetDeviceStatus, DesktopControlTailnetStatus,
+        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
+        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
+        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
+        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
+        command_received_event, desktop_control_challenge_history_status,
+        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
+        validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -9567,6 +9849,81 @@ mod tests {
                 withdraw_block_reason: None,
                 last_action: Some("Wallet refreshed".to_string()),
                 last_error: None,
+            },
+            tailnet: DesktopControlTailnetStatus {
+                available: true,
+                backend_state: Some("Running".to_string()),
+                version: Some("1.94.1".to_string()),
+                client_version: Some("1.96.3".to_string()),
+                current_tailnet: Some("openagents".to_string()),
+                magic_dns_suffix: Some("tailaeab8f.ts.net".to_string()),
+                health: Vec::new(),
+                device_count: 3,
+                online_device_count: 2,
+                last_refreshed_at_epoch_ms: Some(123),
+                last_error: None,
+                self_device: Some(DesktopControlTailnetDeviceStatus {
+                    node_id: "self".to_string(),
+                    display_name: "macbook-pro-m2".to_string(),
+                    dns_name: "macbook-pro-m2.tailaeab8f.ts.net".to_string(),
+                    host_name: "macbook-pro-m2".to_string(),
+                    os: "macOS".to_string(),
+                    online: true,
+                    active: true,
+                    exit_node: false,
+                    relay: Some("ord".to_string()),
+                    current_address: Some("100.127.107.31:41641".to_string()),
+                    tailscale_ips: vec!["100.127.107.31".to_string()],
+                    allowed_ips: vec!["100.127.107.31/32".to_string()],
+                    rx_bytes: 1024,
+                    tx_bytes: 2048,
+                    created_at: Some("2026-03-26T21:19:26Z".to_string()),
+                    last_seen: Some("2026-03-27T04:00:00Z".to_string()),
+                    last_write: Some("2026-03-27T04:00:00Z".to_string()),
+                    last_handshake: Some("2026-03-27T03:59:58Z".to_string()),
+                }),
+                peers: vec![
+                    DesktopControlTailnetDeviceStatus {
+                        node_id: "nodekey:iphone".to_string(),
+                        display_name: "iphone-17-pro-max".to_string(),
+                        dns_name: "iphone-17-pro-max.tailaeab8f.ts.net".to_string(),
+                        host_name: "iphone-17-pro-max".to_string(),
+                        os: "iOS".to_string(),
+                        online: true,
+                        active: true,
+                        exit_node: false,
+                        relay: Some("dfw".to_string()),
+                        current_address: None,
+                        tailscale_ips: vec!["100.112.42.45".to_string()],
+                        allowed_ips: vec!["100.112.42.45/32".to_string()],
+                        rx_bytes: 0,
+                        tx_bytes: 0,
+                        created_at: Some("2026-03-26T21:19:26Z".to_string()),
+                        last_seen: None,
+                        last_write: None,
+                        last_handshake: None,
+                    },
+                    DesktopControlTailnetDeviceStatus {
+                        node_id: "nodekey:bertha".to_string(),
+                        display_name: "imac-pro-bertha".to_string(),
+                        dns_name: "imac-pro-bertha.tailaeab8f.ts.net".to_string(),
+                        host_name: "imac-pro-bertha".to_string(),
+                        os: "macOS".to_string(),
+                        online: false,
+                        active: false,
+                        exit_node: false,
+                        relay: Some("chi".to_string()),
+                        current_address: None,
+                        tailscale_ips: vec!["100.88.12.4".to_string()],
+                        allowed_ips: vec!["100.88.12.4/32".to_string()],
+                        rx_bytes: 512,
+                        tx_bytes: 128,
+                        created_at: Some("2026-03-25T12:00:00Z".to_string()),
+                        last_seen: Some("2026-03-27T02:30:00Z".to_string()),
+                        last_write: Some("2026-03-27T02:29:59Z".to_string()),
+                        last_handshake: Some("2026-03-27T02:29:58Z".to_string()),
+                    },
+                ],
             },
             tunnels: DesktopControlTunnelsStatus {
                 available: true,
@@ -9951,6 +10308,104 @@ mod tests {
             recent_logs: vec!["15:00:00  Provider offline.".to_string()],
             last_command: None,
         }
+    }
+
+    #[test]
+    fn parses_tailnet_status_from_tailscale_json_shape() {
+        let payload = json!({
+            "BackendState": "Running",
+            "Version": "1.94.1",
+            "ClientVersion": "1.96.3",
+            "MagicDNSSuffix": "tailaeab8f.ts.net",
+            "CurrentTailnet": {
+                "Name": "openagents",
+                "MagicDNSSuffix": "tailaeab8f.ts.net"
+            },
+            "Health": [],
+            "Self": {
+                "DNSName": "macbook-pro-m2.tailaeab8f.ts.net.",
+                "HostName": "macbook-pro-m2",
+                "OS": "macOS",
+                "Online": true,
+                "Active": true,
+                "ExitNode": false,
+                "Relay": "ord",
+                "CurAddr": "100.127.107.31:41641",
+                "TailscaleIPs": ["100.127.107.31"],
+                "AllowedIPs": ["100.127.107.31/32"],
+                "RxBytes": 1024,
+                "TxBytes": 2048,
+                "Created": "2026-03-26T21:19:26Z",
+                "LastSeen": "2026-03-27T04:00:00Z",
+                "LastWrite": "2026-03-27T04:00:00Z",
+                "LastHandshake": "2026-03-27T03:59:58Z"
+            },
+            "Peer": {
+                "nodekey:iphone": {
+                    "DNSName": "iphone-17-pro-max.tailaeab8f.ts.net.",
+                    "HostName": "iphone-17-pro-max",
+                    "OS": "iOS",
+                    "Online": true,
+                    "Active": true,
+                    "ExitNode": false,
+                    "Relay": "dfw",
+                    "CurAddr": "",
+                    "TailscaleIPs": ["100.112.42.45"],
+                    "AllowedIPs": ["100.112.42.45/32"],
+                    "RxBytes": 0,
+                    "TxBytes": 0,
+                    "Created": "2026-03-26T21:19:26Z",
+                    "LastSeen": "0001-01-01T00:00:00Z",
+                    "LastWrite": "0001-01-01T00:00:00Z",
+                    "LastHandshake": "0001-01-01T00:00:00Z"
+                },
+                "nodekey:bertha": {
+                    "DNSName": "imac-pro-bertha.tailaeab8f.ts.net.",
+                    "HostName": "imac-pro-bertha",
+                    "OS": "macOS",
+                    "Online": false,
+                    "Active": false,
+                    "ExitNode": false,
+                    "Relay": "chi",
+                    "TailscaleIPs": ["100.88.12.4"],
+                    "AllowedIPs": ["100.88.12.4/32"],
+                    "RxBytes": 512,
+                    "TxBytes": 128,
+                    "Created": "2026-03-25T12:00:00Z",
+                    "LastSeen": "2026-03-27T02:30:00Z",
+                    "LastWrite": "2026-03-27T02:29:59Z",
+                    "LastHandshake": "2026-03-27T02:29:58Z"
+                }
+            }
+        });
+
+        let parsed = super::parse_desktop_control_tailnet_status(&payload);
+
+        assert!(parsed.available);
+        assert_eq!(parsed.current_tailnet.as_deref(), Some("openagents"));
+        assert_eq!(
+            parsed.magic_dns_suffix.as_deref(),
+            Some("tailaeab8f.ts.net")
+        );
+        assert_eq!(parsed.device_count, 3);
+        assert_eq!(parsed.online_device_count, 2);
+        assert_eq!(
+            parsed
+                .self_device
+                .as_ref()
+                .map(|device| device.display_name.as_str()),
+            Some("macbook-pro-m2")
+        );
+        assert_eq!(parsed.peers.len(), 2);
+        assert_eq!(parsed.peers[0].display_name, "iphone-17-pro-max");
+        assert!(parsed.peers[0].online);
+        assert_eq!(parsed.peers[1].display_name, "imac-pro-bertha");
+        assert!(!parsed.peers[1].online);
+        assert_eq!(parsed.peers[0].last_seen, None);
+        assert_eq!(
+            parsed.peers[1].last_seen.as_deref(),
+            Some("2026-03-27T02:30:00Z")
+        );
     }
 
     fn sample_history_delivery_proof() -> DeliveryProof {
