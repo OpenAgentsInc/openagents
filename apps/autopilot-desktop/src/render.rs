@@ -12,9 +12,9 @@ use wgpui::{
     Bounds, Component, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
 };
 use winit::event_loop::ActiveEventLoop;
-use winit::window::Window;
 #[cfg(target_os = "macos")]
 use winit::platform::macos::WindowAttributesExtMacOS;
+use winit::window::Window;
 
 use crate::app_state::{
     PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
@@ -720,6 +720,7 @@ pub fn init_state(
             provider_control: crate::app_state::ProviderControlPaneState::default(),
             mission_control: crate::app_state::MissionControlPaneState::default(),
             provider_status_pane: crate::app_state::ProviderStatusPaneState::default(),
+            tailnet_status_pane: crate::app_state::TailnetStatusPaneState::default(),
             sync_health_pane: crate::app_state::SyncHealthPaneState::default(),
             log_stream: crate::app_state::LogStreamPaneState::default(),
             buy_mode_payments: crate::app_state::BuyModePaymentsPaneState::default(),
@@ -1306,9 +1307,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             .with_background(app_glass_overlay_color().with_alpha(0.70)),
     );
     #[cfg(not(target_os = "macos"))]
-    scene.draw_quad(
-        Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP),
-    );
+    scene
+        .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     // Sidebar UI is intentionally disabled for now; keep the underlying code path intact.
     let panel_width = sidebar_reserved_width(state);
@@ -1742,6 +1742,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.mission_control,
             &mut state.provider_control,
             &mut state.provider_status_pane,
+            &mut state.tailnet_status_pane,
             &mut state.sync_health_pane,
             mission_control_last_action.as_deref(),
             mission_control_last_error.as_deref(),

@@ -15,16 +15,17 @@ use crate::app_state::{
     LocalInferencePaneInputs, LocalInferencePaneState, LogStreamLevelFilter, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
     NetworkRequestsState, Nip90SentPaymentsPaneState, NostrIdentityPaneState, NostrSecretState,
-    PaneKind, PaneLoadState, PanePaintTimingSample, PanePresentation, PayInvoicePaneInputs, PresentationPaneState,
-    PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState,
-    ProviderControlPaneState, ProviderRuntimeState, ProviderStatusPaneState, ReciprocalLoopState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
-    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SidebarState, SkillRegistryPaneState,
-    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState,
-    StarterJobStatus, StarterJobsState, SyncHealthPaneState, SyncHealthState, TassadarLabPaneState,
-    TrajectoryAuditPaneState, VoicePlaygroundPaneInputs, VoicePlaygroundPaneState,
-    mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
-    mission_control_show_local_model_button,
+    PaneKind, PaneLoadState, PanePaintTimingSample, PanePresentation, PayInvoicePaneInputs,
+    PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker,
+    ProviderControlHudRuntimeState, ProviderControlPaneState, ProviderRuntimeState,
+    ProviderStatusPaneState, ReciprocalLoopState, RelayConnectionsPaneInputs,
+    RelayConnectionsState, RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs,
+    SettingsState, SidebarState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
+    SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState, StarterJobStatus,
+    StarterJobsState, SyncHealthPaneState, SyncHealthState, TailnetStatusPaneState,
+    TassadarLabPaneState, TrajectoryAuditPaneState, VoicePlaygroundPaneInputs,
+    VoicePlaygroundPaneState, mission_control_local_runtime_is_ready,
+    mission_control_local_runtime_lane, mission_control_show_local_model_button,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -36,8 +37,7 @@ use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
-    active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
-    active_job_summary_bounds,
+    active_job_copy_button_bounds, active_job_scroll_viewport_bounds, active_job_summary_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
     activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
     activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
@@ -55,18 +55,18 @@ use crate::pane_system::{
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
     job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_alert_dismiss_button_bounds,
-    mission_control_buy_mode_button_bounds_for_panel, mission_control_docked_layout,
-    mission_control_docked_alert_dismiss_button_bounds,
+    mission_control_buy_mode_button_bounds_for_panel,
     mission_control_buy_mode_history_button_bounds_for_panel,
     mission_control_buy_mode_popup_bounds, mission_control_buy_mode_popup_close_button_bounds,
     mission_control_copy_log_stream_button_bounds,
+    mission_control_docked_alert_dismiss_button_bounds,
     mission_control_docked_copy_log_stream_button_bounds,
-    mission_control_docked_go_online_button_bounds,
+    mission_control_docked_go_online_button_bounds, mission_control_docked_layout,
     mission_control_docked_local_fm_test_button_bounds,
     mission_control_docked_local_model_button_bounds,
     mission_control_docked_log_stream_filter_button_bounds,
-    mission_control_docked_sell_detail_viewport_bounds,
     mission_control_docked_scroll_viewport_bounds,
+    mission_control_docked_sell_detail_viewport_bounds,
     mission_control_docked_toggle_button_bounds,
     mission_control_docked_wallet_buy_mode_button_bounds,
     mission_control_docked_wallet_load_funds_button_bounds,
@@ -92,7 +92,7 @@ use crate::pane_system::{
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
-    sync_health_scroll_viewport_bounds,
+    sync_health_scroll_viewport_bounds, tailnet_status_scroll_viewport_bounds,
 };
 use crate::panes::{
     agent as agent_pane, apple_adapter_training as apple_adapter_training_pane,
@@ -255,6 +255,7 @@ impl PaneRenderer {
         mission_control: &mut MissionControlPaneState,
         provider_control: &mut ProviderControlPaneState,
         provider_status_pane: &mut ProviderStatusPaneState,
+        tailnet_status_pane: &mut TailnetStatusPaneState,
         sync_health_pane: &mut SyncHealthPaneState,
         log_stream_last_action: Option<&str>,
         log_stream_last_error: Option<&str>,
@@ -484,6 +485,9 @@ impl PaneRenderer {
                         provider_blockers,
                         paint,
                     );
+                }
+                PaneKind::TailnetStatus => {
+                    paint_tailnet_status_pane(content_bounds, tailnet_status_pane, paint);
                 }
                 PaneKind::VoicePlayground => {
                     voice_playground_pane::paint(
@@ -3128,19 +3132,30 @@ fn paint_go_online_docked_collapsed_pane(
     let indicator_color = mission_control_mode_color(provider_runtime.mode);
     let center_x = content_bounds.origin.x + content_bounds.size.width * 0.5;
     paint.scene.draw_quad(
-        Quad::new(Bounds::new(center_x - 4.0, content_bounds.origin.y + 16.0, 8.0, 8.0))
-            .with_background(indicator_color)
-            .with_corner_radius(4.0),
+        Quad::new(Bounds::new(
+            center_x - 4.0,
+            content_bounds.origin.y + 16.0,
+            8.0,
+            8.0,
+        ))
+        .with_background(indicator_color)
+        .with_corner_radius(4.0),
     );
     paint.scene.draw_text(paint.text.layout_mono(
         "MC",
-        Point::new(content_bounds.origin.x + 8.0, content_bounds.origin.y + 34.0),
+        Point::new(
+            content_bounds.origin.x + 8.0,
+            content_bounds.origin.y + 34.0,
+        ),
         12.0,
         theme::text::MUTED,
     ));
 }
 
-#[expect(clippy::too_many_arguments, reason = "Mission Control docked paint mirrors runtime state inputs.")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Mission Control docked paint mirrors runtime state inputs."
+)]
 fn paint_go_online_docked_pane(
     content_bounds: Bounds,
     pane_is_active: bool,
@@ -3241,7 +3256,8 @@ fn paint_go_online_docked_pane(
         mission_control_docked_wallet_load_funds_button_bounds(content_bounds, column_scroll);
     let buy_mode_trigger_bounds =
         mission_control_docked_wallet_buy_mode_button_bounds(content_bounds, column_scroll);
-    let toggle_bounds = mission_control_docked_go_online_button_bounds(content_bounds, column_scroll);
+    let toggle_bounds =
+        mission_control_docked_go_online_button_bounds(content_bounds, column_scroll);
     let download_bounds =
         mission_control_docked_local_model_button_bounds(content_bounds, column_scroll);
     let test_bounds =
@@ -3353,7 +3369,10 @@ fn paint_go_online_docked_pane(
         layout.sell_panel,
         "SELL COMPUTE",
         mission_control_green_color(),
-        matches!(provider_runtime.mode, crate::app_state::ProviderMode::Offline),
+        matches!(
+            provider_runtime.mode,
+            crate::app_state::ProviderMode::Offline
+        ),
         paint,
     );
     paint_mission_control_section_panel(
@@ -5463,7 +5482,6 @@ fn paint_provider_status_pane(
     } else {
         "ready"
     };
-    let tailnet = desktop_control_tailnet_status();
     let apple_fm_status = if provider_blockers
         .contains(&ProviderBlocker::AppleFoundationModelsUnavailable)
         || provider_blockers.contains(&ProviderBlocker::AppleFoundationModelsModelUnavailable)
@@ -5711,90 +5729,6 @@ fn paint_provider_status_pane(
     ));
 
     lines.push((String::new(), theme::text::MUTED));
-    lines.push(("Tailnet".to_string(), theme::text::MUTED));
-    lines.push((
-        format!(
-            "tailnet={} backend={} online_devices={}/{}",
-            tailnet.current_tailnet.as_deref().unwrap_or("n/a"),
-            tailnet.backend_state.as_deref().unwrap_or("n/a"),
-            tailnet.online_device_count,
-            tailnet.device_count
-        ),
-        if tailnet.available {
-            theme::text::PRIMARY
-        } else {
-            theme::status::ERROR
-        },
-    ));
-    lines.push((
-        format!(
-            "magic_dns={} version={} client_version={}",
-            tailnet.magic_dns_suffix.as_deref().unwrap_or("n/a"),
-            tailnet.version.as_deref().unwrap_or("n/a"),
-            tailnet.client_version.as_deref().unwrap_or("n/a"),
-        ),
-        theme::text::PRIMARY,
-    ));
-    if let Some(device) = tailnet.self_device.as_ref() {
-        lines.push((
-            format!(
-                "self={} os={} online={} active={} relay={} addr={} ips={}",
-                device.display_name,
-                device.os,
-                device.online,
-                device.active,
-                device.relay.as_deref().unwrap_or("n/a"),
-                device.current_address.as_deref().unwrap_or("n/a"),
-                if device.tailscale_ips.is_empty() {
-                    "n/a".to_string()
-                } else {
-                    device.tailscale_ips.join(", ")
-                }
-            ),
-            if device.online {
-                theme::status::SUCCESS
-            } else {
-                theme::text::MUTED
-            },
-        ));
-    }
-    for device in &tailnet.peers {
-        lines.push((
-            format!(
-                "peer={} os={} online={} active={} relay={} addr={} ips={} rx={} tx={} last_seen={}",
-                device.display_name,
-                device.os,
-                device.online,
-                device.active,
-                device.relay.as_deref().unwrap_or("n/a"),
-                device.current_address.as_deref().unwrap_or("n/a"),
-                if device.tailscale_ips.is_empty() {
-                    "n/a".to_string()
-                } else {
-                    device.tailscale_ips.join(", ")
-                },
-                device.rx_bytes,
-                device.tx_bytes,
-                device.last_seen.as_deref().unwrap_or("n/a"),
-            ),
-            if device.online {
-                theme::status::SUCCESS
-            } else {
-                theme::text::MUTED
-            },
-        ));
-    }
-    if !tailnet.health.is_empty() {
-        lines.push((
-            format!("health: {}", tailnet.health.join(" | ")),
-            theme::status::WARNING,
-        ));
-    }
-    if let Some(error) = tailnet.last_error.as_deref() {
-        lines.push((format!("tailnet error: {error}"), theme::status::ERROR));
-    }
-
-    lines.push((String::new(), theme::text::MUTED));
     lines.push(("Local inference inventory".to_string(), theme::text::MUTED));
     lines.push((
         format!(
@@ -5858,6 +5792,206 @@ fn paint_provider_status_pane(
     let content_height = (wrapped.len() as f32 * line_height + 4.0).max(viewport.size.height);
     let max_scroll = (content_height - viewport.size.height).max(0.0);
     let scroll_offset = provider_status_pane.clamp_scroll_offset_to(max_scroll);
+    let start_line = (scroll_offset / line_height).floor() as usize;
+    let mut y = viewport.origin.y - (scroll_offset - start_line as f32 * line_height);
+
+    paint.scene.push_clip(viewport);
+    for (line, color) in wrapped.iter().skip(start_line) {
+        if y > viewport.max_y() {
+            break;
+        }
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(viewport.origin.x, y),
+            10.0,
+            *color,
+        ));
+        y += line_height;
+    }
+    paint.scene.pop_clip();
+    paint_mission_control_scrollbar_for_viewport(
+        content_bounds,
+        viewport,
+        content_height,
+        scroll_offset,
+        paint,
+    );
+}
+
+fn paint_tailnet_status_pane(
+    content_bounds: Bounds,
+    tailnet_status_pane: &mut TailnetStatusPaneState,
+    paint: &mut PaintContext,
+) {
+    let tailnet = desktop_control_tailnet_status();
+    let mut lines: Vec<(String, Hsla)> = Vec::new();
+
+    lines.push(("Tailnet roster".to_string(), theme::text::MUTED));
+    lines.push((
+        format!(
+            "tailnet={} backend={} online_devices={}/{}",
+            tailnet.current_tailnet.as_deref().unwrap_or("n/a"),
+            tailnet.backend_state.as_deref().unwrap_or("n/a"),
+            tailnet.online_device_count,
+            tailnet.device_count
+        ),
+        if tailnet.available {
+            theme::text::PRIMARY
+        } else {
+            theme::status::ERROR
+        },
+    ));
+    lines.push((
+        format!(
+            "magic_dns={} version={} client_version={}",
+            tailnet.magic_dns_suffix.as_deref().unwrap_or("n/a"),
+            tailnet.version.as_deref().unwrap_or("n/a"),
+            tailnet.client_version.as_deref().unwrap_or("n/a"),
+        ),
+        theme::text::PRIMARY,
+    ));
+
+    if let Some(device) = tailnet.self_device.as_ref() {
+        lines.push((String::new(), theme::text::MUTED));
+        lines.push(("Current device".to_string(), theme::text::MUTED));
+        lines.push((
+            format!(
+                "{} os={} online={} active={} exit_node={} relay={}",
+                device.display_name,
+                device.os,
+                device.online,
+                device.active,
+                device.exit_node,
+                device.relay.as_deref().unwrap_or("n/a"),
+            ),
+            if device.online {
+                theme::status::SUCCESS
+            } else {
+                theme::text::MUTED
+            },
+        ));
+        lines.push((
+            format!(
+                "dns={} addr={} ips={} allowed_ips={}",
+                device.dns_name,
+                device.current_address.as_deref().unwrap_or("n/a"),
+                if device.tailscale_ips.is_empty() {
+                    "n/a".to_string()
+                } else {
+                    device.tailscale_ips.join(", ")
+                },
+                if device.allowed_ips.is_empty() {
+                    "n/a".to_string()
+                } else {
+                    device.allowed_ips.join(", ")
+                }
+            ),
+            theme::text::PRIMARY,
+        ));
+        lines.push((
+            format!(
+                "rx={} tx={} created={} last_seen={} last_write={} last_handshake={}",
+                device.rx_bytes,
+                device.tx_bytes,
+                device.created_at.as_deref().unwrap_or("n/a"),
+                device.last_seen.as_deref().unwrap_or("n/a"),
+                device.last_write.as_deref().unwrap_or("n/a"),
+                device.last_handshake.as_deref().unwrap_or("n/a"),
+            ),
+            theme::text::PRIMARY,
+        ));
+    }
+
+    if tailnet.peers.is_empty() {
+        lines.push((String::new(), theme::text::MUTED));
+        lines.push(("Peers".to_string(), theme::text::MUTED));
+        lines.push((
+            "No peer devices reported.".to_string(),
+            theme::text::PRIMARY,
+        ));
+    } else {
+        for device in &tailnet.peers {
+            lines.push((String::new(), theme::text::MUTED));
+            lines.push((format!("Peer: {}", device.display_name), theme::text::MUTED));
+            lines.push((
+                format!(
+                    "os={} online={} active={} exit_node={} relay={}",
+                    device.os,
+                    device.online,
+                    device.active,
+                    device.exit_node,
+                    device.relay.as_deref().unwrap_or("n/a"),
+                ),
+                if device.online {
+                    theme::status::SUCCESS
+                } else {
+                    theme::text::MUTED
+                },
+            ));
+            lines.push((
+                format!(
+                    "dns={} addr={} ips={} allowed_ips={}",
+                    device.dns_name,
+                    device.current_address.as_deref().unwrap_or("n/a"),
+                    if device.tailscale_ips.is_empty() {
+                        "n/a".to_string()
+                    } else {
+                        device.tailscale_ips.join(", ")
+                    },
+                    if device.allowed_ips.is_empty() {
+                        "n/a".to_string()
+                    } else {
+                        device.allowed_ips.join(", ")
+                    }
+                ),
+                theme::text::PRIMARY,
+            ));
+            lines.push((
+                format!(
+                    "rx={} tx={} created={} last_seen={} last_write={} last_handshake={}",
+                    device.rx_bytes,
+                    device.tx_bytes,
+                    device.created_at.as_deref().unwrap_or("n/a"),
+                    device.last_seen.as_deref().unwrap_or("n/a"),
+                    device.last_write.as_deref().unwrap_or("n/a"),
+                    device.last_handshake.as_deref().unwrap_or("n/a"),
+                ),
+                theme::text::PRIMARY,
+            ));
+        }
+    }
+
+    if !tailnet.health.is_empty() {
+        lines.push((String::new(), theme::text::MUTED));
+        lines.push(("Health".to_string(), theme::status::WARNING));
+        lines.push((
+            format!("health={}", tailnet.health.join(" | ")),
+            theme::status::WARNING,
+        ));
+    }
+    if let Some(error) = tailnet.last_error.as_deref() {
+        lines.push((String::new(), theme::text::MUTED));
+        lines.push(("Last error".to_string(), theme::status::ERROR));
+        lines.push((error.to_string(), theme::status::ERROR));
+    }
+
+    let viewport = tailnet_status_scroll_viewport_bounds(content_bounds);
+    let chars_per_line = ((viewport.size.width - 8.0) / 6.2).max(24.0) as usize;
+    let mut wrapped: Vec<(String, Hsla)> = Vec::new();
+    for (line, color) in lines {
+        if line.trim().is_empty() {
+            wrapped.push((String::new(), color));
+            continue;
+        }
+        for chunk in split_text_for_display(line.as_str(), chars_per_line) {
+            wrapped.push((chunk, color));
+        }
+    }
+
+    let line_height = 14.0;
+    let content_height = (wrapped.len() as f32 * line_height + 4.0).max(viewport.size.height);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = tailnet_status_pane.clamp_scroll_offset_to(max_scroll);
     let start_line = (scroll_offset / line_height).floor() as usize;
     let mut y = viewport.origin.y - (scroll_offset - start_line as f32 * line_height);
 
@@ -7583,8 +7717,18 @@ fn paint_nostr_identity_pane(
         let public_body_height = nostr_value_row_height(&identity.npub, wrapped_chunk_len)
             + nostr_value_row_height(&identity.public_key_hex, wrapped_chunk_len);
         let public_section_height = nostr_section_total_height(public_body_height);
-        let public_bounds = Bounds::new(section_x, public_section_y, section_width, public_section_height);
-        paint_nostr_section_panel(public_bounds, "PUBLIC IDENTITY", theme::accent::PRIMARY, paint);
+        let public_bounds = Bounds::new(
+            section_x,
+            public_section_y,
+            section_width,
+            public_section_height,
+        );
+        paint_nostr_section_panel(
+            public_bounds,
+            "PUBLIC IDENTITY",
+            theme::accent::PRIMARY,
+            paint,
+        );
         let public_inner = nostr_section_body_bounds(public_bounds);
         let mut public_y = public_inner.origin.y;
         public_y = paint_nostr_value_row(
@@ -7647,8 +7791,7 @@ fn paint_nostr_identity_pane(
             "Secrets stay masked until revealed. Copy action affects nsec only."
         };
         let sensitive_panel_height = nostr_section_total_height(
-            18.0
-                + 10.0
+            18.0 + 10.0
                 + 18.0
                 + 10.0
                 + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
@@ -7707,17 +7850,19 @@ fn paint_nostr_identity_pane(
             paint,
         );
         sensitive_y += 18.0;
-        paint.scene.draw_text(paint.text.layout_mono(
-            &nostr_compact_detail(
-                sensitive_detail,
-                (((sensitive_inner_width - 4.0).max(120.0)) / 6.2).floor() as usize,
+        paint.scene.draw_text(
+            paint.text.layout_mono(
+                &nostr_compact_detail(
+                    sensitive_detail,
+                    (((sensitive_inner_width - 4.0).max(120.0)) / 6.2).floor() as usize,
+                ),
+                Point::new(sensitive_inner_x, sensitive_y + 12.0),
+                app_text_style(AppTextRole::SecondaryMetadata).font_size,
+                app_text_style(AppTextRole::SecondaryMetadata)
+                    .color
+                    .with_alpha(0.76),
             ),
-            Point::new(sensitive_inner_x, sensitive_y + 12.0),
-            app_text_style(AppTextRole::SecondaryMetadata).font_size,
-            app_text_style(AppTextRole::SecondaryMetadata)
-                .color
-                .with_alpha(0.76),
-        ));
+        );
         sensitive_y += 28.0;
         y = paint_nostr_value_row(
             paint,
@@ -7753,7 +7898,12 @@ fn paint_nostr_identity_pane(
             section_width,
             recovery_panel_height,
         );
-        paint_nostr_section_panel(recovery_bounds, "RECOVERY PHRASE", theme::status::WARNING, paint);
+        paint_nostr_section_panel(
+            recovery_bounds,
+            "RECOVERY PHRASE",
+            theme::status::WARNING,
+            paint,
+        );
         let recovery_inner_x = section_x + 12.0;
         let recovery_inner_width = (section_width - 24.0).max(200.0);
         let recovery_y = nostr_section_body_bounds(recovery_bounds).origin.y;
@@ -7793,8 +7943,18 @@ fn paint_nostr_identity_pane(
         let derived_body_height = nostr_value_row_height(&agent_preview, wrapped_chunk_len)
             + nostr_value_row_height(&skill_preview, wrapped_chunk_len);
         let derived_section_height = nostr_section_total_height(derived_body_height);
-        let derived_bounds = Bounds::new(section_x, derived_section_y, section_width, derived_section_height);
-        paint_nostr_section_panel(derived_bounds, "DERIVED ACCOUNTS", theme::accent::PRIMARY, paint);
+        let derived_bounds = Bounds::new(
+            section_x,
+            derived_section_y,
+            section_width,
+            derived_section_height,
+        );
+        paint_nostr_section_panel(
+            derived_bounds,
+            "DERIVED ACCOUNTS",
+            theme::accent::PRIMARY,
+            paint,
+        );
         let derived_inner = nostr_section_body_bounds(derived_bounds);
         let mut derived_y = derived_inner.origin.y;
         derived_y = paint_nostr_value_row(
@@ -7885,8 +8045,7 @@ fn nostr_identity_content_height(
         let sensitive_chunk_len =
             ((sensitive_inner_width - 134.0).max(120.0) / 7.0).floor() as usize;
         let sensitive_panel_height = nostr_section_total_height(
-            18.0
-                + 10.0
+            18.0 + 10.0
                 + 18.0
                 + 10.0
                 + nostr_value_row_height(&nsec_display, sensitive_chunk_len)
@@ -7958,13 +8117,7 @@ fn paint_nostr_danger_button(bounds: Bounds, label: &str, paint: &mut PaintConte
         .with_background(accent.with_alpha(0.90))
         .with_corner_radius(6.0),
     );
-    paint_button_label_mono(
-        bounds,
-        label,
-        12.0,
-        mission_control_text_color(),
-        paint,
-    );
+    paint_button_label_mono(bounds, label, 12.0, mission_control_text_color(), paint);
 }
 
 fn paint_nostr_state_chip(bounds: Bounds, label: &str, accent: Hsla, paint: &mut PaintContext) {
@@ -7979,8 +8132,8 @@ fn paint_nostr_state_chip(bounds: Bounds, label: &str, accent: Hsla, paint: &mut
         bounds,
         label,
         text_style.font_size,
-            accent.with_alpha(0.92),
-            paint,
+        accent.with_alpha(0.92),
+        paint,
     );
 }
 
@@ -8513,20 +8666,14 @@ fn paint_active_job_pane(
 
     let summary_bounds =
         active_job_summary_bounds(content_bounds, active_job.runtime_supports_abort);
-    let summary = build_active_job_summary_card(
-        active_job,
-        earn_job_lifecycle_projection,
-        spark_wallet,
-    );
+    let summary =
+        build_active_job_summary_card(active_job, earn_job_lifecycle_projection, spark_wallet);
     paint_active_job_summary_panel(summary_bounds, &summary, paint);
 
     let viewport =
         active_job_scroll_viewport_bounds(content_bounds, active_job.runtime_supports_abort);
-    let sections = build_active_job_detail_sections(
-        active_job,
-        earn_job_lifecycle_projection,
-        spark_wallet,
-    );
+    let sections =
+        build_active_job_detail_sections(active_job, earn_job_lifecycle_projection, spark_wallet);
     let section_width = (viewport.size.width - 12.0).max(0.0);
     let content_height = active_job_sections_content_height(&sections, section_width);
     let max_offset = (content_height - viewport.size.height).max(0.0);
@@ -8535,8 +8682,10 @@ fn paint_active_job_pane(
     let mut section_y = viewport.origin.y - scroll_offset;
     for section in sections.iter() {
         let section_height = active_job_section_height(section, section_width);
-        let section_bounds = Bounds::new(viewport.origin.x, section_y, section_width, section_height);
-        if section_bounds.max_y() >= viewport.origin.y && section_bounds.origin.y <= viewport.max_y()
+        let section_bounds =
+            Bounds::new(viewport.origin.x, section_y, section_width, section_height);
+        if section_bounds.max_y() >= viewport.origin.y
+            && section_bounds.origin.y <= viewport.max_y()
         {
             paint_active_job_detail_section(section_bounds, section, paint);
         }
@@ -8873,7 +9022,8 @@ fn build_active_job_detail_sections(
             color: theme::text::PRIMARY,
         });
     }
-    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet {
+    if flow_snapshot.phase == crate::nip90_compute_flow::Nip90FlowPhase::SellerSettledPendingWallet
+    {
         flow_rows.push(ActiveJobDetailRow::Note {
             text: "Settlement outcome: seller settlement appears confirmed, but local buyer wallet confirmation is still pending".to_string(),
             color: theme::text::PRIMARY,
@@ -9139,9 +9289,7 @@ fn paint_active_job_summary_panel(
 }
 
 fn active_job_section_note_height(text: &str, chunk_len: usize, show_divider: bool) -> f32 {
-    let line_count = split_text_for_display(text, chunk_len.max(1))
-        .len()
-        .max(1) as f32;
+    let line_count = split_text_for_display(text, chunk_len.max(1)).len().max(1) as f32;
     line_count * ACTIVE_JOB_SECTION_NOTE_LINE_HEIGHT
         + if show_divider {
             MISSION_CONTROL_ROW_DIVIDER_TOP_GAP

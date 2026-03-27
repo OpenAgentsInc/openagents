@@ -99,6 +99,7 @@ pub enum PaneKind {
     GoOnline,
     ProviderControl,
     ProviderStatus,
+    TailnetStatus,
     VoicePlayground,
     LocalInference,
     PsionicViz,
@@ -828,6 +829,38 @@ impl Default for ProviderStatusPaneState {
 }
 
 impl ProviderStatusPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
+    }
+}
+
+pub struct TailnetStatusPaneState {
+    scroll_offset_px: f32,
+}
+
+impl Default for TailnetStatusPaneState {
+    fn default() -> Self {
+        Self {
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl TailnetStatusPaneState {
     fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
         let clamped = offset.clamp(0.0, max_scroll.max(0.0));
         *offset = clamped;
@@ -5929,7 +5962,10 @@ impl LogStreamPaneState {
     }
 
     pub fn cycle_level_filter(&mut self) -> LogStreamLevelFilter {
-        let next = match self.active_level_filter.unwrap_or(LogStreamLevelFilter::Info) {
+        let next = match self
+            .active_level_filter
+            .unwrap_or(LogStreamLevelFilter::Info)
+        {
             LogStreamLevelFilter::Debug => LogStreamLevelFilter::Info,
             LogStreamLevelFilter::Info => LogStreamLevelFilter::Warn,
             LogStreamLevelFilter::Warn => LogStreamLevelFilter::Error,
@@ -9212,22 +9248,16 @@ impl SidebarState {
     }
 
     pub fn set_docked_mission_control_expanded_width(&mut self, width: f32) {
-        self.docked_mission_control_expanded_width = width.max(
-            Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
-        );
+        self.docked_mission_control_expanded_width =
+            width.max(Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0);
         if !self.docked_mission_control_collapsed && !self.docked_mission_control_animating() {
             self.width = self.docked_mission_control_expanded_width;
         }
     }
 
-    pub fn toggle_docked_mission_control(
-        &mut self,
-        expanded_width: f32,
-        now: std::time::Instant,
-    ) {
-        self.docked_mission_control_expanded_width = expanded_width.max(
-            Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
-        );
+    pub fn toggle_docked_mission_control(&mut self, expanded_width: f32, now: std::time::Instant) {
+        self.docked_mission_control_expanded_width =
+            expanded_width.max(Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0);
         if self.docked_mission_control_collapsed {
             self.expand_docked_mission_control(now);
         } else {
@@ -9249,9 +9279,8 @@ impl SidebarState {
     fn expand_docked_mission_control(&mut self, now: std::time::Instant) {
         self.docked_mission_control_collapsed = false;
         self.start_docked_mission_control_animation(
-            self.docked_mission_control_expanded_width.max(
-                Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
-            ),
+            self.docked_mission_control_expanded_width
+                .max(Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0),
             now,
         );
     }
@@ -9271,9 +9300,8 @@ impl SidebarState {
         now: std::time::Instant,
         expanded_width: f32,
     ) -> bool {
-        self.docked_mission_control_expanded_width = expanded_width.max(
-            Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
-        );
+        self.docked_mission_control_expanded_width =
+            expanded_width.max(Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0);
         if !self.docked_mission_control_collapsed
             && !self.docked_mission_control_animating()
             && (self.width - self.docked_mission_control_expanded_width).abs() > 0.5
@@ -9399,21 +9427,13 @@ impl AutopilotChatState {
         }
     }
 
-    pub fn open_header_menu(
-        &mut self,
-        kind: ChatHeaderMenuKind,
-        keyboard_index: Option<usize>,
-    ) {
+    pub fn open_header_menu(&mut self, kind: ChatHeaderMenuKind, keyboard_index: Option<usize>) {
         self.header_controls_expanded = false;
         self.header_open_menu = Some(kind);
         self.header_menu_keyboard_index = keyboard_index;
     }
 
-    pub fn toggle_header_menu(
-        &mut self,
-        kind: ChatHeaderMenuKind,
-        keyboard_index: Option<usize>,
-    ) {
+    pub fn toggle_header_menu(&mut self, kind: ChatHeaderMenuKind, keyboard_index: Option<usize>) {
         if self.header_open_menu == Some(kind) {
             self.close_header_menu();
         } else {
@@ -15956,6 +15976,7 @@ pub struct RenderState {
     pub provider_control: ProviderControlPaneState,
     pub mission_control: MissionControlPaneState,
     pub provider_status_pane: ProviderStatusPaneState,
+    pub tailnet_status_pane: TailnetStatusPaneState,
     pub sync_health_pane: SyncHealthPaneState,
     pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,

@@ -58,6 +58,9 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
   - Shows canonical failure taxonomy class (`relay`, `execution`, `payment`, `reconciliation`) with concise diagnostics sourced from runtime/wallet/reconciliation authority.
   - Action: read-only operational visibility.
+- `Tailnet Status`
+  - Tailnet status pane for the current tailnet name, backend state, device roster, relay/IP diagnostics, traffic counters, and last-seen handshake fields sourced from `tailscale status --json`.
+  - Action: read-only operator visibility into the current Tailnet device set.
 - `GPT-OSS Workbench`
   - GPT-OSS local inference workbench for the app-owned runtime seam.
   - Shows runtime reachability, configured model path, backend label, artifact presence, configured/ready/loaded model state, pane-owned prompt runs, and the last output preview.
@@ -331,6 +334,7 @@ Current pane badge mapping:
 - `Codex Diagnostics`: `source: codex`
 - `Provider Control`: `source: runtime`
 - `Provider Status`: `source: runtime`
+- `Tailnet Status`: `source: tailnet`
 - `GPT-OSS Workbench`: `source: runtime`
 - `Psionic Mesh`: `source: runtime`
 - `Earnings & Jobs`: `source: runtime+wallet+receipts`
@@ -385,6 +389,7 @@ Current pane badge mapping:
   - `Codex Diagnostics` -> opens `Codex Diagnostics`.
   - `Provider Control` -> opens `Provider Control`.
   - `Provider Status` -> opens `Provider Status`.
+  - `Tailnet Status` -> opens `Tailnet Status`.
   - `GPT-OSS Workbench` -> opens `GPT-OSS Workbench`.
   - `Psionic Mesh` -> opens `Psionic Mesh`.
   - `Presentation` -> opens `Presentation`.
@@ -416,7 +421,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Provider Control, Provider Status, GPT-OSS Workbench, Psionic Mesh, Rive Preview, Presentation, Relay Connections, Sync Health, Network Requests, Earnings & Jobs, Buy Mode, Log Stream, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Provider Control, Provider Status, Tailnet Status, GPT-OSS Workbench, Psionic Mesh, Rive Preview, Presentation, Relay Connections, Sync Health, Network Requests, Earnings & Jobs, Buy Mode, Log Stream, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 - Fullscreen pane presentation is reversible: invoking close on a fullscreen pane demotes it back to windowed before a second close removes it.

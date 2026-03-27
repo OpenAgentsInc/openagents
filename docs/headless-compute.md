@@ -176,7 +176,7 @@ backend, topology, proof posture, environment ref, and sandbox profile where
 those fields are present.
 
 `autopilotctl tailnet status` is the focused operator view for the same Tailnet
-roster now surfaced in the desktop `Provider + Tailnet` pane. It shells out to
+roster now surfaced in the desktop `Tailnet Status` pane. It shells out to
 `tailscale status --json`, normalizes the local node plus peer devices into the
 desktop-control snapshot, and prints relay, IP, traffic, and last-seen fields
 without requiring a second remote-only control path.
