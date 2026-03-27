@@ -2650,11 +2650,24 @@ pub fn buy_mode_payments_ledger_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn provider_inventory_toggle_button_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
     let safe_index = row_index.min(2);
+    let column_gap = 8.0;
+    let width = ((content_bounds.size.width - CHAT_PAD * 2.0 - column_gap * 2.0) / 3.0).max(100.0);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD + safe_index as f32 * (width + column_gap),
+        content_bounds.origin.y + CHAT_PAD,
+        width,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn provider_status_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let row = provider_inventory_toggle_button_bounds(content_bounds, 0);
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD + safe_index as f32 * 40.0,
-        (content_bounds.size.width * 0.34).clamp(180.0, 260.0),
-        JOB_INBOX_BUTTON_HEIGHT,
+        row.max_y() + 10.0,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0),
+        (content_bounds.size.height - (row.max_y() + 10.0 - content_bounds.origin.y) - CHAT_PAD)
+            .max(0.0),
     )
 }
 
@@ -3619,6 +3632,17 @@ pub fn sync_health_rebootstrap_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
         JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn sync_health_scroll_viewport_bounds(content_bounds: Bounds) -> Bounds {
+    let button = sync_health_rebootstrap_button_bounds(content_bounds);
+    let origin_y = button.max_y() + 10.0;
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        origin_y,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(0.0),
+        (content_bounds.max_y() - origin_y - CHAT_PAD).max(0.0),
     )
 }
 
@@ -7410,6 +7434,7 @@ fn pane_hit_action_for_pane(
         PaneKind::ProviderStatus => {
             for (row_index, target) in crate::app_state::ProviderInventoryProductToggleTarget::all()
                 .iter()
+                .take(3)
                 .enumerate()
             {
                 if provider_inventory_toggle_button_bounds(content_bounds, row_index)
@@ -8817,6 +8842,58 @@ pub fn dispatch_provider_control_scroll_event(
     }
 
     state.provider_control.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_provider_status_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::ProviderStatus {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport = provider_status_scroll_viewport_bounds(content_bounds);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.provider_status_pane.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_sync_health_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::SyncHealth {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport = sync_health_scroll_viewport_bounds(content_bounds);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.sync_health_pane.scroll_by(scroll_dy);
     true
 }
 

@@ -804,6 +804,70 @@ impl ProviderControlPaneState {
     }
 }
 
+pub struct ProviderStatusPaneState {
+    scroll_offset_px: f32,
+}
+
+impl Default for ProviderStatusPaneState {
+    fn default() -> Self {
+        Self {
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl ProviderStatusPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
+    }
+}
+
+pub struct SyncHealthPaneState {
+    scroll_offset_px: f32,
+}
+
+impl Default for SyncHealthPaneState {
+    fn default() -> Self {
+        Self {
+            scroll_offset_px: 0.0,
+        }
+    }
+}
+
+impl SyncHealthPaneState {
+    fn clamp_scroll_offset(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn scroll_by(&mut self, dy: f32) {
+        self.scroll_offset_px = (self.scroll_offset_px + dy).max(0.0);
+    }
+
+    pub fn clamp_scroll_offset_to(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.scroll_offset_px, max_scroll)
+    }
+
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset_px
+    }
+}
+
 pub struct NostrIdentityPaneState {
     scroll_offset_px: f32,
 }
@@ -15686,6 +15750,8 @@ pub struct RenderState {
     pub calculator_inputs: CalculatorPaneInputs,
     pub provider_control: ProviderControlPaneState,
     pub mission_control: MissionControlPaneState,
+    pub provider_status_pane: ProviderStatusPaneState,
+    pub sync_health_pane: SyncHealthPaneState,
     pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
     pub nip90_sent_payments: Nip90SentPaymentsPaneState,
