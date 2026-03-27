@@ -805,8 +805,8 @@ const PANE_SPECS: [PaneSpec; 64] = [
     PaneSpec {
         kind: PaneKind::DataBuyer,
         title: "Data Buyer",
-        default_width: 1080.0,
-        default_height: 620.0,
+        default_width: 980.0,
+        default_height: 560.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
