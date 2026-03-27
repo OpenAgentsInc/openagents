@@ -195,6 +195,12 @@ pub struct ChatTranscriptSelectionState {
     pub end_byte_offset: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ChatHeaderMenuKind {
+    Model,
+    More,
+}
+
 pub struct DesktopPane {
     pub id: u64,
     pub title: String,
@@ -210,11 +216,16 @@ pub struct DesktopPane {
 pub enum PanePresentation {
     Windowed,
     Fullscreen,
+    DockedRight,
 }
 
 impl PanePresentation {
     pub const fn uses_window_chrome(self) -> bool {
         matches!(self, Self::Windowed)
+    }
+
+    pub const fn is_docked_right(self) -> bool {
+        matches!(self, Self::DockedRight)
     }
 }
 
@@ -6137,6 +6148,7 @@ pub struct MissionControlPaneState {
     wallet_pending_last_seen_epoch_seconds: Option<u64>,
     load_funds_popup_open: bool,
     buy_mode_popup_open: bool,
+    column_scroll_offset_px: f32,
     sell_scroll_offset_px: f32,
     earnings_scroll_offset_px: f32,
     wallet_scroll_offset_px: f32,
@@ -6184,6 +6196,7 @@ impl Default for MissionControlPaneState {
             wallet_pending_last_seen_epoch_seconds: None,
             load_funds_popup_open: false,
             buy_mode_popup_open: false,
+            column_scroll_offset_px: 0.0,
             sell_scroll_offset_px: 0.0,
             earnings_scroll_offset_px: 0.0,
             wallet_scroll_offset_px: 0.0,
@@ -6290,6 +6303,10 @@ impl MissionControlPaneState {
         clamped
     }
 
+    pub fn scroll_column_by(&mut self, dy: f32) {
+        self.column_scroll_offset_px = (self.column_scroll_offset_px + dy).max(0.0);
+    }
+
     pub fn scroll_sell_by(&mut self, dy: f32) {
         self.sell_scroll_offset_px = (self.sell_scroll_offset_px + dy).max(0.0);
     }
@@ -6318,6 +6335,10 @@ impl MissionControlPaneState {
         Self::clamp_scroll_offset(&mut self.sell_scroll_offset_px, max_scroll)
     }
 
+    pub fn clamp_column_scroll_offset(&mut self, max_scroll: f32) -> f32 {
+        Self::clamp_scroll_offset(&mut self.column_scroll_offset_px, max_scroll)
+    }
+
     pub fn clamp_earnings_scroll_offset(&mut self, max_scroll: f32) -> f32 {
         Self::clamp_scroll_offset(&mut self.earnings_scroll_offset_px, max_scroll)
     }
@@ -6340,6 +6361,10 @@ impl MissionControlPaneState {
 
     pub fn load_funds_scroll_offset(&self) -> f32 {
         self.load_funds_scroll_offset_px
+    }
+
+    pub fn column_scroll_offset(&self) -> f32 {
+        self.column_scroll_offset_px
     }
 
     pub fn dismiss_alert(&mut self, signature: impl Into<String>) {
@@ -8590,6 +8615,8 @@ pub struct AutopilotChatState {
     pub thread_filter_model_provider: Option<String>,
     pub thread_filter_search_term: String,
     pub header_controls_expanded: bool,
+    pub header_open_menu: Option<ChatHeaderMenuKind>,
+    pub header_menu_keyboard_index: Option<usize>,
     pub thread_tools_expanded: bool,
     pub show_autopilot_help_hint: bool,
     pub workspace_rail_collapsed: bool,
@@ -8732,6 +8759,8 @@ impl Default for AutopilotChatState {
             thread_filter_model_provider: None,
             thread_filter_search_term: String::new(),
             header_controls_expanded: false,
+            header_open_menu: None,
+            header_menu_keyboard_index: None,
             thread_tools_expanded: false,
             show_autopilot_help_hint: false,
             workspace_rail_collapsed: false,
@@ -9125,20 +9154,134 @@ pub struct SidebarState {
     pub drag_start_width: f32,
     pub settings_hover: bool,
     pub settings_tooltip_t: f32,
+    pub docked_mission_control_collapsed: bool,
+    docked_mission_control_expanded_width: f32,
+    docked_mission_control_animation_start_width: f32,
+    docked_mission_control_animation_target_width: f32,
+    docked_mission_control_animation_started_at: Option<std::time::Instant>,
 }
 
 impl Default for SidebarState {
     fn default() -> Self {
         Self {
-            width: 300.0,
+            width: 360.0,
             is_open: false,
             is_pressed: false,
             is_dragging: false,
             drag_start_x: 0.0,
-            drag_start_width: 300.0,
+            drag_start_width: 360.0,
             settings_hover: false,
             settings_tooltip_t: 0.0,
+            docked_mission_control_collapsed: false,
+            docked_mission_control_expanded_width: 360.0,
+            docked_mission_control_animation_start_width: 360.0,
+            docked_mission_control_animation_target_width: 360.0,
+            docked_mission_control_animation_started_at: None,
         }
+    }
+}
+
+impl SidebarState {
+    pub const DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH: f32 = 44.0;
+    const DOCKED_MISSION_CONTROL_ANIMATION_DURATION: std::time::Duration =
+        std::time::Duration::from_millis(220);
+
+    pub fn docked_mission_control_animating(&self) -> bool {
+        self.docked_mission_control_animation_started_at.is_some()
+    }
+
+    pub fn docked_mission_control_expanded_width(&self) -> f32 {
+        self.docked_mission_control_expanded_width
+    }
+
+    pub fn set_docked_mission_control_expanded_width(&mut self, width: f32) {
+        self.docked_mission_control_expanded_width = width.max(
+            Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
+        );
+        if !self.docked_mission_control_collapsed && !self.docked_mission_control_animating() {
+            self.width = self.docked_mission_control_expanded_width;
+        }
+    }
+
+    pub fn toggle_docked_mission_control(
+        &mut self,
+        expanded_width: f32,
+        now: std::time::Instant,
+    ) {
+        self.docked_mission_control_expanded_width = expanded_width.max(
+            Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
+        );
+        if self.docked_mission_control_collapsed {
+            self.expand_docked_mission_control(now);
+        } else {
+            self.collapse_docked_mission_control(now);
+        }
+    }
+
+    fn collapse_docked_mission_control(&mut self, now: std::time::Instant) {
+        self.docked_mission_control_collapsed = true;
+        self.docked_mission_control_expanded_width = self
+            .width
+            .max(Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0);
+        self.start_docked_mission_control_animation(
+            Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH,
+            now,
+        );
+    }
+
+    fn expand_docked_mission_control(&mut self, now: std::time::Instant) {
+        self.docked_mission_control_collapsed = false;
+        self.start_docked_mission_control_animation(
+            self.docked_mission_control_expanded_width.max(
+                Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
+            ),
+            now,
+        );
+    }
+
+    fn start_docked_mission_control_animation(
+        &mut self,
+        target_width: f32,
+        now: std::time::Instant,
+    ) {
+        self.docked_mission_control_animation_start_width = self.width;
+        self.docked_mission_control_animation_target_width = target_width;
+        self.docked_mission_control_animation_started_at = Some(now);
+    }
+
+    pub fn tick_docked_mission_control_animation(
+        &mut self,
+        now: std::time::Instant,
+        expanded_width: f32,
+    ) -> bool {
+        self.docked_mission_control_expanded_width = expanded_width.max(
+            Self::DOCKED_MISSION_CONTROL_COLLAPSED_WIDTH + 1.0,
+        );
+        if !self.docked_mission_control_collapsed
+            && !self.docked_mission_control_animating()
+            && (self.width - self.docked_mission_control_expanded_width).abs() > 0.5
+        {
+            self.width = self.docked_mission_control_expanded_width;
+            return true;
+        }
+
+        let Some(started_at) = self.docked_mission_control_animation_started_at else {
+            return false;
+        };
+
+        let elapsed = now.saturating_duration_since(started_at);
+        let duration = Self::DOCKED_MISSION_CONTROL_ANIMATION_DURATION;
+        let raw = (elapsed.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0);
+        let eased = 1.0 - (1.0 - raw).powi(3);
+        self.width = self.docked_mission_control_animation_start_width
+            + (self.docked_mission_control_animation_target_width
+                - self.docked_mission_control_animation_start_width)
+                * eased;
+        if raw >= 1.0 {
+            self.width = self.docked_mission_control_animation_target_width;
+            self.docked_mission_control_animation_started_at = None;
+        }
+        true
     }
 }
 
@@ -9214,6 +9357,41 @@ impl AutopilotChatState {
         } else {
             Some(value.to_string())
         }
+    }
+
+    pub fn open_header_menu(
+        &mut self,
+        kind: ChatHeaderMenuKind,
+        keyboard_index: Option<usize>,
+    ) {
+        self.header_controls_expanded = false;
+        self.header_open_menu = Some(kind);
+        self.header_menu_keyboard_index = keyboard_index;
+    }
+
+    pub fn toggle_header_menu(
+        &mut self,
+        kind: ChatHeaderMenuKind,
+        keyboard_index: Option<usize>,
+    ) {
+        if self.header_open_menu == Some(kind) {
+            self.close_header_menu();
+        } else {
+            self.open_header_menu(kind, keyboard_index);
+        }
+    }
+
+    pub fn close_header_menu(&mut self) {
+        self.header_open_menu = None;
+        self.header_menu_keyboard_index = None;
+    }
+
+    pub fn header_menu_is_open(&self, kind: ChatHeaderMenuKind) -> bool {
+        self.header_open_menu == Some(kind)
+    }
+
+    pub fn set_header_menu_keyboard_index(&mut self, keyboard_index: Option<usize>) {
+        self.header_menu_keyboard_index = keyboard_index;
     }
 
     pub fn active_thread_cwd(&self) -> Option<&str> {
@@ -9799,6 +9977,15 @@ impl AutopilotChatState {
             return;
         }
         self.selected_model = (self.selected_model + 1) % self.models.len();
+        self.record_active_session_preferences();
+        self.last_error = None;
+    }
+
+    pub fn set_selected_model_index(&mut self, index: usize) {
+        if index >= self.models.len() {
+            return;
+        }
+        self.selected_model = index;
         self.record_active_session_preferences();
         self.last_error = None;
     }

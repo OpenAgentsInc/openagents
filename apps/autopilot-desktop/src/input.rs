@@ -79,7 +79,8 @@ use crate::pane_system::{
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, dispatch_wallet_scroll_event,
     dispatch_voice_playground_input_event, pane_content_bounds, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    pane_z_sort_invocation_count, tick_mission_control_docked_panel_animation,
+    topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -532,7 +533,18 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            if dispatch_keyboard_submit_actions(state, &event.logical_key)
+            let chat_key_handled = map_winit_key(&event.logical_key).is_some_and(|key| {
+                dispatch_chat_input_event(
+                    state,
+                    &InputEvent::KeyDown {
+                        key,
+                        modifiers: state.input_modifiers,
+                    },
+                )
+            });
+
+            if chat_key_handled
+                || dispatch_keyboard_submit_actions(state, &event.logical_key)
                 || handle_nip90_sent_payments_keyboard_input(state, &event.logical_key)
                 || handle_activity_feed_keyboard_input(state, &event.logical_key)
                 || handle_alerts_recovery_keyboard_input(state, &event.logical_key)
@@ -570,6 +582,10 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             }
         }
         WindowEvent::RedrawRequested => {
+            let now = std::time::Instant::now();
+            if tick_mission_control_docked_panel_animation(state, now) {
+                clamp_all_panes_to_window(state);
+            }
             match render_frame(state) {
                 Ok(report) => state.frame_debugger.record_frame(report),
                 Err(error) => {
@@ -585,12 +601,15 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             let provider_animating = provider_transition_animating(state.provider_runtime.mode);
             let rive_needs_redraw = open_rive_surface_needs_redraw(state);
             let onboarding_needs_redraw = crate::onboarding::animation_needs_redraw(state);
+            let mission_control_rail_animating =
+                state.sidebar.docked_mission_control_animating();
             if flashing_now
                 || state.hotbar_flash_was_active
                 || provider_animating
                 || state.autopilot_chat.has_pending_messages()
                 || rive_needs_redraw
                 || onboarding_needs_redraw
+                || mission_control_rail_animating
             {
                 state.window.request_redraw();
             }
@@ -2578,6 +2597,7 @@ fn dispatch_mouse_up(
     handled |= camera_drag_consumed_click;
     handled |= handle_sidebar_mouse_up(state, point, event);
     handled |= PaneInput::handle_mouse_up(state, event);
+    handled |= chat_pane::dismiss_header_menu_on_outside_click(state, point);
     handled |= dispatch_text_inputs(state, event);
     let context_menu_handled = if !camera_drag_consumed_click {
         handle_cad_context_menu_click(state, point, event)
@@ -3506,6 +3526,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatRefreshThreads => run_chat_refresh_threads_action(state),
         PaneHitAction::ChatNewThread => run_chat_new_thread_action(state),
         PaneHitAction::ChatCycleModel => run_chat_cycle_model_action(state),
+        PaneHitAction::ChatToggleModelMenu => run_chat_toggle_model_menu_action(state),
         PaneHitAction::ChatCycleReasoningEffort => run_chat_cycle_reasoning_effort_action(state),
         PaneHitAction::ChatCycleServiceTier => run_chat_cycle_service_tier_action(state),
         PaneHitAction::ChatCyclePersonality => run_chat_cycle_personality_action(state),
@@ -3515,6 +3536,11 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatCycleApprovalMode => run_chat_cycle_approval_mode_action(state),
         PaneHitAction::ChatCycleSandboxMode => run_chat_cycle_sandbox_mode_action(state),
         PaneHitAction::ChatToggleHeaderControls => run_chat_toggle_header_controls_action(state),
+        PaneHitAction::ChatToggleMoreMenu => run_chat_toggle_more_menu_action(state),
+        PaneHitAction::ChatSelectModel(index) => run_chat_select_model_action(state, index),
+        PaneHitAction::ChatMoreMenuSelect(item) => {
+            run_chat_activate_more_menu_item_action(state, item)
+        }
         PaneHitAction::ChatToggleHelpHint => run_chat_toggle_help_hint_action(state),
         PaneHitAction::ChatToggleWorkspaceRail => run_chat_toggle_workspace_rail_action(state),
         PaneHitAction::ChatToggleThreadRail => run_chat_toggle_thread_rail_action(state),
