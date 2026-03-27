@@ -382,7 +382,7 @@ const PANE_SPECS: [PaneSpec; 65] = [
         command: Some(PaneCommandSpec {
             id: "pane.tailnet_status",
             label: "Tailnet Status",
-            description: "Open the live Tailnet device roster and link diagnostics",
+            description: "Open the live auto-discovered Tailnet device roster",
             keybinding: None,
         }),
         hotbar: None,

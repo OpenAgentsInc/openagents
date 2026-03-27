@@ -30,8 +30,8 @@ use crate::app_state::{
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
 use crate::desktop_control::{
-    DesktopControlRemoteTrainingStatus, DesktopControlTrainingStatus,
-    desktop_control_tailnet_status,
+    DesktopControlRemoteTrainingStatus, DesktopControlTailnetDeviceStatus,
+    DesktopControlTrainingStatus, desktop_control_tailnet_status,
 };
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
@@ -5824,16 +5824,35 @@ fn paint_tailnet_status_pane(
     paint: &mut PaintContext,
 ) {
     let tailnet = desktop_control_tailnet_status();
+    let mut connected_devices: Vec<(&DesktopControlTailnetDeviceStatus, bool)> = Vec::new();
+    let mut offline_devices: Vec<(&DesktopControlTailnetDeviceStatus, bool)> = Vec::new();
+    if let Some(device) = tailnet.self_device.as_ref() {
+        if device.online {
+            connected_devices.push((device, true));
+        } else {
+            offline_devices.push((device, true));
+        }
+    }
+    for device in &tailnet.peers {
+        if device.online {
+            connected_devices.push((device, false));
+        } else {
+            offline_devices.push((device, false));
+        }
+    }
+
     let mut lines: Vec<(String, Hsla)> = Vec::new();
 
-    lines.push(("Tailnet roster".to_string(), theme::text::MUTED));
+    lines.push(("Tailnet device roster".to_string(), theme::text::MUTED));
     lines.push((
         format!(
-            "tailnet={} backend={} online_devices={}/{}",
+            "{} connected | {} offline | tailnet={} | backend={}",
+            tailnet.online_device_count,
+            tailnet
+                .device_count
+                .saturating_sub(tailnet.online_device_count),
             tailnet.current_tailnet.as_deref().unwrap_or("n/a"),
             tailnet.backend_state.as_deref().unwrap_or("n/a"),
-            tailnet.online_device_count,
-            tailnet.device_count
         ),
         if tailnet.available {
             theme::text::PRIMARY
@@ -5841,133 +5860,23 @@ fn paint_tailnet_status_pane(
             theme::status::ERROR
         },
     ));
-    lines.push((
-        format!(
-            "magic_dns={} version={} client_version={}",
-            tailnet.magic_dns_suffix.as_deref().unwrap_or("n/a"),
-            tailnet.version.as_deref().unwrap_or("n/a"),
-            tailnet.client_version.as_deref().unwrap_or("n/a"),
-        ),
-        theme::text::PRIMARY,
-    ));
-
-    if let Some(device) = tailnet.self_device.as_ref() {
-        lines.push((String::new(), theme::text::MUTED));
-        lines.push(("Current device".to_string(), theme::text::MUTED));
-        lines.push((
-            format!(
-                "{} os={} online={} active={} exit_node={} relay={}",
-                device.display_name,
-                device.os,
-                device.online,
-                device.active,
-                device.exit_node,
-                device.relay.as_deref().unwrap_or("n/a"),
-            ),
-            if device.online {
-                theme::status::SUCCESS
-            } else {
-                theme::text::MUTED
-            },
-        ));
-        lines.push((
-            format!(
-                "dns={} addr={} ips={} allowed_ips={}",
-                device.dns_name,
-                device.current_address.as_deref().unwrap_or("n/a"),
-                if device.tailscale_ips.is_empty() {
-                    "n/a".to_string()
-                } else {
-                    device.tailscale_ips.join(", ")
-                },
-                if device.allowed_ips.is_empty() {
-                    "n/a".to_string()
-                } else {
-                    device.allowed_ips.join(", ")
-                }
-            ),
-            theme::text::PRIMARY,
-        ));
-        lines.push((
-            format!(
-                "rx={} tx={} created={} last_seen={} last_write={} last_handshake={}",
-                device.rx_bytes,
-                device.tx_bytes,
-                device.created_at.as_deref().unwrap_or("n/a"),
-                device.last_seen.as_deref().unwrap_or("n/a"),
-                device.last_write.as_deref().unwrap_or("n/a"),
-                device.last_handshake.as_deref().unwrap_or("n/a"),
-            ),
-            theme::text::PRIMARY,
-        ));
-    }
-
-    if tailnet.peers.is_empty() {
-        lines.push((String::new(), theme::text::MUTED));
-        lines.push(("Peers".to_string(), theme::text::MUTED));
-        lines.push((
-            "No peer devices reported.".to_string(),
-            theme::text::PRIMARY,
-        ));
-    } else {
-        for device in &tailnet.peers {
-            lines.push((String::new(), theme::text::MUTED));
-            lines.push((format!("Peer: {}", device.display_name), theme::text::MUTED));
-            lines.push((
-                format!(
-                    "os={} online={} active={} exit_node={} relay={}",
-                    device.os,
-                    device.online,
-                    device.active,
-                    device.exit_node,
-                    device.relay.as_deref().unwrap_or("n/a"),
-                ),
-                if device.online {
-                    theme::status::SUCCESS
-                } else {
-                    theme::text::MUTED
-                },
-            ));
-            lines.push((
-                format!(
-                    "dns={} addr={} ips={} allowed_ips={}",
-                    device.dns_name,
-                    device.current_address.as_deref().unwrap_or("n/a"),
-                    if device.tailscale_ips.is_empty() {
-                        "n/a".to_string()
-                    } else {
-                        device.tailscale_ips.join(", ")
-                    },
-                    if device.allowed_ips.is_empty() {
-                        "n/a".to_string()
-                    } else {
-                        device.allowed_ips.join(", ")
-                    }
-                ),
-                theme::text::PRIMARY,
-            ));
-            lines.push((
-                format!(
-                    "rx={} tx={} created={} last_seen={} last_write={} last_handshake={}",
-                    device.rx_bytes,
-                    device.tx_bytes,
-                    device.created_at.as_deref().unwrap_or("n/a"),
-                    device.last_seen.as_deref().unwrap_or("n/a"),
-                    device.last_write.as_deref().unwrap_or("n/a"),
-                    device.last_handshake.as_deref().unwrap_or("n/a"),
-                ),
-                theme::text::PRIMARY,
-            ));
-        }
-    }
+    push_tailnet_roster_section(
+        &mut lines,
+        "Connected devices",
+        "No connected devices discovered.",
+        &connected_devices,
+    );
+    push_tailnet_roster_section(
+        &mut lines,
+        "Offline devices",
+        "No offline devices discovered.",
+        &offline_devices,
+    );
 
     if !tailnet.health.is_empty() {
         lines.push((String::new(), theme::text::MUTED));
-        lines.push(("Health".to_string(), theme::status::WARNING));
-        lines.push((
-            format!("health={}", tailnet.health.join(" | ")),
-            theme::status::WARNING,
-        ));
+        lines.push(("Warnings".to_string(), theme::status::WARNING));
+        lines.push((tailnet.health.join(" | "), theme::status::WARNING));
     }
     if let Some(error) = tailnet.last_error.as_deref() {
         lines.push((String::new(), theme::text::MUTED));
@@ -6016,6 +5925,75 @@ fn paint_tailnet_status_pane(
         scroll_offset,
         paint,
     );
+}
+
+fn push_tailnet_roster_section(
+    lines: &mut Vec<(String, Hsla)>,
+    heading: &str,
+    empty_message: &str,
+    devices: &[(&DesktopControlTailnetDeviceStatus, bool)],
+) {
+    lines.push((String::new(), theme::text::MUTED));
+    lines.push((heading.to_string(), theme::text::MUTED));
+    if devices.is_empty() {
+        lines.push((empty_message.to_string(), theme::text::PRIMARY));
+        return;
+    }
+
+    for (device, is_current_device) in devices {
+        lines.push((
+            tailnet_roster_line(device, *is_current_device),
+            if device.online {
+                theme::status::SUCCESS
+            } else {
+                theme::text::MUTED
+            },
+        ));
+    }
+}
+
+fn tailnet_roster_line(
+    device: &DesktopControlTailnetDeviceStatus,
+    is_current_device: bool,
+) -> String {
+    let mut badges = vec![device.os.clone()];
+    if is_current_device {
+        badges.push("this device".to_string());
+    }
+    if device.active && !is_current_device {
+        badges.push("active".to_string());
+    }
+    if device.exit_node {
+        badges.push("exit node".to_string());
+    }
+
+    let address =
+        tailnet_device_primary_address(device).unwrap_or_else(|| "no tailnet ip".to_string());
+    if device.online {
+        format!(
+            "{} | {} | {}",
+            device.display_name,
+            badges.join(" • "),
+            address
+        )
+    } else if let Some(last_seen) = device.last_seen.as_deref() {
+        format!(
+            "{} | {} | offline | last seen {}",
+            device.display_name,
+            badges.join(" • "),
+            last_seen
+        )
+    } else {
+        format!("{} | {} | offline", device.display_name, badges.join(" • "))
+    }
+}
+
+fn tailnet_device_primary_address(device: &DesktopControlTailnetDeviceStatus) -> Option<String> {
+    device
+        .tailscale_ips
+        .first()
+        .cloned()
+        .or_else(|| device.current_address.clone())
 }
 
 fn paint_earnings_scoreboard_pane(

@@ -178,8 +178,9 @@ those fields are present.
 `autopilotctl tailnet status` is the focused operator view for the same Tailnet
 roster now surfaced in the desktop `Tailnet Status` pane. It shells out to
 `tailscale status --json`, normalizes the local node plus peer devices into the
-desktop-control snapshot, and prints relay, IP, traffic, and last-seen fields
-without requiring a second remote-only control path.
+desktop-control snapshot, and prints the full relay, IP, traffic, and
+last-seen fields without requiring a second remote-only control path. The pane
+itself is the concise discovered-device roster, not the full raw dump.
 
 `autopilotctl training status` now surfaces the app-owned training operator
 projection sourced from kernel authority and the current desktop runtime. The
