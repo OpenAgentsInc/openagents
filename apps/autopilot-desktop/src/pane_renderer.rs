@@ -760,11 +760,18 @@ impl PaneRenderer {
                         content_bounds,
                         spark_wallet,
                         create_invoice_inputs,
+                        spark_wallet_scroll_offset,
                         paint,
                     );
                 }
                 PaneKind::SparkPayInvoice => {
-                    paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
+                    paint_pay_invoice_pane(
+                        content_bounds,
+                        spark_wallet,
+                        pay_invoice_inputs,
+                        spark_wallet_scroll_offset,
+                        paint,
+                    );
                 }
             }
 
@@ -8167,12 +8174,14 @@ fn paint_create_invoice_pane(
     content_bounds: Bounds,
     spark_wallet: &SparkPaneState,
     create_invoice_inputs: &mut CreateInvoicePaneInputs,
+    spark_wallet_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     wallet_pane::paint_create_invoice_pane(
         content_bounds,
         spark_wallet,
         create_invoice_inputs,
+        spark_wallet_scroll_offset,
         paint,
     );
 }
@@ -8186,9 +8195,16 @@ fn paint_pay_invoice_pane(
     content_bounds: Bounds,
     spark_wallet: &SparkPaneState,
     pay_invoice_inputs: &mut PayInvoicePaneInputs,
+    spark_wallet_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
-    wallet_pane::paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
+    wallet_pane::paint_pay_invoice_pane(
+        content_bounds,
+        spark_wallet,
+        pay_invoice_inputs,
+        spark_wallet_scroll_offset,
+        paint,
+    );
 }
 
 #[cfg(test)]

@@ -10,16 +10,16 @@ use crate::app_state::{
     DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState, RelayDatasetListingProjection,
     RelayDatasetOfferProjection,
 };
-use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
+use crate::pane_renderer::{
+    paint_action_button, paint_label_line, paint_source_badge, split_text_for_display,
+};
 use crate::pane_system::data_market_refresh_button_bounds;
 
 const PADDING: f32 = 12.0;
-const METRIC_TOP: f32 = 92.0;
+const METRIC_TOP_BASE: f32 = 92.0;
 const METRIC_HEIGHT: f32 = 56.0;
 const METRIC_GAP: f32 = 10.0;
-const LIFECYCLE_TOP: f32 = 160.0;
 const LIFECYCLE_HEIGHT: f32 = 92.0;
-const PANELS_TOP: f32 = 264.0;
 const PANEL_GAP: f32 = 12.0;
 const PANEL_HEADER_HEIGHT: f32 = 24.0;
 const ROW_HEIGHT: f32 = 38.0;
@@ -34,17 +34,22 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
         paint,
     );
 
-    paint.scene.draw_text(paint.text.layout(
+    let intro_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 6.2).max(28.0) as usize;
+    let mut intro_y = content_bounds.origin.y + 42.0;
+    for line in split_text_for_display(
         "Relay-native dataset market view: DS listings, offers, access contracts, request/result activity, and local wallet settlement matches.",
-        Point::new(
-            content_bounds.origin.x + PADDING,
-            content_bounds.origin.y + 42.0,
-        ),
-        11.0,
-        theme::text::SECONDARY,
-    ));
+        intro_chunk_len,
+    ) {
+        paint.scene.draw_text(paint.text.layout(
+            line.as_str(),
+            Point::new(content_bounds.origin.x + PADDING, intro_y),
+            11.0,
+            theme::text::SECONDARY,
+        ));
+        intro_y += 14.0;
+    }
 
-    let mut status_y = content_bounds.origin.y + 60.0;
+    let mut status_y = intro_y + 4.0;
     status_y = paint_label_line(
         paint,
         content_bounds.origin.x + PADDING,
@@ -59,35 +64,108 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
         "last refresh",
         &format_refresh_time(pane_state.last_refreshed_at_ms),
     );
+    let mut status_end_y;
+    let status_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(22.0) as usize;
     if let Some(action) = pane_state.last_action.as_deref() {
-        let _ = paint_label_line(
+        status_end_y = paint_label_line(
             paint,
             content_bounds.origin.x + PADDING,
             status_y,
             "last action",
-            action,
+            "",
         );
+        for line in split_text_for_display(action, status_chunk_len).into_iter().take(2) {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(content_bounds.origin.x + PADDING + 72.0, status_end_y - 15.0),
+                11.0,
+                theme::text::SECONDARY,
+            ));
+            status_end_y += 14.0;
+        }
+    } else {
+        status_end_y = status_y;
     }
     if let Some(error) = pane_state.last_error.as_deref() {
-        paint.scene.draw_text(paint.text.layout(
-            error,
-            Point::new(
-                content_bounds.origin.x + PADDING,
-                content_bounds.origin.y + 78.0,
-            ),
-            11.0,
-            theme::status::ERROR,
-        ));
+        for line in split_text_for_display(error, status_chunk_len).into_iter().take(2) {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(content_bounds.origin.x + PADDING, status_end_y),
+                11.0,
+                theme::status::ERROR,
+            ));
+            status_end_y += 14.0;
+        }
     }
+    let metric_top = compute_metric_top(content_bounds, pane_state);
+    let lifecycle_top = metric_top + METRIC_HEIGHT + METRIC_GAP + 2.0;
+    let panels_top = lifecycle_top + LIFECYCLE_HEIGHT + PANEL_GAP;
 
-    paint_metric_cards(content_bounds, pane_state, paint);
-    paint_lifecycle_panel(content_bounds, pane_state, paint);
-    paint_panels(content_bounds, pane_state, paint);
+    let viewport = scroll_viewport_bounds(content_bounds, metric_top);
+    let content_height = content_height(content_bounds, metric_top, panels_top);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = pane_state.scroll_offset_px.min(max_scroll);
+    paint.scene.push_clip(viewport);
+    paint_metric_cards(content_bounds, pane_state, metric_top, scroll_offset, paint);
+    paint_lifecycle_panel(content_bounds, pane_state, lifecycle_top, scroll_offset, paint);
+    paint_panels(content_bounds, pane_state, panels_top, scroll_offset, paint);
+    paint.scene.pop_clip();
+    paint_scrollbar(viewport, content_height, scroll_offset, paint);
+}
+
+pub fn compute_metric_top(content_bounds: Bounds, pane_state: &DataMarketPaneState) -> f32 {
+    let intro_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 6.2).max(28.0) as usize;
+    let intro_lines = split_text_for_display(
+        "Relay-native dataset market view: DS listings, offers, access contracts, request/result activity, and local wallet settlement matches.",
+        intro_chunk_len,
+    )
+    .len() as f32;
+    let mut status_end_y = content_bounds.origin.y + 42.0 + intro_lines * 14.0 + 4.0;
+    status_end_y += 15.0; // status
+    status_end_y += 15.0; // last refresh
+    if pane_state.last_action.is_some() {
+        status_end_y += 15.0; // last action label row
+        status_end_y += 14.0 * pane_state.last_action.as_ref().map_or(0.0, |action| {
+            split_text_for_display(
+                action,
+                ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(22.0) as usize,
+            )
+            .len()
+            .min(2) as f32
+        });
+    }
+    if let Some(error) = pane_state.last_error.as_ref() {
+        status_end_y += 14.0
+            * split_text_for_display(
+                error,
+                ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(22.0) as usize,
+            )
+            .len()
+            .min(2) as f32;
+    }
+    (status_end_y + 10.0).max(content_bounds.origin.y + METRIC_TOP_BASE)
+}
+
+pub fn scroll_viewport_bounds(content_bounds: Bounds, metric_top: f32) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 8.0,
+        metric_top - 8.0,
+        (content_bounds.size.width - 16.0).max(1.0),
+        (content_bounds.max_y() - metric_top - 8.0).max(1.0),
+    )
+}
+
+fn content_height(content_bounds: Bounds, metric_top: f32, panels_top: f32) -> f32 {
+    let panel_height = ((content_bounds.max_y() - panels_top - PADDING - PANEL_GAP) / 2.0).max(120.0);
+    let bottom_y = panels_top + panel_height * 2.0 + PANEL_GAP;
+    (bottom_y - (metric_top - 8.0) + PADDING).max(0.0)
 }
 
 fn paint_metric_cards(
     content_bounds: Bounds,
     pane_state: &DataMarketPaneState,
+    metric_top: f32,
+    scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     let card_width =
@@ -101,7 +179,7 @@ fn paint_metric_cards(
     for (index, (label, count)) in metrics.iter().enumerate() {
         let bounds = Bounds::new(
             content_bounds.origin.x + PADDING + index as f32 * (card_width + METRIC_GAP),
-            content_bounds.origin.y + METRIC_TOP,
+            metric_top - scroll_offset,
             card_width,
             METRIC_HEIGHT,
         );
@@ -129,14 +207,15 @@ fn paint_metric_cards(
 fn paint_panels(
     content_bounds: Bounds,
     pane_state: &DataMarketPaneState,
+    panels_top: f32,
+    scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     let panel_width = ((content_bounds.size.width - PADDING * 2.0 - PANEL_GAP) / 2.0).max(180.0);
-    let panel_height =
-        ((content_bounds.size.height - PANELS_TOP - PADDING - PANEL_GAP) / 2.0).max(120.0);
+    let panel_height = ((content_bounds.max_y() - panels_top - PADDING - PANEL_GAP) / 2.0).max(120.0);
     let left_x = content_bounds.origin.x + PADDING;
     let right_x = left_x + panel_width + PANEL_GAP;
-    let top_y = content_bounds.origin.y + PANELS_TOP;
+    let top_y = panels_top - scroll_offset;
     let bottom_y = top_y + panel_height + PANEL_GAP;
 
     paint_panel(
@@ -196,11 +275,13 @@ fn paint_panels(
 fn paint_lifecycle_panel(
     content_bounds: Bounds,
     pane_state: &DataMarketPaneState,
+    lifecycle_top: f32,
+    scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     let bounds = Bounds::new(
         content_bounds.origin.x + PADDING,
-        content_bounds.origin.y + LIFECYCLE_TOP,
+        lifecycle_top - scroll_offset,
         content_bounds.size.width - PADDING * 2.0,
         LIFECYCLE_HEIGHT,
     );
@@ -234,21 +315,65 @@ fn paint_lifecycle_panel(
         return;
     }
 
+    let lifecycle_clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + PANEL_HEADER_HEIGHT + 6.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - PANEL_HEADER_HEIGHT - 12.0).max(1.0),
+    );
+    paint.scene.push_clip(lifecycle_clip);
     for (index, (primary, secondary)) in rows.into_iter().enumerate() {
-        let row_y = bounds.origin.y + 30.0 + index as f32 * 20.0;
-        paint.scene.draw_text(paint.text.layout(
-            primary.as_str(),
-            Point::new(bounds.origin.x + 10.0, row_y),
-            11.0,
-            theme::text::PRIMARY,
-        ));
-        paint.scene.draw_text(paint.text.layout_mono(
-            secondary.as_str(),
-            Point::new(bounds.origin.x + 10.0, row_y + 12.0),
-            10.0,
-            theme::text::MUTED,
-        ));
+        let row_y = bounds.origin.y + 30.0 + index as f32 * 22.0;
+        let primary_chunk = ((bounds.size.width - 20.0) / 7.0).max(16.0) as usize;
+        for (line_idx, line) in split_text_for_display(primary.as_str(), primary_chunk)
+            .into_iter()
+            .take(1)
+            .enumerate()
+        {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(bounds.origin.x + 10.0, row_y + line_idx as f32 * 11.0),
+                11.0,
+                theme::text::PRIMARY,
+            ));
+        }
+        let secondary_chunk = ((bounds.size.width - 20.0) / 7.0).max(16.0) as usize;
+        for (line_idx, line) in split_text_for_display(secondary.as_str(), secondary_chunk)
+            .into_iter()
+            .take(1)
+            .enumerate()
+        {
+            paint.scene.draw_text(paint.text.layout_mono(
+                line.as_str(),
+                Point::new(bounds.origin.x + 10.0, row_y + 12.0 + line_idx as f32 * 10.0),
+                10.0,
+                theme::text::MUTED,
+            ));
+        }
     }
+    paint.scene.pop_clip();
+}
+
+fn paint_scrollbar(viewport: Bounds, content_height: f32, scroll_offset: f32, paint: &mut PaintContext) {
+    if viewport.size.height <= 0.0 || content_height <= viewport.size.height + 0.5 {
+        return;
+    }
+    let max_offset = (content_height - viewport.size.height).max(0.0);
+    let track_bounds = Bounds::new(viewport.max_x() - 2.0, viewport.origin.y, 2.0, viewport.size.height);
+    let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
+        .clamp(16.0, viewport.size.height.max(0.0));
+    let thumb_y =
+        viewport.origin.y + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+    paint.scene.draw_quad(
+        Quad::new(track_bounds)
+            .with_background(theme::border::DEFAULT.with_alpha(0.45))
+            .with_corner_radius(1.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height))
+            .with_background(theme::text::MUTED.with_alpha(0.75))
+            .with_corner_radius(1.0),
+    );
 }
 
 fn paint_panel(
@@ -295,20 +420,41 @@ fn paint_panel(
     }
 
     let row_origin_y = bounds.origin.y + PANEL_HEADER_HEIGHT + 12.0;
+    let panel_clip = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + PANEL_HEADER_HEIGHT + 4.0,
+        (bounds.size.width - 16.0).max(1.0),
+        (bounds.size.height - PANEL_HEADER_HEIGHT - 10.0).max(1.0),
+    );
+    paint.scene.push_clip(panel_clip);
     for (index, (primary, secondary)) in rows.iter().enumerate() {
         let row_y = row_origin_y + index as f32 * ROW_HEIGHT;
-        paint.scene.draw_text(paint.text.layout(
-            primary,
-            Point::new(bounds.origin.x + 10.0, row_y),
-            11.0,
-            theme::text::PRIMARY,
-        ));
-        paint.scene.draw_text(paint.text.layout_mono(
-            secondary,
-            Point::new(bounds.origin.x + 10.0, row_y + 16.0),
-            10.0,
-            theme::text::MUTED,
-        ));
+        let primary_chunk = ((bounds.size.width - 20.0) / 7.0).max(16.0) as usize;
+        for (line_idx, line) in split_text_for_display(primary.as_str(), primary_chunk)
+            .into_iter()
+            .take(1)
+            .enumerate()
+        {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(bounds.origin.x + 10.0, row_y + line_idx as f32 * 12.0),
+                11.0,
+                theme::text::PRIMARY,
+            ));
+        }
+        let secondary_chunk = ((bounds.size.width - 20.0) / 7.0).max(16.0) as usize;
+        for (line_idx, line) in split_text_for_display(secondary.as_str(), secondary_chunk)
+            .into_iter()
+            .take(1)
+            .enumerate()
+        {
+            paint.scene.draw_text(paint.text.layout_mono(
+                line.as_str(),
+                Point::new(bounds.origin.x + 10.0, row_y + 16.0 + line_idx as f32 * 10.0),
+                10.0,
+                theme::text::MUTED,
+            ));
+        }
     }
 
     if total_count > rows.len() {
@@ -319,6 +465,7 @@ fn paint_panel(
             theme::text::MUTED,
         ));
     }
+    paint.scene.pop_clip();
 }
 
 fn asset_row_summary(asset: &DataAsset) -> (String, String) {

@@ -6,7 +6,7 @@ use crate::app_state::{
 };
 use crate::pane_renderer::{
     app_text_style, mission_control_muted_color, mission_control_panel_header_color,
-    paint_primary_button, paint_secondary_button, paint_source_badge, paint_tertiary_button,
+    paint_primary_button, paint_secondary_button, paint_source_badge,
     split_text_for_display,
 };
 use crate::pane_system::pane_content_bounds;
@@ -758,7 +758,17 @@ fn paint_wallet_input_label(
     label: &str,
     style: crate::ui_style::AppTextStyle,
 ) {
-    let label_y = input_bounds.origin.y - (style.font_size + 10.0);
+    paint_wallet_input_label_with_offset(paint, input_bounds, label, style, 0.0);
+}
+
+fn paint_wallet_input_label_with_offset(
+    paint: &mut PaintContext,
+    input_bounds: Bounds,
+    label: &str,
+    style: crate::ui_style::AppTextStyle,
+    y_offset: f32,
+) {
+    let label_y = input_bounds.origin.y - (style.font_size + 10.0) + y_offset;
     paint.scene.draw_text(paint.text.layout_mono(
         label,
         Point::new(input_bounds.origin.x, label_y),
@@ -958,11 +968,16 @@ pub fn paint_create_invoice_pane(
     content_bounds: wgpui::Bounds,
     spark_wallet: &SparkPaneState,
     create_invoice_inputs: &mut CreateInvoicePaneInputs,
+    details_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "wallet", paint);
+    paint.scene.push_clip(content_bounds);
 
-    let layout = spark_pane::create_invoice_layout(content_bounds);
+    let viewport = spark_pane::create_invoice_scroll_viewport_bounds(content_bounds);
+    let content_height = create_invoice_content_height(content_bounds, spark_wallet);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = details_scroll_offset.clamp(0.0, max_scroll);
+    let layout = spark_pane::create_invoice_layout_with_scroll(content_bounds, scroll_offset);
     let state = create_invoice_view_state(spark_wallet);
     let state_color = match state {
         PaneLoadState::Ready => theme::status::SUCCESS,
@@ -995,12 +1010,9 @@ pub fn paint_create_invoice_pane(
         "Status, generated invoice output, and recent wallet activity.",
         paint,
     );
-    paint_primary_button(
-        layout.create_invoice_button,
-        "Create Lightning invoice",
-        paint,
-    );
-    paint_tertiary_button(layout.copy_invoice_button, "Copy Lightning invoice", paint);
+    paint.scene.push_clip(viewport);
+    paint_primary_button(layout.create_invoice_button, "Create Lightning invoice", paint);
+    paint_secondary_button(layout.copy_invoice_button, "Copy Lightning invoice", paint);
 
     create_invoice_inputs
         .amount_sats
@@ -1022,21 +1034,29 @@ pub fn paint_create_invoice_pane(
         .expiry_seconds
         .paint(layout.expiry_input, paint);
 
-    paint_wallet_input_label(
+    paint_wallet_input_label_with_offset(
         paint,
         layout.amount_input,
-        "Lightning invoice sats",
+        "Invoice sats",
         label_style,
+        4.0,
     );
-    paint_wallet_input_label(paint, layout.expiry_input, "Expiry (seconds)", label_style);
-    paint_wallet_input_label(
+    paint_wallet_input_label_with_offset(
+        paint,
+        layout.expiry_input,
+        "Expiry (s)",
+        label_style,
+        4.0,
+    );
+    paint_wallet_input_label_with_offset(
         paint,
         layout.description_input,
         "Description (optional)",
         label_style,
+        4.0,
     );
 
-    let mut y = layout.details_origin.y;
+    let mut y = details_section_bounds.origin.y + 48.0;
     y = paint_wallet_status_summary(
         Bounds::new(
             content_bounds.origin.x + 24.0,
@@ -1125,17 +1145,25 @@ pub fn paint_create_invoice_pane(
             y += 16.0;
         }
     }
+    paint.scene.pop_clip();
+    paint_wallet_scrollbar(viewport, content_height, scroll_offset, paint);
+    paint.scene.pop_clip();
 }
 
 pub fn paint_pay_invoice_pane(
     content_bounds: wgpui::Bounds,
     spark_wallet: &SparkPaneState,
     pay_invoice_inputs: &mut PayInvoicePaneInputs,
+    details_scroll_offset: f32,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "wallet", paint);
 
-    let layout = spark_pane::pay_invoice_layout(content_bounds);
+    let viewport = spark_pane::pay_invoice_scroll_viewport_bounds(content_bounds);
+    let content_height = pay_invoice_content_height(content_bounds, spark_wallet);
+    let max_scroll = (content_height - viewport.size.height).max(0.0);
+    let scroll_offset = details_scroll_offset.clamp(0.0, max_scroll);
+    let layout = spark_pane::pay_invoice_layout_with_scroll(content_bounds, scroll_offset);
     let state = pay_invoice_view_state(spark_wallet);
     let state_color = match state {
         PaneLoadState::Ready => theme::status::SUCCESS,
@@ -1168,6 +1196,7 @@ pub fn paint_pay_invoice_pane(
         "Connection status, payment outcome, and recent wallet activity.",
         paint,
     );
+    paint.scene.push_clip(viewport);
     paint_primary_button(layout.send_payment_button, "Pay invoice", paint);
 
     pay_invoice_inputs
@@ -1308,6 +1337,8 @@ pub fn paint_pay_invoice_pane(
             y += 16.0;
         }
     }
+    paint.scene.pop_clip();
+    paint_wallet_scrollbar(viewport, content_height, scroll_offset, paint);
 }
 
 pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
@@ -1359,7 +1390,10 @@ pub fn dispatch_create_invoice_input_event(state: &mut RenderState, event: &Inpu
     };
 
     let content_bounds = pane_content_bounds(bounds);
-    let layout = spark_pane::create_invoice_layout(content_bounds);
+    let layout = spark_pane::create_invoice_layout_with_scroll(
+        content_bounds,
+        state.spark_wallet_pane.scroll_offset(),
+    );
     let mut handled = false;
 
     handled |= state
@@ -1393,7 +1427,10 @@ pub fn dispatch_pay_invoice_input_event(state: &mut RenderState, event: &InputEv
     };
 
     let content_bounds = pane_content_bounds(bounds);
-    let layout = spark_pane::pay_invoice_layout(content_bounds);
+    let layout = spark_pane::pay_invoice_layout_with_scroll(
+        content_bounds,
+        state.spark_wallet_pane.scroll_offset(),
+    );
     let mut handled = false;
 
     handled |= state
@@ -1446,6 +1483,53 @@ pub fn pay_invoice_view_state(spark_wallet: &SparkPaneState) -> PaneLoadState {
     }
 
     PaneLoadState::Ready
+}
+
+fn create_invoice_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneState) -> f32 {
+    let layout = spark_pane::create_invoice_layout_with_scroll(content_bounds, 0.0);
+    let mut height = (layout.details_origin.y - content_bounds.origin.y).max(0.0);
+    let row_chunk_len = 84usize;
+
+    height += 34.0 + 8.0;
+    if spark_wallet.last_invoice.is_none() {
+        height += 16.0;
+    }
+    if let Some(invoice) = spark_wallet.last_invoice.as_deref() {
+        height += wallet_data_row_height(invoice, row_chunk_len);
+        height += wallet_data_row_height(invoice, row_chunk_len);
+    }
+    if let Some(last_action) = spark_wallet.last_action.as_deref() {
+        height += wallet_data_row_height(last_action, row_chunk_len);
+    }
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        height += 16.0 + split_text_for_display(error, 88).len() as f32 * 16.0;
+    }
+    height + 16.0
+}
+
+fn pay_invoice_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneState) -> f32 {
+    let layout = spark_pane::pay_invoice_layout_with_scroll(content_bounds, 0.0);
+    let mut height = (layout.details_origin.y - content_bounds.origin.y).max(0.0);
+    let row_width = (content_bounds.size.width - 48.0).max(180.0);
+    let row_chunk_len = ((row_width - 122.0) / 6.1).max(18.0) as usize;
+
+    height += 34.0 + 8.0;
+    if pay_invoice_view_state(spark_wallet) == PaneLoadState::Loading {
+        height += 16.0;
+    }
+    height += wallet_data_row_height(spark_wallet.network_name(), row_chunk_len);
+    height += wallet_data_row_height(spark_wallet.network_status_label(), row_chunk_len);
+    height += wallet_data_row_height(payment_terminal_status(spark_wallet), row_chunk_len);
+    if let Some(payment_id) = spark_wallet.last_payment_id.as_deref() {
+        height += wallet_data_row_height(payment_id, row_chunk_len);
+    }
+    if let Some(last_action) = spark_wallet.last_action.as_deref() {
+        height += wallet_data_row_height(last_action, row_chunk_len);
+    }
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        height += 16.0 + split_text_for_display(error, 88).len() as f32 * 16.0;
+    }
+    height + 16.0
 }
 
 pub fn payment_terminal_status(spark_wallet: &SparkPaneState) -> &str {

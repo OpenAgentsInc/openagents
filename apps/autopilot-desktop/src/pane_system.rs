@@ -1302,7 +1302,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::LogStream => pane_size_for_content(980.0, 560.0),
         PaneKind::BuyModePayments => pane_size_for_content(980.0, 560.0),
         PaneKind::DataSeller => pane_size_for_content(1160.0, 680.0),
-        PaneKind::DataBuyer => pane_size_for_content(1080.0, 620.0),
+        PaneKind::DataBuyer => pane_size_for_content(860.0, 500.0),
         PaneKind::DataMarket => pane_size_for_content(1120.0, 640.0),
         PaneKind::SellerEarningsTimeline => pane_size_for_content(1120.0, 620.0),
         PaneKind::SettlementLadder => pane_size_for_content(1120.0, 620.0),
@@ -1864,13 +1864,19 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 }
             }
             PaneKind::SparkCreateInvoice => {
-                let layout = spark_pane::create_invoice_layout(content_bounds);
+                let layout = spark_pane::create_invoice_layout_with_scroll(
+                    content_bounds,
+                    state.spark_wallet_pane.scroll_offset(),
+                );
                 if spark_pane::hits_create_invoice_input(layout, point) {
                     return CursorIcon::Text;
                 }
             }
             PaneKind::SparkPayInvoice => {
-                let layout = spark_pane::pay_invoice_layout(content_bounds);
+                let layout = spark_pane::pay_invoice_layout_with_scroll(
+                    content_bounds,
+                    state.spark_wallet_pane.scroll_offset(),
+                );
                 if spark_pane::hits_pay_invoice_input(layout, point) {
                     return CursorIcon::Text;
                 }
@@ -2589,7 +2595,7 @@ pub fn data_seller_confirm_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn data_seller_publish_button_bounds(content_bounds: Bounds) -> Bounds {
     let confirm = data_seller_confirm_button_bounds(content_bounds);
-    Bounds::new(confirm.max_x() + 8.0, confirm.origin.y, 92.0, 22.0)
+    Bounds::new(confirm.max_x() + 8.0, confirm.origin.y, 126.0, 22.0)
 }
 
 pub fn data_seller_send_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -8296,12 +8302,18 @@ fn pane_hit_action_for_pane(
             spark_pane::hit_action(layout, point).map(PaneHitAction::Spark)
         }
         PaneKind::SparkCreateInvoice => {
-            let layout = spark_pane::create_invoice_layout(content_bounds);
+            let layout = spark_pane::create_invoice_layout_with_scroll(
+                content_bounds,
+                state.spark_wallet_pane.scroll_offset(),
+            );
             spark_pane::hit_create_invoice_action(layout, point)
                 .map(PaneHitAction::SparkCreateInvoice)
         }
         PaneKind::SparkPayInvoice => {
-            let layout = spark_pane::pay_invoice_layout(content_bounds);
+            let layout = spark_pane::pay_invoice_layout_with_scroll(
+                content_bounds,
+                state.spark_wallet_pane.scroll_offset(),
+            );
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
         PaneKind::PsionicViz | PaneKind::Presentation | PaneKind::FrameDebugger => None,
@@ -8959,17 +8971,122 @@ pub fn dispatch_spark_wallet_scroll_event(
         return false;
     };
     let pane = &state.panes[pane_idx];
-    if pane.kind != PaneKind::SparkWallet {
+    if pane.kind != PaneKind::SparkWallet
+        && pane.kind != PaneKind::SparkCreateInvoice
+        && pane.kind != PaneKind::SparkPayInvoice
+    {
         return false;
     }
 
     let content_bounds = pane_content_bounds_for_pane(pane);
-    let viewport = spark_pane::scroll_viewport_bounds(content_bounds);
+    let viewport = if pane.kind == PaneKind::SparkCreateInvoice {
+        spark_pane::create_invoice_scroll_viewport_bounds(content_bounds)
+    } else if pane.kind == PaneKind::SparkPayInvoice {
+        spark_pane::pay_invoice_scroll_viewport_bounds(content_bounds)
+    } else {
+        spark_pane::scroll_viewport_bounds(content_bounds)
+    };
     if !viewport.contains(cursor_position) {
         return false;
     }
 
     state.spark_wallet_pane.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_data_buyer_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::DataBuyer {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let viewport = crate::panes::data_buyer::scroll_viewport_bounds(content_bounds);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.data_buyer.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_data_seller_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::DataSeller {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let composer = crate::pane_system::data_seller_composer_input_bounds(content_bounds);
+    let content_top = {
+        let intro_chunk_len = ((content_bounds.size.width - 24.0) / 6.2).max(28.0) as usize;
+        let intro_lines = crate::pane_renderer::split_text_for_display(
+            "Conversational authoring surface for truthful data listings. Asset and grant publication remain separate economic actions even though the seller flow shares one pane.",
+            intro_chunk_len,
+        )
+        .len()
+        .max(1) as f32;
+        let status_lines = 6.0;
+        let status_block_bottom = content_bounds.origin.y + 42.0 + intro_lines * 14.0 + 4.0 + status_lines * 18.0;
+        (status_block_bottom + 10.0).max(content_bounds.origin.y + 156.0)
+    };
+    let viewport = crate::panes::data_seller::scroll_viewport_bounds(
+        content_bounds,
+        content_top,
+        composer.origin.y,
+    );
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.data_seller.scroll_by(scroll_dy);
+    true
+}
+
+pub fn dispatch_data_market_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::DataMarket {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let metric_top = crate::panes::data_market::compute_metric_top(content_bounds, &state.data_market);
+    let viewport = crate::panes::data_market::scroll_viewport_bounds(content_bounds, metric_top);
+    if !viewport.contains(cursor_position) {
+        return false;
+    }
+
+    state.data_market.scroll_by(scroll_dy);
     true
 }
 
