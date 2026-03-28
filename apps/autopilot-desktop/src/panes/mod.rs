@@ -33,6 +33,5 @@ pub mod settlement_ladder;
 pub mod skill;
 pub mod spark_replay;
 pub mod tassadar_lab;
-pub mod training_viz_shared;
 pub mod voice_playground;
 pub mod wallet;

@@ -2,6 +2,9 @@ use std::borrow::Cow;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use wgpui::components::hud::{DotShape, DotsGrid, Heatmap, RingGauge, Scanlines, SignalMeter};
+use wgpui::viz::chart::{HistoryChartSeries, paint_history_chart_body};
+use wgpui::viz::feed::{EventFeedRow, paint_event_feed_body};
+use wgpui::viz::sampling::sample_history_series;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
@@ -20,10 +23,6 @@ use crate::pane_system::{
     attnres_lab_refresh_button_bounds, attnres_lab_reset_button_bounds,
     attnres_lab_slower_button_bounds, attnres_lab_toggle_playback_button_bounds,
 };
-use crate::panes::training_viz_shared::{
-    EventFeedRow, HistoryChartSeries, paint_event_feed_body, paint_history_chart_body,
-};
-
 const PANEL_RADIUS: f32 = 10.0;
 const ACCENT_CYAN: u32 = 0x67E8F9;
 const ACCENT_MINT: u32 = 0x86EFAC;
@@ -2679,15 +2678,15 @@ fn paint_filter_like_button(bounds: Bounds, label: &str, active: bool, paint: &m
 }
 
 fn paint_panel_shell(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
-    crate::panes::training_viz_shared::paint_panel_shell(bounds, accent, paint);
+    wgpui::viz::panel::paint_shell(bounds, accent, paint);
 }
 
 fn paint_panel_title(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
-    crate::panes::training_viz_shared::paint_panel_title(bounds, title, accent, paint);
+    wgpui::viz::panel::paint_title(bounds, title, accent, paint);
 }
 
 fn paint_panel_texture(bounds: Bounds, accent: Hsla, phase: f32, paint: &mut PaintContext) {
-    crate::panes::training_viz_shared::paint_panel_texture(bounds, accent, phase, paint);
+    wgpui::viz::panel::paint_texture(bounds, accent, phase, paint);
 }
 
 fn paint_signal_triplet(
@@ -2865,7 +2864,7 @@ fn metric_history_raw_values(
 }
 
 fn sample_metric_series(raw: &[f32], sample_count: usize) -> Vec<f32> {
-    crate::panes::training_viz_shared::sample_history_series(raw, sample_count)
+    sample_history_series(raw, sample_count)
 }
 
 fn build_selected_route_ribbon(selected: &AttnResLabSublayerSnapshot, phase: f32) -> Vec<f32> {

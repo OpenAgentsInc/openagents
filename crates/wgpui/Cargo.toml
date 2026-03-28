@@ -145,6 +145,10 @@ name = "ui_pane_demo"
 required-features = ["desktop"]
 
 [[example]]
+name = "viz_primitives"
+required-features = ["desktop"]
+
+[[example]]
 name = "pane_sequence"
 required-features = ["desktop"]
 
