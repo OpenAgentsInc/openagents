@@ -7351,7 +7351,7 @@ pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_TYPE: &str = "mission_control.
 pub(crate) const MISSION_CONTROL_BUY_MODE_REQUEST_KIND: u16 =
     nostr::nip90::KIND_JOB_TEXT_GENERATION;
 pub(crate) const MISSION_CONTROL_BUY_MODE_BUDGET_SATS: u64 = 2;
-pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS: u64 = 100;
+pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS: u64 = 5000;
 pub(crate) const MISSION_CONTROL_BUY_MODE_INTERVAL: Duration =
     Duration::from_millis(MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS);
 pub(crate) const MISSION_CONTROL_BUY_MODE_BLOCKED_RETRY_INTERVAL: Duration = Duration::from_secs(1);
@@ -9212,6 +9212,25 @@ pub struct SidebarState {
     docked_mission_control_animation_start_width: f32,
     docked_mission_control_animation_target_width: f32,
     docked_mission_control_animation_started_at: Option<std::time::Instant>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct HotbarDragState {
+    pub is_pressed: bool,
+    pub is_dragging: bool,
+    pub start_mouse: Point,
+    pub start_bounds: Bounds,
+}
+
+impl Default for HotbarDragState {
+    fn default() -> Self {
+        Self {
+            is_pressed: false,
+            is_dragging: false,
+            start_mouse: Point::ZERO,
+            start_bounds: Bounds::ZERO,
+        }
+    }
 }
 
 impl Default for SidebarState {
@@ -15944,6 +15963,8 @@ pub struct RenderState {
     pub buy_mode_enabled: bool,
     pub hotbar: Hotbar,
     pub hotbar_bounds: Bounds,
+    pub hotbar_custom_origin: Option<Point>,
+    pub hotbar_drag_state: HotbarDragState,
     pub cursor_position: Point,
     pub event_context: EventContext,
     pub input_modifiers: Modifiers,

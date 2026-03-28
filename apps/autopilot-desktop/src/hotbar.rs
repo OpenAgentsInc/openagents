@@ -1,5 +1,5 @@
 use wgpui::components::hud::{Hotbar, HotbarSlot};
-use wgpui::{Bounds, Size};
+use wgpui::{Bounds, Point, Size};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::app_state::RenderState;
@@ -17,9 +17,11 @@ pub use crate::pane_registry::{
 
 pub const HOTBAR_HEIGHT: f32 = 52.0;
 pub const HOTBAR_FLOAT_GAP: f32 = 18.0;
+pub const HOTBAR_DRAG_HANDLE_SIZE: f32 = 6.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
 const HOTBAR_ITEM_GAP: f32 = 6.0;
 const HOTBAR_PADDING: f32 = 6.0;
+const HOTBAR_DRAG_HANDLE_BOTTOM_INSET: f32 = 2.0;
 
 pub fn configure_hotbar(hotbar: &mut Hotbar) {
     hotbar.set_item_size(HOTBAR_ITEM_SIZE);
@@ -40,14 +42,30 @@ pub fn new_hotbar() -> Hotbar {
     hotbar
 }
 
-pub fn hotbar_bounds(size: Size) -> Bounds {
+fn hotbar_width() -> f32 {
     let slot_count = hotbar_display_order().len();
-    let bar_width = HOTBAR_PADDING * 2.0
+    HOTBAR_PADDING * 2.0
         + HOTBAR_ITEM_SIZE * slot_count as f32
-        + HOTBAR_ITEM_GAP * (slot_count.saturating_sub(1) as f32);
-    let bar_x = size.width * 0.5 - bar_width * 0.5;
-    let bar_y = size.height - HOTBAR_FLOAT_GAP - HOTBAR_HEIGHT;
-    Bounds::new(bar_x, bar_y, bar_width, HOTBAR_HEIGHT)
+        + HOTBAR_ITEM_GAP * (slot_count.saturating_sub(1) as f32)
+}
+
+pub fn hotbar_bounds(size: Size, pane_area_width: f32, custom_origin: Option<Point>) -> Bounds {
+    let bar_width = hotbar_width();
+    let pane_area_width = pane_area_width.max(0.0);
+    let default_x = pane_area_width * 0.5 - bar_width * 0.5;
+    let default_y = size.height - HOTBAR_FLOAT_GAP - HOTBAR_HEIGHT;
+    let origin = custom_origin.unwrap_or(Point::new(default_x, default_y));
+    let max_x = (pane_area_width - bar_width).max(0.0);
+    let max_y = (size.height - HOTBAR_HEIGHT).max(0.0);
+    let clamped_x = origin.x.clamp(0.0, max_x);
+    let clamped_y = origin.y.clamp(0.0, max_y);
+    Bounds::new(clamped_x, clamped_y, bar_width, HOTBAR_HEIGHT)
+}
+
+pub fn hotbar_drag_handle_bounds(bar_bounds: Bounds) -> Bounds {
+    let x = bar_bounds.origin.x + bar_bounds.size.width * 0.5 - HOTBAR_DRAG_HANDLE_SIZE * 0.5;
+    let y = bar_bounds.max_y() - HOTBAR_DRAG_HANDLE_BOTTOM_INSET - HOTBAR_DRAG_HANDLE_SIZE;
+    Bounds::new(x, y, HOTBAR_DRAG_HANDLE_SIZE, HOTBAR_DRAG_HANDLE_SIZE)
 }
 
 pub fn process_hotbar_clicks(state: &mut RenderState) -> bool {
