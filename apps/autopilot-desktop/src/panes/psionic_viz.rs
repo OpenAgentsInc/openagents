@@ -1,6 +1,8 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use wgpui::components::hud::{DotShape, DotsGrid, Heatmap, RingGauge, Scanlines, SignalMeter};
+use wgpui::viz::panel::paint_shell as paint_viz_panel_shell;
+use wgpui::viz::theme as viz_theme;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::app_state::LocalInferencePaneState;
@@ -55,10 +57,10 @@ pub fn paint(
     );
 
     paint_title_block(content_bounds, runtime, pane_state, active, accent, paint);
-    paint_panel_shell(field_bounds, accent, paint);
-    paint_panel_shell(layer_bounds, accent.with_alpha(0.88), paint);
-    paint_panel_shell(telemetry_bounds, accent.with_alpha(0.82), paint);
-    paint_panel_shell(ribbon_bounds, accent.with_alpha(0.78), paint);
+    paint_viz_panel_shell(field_bounds, accent, paint);
+    paint_viz_panel_shell(layer_bounds, accent.with_alpha(0.88), paint);
+    paint_viz_panel_shell(telemetry_bounds, accent.with_alpha(0.82), paint);
+    paint_viz_panel_shell(ribbon_bounds, accent.with_alpha(0.78), paint);
 
     paint_decode_lattice(field_bounds, runtime, pane_state, phase, accent, paint);
     paint_layer_sweep(layer_bounds, runtime, pane_state, phase, accent, paint);
@@ -178,9 +180,9 @@ fn paint_decode_lattice(
         )
         .range(0.0, 1.0)
         .gap(2.0)
-        .low_color(Hsla::from_hex(0x061018).with_alpha(0.94))
-        .mid_color(Some(Hsla::from_hex(0x1ec7c9).with_alpha(0.76)))
-        .high_color(Hsla::from_hex(0xf7ffed).with_alpha(0.96));
+        .low_color(viz_theme::surface::CHART_BG.with_alpha(0.94))
+        .mid_color(Some(viz_theme::series::RUNTIME.with_alpha(0.76)))
+        .high_color(theme::text::PRIMARY.with_alpha(0.96));
     heatmap.paint(matrix_bounds, paint);
 
     let mut scanlines = Scanlines::new()
@@ -314,7 +316,7 @@ fn paint_runtime_telemetry(
         .segments(36)
         .dot_size(4.0)
         .level(warm_level)
-        .active_color(Hsla::from_hex(0xffc857).with_alpha(0.9))
+        .active_color(viz_theme::state::WARNING.with_alpha(0.9))
         .inactive_color(theme::bg::APP)
         .head_color(theme::text::PRIMARY);
     warm_ring.paint(warm_bounds, paint);
@@ -459,19 +461,19 @@ fn paint_phase_ribbons(
         (
             "PREFILL",
             prefill_share,
-            Hsla::from_hex(0x2ec4d6),
+            viz_theme::series::RUNTIME,
             build_ribbon_values(prefill_share, phase, 0.9),
         ),
         (
             "DECODE",
             decode_share,
-            Hsla::from_hex(0x80ed99),
+            viz_theme::series::PROVENANCE,
             build_ribbon_values(decode_share, phase + 0.18, 1.25),
         ),
         (
             "LOAD",
             load_share.max(if runtime.artifact_present { 0.12 } else { 0.02 }),
-            Hsla::from_hex(0xff9f1c),
+            viz_theme::series::HARDWARE,
             build_ribbon_values(load_share.max(0.08), phase + 0.35, 0.72),
         ),
     ];
@@ -499,25 +501,6 @@ fn paint_phase_ribbons(
     }
 }
 
-fn paint_panel_shell(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(Hsla::from_hex(0x071019).with_alpha(0.96))
-            .with_border(accent.with_alpha(0.28), 1.0)
-            .with_corner_radius(10.0),
-    );
-    paint.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x + 1.0,
-            bounds.origin.y + 1.0,
-            bounds.size.width - 2.0,
-            20.0,
-        ))
-        .with_background(accent.with_alpha(0.06))
-        .with_corner_radius(9.0),
-    );
-}
-
 fn paint_signal_triplet(
     origin_x: f32,
     origin_y: f32,
@@ -531,12 +514,12 @@ fn paint_signal_triplet(
         (
             "PF",
             normalize_signal(prefill_tps, 96.0),
-            Hsla::from_hex(0x2ec4d6),
+            viz_theme::series::RUNTIME,
         ),
         (
             "DC",
             normalize_signal(decode_tps, 48.0),
-            Hsla::from_hex(0x80ed99),
+            viz_theme::series::PROVENANCE,
         ),
         (
             "LD",
@@ -545,7 +528,7 @@ fn paint_signal_triplet(
             } else {
                 normalize_signal(250.0 / load_ms.max(1.0), 1.6)
             },
-            Hsla::from_hex(0xff9f1c),
+            viz_theme::series::HARDWARE,
         ),
     ];
 
@@ -749,13 +732,13 @@ fn seed_from_text(value: &str) -> f32 {
 
 fn mesh_accent(active: bool, artifact_present: bool, ready: bool) -> Hsla {
     if active {
-        Hsla::from_hex(0x7af7ff)
+        viz_theme::state::ACTIVE
     } else if ready {
-        Hsla::from_hex(0x80ed99)
+        viz_theme::state::LIVE
     } else if artifact_present {
-        Hsla::from_hex(0xffc857)
+        viz_theme::state::WARNING
     } else {
-        Hsla::from_hex(0xff7b72)
+        viz_theme::state::ERROR
     }
 }
 
@@ -844,7 +827,7 @@ impl Component for PsionicRibbon {
 
         paint.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(Hsla::from_hex(0x041018).with_alpha(0.9))
+                .with_background(viz_theme::surface::CHART_BG.with_alpha(0.9))
                 .with_corner_radius(7.0),
         );
 
