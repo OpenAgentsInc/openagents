@@ -59,7 +59,8 @@ use crate::pane_system::{
     NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
     PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
     RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TassadarLabPaneAction, cad_demo_context_menu_bounds,
+    SyncHealthPaneAction, TassadarLabPaneAction, XtrainExplorerPaneAction,
+    cad_demo_context_menu_bounds,
     cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_active_job_scroll_event,
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_adapter_training_input_event,
     dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
@@ -3551,6 +3552,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_job_history_keyboard_input(state, logical_key)
         || handle_attnres_lab_keyboard_input(state, logical_key)
         || handle_tassadar_lab_keyboard_input(state, logical_key)
+        || handle_xtrain_explorer_keyboard_input(state, logical_key)
         || handle_cad_timeline_keyboard_input(state, logical_key)
 }
 
@@ -3697,6 +3699,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
         PaneHitAction::AttnResLab(action) => run_attnres_lab_action(state, action),
         PaneHitAction::TassadarLab(action) => run_tassadar_lab_action(state, action),
+        PaneHitAction::XtrainExplorer(action) => run_xtrain_explorer_action(state, action),
         PaneHitAction::RivePreview(action) => run_rive_preview_action(state, action),
         PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
         PaneHitAction::AppleAdapterTraining(action) => {
@@ -4458,6 +4461,29 @@ fn handle_tassadar_lab_keyboard_input(
         .is_some_and(|action| run_tassadar_lab_action(state, action))
 }
 
+fn handle_xtrain_explorer_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let is_xtrain_explorer_active = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::XtrainExplorer);
+    if !is_xtrain_explorer_active {
+        return false;
+    }
+
+    xtrain_explorer_keyboard_action(key)
+        .is_some_and(|action| run_xtrain_explorer_action(state, action))
+}
+
 fn handle_cad_timeline_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -4609,6 +4635,35 @@ fn tassadar_lab_keyboard_action(key: Key, help_visible: bool) -> Option<Tassadar
     }
 }
 
+fn xtrain_explorer_keyboard_action(key: Key) -> Option<XtrainExplorerPaneAction> {
+    match key {
+        Key::Named(NamedKey::Tab) => Some(XtrainExplorerPaneAction::CycleView),
+        Key::Named(NamedKey::ArrowLeft) => Some(XtrainExplorerPaneAction::PreviousSnapshot),
+        Key::Named(NamedKey::ArrowRight) => Some(XtrainExplorerPaneAction::NextSnapshot),
+        Key::Named(NamedKey::ArrowUp) => Some(XtrainExplorerPaneAction::PreviousParticipant),
+        Key::Named(NamedKey::ArrowDown) => Some(XtrainExplorerPaneAction::NextParticipant),
+        Key::Character(value) if value == "1" => Some(XtrainExplorerPaneAction::SetView(
+            crate::app_state::XtrainExplorerViewMode::Overview,
+        )),
+        Key::Character(value) if value == "2" => Some(XtrainExplorerPaneAction::SetView(
+            crate::app_state::XtrainExplorerViewMode::Participants,
+        )),
+        Key::Character(value) if value == "3" => Some(XtrainExplorerPaneAction::SetView(
+            crate::app_state::XtrainExplorerViewMode::Windows,
+        )),
+        Key::Character(value) if value == "4" => Some(XtrainExplorerPaneAction::SetView(
+            crate::app_state::XtrainExplorerViewMode::Checkpoints,
+        )),
+        Key::Character(value) if value == "5" => Some(XtrainExplorerPaneAction::SetView(
+            crate::app_state::XtrainExplorerViewMode::Evidence,
+        )),
+        Key::Character(value) if value.eq_ignore_ascii_case("r") => {
+            Some(XtrainExplorerPaneAction::Refresh)
+        }
+        _ => None,
+    }
+}
+
 fn cad_hotkey_action_matrix() -> &'static [(CadHotkeyAction, CadDemoPaneAction)] {
     const MATRIX: [(CadHotkeyAction, CadDemoPaneAction); 10] = [
         (CadHotkeyAction::SnapTop, CadDemoPaneAction::SnapViewTop),
@@ -4697,14 +4752,16 @@ mod tests {
         resolve_turn_skill_by_name, resolve_turn_skill_by_path, rive_preview_cadence_active,
         should_mirror_provider_preflight_error, should_open_command_palette,
         should_request_desktop_redraw, tassadar_lab_keyboard_action, terminal_goal_labor_linkage,
-        validate_lightning_payment_request,
+        validate_lightning_payment_request, xtrain_explorer_keyboard_action,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{
         CodexRunTrigger, CodexTurnExecutionRequest, orchestrate_codex_turn,
     };
     use crate::pane_system::cad_palette_command_specs;
-    use crate::pane_system::{AttnResLabPaneAction, TassadarLabPaneAction};
+    use crate::pane_system::{
+        AttnResLabPaneAction, TassadarLabPaneAction, XtrainExplorerPaneAction,
+    };
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
@@ -5092,6 +5149,40 @@ mod tests {
         assert_eq!(
             tassadar_lab_keyboard_action(Key::Named(NamedKey::Escape), true),
             Some(TassadarLabPaneAction::ToggleHelp)
+        );
+    }
+
+    #[test]
+    fn xtrain_explorer_keyboard_mapping_tracks_view_and_selection_controls() {
+        assert_eq!(
+            xtrain_explorer_keyboard_action(Key::Named(NamedKey::Tab)),
+            Some(XtrainExplorerPaneAction::CycleView)
+        );
+        assert_eq!(
+            xtrain_explorer_keyboard_action(Key::Named(NamedKey::ArrowLeft)),
+            Some(XtrainExplorerPaneAction::PreviousSnapshot)
+        );
+        assert_eq!(
+            xtrain_explorer_keyboard_action(Key::Named(NamedKey::ArrowRight)),
+            Some(XtrainExplorerPaneAction::NextSnapshot)
+        );
+        assert_eq!(
+            xtrain_explorer_keyboard_action(Key::Named(NamedKey::ArrowUp)),
+            Some(XtrainExplorerPaneAction::PreviousParticipant)
+        );
+        assert_eq!(
+            xtrain_explorer_keyboard_action(Key::Named(NamedKey::ArrowDown)),
+            Some(XtrainExplorerPaneAction::NextParticipant)
+        );
+        assert_eq!(
+            xtrain_explorer_keyboard_action(Key::Character("5".to_string())),
+            Some(XtrainExplorerPaneAction::SetView(
+                crate::app_state::XtrainExplorerViewMode::Evidence
+            ))
+        );
+        assert_eq!(
+            xtrain_explorer_keyboard_action(Key::Character("r".to_string())),
+            Some(XtrainExplorerPaneAction::Refresh)
         );
     }
 

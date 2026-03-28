@@ -35,3 +35,4 @@ pub mod spark_replay;
 pub mod tassadar_lab;
 pub mod voice_playground;
 pub mod wallet;
+pub mod xtrain_explorer;

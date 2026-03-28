@@ -94,6 +94,7 @@ pub const fn pane_search_tier(kind: PaneKind) -> PaneSearchTier {
         | PaneKind::CodexDiagnostics
         | PaneKind::PsionicViz
         | PaneKind::PsionicRemoteTraining
+        | PaneKind::XtrainExplorer
         | PaneKind::AttnResLab
         | PaneKind::TassadarLab
         | PaneKind::RivePreview
@@ -176,7 +177,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 65] = [
+const PANE_SPECS: [PaneSpec; 66] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -443,6 +444,21 @@ const PANE_SPECS: [PaneSpec; 65] = [
             id: "pane.psionic_remote_training",
             label: "Training Runs",
             description: "Open the shared PGOLF, HOMEGOLF, Psion, and bounded XTRAIN training dashboard",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::XtrainExplorer,
+        title: "XTRAIN Explorer",
+        default_width: 1220.0,
+        default_height: 800.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.xtrain_explorer",
+            label: "XTRAIN Explorer",
+            description: "Open the decentralized XTRAIN participant, window, checkpoint, and evidence explorer",
             keybinding: None,
         }),
         hotbar: None,
@@ -1302,6 +1318,18 @@ mod tests {
         assert!(
             !spec.startup,
             "remote training pane should remain opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn xtrain_explorer_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.xtrain_explorer")
+            .expect("xtrain explorer command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::XtrainExplorer);
+        assert!(spec.singleton, "xtrain explorer pane must be singleton");
+        assert!(
+            !spec.startup,
+            "xtrain explorer pane should remain opt-in instead of opening at startup"
         );
     }
 

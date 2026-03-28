@@ -18,6 +18,7 @@ use crate::pane_system::{
     LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
     Nip90SentPaymentsPaneAction, ProviderControlPaneAction, PsionicRemoteTrainingPaneAction,
     RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
+    XtrainExplorerPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -10004,6 +10005,136 @@ pub(super) fn run_psionic_remote_training_action(
     }
 }
 
+pub(super) fn run_xtrain_explorer_action(
+    state: &mut crate::app_state::RenderState,
+    action: XtrainExplorerPaneAction,
+) -> bool {
+    match action {
+        XtrainExplorerPaneAction::Refresh => {
+            crate::xtrain_explorer_control::refresh_xtrain_explorer_state(state, true);
+            true
+        }
+        XtrainExplorerPaneAction::SetView(view) => {
+            state.xtrain_explorer.selected_view = view;
+            state.xtrain_explorer.last_action =
+                Some(format!("Selected XTRAIN explorer {} view", view.label()));
+            state.xtrain_explorer.last_error = None;
+            true
+        }
+        XtrainExplorerPaneAction::CycleView => {
+            let current_index = crate::app_state::XtrainExplorerViewMode::ALL
+                .iter()
+                .position(|candidate| *candidate == state.xtrain_explorer.selected_view)
+                .unwrap_or(0);
+            let next_view = crate::app_state::XtrainExplorerViewMode::ALL
+                [(current_index + 1) % crate::app_state::XtrainExplorerViewMode::ALL.len()];
+            state.xtrain_explorer.selected_view = next_view;
+            state.xtrain_explorer.last_action =
+                Some(format!("Selected XTRAIN explorer {} view", next_view.label()));
+            state.xtrain_explorer.last_error = None;
+            true
+        }
+        XtrainExplorerPaneAction::SelectSnapshot(row_index) => {
+            let snapshot_id = state
+                .xtrain_explorer
+                .index
+                .as_ref()
+                .and_then(|index| index.entries.get(row_index))
+                .map(|entry| entry.snapshot_id.clone());
+            if let Some(snapshot_id) = snapshot_id {
+                state.xtrain_explorer.selected_snapshot_id = Some(snapshot_id.clone());
+                crate::xtrain_explorer_control::refresh_xtrain_explorer_state(state, true);
+                state.xtrain_explorer.last_action =
+                    Some(format!("Selected XTRAIN explorer snapshot {snapshot_id}"));
+                state.xtrain_explorer.last_error = None;
+            }
+            true
+        }
+        XtrainExplorerPaneAction::PreviousSnapshot => {
+            step_xtrain_explorer_snapshot(state, -1);
+            true
+        }
+        XtrainExplorerPaneAction::NextSnapshot => {
+            step_xtrain_explorer_snapshot(state, 1);
+            true
+        }
+        XtrainExplorerPaneAction::SelectParticipant(row_index) => {
+            let participant_id = state
+                .xtrain_explorer
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.participants.get(row_index))
+                .map(|participant| participant.participant_id.clone());
+            if let Some(participant_id) = participant_id {
+                state.xtrain_explorer.selected_participant_id = Some(participant_id.clone());
+                state.xtrain_explorer.last_action =
+                    Some(format!("Selected XTRAIN explorer participant {participant_id}"));
+                state.xtrain_explorer.last_error = None;
+            }
+            true
+        }
+        XtrainExplorerPaneAction::PreviousParticipant => {
+            step_xtrain_explorer_participant(state, -1);
+            true
+        }
+        XtrainExplorerPaneAction::NextParticipant => {
+            step_xtrain_explorer_participant(state, 1);
+            true
+        }
+    }
+}
+
+fn step_xtrain_explorer_snapshot(state: &mut crate::app_state::RenderState, delta: isize) {
+    let snapshot_id = {
+        let Some(index) = state.xtrain_explorer.index.as_ref() else {
+            return;
+        };
+        if index.entries.is_empty() {
+            return;
+        }
+        let current_index = index
+            .entries
+            .iter()
+            .position(|entry| {
+                state.xtrain_explorer.selected_snapshot_id.as_deref()
+                    == Some(entry.snapshot_id.as_str())
+            })
+            .unwrap_or(0) as isize;
+        let next_index =
+            (current_index + delta).rem_euclid(index.entries.len() as isize) as usize;
+        index.entries[next_index].snapshot_id.clone()
+    };
+    state.xtrain_explorer.selected_snapshot_id = Some(snapshot_id.clone());
+    crate::xtrain_explorer_control::refresh_xtrain_explorer_state(state, true);
+    state.xtrain_explorer.last_action =
+        Some(format!("Selected XTRAIN explorer snapshot {snapshot_id}"));
+    state.xtrain_explorer.last_error = None;
+}
+
+fn step_xtrain_explorer_participant(state: &mut crate::app_state::RenderState, delta: isize) {
+    let Some(snapshot) = state.xtrain_explorer.snapshot.as_ref() else {
+        return;
+    };
+    if snapshot.participants.is_empty() {
+        return;
+    }
+    let current_index = snapshot
+        .participants
+        .iter()
+        .position(|participant| {
+            state.xtrain_explorer.selected_participant_id.as_deref()
+                == Some(participant.participant_id.as_str())
+        })
+        .unwrap_or(0) as isize;
+    let next_index =
+        (current_index + delta).rem_euclid(snapshot.participants.len() as isize) as usize;
+    let participant_id = snapshot.participants[next_index].participant_id.clone();
+    state.xtrain_explorer.selected_participant_id = Some(participant_id.clone());
+    state.xtrain_explorer.last_action =
+        Some(format!("Selected XTRAIN explorer participant {participant_id}"));
+    state.xtrain_explorer.last_error = None;
+}
+
 fn apply_apple_adapter_training_workbench_handoff(
     state: &mut crate::app_state::RenderState,
     handoff: &crate::panes::apple_adapter_training::AppleAdapterTrainingWorkbenchHandoff,
@@ -13108,6 +13239,7 @@ pub(super) fn run_starter_jobs_action(
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct StarterPayoutSettlementResolution {
     payment_pointer: String,
     settlement_bolt11: Option<String>,
@@ -13120,20 +13252,28 @@ fn resolve_wallet_settlement_pointer_for_starter_payout(
     job_id: &str,
     payout_sats: u64,
 ) -> Option<StarterPayoutSettlementResolution> {
-    let starter_job = state
-        .starter_jobs
-        .jobs
-        .iter()
-        .find(|job| job.job_id == job_id)?;
-    let used_pointers = state
-        .job_history
-        .rows
+    resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces(
+        state.starter_jobs.jobs.as_slice(),
+        state.job_history.rows.as_slice(),
+        state.spark_wallet.recent_payments.as_slice(),
+        job_id,
+        payout_sats,
+    )
+}
+
+fn resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces(
+    starter_jobs: &[crate::app_state::StarterJobRow],
+    history_rows: &[crate::app_state::JobHistoryReceiptRow],
+    recent_payments: &[openagents_spark::PaymentSummary],
+    job_id: &str,
+    payout_sats: u64,
+) -> Option<StarterPayoutSettlementResolution> {
+    let starter_job = starter_jobs.iter().find(|job| job.job_id == job_id)?;
+    let used_pointers = history_rows
         .iter()
         .map(|row| row.payment_pointer.clone())
         .chain(
-            state
-                .starter_jobs
-                .jobs
+            starter_jobs
                 .iter()
                 .filter(|job| job.job_id != job_id)
                 .filter_map(|job| job.payout_pointer.clone()),
@@ -13150,7 +13290,7 @@ fn resolve_wallet_settlement_pointer_for_starter_payout(
         .filter(|value| !value.is_empty())
         .map(str::to_ascii_lowercase);
 
-    let candidate_payments = state.spark_wallet.recent_payments.iter().filter(|payment| {
+    let candidate_payments = recent_payments.iter().filter(|payment| {
         payment.direction.eq_ignore_ascii_case("receive")
             && is_settled_wallet_payment_status(payment.status.as_str())
             && !payment.id.trim().is_empty()
@@ -15040,7 +15180,7 @@ mod tests {
         parse_managed_chat_mention_prefix, parse_shell_like_words,
         resolve_apple_fm_workbench_session_id, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
-        resolve_wallet_settlement_pointer_for_starter_payout,
+        resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
     };
@@ -15376,24 +15516,23 @@ mod tests {
         }
     }
 
-    fn fixture_starter_payout_state(
+    fn fixture_starter_payout_inputs(
         starter_job: crate::app_state::StarterJobRow,
         payments: Vec<openagents_spark::PaymentSummary>,
         history_rows: Vec<crate::app_state::JobHistoryReceiptRow>,
-    ) -> crate::app_state::RenderState {
-        let mut state = crate::app_state::RenderState::default();
-        state.starter_jobs.selected_job_id = Some(starter_job.job_id.clone());
-        state.starter_jobs.jobs.push(starter_job);
-        state.spark_wallet.recent_payments = payments;
-        state.job_history.rows = history_rows;
-        state
+    ) -> (
+        Vec<crate::app_state::StarterJobRow>,
+        Vec<openagents_spark::PaymentSummary>,
+        Vec<crate::app_state::JobHistoryReceiptRow>,
+    ) {
+        (vec![starter_job], payments, history_rows)
     }
 
     #[test]
     fn starter_payout_resolution_prefers_exact_invoice_or_hash_binding() {
         let mut starter_job = fixture_starter_job_row("starter-quest-0001", 120);
         starter_job.settlement_payment_hash = Some("hash-proof-001".to_string());
-        let state = fixture_starter_payout_state(
+        let (starter_jobs, payments, history_rows) = fixture_starter_payout_inputs(
             starter_job,
             vec![
                 openagents_spark::PaymentSummary {
@@ -15418,16 +15557,21 @@ mod tests {
             vec![],
         );
 
-        let resolution =
-            resolve_wallet_settlement_pointer_for_starter_payout(&state, "starter-quest-0001", 120)
-                .expect("expected proof-bound starter payout match");
+        let resolution = resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces(
+            starter_jobs.as_slice(),
+            history_rows.as_slice(),
+            payments.as_slice(),
+            "starter-quest-0001",
+            120,
+        )
+        .expect("expected proof-bound starter payout match");
         assert_eq!(resolution.payment_pointer, "wallet-proof-001");
         assert_eq!(resolution.binding_kind, "proof_bound");
     }
 
     #[test]
     fn starter_payout_resolution_requires_unique_heuristic_candidate_after_start() {
-        let state = fixture_starter_payout_state(
+        let (starter_jobs, payments, history_rows) = fixture_starter_payout_inputs(
             fixture_starter_job_row("starter-quest-0002", 120),
             vec![
                 openagents_spark::PaymentSummary {
@@ -15459,14 +15603,20 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_wallet_settlement_pointer_for_starter_payout(&state, "starter-quest-0002", 120,),
+            resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces(
+                starter_jobs.as_slice(),
+                history_rows.as_slice(),
+                payments.as_slice(),
+                "starter-quest-0002",
+                120,
+            ),
             None
         );
     }
 
     #[test]
     fn starter_payout_resolution_labels_unique_post_start_fallback_as_heuristic() {
-        let state = fixture_starter_payout_state(
+        let (starter_jobs, payments, history_rows) = fixture_starter_payout_inputs(
             fixture_starter_job_row("starter-quest-0003", 120),
             vec![
                 openagents_spark::PaymentSummary {
@@ -15489,9 +15639,14 @@ mod tests {
             vec![fixture_history_row("wallet-used-001")],
         );
 
-        let resolution =
-            resolve_wallet_settlement_pointer_for_starter_payout(&state, "starter-quest-0003", 120)
-                .expect("expected unique heuristic starter payout match");
+        let resolution = resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces(
+            starter_jobs.as_slice(),
+            history_rows.as_slice(),
+            payments.as_slice(),
+            "starter-quest-0003",
+            120,
+        )
+        .expect("expected unique heuristic starter payout match");
         assert_eq!(resolution.payment_pointer, "wallet-after-start-001");
         assert_eq!(resolution.binding_kind, "heuristic_start_window");
     }

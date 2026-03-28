@@ -11,7 +11,10 @@ use psionic_serve::{
     TassadarLabUpdate, TassadarPlannerFallbackPolicy, TassadarPlannerRoutingBudget,
     TassadarPlannerRoutingPolicy,
 };
-use psionic_train::{RemoteTrainingRunIndexV2, RemoteTrainingVisualizationBundleV2};
+use psionic_train::{
+    RemoteTrainingRunIndexV2, RemoteTrainingVisualizationBundleV2, XtrainExplorerIndex,
+    XtrainExplorerSnapshot,
+};
 use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
@@ -358,6 +361,74 @@ impl AttnResLabPaneState {
             .position(|candidate| *candidate == self.selected_view)
             .unwrap_or_default();
         self.selected_view = AttnResLabViewMode::ALL[(index + 1) % AttnResLabViewMode::ALL.len()];
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XtrainExplorerViewMode {
+    Overview,
+    Participants,
+    Windows,
+    Checkpoints,
+    Evidence,
+}
+
+impl XtrainExplorerViewMode {
+    pub const ALL: [Self; 5] = [
+        Self::Overview,
+        Self::Participants,
+        Self::Windows,
+        Self::Checkpoints,
+        Self::Evidence,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::Participants => "Participants",
+            Self::Windows => "Windows",
+            Self::Checkpoints => "Checkpoints",
+            Self::Evidence => "Evidence",
+        }
+    }
+}
+
+pub struct XtrainExplorerPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub source_root_hint: Option<PathBuf>,
+    pub source_root: Option<PathBuf>,
+    pub index_path_hint: Option<PathBuf>,
+    pub index_path: Option<PathBuf>,
+    pub snapshot_path: Option<PathBuf>,
+    pub last_refreshed_at_epoch_ms: Option<u64>,
+    pub selected_view: XtrainExplorerViewMode,
+    pub selected_snapshot_id: Option<String>,
+    pub selected_participant_id: Option<String>,
+    pub index: Option<XtrainExplorerIndex>,
+    pub snapshot: Option<XtrainExplorerSnapshot>,
+}
+
+impl Default for XtrainExplorerPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for XTRAIN explorer artifacts".to_string()),
+            source_root_hint: crate::xtrain_explorer_control::default_xtrain_explorer_source_root_hint(),
+            source_root: None,
+            index_path_hint: crate::xtrain_explorer_control::default_xtrain_explorer_index_path_hint(),
+            index_path: None,
+            snapshot_path: None,
+            last_refreshed_at_epoch_ms: None,
+            selected_view: XtrainExplorerViewMode::Overview,
+            selected_snapshot_id: None,
+            selected_participant_id: None,
+            index: None,
+            snapshot: None,
+        }
     }
 }
 

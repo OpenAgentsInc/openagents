@@ -26,6 +26,7 @@ use crate::app_state::{
     TassadarLabPaneState, TrajectoryAuditPaneState, VoicePlaygroundPaneInputs,
     VoicePlaygroundPaneState, mission_control_local_runtime_is_ready,
     mission_control_local_runtime_lane, mission_control_show_local_model_button,
+    XtrainExplorerPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -111,6 +112,7 @@ use crate::panes::{
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, tassadar_lab as tassadar_lab_pane,
     voice_playground as voice_playground_pane, wallet as wallet_pane,
+    xtrain_explorer as xtrain_explorer_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
@@ -197,6 +199,7 @@ impl PaneRenderer {
         local_inference: &LocalInferencePaneState,
         attnres_lab: &AttnResLabPaneState,
         tassadar_lab: &TassadarLabPaneState,
+        xtrain_explorer: &XtrainExplorerPaneState,
         rive_preview: &mut RivePreviewPaneState,
         rive_preview_runtime: &mut RivePreviewRuntimeState,
         presentation: &mut PresentationPaneState,
@@ -532,6 +535,9 @@ impl PaneRenderer {
                 }
                 PaneKind::TassadarLab => {
                     tassadar_lab_pane::paint(content_bounds, tassadar_lab, paint);
+                }
+                PaneKind::XtrainExplorer => {
+                    xtrain_explorer_pane::paint(content_bounds, xtrain_explorer, paint);
                 }
                 PaneKind::RivePreview => {
                     rive_pane::paint(content_bounds, rive_preview, rive_preview_runtime, paint);
