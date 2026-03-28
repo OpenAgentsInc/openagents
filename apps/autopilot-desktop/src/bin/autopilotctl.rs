@@ -5245,6 +5245,94 @@ fn remote_training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String
             selected_run.run.stale_reason.as_deref().unwrap_or("-"),
         ));
     }
+    if let Some(compare) = snapshot.remote_training.compare.as_ref() {
+        lines.push(format!(
+            "remote training compare: state={} selected={} baseline={} selected_track={} baseline_track={} metric={} direction={} anchor_mode={} anchor={} overlay={} delta={} caveat={}",
+            compare.state,
+            compare.selected_run_id.as_deref().unwrap_or("-"),
+            compare.baseline_run_id,
+            compare.selected_track_id.as_deref().unwrap_or("-"),
+            compare.baseline_track_id.as_deref().unwrap_or("-"),
+            compare.score_metric_id.as_deref().unwrap_or("-"),
+            compare.score_direction.as_deref().unwrap_or("-"),
+            compare.anchor_mode,
+            compare.anchor_label.as_deref().unwrap_or("-"),
+            compare.overlay_capable,
+            compare.delta_summary.as_deref().unwrap_or("-"),
+            compare.caveat,
+        ));
+    }
+    if let Some(focus) = snapshot.remote_training.topology_focus.as_ref() {
+        lines.push(format!(
+            "remote training topology focus: target={} label={} matching_events={} detail={}",
+            focus.target, focus.label, focus.matching_event_count, focus.detail,
+        ));
+    }
+    if let Some(focus) = snapshot.remote_training.provenance_focus.as_ref() {
+        lines.push(format!(
+            "remote training provenance focus: role={} found={} source_kind={} authoritative={} uri={} digest={} receipts={} detail={}",
+            focus.artifact_role,
+            focus.found,
+            focus.source_kind.as_deref().unwrap_or("-"),
+            focus
+                .authoritative
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            focus.artifact_uri.as_deref().unwrap_or("-"),
+            focus.artifact_digest.as_deref().unwrap_or("-"),
+            focus.receipt_count,
+            focus.detail,
+        ));
+    }
+    lines.push(format!(
+        "remote training explorer: available={} state={} view={} snapshot={} participant={} network={} epoch={} window={} participants={} windows={} checkpoints={} events={} authoritative_artifacts={} run_surface_links={} summary={} last_error={}",
+        snapshot.remote_training.explorer.available,
+        snapshot.remote_training.explorer.load_state,
+        snapshot.remote_training.explorer.selected_view,
+        snapshot
+            .remote_training
+            .explorer
+            .selected_snapshot_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .remote_training
+            .explorer
+            .selected_participant_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .remote_training
+            .explorer
+            .network_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .remote_training
+            .explorer
+            .current_epoch_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .remote_training
+            .explorer
+            .active_window_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.remote_training.explorer.participant_count,
+        snapshot.remote_training.explorer.window_count,
+        snapshot.remote_training.explorer.checkpoint_count,
+        snapshot.remote_training.explorer.event_count,
+        snapshot.remote_training.explorer.authoritative_artifact_count,
+        snapshot.remote_training.explorer.run_surface_link_count,
+        snapshot.remote_training.explorer.summary,
+        snapshot
+            .remote_training
+            .explorer
+            .last_error
+            .as_deref()
+            .unwrap_or("-"),
+    ));
     lines
 }
 
@@ -6964,6 +7052,99 @@ fn print_remote_training_text(payload: &Value) {
     );
     if let Some(selected_run) = payload.get("selected_run") {
         print_remote_training_run_text(selected_run);
+    }
+    if let Some(compare) = payload.get("compare") {
+        println!(
+            "remote training compare: state={} selected={} baseline={} selected_track={} baseline_track={} metric={} direction={} anchor_mode={} anchor={} overlay={} delta={} caveat={}",
+            json_str(compare.get("state")).unwrap_or("-"),
+            json_str(compare.get("selected_run_id")).unwrap_or("-"),
+            json_str(compare.get("baseline_run_id")).unwrap_or("-"),
+            json_str(compare.get("selected_track_id")).unwrap_or("-"),
+            json_str(compare.get("baseline_track_id")).unwrap_or("-"),
+            json_str(compare.get("score_metric_id")).unwrap_or("-"),
+            json_str(compare.get("score_direction")).unwrap_or("-"),
+            json_str(compare.get("anchor_mode")).unwrap_or("-"),
+            json_str(compare.get("anchor_label")).unwrap_or("-"),
+            json_bool(compare.get("overlay_capable")),
+            json_str(compare.get("delta_summary")).unwrap_or("-"),
+            json_str(compare.get("caveat")).unwrap_or("-"),
+        );
+    }
+    if let Some(focus) = payload.get("topology_focus") {
+        println!(
+            "remote training topology focus: target={} label={} matching_events={} detail={}",
+            json_str(focus.get("target")).unwrap_or("-"),
+            json_str(focus.get("label")).unwrap_or("-"),
+            focus
+                .get("matching_event_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            json_str(focus.get("detail")).unwrap_or("-"),
+        );
+    }
+    if let Some(focus) = payload.get("provenance_focus") {
+        println!(
+            "remote training provenance focus: role={} found={} source_kind={} authoritative={} uri={} digest={} receipts={} detail={}",
+            json_str(focus.get("artifact_role")).unwrap_or("-"),
+            json_bool(focus.get("found")),
+            json_str(focus.get("source_kind")).unwrap_or("-"),
+            focus
+                .get("authoritative")
+                .map(|value| {
+                    if value.is_null() {
+                        "-".to_string()
+                    } else {
+                        json_bool(Some(value)).to_string()
+                    }
+                })
+                .unwrap_or_else(|| "-".to_string()),
+            json_str(focus.get("artifact_uri")).unwrap_or("-"),
+            json_str(focus.get("artifact_digest")).unwrap_or("-"),
+            focus
+                .get("receipt_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            json_str(focus.get("detail")).unwrap_or("-"),
+        );
+    }
+    if let Some(explorer) = payload.get("explorer") {
+        println!(
+            "remote training explorer: available={} state={} view={} snapshot={} participant={} network={} epoch={} window={} participants={} windows={} checkpoints={} events={} authoritative_artifacts={} run_surface_links={} summary={} last_error={}",
+            json_bool(explorer.get("available")),
+            json_str(explorer.get("load_state")).unwrap_or("-"),
+            json_str(explorer.get("selected_view")).unwrap_or("-"),
+            json_str(explorer.get("selected_snapshot_id")).unwrap_or("-"),
+            json_str(explorer.get("selected_participant_id")).unwrap_or("-"),
+            json_str(explorer.get("network_id")).unwrap_or("-"),
+            json_str(explorer.get("current_epoch_id")).unwrap_or("-"),
+            json_str(explorer.get("active_window_id")).unwrap_or("-"),
+            explorer
+                .get("participant_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            explorer
+                .get("window_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            explorer
+                .get("checkpoint_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            explorer
+                .get("event_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            explorer
+                .get("authoritative_artifact_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            explorer
+                .get("run_surface_link_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            json_str(explorer.get("summary")).unwrap_or("-"),
+            json_str(explorer.get("last_error")).unwrap_or("-"),
+        );
     }
     print_remote_training_runs_text(payload);
 }
@@ -9574,6 +9755,94 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.contains("run=parameter-golf-runpod-single-h100-live-sample")
                 && line.contains("stale=true")
+        }));
+    }
+
+    #[test]
+    fn remote_training_status_lines_cover_compare_focus_and_explorer() {
+        let mut snapshot = sample_snapshot();
+        snapshot.remote_training.compare = Some(
+            autopilot_desktop::desktop_control::DesktopControlRemoteTrainingCompareStatus {
+                state: "direct_compare".to_string(),
+                selected_run_id: Some("homegolf-run-a".to_string()),
+                baseline_run_id: "homegolf-run-b".to_string(),
+                selected_track_id: Some("homegolf.public.weekly".to_string()),
+                baseline_track_id: Some("homegolf.public.weekly".to_string()),
+                score_metric_id: Some("win_rate".to_string()),
+                score_direction: Some("higher_is_better".to_string()),
+                anchor_mode: "global_step".to_string(),
+                anchor_label: Some("anchor step 1280".to_string()),
+                overlay_capable: true,
+                delta_value: Some(0.0425),
+                delta_summary: Some("+0.0425 ratio vs baseline // better".to_string()),
+                caveat: "same-track direct delta".to_string(),
+            },
+        );
+        snapshot.remote_training.topology_focus = Some(
+            autopilot_desktop::desktop_control::DesktopControlRemoteTrainingTopologyFocusStatus {
+                target: "device:gpu0".to_string(),
+                label: "H100".to_string(),
+                detail: "util 91.0% // mem 42.0GB // temp 67C".to_string(),
+                matching_event_count: 2,
+            },
+        );
+        snapshot.remote_training.provenance_focus = Some(
+            autopilot_desktop::desktop_control::DesktopControlRemoteTrainingProvenanceFocusStatus {
+                artifact_role: "training_log".to_string(),
+                found: true,
+                source_kind: Some("runtime_owned".to_string()),
+                authoritative: Some(true),
+                artifact_uri: Some("s3://bucket/run/log.jsonl".to_string()),
+                artifact_digest: Some("sha256:abc123".to_string()),
+                receipt_count: 2,
+                detail: "primary optimizer log".to_string(),
+            },
+        );
+        snapshot.remote_training.explorer = autopilot_desktop::desktop_control::DesktopControlRemoteTrainingExplorerStatus {
+            available: true,
+            load_state: "ready".to_string(),
+            source_root: Some("/tmp/psionic".to_string()),
+            index_path: Some("/tmp/psionic/fixtures/training/xtrain_explorer_index_v1.json".to_string()),
+            snapshot_path: Some("/tmp/psionic/fixtures/training/xtrain_explorer_snapshot_v1.json".to_string()),
+            last_refreshed_at_epoch_ms: Some(1_742_846_403_500),
+            selected_view: "Evidence".to_string(),
+            selected_snapshot_id: Some("snapshot.xtrain_explorer.window1231.v1".to_string()),
+            selected_participant_id: Some("participant://miner-a".to_string()),
+            network_id: Some("xtrain-public-testnet".to_string()),
+            current_epoch_id: Some("epoch-12".to_string()),
+            active_window_id: Some("window1231".to_string()),
+            participant_count: 4,
+            window_count: 1,
+            checkpoint_count: 1,
+            event_count: 4,
+            authoritative_artifact_count: 7,
+            run_surface_link_count: 1,
+            summary: "participants=4 events=4 active_window=window1231 selected_participant=participant://miner-a".to_string(),
+            last_error: None,
+            last_action: Some("Loaded XTRAIN explorer snapshot".to_string()),
+        };
+
+        let lines = remote_training_status_lines(&snapshot);
+
+        assert!(lines.iter().any(|line| {
+            line.contains("remote training compare:")
+                && line.contains("state=direct_compare")
+                && line.contains("anchor=anchor step 1280")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("remote training topology focus:")
+                && line.contains("target=device:gpu0")
+                && line.contains("matching_events=2")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("remote training provenance focus:")
+                && line.contains("role=training_log")
+                && line.contains("source_kind=runtime_owned")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("remote training explorer:")
+                && line.contains("state=ready")
+                && line.contains("snapshot=snapshot.xtrain_explorer.window1231.v1")
         }));
     }
 
