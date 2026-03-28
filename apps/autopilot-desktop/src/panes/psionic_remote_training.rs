@@ -2,7 +2,9 @@ use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use psionic_train::{
-    RemoteTrainingEventSeverity, RemoteTrainingGpuSample, RemoteTrainingVisualizationBundleV2,
+    RemoteTrainingArtifactSourceKind, RemoteTrainingDistributedSample,
+    RemoteTrainingEventSeverity, RemoteTrainingGpuSample, RemoteTrainingSourceArtifact,
+    RemoteTrainingVisualizationBundleV2,
 };
 use wgpui::viz::badge::{BadgeTone, tone_color as badge_tone_color};
 use wgpui::viz::chart::{HistoryChartSeries, paint_history_chart_body};
@@ -21,10 +23,60 @@ use crate::pane_renderer::{
     paint_state_summary, split_text_for_display,
 };
 use crate::pane_system::{
-    psionic_remote_training_layout, psionic_remote_training_refresh_button_bounds,
-    psionic_remote_training_run_row_bounds,
+    psionic_remote_training_clear_anchor_button_bounds,
+    psionic_remote_training_clear_compare_button_bounds,
+    psionic_remote_training_compare_button_bounds, psionic_remote_training_layout,
+    psionic_remote_training_refresh_button_bounds, psionic_remote_training_run_row_bounds,
+    psionic_remote_training_topology_target_bounds,
 };
 const CARD_GAP: f32 = 8.0;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompareNormalizationMode {
+    PendingBaseline,
+    DirectScore,
+    PublicEquivalentScore,
+    SummaryOnly,
+    SideBySide,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompareAnchorMode {
+    None,
+    GlobalStep,
+    ElapsedMs,
+}
+
+struct TrainingRunCompare<'a> {
+    baseline: &'a DesktopControlRemoteTrainingSelectedRunStatus,
+    mode: CompareNormalizationMode,
+    anchor_mode: CompareAnchorMode,
+    delta_value: Option<f64>,
+    delta_summary: Option<String>,
+    caveat: String,
+}
+
+struct OwnedChartSeries {
+    label: &'static str,
+    values: Vec<f32>,
+    color: Hsla,
+    fill_alpha: f32,
+    line_alpha: f32,
+}
+
+struct ChartPanelView {
+    header: Option<String>,
+    footer: Option<String>,
+    empty_state: String,
+    series: Vec<OwnedChartSeries>,
+}
+
+#[derive(Clone)]
+pub(crate) struct RemoteTrainingTopologyFocusTarget {
+    pub key: String,
+    pub label: String,
+    pub detail: String,
+}
 
 pub fn paint(
     content_bounds: Bounds,
@@ -33,6 +85,7 @@ pub fn paint(
 ) {
     let layout = psionic_remote_training_layout(content_bounds);
     let selected = remote_training.selected_run.as_ref();
+    let compare = build_compare_state(remote_training, selected);
     let accent = selected
         .map(|selected| run_track_accent(&selected.run))
         .unwrap_or_else(remote_blue);
@@ -44,9 +97,40 @@ pub fn paint(
         "Refresh",
         paint,
     );
+    if selected.is_some() {
+        let compare_label = match (
+            remote_training.compare_baseline_run_id.as_deref(),
+            selected.map(|selected| selected.run.run_id.as_str()),
+        ) {
+            (Some(baseline), Some(current)) if baseline == current => "Baseline Pinned",
+            (Some(_), Some(_)) => "Re-Pin Baseline",
+            _ => "Pin Baseline",
+        };
+        paint_secondary_button(
+            psionic_remote_training_compare_button_bounds(content_bounds),
+            compare_label,
+            paint,
+        );
+    }
+    if remote_training.compare_baseline_run_id.is_some() {
+        paint_secondary_button(
+            psionic_remote_training_clear_compare_button_bounds(content_bounds),
+            "Clear Compare",
+            paint,
+        );
+    }
+    if remote_training.chart_anchor_ratio_milli.is_some() {
+        paint_secondary_button(
+            psionic_remote_training_clear_anchor_button_bounds(content_bounds),
+            "Live Anchor",
+            paint,
+        );
+    }
 
-    let cards = status_cards(remote_training, selected);
-    let card_width = ((layout.status_row.size.width - CARD_GAP * 3.0) / 4.0).max(120.0);
+    let cards = status_cards(remote_training, selected, compare.as_ref());
+    let card_count = cards.len().max(1) as f32;
+    let card_width =
+        ((layout.status_row.size.width - CARD_GAP * (card_count - 1.0)) / card_count).max(120.0);
     for (index, (label, value, color)) in cards.iter().enumerate() {
         let x = layout.status_row.origin.x + index as f32 * (card_width + CARD_GAP);
         let width = if index == cards.len().saturating_sub(1) {
@@ -70,7 +154,7 @@ pub fn paint(
 
     paint_summary_band(
         layout.summary_band,
-        selected_summary_line(remote_training, selected).as_str(),
+        selected_summary_line(remote_training, selected, compare.as_ref()).as_str(),
         accent,
         paint,
     );
@@ -103,12 +187,55 @@ pub fn paint(
     );
 
     paint_runs_panel(content_bounds, remote_training, paint);
-    paint_run_detail_panel(layout.hero_panel, remote_training, selected, accent, paint);
-    paint_loss_panel(layout.loss_panel, selected, phase, paint);
-    paint_math_panel(layout.math_panel, selected, phase, paint);
-    paint_runtime_panel(layout.runtime_panel, selected, phase, paint);
-    paint_hardware_panel(layout.hardware_panel, selected, phase, paint);
-    paint_event_panel(layout.events_panel, selected, phase, paint);
+    paint_run_detail_panel(
+        layout.hero_panel,
+        remote_training,
+        selected,
+        compare.as_ref(),
+        accent,
+        paint,
+    );
+    paint_loss_panel(
+        layout.loss_panel,
+        remote_training,
+        selected,
+        compare.as_ref(),
+        phase,
+        paint,
+    );
+    paint_math_panel(
+        layout.math_panel,
+        remote_training,
+        selected,
+        compare.as_ref(),
+        phase,
+        paint,
+    );
+    paint_runtime_panel(
+        layout.runtime_panel,
+        remote_training,
+        selected,
+        compare.as_ref(),
+        phase,
+        paint,
+    );
+    paint_hardware_panel(
+        content_bounds,
+        layout.hardware_panel,
+        remote_training,
+        selected,
+        compare.as_ref(),
+        phase,
+        paint,
+    );
+    paint_event_panel(
+        layout.events_panel,
+        remote_training,
+        selected,
+        compare.as_ref(),
+        phase,
+        paint,
+    );
     paint_provenance_panel(layout.provenance_panel, remote_training, selected, paint);
 }
 
@@ -204,6 +331,7 @@ fn paint_run_detail_panel(
     bounds: Bounds,
     remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
     accent: Hsla,
     paint: &mut PaintContext,
 ) {
@@ -266,6 +394,29 @@ fn paint_run_detail_panel(
     );
     y += 22.0;
 
+    if let Some(compare) = compare {
+        for line in [
+            format!("compare: {}", baseline_compare_label(compare)),
+            format!("baseline: {}", compare.baseline.run.run_id),
+            format!(
+                "delta: {}",
+                compare
+                    .delta_summary
+                    .as_deref()
+                    .unwrap_or(compare.caveat.as_str())
+            ),
+        ] {
+            let line = truncate_line(paint, line.as_str(), bounds.size.width - 32.0, 10.0);
+            paint.scene.draw_text(paint.text.layout_mono(
+                line.as_str(),
+                Point::new(bounds.origin.x + 16.0, y),
+                10.0,
+                remote_gold(),
+            ));
+            y += 14.0;
+        }
+    }
+
     let score_line = selected
         .run
         .primary_score
@@ -310,6 +461,9 @@ fn paint_run_detail_panel(
         format!("phase: {phase_line}"),
         format!("subsystems: {subsystems}"),
         format!("checkpoint: {checkpoint}"),
+        chart_anchor_footer(remote_training, Some(selected), compare)
+            .map(|anchor| format!("anchor: {anchor}"))
+            .unwrap_or_else(|| "anchor: live".to_string()),
         format!(
             "topology: {}",
             selected
@@ -382,7 +536,9 @@ fn paint_run_detail_panel(
 
 fn paint_loss_panel(
     bounds: Bounds,
+    remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
     phase: f32,
     paint: &mut PaintContext,
 ) {
@@ -400,98 +556,58 @@ fn paint_loss_panel(
         );
         return;
     };
-    let Some(bundle) = selected.bundle.as_ref() else {
-        paint_history_chart_body(
-            bounds,
-            accent,
-            phase,
-            Some(selected.run.run_id.as_str()),
-            Some(selected.run.semantic_summary.as_str()),
-            selected
-                .run
-                .series_unavailable_reason
-                .as_deref()
-                .unwrap_or("No retained loss bundle is cached for this run."),
-            &[],
-            paint,
-        );
-        return;
-    };
-
-    let train = bundle
-        .loss_series
-        .iter()
-        .filter_map(|sample| sample.train_loss)
-        .collect::<Vec<_>>();
-    let ema = bundle
-        .loss_series
-        .iter()
-        .filter_map(|sample| sample.ema_loss)
-        .collect::<Vec<_>>();
-    let validation = bundle
-        .loss_series
-        .iter()
-        .filter_map(|sample| sample.validation_loss)
-        .collect::<Vec<_>>();
-    let header = format!(
-        "train {}  //  ema {}  //  val {}",
-        format_optional_f32(bundle.summary.latest_train_loss),
-        format_optional_f32(bundle.summary.latest_ema_loss),
-        format_optional_f32(bundle.summary.latest_validation_loss),
-    );
-    let footer = format!(
-        "steps {}  //  global {}  //  {}",
-        bundle.summary.total_steps_completed,
-        bundle
-            .summary
-            .latest_global_step
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "-".to_string()),
-        bundle
-            .series_unavailable_reason
-            .as_deref()
-            .unwrap_or("full loss series retained")
-    );
-    paint_history_chart_body(
-        bounds,
-        accent,
-        phase,
-        Some(header.as_str()),
-        Some(footer.as_str()),
-        bundle
-            .series_unavailable_reason
-            .as_deref()
-            .unwrap_or("No loss samples were retained for this run."),
-        &[
-            HistoryChartSeries {
-                label: "train",
-                values: train.as_slice(),
-                color: accent,
-                fill_alpha: 0.11,
-                line_alpha: 0.82,
-            },
-            HistoryChartSeries {
-                label: "ema",
-                values: ema.as_slice(),
-                color: remote_gold(),
-                fill_alpha: 0.0,
-                line_alpha: 0.88,
-            },
-            HistoryChartSeries {
-                label: "validation",
-                values: validation.as_slice(),
-                color: remote_mint(),
-                fill_alpha: 0.0,
-                line_alpha: 0.84,
-            },
-        ],
-        paint,
-    );
+    let current = loss_chart_view(selected, "current");
+    if let Some(compare) = compare {
+        if compare_can_overlay(compare) {
+            let mut overlay = loss_chart_view(selected, "current");
+            let baseline = loss_chart_view(compare.baseline, "baseline");
+            overlay.header = Some(comparison_header(
+                Some(compare),
+                current.header.as_deref().unwrap_or("current"),
+                baseline.header.as_deref().unwrap_or("baseline"),
+            ));
+            overlay.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| current_vs_baseline_footer(compare)),
+            );
+            overlay.series.extend(
+                baseline
+                    .series
+                    .into_iter()
+                    .map(|series| OwnedChartSeries {
+                        label: series.label,
+                        values: series.values,
+                        color: series.color.with_alpha(0.55),
+                        fill_alpha: 0.0,
+                        line_alpha: 0.58,
+                    }),
+            );
+            paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
+            return;
+        }
+        if compare.mode != CompareNormalizationMode::PendingBaseline {
+            let mut current = current;
+            current.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| compare.caveat.clone()),
+            );
+            let mut baseline = loss_chart_view(compare.baseline, "baseline");
+            baseline.footer = Some(current_vs_baseline_footer(compare));
+            paint_side_by_side_chart_views(bounds, accent, phase, &current, &baseline, paint);
+            return;
+        }
+    }
+    let mut current = current;
+    current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
+        .or(current.footer.clone());
+    paint_chart_panel_view(bounds, accent, phase, &current, paint);
 }
 
 fn paint_math_panel(
     bounds: Bounds,
+    remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
     phase: f32,
     paint: &mut PaintContext,
 ) {
@@ -509,113 +625,58 @@ fn paint_math_panel(
         );
         return;
     };
-    let Some(bundle) = selected.bundle.as_ref() else {
-        paint_history_chart_body(
-            bounds,
-            accent,
-            phase,
-            None,
-            None,
-            "No retained optimizer-math bundle is cached for this run.",
-            &[],
-            paint,
-        );
-        return;
-    };
-    let gradient = bundle
-        .math_series
-        .iter()
-        .filter_map(|sample| sample.gradient_norm)
-        .collect::<Vec<_>>();
-    let update = bundle
-        .math_series
-        .iter()
-        .filter_map(|sample| sample.update_norm)
-        .collect::<Vec<_>>();
-    let clip = bundle
-        .math_series
-        .iter()
-        .filter_map(|sample| sample.clip_fraction)
-        .collect::<Vec<_>>();
-    let latest = bundle.math_series.last();
-    let diagnostics = latest
-        .map(|sample| {
-            sample
-                .model_specific_diagnostics
-                .iter()
-                .map(|(key, value)| format!("{key}={value:.2}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "no model-specific diagnostics".to_string());
-    let header = format!(
-        "lr {}  //  grad {}  //  update {}",
-        latest
-            .and_then(|sample| sample.learning_rate)
-            .map(|value| format!("{value:.6}"))
-            .unwrap_or_else(|| "-".to_string()),
-        latest
-            .and_then(|sample| sample.gradient_norm)
-            .map(|value| format!("{value:.3}"))
-            .unwrap_or_else(|| "-".to_string()),
-        latest
-            .and_then(|sample| sample.update_norm)
-            .map(|value| format!("{value:.3}"))
-            .unwrap_or_else(|| "-".to_string()),
-    );
-    let footer = format!(
-        "param {}  //  loss_scale {}  //  non_finite {}  //  {}",
-        latest
-            .and_then(|sample| sample.parameter_norm)
-            .map(|value| format!("{value:.2}"))
-            .unwrap_or_else(|| "-".to_string()),
-        latest
-            .and_then(|sample| sample.loss_scale)
-            .map(|value| format!("{value:.0}"))
-            .unwrap_or_else(|| "-".to_string()),
-        latest
-            .map(|sample| sample.non_finite_count.to_string())
-            .unwrap_or_else(|| "-".to_string()),
-        diagnostics
-    );
-    paint_history_chart_body(
-        bounds,
-        accent,
-        phase,
-        Some(header.as_str()),
-        Some(footer.as_str()),
-        "No retained optimizer-math samples were emitted for this run.",
-        &[
-            HistoryChartSeries {
-                label: "grad",
-                values: gradient.as_slice(),
-                color: accent,
-                fill_alpha: 0.10,
-                line_alpha: 0.84,
-            },
-            HistoryChartSeries {
-                label: "update",
-                values: update.as_slice(),
-                color: remote_blue(),
-                fill_alpha: 0.0,
-                line_alpha: 0.86,
-            },
-            HistoryChartSeries {
-                label: "clip",
-                values: clip.as_slice(),
-                color: remote_gold(),
-                fill_alpha: 0.0,
-                line_alpha: 0.82,
-            },
-        ],
-        paint,
-    );
+    let current = math_chart_view(selected, "current");
+    if let Some(compare) = compare {
+        if compare_can_overlay(compare) {
+            let mut overlay = math_chart_view(selected, "current");
+            let baseline = math_chart_view(compare.baseline, "baseline");
+            overlay.header = Some(comparison_header(
+                Some(compare),
+                current.header.as_deref().unwrap_or("current"),
+                baseline.header.as_deref().unwrap_or("baseline"),
+            ));
+            overlay.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| current_vs_baseline_footer(compare)),
+            );
+            overlay.series.extend(
+                baseline
+                    .series
+                    .into_iter()
+                    .map(|series| OwnedChartSeries {
+                        label: series.label,
+                        values: series.values,
+                        color: series.color.with_alpha(0.55),
+                        fill_alpha: 0.0,
+                        line_alpha: 0.58,
+                    }),
+            );
+            paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
+            return;
+        }
+        if compare.mode != CompareNormalizationMode::PendingBaseline {
+            let mut current = current;
+            current.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| compare.caveat.clone()),
+            );
+            let mut baseline = math_chart_view(compare.baseline, "baseline");
+            baseline.footer = Some(current_vs_baseline_footer(compare));
+            paint_side_by_side_chart_views(bounds, accent, phase, &current, &baseline, paint);
+            return;
+        }
+    }
+    let mut current = current;
+    current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
+        .or(current.footer.clone());
+    paint_chart_panel_view(bounds, accent, phase, &current, paint);
 }
 
 fn paint_runtime_panel(
     bounds: Bounds,
+    remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
     phase: f32,
     paint: &mut PaintContext,
 ) {
@@ -633,98 +694,59 @@ fn paint_runtime_panel(
         );
         return;
     };
-    let Some(bundle) = selected.bundle.as_ref() else {
-        paint_history_chart_body(
-            bounds,
-            accent,
-            phase,
-            None,
-            None,
-            "No retained runtime bundle is cached for this run.",
-            &[],
-            paint,
-        );
-        return;
-    };
-    let forward = bundle
-        .runtime_series
-        .iter()
-        .filter_map(|sample| sample.forward_ms.map(|value| value as f32))
-        .collect::<Vec<_>>();
-    let backward = bundle
-        .runtime_series
-        .iter()
-        .filter_map(|sample| sample.backward_ms.map(|value| value as f32))
-        .collect::<Vec<_>>();
-    let optimizer = bundle
-        .runtime_series
-        .iter()
-        .filter_map(|sample| sample.optimizer_ms.map(|value| value as f32))
-        .collect::<Vec<_>>();
-    let latest = bundle.runtime_series.last();
-    let header = format!(
-        "tok/s {}  //  samp/s {}",
-        latest
-            .and_then(|sample| sample.tokens_per_second)
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "-".to_string()),
-        latest
-            .and_then(|sample| sample.samples_per_second_milli)
-            .map(format_samples_per_second_milli)
-            .unwrap_or_else(|| "-".to_string()),
-    );
-    let footer = format!(
-        "wait {}  //  ckpt {}  //  eval {}",
-        latest
-            .and_then(|sample| sample.data_wait_ms)
-            .map(format_duration_ms)
-            .unwrap_or_else(|| "-".to_string()),
-        latest
-            .and_then(|sample| sample.checkpoint_ms)
-            .map(format_duration_ms)
-            .unwrap_or_else(|| "-".to_string()),
-        latest
-            .and_then(|sample| sample.evaluation_ms)
-            .map(format_duration_ms)
-            .unwrap_or_else(|| "-".to_string()),
-    );
-    paint_history_chart_body(
-        bounds,
-        accent,
-        phase,
-        Some(header.as_str()),
-        Some(footer.as_str()),
-        "No retained pipeline-timing samples were emitted for this run.",
-        &[
-            HistoryChartSeries {
-                label: "forward",
-                values: forward.as_slice(),
-                color: accent,
-                fill_alpha: 0.10,
-                line_alpha: 0.86,
-            },
-            HistoryChartSeries {
-                label: "backward",
-                values: backward.as_slice(),
-                color: remote_coral(),
-                fill_alpha: 0.0,
-                line_alpha: 0.86,
-            },
-            HistoryChartSeries {
-                label: "optim",
-                values: optimizer.as_slice(),
-                color: remote_mint(),
-                fill_alpha: 0.0,
-                line_alpha: 0.82,
-            },
-        ],
-        paint,
-    );
+    let current = runtime_chart_view(selected, "current");
+    if let Some(compare) = compare {
+        if compare_can_overlay(compare) {
+            let mut overlay = runtime_chart_view(selected, "current");
+            let baseline = runtime_chart_view(compare.baseline, "baseline");
+            overlay.header = Some(comparison_header(
+                Some(compare),
+                current.header.as_deref().unwrap_or("current"),
+                baseline.header.as_deref().unwrap_or("baseline"),
+            ));
+            overlay.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| current_vs_baseline_footer(compare)),
+            );
+            overlay.series.extend(
+                baseline
+                    .series
+                    .into_iter()
+                    .map(|series| OwnedChartSeries {
+                        label: series.label,
+                        values: series.values,
+                        color: series.color.with_alpha(0.55),
+                        fill_alpha: 0.0,
+                        line_alpha: 0.58,
+                    }),
+            );
+            paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
+            return;
+        }
+        if compare.mode != CompareNormalizationMode::PendingBaseline {
+            let mut current = current;
+            current.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| compare.caveat.clone()),
+            );
+            let mut baseline = runtime_chart_view(compare.baseline, "baseline");
+            baseline.footer = Some(current_vs_baseline_footer(compare));
+            paint_side_by_side_chart_views(bounds, accent, phase, &current, &baseline, paint);
+            return;
+        }
+    }
+    let mut current = current;
+    current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
+        .or(current.footer.clone());
+    paint_chart_panel_view(bounds, accent, phase, &current, paint);
 }
 
 fn paint_hardware_panel(
+    content_bounds: Bounds,
     bounds: Bounds,
+    remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
     phase: f32,
     paint: &mut PaintContext,
 ) {
@@ -742,105 +764,136 @@ fn paint_hardware_panel(
         );
         return;
     };
-    let Some(bundle) = selected.bundle.as_ref() else {
-        paint_history_chart_body(
-            bounds,
-            accent,
-            phase,
-            None,
-            None,
-            "No retained device bundle is cached for this run.",
-            &[],
-            paint,
-        );
-        return;
-    };
-    let utilization =
-        aggregated_gpu_percent(bundle, |sample| sample.utilization_bps as f32 / 100.0);
-    let memory = aggregated_gpu_percent(bundle, |sample| {
-        sample.memory_used_bytes as f32 / sample.memory_total_bytes as f32 * 100.0
-    });
-    let latest_devices = latest_gpu_samples(bundle);
-    let distributed = bundle.distributed_series.last();
-    let header = format!(
-        "devices {}  //  latest {}",
-        latest_devices.len(),
-        latest_devices
-            .first()
-            .map(|sample| sample.device_label.as_str())
-            .unwrap_or("gpu unavailable"),
-    );
-    let footer = if let Some(sample) = distributed {
-        format!(
-            "ranks {}  //  skew {}  //  collective {}  //  stalls {}",
-            sample.participating_rank_count,
-            sample
-                .rank_skew_ms
-                .map(format_duration_ms)
-                .unwrap_or_else(|| "-".to_string()),
-            sample
-                .collective_ms
-                .map(format_duration_ms)
-                .unwrap_or_else(|| "-".to_string()),
-            sample.stalled_rank_count
-        )
+    let current = hardware_chart_view(selected, "current");
+    if let Some(compare) = compare {
+        if compare_can_overlay(compare) {
+            let mut overlay = hardware_chart_view(selected, "current");
+            let baseline = hardware_chart_view(compare.baseline, "baseline");
+            overlay.header = Some(comparison_header(
+                Some(compare),
+                current.header.as_deref().unwrap_or("current"),
+                baseline.header.as_deref().unwrap_or("baseline"),
+            ));
+            overlay.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| current_vs_baseline_footer(compare)),
+            );
+            overlay.series.extend(
+                baseline
+                    .series
+                    .into_iter()
+                    .map(|series| OwnedChartSeries {
+                        label: series.label,
+                        values: series.values,
+                        color: series.color.with_alpha(0.55),
+                        fill_alpha: 0.0,
+                        line_alpha: 0.58,
+                    }),
+            );
+            paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
+        } else if compare.mode != CompareNormalizationMode::PendingBaseline {
+            let mut current = current;
+            current.footer = Some(
+                chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                    .unwrap_or_else(|| compare.caveat.clone()),
+            );
+            let mut baseline = hardware_chart_view(compare.baseline, "baseline");
+            baseline.footer = Some(current_vs_baseline_footer(compare));
+            paint_side_by_side_chart_views(bounds, accent, phase, &current, &baseline, paint);
+        } else {
+            let mut current = current;
+            current.footer = chart_anchor_footer(remote_training, Some(selected), Some(compare))
+                .or(current.footer.clone());
+            paint_chart_panel_view(bounds, accent, phase, &current, paint);
+        }
     } else {
-        "no distributed telemetry retained for this lane".to_string()
-    };
-    paint_history_chart_body(
-        bounds,
-        accent,
-        phase,
-        Some(header.as_str()),
-        Some(footer.as_str()),
-        "No retained GPU samples were emitted for this run.",
-        &[
-            HistoryChartSeries {
-                label: "util%",
-                values: utilization.as_slice(),
-                color: accent,
-                fill_alpha: 0.10,
-                line_alpha: 0.86,
-            },
-            HistoryChartSeries {
-                label: "mem%",
-                values: memory.as_slice(),
-                color: remote_blue(),
-                fill_alpha: 0.0,
-                line_alpha: 0.84,
-            },
-        ],
-        paint,
-    );
+        let mut current = current;
+        current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
+            .or(current.footer.clone());
+        paint_chart_panel_view(bounds, accent, phase, &current, paint);
+    }
 
-    let info_y = bounds.max_y() - 44.0;
-    if let Some(device) = latest_devices.first() {
-        let device_line = format!(
-            "{} // temp {} // power {}",
-            truncate_to_chars(device.device_id.as_str(), 12),
-            device
-                .temperature_celsius
-                .map(|value| format!("{value}C"))
-                .unwrap_or_else(|| "-".to_string()),
-            device
-                .power_watts
-                .map(|value| format!("{value}W"))
-                .unwrap_or_else(|| "-".to_string()),
+    let focus_targets = topology_focus_targets(selected);
+    for (index, target) in focus_targets.iter().enumerate() {
+        let target_bounds = psionic_remote_training_topology_target_bounds(content_bounds, index);
+        let selected_focus =
+            remote_training.focused_topology_target.as_deref() == Some(target.key.as_str());
+        paint.scene.draw_quad(
+            Quad::new(target_bounds)
+                .with_background(
+                    if selected_focus {
+                        accent.with_alpha(0.18)
+                    } else {
+                        theme::bg::APP.with_alpha(0.88)
+                    },
+                )
+                .with_border(
+                    if selected_focus {
+                        accent
+                    } else {
+                        theme::border::DEFAULT
+                    },
+                    1.0,
+                )
+                .with_corner_radius(6.0),
         );
-        let device_line =
-            truncate_line(paint, device_line.as_str(), bounds.size.width - 32.0, 10.0);
+        let label = truncate_line(paint, target.label.as_str(), target_bounds.size.width - 8.0, 9.0);
         paint.scene.draw_text(paint.text.layout_mono(
-            device_line.as_str(),
-            Point::new(bounds.origin.x + 16.0, info_y),
-            10.0,
-            theme::text::PRIMARY,
+            label.as_str(),
+            Point::new(target_bounds.origin.x + 4.0, target_bounds.origin.y + 6.0),
+            9.0,
+            if selected_focus {
+                accent
+            } else {
+                theme::text::PRIMARY
+            },
         ));
     }
+
+    let focus_detail = remote_training
+        .focused_topology_target
+        .as_deref()
+        .and_then(|target_key| {
+            focus_targets
+                .iter()
+                .find(|target| target.key == target_key)
+                .map(|target| format!("focus {} // {}", target.label, target.detail))
+        })
+        .or_else(|| {
+            selected
+                .bundle
+                .as_ref()
+                .and_then(|bundle| latest_gpu_samples(bundle).first().copied())
+                .map(|device| {
+                    format!(
+                        "{} // temp {} // power {}",
+                        truncate_to_chars(device.device_id.as_str(), 12),
+                        device
+                            .temperature_celsius
+                            .map(|value| format!("{value}C"))
+                            .unwrap_or_else(|| "-".to_string()),
+                        device
+                            .power_watts
+                            .map(|value| format!("{value}W"))
+                            .unwrap_or_else(|| "-".to_string()),
+                    )
+                })
+        })
+        .unwrap_or_else(|| "focus unavailable".to_string());
+    let focus_detail = truncate_line(paint, focus_detail.as_str(), bounds.size.width - 32.0, 10.0);
+    paint.scene.draw_text(paint.text.layout_mono(
+        focus_detail.as_str(),
+        Point::new(bounds.origin.x + 16.0, bounds.max_y() - 44.0),
+        10.0,
+        theme::text::PRIMARY,
+    ));
 }
 
 fn paint_event_panel(
     bounds: Bounds,
+    remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
     phase: f32,
     paint: &mut PaintContext,
 ) {
@@ -858,14 +911,37 @@ fn paint_event_panel(
     let rows = selected
         .bundle
         .as_ref()
-        .map(build_event_rows)
+        .map(|bundle| {
+            build_event_rows(
+                bundle,
+                remote_training.focused_topology_target.as_deref(),
+                remote_training.chart_anchor_ratio_milli,
+            )
+        })
         .unwrap_or_default();
-    let empty = selected
-        .run
-        .series_unavailable_reason
-        .as_deref()
-        .unwrap_or("No events were retained for this run.");
-    paint_event_feed_body(bounds, remote_coral(), phase, empty, rows.as_slice(), paint);
+    let empty = compare
+        .map(|compare| {
+            if remote_training.focused_topology_target.is_some() {
+                format!("{} // {}", compare.caveat, "event feed filtered by topology focus")
+            } else {
+                compare.caveat.clone()
+            }
+        })
+        .unwrap_or_else(|| {
+            selected
+                .run
+                .series_unavailable_reason
+                .clone()
+                .unwrap_or_else(|| "No events were retained for this run.".to_string())
+        });
+    paint_event_feed_body(
+        bounds,
+        remote_coral(),
+        phase,
+        empty.as_str(),
+        rows.as_slice(),
+        paint,
+    );
 }
 
 fn paint_provenance_panel(
@@ -925,37 +1001,119 @@ fn paint_provenance_panel(
     }
 
     if let Some(bundle) = selected.bundle.as_ref() {
-        for artifact in bundle.source_artifacts.iter().take(4) {
-            let lines = split_text_for_display(
-                format!("{} // {}", artifact.artifact_role, artifact.detail).as_str(),
-                46,
+        for (index, artifact) in bundle.source_artifacts.iter().take(4).enumerate() {
+            let row_bounds = Bounds::new(
+                bounds.origin.x + 16.0,
+                bounds.origin.y + 156.0 + index as f32 * 38.0,
+                (bounds.size.width - 32.0).max(0.0),
+                34.0,
             );
-            let artifact_uri = truncate_line(
+            let expanded = remote_training
+                .selected_provenance_artifact_role
+                .as_deref()
+                == Some(artifact.artifact_role.as_str());
+            paint.scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_background(
+                        if expanded {
+                            remote_mint().with_alpha(0.16)
+                        } else {
+                            theme::bg::APP.with_alpha(0.72)
+                        },
+                    )
+                    .with_border(
+                        if expanded {
+                            remote_mint()
+                        } else {
+                            theme::border::DEFAULT
+                        },
+                        1.0,
+                    )
+                    .with_corner_radius(6.0),
+            );
+            let role = truncate_line(
                 paint,
-                artifact.artifact_uri.as_str(),
-                bounds.size.width - 32.0,
+                format!(
+                    "{} // {}",
+                    artifact.artifact_role,
+                    artifact_source_kind_label(artifact.source_kind)
+                )
+                .as_str(),
+                row_bounds.size.width - 12.0,
+                9.0,
+            );
+            let detail = truncate_line(
+                paint,
+                artifact.detail.as_str(),
+                row_bounds.size.width - 12.0,
                 9.0,
             );
             paint.scene.draw_text(paint.text.layout_mono(
-                artifact_uri.as_str(),
-                Point::new(bounds.origin.x + 16.0, y),
+                role.as_str(),
+                Point::new(row_bounds.origin.x + 6.0, row_bounds.origin.y + 6.0),
                 9.0,
-                remote_mint(),
+                if expanded {
+                    remote_mint()
+                } else {
+                    theme::text::PRIMARY
+                },
             ));
-            y += 12.0;
-            for line in lines.iter().take(2) {
-                paint.scene.draw_text(paint.text.layout(
-                    line.as_str(),
-                    Point::new(bounds.origin.x + 16.0, y),
-                    10.0,
-                    theme::text::PRIMARY,
-                ));
-                y += 12.0;
-            }
-            y += 4.0;
-            if y > bounds.max_y() - 24.0 {
-                break;
-            }
+            paint.scene.draw_text(paint.text.layout(
+                detail.as_str(),
+                Point::new(row_bounds.origin.x + 6.0, row_bounds.origin.y + 18.0),
+                9.0,
+                theme::text::MUTED,
+            ));
+        }
+    }
+
+    if let Some(artifact) = focused_provenance_artifact(
+        selected,
+        remote_training.selected_provenance_artifact_role.as_deref(),
+    ) {
+        let detail_bounds = Bounds::new(
+            bounds.origin.x + 16.0,
+            bounds.max_y() - 66.0,
+            (bounds.size.width - 32.0).max(0.0),
+            50.0,
+        );
+        paint.scene.draw_quad(
+            Quad::new(detail_bounds)
+                .with_background(remote_mint().with_alpha(0.10))
+                .with_border(remote_mint().with_alpha(0.48), 1.0)
+                .with_corner_radius(6.0),
+        );
+        let receipts = if artifact.source_receipt_ids.is_empty() {
+            "-".to_string()
+        } else {
+            artifact.source_receipt_ids.join(", ")
+        };
+        for (index, line) in [
+            format!(
+                "{} // authoritative={} // digest={}",
+                artifact.artifact_role,
+                artifact.authoritative,
+                artifact.artifact_digest.as_deref().unwrap_or("-"),
+            ),
+            truncate_to_chars(artifact.artifact_uri.as_str(), 64),
+            format!("receipts {receipts} // {}", artifact.detail),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            paint.scene.draw_text(paint.text.layout_mono(
+                line.as_str(),
+                Point::new(
+                    detail_bounds.origin.x + 8.0,
+                    detail_bounds.origin.y + 12.0 + index as f32 * 12.0,
+                ),
+                9.0,
+                if index == 0 {
+                    remote_mint()
+                } else {
+                    theme::text::PRIMARY
+                },
+            ));
         }
     }
 }
@@ -963,6 +1121,7 @@ fn paint_provenance_panel(
 fn status_cards(
     remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
 ) -> Vec<(&'static str, String, Hsla)> {
     let sync_color = match remote_training.sync_state.as_str() {
         "ready" => theme::status::SUCCESS,
@@ -993,6 +1152,14 @@ fn status_cards(
             )
         })
         .unwrap_or_else(|| "no heartbeat".to_string());
+    let compare_value = compare
+        .map(|compare| {
+            compare
+                .delta_summary
+                .clone()
+                .unwrap_or_else(|| compare.caveat.clone())
+        })
+        .unwrap_or_else(|| "compare idle".to_string());
     vec![
         (
             "SYNC",
@@ -1016,12 +1183,14 @@ fn status_cards(
             format!("{selected_value} // {freshness}"),
             remote_mint(),
         ),
+        ("COMPARE", compare_value, remote_coral()),
     ]
 }
 
 fn selected_summary_line(
     remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
 ) -> String {
     if let Some(selected) = selected {
         let checkpoint = selected
@@ -1029,13 +1198,29 @@ fn selected_summary_line(
             .as_ref()
             .and_then(|bundle| bundle.summary.latest_checkpoint_ref.as_deref())
             .unwrap_or("checkpoint unavailable");
-        format!(
+        let base = format!(
             "{} // {} // {} // {}",
             primary_score_brief_or_track(&selected.run),
             compact_label(selected.run.track.proof_posture.as_str()),
             freshness_label(&selected.run),
             truncate_to_chars(checkpoint, 42)
-        )
+        );
+        if let Some(compare) = compare {
+            format!(
+                "{} // {} // {}",
+                base,
+                baseline_compare_label(compare),
+                compare
+                    .delta_summary
+                    .as_deref()
+                    .unwrap_or(compare.caveat.as_str())
+            )
+        } else if let Some(anchor) = compare_anchor_label(remote_training, Some(selected), compare)
+        {
+            format!("{base} // {anchor}")
+        } else {
+            base
+        }
     } else if remote_training.available {
         format!(
             "{} runs visible // pick a row to inspect the live mirror",
@@ -1129,19 +1314,738 @@ fn latest_gpu_samples(
     })
 }
 
-fn build_event_rows(bundle: &RemoteTrainingVisualizationBundleV2) -> Vec<EventFeedRow<'_>> {
-    bundle
+pub(crate) fn topology_focus_targets(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+) -> Vec<RemoteTrainingTopologyFocusTarget> {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return Vec::new();
+    };
+    let mut targets = latest_gpu_samples(bundle)
+        .into_iter()
+        .take(3)
+        .map(|sample| RemoteTrainingTopologyFocusTarget {
+            key: format!("device:{}", sample.device_id),
+            label: sample.device_label.clone(),
+            detail: format!(
+                "util {} // mem {} // temp {}",
+                format_percent_bps(sample.utilization_bps),
+                format_bytes_compact(sample.memory_used_bytes),
+                sample
+                    .temperature_celsius
+                    .map(|value| format!("{value}C"))
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+        })
+        .collect::<Vec<_>>();
+    if let Some(distributed) = bundle.distributed_series.last() {
+        targets.push(RemoteTrainingTopologyFocusTarget {
+            key: "fabric".to_string(),
+            label: format!("fabric {}", distributed.participating_rank_count),
+            detail: distributed_focus_detail(distributed),
+        });
+    }
+    targets.truncate(4);
+    targets
+}
+
+pub(crate) fn provenance_artifact_roles(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+) -> Vec<String> {
+    selected
+        .bundle
+        .as_ref()
+        .map(|bundle| {
+            bundle
+                .source_artifacts
+                .iter()
+                .take(4)
+                .map(|artifact| artifact.artifact_role.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn build_compare_state<'a>(
+    remote_training: &'a DesktopControlRemoteTrainingStatus,
+    selected: Option<&'a DesktopControlRemoteTrainingSelectedRunStatus>,
+) -> Option<TrainingRunCompare<'a>> {
+    let selected = selected?;
+    let baseline = remote_training.compare_baseline.as_ref()?;
+    if baseline.run.run_id == selected.run.run_id {
+        return Some(TrainingRunCompare {
+            baseline,
+            mode: CompareNormalizationMode::PendingBaseline,
+            anchor_mode: CompareAnchorMode::None,
+            delta_value: None,
+            delta_summary: None,
+            caveat: "baseline pinned; select another run to compare".to_string(),
+        });
+    }
+
+    let score_metric_matches = selected
+        .run
+        .primary_score
+        .as_ref()
+        .zip(baseline.run.primary_score.as_ref())
+        .map(|(current, baseline)| {
+            current.score_metric_id == baseline.score_metric_id
+                && current.score_direction == baseline.score_direction
+        })
+        .unwrap_or(false);
+    let same_track = selected.run.track.track_id == baseline.run.track.track_id;
+    let public_equivalent = score_metric_matches
+        && selected.run.track.public_equivalence_class == baseline.run.track.public_equivalence_class
+        && !matches!(
+            selected.run.track.public_equivalence_class.as_str(),
+            "not_applicable" | "not_public_equivalent"
+        );
+
+    let mode = if selected.run.primary_score.is_none() || baseline.run.primary_score.is_none() {
+        CompareNormalizationMode::SummaryOnly
+    } else if score_metric_matches && same_track {
+        CompareNormalizationMode::DirectScore
+    } else if public_equivalent {
+        CompareNormalizationMode::PublicEquivalentScore
+    } else {
+        CompareNormalizationMode::SideBySide
+    };
+
+    let anchor_mode = if matches!(
+        mode,
+        CompareNormalizationMode::DirectScore | CompareNormalizationMode::PublicEquivalentScore
+    ) {
+        compare_anchor_mode(selected.bundle.as_ref(), baseline.bundle.as_ref())
+    } else {
+        CompareAnchorMode::None
+    };
+
+    let (delta_value, delta_summary) = selected
+        .run
+        .primary_score
+        .as_ref()
+        .zip(baseline.run.primary_score.as_ref())
+        .filter(|(current, baseline)| {
+            current.score_metric_id == baseline.score_metric_id
+                && current.score_direction == baseline.score_direction
+        })
+        .map(|(current, baseline)| {
+            let delta = current.score_value - baseline.score_value;
+            let better = match current.score_direction.as_str() {
+                "lower_is_better" => delta < 0.0,
+                "higher_is_better" => delta > 0.0,
+                _ => false,
+            };
+            let delta_label = if delta > 0.0 {
+                format!("+{delta:.4}")
+            } else {
+                format!("{delta:.4}")
+            };
+            (
+                Some(delta),
+                Some(format!(
+                    "{} {} vs baseline // {}",
+                    delta_label,
+                    current.score_unit,
+                    if better { "better" } else { "worse_or_flat" }
+                )),
+            )
+        })
+        .unwrap_or((None, None));
+
+    let caveat = match mode {
+        CompareNormalizationMode::PendingBaseline => {
+            "baseline pinned; select another run to compare".to_string()
+        }
+        CompareNormalizationMode::DirectScore => "same-track direct delta".to_string(),
+        CompareNormalizationMode::PublicEquivalentScore => {
+            "public-equivalent compare across distinct tracks".to_string()
+        }
+        CompareNormalizationMode::SummaryOnly => {
+            "summary-only compare; primary score or series is unavailable".to_string()
+        }
+        CompareNormalizationMode::SideBySide => {
+            "incomparable tracks; showing side-by-side without winner claims".to_string()
+        }
+    };
+
+    Some(TrainingRunCompare {
+        baseline,
+        mode,
+        anchor_mode,
+        delta_value,
+        delta_summary,
+        caveat,
+    })
+}
+
+fn compare_anchor_mode(
+    current: Option<&RemoteTrainingVisualizationBundleV2>,
+    baseline: Option<&RemoteTrainingVisualizationBundleV2>,
+) -> CompareAnchorMode {
+    let Some(current) = current else {
+        return CompareAnchorMode::None;
+    };
+    let Some(baseline) = baseline else {
+        return CompareAnchorMode::None;
+    };
+    if current
+        .loss_series
+        .iter()
+        .any(|sample| sample.global_step.is_some())
+        && baseline
+            .loss_series
+            .iter()
+            .any(|sample| sample.global_step.is_some())
+    {
+        CompareAnchorMode::GlobalStep
+    } else if !current.loss_series.is_empty() && !baseline.loss_series.is_empty() {
+        CompareAnchorMode::ElapsedMs
+    } else {
+        CompareAnchorMode::None
+    }
+}
+
+fn compare_anchor_label(
+    remote_training: &DesktopControlRemoteTrainingStatus,
+    selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
+) -> Option<String> {
+    let selected = selected?;
+    let ratio = remote_training.chart_anchor_ratio_milli?;
+    let bundle = selected.bundle.as_ref()?;
+    match compare.map(|compare| compare.anchor_mode).unwrap_or(CompareAnchorMode::None) {
+        CompareAnchorMode::GlobalStep => anchor_global_step_label(bundle, ratio),
+        CompareAnchorMode::ElapsedMs => anchor_elapsed_ms_label(bundle, ratio),
+        CompareAnchorMode::None => anchor_elapsed_ms_label(bundle, ratio)
+            .or_else(|| anchor_global_step_label(bundle, ratio)),
+    }
+}
+
+fn anchor_global_step_label(
+    bundle: &RemoteTrainingVisualizationBundleV2,
+    ratio: u16,
+) -> Option<String> {
+    bundle_anchor_loss_sample(bundle, ratio)
+        .and_then(|sample| sample.global_step)
+        .map(|step| format!("anchor step {step}"))
+}
+
+fn anchor_elapsed_ms_label(bundle: &RemoteTrainingVisualizationBundleV2, ratio: u16) -> Option<String> {
+    bundle_anchor_loss_sample(bundle, ratio).map(|sample| format!("anchor {}ms", sample.elapsed_ms))
+}
+
+fn bundle_anchor_loss_sample(
+    bundle: &RemoteTrainingVisualizationBundleV2,
+    ratio: u16,
+) -> Option<&psionic_train::RemoteTrainingLossSample> {
+    let index = anchor_index(bundle.loss_series.len(), ratio)?;
+    bundle.loss_series.get(index)
+}
+
+fn anchor_index(len: usize, ratio: u16) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    Some(
+        (((len - 1) as f32) * (ratio as f32 / 1000.0))
+            .round()
+            .clamp(0.0, (len - 1) as f32) as usize,
+    )
+}
+
+fn build_event_rows(
+    bundle: &RemoteTrainingVisualizationBundleV2,
+    focused_topology_target: Option<&str>,
+    chart_anchor_ratio_milli: Option<u16>,
+) -> Vec<EventFeedRow<'static>> {
+    let anchor_index = chart_anchor_ratio_milli.and_then(|ratio| anchor_index(bundle.event_series.len(), ratio));
+    let filtered = bundle
         .event_series
         .iter()
-        .rev()
+        .enumerate()
+        .filter(|(_, event)| {
+            focused_topology_target.is_none_or(|target| event_matches_focus(event, target))
+        })
+        .collect::<Vec<_>>();
+    let filtered = if filtered.is_empty() {
+        bundle.event_series.iter().enumerate().collect::<Vec<_>>()
+    } else {
+        filtered
+    };
+    let mut ordered = filtered;
+    if let Some(anchor_index) = anchor_index {
+        ordered.sort_by_key(|(index, _)| usize::abs_diff(*index, anchor_index));
+    } else {
+        ordered.reverse();
+    }
+    ordered
+        .into_iter()
         .take(6)
         .enumerate()
-        .map(|(index, event)| EventFeedRow {
+        .map(|(index, (_, event))| EventFeedRow {
             label: Cow::Owned(format!("E{:02}", index + 1)),
             detail: Cow::Owned(format!("{} // {}", event.event_kind, event.detail)),
             color: event_color(event.severity),
         })
         .collect()
+}
+
+fn event_matches_focus(event: &psionic_train::RemoteTrainingEventSample, target: &str) -> bool {
+    let needle = target
+        .strip_prefix("device:")
+        .or_else(|| target.strip_prefix("fabric:"))
+        .unwrap_or(target);
+    event.event_kind.contains(needle) || event.detail.contains(needle)
+}
+
+fn distributed_focus_detail(distributed: &RemoteTrainingDistributedSample) -> String {
+    format!(
+        "skew {} // collective {} // stalls {}",
+        distributed
+            .rank_skew_ms
+            .map(format_duration_ms)
+            .unwrap_or_else(|| "-".to_string()),
+        distributed
+            .collective_ms
+            .map(format_duration_ms)
+            .unwrap_or_else(|| "-".to_string()),
+        distributed.stalled_rank_count
+    )
+}
+
+fn artifact_source_kind_label(source_kind: RemoteTrainingArtifactSourceKind) -> &'static str {
+    match source_kind {
+        RemoteTrainingArtifactSourceKind::RuntimeOwned => "runtime_owned",
+        RemoteTrainingArtifactSourceKind::FinalizerOwned => "finalizer_owned",
+        RemoteTrainingArtifactSourceKind::ProviderGenerated => "provider_generated",
+        RemoteTrainingArtifactSourceKind::LogDerivedFallback => "log_derived_fallback",
+        RemoteTrainingArtifactSourceKind::LocalMirror => "local_mirror",
+    }
+}
+
+fn format_percent_bps(value: u32) -> String {
+    format!("{:.1}%", value as f32 / 100.0)
+}
+
+fn paint_chart_panel_view(
+    bounds: Bounds,
+    accent: Hsla,
+    phase: f32,
+    view: &ChartPanelView,
+    paint: &mut PaintContext,
+) {
+    let borrowed = view
+        .series
+        .iter()
+        .map(|series| HistoryChartSeries {
+            label: series.label,
+            values: series.values.as_slice(),
+            color: series.color,
+            fill_alpha: series.fill_alpha,
+            line_alpha: series.line_alpha,
+        })
+        .collect::<Vec<_>>();
+    paint_history_chart_body(
+        bounds,
+        accent,
+        phase,
+        view.header.as_deref(),
+        view.footer.as_deref(),
+        view.empty_state.as_str(),
+        borrowed.as_slice(),
+        paint,
+    );
+}
+
+fn split_chart_panel(bounds: Bounds) -> (Bounds, Bounds) {
+    let half_height = ((bounds.size.height - 8.0) / 2.0).max(92.0);
+    (
+        Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, half_height),
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + half_height + 8.0,
+            bounds.size.width,
+            half_height,
+        ),
+    )
+}
+
+fn paint_side_by_side_chart_views(
+    bounds: Bounds,
+    accent: Hsla,
+    phase: f32,
+    current: &ChartPanelView,
+    baseline: &ChartPanelView,
+    paint: &mut PaintContext,
+) {
+    let (top, bottom) = split_chart_panel(bounds);
+    paint_chart_panel_view(top, accent, phase, current, paint);
+    paint_chart_panel_view(bottom, accent, phase, baseline, paint);
+}
+
+fn focused_provenance_artifact<'a>(
+    selected: &'a DesktopControlRemoteTrainingSelectedRunStatus,
+    focused_role: Option<&str>,
+) -> Option<&'a RemoteTrainingSourceArtifact> {
+    let bundle = selected.bundle.as_ref()?;
+    let focused_role = focused_role?;
+    bundle
+        .source_artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_role == focused_role)
+}
+
+fn baseline_compare_label(compare: &TrainingRunCompare<'_>) -> &'static str {
+    match compare.mode {
+        CompareNormalizationMode::PendingBaseline => "baseline pending",
+        CompareNormalizationMode::DirectScore => "direct compare",
+        CompareNormalizationMode::PublicEquivalentScore => "public-equivalent compare",
+        CompareNormalizationMode::SummaryOnly => "summary-only compare",
+        CompareNormalizationMode::SideBySide => "side-by-side compare",
+    }
+}
+
+fn compare_can_overlay(compare: &TrainingRunCompare<'_>) -> bool {
+    matches!(
+        compare.mode,
+        CompareNormalizationMode::DirectScore | CompareNormalizationMode::PublicEquivalentScore
+    ) && compare.anchor_mode != CompareAnchorMode::None
+        && compare.baseline.bundle.is_some()
+}
+
+fn chart_anchor_footer(
+    remote_training: &DesktopControlRemoteTrainingStatus,
+    selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    compare: Option<&TrainingRunCompare<'_>>,
+) -> Option<String> {
+    compare_anchor_label(remote_training, selected, compare).map(|label| {
+        compare
+            .and_then(|compare| compare.delta_summary.clone())
+            .map(|delta| format!("{label} // {delta}"))
+            .unwrap_or(label)
+    })
+}
+
+fn comparison_header(
+    compare: Option<&TrainingRunCompare<'_>>,
+    current_summary: &str,
+    baseline_summary: &str,
+) -> String {
+    compare
+        .map(|compare| match compare.mode {
+            CompareNormalizationMode::DirectScore | CompareNormalizationMode::PublicEquivalentScore => {
+                format!("{current_summary} // baseline {baseline_summary}")
+            }
+            _ => format!("current {current_summary} // baseline {baseline_summary}"),
+        })
+        .unwrap_or_else(|| current_summary.to_string())
+}
+
+fn current_vs_baseline_footer(compare: &TrainingRunCompare<'_>) -> String {
+    compare
+        .delta_summary
+        .clone()
+        .unwrap_or_else(|| compare.caveat.clone())
+}
+
+fn loss_chart_view(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+    title_prefix: &str,
+) -> ChartPanelView {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return ChartPanelView {
+            header: Some(format!("{title_prefix} {}", selected.run.run_id)),
+            footer: Some(selected.run.semantic_summary.clone()),
+            empty_state: selected
+                .run
+                .series_unavailable_reason
+                .clone()
+                .unwrap_or_else(|| "No retained loss bundle is cached for this run.".to_string()),
+            series: Vec::new(),
+        };
+    };
+    ChartPanelView {
+        header: Some(format!(
+            "{title_prefix} train {} // ema {} // val {}",
+            format_optional_f32(bundle.summary.latest_train_loss),
+            format_optional_f32(bundle.summary.latest_ema_loss),
+            format_optional_f32(bundle.summary.latest_validation_loss),
+        )),
+        footer: Some(format!(
+            "steps {} // global {} // {}",
+            bundle.summary.total_steps_completed,
+            bundle
+                .summary
+                .latest_global_step
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            bundle
+                .series_unavailable_reason
+                .clone()
+                .unwrap_or_else(|| "full loss series retained".to_string())
+        )),
+        empty_state: "No loss samples were retained for this run.".to_string(),
+        series: vec![
+            OwnedChartSeries {
+                label: "train",
+                values: bundle
+                    .loss_series
+                    .iter()
+                    .filter_map(|sample| sample.train_loss)
+                    .collect(),
+                color: remote_coral(),
+                fill_alpha: 0.11,
+                line_alpha: 0.82,
+            },
+            OwnedChartSeries {
+                label: "ema",
+                values: bundle
+                    .loss_series
+                    .iter()
+                    .filter_map(|sample| sample.ema_loss)
+                    .collect(),
+                color: remote_gold(),
+                fill_alpha: 0.0,
+                line_alpha: 0.88,
+            },
+            OwnedChartSeries {
+                label: "validation",
+                values: bundle
+                    .loss_series
+                    .iter()
+                    .filter_map(|sample| sample.validation_loss)
+                    .collect(),
+                color: remote_mint(),
+                fill_alpha: 0.0,
+                line_alpha: 0.84,
+            },
+        ],
+    }
+}
+
+fn math_chart_view(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+    title_prefix: &str,
+) -> ChartPanelView {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return ChartPanelView {
+            header: Some(format!("{title_prefix} {}", selected.run.run_id)),
+            footer: Some(selected.run.semantic_summary.clone()),
+            empty_state: "No retained optimizer-math bundle is cached for this run.".to_string(),
+            series: Vec::new(),
+        };
+    };
+    let latest = bundle.math_series.last();
+    let diagnostics = latest
+        .map(|sample| {
+            sample
+                .model_specific_diagnostics
+                .iter()
+                .map(|(key, value)| format!("{key}={value:.2}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "no model-specific diagnostics".to_string());
+    ChartPanelView {
+        header: Some(format!(
+            "{title_prefix} lr {} // grad {} // update {}",
+            latest
+                .and_then(|sample| sample.learning_rate)
+                .map(|value| format!("{value:.6}"))
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .and_then(|sample| sample.gradient_norm)
+                .map(|value| format!("{value:.3}"))
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .and_then(|sample| sample.update_norm)
+                .map(|value| format!("{value:.3}"))
+                .unwrap_or_else(|| "-".to_string()),
+        )),
+        footer: Some(format!(
+            "param {} // loss_scale {} // non_finite {} // {}",
+            latest
+                .and_then(|sample| sample.parameter_norm)
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .and_then(|sample| sample.loss_scale)
+                .map(|value| format!("{value:.0}"))
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .map(|sample| sample.non_finite_count.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            diagnostics
+        )),
+        empty_state: "No retained optimizer-math samples were emitted for this run.".to_string(),
+        series: vec![
+            OwnedChartSeries {
+                label: "grad",
+                values: bundle
+                    .math_series
+                    .iter()
+                    .filter_map(|sample| sample.gradient_norm)
+                    .collect(),
+                color: remote_mint(),
+                fill_alpha: 0.10,
+                line_alpha: 0.84,
+            },
+            OwnedChartSeries {
+                label: "update",
+                values: bundle
+                    .math_series
+                    .iter()
+                    .filter_map(|sample| sample.update_norm)
+                    .collect(),
+                color: remote_blue(),
+                fill_alpha: 0.0,
+                line_alpha: 0.86,
+            },
+            OwnedChartSeries {
+                label: "clip",
+                values: bundle
+                    .math_series
+                    .iter()
+                    .filter_map(|sample| sample.clip_fraction)
+                    .collect(),
+                color: remote_gold(),
+                fill_alpha: 0.0,
+                line_alpha: 0.82,
+            },
+        ],
+    }
+}
+
+fn runtime_chart_view(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+    title_prefix: &str,
+) -> ChartPanelView {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return ChartPanelView {
+            header: Some(format!("{title_prefix} {}", selected.run.run_id)),
+            footer: Some(selected.run.semantic_summary.clone()),
+            empty_state: "No retained runtime bundle is cached for this run.".to_string(),
+            series: Vec::new(),
+        };
+    };
+    let latest = bundle.runtime_series.last();
+    ChartPanelView {
+        header: Some(format!(
+            "{title_prefix} tok/s {} // samp/s {}",
+            latest
+                .and_then(|sample| sample.tokens_per_second)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .and_then(|sample| sample.samples_per_second_milli)
+                .map(format_samples_per_second_milli)
+                .unwrap_or_else(|| "-".to_string()),
+        )),
+        footer: Some(format!(
+            "wait {} // ckpt {} // eval {}",
+            latest
+                .and_then(|sample| sample.data_wait_ms)
+                .map(format_duration_ms)
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .and_then(|sample| sample.checkpoint_ms)
+                .map(format_duration_ms)
+                .unwrap_or_else(|| "-".to_string()),
+            latest
+                .and_then(|sample| sample.evaluation_ms)
+                .map(format_duration_ms)
+                .unwrap_or_else(|| "-".to_string()),
+        )),
+        empty_state: "No retained pipeline-timing samples were emitted for this run.".to_string(),
+        series: vec![
+            OwnedChartSeries {
+                label: "forward",
+                values: bundle
+                    .runtime_series
+                    .iter()
+                    .filter_map(|sample| sample.forward_ms.map(|value| value as f32))
+                    .collect(),
+                color: remote_blue(),
+                fill_alpha: 0.10,
+                line_alpha: 0.86,
+            },
+            OwnedChartSeries {
+                label: "backward",
+                values: bundle
+                    .runtime_series
+                    .iter()
+                    .filter_map(|sample| sample.backward_ms.map(|value| value as f32))
+                    .collect(),
+                color: remote_coral(),
+                fill_alpha: 0.0,
+                line_alpha: 0.86,
+            },
+            OwnedChartSeries {
+                label: "optim",
+                values: bundle
+                    .runtime_series
+                    .iter()
+                    .filter_map(|sample| sample.optimizer_ms.map(|value| value as f32))
+                    .collect(),
+                color: remote_mint(),
+                fill_alpha: 0.0,
+                line_alpha: 0.82,
+            },
+        ],
+    }
+}
+
+fn hardware_chart_view(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+    title_prefix: &str,
+) -> ChartPanelView {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return ChartPanelView {
+            header: Some(format!("{title_prefix} {}", selected.run.run_id)),
+            footer: Some(selected.run.semantic_summary.clone()),
+            empty_state: "No retained device bundle is cached for this run.".to_string(),
+            series: Vec::new(),
+        };
+    };
+    let latest_devices = latest_gpu_samples(bundle);
+    let distributed = bundle.distributed_series.last();
+    ChartPanelView {
+        header: Some(format!(
+            "{title_prefix} devices {} // latest {}",
+            latest_devices.len(),
+            latest_devices
+                .first()
+                .map(|sample| sample.device_label.as_str())
+                .unwrap_or("gpu unavailable"),
+        )),
+        footer: Some(
+            distributed
+                .map(distributed_focus_detail)
+                .unwrap_or_else(|| "no distributed telemetry retained for this lane".to_string()),
+        ),
+        empty_state: "No retained GPU samples were emitted for this run.".to_string(),
+        series: vec![
+            OwnedChartSeries {
+                label: "util%",
+                values: aggregated_gpu_percent(bundle, |sample| {
+                    sample.utilization_bps as f32 / 100.0
+                }),
+                color: remote_gold(),
+                fill_alpha: 0.10,
+                line_alpha: 0.86,
+            },
+            OwnedChartSeries {
+                label: "mem%",
+                values: aggregated_gpu_percent(bundle, |sample| {
+                    sample.memory_used_bytes as f32 / sample.memory_total_bytes as f32 * 100.0
+                }),
+                color: remote_blue(),
+                fill_alpha: 0.0,
+                line_alpha: 0.84,
+            },
+        ],
+    }
 }
 
 fn event_color(severity: RemoteTrainingEventSeverity) -> Hsla {

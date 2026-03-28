@@ -750,6 +750,12 @@ pub enum AppleAdapterTrainingPaneAction {
 pub enum PsionicRemoteTrainingPaneAction {
     Refresh,
     SelectRun(usize),
+    PinSelectedBaseline,
+    ClearCompareBaseline,
+    SetChartAnchor(u16),
+    ClearChartAnchor,
+    SelectTopologyTarget(usize),
+    SelectProvenanceArtifact(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5155,6 +5161,73 @@ pub fn psionic_remote_training_run_row_bounds(content_bounds: Bounds, row_index:
     )
 }
 
+pub fn psionic_remote_training_compare_button_bounds(content_bounds: Bounds) -> Bounds {
+    let hero = psionic_remote_training_layout(content_bounds).hero_panel;
+    Bounds::new(hero.max_x() - 352.0, hero.origin.y + 10.0, 108.0, 24.0)
+}
+
+pub fn psionic_remote_training_clear_compare_button_bounds(content_bounds: Bounds) -> Bounds {
+    let hero = psionic_remote_training_layout(content_bounds).hero_panel;
+    Bounds::new(hero.max_x() - 236.0, hero.origin.y + 10.0, 108.0, 24.0)
+}
+
+pub fn psionic_remote_training_clear_anchor_button_bounds(content_bounds: Bounds) -> Bounds {
+    let hero = psionic_remote_training_layout(content_bounds).hero_panel;
+    Bounds::new(hero.max_x() - 120.0, hero.origin.y + 10.0, 108.0, 24.0)
+}
+
+fn psionic_remote_training_chart_body_bounds(panel: Bounds) -> Bounds {
+    Bounds::new(
+        panel.origin.x + 16.0,
+        panel.origin.y + 60.0,
+        (panel.size.width - 32.0).max(0.0),
+        (panel.size.height - 116.0).max(104.0),
+    )
+}
+
+pub fn psionic_remote_training_loss_chart_bounds(content_bounds: Bounds) -> Bounds {
+    psionic_remote_training_chart_body_bounds(psionic_remote_training_layout(content_bounds).loss_panel)
+}
+
+pub fn psionic_remote_training_math_chart_bounds(content_bounds: Bounds) -> Bounds {
+    psionic_remote_training_chart_body_bounds(psionic_remote_training_layout(content_bounds).math_panel)
+}
+
+pub fn psionic_remote_training_runtime_chart_bounds(content_bounds: Bounds) -> Bounds {
+    psionic_remote_training_chart_body_bounds(
+        psionic_remote_training_layout(content_bounds).runtime_panel,
+    )
+}
+
+pub fn psionic_remote_training_topology_target_bounds(
+    content_bounds: Bounds,
+    target_index: usize,
+) -> Bounds {
+    let panel = psionic_remote_training_layout(content_bounds).hardware_panel;
+    let chip_y = panel.max_y() - 30.0;
+    let chip_gap = 8.0;
+    let chip_width = ((panel.size.width - 32.0 - chip_gap * 3.0) / 4.0).max(72.0);
+    Bounds::new(
+        panel.origin.x + 16.0 + target_index as f32 * (chip_width + chip_gap),
+        chip_y,
+        chip_width,
+        20.0,
+    )
+}
+
+pub fn psionic_remote_training_provenance_row_bounds(
+    content_bounds: Bounds,
+    row_index: usize,
+) -> Bounds {
+    let panel = psionic_remote_training_layout(content_bounds).provenance_panel;
+    Bounds::new(
+        panel.origin.x + 16.0,
+        panel.origin.y + 156.0 + row_index as f32 * 38.0,
+        (panel.size.width - 32.0).max(0.0),
+        34.0,
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AppleFmWorkbenchPaneLayout {
     pub status_row: Bounds,
@@ -8287,9 +8360,31 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::PsionicRemoteTraining => {
+            let remote_training = crate::desktop_control::current_remote_training_status(state);
             if psionic_remote_training_refresh_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::PsionicRemoteTraining(
                     PsionicRemoteTrainingPaneAction::Refresh,
+                ));
+            }
+            if psionic_remote_training_compare_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::PsionicRemoteTraining(
+                    PsionicRemoteTrainingPaneAction::PinSelectedBaseline,
+                ));
+            }
+            if remote_training.compare_baseline_run_id.is_some()
+                && psionic_remote_training_clear_compare_button_bounds(content_bounds)
+                    .contains(point)
+            {
+                return Some(PaneHitAction::PsionicRemoteTraining(
+                    PsionicRemoteTrainingPaneAction::ClearCompareBaseline,
+                ));
+            }
+            if remote_training.chart_anchor_ratio_milli.is_some()
+                && psionic_remote_training_clear_anchor_button_bounds(content_bounds)
+                    .contains(point)
+            {
+                return Some(PaneHitAction::PsionicRemoteTraining(
+                    PsionicRemoteTrainingPaneAction::ClearChartAnchor,
                 ));
             }
             for row_index in 0..PSIONIC_REMOTE_TRAINING_MAX_RUN_ROWS {
@@ -8297,6 +8392,47 @@ fn pane_hit_action_for_pane(
                 {
                     return Some(PaneHitAction::PsionicRemoteTraining(
                         PsionicRemoteTrainingPaneAction::SelectRun(row_index),
+                    ));
+                }
+            }
+            for chart_bounds in [
+                psionic_remote_training_loss_chart_bounds(content_bounds),
+                psionic_remote_training_math_chart_bounds(content_bounds),
+                psionic_remote_training_runtime_chart_bounds(content_bounds),
+            ] {
+                if chart_bounds.contains(point) {
+                    let ratio = (((point.x - chart_bounds.origin.x) / chart_bounds.size.width)
+                        .clamp(0.0, 1.0)
+                        * 1000.0)
+                        .round() as u16;
+                    return Some(PaneHitAction::PsionicRemoteTraining(
+                        PsionicRemoteTrainingPaneAction::SetChartAnchor(ratio),
+                    ));
+                }
+            }
+            if remote_training.selected_run.is_some() {
+                for target_index in 0..4 {
+                    if psionic_remote_training_topology_target_bounds(content_bounds, target_index)
+                        .contains(point)
+                    {
+                        return Some(PaneHitAction::PsionicRemoteTraining(
+                            PsionicRemoteTrainingPaneAction::SelectTopologyTarget(target_index),
+                        ));
+                    }
+                }
+            }
+            let provenance_rows = remote_training
+                .selected_run
+                .as_ref()
+                .and_then(|selected| selected.bundle.as_ref())
+                .map(|bundle| bundle.source_artifacts.len().min(4))
+                .unwrap_or(0);
+            for row_index in 0..provenance_rows {
+                if psionic_remote_training_provenance_row_bounds(content_bounds, row_index)
+                    .contains(point)
+                {
+                    return Some(PaneHitAction::PsionicRemoteTraining(
+                        PsionicRemoteTrainingPaneAction::SelectProvenanceArtifact(row_index),
                     ));
                 }
             }

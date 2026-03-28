@@ -9892,8 +9892,111 @@ pub(super) fn run_psionic_remote_training_action(
             let run_id = status.runs.get(row_index).map(|run| run.run_id.clone());
             if let Some(run_id) = run_id {
                 state.desktop_control.remote_training.selected_run_id = Some(run_id.clone());
+                state.desktop_control.remote_training.focused_topology_target = None;
+                state.desktop_control
+                    .remote_training
+                    .selected_provenance_artifact_role = None;
                 state.desktop_control.remote_training.last_action =
                     Some(format!("Selected remote training run {run_id}"));
+                state.desktop_control.remote_training.last_error = None;
+            }
+            true
+        }
+        PsionicRemoteTrainingPaneAction::PinSelectedBaseline => {
+            let status = crate::desktop_control::current_remote_training_status(state);
+            let baseline_run_id = state
+                .desktop_control
+                .remote_training
+                .selected_run_id
+                .clone()
+                .or_else(|| status.selected_run.as_ref().map(|selected| selected.run.run_id.clone()));
+            if let Some(run_id) = baseline_run_id {
+                state.desktop_control.remote_training.compare_baseline_run_id = Some(run_id.clone());
+                state.desktop_control.remote_training.last_action =
+                    Some(format!("Pinned compare baseline {run_id}"));
+                state.desktop_control.remote_training.last_error = None;
+            }
+            true
+        }
+        PsionicRemoteTrainingPaneAction::ClearCompareBaseline => {
+            state.desktop_control.remote_training.compare_baseline_run_id = None;
+            state.desktop_control.remote_training.last_action =
+                Some("Cleared remote training compare baseline".to_string());
+            state.desktop_control.remote_training.last_error = None;
+            true
+        }
+        PsionicRemoteTrainingPaneAction::SetChartAnchor(ratio) => {
+            state.desktop_control.remote_training.chart_anchor_ratio_milli = Some(ratio.min(1000));
+            state.desktop_control.remote_training.last_action = Some(format!(
+                "Set remote training chart anchor {}%",
+                ratio.min(1000) as f32 / 10.0
+            ));
+            state.desktop_control.remote_training.last_error = None;
+            true
+        }
+        PsionicRemoteTrainingPaneAction::ClearChartAnchor => {
+            state.desktop_control.remote_training.chart_anchor_ratio_milli = None;
+            state.desktop_control.remote_training.last_action =
+                Some("Returned remote training charts to the live anchor".to_string());
+            state.desktop_control.remote_training.last_error = None;
+            true
+        }
+        PsionicRemoteTrainingPaneAction::SelectTopologyTarget(target_index) => {
+            let status = crate::desktop_control::current_remote_training_status(state);
+            let target = status
+                .selected_run
+                .as_ref()
+                .map(crate::panes::psionic_remote_training::topology_focus_targets)
+                .and_then(|targets| targets.get(target_index).cloned());
+            if let Some(target) = target {
+                if state
+                    .desktop_control
+                    .remote_training
+                    .focused_topology_target
+                    .as_deref()
+                    == Some(target.key.as_str())
+                {
+                    state.desktop_control.remote_training.focused_topology_target = None;
+                    state.desktop_control.remote_training.last_action =
+                        Some("Cleared remote training topology focus".to_string());
+                } else {
+                    state.desktop_control.remote_training.focused_topology_target =
+                        Some(target.key.clone());
+                    state.desktop_control.remote_training.last_action =
+                        Some(format!("Focused remote training topology on {}", target.label));
+                }
+                state.desktop_control.remote_training.last_error = None;
+            }
+            true
+        }
+        PsionicRemoteTrainingPaneAction::SelectProvenanceArtifact(artifact_index) => {
+            let status = crate::desktop_control::current_remote_training_status(state);
+            let artifact_role = status
+                .selected_run
+                .as_ref()
+                .map(crate::panes::psionic_remote_training::provenance_artifact_roles)
+                .and_then(|roles| roles.get(artifact_index).cloned());
+            if let Some(artifact_role) = artifact_role {
+                if state
+                    .desktop_control
+                    .remote_training
+                    .selected_provenance_artifact_role
+                    .as_deref()
+                    == Some(artifact_role.as_str())
+                {
+                    state.desktop_control
+                        .remote_training
+                        .selected_provenance_artifact_role = None;
+                    state.desktop_control.remote_training.last_action =
+                        Some("Collapsed remote training provenance detail".to_string());
+                } else {
+                    state.desktop_control
+                        .remote_training
+                        .selected_provenance_artifact_role = Some(artifact_role.clone());
+                    state.desktop_control.remote_training.last_action = Some(format!(
+                        "Expanded remote training provenance for {artifact_role}"
+                    ));
+                }
                 state.desktop_control.remote_training.last_error = None;
             }
             true

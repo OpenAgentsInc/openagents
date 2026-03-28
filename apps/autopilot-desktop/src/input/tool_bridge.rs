@@ -4236,6 +4236,30 @@ fn pane_action_to_hit_action(
                     action,
                 )?),
             )),
+            "pin_baseline" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::PinSelectedBaseline,
+            )),
+            "clear_compare" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::ClearCompareBaseline,
+            )),
+            "set_anchor" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::SetChartAnchor(
+                    require_index(action)? as u16,
+                ),
+            )),
+            "clear_anchor" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::ClearChartAnchor,
+            )),
+            "focus_topology" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::SelectTopologyTarget(
+                    require_index(action)?,
+                ),
+            )),
+            "select_provenance" => Ok(PaneHitAction::PsionicRemoteTraining(
+                crate::pane_system::PsionicRemoteTrainingPaneAction::SelectProvenanceArtifact(
+                    require_index(action)?,
+                ),
+            )),
             _ => unsupported(),
         },
         PaneKind::AttnResLab => unsupported(),

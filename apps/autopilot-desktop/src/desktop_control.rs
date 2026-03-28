@@ -92,7 +92,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 18;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 19;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -1046,8 +1046,13 @@ pub struct DesktopControlRemoteTrainingStatus {
     pub full_series_run_count: usize,
     pub stale_run_count: usize,
     pub selected_run_id: Option<String>,
+    pub compare_baseline_run_id: Option<String>,
+    pub chart_anchor_ratio_milli: Option<u16>,
+    pub focused_topology_target: Option<String>,
+    pub selected_provenance_artifact_role: Option<String>,
     pub runs: Vec<DesktopControlRemoteTrainingRunStatus>,
     pub selected_run: Option<DesktopControlRemoteTrainingSelectedRunStatus>,
+    pub compare_baseline: Option<DesktopControlRemoteTrainingSelectedRunStatus>,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
 }
@@ -7202,39 +7207,16 @@ fn desktop_control_remote_training_status(
     let selected_run = sync
         .selected_run_id
         .as_deref()
-        .and_then(|run_id| {
-            runs.iter()
-                .find(|run| run.run_id == run_id)
-                .cloned()
-                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
-                    run,
-                    source_root: sync
-                        .source_root
-                        .as_ref()
-                        .map(|path| path.display().to_string()),
-                    source_index_path: sync
-                        .source_index_path
-                        .as_ref()
-                        .map(|path| path.display().to_string()),
-                    bundle: sync.bundles.get(run_id).cloned(),
-                })
-        })
+        .and_then(|run_id| desktop_control_remote_training_selected_run_status(sync, &runs, run_id))
         .or_else(|| {
-            runs.first()
-                .cloned()
-                .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
-                    source_root: sync
-                        .source_root
-                        .as_ref()
-                        .map(|path| path.display().to_string()),
-                    source_index_path: sync
-                        .source_index_path
-                        .as_ref()
-                        .map(|path| path.display().to_string()),
-                    bundle: sync.bundles.get(run.run_id.as_str()).cloned(),
-                    run,
-                })
+            runs.first().and_then(|run| {
+                desktop_control_remote_training_selected_run_status(sync, &runs, run.run_id.as_str())
+            })
         });
+    let compare_baseline = sync
+        .compare_baseline_run_id
+        .as_deref()
+        .and_then(|run_id| desktop_control_remote_training_selected_run_status(sync, &runs, run_id));
     let run_count = runs.len();
     let active_run_count = runs
         .iter()
@@ -7299,11 +7281,38 @@ fn desktop_control_remote_training_status(
         full_series_run_count,
         stale_run_count: runs.iter().filter(|run| run.stale).count(),
         selected_run_id: sync.selected_run_id.clone(),
+        compare_baseline_run_id: sync.compare_baseline_run_id.clone(),
+        chart_anchor_ratio_milli: sync.chart_anchor_ratio_milli,
+        focused_topology_target: sync.focused_topology_target.clone(),
+        selected_provenance_artifact_role: sync.selected_provenance_artifact_role.clone(),
         runs,
         selected_run,
+        compare_baseline,
         last_error: sync.last_error.clone(),
         last_action: sync.last_action.clone(),
     }
+}
+
+fn desktop_control_remote_training_selected_run_status(
+    sync: &crate::app_state::DesktopControlRemoteTrainingSyncState,
+    runs: &[DesktopControlRemoteTrainingRunStatus],
+    run_id: &str,
+) -> Option<DesktopControlRemoteTrainingSelectedRunStatus> {
+    runs.iter()
+        .find(|run| run.run_id == run_id)
+        .cloned()
+        .map(|run| DesktopControlRemoteTrainingSelectedRunStatus {
+            run,
+            source_root: sync
+                .source_root
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            source_index_path: sync
+                .source_index_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            bundle: sync.bundles.get(run_id).cloned(),
+        })
 }
 
 fn desktop_control_remote_training_run_status(
@@ -10454,6 +10463,10 @@ mod tests {
                 selected_run_id: Some(
                     "parameter-golf-runpod-single-h100-live-sample".to_string(),
                 ),
+                compare_baseline_run_id: None,
+                chart_anchor_ratio_milli: None,
+                focused_topology_target: None,
+                selected_provenance_artifact_role: None,
                 runs: vec![
                     DesktopControlRemoteTrainingRunStatus {
                         provider: "google_cloud".to_string(),
@@ -10580,6 +10593,7 @@ mod tests {
                     ),
                     bundle: None,
                 }),
+                compare_baseline: None,
                 last_error: None,
                 last_action: Some(
                     "Remote training mirror synced 2 runs and 2 cached bundles from the live source"

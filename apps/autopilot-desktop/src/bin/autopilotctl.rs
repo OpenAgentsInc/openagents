@@ -9468,6 +9468,10 @@ mod tests {
         snapshot.remote_training.stale_run_count = 1;
         snapshot.remote_training.selected_run_id =
             Some("parameter-golf-runpod-single-h100-live-sample".to_string());
+        snapshot.remote_training.compare_baseline_run_id = None;
+        snapshot.remote_training.chart_anchor_ratio_milli = None;
+        snapshot.remote_training.focused_topology_target = None;
+        snapshot.remote_training.selected_provenance_artifact_role = None;
         snapshot.remote_training.last_error =
             Some("live mirror refresh failed and the app is using the cache".to_string());
         snapshot.remote_training.runs = vec![
@@ -9558,6 +9562,7 @@ mod tests {
                 bundle: None,
             },
         );
+        snapshot.remote_training.compare_baseline = None;
 
         let lines = remote_training_status_lines(&snapshot);
 
