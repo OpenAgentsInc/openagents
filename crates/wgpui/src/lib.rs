@@ -71,6 +71,7 @@ pub mod text;
 pub mod text_system;
 pub mod theme;
 pub mod tools;
+pub mod viz;
 #[cfg(feature = "non-mvp-surfaces")]
 pub use non_mvp::integration;
 

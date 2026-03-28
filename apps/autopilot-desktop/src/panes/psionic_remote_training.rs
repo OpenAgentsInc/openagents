@@ -4,6 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use psionic_train::{
     RemoteTrainingEventSeverity, RemoteTrainingGpuSample, RemoteTrainingVisualizationBundle,
 };
+use wgpui::viz::chart::{HistoryChartSeries, paint_history_chart_body};
+use wgpui::viz::feed::{EventFeedRow, paint_event_feed_body};
+use wgpui::viz::panel::{paint_shell as paint_panel_shell, paint_title as paint_panel_title};
+use wgpui::viz::theme as viz_theme;
 use wgpui::{Bounds, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::app_state::PaneLoadState;
@@ -19,15 +23,6 @@ use crate::pane_system::{
     psionic_remote_training_layout, psionic_remote_training_refresh_button_bounds,
     psionic_remote_training_run_row_bounds,
 };
-use crate::panes::training_viz_shared::{
-    EventFeedRow, HistoryChartSeries, paint_event_feed_body, paint_history_chart_body,
-    paint_panel_shell, paint_panel_title,
-};
-
-const REMOTE_BLUE: u32 = 0x6ED0FF;
-const REMOTE_GOLD: u32 = 0xF5D06A;
-const REMOTE_MINT: u32 = 0x86EFAC;
-const REMOTE_CORAL: u32 = 0xFDA4AF;
 const CARD_GAP: f32 = 8.0;
 
 pub fn paint(
@@ -1142,25 +1137,21 @@ fn format_samples_per_second_milli(value: u32) -> String {
 }
 
 fn provider_accent(provider: &str) -> Hsla {
-    if provider == "google_cloud" {
-        remote_blue()
-    } else {
-        remote_gold()
-    }
+    viz_theme::provider_accent(provider)
 }
 
 fn remote_blue() -> Hsla {
-    Hsla::from_hex(REMOTE_BLUE)
+    viz_theme::series::RUNTIME
 }
 
 fn remote_gold() -> Hsla {
-    Hsla::from_hex(REMOTE_GOLD)
+    viz_theme::series::HARDWARE
 }
 
 fn remote_mint() -> Hsla {
-    Hsla::from_hex(REMOTE_MINT)
+    viz_theme::series::PROVENANCE
 }
 
 fn remote_coral() -> Hsla {
-    Hsla::from_hex(REMOTE_CORAL)
+    viz_theme::series::LOSS
 }
