@@ -106,6 +106,12 @@ const APPLE_ADAPTER_TRAINING_PREFLIGHT_HEIGHT: f32 = 120.0;
 const PSIONIC_REMOTE_TRAINING_RUN_ROW_HEIGHT: f32 = 54.0;
 const PSIONIC_REMOTE_TRAINING_RUN_ROW_GAP: f32 = 8.0;
 const PSIONIC_REMOTE_TRAINING_MAX_RUN_ROWS: usize = 8;
+const XTRAIN_EXPLORER_SNAPSHOT_ROW_HEIGHT: f32 = 48.0;
+const XTRAIN_EXPLORER_SNAPSHOT_ROW_GAP: f32 = 8.0;
+const XTRAIN_EXPLORER_MAX_SNAPSHOT_ROWS: usize = 8;
+const XTRAIN_EXPLORER_PARTICIPANT_ROW_HEIGHT: f32 = 30.0;
+const XTRAIN_EXPLORER_PARTICIPANT_ROW_GAP: f32 = 6.0;
+const XTRAIN_EXPLORER_MAX_PARTICIPANT_ROWS: usize = 6;
 const RELAY_CONNECTIONS_ROW_HEIGHT: f32 = 30.0;
 const RELAY_CONNECTIONS_ROW_GAP: f32 = 6.0;
 const RELAY_CONNECTIONS_MAX_ROWS: usize = 8;
@@ -703,6 +709,19 @@ pub enum TassadarLabPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum XtrainExplorerPaneAction {
+    Refresh,
+    SetView(crate::app_state::XtrainExplorerViewMode),
+    CycleView,
+    SelectSnapshot(usize),
+    PreviousSnapshot,
+    NextSnapshot,
+    SelectParticipant(usize),
+    PreviousParticipant,
+    NextParticipant,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RivePreviewPaneAction {
     ReloadAsset,
     TogglePlayback,
@@ -1287,6 +1306,7 @@ pub enum PaneHitAction {
     LocalInference(LocalInferencePaneAction),
     AttnResLab(AttnResLabPaneAction),
     TassadarLab(TassadarLabPaneAction),
+    XtrainExplorer(XtrainExplorerPaneAction),
     RivePreview(RivePreviewPaneAction),
     AppleFmWorkbench(AppleFmWorkbenchPaneAction),
     AppleAdapterTraining(AppleAdapterTrainingPaneAction),
@@ -1406,6 +1426,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::VoicePlayground => pane_size_for_content(1040.0, 620.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
+        PaneKind::XtrainExplorer => pane_size_for_content(1200.0, 760.0),
         PaneKind::AttnResLab | PaneKind::TassadarLab => pane_size_for_content(1080.0, 680.0),
         PaneKind::RivePreview => pane_size_for_content(1080.0, 700.0),
         PaneKind::Presentation => pane_size_for_content(640.0, 360.0),
@@ -1530,6 +1551,8 @@ impl PaneController {
             crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
         } else if kind == PaneKind::TassadarLab {
             crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+        } else if kind == PaneKind::XtrainExplorer {
+            crate::xtrain_explorer_control::refresh_xtrain_explorer_state(state, true);
         } else if kind == PaneKind::AppleFmWorkbench {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleAdapterTraining {
@@ -2068,6 +2091,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::EarningsScoreboard
             | PaneKind::PsionicViz
             | PaneKind::PsionicRemoteTraining
+            | PaneKind::XtrainExplorer
             | PaneKind::AttnResLab
             | PaneKind::TassadarLab
             | PaneKind::RivePreview
@@ -5225,6 +5249,150 @@ pub fn psionic_remote_training_provenance_row_bounds(
         panel.origin.y + 156.0 + row_index as f32 * 38.0,
         (panel.size.width - 32.0).max(0.0),
         34.0,
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct XtrainExplorerPaneLayout {
+    pub controls_row: Bounds,
+    pub summary_band: Bounds,
+    pub snapshots_panel: Bounds,
+    pub graph_panel: Bounds,
+    pub window_panel: Bounds,
+    pub detail_panel: Bounds,
+    pub events_panel: Bounds,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct XtrainExplorerDetailLayout {
+    detail_body: Bounds,
+    participant_list: Bounds,
+}
+
+pub fn xtrain_explorer_layout(content_bounds: Bounds) -> XtrainExplorerPaneLayout {
+    let outer_gap = 12.0;
+    let controls_height = 34.0;
+    let summary_height = 34.0;
+    let controls_row = Bounds::new(
+        content_bounds.origin.x + outer_gap,
+        content_bounds.origin.y + outer_gap,
+        (content_bounds.size.width - outer_gap * 2.0).max(0.0),
+        controls_height,
+    );
+    let summary_band = Bounds::new(
+        controls_row.origin.x,
+        controls_row.max_y() + 10.0,
+        controls_row.size.width,
+        summary_height,
+    );
+    let body_y = summary_band.max_y() + 12.0;
+    let body_height = (content_bounds.max_y() - body_y - outer_gap).max(0.0);
+    let column_gap = 10.0;
+    let rail_width = 308.0f32.min((controls_row.size.width * 0.27).max(280.0));
+    let main_width = (controls_row.size.width - rail_width - column_gap).max(420.0);
+    let snapshots_panel = Bounds::new(controls_row.origin.x, body_y, rail_width, body_height);
+    let main_x = snapshots_panel.max_x() + column_gap;
+    let top_height = (body_height * 0.42).clamp(208.0, 288.0).min(body_height);
+    let bottom_height = (body_height - top_height - column_gap).max(180.0);
+    let graph_width = (main_width * 0.58).clamp(320.0, main_width - 200.0);
+    let window_width = (main_width - graph_width - column_gap).max(180.0);
+    let graph_panel = Bounds::new(main_x, body_y, graph_width, top_height);
+    let window_panel = Bounds::new(
+        graph_panel.max_x() + column_gap,
+        body_y,
+        window_width,
+        top_height,
+    );
+    let detail_panel = Bounds::new(main_x, graph_panel.max_y() + column_gap, graph_width, bottom_height);
+    let events_panel = Bounds::new(
+        detail_panel.max_x() + column_gap,
+        detail_panel.origin.y,
+        window_width,
+        bottom_height,
+    );
+
+    XtrainExplorerPaneLayout {
+        controls_row,
+        summary_band,
+        snapshots_panel,
+        graph_panel,
+        window_panel,
+        detail_panel,
+        events_panel,
+    }
+}
+
+fn xtrain_explorer_panel_body_bounds(panel: Bounds) -> Bounds {
+    Bounds::new(
+        panel.origin.x + 12.0,
+        panel.origin.y + 28.0,
+        (panel.size.width - 24.0).max(0.0),
+        (panel.size.height - 36.0).max(0.0),
+    )
+}
+
+fn xtrain_explorer_detail_layout(content_bounds: Bounds) -> XtrainExplorerDetailLayout {
+    let body = xtrain_explorer_panel_body_bounds(xtrain_explorer_layout(content_bounds).detail_panel);
+    let participant_list_height = (body.size.height * 0.38)
+        .clamp(
+            XTRAIN_EXPLORER_PARTICIPANT_ROW_HEIGHT * 3.0,
+            body.size.height - 64.0,
+        )
+        .min(body.size.height);
+    let detail_height = (body.size.height - participant_list_height - 14.0).max(48.0);
+    XtrainExplorerDetailLayout {
+        detail_body: Bounds::new(body.origin.x, body.origin.y, body.size.width, detail_height),
+        participant_list: Bounds::new(
+            body.origin.x,
+            body.origin.y + detail_height + 14.0,
+            body.size.width,
+            participant_list_height,
+        ),
+    }
+}
+
+pub fn xtrain_explorer_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let controls = xtrain_explorer_layout(content_bounds).controls_row;
+    Bounds::new(controls.origin.x, controls.origin.y + 3.0, 110.0, 28.0)
+}
+
+pub fn xtrain_explorer_view_button_bounds(content_bounds: Bounds, view_index: usize) -> Bounds {
+    let controls = xtrain_explorer_layout(content_bounds).controls_row;
+    let refresh = xtrain_explorer_refresh_button_bounds(content_bounds);
+    let button_width = 108.0;
+    let gap = 8.0;
+    Bounds::new(
+        refresh.max_x() + 12.0 + view_index.min(4) as f32 * (button_width + gap),
+        controls.origin.y + 3.0,
+        button_width,
+        28.0,
+    )
+}
+
+pub fn xtrain_explorer_snapshot_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let body = xtrain_explorer_panel_body_bounds(xtrain_explorer_layout(content_bounds).snapshots_panel);
+    let refresh = xtrain_explorer_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        body.origin.x,
+        refresh.max_y()
+            + 12.0
+            + row_index as f32
+                * (XTRAIN_EXPLORER_SNAPSHOT_ROW_HEIGHT + XTRAIN_EXPLORER_SNAPSHOT_ROW_GAP),
+        body.size.width,
+        XTRAIN_EXPLORER_SNAPSHOT_ROW_HEIGHT,
+    )
+}
+
+pub fn xtrain_explorer_participant_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let participant_list = xtrain_explorer_detail_layout(content_bounds).participant_list;
+    Bounds::new(
+        participant_list.origin.x,
+        participant_list.origin.y
+            + 18.0
+            + row_index as f32
+                * (XTRAIN_EXPLORER_PARTICIPANT_ROW_HEIGHT + XTRAIN_EXPLORER_PARTICIPANT_ROW_GAP),
+        participant_list.size.width,
+        XTRAIN_EXPLORER_PARTICIPANT_ROW_HEIGHT,
     )
 }
 
@@ -8433,6 +8601,39 @@ fn pane_hit_action_for_pane(
                 {
                     return Some(PaneHitAction::PsionicRemoteTraining(
                         PsionicRemoteTrainingPaneAction::SelectProvenanceArtifact(row_index),
+                    ));
+                }
+            }
+            None
+        }
+        PaneKind::XtrainExplorer => {
+            if xtrain_explorer_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::XtrainExplorer(
+                    XtrainExplorerPaneAction::Refresh,
+                ));
+            }
+            for view_index in 0..crate::app_state::XtrainExplorerViewMode::ALL.len() {
+                if xtrain_explorer_view_button_bounds(content_bounds, view_index).contains(point) {
+                    return Some(PaneHitAction::XtrainExplorer(
+                        XtrainExplorerPaneAction::SetView(
+                            crate::app_state::XtrainExplorerViewMode::ALL[view_index],
+                        ),
+                    ));
+                }
+            }
+            for row_index in 0..XTRAIN_EXPLORER_MAX_SNAPSHOT_ROWS {
+                if xtrain_explorer_snapshot_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::XtrainExplorer(
+                        XtrainExplorerPaneAction::SelectSnapshot(row_index),
+                    ));
+                }
+            }
+            for row_index in 0..XTRAIN_EXPLORER_MAX_PARTICIPANT_ROWS {
+                if xtrain_explorer_participant_row_bounds(content_bounds, row_index)
+                    .contains(point)
+                {
+                    return Some(PaneHitAction::XtrainExplorer(
+                        XtrainExplorerPaneAction::SelectParticipant(row_index),
                     ));
                 }
             }

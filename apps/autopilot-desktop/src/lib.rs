@@ -84,6 +84,7 @@ mod sync_lifecycle;
 mod tassadar_lab_control;
 pub mod throughput_bench;
 mod voice_playground;
+mod xtrain_explorer_control;
 mod ui_style;
 
 #[cfg(test)]
