@@ -4121,12 +4121,25 @@ fn json_str(value: Option<&Value>) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+fn json_nested_str<'a>(value: Option<&'a Value>, path: &[&str]) -> Option<&'a str> {
+    path.iter()
+        .try_fold(value?, |current, segment| current.get(*segment))
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+}
+
 fn json_bool(value: Option<&Value>) -> bool {
     value.and_then(Value::as_bool).unwrap_or(false)
 }
 
 fn json_array_len(value: Option<&Value>) -> usize {
     value.and_then(Value::as_array).map(Vec::len).unwrap_or(0)
+}
+
+fn json_nested_u64(value: Option<&Value>, path: &[&str]) -> Option<u64> {
+    path.iter()
+        .try_fold(value?, |current, segment| current.get(*segment))
+        .and_then(Value::as_u64)
 }
 
 fn json_joined_array(value: Option<&Value>) -> Option<String> {
@@ -4138,6 +4151,24 @@ fn json_joined_array(value: Option<&Value>) -> Option<String> {
             .collect::<Vec<_>>()
             .join(", ")
     })
+}
+
+fn remote_training_track_summary(run: &Value) -> String {
+    let family = json_nested_str(Some(run), &["track", "track_family"]).unwrap_or("-");
+    let track_id = json_nested_str(Some(run), &["track", "track_id"]).unwrap_or("-");
+    format!("{family}:{track_id}")
+}
+
+fn remote_training_primary_score_summary(run: &Value) -> String {
+    json_nested_str(Some(run), &["primary_score", "score_summary"])
+        .unwrap_or("-")
+        .to_string()
+}
+
+fn remote_training_score_surface_summary(run: &Value) -> String {
+    json_nested_str(Some(run), &["score_surface", "semantic_summary"])
+        .unwrap_or("-")
+        .to_string()
 }
 
 fn print_attnres_text(status: &DesktopControlAttnResStatus) {
@@ -5178,10 +5209,23 @@ fn remote_training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String
     )];
     if let Some(selected_run) = snapshot.remote_training.selected_run.as_ref() {
         lines.push(format!(
-            "remote training selected: run={} provider={} lane={} result={} series={} heartbeat_age_ms={} stale={} cache={} digest={} unavailable_reason={} stale_reason={}",
+            "remote training selected: run={} provider={} lane={} track={} proof={} comparability={} score={} topology={} result={} series={} heartbeat_age_ms={} stale={} cache={} digest={} contract={} unavailable_reason={} stale_reason={}",
             selected_run.run.run_id,
             selected_run.run.provider,
             selected_run.run.lane_id,
+            format!(
+                "{}:{}",
+                selected_run.run.track.track_family, selected_run.run.track.track_id
+            ),
+            selected_run.run.track.proof_posture,
+            selected_run.run.track.comparability_class,
+            selected_run
+                .run
+                .primary_score
+                .as_ref()
+                .map(|score| score.score_summary.as_str())
+                .unwrap_or("-"),
+            selected_run.run.topology_summary.as_deref().unwrap_or("-"),
             selected_run.run.result_classification,
             selected_run.run.series_status,
             selected_run
@@ -5192,6 +5236,7 @@ fn remote_training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String
             selected_run.run.stale,
             selected_run.run.bundle_cached,
             selected_run.run.bundle_digest.as_deref().unwrap_or("-"),
+            selected_run.run.contract_state,
             selected_run
                 .run
                 .series_unavailable_reason
@@ -6935,12 +6980,17 @@ fn print_remote_training_runs_text(payload: &Value) {
     }
     for run in runs {
         println!(
-            "remote training run: run={} provider={} lane={} result={} series={} heartbeat_age_ms={} stale={} cached={} digest={} label={} unavailable_reason={} stale_reason={}",
+            "remote training run: run={} provider={} lane={} track={} proof={} comparability={} result={} series={} score={} topology={} heartbeat_age_ms={} stale={} cached={} digest={} contract={} unavailable_reason={} stale_reason={}",
             json_str(run.get("run_id")).unwrap_or("-"),
             json_str(run.get("provider")).unwrap_or("-"),
             json_str(run.get("lane_id")).unwrap_or("-"),
+            remote_training_track_summary(run),
+            json_nested_str(Some(run), &["track", "proof_posture"]).unwrap_or("-"),
+            json_nested_str(Some(run), &["track", "comparability_class"]).unwrap_or("-"),
             json_str(run.get("result_classification")).unwrap_or("-"),
             json_str(run.get("series_status")).unwrap_or("-"),
+            remote_training_primary_score_summary(run),
+            json_str(run.get("topology_summary")).unwrap_or("-"),
             run.get("heartbeat_age_ms")
                 .and_then(Value::as_u64)
                 .map(|value| value.to_string())
@@ -6948,7 +6998,7 @@ fn print_remote_training_runs_text(payload: &Value) {
             json_bool(run.get("stale")),
             json_bool(run.get("bundle_cached")),
             json_str(run.get("bundle_digest")).unwrap_or("-"),
-            json_str(run.get("summary_label")).unwrap_or("-"),
+            json_str(run.get("contract_state")).unwrap_or("-"),
             json_str(run.get("series_unavailable_reason")).unwrap_or("-"),
             json_str(run.get("stale_reason")).unwrap_or("-"),
         );
@@ -6958,12 +7008,20 @@ fn print_remote_training_runs_text(payload: &Value) {
 fn print_remote_training_run_text(payload: &Value) {
     let run = payload.get("run").unwrap_or(payload);
     println!(
-        "remote training detail: run={} provider={} profile={} lane={} repo={} result={} series={} heartbeat_age_ms={} stale={} cached={} cache_path={} digest={} label={} detail={}",
+        "remote training detail: run={} provider={} profile={} lane={} repo={} track={} execution={} proof={} comparability={} score_law={} score={} score_surface={} topology={} result={} series={} heartbeat_age_ms={} stale={} cached={} cache_path={} digest={} contract={} summary={}",
         json_str(run.get("run_id")).unwrap_or("-"),
         json_str(run.get("provider")).unwrap_or("-"),
         json_str(run.get("profile_id")).unwrap_or("-"),
         json_str(run.get("lane_id")).unwrap_or("-"),
         json_str(run.get("repo_revision")).unwrap_or("-"),
+        remote_training_track_summary(run),
+        json_nested_str(Some(run), &["track", "execution_class"]).unwrap_or("-"),
+        json_nested_str(Some(run), &["track", "proof_posture"]).unwrap_or("-"),
+        json_nested_str(Some(run), &["track", "comparability_class"]).unwrap_or("-"),
+        json_nested_str(Some(run), &["track", "score_law_ref"]).unwrap_or("-"),
+        remote_training_primary_score_summary(run),
+        remote_training_score_surface_summary(run),
+        json_str(run.get("topology_summary")).unwrap_or("-"),
         json_str(run.get("result_classification")).unwrap_or("-"),
         json_str(run.get("series_status")).unwrap_or("-"),
         run.get("heartbeat_age_ms")
@@ -6974,13 +7032,20 @@ fn print_remote_training_run_text(payload: &Value) {
         json_bool(run.get("bundle_cached")),
         json_str(run.get("bundle_cache_path")).unwrap_or("-"),
         json_str(run.get("bundle_digest")).unwrap_or("-"),
-        json_str(run.get("summary_label")).unwrap_or("-"),
-        json_str(run.get("detail")).unwrap_or("-"),
+        json_str(run.get("contract_state")).unwrap_or("-"),
+        json_str(run.get("semantic_summary")).unwrap_or("-"),
     );
     println!(
-        "remote training detail freshness: unavailable_reason={} stale_reason={} source_root={} source_index={}",
+        "remote training detail freshness: unavailable_reason={} stale_reason={} contract_error={} artifact_cap_bytes={} wallclock_cap_seconds={} source_root={} source_index={}",
         json_str(run.get("series_unavailable_reason")).unwrap_or("-"),
         json_str(run.get("stale_reason")).unwrap_or("-"),
+        json_str(run.get("contract_error")).unwrap_or("-"),
+        json_nested_u64(Some(run), &["track", "artifact_cap_bytes"])
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        json_nested_u64(Some(run), &["track", "wallclock_cap_seconds"])
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
         json_str(payload.get("source_root")).unwrap_or("-"),
         json_str(payload.get("source_index_path")).unwrap_or("-"),
     );
@@ -9412,17 +9477,33 @@ mod tests {
                 lane_id: "psion.google_single_node.accelerated".to_string(),
                 run_id: "psion-google-summary-only-sample".to_string(),
                 repo_revision: "main@f7d62771".to_string(),
+                track: autopilot_desktop::desktop_control::DesktopControlRemoteTrainingTrackStatus {
+                    track_family: "psion".to_string(),
+                    track_id: "psion.reference_pilot.single_node.v1".to_string(),
+                    execution_class: "single_node".to_string(),
+                    comparability_class: "not_comparable".to_string(),
+                    proof_posture: "summary_only".to_string(),
+                    public_equivalence_class: "not_applicable".to_string(),
+                    score_law_ref: None,
+                    artifact_cap_bytes: None,
+                    wallclock_cap_seconds: None,
+                    semantic_summary: "Google single-node Psion keeps provider-neutral run identity and summary truth without inventing a score law or loss curve.".to_string(),
+                },
+                primary_score: None,
+                score_surface: None,
                 result_classification: "completed_success".to_string(),
                 series_status: "unavailable".to_string(),
                 series_unavailable_reason: Some(
                     "no canonical optimizer-step loss series was retained".to_string(),
                 ),
-                summary_label: "Google summary-only".to_string(),
-                detail: "Summary-only lane".to_string(),
+                semantic_summary: "Google single-node Psion keeps provider-neutral run identity and summary truth without inventing a score law or loss curve.".to_string(),
+                topology_summary: None,
                 last_heartbeat_at_ms: Some(1_742_760_920_000),
                 heartbeat_age_ms: Some(15_000),
                 stale: false,
                 stale_reason: None,
+                contract_state: "authoritative".to_string(),
+                contract_error: None,
                 bundle_cached: true,
                 bundle_cache_path: Some("/tmp/cache/google.json".to_string()),
                 bundle_digest: Some("digest-google".to_string()),
@@ -9433,11 +9514,25 @@ mod tests {
                 lane_id: "parameter_golf.runpod_single_h100".to_string(),
                 run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
                 repo_revision: "main@f7d62771".to_string(),
+                track: autopilot_desktop::desktop_control::DesktopControlRemoteTrainingTrackStatus {
+                    track_family: "parameter_golf".to_string(),
+                    track_id: "non-record-unlimited-compute-16mb".to_string(),
+                    execution_class: "single_node".to_string(),
+                    comparability_class: "same_track_comparable".to_string(),
+                    proof_posture: "runtime_measured".to_string(),
+                    public_equivalence_class: "not_applicable".to_string(),
+                    score_law_ref: Some("docs/PARAMETER_GOLF_NON_RECORD_SUBMISSION.md".to_string()),
+                    artifact_cap_bytes: Some(16_000_000),
+                    wallclock_cap_seconds: None,
+                    semantic_summary: "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track.".to_string(),
+                },
+                primary_score: None,
+                score_surface: None,
                 result_classification: "active".to_string(),
                 series_status: "available".to_string(),
                 series_unavailable_reason: None,
-                summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
-                detail: "Always-live lane".to_string(),
+                semantic_summary: "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track.".to_string(),
+                topology_summary: Some("devices=1 latest=H100 util=91%".to_string()),
                 last_heartbeat_at_ms: Some(1_742_846_402_000),
                 heartbeat_age_ms: Some(4_200),
                 stale: true,
@@ -9445,6 +9540,8 @@ mod tests {
                     "latest heartbeat is 4200ms old and exceeded the 2500ms stale window"
                         .to_string(),
                 ),
+                contract_state: "authoritative".to_string(),
+                contract_error: None,
                 bundle_cached: true,
                 bundle_cache_path: Some("/tmp/cache/runpod.json".to_string()),
                 bundle_digest: Some("digest-runpod".to_string()),
@@ -9455,7 +9552,7 @@ mod tests {
                 run: snapshot.remote_training.runs[1].clone(),
                 source_root: Some("/tmp/psionic".to_string()),
                 source_index_path: Some(
-                    "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                    "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v2.json"
                         .to_string(),
                 ),
                 bundle: None,

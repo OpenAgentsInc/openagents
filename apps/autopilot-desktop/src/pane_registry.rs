@@ -434,15 +434,15 @@ const PANE_SPECS: [PaneSpec; 65] = [
     },
     PaneSpec {
         kind: PaneKind::PsionicRemoteTraining,
-        title: "Remote Training",
+        title: "Training Runs",
         default_width: 1260.0,
         default_height: 820.0,
         singleton: true,
         startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.psionic_remote_training",
-            label: "Remote Training",
-            description: "Open the always-live Psionic Google and RunPod training visualization pane",
+            label: "Training Runs",
+            description: "Open the shared PGOLF, HOMEGOLF, Psion, and bounded XTRAIN training dashboard",
             keybinding: None,
         }),
         hotbar: None,

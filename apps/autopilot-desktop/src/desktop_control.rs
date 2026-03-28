@@ -42,8 +42,14 @@ use psionic_sandbox::{
     ProviderSandboxJobRequest, ProviderSandboxProfile,
 };
 use psionic_train::{
-    RemoteTrainingProvider, RemoteTrainingResultClassification, RemoteTrainingSeriesStatus,
-    RemoteTrainingVisualizationBundle,
+    RemoteTrainingComparabilityClassV2, RemoteTrainingExecutionClassV2,
+    RemoteTrainingPrimaryScoreV2, RemoteTrainingPromotionGatePostureV2,
+    RemoteTrainingProofPostureV2, RemoteTrainingProvider, RemoteTrainingPublicEquivalenceClassV2,
+    RemoteTrainingResultClassification, RemoteTrainingRunIndexEntryV2,
+    RemoteTrainingScoreCloseoutPostureV2, RemoteTrainingScoreDeltaV2,
+    RemoteTrainingScoreDirectionV2, RemoteTrainingScoreSurfaceV2, RemoteTrainingSeriesStatus,
+    RemoteTrainingTrackFamilyV2, RemoteTrainingTrackSemanticsV2,
+    RemoteTrainingVisualizationBundleV2,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -86,7 +92,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 17;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 18;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -949,21 +955,67 @@ pub struct DesktopControlTrainingStatus {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingTrackStatus {
+    pub track_family: String,
+    pub track_id: String,
+    pub execution_class: String,
+    pub comparability_class: String,
+    pub proof_posture: String,
+    pub public_equivalence_class: String,
+    pub score_law_ref: Option<String>,
+    pub artifact_cap_bytes: Option<u64>,
+    pub wallclock_cap_seconds: Option<u64>,
+    pub semantic_summary: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingPrimaryScoreStatus {
+    pub score_metric_id: String,
+    pub score_direction: String,
+    pub score_unit: String,
+    pub score_value: f64,
+    pub score_value_observed_at_ms: u64,
+    pub score_summary: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingScoreDeltaStatus {
+    pub reference_id: String,
+    pub score_metric_id: String,
+    pub reference_score_value: f64,
+    pub delta_value: f64,
+    pub delta_summary: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingScoreSurfaceStatus {
+    pub score_closeout_posture: String,
+    pub promotion_gate_posture: String,
+    pub delta_rows: Vec<DesktopControlRemoteTrainingScoreDeltaStatus>,
+    pub semantic_summary: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlRemoteTrainingRunStatus {
     pub provider: String,
     pub profile_id: String,
     pub lane_id: String,
     pub run_id: String,
     pub repo_revision: String,
+    pub track: DesktopControlRemoteTrainingTrackStatus,
+    pub primary_score: Option<DesktopControlRemoteTrainingPrimaryScoreStatus>,
+    pub score_surface: Option<DesktopControlRemoteTrainingScoreSurfaceStatus>,
     pub result_classification: String,
     pub series_status: String,
     pub series_unavailable_reason: Option<String>,
-    pub summary_label: String,
-    pub detail: String,
+    pub semantic_summary: String,
+    pub topology_summary: Option<String>,
     pub last_heartbeat_at_ms: Option<u64>,
     pub heartbeat_age_ms: Option<u64>,
     pub stale: bool,
     pub stale_reason: Option<String>,
+    pub contract_state: String,
+    pub contract_error: Option<String>,
     pub bundle_cached: bool,
     pub bundle_cache_path: Option<String>,
     pub bundle_digest: Option<String>,
@@ -974,7 +1026,7 @@ pub struct DesktopControlRemoteTrainingSelectedRunStatus {
     pub run: DesktopControlRemoteTrainingRunStatus,
     pub source_root: Option<String>,
     pub source_index_path: Option<String>,
-    pub bundle: Option<RemoteTrainingVisualizationBundle>,
+    pub bundle: Option<RemoteTrainingVisualizationBundleV2>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -7139,6 +7191,7 @@ fn desktop_control_remote_training_status(
                     desktop_control_remote_training_run_status(
                         entry,
                         sync.bundles.get(entry.run_id.as_str()),
+                        sync.bundle_errors.get(entry.run_id.as_str()),
                         sync.mirrored_bundle_paths.get(entry.run_id.as_str()),
                         now_epoch_ms,
                     )
@@ -7254,31 +7307,52 @@ fn desktop_control_remote_training_status(
 }
 
 fn desktop_control_remote_training_run_status(
-    entry: &psionic_train::RemoteTrainingRunIndexEntry,
-    bundle: Option<&RemoteTrainingVisualizationBundle>,
+    entry: &RemoteTrainingRunIndexEntryV2,
+    bundle: Option<&RemoteTrainingVisualizationBundleV2>,
+    bundle_error: Option<&String>,
     mirrored_bundle_path: Option<&PathBuf>,
     now_epoch_ms: u64,
 ) -> DesktopControlRemoteTrainingRunStatus {
     let (heartbeat_age_ms, stale, stale_reason) =
         remote_training_freshness(now_epoch_ms, entry, bundle);
+    let contract_state = if bundle_error.is_some() {
+        "invalid_contract"
+    } else if bundle.is_some() {
+        "authoritative"
+    } else if entry.bundle_artifact_uri.is_some() {
+        "index_only"
+    } else {
+        "summary_only"
+    };
     DesktopControlRemoteTrainingRunStatus {
         provider: remote_training_provider_label(entry.provider).to_string(),
         profile_id: entry.profile_id.clone(),
         lane_id: entry.lane_id.clone(),
         run_id: entry.run_id.clone(),
         repo_revision: entry.repo_revision.clone(),
+        track: remote_training_track_status(&entry.track_semantics),
+        primary_score: entry
+            .primary_score
+            .as_ref()
+            .map(remote_training_primary_score_status),
+        score_surface: entry
+            .score_surface
+            .as_ref()
+            .map(remote_training_score_surface_status),
         result_classification: remote_training_result_label(entry.result_classification)
             .to_string(),
         series_status: remote_training_series_status_label(entry.series_status).to_string(),
         series_unavailable_reason: entry.series_unavailable_reason.clone(),
-        summary_label: entry.summary_label.clone(),
-        detail: entry.detail.clone(),
+        semantic_summary: entry.semantic_summary.clone(),
+        topology_summary: bundle.and_then(remote_training_topology_summary),
         last_heartbeat_at_ms: bundle
             .and_then(|bundle| bundle.refresh_contract.last_heartbeat_at_ms)
             .or(entry.last_heartbeat_at_ms),
         heartbeat_age_ms,
         stale,
         stale_reason,
+        contract_state: contract_state.to_string(),
+        contract_error: bundle_error.cloned(),
         bundle_cached: mirrored_bundle_path.is_some() || bundle.is_some(),
         bundle_cache_path: mirrored_bundle_path.map(|path| path.display().to_string()),
         bundle_digest: entry
@@ -7290,8 +7364,8 @@ fn desktop_control_remote_training_run_status(
 
 fn remote_training_freshness(
     now_epoch_ms: u64,
-    entry: &psionic_train::RemoteTrainingRunIndexEntry,
-    bundle: Option<&RemoteTrainingVisualizationBundle>,
+    entry: &RemoteTrainingRunIndexEntryV2,
+    bundle: Option<&RemoteTrainingVisualizationBundleV2>,
 ) -> (Option<u64>, bool, Option<String>) {
     let last_heartbeat_at_ms = bundle
         .and_then(|bundle| bundle.refresh_contract.last_heartbeat_at_ms)
@@ -7340,7 +7414,207 @@ fn remote_training_provider_label(provider: RemoteTrainingProvider) -> &'static 
     match provider {
         RemoteTrainingProvider::GoogleCloud => "google_cloud",
         RemoteTrainingProvider::RunPod => "run_pod",
+        RemoteTrainingProvider::LocalHybrid => "local_hybrid",
     }
+}
+
+fn remote_training_track_family_label(track_family: RemoteTrainingTrackFamilyV2) -> &'static str {
+    match track_family {
+        RemoteTrainingTrackFamilyV2::Psion => "psion",
+        RemoteTrainingTrackFamilyV2::ParameterGolf => "parameter_golf",
+        RemoteTrainingTrackFamilyV2::Homegolf => "homegolf",
+        RemoteTrainingTrackFamilyV2::Xtrain => "xtrain",
+    }
+}
+
+fn remote_training_execution_class_label(
+    execution_class: RemoteTrainingExecutionClassV2,
+) -> &'static str {
+    match execution_class {
+        RemoteTrainingExecutionClassV2::SingleNode => "single_node",
+        RemoteTrainingExecutionClassV2::DenseDistributed => "dense_distributed",
+        RemoteTrainingExecutionClassV2::HomeClusterMixedDevice => "home_cluster_mixed_device",
+        RemoteTrainingExecutionClassV2::BoundedTrainToInfer => "bounded_train_to_infer",
+    }
+}
+
+fn remote_training_comparability_label(
+    comparability: RemoteTrainingComparabilityClassV2,
+) -> &'static str {
+    match comparability {
+        RemoteTrainingComparabilityClassV2::NotComparable => "not_comparable",
+        RemoteTrainingComparabilityClassV2::SameTrackComparable => "same_track_comparable",
+        RemoteTrainingComparabilityClassV2::PublicBaselineComparable => {
+            "public_baseline_comparable"
+        }
+        RemoteTrainingComparabilityClassV2::PublicLeaderboardComparable => {
+            "public_leaderboard_comparable"
+        }
+    }
+}
+
+fn remote_training_proof_posture_label(
+    proof_posture: RemoteTrainingProofPostureV2,
+) -> &'static str {
+    match proof_posture {
+        RemoteTrainingProofPostureV2::SummaryOnly => "summary_only",
+        RemoteTrainingProofPostureV2::RuntimeMeasured => "runtime_measured",
+        RemoteTrainingProofPostureV2::ScoreCloseoutMeasured => "score_closeout_measured",
+        RemoteTrainingProofPostureV2::BoundedTrainToInfer => "bounded_train_to_infer",
+        RemoteTrainingProofPostureV2::Refused => "refused",
+    }
+}
+
+fn remote_training_public_equivalence_label(
+    public_equivalence: RemoteTrainingPublicEquivalenceClassV2,
+) -> &'static str {
+    match public_equivalence {
+        RemoteTrainingPublicEquivalenceClassV2::NotApplicable => "not_applicable",
+        RemoteTrainingPublicEquivalenceClassV2::NotPublicEquivalent => "not_public_equivalent",
+        RemoteTrainingPublicEquivalenceClassV2::PublicBaselineComparableOnly => {
+            "public_baseline_comparable_only"
+        }
+        RemoteTrainingPublicEquivalenceClassV2::PublicLeaderboardEquivalent => {
+            "public_leaderboard_equivalent"
+        }
+    }
+}
+
+fn remote_training_score_direction_label(
+    direction: RemoteTrainingScoreDirectionV2,
+) -> &'static str {
+    match direction {
+        RemoteTrainingScoreDirectionV2::LowerIsBetter => "lower_is_better",
+        RemoteTrainingScoreDirectionV2::HigherIsBetter => "higher_is_better",
+    }
+}
+
+fn remote_training_score_closeout_label(
+    posture: RemoteTrainingScoreCloseoutPostureV2,
+) -> &'static str {
+    match posture {
+        RemoteTrainingScoreCloseoutPostureV2::ScoreUnavailable => "score_unavailable",
+        RemoteTrainingScoreCloseoutPostureV2::ScoreHeldPendingCloseout => {
+            "score_held_pending_closeout"
+        }
+        RemoteTrainingScoreCloseoutPostureV2::ScoreClosedOut => "score_closed_out",
+    }
+}
+
+fn remote_training_promotion_gate_label(
+    posture: RemoteTrainingPromotionGatePostureV2,
+) -> &'static str {
+    match posture {
+        RemoteTrainingPromotionGatePostureV2::NotApplicable => "not_applicable",
+        RemoteTrainingPromotionGatePostureV2::Held => "held",
+        RemoteTrainingPromotionGatePostureV2::Eligible => "eligible",
+        RemoteTrainingPromotionGatePostureV2::Promoted => "promoted",
+        RemoteTrainingPromotionGatePostureV2::Refused => "refused",
+    }
+}
+
+fn remote_training_track_status(
+    track: &RemoteTrainingTrackSemanticsV2,
+) -> DesktopControlRemoteTrainingTrackStatus {
+    DesktopControlRemoteTrainingTrackStatus {
+        track_family: remote_training_track_family_label(track.track_family).to_string(),
+        track_id: track.track_id.clone(),
+        execution_class: remote_training_execution_class_label(track.execution_class).to_string(),
+        comparability_class: remote_training_comparability_label(track.comparability_class)
+            .to_string(),
+        proof_posture: remote_training_proof_posture_label(track.proof_posture).to_string(),
+        public_equivalence_class: remote_training_public_equivalence_label(
+            track.public_equivalence_class,
+        )
+        .to_string(),
+        score_law_ref: track.score_law_ref.clone(),
+        artifact_cap_bytes: track.artifact_cap_bytes,
+        wallclock_cap_seconds: track.wallclock_cap_seconds,
+        semantic_summary: track.semantic_summary.clone(),
+    }
+}
+
+fn remote_training_primary_score_status(
+    score: &RemoteTrainingPrimaryScoreV2,
+) -> DesktopControlRemoteTrainingPrimaryScoreStatus {
+    DesktopControlRemoteTrainingPrimaryScoreStatus {
+        score_metric_id: score.score_metric_id.clone(),
+        score_direction: remote_training_score_direction_label(score.score_direction).to_string(),
+        score_unit: score.score_unit.clone(),
+        score_value: score.score_value,
+        score_value_observed_at_ms: score.score_value_observed_at_ms,
+        score_summary: score.score_summary.clone(),
+    }
+}
+
+fn remote_training_score_surface_status(
+    score_surface: &RemoteTrainingScoreSurfaceV2,
+) -> DesktopControlRemoteTrainingScoreSurfaceStatus {
+    DesktopControlRemoteTrainingScoreSurfaceStatus {
+        score_closeout_posture: remote_training_score_closeout_label(
+            score_surface.score_closeout_posture,
+        )
+        .to_string(),
+        promotion_gate_posture: remote_training_promotion_gate_label(
+            score_surface.promotion_gate_posture,
+        )
+        .to_string(),
+        delta_rows: score_surface
+            .delta_rows
+            .iter()
+            .map(remote_training_score_delta_status)
+            .collect(),
+        semantic_summary: score_surface.semantic_summary.clone(),
+    }
+}
+
+fn remote_training_score_delta_status(
+    delta: &RemoteTrainingScoreDeltaV2,
+) -> DesktopControlRemoteTrainingScoreDeltaStatus {
+    DesktopControlRemoteTrainingScoreDeltaStatus {
+        reference_id: delta.reference_id.clone(),
+        score_metric_id: delta.score_metric_id.clone(),
+        reference_score_value: delta.reference_score_value,
+        delta_value: delta.delta_value,
+        delta_summary: delta.delta_summary.clone(),
+    }
+}
+
+fn remote_training_topology_summary(
+    bundle: &RemoteTrainingVisualizationBundleV2,
+) -> Option<String> {
+    if let Some(sample) = bundle.distributed_series.last() {
+        return Some(format!(
+            "ranks={} skew={} collective={} stalls={}",
+            sample.participating_rank_count,
+            sample
+                .rank_skew_ms
+                .map(|value| format!("{value}ms"))
+                .unwrap_or_else(|| "-".to_string()),
+            sample
+                .collective_ms
+                .map(|value| format!("{value}ms"))
+                .unwrap_or_else(|| "-".to_string()),
+            sample.stalled_rank_count
+        ));
+    }
+    let latest_gpu_ts = bundle
+        .gpu_series
+        .iter()
+        .map(|sample| sample.observed_at_ms)
+        .max()?;
+    let latest = bundle
+        .gpu_series
+        .iter()
+        .filter(|sample| sample.observed_at_ms == latest_gpu_ts)
+        .collect::<Vec<_>>();
+    let lead = latest.first()?;
+    Some(format!(
+        "devices={} latest={} util={}%",
+        latest.len(),
+        lead.device_label,
+        lead.utilization_bps as f32 / 100.0
+    ))
 }
 
 fn remote_training_result_label(result: RemoteTrainingResultClassification) -> &'static str {
@@ -9665,9 +9939,10 @@ mod tests {
         DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
         DesktopControlProofStatus, DesktopControlProviderStatus,
         DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
-        DesktopControlRemoteTrainingStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
-        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlTailnetDeviceStatus, DesktopControlTailnetStatus,
+        DesktopControlRemoteTrainingStatus, DesktopControlRemoteTrainingTrackStatus,
+        DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
+        DesktopControlSandboxStatus, DesktopControlSessionStatus, DesktopControlSnapshot,
+        DesktopControlTailnetDeviceStatus, DesktopControlTailnetStatus,
         DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
         DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
         DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
@@ -10163,10 +10438,10 @@ mod tests {
                 source: "live_psionic_mirror".to_string(),
                 source_root: Some("/tmp/psionic".to_string()),
                 source_index_path: Some(
-                    "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                    "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v2.json"
                         .to_string(),
                 ),
-                cache_root: Some("/tmp/openagents/remote-training-v1".to_string()),
+                cache_root: Some("/tmp/openagents/remote-training-v2".to_string()),
                 sync_state: "ready".to_string(),
                 last_synced_at_epoch_ms: Some(1_762_500_003_000),
                 last_successful_sync_at_epoch_ms: Some(1_762_500_003_000),
@@ -10186,20 +10461,36 @@ mod tests {
                         lane_id: "psion.google_single_node.accelerated".to_string(),
                         run_id: "psion-google-summary-only-sample".to_string(),
                         repo_revision: "main@ce5359b9".to_string(),
+                        track: DesktopControlRemoteTrainingTrackStatus {
+                            track_family: "psion".to_string(),
+                            track_id: "psion.reference_pilot.single_node.v1".to_string(),
+                            execution_class: "single_node".to_string(),
+                            comparability_class: "not_comparable".to_string(),
+                            proof_posture: "summary_only".to_string(),
+                            public_equivalence_class: "not_applicable".to_string(),
+                            score_law_ref: None,
+                            artifact_cap_bytes: None,
+                            wallclock_cap_seconds: None,
+                            semantic_summary: "Google single-node Psion keeps provider-neutral run identity and summary truth without inventing a score law or loss curve.".to_string(),
+                        },
+                        primary_score: None,
+                        score_surface: None,
                         result_classification: "completed_success".to_string(),
                         series_status: "unavailable".to_string(),
                         series_unavailable_reason: Some(
                             "no canonical optimizer-step loss series".to_string(),
                         ),
-                        summary_label: "Google summary-only".to_string(),
-                        detail: "Summary-only lane".to_string(),
+                        semantic_summary: "Google single-node Psion keeps provider-neutral run identity and summary truth without inventing a score law or loss curve.".to_string(),
+                        topology_summary: None,
                         last_heartbeat_at_ms: Some(1_742_760_920_000),
                         heartbeat_age_ms: Some(1_000),
                         stale: false,
                         stale_reason: None,
+                        contract_state: "authoritative".to_string(),
+                        contract_error: None,
                         bundle_cached: true,
                         bundle_cache_path: Some(
-                            "/tmp/openagents/remote-training-v1/bundles/psion-google-summary-only-sample.json"
+                            "/tmp/openagents/remote-training-v2/bundles/psion-google-summary-only-sample.json"
                                 .to_string(),
                         ),
                         bundle_digest: Some("digest-google".to_string()),
@@ -10210,18 +10501,34 @@ mod tests {
                         lane_id: "parameter_golf.runpod_single_h100".to_string(),
                         run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
                         repo_revision: "main@ce5359b9".to_string(),
+                        track: DesktopControlRemoteTrainingTrackStatus {
+                            track_family: "parameter_golf".to_string(),
+                            track_id: "non-record-unlimited-compute-16mb".to_string(),
+                            execution_class: "single_node".to_string(),
+                            comparability_class: "same_track_comparable".to_string(),
+                            proof_posture: "runtime_measured".to_string(),
+                            public_equivalence_class: "not_applicable".to_string(),
+                            score_law_ref: Some("docs/PARAMETER_GOLF_NON_RECORD_SUBMISSION.md".to_string()),
+                            artifact_cap_bytes: Some(16_000_000),
+                            wallclock_cap_seconds: None,
+                            semantic_summary: "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track.".to_string(),
+                        },
+                        primary_score: None,
+                        score_surface: None,
                         result_classification: "active".to_string(),
                         series_status: "available".to_string(),
                         series_unavailable_reason: None,
-                        summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
-                        detail: "Always-live lane".to_string(),
+                        semantic_summary: "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track.".to_string(),
+                        topology_summary: Some("devices=1 latest=H100 util=91%".to_string()),
                         last_heartbeat_at_ms: Some(1_742_846_402_000),
                         heartbeat_age_ms: Some(900),
                         stale: false,
                         stale_reason: None,
+                        contract_state: "authoritative".to_string(),
+                        contract_error: None,
                         bundle_cached: true,
                         bundle_cache_path: Some(
-                            "/tmp/openagents/remote-training-v1/bundles/parameter-golf-runpod-single-h100-live-sample.json"
+                            "/tmp/openagents/remote-training-v2/bundles/parameter-golf-runpod-single-h100-live-sample.json"
                                 .to_string(),
                         ),
                         bundle_digest: Some("digest-runpod".to_string()),
@@ -10234,25 +10541,41 @@ mod tests {
                         lane_id: "parameter_golf.runpod_single_h100".to_string(),
                         run_id: "parameter-golf-runpod-single-h100-live-sample".to_string(),
                         repo_revision: "main@ce5359b9".to_string(),
+                        track: DesktopControlRemoteTrainingTrackStatus {
+                            track_family: "parameter_golf".to_string(),
+                            track_id: "non-record-unlimited-compute-16mb".to_string(),
+                            execution_class: "single_node".to_string(),
+                            comparability_class: "same_track_comparable".to_string(),
+                            proof_posture: "runtime_measured".to_string(),
+                            public_equivalence_class: "not_applicable".to_string(),
+                            score_law_ref: Some("docs/PARAMETER_GOLF_NON_RECORD_SUBMISSION.md".to_string()),
+                            artifact_cap_bytes: Some(16_000_000),
+                            wallclock_cap_seconds: None,
+                            semantic_summary: "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track.".to_string(),
+                        },
+                        primary_score: None,
+                        score_surface: None,
                         result_classification: "active".to_string(),
                         series_status: "available".to_string(),
                         series_unavailable_reason: None,
-                        summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
-                        detail: "Always-live lane".to_string(),
+                        semantic_summary: "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track.".to_string(),
+                        topology_summary: Some("devices=1 latest=H100 util=91%".to_string()),
                         last_heartbeat_at_ms: Some(1_742_846_402_000),
                         heartbeat_age_ms: Some(900),
                         stale: false,
                         stale_reason: None,
+                        contract_state: "authoritative".to_string(),
+                        contract_error: None,
                         bundle_cached: true,
                         bundle_cache_path: Some(
-                            "/tmp/openagents/remote-training-v1/bundles/parameter-golf-runpod-single-h100-live-sample.json"
+                            "/tmp/openagents/remote-training-v2/bundles/parameter-golf-runpod-single-h100-live-sample.json"
                                 .to_string(),
                         ),
                         bundle_digest: Some("digest-runpod".to_string()),
                     },
                     source_root: Some("/tmp/psionic".to_string()),
                     source_index_path: Some(
-                        "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v1.json"
+                        "/tmp/psionic/fixtures/training_visualization/remote_training_run_index_v2.json"
                             .to_string(),
                     ),
                     bundle: None,

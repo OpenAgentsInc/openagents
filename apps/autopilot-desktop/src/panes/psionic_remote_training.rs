@@ -2,8 +2,9 @@ use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use psionic_train::{
-    RemoteTrainingEventSeverity, RemoteTrainingGpuSample, RemoteTrainingVisualizationBundle,
+    RemoteTrainingEventSeverity, RemoteTrainingGpuSample, RemoteTrainingVisualizationBundleV2,
 };
+use wgpui::viz::badge::{BadgeTone, tone_color as badge_tone_color};
 use wgpui::viz::chart::{HistoryChartSeries, paint_history_chart_body};
 use wgpui::viz::feed::{EventFeedRow, paint_event_feed_body};
 use wgpui::viz::panel::{paint_shell as paint_panel_shell, paint_title as paint_panel_title};
@@ -33,7 +34,7 @@ pub fn paint(
     let layout = psionic_remote_training_layout(content_bounds);
     let selected = remote_training.selected_run.as_ref();
     let accent = selected
-        .map(|selected| provider_accent(selected.run.provider.as_str()))
+        .map(|selected| run_track_accent(&selected.run))
         .unwrap_or_else(remote_blue);
     let phase = animation_phase();
 
@@ -116,22 +117,29 @@ fn paint_runs_panel(
     remote_training: &DesktopControlRemoteTrainingStatus,
     paint: &mut PaintContext,
 ) {
-    let chunk_len = 28usize;
+    let chunk_len = 32usize;
     for (index, run) in remote_training.runs.iter().take(8).enumerate() {
         let bounds = psionic_remote_training_run_row_bounds(content_bounds, index);
         let selected = remote_training.selected_run_id.as_deref() == Some(run.run_id.as_str());
         paint_selectable_row_background(paint, bounds, selected);
 
-        let accent = if run.stale {
+        let accent = if run.contract_error.is_some() {
+            theme::status::ERROR
+        } else if run.stale {
             theme::status::ERROR
         } else if selected {
-            remote_blue()
+            run_track_accent(run)
         } else {
             theme::text::PRIMARY
         };
         let headline = truncate_line(
             paint,
-            format!("{} // {}", run.provider, run.profile_id).as_str(),
+            format!(
+                "{} // {}",
+                compact_label(run.track.track_family.as_str()),
+                run.profile_id
+            )
+            .as_str(),
             bounds.size.width - 20.0,
             10.0,
         );
@@ -143,7 +151,13 @@ fn paint_runs_panel(
         ));
         let status_line = truncate_line(
             paint,
-            format!("{} // {}", run.result_classification, run.series_status).as_str(),
+            format!(
+                "{} // {} // {}",
+                compact_label(run.track.proof_posture.as_str()),
+                compact_label(run.track.comparability_class.as_str()),
+                compact_label(run.series_status.as_str())
+            )
+            .as_str(),
             bounds.size.width - 20.0,
             10.0,
         );
@@ -153,17 +167,31 @@ fn paint_runs_panel(
             10.0,
             theme::text::MUTED,
         ));
-        let freshness = format!(
-            "{} // {}",
-            truncate_to_chars(run.summary_label.as_str(), chunk_len),
-            freshness_label(run)
-        );
+        let primary = run
+            .primary_score
+            .as_ref()
+            .map(primary_score_brief)
+            .or_else(|| run.topology_summary.clone())
+            .unwrap_or_else(|| truncate_to_chars(run.semantic_summary.as_str(), chunk_len));
+        let freshness = if let Some(error) = run.contract_error.as_deref() {
+            format!(
+                "{} // contract {}",
+                truncate_to_chars(primary.as_str(), chunk_len),
+                truncate_to_chars(error, 20)
+            )
+        } else {
+            format!(
+                "{} // {}",
+                truncate_to_chars(primary.as_str(), chunk_len),
+                freshness_label(run)
+            )
+        };
         let freshness = truncate_line(paint, freshness.as_str(), bounds.size.width - 20.0, 10.0);
         paint.scene.draw_text(paint.text.layout(
             freshness.as_str(),
             Point::new(bounds.origin.x + 10.0, bounds.origin.y + 38.0),
             10.0,
-            if run.stale {
+            if run.contract_error.is_some() || run.stale {
                 theme::status::ERROR
             } else {
                 theme::text::PRIMARY
@@ -186,7 +214,7 @@ fn paint_run_detail_panel(
         bounds.origin.y + 34.0,
         load_state,
         selected
-            .map(|selected| selected.run.summary_label.as_str())
+            .map(|selected| selected.run.run_id.as_str())
             .unwrap_or("No remote training run selected"),
         remote_training.last_action.as_deref(),
         remote_training.last_error.as_deref(),
@@ -198,6 +226,7 @@ fn paint_run_detail_panel(
     let bundle = selected.bundle.as_ref();
     let phase_line = latest_phase_label(bundle, &selected.run);
     let subsystems = latest_subsystems_label(bundle);
+    let track = &selected.run.track;
     let checkpoint = bundle
         .map(|bundle| {
             bundle
@@ -207,12 +236,96 @@ fn paint_run_detail_panel(
                 .unwrap_or_else(|| "checkpoint unavailable".to_string())
         })
         .unwrap_or_else(|| "checkpoint unavailable".to_string());
+    paint_badge_strip(
+        bounds.origin.x + 16.0,
+        y,
+        &[
+            (
+                compact_label(track.track_family.as_str()).to_uppercase(),
+                track_badge_tone(track.track_family.as_str()),
+            ),
+            (
+                compact_label(track.comparability_class.as_str()).to_uppercase(),
+                BadgeTone::Neutral,
+            ),
+            (
+                compact_label(track.proof_posture.as_str()).to_uppercase(),
+                BadgeTone::Live,
+            ),
+            (
+                compact_label(selected.run.series_status.as_str()).to_uppercase(),
+                state_badge_tone(&selected.run),
+            ),
+            (
+                compact_label(selected.run.contract_state.as_str()).to_uppercase(),
+                contract_badge_tone(&selected.run),
+            ),
+        ],
+        accent,
+        paint,
+    );
+    y += 22.0;
+
+    let score_line = selected
+        .run
+        .primary_score
+        .as_ref()
+        .map(primary_score_detail)
+        .unwrap_or_else(|| "score: unavailable".to_string());
     let detail_lines = [
+        format!("track: {}", track.track_id),
+        format!("score: {score_line}"),
+        format!(
+            "closeout: {} // gate {}",
+            selected
+                .run
+                .score_surface
+                .as_ref()
+                .map(|surface| compact_label(surface.score_closeout_posture.as_str()))
+                .unwrap_or_else(|| "score unavailable".to_string()),
+            selected
+                .run
+                .score_surface
+                .as_ref()
+                .map(|surface| compact_label(surface.promotion_gate_posture.as_str()))
+                .unwrap_or_else(|| "n/a".to_string())
+        ),
         format!("lane: {}", selected.run.lane_id),
         format!("repo: {}", selected.run.repo_revision),
+        format!(
+            "score law: {}",
+            track.score_law_ref.as_deref().unwrap_or("-")
+        ),
+        format!(
+            "caps: artifact {} // wallclock {}",
+            track
+                .artifact_cap_bytes
+                .map(format_bytes_compact)
+                .unwrap_or_else(|| "-".to_string()),
+            track
+                .wallclock_cap_seconds
+                .map(|value| format!("{value}s"))
+                .unwrap_or_else(|| "-".to_string())
+        ),
         format!("phase: {phase_line}"),
         format!("subsystems: {subsystems}"),
         format!("checkpoint: {checkpoint}"),
+        format!(
+            "topology: {}",
+            selected
+                .run
+                .topology_summary
+                .as_deref()
+                .unwrap_or("topology unavailable")
+        ),
+        format!(
+            "contract: {}",
+            selected
+                .run
+                .contract_error
+                .as_deref()
+                .unwrap_or(selected.run.contract_state.as_str())
+        ),
         format!("heartbeat: {}", freshness_label(&selected.run)),
     ];
     for line in detail_lines {
@@ -227,8 +340,21 @@ fn paint_run_detail_panel(
     }
 
     let detail_text = bundle
-        .map(|bundle| bundle.summary.detail.as_str())
-        .unwrap_or(selected.run.detail.as_str());
+        .and_then(|bundle| {
+            bundle
+                .score_surface
+                .as_ref()
+                .map(|surface| surface.semantic_summary.as_str())
+        })
+        .or_else(|| bundle.map(|bundle| bundle.summary.detail.as_str()))
+        .or_else(|| {
+            selected
+                .run
+                .score_surface
+                .as_ref()
+                .map(|surface| surface.semantic_summary.as_str())
+        })
+        .unwrap_or(selected.run.semantic_summary.as_str());
     let wrap = split_text_for_display(detail_text, 80);
     let mut wrap_y = bounds.origin.y + 34.0;
     let x = bounds.max_x() - 360.0;
@@ -279,8 +405,8 @@ fn paint_loss_panel(
             bounds,
             accent,
             phase,
-            Some(selected.run.summary_label.as_str()),
-            Some(selected.run.detail.as_str()),
+            Some(selected.run.run_id.as_str()),
+            Some(selected.run.semantic_summary.as_str()),
             selected
                 .run
                 .series_unavailable_reason
@@ -768,9 +894,22 @@ fn paint_provenance_panel(
     let lines = [
         format!("sync: {}", remote_training.sync_state),
         format!("selected: {}", selected.run.run_id),
+        format!("track: {}", selected.run.track.track_id),
+        format!(
+            "contract: {}",
+            selected
+                .run
+                .contract_error
+                .as_deref()
+                .unwrap_or(selected.run.contract_state.as_str())
+        ),
         format!(
             "digest: {}",
             selected.run.bundle_digest.as_deref().unwrap_or("-")
+        ),
+        format!(
+            "score law: {}",
+            selected.run.track.score_law_ref.as_deref().unwrap_or("-")
         ),
         format!("index: {}", source_index),
     ];
@@ -831,15 +970,28 @@ fn status_cards(
         "error" => theme::status::ERROR,
         _ => remote_blue(),
     };
+    let partial_count = remote_training
+        .runs
+        .iter()
+        .filter(|run| run.series_status == "partial")
+        .count();
     let coverage = format!(
-        "{} live / {} summary",
-        remote_training.full_series_run_count, remote_training.summary_only_run_count
+        "{} full / {} partial / {} unavailable",
+        remote_training.full_series_run_count,
+        partial_count,
+        remote_training.summary_only_run_count
     );
     let selected_value = selected
-        .map(|selected| latest_phase_label(selected.bundle.as_ref(), &selected.run))
+        .map(|selected| primary_score_brief_or_track(&selected.run))
         .unwrap_or_else(|| "no selection".to_string());
     let freshness = selected
-        .map(|selected| freshness_label(&selected.run))
+        .map(|selected| {
+            format!(
+                "{} // {}",
+                compact_label(selected.run.track.comparability_class.as_str()),
+                compact_label(selected.run.track.proof_posture.as_str())
+            )
+        })
         .unwrap_or_else(|| "no heartbeat".to_string());
     vec![
         (
@@ -879,8 +1031,8 @@ fn selected_summary_line(
             .unwrap_or("checkpoint unavailable");
         format!(
             "{} // {} // {} // {}",
-            selected.run.summary_label,
-            selected.run.detail,
+            primary_score_brief_or_track(&selected.run),
+            compact_label(selected.run.track.proof_posture.as_str()),
             freshness_label(&selected.run),
             truncate_to_chars(checkpoint, 42)
         )
@@ -903,7 +1055,7 @@ fn load_state_for_status(remote_training: &DesktopControlRemoteTrainingStatus) -
 }
 
 fn latest_phase_label(
-    bundle: Option<&RemoteTrainingVisualizationBundle>,
+    bundle: Option<&RemoteTrainingVisualizationBundleV2>,
     run: &DesktopControlRemoteTrainingRunStatus,
 ) -> String {
     bundle
@@ -926,7 +1078,7 @@ fn latest_phase_label(
         .unwrap_or_else(|| format!("{} // {}", run.result_classification, run.series_status))
 }
 
-fn latest_subsystems_label(bundle: Option<&RemoteTrainingVisualizationBundle>) -> String {
+fn latest_subsystems_label(bundle: Option<&RemoteTrainingVisualizationBundleV2>) -> String {
     bundle
         .and_then(|bundle| bundle.heartbeat_series.last())
         .map(|sample| sample.active_subsystems.join(", "))
@@ -943,7 +1095,7 @@ fn freshness_label(run: &DesktopControlRemoteTrainingRunStatus) -> String {
 }
 
 fn aggregated_gpu_percent(
-    bundle: &RemoteTrainingVisualizationBundle,
+    bundle: &RemoteTrainingVisualizationBundleV2,
     projector: impl Fn(&RemoteTrainingGpuSample) -> f32,
 ) -> Vec<f32> {
     let mut by_timestamp = std::collections::BTreeMap::<u64, (f32, usize)>::new();
@@ -960,7 +1112,9 @@ fn aggregated_gpu_percent(
         .collect()
 }
 
-fn latest_gpu_samples(bundle: &RemoteTrainingVisualizationBundle) -> Vec<&RemoteTrainingGpuSample> {
+fn latest_gpu_samples(
+    bundle: &RemoteTrainingVisualizationBundleV2,
+) -> Vec<&RemoteTrainingGpuSample> {
     let latest = bundle
         .gpu_series
         .iter()
@@ -975,7 +1129,7 @@ fn latest_gpu_samples(bundle: &RemoteTrainingVisualizationBundle) -> Vec<&Remote
     })
 }
 
-fn build_event_rows(bundle: &RemoteTrainingVisualizationBundle) -> Vec<EventFeedRow<'_>> {
+fn build_event_rows(bundle: &RemoteTrainingVisualizationBundleV2) -> Vec<EventFeedRow<'_>> {
     bundle
         .event_series
         .iter()
@@ -1136,8 +1290,121 @@ fn format_samples_per_second_milli(value: u32) -> String {
     format!("{:.2}", value as f32 / 1000.0)
 }
 
-fn provider_accent(provider: &str) -> Hsla {
-    viz_theme::provider_accent(provider)
+fn format_bytes_compact(value: u64) -> String {
+    if value >= 1_000_000_000 {
+        format!("{:.1}GB", value as f32 / 1_000_000_000.0)
+    } else if value >= 1_000_000 {
+        format!("{:.1}MB", value as f32 / 1_000_000.0)
+    } else if value >= 1_000 {
+        format!("{:.1}KB", value as f32 / 1_000.0)
+    } else {
+        format!("{value}B")
+    }
+}
+
+fn compact_label(value: &str) -> String {
+    value.replace('_', " ")
+}
+
+fn primary_score_brief_or_track(run: &DesktopControlRemoteTrainingRunStatus) -> String {
+    run.primary_score
+        .as_ref()
+        .map(primary_score_brief)
+        .unwrap_or_else(|| compact_label(run.track.track_family.as_str()))
+}
+
+fn primary_score_brief(
+    score: &crate::desktop_control::DesktopControlRemoteTrainingPrimaryScoreStatus,
+) -> String {
+    format!(
+        "{} {:.4} {}",
+        compact_label(score.score_metric_id.as_str()),
+        score.score_value,
+        score.score_unit
+    )
+}
+
+fn primary_score_detail(
+    score: &crate::desktop_control::DesktopControlRemoteTrainingPrimaryScoreStatus,
+) -> String {
+    format!(
+        "{} {:.6} {} // {}",
+        compact_label(score.score_metric_id.as_str()),
+        score.score_value,
+        score.score_unit,
+        compact_label(score.score_direction.as_str())
+    )
+}
+
+fn run_track_accent(run: &DesktopControlRemoteTrainingRunStatus) -> Hsla {
+    match run.track.track_family.as_str() {
+        "parameter_golf" => viz_theme::track::PGOLF,
+        "homegolf" => viz_theme::track::HOMEGOLF,
+        "xtrain" => viz_theme::track::XTRAIN,
+        _ => viz_theme::series::RUNTIME,
+    }
+}
+
+fn track_badge_tone(track_family: &str) -> BadgeTone {
+    match track_family {
+        "parameter_golf" => BadgeTone::TrackPgolf,
+        "homegolf" => BadgeTone::TrackHomegolf,
+        "xtrain" => BadgeTone::TrackXtrain,
+        _ => BadgeTone::Neutral,
+    }
+}
+
+fn state_badge_tone(run: &DesktopControlRemoteTrainingRunStatus) -> BadgeTone {
+    if run.contract_error.is_some() {
+        BadgeTone::Error
+    } else if run.stale {
+        BadgeTone::Warning
+    } else if run.series_status == "available" {
+        BadgeTone::Live
+    } else {
+        BadgeTone::Neutral
+    }
+}
+
+fn contract_badge_tone(run: &DesktopControlRemoteTrainingRunStatus) -> BadgeTone {
+    if run.contract_error.is_some() {
+        BadgeTone::Error
+    } else {
+        BadgeTone::Neutral
+    }
+}
+
+fn paint_badge_strip(
+    x: f32,
+    y: f32,
+    badges: &[(String, BadgeTone)],
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    let mut cursor_x = x;
+    for (label, tone) in badges {
+        let badge = truncate_to_chars(label.as_str(), 28);
+        let width = paint
+            .text
+            .layout_mono(badge.as_str(), Point::ZERO, 8.0, theme::text::PRIMARY)
+            .bounds()
+            .size
+            .width
+            + 18.0;
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(cursor_x, y, width, 16.0))
+                .with_background(badge_tone_color(*tone).with_alpha(0.14))
+                .with_border(accent.with_alpha(0.18), 1.0)
+                .with_corner_radius(8.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            badge.as_str(),
+            Point::new(cursor_x + 8.0, y + 4.0),
+            8.0,
+            badge_tone_color(*tone).with_alpha(0.92),
+        ));
+        cursor_x += width + 6.0;
+    }
 }
 
 fn remote_blue() -> Hsla {

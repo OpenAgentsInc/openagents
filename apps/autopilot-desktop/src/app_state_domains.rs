@@ -11,7 +11,7 @@ use psionic_serve::{
     TassadarLabUpdate, TassadarPlannerFallbackPolicy, TassadarPlannerRoutingBudget,
     TassadarPlannerRoutingPolicy,
 };
-use psionic_train::{RemoteTrainingRunIndex, RemoteTrainingVisualizationBundle};
+use psionic_train::{RemoteTrainingRunIndexV2, RemoteTrainingVisualizationBundleV2};
 use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
@@ -2969,9 +2969,10 @@ pub struct DesktopControlRemoteTrainingSyncState {
     pub using_cached_mirror: bool,
     pub refresh_interval_ms: u64,
     pub selected_run_id: Option<String>,
-    pub run_index: Option<RemoteTrainingRunIndex>,
-    pub bundles: BTreeMap<String, RemoteTrainingVisualizationBundle>,
+    pub run_index: Option<RemoteTrainingRunIndexV2>,
+    pub bundles: BTreeMap<String, RemoteTrainingVisualizationBundleV2>,
     pub mirrored_bundle_paths: BTreeMap<String, PathBuf>,
+    pub bundle_errors: BTreeMap<String, String>,
     pub last_refreshed_at_epoch_ms: Option<u64>,
     pub last_successful_sync_at_epoch_ms: Option<u64>,
     pub last_error: Option<String>,
@@ -2994,6 +2995,7 @@ impl Default for DesktopControlRemoteTrainingSyncState {
             run_index: None,
             bundles: BTreeMap::new(),
             mirrored_bundle_paths: BTreeMap::new(),
+            bundle_errors: BTreeMap::new(),
             last_refreshed_at_epoch_ms: None,
             last_successful_sync_at_epoch_ms: None,
             last_error: None,

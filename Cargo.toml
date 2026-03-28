@@ -203,18 +203,18 @@ wgpu = "24.0"
 winit = "0.30"
 pollster = "0.4"
 # Standalone Psionic workspace consumed through pinned git dependencies.
-psionic-adapters = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-apple-fm = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-data = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-datastream = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-environments = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-eval = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38", default-features = false }
-psionic-models = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-research = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-runtime = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-sandbox = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-serve = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
-psionic-train = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "f7d627711326530dcea405a418eab92dbfa9fb38" }
+psionic-adapters = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-apple-fm = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-data = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-datastream = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-environments = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-eval = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3", default-features = false }
+psionic-models = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-research = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-runtime = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-sandbox = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-serve = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
+psionic-train = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "aebe7685872aaf8c0cad8d0401d292e9321c7ef3" }
 
 [profile.dev]
 opt-level = 1

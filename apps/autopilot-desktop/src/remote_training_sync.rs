@@ -4,13 +4,14 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use psionic_train::{
-    RemoteTrainingResultClassification, RemoteTrainingRunIndex, RemoteTrainingVisualizationBundle,
+    RemoteTrainingResultClassification, RemoteTrainingRunIndexEntryV2, RemoteTrainingRunIndexV2,
+    RemoteTrainingVisualizationBundleV2,
 };
 
 use crate::app_state::RenderState;
 
 const REMOTE_TRAINING_INDEX_RELATIVE_PATH: &str =
-    "fixtures/training_visualization/remote_training_run_index_v1.json";
+    "fixtures/training_visualization/remote_training_run_index_v2.json";
 const REMOTE_TRAINING_BUNDLE_CACHE_DIR: &str = "bundles";
 const REMOTE_TRAINING_IDLE_REFRESH_INTERVAL_MS: u64 = 15_000;
 const REMOTE_TRAINING_ACTIVE_REFRESH_INTERVAL_MS: u64 = 1_000;
@@ -25,9 +26,15 @@ struct LoadedRemoteTrainingMirror {
     source_index_path: Option<PathBuf>,
     using_cached_mirror: bool,
     fallback_warning: Option<String>,
-    run_index: RemoteTrainingRunIndex,
-    bundles: BTreeMap<String, RemoteTrainingVisualizationBundle>,
+    run_index: RemoteTrainingRunIndexV2,
+    bundles: BTreeMap<String, RemoteTrainingVisualizationBundleV2>,
     mirrored_bundle_paths: BTreeMap<String, PathBuf>,
+    bundle_errors: BTreeMap<String, String>,
+}
+
+struct LoadedRemoteTrainingBundles {
+    bundles: BTreeMap<String, RemoteTrainingVisualizationBundleV2>,
+    bundle_errors: BTreeMap<String, String>,
 }
 
 pub(crate) fn default_remote_training_source_root_hint() -> Option<PathBuf> {
@@ -60,7 +67,7 @@ pub(crate) fn default_remote_training_cache_root() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".openagents")
-        .join("remote-training-v1")
+        .join("remote-training-v2")
 }
 
 pub(crate) fn refresh_remote_training_sync_cache_if_due(
@@ -82,6 +89,7 @@ pub(crate) fn refresh_remote_training_sync_cache_if_due(
     let previous_source_root = sync.source_root.clone();
     let previous_source_index_path = sync.source_index_path.clone();
     let previous_cache_paths = sync.mirrored_bundle_paths.clone();
+    let previous_bundle_errors = sync.bundle_errors.clone();
     let previous_selection = sync.selected_run_id.clone();
     let previous_last_error = sync.last_error.clone();
     let previous_last_action = sync.last_action.clone();
@@ -109,16 +117,22 @@ pub(crate) fn refresh_remote_training_sync_cache_if_due(
         Ok(loaded) => {
             let selection = next_selected_run_id(
                 loaded.run_index.entries.as_slice(),
-                &loaded.bundles,
                 sync.selected_run_id.as_deref(),
             );
             let refresh_interval_ms =
                 refresh_interval_for_runs(loaded.run_index.entries.as_slice(), &loaded.bundles);
+            let invalid_bundle_count = loaded.bundle_errors.len();
+            let action_suffix = if invalid_bundle_count == 0 {
+                String::new()
+            } else {
+                format!(" with {invalid_bundle_count} invalid bundle contract errors")
+            };
             changed |= previous_index.as_ref() != Some(&loaded.run_index);
             changed |= previous_bundles != loaded.bundles;
             changed |= previous_source_root != loaded.source_root;
             changed |= previous_source_index_path != loaded.source_index_path;
             changed |= previous_cache_paths != loaded.mirrored_bundle_paths;
+            changed |= previous_bundle_errors != loaded.bundle_errors;
             changed |= previous_selection != selection;
             changed |= previous_cached != loaded.using_cached_mirror;
             changed |= previous_last_error != loaded.fallback_warning;
@@ -129,12 +143,13 @@ pub(crate) fn refresh_remote_training_sync_cache_if_due(
             sync.run_index = Some(loaded.run_index);
             sync.bundles = loaded.bundles;
             sync.mirrored_bundle_paths = loaded.mirrored_bundle_paths;
+            sync.bundle_errors = loaded.bundle_errors;
             sync.selected_run_id = selection;
             sync.refresh_interval_ms = refresh_interval_ms;
             sync.last_successful_sync_at_epoch_ms = Some(now_epoch_ms);
             sync.last_error = loaded.fallback_warning;
             sync.last_action = Some(format!(
-                "Remote training mirror synced {} runs and {} cached bundles{}",
+                "Remote training mirror synced {} runs and {} cached bundles{}{}",
                 sync.run_index
                     .as_ref()
                     .map(|index| index.entries.len())
@@ -144,7 +159,8 @@ pub(crate) fn refresh_remote_training_sync_cache_if_due(
                     " using the app cache"
                 } else {
                     " from the live source"
-                }
+                },
+                action_suffix
             ));
         }
         Err(error) => {
@@ -214,7 +230,7 @@ fn load_remote_training_from_source(
         )
     })?;
     let run_index =
-        serde_json::from_str::<RemoteTrainingRunIndex>(raw.as_str()).map_err(|error| {
+        serde_json::from_str::<RemoteTrainingRunIndexV2>(raw.as_str()).map_err(|error| {
             format!(
                 "failed to decode remote training run index {}: {error}",
                 source_index_path.display()
@@ -226,17 +242,22 @@ fn load_remote_training_from_source(
             source_index_path.display()
         )
     })?;
-    let bundles = load_bundles_for_index(source_root.as_deref(), &run_index)?;
-    let mirrored_bundle_paths =
-        persist_remote_training_cache(cache_root, &source_index_path, &run_index, &bundles)?;
+    let loaded_bundles = load_bundles_for_index(source_root.as_deref(), &run_index);
+    let mirrored_bundle_paths = persist_remote_training_cache(
+        cache_root,
+        &source_index_path,
+        &run_index,
+        &loaded_bundles.bundles,
+    )?;
     Ok(LoadedRemoteTrainingMirror {
         source_root,
         source_index_path: Some(source_index_path),
         using_cached_mirror: false,
         fallback_warning: None,
         run_index,
-        bundles,
+        bundles: loaded_bundles.bundles,
         mirrored_bundle_paths,
+        bundle_errors: loaded_bundles.bundle_errors,
     })
 }
 
@@ -251,7 +272,7 @@ fn load_remote_training_from_cache(
         )
     })?;
     let run_index =
-        serde_json::from_str::<RemoteTrainingRunIndex>(raw.as_str()).map_err(|error| {
+        serde_json::from_str::<RemoteTrainingRunIndexV2>(raw.as_str()).map_err(|error| {
             format!(
                 "failed to decode cached remote training run index {}: {error}",
                 cache_index_path.display()
@@ -265,19 +286,23 @@ fn load_remote_training_from_cache(
     })?;
     let mut bundles = BTreeMap::new();
     let mut mirrored_bundle_paths = BTreeMap::new();
+    let mut bundle_errors = BTreeMap::new();
     for entry in &run_index.entries {
         let bundle_path = cache_bundle_path(cache_root, entry.run_id.as_str());
         if !bundle_path.exists() {
             continue;
         }
-        let bundle = read_bundle(bundle_path.as_path())?;
-        verify_bundle_matches_entry(
-            entry.run_id.as_str(),
-            entry.bundle_digest.as_deref(),
-            &bundle,
-        )?;
-        mirrored_bundle_paths.insert(entry.run_id.clone(), bundle_path);
-        bundles.insert(entry.run_id.clone(), bundle);
+        match read_bundle(bundle_path.as_path())
+            .and_then(|bundle| verify_bundle_matches_entry(entry, &bundle).map(|_| bundle))
+        {
+            Ok(bundle) => {
+                mirrored_bundle_paths.insert(entry.run_id.clone(), bundle_path);
+                bundles.insert(entry.run_id.clone(), bundle);
+            }
+            Err(error) => {
+                bundle_errors.insert(entry.run_id.clone(), error);
+            }
+        }
     }
     Ok(LoadedRemoteTrainingMirror {
         source_root: None,
@@ -287,14 +312,16 @@ fn load_remote_training_from_cache(
         run_index,
         bundles,
         mirrored_bundle_paths,
+        bundle_errors,
     })
 }
 
 fn load_bundles_for_index(
     source_root: Option<&Path>,
-    run_index: &RemoteTrainingRunIndex,
-) -> Result<BTreeMap<String, RemoteTrainingVisualizationBundle>, String> {
+    run_index: &RemoteTrainingRunIndexV2,
+) -> LoadedRemoteTrainingBundles {
     let mut bundles = BTreeMap::new();
+    let mut bundle_errors = BTreeMap::new();
     for entry in &run_index.entries {
         let Some(bundle_uri) = entry.bundle_artifact_uri.as_deref() else {
             continue;
@@ -305,22 +332,28 @@ fn load_bundles_for_index(
         if !bundle_path.exists() {
             continue;
         }
-        let bundle = read_bundle(bundle_path.as_path())?;
-        verify_bundle_matches_entry(
-            entry.run_id.as_str(),
-            entry.bundle_digest.as_deref(),
-            &bundle,
-        )?;
-        bundles.insert(entry.run_id.clone(), bundle);
+        match read_bundle(bundle_path.as_path())
+            .and_then(|bundle| verify_bundle_matches_entry(entry, &bundle).map(|_| bundle))
+        {
+            Ok(bundle) => {
+                bundles.insert(entry.run_id.clone(), bundle);
+            }
+            Err(error) => {
+                bundle_errors.insert(entry.run_id.clone(), error);
+            }
+        }
     }
-    Ok(bundles)
+    LoadedRemoteTrainingBundles {
+        bundles,
+        bundle_errors,
+    }
 }
 
 fn persist_remote_training_cache(
     cache_root: &Path,
     source_index_path: &Path,
-    run_index: &RemoteTrainingRunIndex,
-    bundles: &BTreeMap<String, RemoteTrainingVisualizationBundle>,
+    run_index: &RemoteTrainingRunIndexV2,
+    bundles: &BTreeMap<String, RemoteTrainingVisualizationBundleV2>,
 ) -> Result<BTreeMap<String, PathBuf>, String> {
     let cache_index_path = cache_root.join(REMOTE_TRAINING_INDEX_RELATIVE_PATH);
     let cache_bundle_dir = cache_root.join(REMOTE_TRAINING_BUNDLE_CACHE_DIR);
@@ -374,8 +407,7 @@ fn persist_remote_training_cache(
 }
 
 fn next_selected_run_id(
-    entries: &[psionic_train::RemoteTrainingRunIndexEntry],
-    _bundles: &BTreeMap<String, RemoteTrainingVisualizationBundle>,
+    entries: &[RemoteTrainingRunIndexEntryV2],
     current_selection: Option<&str>,
 ) -> Option<String> {
     if current_selection.is_some_and(|run_id| entries.iter().any(|entry| entry.run_id == run_id)) {
@@ -389,8 +421,8 @@ fn next_selected_run_id(
 }
 
 fn refresh_interval_for_runs(
-    entries: &[psionic_train::RemoteTrainingRunIndexEntry],
-    bundles: &BTreeMap<String, RemoteTrainingVisualizationBundle>,
+    entries: &[RemoteTrainingRunIndexEntryV2],
+    bundles: &BTreeMap<String, RemoteTrainingVisualizationBundleV2>,
 ) -> u64 {
     let mut interval_ms = REMOTE_TRAINING_IDLE_REFRESH_INTERVAL_MS;
     for entry in entries {
@@ -421,21 +453,20 @@ fn resolve_bundle_path(source_root: Option<&Path>, bundle_uri: &str) -> Option<P
     source_root.map(|root| root.join(path))
 }
 
-fn read_bundle(path: &Path) -> Result<RemoteTrainingVisualizationBundle, String> {
+fn read_bundle(path: &Path) -> Result<RemoteTrainingVisualizationBundleV2, String> {
     let raw = fs::read_to_string(path).map_err(|error| {
         format!(
             "failed to read remote training bundle {}: {error}",
             path.display()
         )
     })?;
-    let bundle = serde_json::from_str::<RemoteTrainingVisualizationBundle>(raw.as_str()).map_err(
-        |error| {
+    let bundle = serde_json::from_str::<RemoteTrainingVisualizationBundleV2>(raw.as_str())
+        .map_err(|error| {
             format!(
                 "failed to decode remote training bundle {}: {error}",
                 path.display()
             )
-        },
-    )?;
+        })?;
     bundle.validate().map_err(|error| {
         format!(
             "remote training bundle {} failed validation: {error}",
@@ -446,22 +477,39 @@ fn read_bundle(path: &Path) -> Result<RemoteTrainingVisualizationBundle, String>
 }
 
 fn verify_bundle_matches_entry(
-    expected_run_id: &str,
-    expected_digest: Option<&str>,
-    bundle: &RemoteTrainingVisualizationBundle,
+    entry: &RemoteTrainingRunIndexEntryV2,
+    bundle: &RemoteTrainingVisualizationBundleV2,
 ) -> Result<(), String> {
-    if bundle.run_id != expected_run_id {
+    if bundle.run_id != entry.run_id {
         return Err(format!(
             "remote training bundle run_id {} did not match expected run {}",
-            bundle.run_id, expected_run_id
+            bundle.run_id, entry.run_id
         ));
     }
-    if let Some(expected_digest) = expected_digest
+    if let Some(expected_digest) = entry.bundle_digest.as_deref()
         && bundle.bundle_digest != expected_digest
     {
         return Err(format!(
             "remote training bundle digest {} did not match expected digest {} for run {}",
-            bundle.bundle_digest, expected_digest, expected_run_id
+            bundle.bundle_digest, expected_digest, entry.run_id
+        ));
+    }
+    if bundle.track_semantics != entry.track_semantics {
+        return Err(format!(
+            "remote training bundle track semantics for run {} disagreed with the run index",
+            entry.run_id
+        ));
+    }
+    if bundle.primary_score != entry.primary_score {
+        return Err(format!(
+            "remote training bundle primary score for run {} disagreed with the run index",
+            entry.run_id
+        ));
+    }
+    if bundle.score_surface != entry.score_surface {
+        return Err(format!(
+            "remote training bundle score surface for run {} disagreed with the run index",
+            entry.run_id
         ));
     }
     Ok(())
@@ -484,9 +532,12 @@ fn current_epoch_ms() -> u64 {
 mod tests {
     use super::*;
     use psionic_train::{
-        RemoteTrainingRunIndex, RemoteTrainingRunIndexEntry, build_remote_training_run_index,
-        sample_google_summary_only_visualization_bundle,
-        sample_parameter_golf_live_visualization_bundle,
+        build_parameter_golf_homegolf_visualization_bundle_v2,
+        build_parameter_golf_xtrain_visualization_bundle_v2,
+        sample_google_live_visualization_bundle_v2,
+        sample_google_summary_only_visualization_bundle_v2,
+        sample_parameter_golf_distributed_live_visualization_bundle_v2,
+        sample_parameter_golf_live_visualization_bundle_v2, sample_remote_training_run_index_v2,
     };
     use tempfile::tempdir;
 
@@ -505,8 +556,9 @@ mod tests {
         .expect("load live source");
 
         assert!(!loaded.using_cached_mirror);
-        assert_eq!(loaded.run_index.entries.len(), 2);
-        assert_eq!(loaded.bundles.len(), 2);
+        assert_eq!(loaded.run_index.entries.len(), 6);
+        assert_eq!(loaded.bundles.len(), 6);
+        assert!(loaded.bundle_errors.is_empty());
         assert!(
             cache_root
                 .join(REMOTE_TRAINING_INDEX_RELATIVE_PATH)
@@ -518,7 +570,7 @@ mod tests {
         assert!(
             cache_bundle_path(
                 cache_root.as_path(),
-                "parameter-golf-runpod-single-h100-live-sample"
+                "parameter-golf-promoted-general-xtrain-baseline"
             )
             .exists()
         );
@@ -542,58 +594,59 @@ mod tests {
         .expect("load cached mirror");
 
         assert!(loaded.using_cached_mirror);
-        assert_eq!(loaded.run_index.entries.len(), 2);
-        assert_eq!(loaded.bundles.len(), 2);
+        assert_eq!(loaded.run_index.entries.len(), 6);
+        assert_eq!(loaded.bundles.len(), 6);
+        assert!(loaded.bundle_errors.is_empty());
+    }
+
+    #[test]
+    fn bundle_contract_mismatch_is_retained_per_run() {
+        let temp = tempdir().expect("tempdir");
+        let source_root = temp.path().join("source");
+        write_fixture_source(&source_root);
+        let fixture_dir = source_root.join("fixtures").join("training_visualization");
+        let mismatched = sample_google_live_visualization_bundle_v2().expect("google live bundle");
+        fs::write(
+            fixture_dir.join("parameter_golf_live_remote_training_visualization_bundle_v2.json"),
+            serde_json::to_vec_pretty(&mismatched).expect("encode mismatched bundle"),
+        )
+        .expect("write mismatched bundle");
+
+        let loaded =
+            load_remote_training_from_source(Some(source_root.as_path()), None, temp.path())
+                .expect("load source with per-run contract mismatch");
+
+        assert_eq!(loaded.run_index.entries.len(), 6);
+        assert_eq!(loaded.bundles.len(), 5);
+        let error = loaded
+            .bundle_errors
+            .get("parameter-golf-runpod-single-h100-live-sample")
+            .expect("pgolf bundle mismatch should be retained");
+        assert!(
+            error.contains("did not match expected run")
+                || error.contains("disagreed with the run index")
+        );
     }
 
     #[test]
     fn refresh_interval_drops_to_one_second_when_any_run_is_active() {
+        let index = sample_remote_training_run_index_v2().expect("sample run index");
+        let google = sample_google_summary_only_visualization_bundle_v2().expect("google sample");
+        let google_live = sample_google_live_visualization_bundle_v2().expect("google live");
         let parameter_golf =
-            sample_parameter_golf_live_visualization_bundle().expect("parameter golf sample");
-        let google = sample_google_summary_only_visualization_bundle().expect("google sample");
-        let index = build_remote_training_run_index(RemoteTrainingRunIndex {
-            schema_version: String::new(),
-            index_id: "idx".to_string(),
-            generated_at_ms: 1,
-            entries: vec![
-                RemoteTrainingRunIndexEntry {
-                    provider: google.provider,
-                    profile_id: google.profile_id.clone(),
-                    lane_id: google.lane_id.clone(),
-                    run_id: google.run_id.clone(),
-                    repo_revision: google.repo_revision.clone(),
-                    result_classification: google.result_classification,
-                    series_status: google.series_status,
-                    series_unavailable_reason: google.series_unavailable_reason.clone(),
-                    last_heartbeat_at_ms: google.refresh_contract.last_heartbeat_at_ms,
-                    bundle_artifact_uri: None,
-                    bundle_digest: Some(google.bundle_digest.clone()),
-                    summary_label: "google".to_string(),
-                    detail: "google".to_string(),
-                },
-                RemoteTrainingRunIndexEntry {
-                    provider: parameter_golf.provider,
-                    profile_id: parameter_golf.profile_id.clone(),
-                    lane_id: parameter_golf.lane_id.clone(),
-                    run_id: parameter_golf.run_id.clone(),
-                    repo_revision: parameter_golf.repo_revision.clone(),
-                    result_classification: parameter_golf.result_classification,
-                    series_status: parameter_golf.series_status,
-                    series_unavailable_reason: parameter_golf.series_unavailable_reason.clone(),
-                    last_heartbeat_at_ms: parameter_golf.refresh_contract.last_heartbeat_at_ms,
-                    bundle_artifact_uri: None,
-                    bundle_digest: Some(parameter_golf.bundle_digest.clone()),
-                    summary_label: "pgolf".to_string(),
-                    detail: "pgolf".to_string(),
-                },
-            ],
-            detail: "idx".to_string(),
-            index_digest: String::new(),
-        })
-        .expect("index");
+            sample_parameter_golf_live_visualization_bundle_v2().expect("parameter golf sample");
+        let distributed = sample_parameter_golf_distributed_live_visualization_bundle_v2()
+            .expect("distributed sample");
+        let homegolf =
+            build_parameter_golf_homegolf_visualization_bundle_v2().expect("homegolf sample");
+        let xtrain = build_parameter_golf_xtrain_visualization_bundle_v2().expect("xtrain sample");
         let bundles = BTreeMap::from([
             (google.run_id.clone(), google),
+            (google_live.run_id.clone(), google_live),
             (parameter_golf.run_id.clone(), parameter_golf),
+            (distributed.run_id.clone(), distributed),
+            (homegolf.run_id.clone(), homegolf),
+            (xtrain.run_id.clone(), xtrain),
         ]);
 
         assert_eq!(
@@ -603,73 +656,60 @@ mod tests {
     }
 
     fn write_fixture_source(source_root: &Path) {
-        let google = sample_google_summary_only_visualization_bundle().expect("google sample");
+        let index = sample_remote_training_run_index_v2().expect("sample run index");
+        let google = sample_google_summary_only_visualization_bundle_v2().expect("google sample");
+        let google_live = sample_google_live_visualization_bundle_v2().expect("google live");
         let parameter_golf =
-            sample_parameter_golf_live_visualization_bundle().expect("parameter golf sample");
-        let index = sample_index(&google, &parameter_golf);
+            sample_parameter_golf_live_visualization_bundle_v2().expect("parameter golf sample");
+        let distributed = sample_parameter_golf_distributed_live_visualization_bundle_v2()
+            .expect("distributed sample");
+        let homegolf =
+            build_parameter_golf_homegolf_visualization_bundle_v2().expect("homegolf sample");
+        let xtrain = build_parameter_golf_xtrain_visualization_bundle_v2().expect("xtrain sample");
         let fixture_dir = source_root.join("fixtures").join("training_visualization");
         fs::create_dir_all(&fixture_dir).expect("create fixture dir");
+        write_bundle(
+            &fixture_dir,
+            "psion_google_summary_only_remote_training_visualization_bundle_v2.json",
+            &google,
+        );
+        write_bundle(
+            &fixture_dir,
+            "psion_google_live_remote_training_visualization_bundle_v2.json",
+            &google_live,
+        );
+        write_bundle(
+            &fixture_dir,
+            "parameter_golf_live_remote_training_visualization_bundle_v2.json",
+            &parameter_golf,
+        );
+        write_bundle(
+            &fixture_dir,
+            "parameter_golf_distributed_8xh100_remote_training_visualization_bundle_v2.json",
+            &distributed,
+        );
+        write_bundle(
+            &fixture_dir,
+            "parameter_golf_homegolf_remote_training_visualization_bundle_v2.json",
+            &homegolf,
+        );
+        write_bundle(
+            &fixture_dir,
+            "parameter_golf_xtrain_remote_training_visualization_bundle_v2.json",
+            &xtrain,
+        );
         fs::write(
-            fixture_dir
-                .join("psion_google_summary_only_remote_training_visualization_bundle_v1.json"),
-            serde_json::to_vec_pretty(&google).expect("encode google"),
-        )
-        .expect("write google");
-        fs::write(
-            fixture_dir.join("parameter_golf_live_remote_training_visualization_bundle_v1.json"),
-            serde_json::to_vec_pretty(&parameter_golf).expect("encode pgolf"),
-        )
-        .expect("write pgolf");
-        fs::write(
-            fixture_dir.join("remote_training_run_index_v1.json"),
+            fixture_dir.join("remote_training_run_index_v2.json"),
             serde_json::to_vec_pretty(&index).expect("encode index"),
         )
         .expect("write index");
     }
 
-    fn sample_index(
-        google: &RemoteTrainingVisualizationBundle,
-        parameter_golf: &RemoteTrainingVisualizationBundle,
-    ) -> RemoteTrainingRunIndex {
-        build_remote_training_run_index(RemoteTrainingRunIndex {
-            schema_version: String::new(),
-            index_id: "remote-training-run-index-sample-v1".to_string(),
-            generated_at_ms: 1,
-            entries: vec![
-                RemoteTrainingRunIndexEntry {
-                    provider: google.provider,
-                    profile_id: google.profile_id.clone(),
-                    lane_id: google.lane_id.clone(),
-                    run_id: google.run_id.clone(),
-                    repo_revision: google.repo_revision.clone(),
-                    result_classification: google.result_classification,
-                    series_status: google.series_status,
-                    series_unavailable_reason: google.series_unavailable_reason.clone(),
-                    last_heartbeat_at_ms: google.refresh_contract.last_heartbeat_at_ms,
-                    bundle_artifact_uri: Some("fixtures/training_visualization/psion_google_summary_only_remote_training_visualization_bundle_v1.json".to_string()),
-                    bundle_digest: Some(google.bundle_digest.clone()),
-                    summary_label: "Google single-node Psion summary-only sample".to_string(),
-                    detail: "Google summary-only".to_string(),
-                },
-                RemoteTrainingRunIndexEntry {
-                    provider: parameter_golf.provider,
-                    profile_id: parameter_golf.profile_id.clone(),
-                    lane_id: parameter_golf.lane_id.clone(),
-                    run_id: parameter_golf.run_id.clone(),
-                    repo_revision: parameter_golf.repo_revision.clone(),
-                    result_classification: parameter_golf.result_classification,
-                    series_status: parameter_golf.series_status,
-                    series_unavailable_reason: parameter_golf.series_unavailable_reason.clone(),
-                    last_heartbeat_at_ms: parameter_golf.refresh_contract.last_heartbeat_at_ms,
-                    bundle_artifact_uri: Some("fixtures/training_visualization/parameter_golf_live_remote_training_visualization_bundle_v1.json".to_string()),
-                    bundle_digest: Some(parameter_golf.bundle_digest.clone()),
-                    summary_label: "RunPod single-H100 PGOLF live sample".to_string(),
-                    detail: "RunPod live".to_string(),
-                },
-            ],
-            detail: "idx".to_string(),
-            index_digest: String::new(),
-        })
-        .expect("index")
+    fn write_bundle(fixture_dir: &Path, name: &str, bundle: &RemoteTrainingVisualizationBundleV2) {
+        fs::write(
+            fixture_dir.join(name),
+            serde_json::to_vec_pretty(bundle).expect("encode bundle"),
+        )
+        .expect("write bundle");
     }
 }
