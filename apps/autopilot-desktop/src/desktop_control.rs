@@ -42,13 +42,13 @@ use psionic_sandbox::{
     ProviderSandboxJobRequest, ProviderSandboxProfile,
 };
 use psionic_train::{
-    RemoteTrainingComparabilityClassV2, RemoteTrainingExecutionClassV2,
-    RemoteTrainingPrimaryScoreV2, RemoteTrainingPromotionGatePostureV2,
-    RemoteTrainingProofPostureV2, RemoteTrainingProvider, RemoteTrainingPublicEquivalenceClassV2,
-    RemoteTrainingResultClassification, RemoteTrainingRunIndexEntryV2,
-    RemoteTrainingScoreCloseoutPostureV2, RemoteTrainingScoreDeltaV2,
-    RemoteTrainingScoreDirectionV2, RemoteTrainingScoreSurfaceV2, RemoteTrainingSeriesStatus,
-    RemoteTrainingTrackFamilyV2, RemoteTrainingTrackSemanticsV2,
+    RemoteTrainingArtifactSourceKind, RemoteTrainingComparabilityClassV2,
+    RemoteTrainingExecutionClassV2, RemoteTrainingPrimaryScoreV2,
+    RemoteTrainingPromotionGatePostureV2, RemoteTrainingProofPostureV2, RemoteTrainingProvider,
+    RemoteTrainingPublicEquivalenceClassV2, RemoteTrainingResultClassification,
+    RemoteTrainingRunIndexEntryV2, RemoteTrainingScoreCloseoutPostureV2,
+    RemoteTrainingScoreDeltaV2, RemoteTrainingScoreDirectionV2, RemoteTrainingScoreSurfaceV2,
+    RemoteTrainingSeriesStatus, RemoteTrainingTrackFamilyV2, RemoteTrainingTrackSemanticsV2,
     RemoteTrainingVisualizationBundleV2,
 };
 use serde::{Deserialize, Serialize};
@@ -92,7 +92,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 19;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 20;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -1030,6 +1030,68 @@ pub struct DesktopControlRemoteTrainingSelectedRunStatus {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingCompareStatus {
+    pub state: String,
+    pub selected_run_id: Option<String>,
+    pub baseline_run_id: String,
+    pub selected_track_id: Option<String>,
+    pub baseline_track_id: Option<String>,
+    pub score_metric_id: Option<String>,
+    pub score_direction: Option<String>,
+    pub anchor_mode: String,
+    pub anchor_label: Option<String>,
+    pub overlay_capable: bool,
+    pub delta_value: Option<f64>,
+    pub delta_summary: Option<String>,
+    pub caveat: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingTopologyFocusStatus {
+    pub target: String,
+    pub label: String,
+    pub detail: String,
+    pub matching_event_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingProvenanceFocusStatus {
+    pub artifact_role: String,
+    pub found: bool,
+    pub source_kind: Option<String>,
+    pub authoritative: Option<bool>,
+    pub artifact_uri: Option<String>,
+    pub artifact_digest: Option<String>,
+    pub receipt_count: usize,
+    pub detail: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlRemoteTrainingExplorerStatus {
+    pub available: bool,
+    pub load_state: String,
+    pub source_root: Option<String>,
+    pub index_path: Option<String>,
+    pub snapshot_path: Option<String>,
+    pub last_refreshed_at_epoch_ms: Option<u64>,
+    pub selected_view: String,
+    pub selected_snapshot_id: Option<String>,
+    pub selected_participant_id: Option<String>,
+    pub network_id: Option<String>,
+    pub current_epoch_id: Option<String>,
+    pub active_window_id: Option<String>,
+    pub participant_count: usize,
+    pub window_count: usize,
+    pub checkpoint_count: usize,
+    pub event_count: usize,
+    pub authoritative_artifact_count: usize,
+    pub run_surface_link_count: usize,
+    pub summary: String,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlRemoteTrainingStatus {
     pub available: bool,
     pub source: String,
@@ -1053,6 +1115,10 @@ pub struct DesktopControlRemoteTrainingStatus {
     pub runs: Vec<DesktopControlRemoteTrainingRunStatus>,
     pub selected_run: Option<DesktopControlRemoteTrainingSelectedRunStatus>,
     pub compare_baseline: Option<DesktopControlRemoteTrainingSelectedRunStatus>,
+    pub compare: Option<DesktopControlRemoteTrainingCompareStatus>,
+    pub topology_focus: Option<DesktopControlRemoteTrainingTopologyFocusStatus>,
+    pub provenance_focus: Option<DesktopControlRemoteTrainingProvenanceFocusStatus>,
+    pub explorer: DesktopControlRemoteTrainingExplorerStatus,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
 }
@@ -7210,13 +7276,30 @@ fn desktop_control_remote_training_status(
         .and_then(|run_id| desktop_control_remote_training_selected_run_status(sync, &runs, run_id))
         .or_else(|| {
             runs.first().and_then(|run| {
-                desktop_control_remote_training_selected_run_status(sync, &runs, run.run_id.as_str())
+                desktop_control_remote_training_selected_run_status(
+                    sync,
+                    &runs,
+                    run.run_id.as_str(),
+                )
             })
         });
-    let compare_baseline = sync
-        .compare_baseline_run_id
-        .as_deref()
-        .and_then(|run_id| desktop_control_remote_training_selected_run_status(sync, &runs, run_id));
+    let compare_baseline = sync.compare_baseline_run_id.as_deref().and_then(|run_id| {
+        desktop_control_remote_training_selected_run_status(sync, &runs, run_id)
+    });
+    let compare = desktop_control_remote_training_compare_status(
+        sync.compare_baseline_run_id.as_deref(),
+        sync.chart_anchor_ratio_milli,
+        selected_run.as_ref(),
+        compare_baseline.as_ref(),
+    );
+    let topology_focus = desktop_control_remote_training_topology_focus_status(
+        sync.focused_topology_target.as_deref(),
+        selected_run.as_ref(),
+    );
+    let provenance_focus = desktop_control_remote_training_provenance_focus_status(
+        sync.selected_provenance_artifact_role.as_deref(),
+        selected_run.as_ref(),
+    );
     let run_count = runs.len();
     let active_run_count = runs
         .iter()
@@ -7288,8 +7371,579 @@ fn desktop_control_remote_training_status(
         runs,
         selected_run,
         compare_baseline,
+        compare,
+        topology_focus,
+        provenance_focus,
+        explorer: desktop_control_remote_training_explorer_status(state),
         last_error: sync.last_error.clone(),
         last_action: sync.last_action.clone(),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DesktopControlRemoteTrainingCompareMode {
+    PendingBaseline,
+    DirectCompare,
+    PublicEquivalentCompare,
+    SummaryOnlyCompare,
+    SideBySideCompare,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DesktopControlRemoteTrainingAnchorMode {
+    None,
+    GlobalStep,
+    ElapsedMs,
+}
+
+fn desktop_control_remote_training_compare_status(
+    baseline_run_id: Option<&str>,
+    chart_anchor_ratio_milli: Option<u16>,
+    selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    baseline: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+) -> Option<DesktopControlRemoteTrainingCompareStatus> {
+    let baseline_run_id = baseline_run_id?;
+    let Some(selected) = selected else {
+        return Some(DesktopControlRemoteTrainingCompareStatus {
+            state: "selection_missing".to_string(),
+            baseline_run_id: baseline_run_id.to_string(),
+            caveat: "compare baseline is pinned but no selected run is active".to_string(),
+            anchor_mode: "none".to_string(),
+            ..DesktopControlRemoteTrainingCompareStatus::default()
+        });
+    };
+    let Some(baseline) = baseline else {
+        return Some(DesktopControlRemoteTrainingCompareStatus {
+            state: "baseline_missing".to_string(),
+            selected_run_id: Some(selected.run.run_id.clone()),
+            selected_track_id: Some(selected.run.track.track_id.clone()),
+            baseline_run_id: baseline_run_id.to_string(),
+            caveat: "compare baseline is pinned but missing from the current mirror".to_string(),
+            anchor_mode: "none".to_string(),
+            ..DesktopControlRemoteTrainingCompareStatus::default()
+        });
+    };
+
+    if baseline.run.run_id == selected.run.run_id {
+        return Some(DesktopControlRemoteTrainingCompareStatus {
+            state: "pending_baseline".to_string(),
+            selected_run_id: Some(selected.run.run_id.clone()),
+            selected_track_id: Some(selected.run.track.track_id.clone()),
+            baseline_run_id: baseline.run.run_id.clone(),
+            baseline_track_id: Some(baseline.run.track.track_id.clone()),
+            anchor_mode: "none".to_string(),
+            caveat: "baseline pinned; select another run to compare".to_string(),
+            ..DesktopControlRemoteTrainingCompareStatus::default()
+        });
+    }
+
+    let score_metric_matches = selected
+        .run
+        .primary_score
+        .as_ref()
+        .zip(baseline.run.primary_score.as_ref())
+        .map(|(current, baseline)| {
+            current.score_metric_id == baseline.score_metric_id
+                && current.score_direction == baseline.score_direction
+        })
+        .unwrap_or(false);
+    let same_track = selected.run.track.track_id == baseline.run.track.track_id;
+    let public_equivalent = score_metric_matches
+        && selected.run.track.public_equivalence_class
+            == baseline.run.track.public_equivalence_class
+        && !matches!(
+            selected.run.track.public_equivalence_class.as_str(),
+            "not_applicable" | "not_public_equivalent"
+        );
+    let mode = if selected.run.primary_score.is_none() || baseline.run.primary_score.is_none() {
+        DesktopControlRemoteTrainingCompareMode::SummaryOnlyCompare
+    } else if score_metric_matches && same_track {
+        DesktopControlRemoteTrainingCompareMode::DirectCompare
+    } else if public_equivalent {
+        DesktopControlRemoteTrainingCompareMode::PublicEquivalentCompare
+    } else {
+        DesktopControlRemoteTrainingCompareMode::SideBySideCompare
+    };
+    let anchor_mode = if matches!(
+        mode,
+        DesktopControlRemoteTrainingCompareMode::DirectCompare
+            | DesktopControlRemoteTrainingCompareMode::PublicEquivalentCompare
+    ) {
+        desktop_control_remote_training_compare_anchor_mode(
+            selected.bundle.as_ref(),
+            baseline.bundle.as_ref(),
+        )
+    } else {
+        DesktopControlRemoteTrainingAnchorMode::None
+    };
+    let (delta_value, delta_summary, score_metric_id, score_direction) = selected
+        .run
+        .primary_score
+        .as_ref()
+        .zip(baseline.run.primary_score.as_ref())
+        .filter(|(current, baseline)| {
+            current.score_metric_id == baseline.score_metric_id
+                && current.score_direction == baseline.score_direction
+        })
+        .map(|(current, baseline)| {
+            let delta = current.score_value - baseline.score_value;
+            let better = match current.score_direction.as_str() {
+                "lower_is_better" => delta < 0.0,
+                "higher_is_better" => delta > 0.0,
+                _ => false,
+            };
+            let delta_label = if delta > 0.0 {
+                format!("+{delta:.4}")
+            } else {
+                format!("{delta:.4}")
+            };
+            (
+                Some(delta),
+                Some(format!(
+                    "{} {} vs baseline // {}",
+                    delta_label,
+                    current.score_unit,
+                    if better { "better" } else { "worse_or_flat" }
+                )),
+                Some(current.score_metric_id.clone()),
+                Some(current.score_direction.clone()),
+            )
+        })
+        .unwrap_or((None, None, None, None));
+    let caveat = match mode {
+        DesktopControlRemoteTrainingCompareMode::PendingBaseline => {
+            "baseline pinned; select another run to compare".to_string()
+        }
+        DesktopControlRemoteTrainingCompareMode::DirectCompare => {
+            "same-track direct delta".to_string()
+        }
+        DesktopControlRemoteTrainingCompareMode::PublicEquivalentCompare => {
+            "public-equivalent compare across distinct tracks".to_string()
+        }
+        DesktopControlRemoteTrainingCompareMode::SummaryOnlyCompare => {
+            "summary-only compare; primary score or series is unavailable".to_string()
+        }
+        DesktopControlRemoteTrainingCompareMode::SideBySideCompare => {
+            "incomparable tracks; showing side-by-side without winner claims".to_string()
+        }
+    };
+
+    Some(DesktopControlRemoteTrainingCompareStatus {
+        state: desktop_control_remote_training_compare_mode_label(mode).to_string(),
+        selected_run_id: Some(selected.run.run_id.clone()),
+        baseline_run_id: baseline.run.run_id.clone(),
+        selected_track_id: Some(selected.run.track.track_id.clone()),
+        baseline_track_id: Some(baseline.run.track.track_id.clone()),
+        score_metric_id,
+        score_direction,
+        anchor_mode: desktop_control_remote_training_anchor_mode_label(anchor_mode).to_string(),
+        anchor_label: desktop_control_remote_training_anchor_label(
+            chart_anchor_ratio_milli,
+            selected.bundle.as_ref(),
+            anchor_mode,
+        ),
+        overlay_capable: matches!(
+            mode,
+            DesktopControlRemoteTrainingCompareMode::DirectCompare
+                | DesktopControlRemoteTrainingCompareMode::PublicEquivalentCompare
+        ) && anchor_mode != DesktopControlRemoteTrainingAnchorMode::None
+            && baseline.bundle.is_some(),
+        delta_value,
+        delta_summary,
+        caveat,
+    })
+}
+
+fn desktop_control_remote_training_compare_mode_label(
+    mode: DesktopControlRemoteTrainingCompareMode,
+) -> &'static str {
+    match mode {
+        DesktopControlRemoteTrainingCompareMode::PendingBaseline => "pending_baseline",
+        DesktopControlRemoteTrainingCompareMode::DirectCompare => "direct_compare",
+        DesktopControlRemoteTrainingCompareMode::PublicEquivalentCompare => {
+            "public_equivalent_compare"
+        }
+        DesktopControlRemoteTrainingCompareMode::SummaryOnlyCompare => "summary_only_compare",
+        DesktopControlRemoteTrainingCompareMode::SideBySideCompare => "side_by_side_compare",
+    }
+}
+
+fn desktop_control_remote_training_compare_anchor_mode(
+    current: Option<&RemoteTrainingVisualizationBundleV2>,
+    baseline: Option<&RemoteTrainingVisualizationBundleV2>,
+) -> DesktopControlRemoteTrainingAnchorMode {
+    let Some(current) = current else {
+        return DesktopControlRemoteTrainingAnchorMode::None;
+    };
+    let Some(baseline) = baseline else {
+        return DesktopControlRemoteTrainingAnchorMode::None;
+    };
+    if current
+        .loss_series
+        .iter()
+        .any(|sample| sample.global_step.is_some())
+        && baseline
+            .loss_series
+            .iter()
+            .any(|sample| sample.global_step.is_some())
+    {
+        DesktopControlRemoteTrainingAnchorMode::GlobalStep
+    } else if !current.loss_series.is_empty() && !baseline.loss_series.is_empty() {
+        DesktopControlRemoteTrainingAnchorMode::ElapsedMs
+    } else {
+        DesktopControlRemoteTrainingAnchorMode::None
+    }
+}
+
+fn desktop_control_remote_training_anchor_mode_label(
+    mode: DesktopControlRemoteTrainingAnchorMode,
+) -> &'static str {
+    match mode {
+        DesktopControlRemoteTrainingAnchorMode::None => "none",
+        DesktopControlRemoteTrainingAnchorMode::GlobalStep => "global_step",
+        DesktopControlRemoteTrainingAnchorMode::ElapsedMs => "elapsed_ms",
+    }
+}
+
+fn desktop_control_remote_training_anchor_label(
+    ratio: Option<u16>,
+    bundle: Option<&RemoteTrainingVisualizationBundleV2>,
+    anchor_mode: DesktopControlRemoteTrainingAnchorMode,
+) -> Option<String> {
+    let ratio = ratio?;
+    let bundle = bundle?;
+    match anchor_mode {
+        DesktopControlRemoteTrainingAnchorMode::GlobalStep => {
+            desktop_control_remote_training_anchor_loss_sample(bundle, ratio)
+                .and_then(|sample| sample.global_step)
+                .map(|step| format!("anchor step {step}"))
+        }
+        DesktopControlRemoteTrainingAnchorMode::ElapsedMs => {
+            desktop_control_remote_training_anchor_loss_sample(bundle, ratio)
+                .map(|sample| format!("anchor {}ms", sample.elapsed_ms))
+        }
+        DesktopControlRemoteTrainingAnchorMode::None => {
+            desktop_control_remote_training_anchor_loss_sample(bundle, ratio)
+                .map(|sample| format!("anchor {}ms", sample.elapsed_ms))
+                .or_else(|| {
+                    desktop_control_remote_training_anchor_loss_sample(bundle, ratio)
+                        .and_then(|sample| sample.global_step)
+                        .map(|step| format!("anchor step {step}"))
+                })
+        }
+    }
+}
+
+fn desktop_control_remote_training_anchor_loss_sample(
+    bundle: &RemoteTrainingVisualizationBundleV2,
+    ratio: u16,
+) -> Option<&psionic_train::RemoteTrainingLossSample> {
+    let index = desktop_control_remote_training_anchor_index(bundle.loss_series.len(), ratio)?;
+    bundle.loss_series.get(index)
+}
+
+fn desktop_control_remote_training_anchor_index(len: usize, ratio: u16) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    Some(
+        (((len - 1) as f32) * (ratio as f32 / 1000.0))
+            .round()
+            .clamp(0.0, (len - 1) as f32) as usize,
+    )
+}
+
+fn desktop_control_remote_training_topology_focus_status(
+    target: Option<&str>,
+    selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+) -> Option<DesktopControlRemoteTrainingTopologyFocusStatus> {
+    let target = target?;
+    let Some(selected) = selected else {
+        return Some(DesktopControlRemoteTrainingTopologyFocusStatus {
+            target: target.to_string(),
+            label: target.to_string(),
+            detail: "selected run is unavailable".to_string(),
+            matching_event_count: 0,
+        });
+    };
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return Some(DesktopControlRemoteTrainingTopologyFocusStatus {
+            target: target.to_string(),
+            label: target.to_string(),
+            detail: "selected run has no retained bundle".to_string(),
+            matching_event_count: 0,
+        });
+    };
+    let fallback = DesktopControlRemoteTrainingTopologyFocusStatus {
+        target: target.to_string(),
+        label: target.to_string(),
+        detail: selected.run.topology_summary.clone().unwrap_or_else(|| {
+            "focused topology target is outside the retained latest topology".to_string()
+        }),
+        matching_event_count: bundle
+            .event_series
+            .iter()
+            .filter(|event| remote_training_event_matches_focus(event, target))
+            .count(),
+    };
+    desktop_control_remote_training_topology_focus_targets(selected)
+        .into_iter()
+        .find(|candidate| candidate.target == target)
+        .map(
+            |candidate| DesktopControlRemoteTrainingTopologyFocusStatus {
+                target: candidate.target,
+                label: candidate.label,
+                detail: candidate.detail,
+                matching_event_count: bundle
+                    .event_series
+                    .iter()
+                    .filter(|event| remote_training_event_matches_focus(event, target))
+                    .count(),
+            },
+        )
+        .or(Some(fallback))
+}
+
+fn desktop_control_remote_training_provenance_focus_status(
+    focused_role: Option<&str>,
+    selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+) -> Option<DesktopControlRemoteTrainingProvenanceFocusStatus> {
+    let focused_role = focused_role?;
+    let Some(selected) = selected else {
+        return Some(DesktopControlRemoteTrainingProvenanceFocusStatus {
+            artifact_role: focused_role.to_string(),
+            found: false,
+            detail: "selected run is unavailable".to_string(),
+            ..DesktopControlRemoteTrainingProvenanceFocusStatus::default()
+        });
+    };
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return Some(DesktopControlRemoteTrainingProvenanceFocusStatus {
+            artifact_role: focused_role.to_string(),
+            found: false,
+            detail: "selected run has no retained bundle".to_string(),
+            ..DesktopControlRemoteTrainingProvenanceFocusStatus::default()
+        });
+    };
+    bundle
+        .source_artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_role == focused_role)
+        .map(
+            |artifact| DesktopControlRemoteTrainingProvenanceFocusStatus {
+                artifact_role: artifact.artifact_role.clone(),
+                found: true,
+                source_kind: Some(
+                    remote_training_artifact_source_kind_label(artifact.source_kind).to_string(),
+                ),
+                authoritative: Some(artifact.authoritative),
+                artifact_uri: Some(artifact.artifact_uri.clone()),
+                artifact_digest: artifact.artifact_digest.clone(),
+                receipt_count: artifact.source_receipt_ids.len(),
+                detail: artifact.detail.clone(),
+            },
+        )
+        .or_else(|| {
+            Some(DesktopControlRemoteTrainingProvenanceFocusStatus {
+                artifact_role: focused_role.to_string(),
+                found: false,
+                detail: "artifact role is not present in the retained bundle".to_string(),
+                ..DesktopControlRemoteTrainingProvenanceFocusStatus::default()
+            })
+        })
+}
+
+fn desktop_control_remote_training_explorer_status(
+    state: &RenderState,
+) -> DesktopControlRemoteTrainingExplorerStatus {
+    let pane = &state.xtrain_explorer;
+    let available = pane.index.is_some() && pane.snapshot.is_some();
+    let (
+        network_id,
+        current_epoch_id,
+        active_window_id,
+        participant_count,
+        window_count,
+        checkpoint_count,
+        event_count,
+        authoritative_artifact_count,
+        run_surface_link_count,
+        summary,
+    ) = if let Some(snapshot) = pane.snapshot.as_ref() {
+        (
+            Some(snapshot.network_id.clone()),
+            Some(snapshot.current_epoch_id.clone()),
+            Some(snapshot.active_window_id.clone()),
+            snapshot.participants.len(),
+            snapshot.windows.len(),
+            snapshot.checkpoints.len(),
+            snapshot.events.len(),
+            snapshot
+                .source_artifacts
+                .iter()
+                .filter(|artifact| artifact.authoritative)
+                .count(),
+            snapshot.run_surface_links.len(),
+            format!(
+                "participants={} events={} active_window={} selected_participant={}",
+                snapshot.participants.len(),
+                snapshot.events.len(),
+                snapshot.active_window_id,
+                pane.selected_participant_id.as_deref().unwrap_or("none")
+            ),
+        )
+    } else {
+        (
+            None,
+            None,
+            None,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            "waiting for XTRAIN explorer snapshot".to_string(),
+        )
+    };
+    DesktopControlRemoteTrainingExplorerStatus {
+        available,
+        load_state: pane.load_state.label().to_string(),
+        source_root: pane
+            .source_root
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        index_path: pane
+            .index_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        snapshot_path: pane
+            .snapshot_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        last_refreshed_at_epoch_ms: pane.last_refreshed_at_epoch_ms,
+        selected_view: pane.selected_view.label().to_string(),
+        selected_snapshot_id: pane.selected_snapshot_id.clone(),
+        selected_participant_id: pane.selected_participant_id.clone(),
+        network_id,
+        current_epoch_id,
+        active_window_id,
+        participant_count,
+        window_count,
+        checkpoint_count,
+        event_count,
+        authoritative_artifact_count,
+        run_surface_link_count,
+        summary,
+        last_error: pane.last_error.clone(),
+        last_action: pane.last_action.clone(),
+    }
+}
+
+struct DesktopControlRemoteTrainingTopologyFocusCandidate {
+    target: String,
+    label: String,
+    detail: String,
+}
+
+fn desktop_control_remote_training_topology_focus_targets(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+) -> Vec<DesktopControlRemoteTrainingTopologyFocusCandidate> {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return Vec::new();
+    };
+    let latest_gpu_ts = bundle
+        .gpu_series
+        .iter()
+        .map(|sample| sample.observed_at_ms)
+        .max();
+    let mut targets = latest_gpu_ts
+        .into_iter()
+        .flat_map(|latest_ts| {
+            bundle
+                .gpu_series
+                .iter()
+                .filter(move |sample| sample.observed_at_ms == latest_ts)
+        })
+        .take(3)
+        .map(
+            |sample| DesktopControlRemoteTrainingTopologyFocusCandidate {
+                target: format!("device:{}", sample.device_id),
+                label: sample.device_label.clone(),
+                detail: format!(
+                    "util {} // mem {} // temp {}",
+                    remote_training_format_percent_bps(sample.utilization_bps),
+                    remote_training_format_bytes_compact(sample.memory_used_bytes),
+                    sample
+                        .temperature_celsius
+                        .map(|value| format!("{value}C"))
+                        .unwrap_or_else(|| "-".to_string())
+                ),
+            },
+        )
+        .collect::<Vec<_>>();
+    if let Some(distributed) = bundle.distributed_series.last() {
+        targets.push(DesktopControlRemoteTrainingTopologyFocusCandidate {
+            target: "fabric".to_string(),
+            label: format!("fabric {}", distributed.participating_rank_count),
+            detail: format!(
+                "skew {} // collective {} // stalls {}",
+                distributed
+                    .rank_skew_ms
+                    .map(remote_training_format_duration_ms)
+                    .unwrap_or_else(|| "-".to_string()),
+                distributed
+                    .collective_ms
+                    .map(remote_training_format_duration_ms)
+                    .unwrap_or_else(|| "-".to_string()),
+                distributed.stalled_rank_count
+            ),
+        });
+    }
+    targets.truncate(4);
+    targets
+}
+
+fn remote_training_event_matches_focus(
+    event: &psionic_train::RemoteTrainingEventSample,
+    target: &str,
+) -> bool {
+    let needle = target
+        .strip_prefix("device:")
+        .or_else(|| target.strip_prefix("fabric:"))
+        .unwrap_or(target);
+    event.event_kind.contains(needle) || event.detail.contains(needle)
+}
+
+fn remote_training_artifact_source_kind_label(
+    source_kind: RemoteTrainingArtifactSourceKind,
+) -> &'static str {
+    match source_kind {
+        RemoteTrainingArtifactSourceKind::RuntimeOwned => "runtime_owned",
+        RemoteTrainingArtifactSourceKind::FinalizerOwned => "finalizer_owned",
+        RemoteTrainingArtifactSourceKind::ProviderGenerated => "provider_generated",
+        RemoteTrainingArtifactSourceKind::LogDerivedFallback => "log_derived_fallback",
+        RemoteTrainingArtifactSourceKind::LocalMirror => "local_mirror",
+    }
+}
+
+fn remote_training_format_percent_bps(value: u32) -> String {
+    format!("{:.1}%", value as f32 / 100.0)
+}
+
+fn remote_training_format_duration_ms(value: u64) -> String {
+    format!("{value}ms")
+}
+
+fn remote_training_format_bytes_compact(value: u64) -> String {
+    if value >= 1_000_000_000 {
+        format!("{:.1}GB", value as f32 / 1_000_000_000.0)
+    } else if value >= 1_000_000 {
+        format!("{:.1}MB", value as f32 / 1_000_000.0)
+    } else if value >= 1_000 {
+        format!("{:.1}KB", value as f32 / 1_000.0)
+    } else {
+        format!("{value}B")
     }
 }
 
@@ -9947,19 +10601,19 @@ mod tests {
         DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
         DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
         DesktopControlProofStatus, DesktopControlProviderStatus,
-        DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
-        DesktopControlRemoteTrainingStatus, DesktopControlRemoteTrainingTrackStatus,
-        DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
-        DesktopControlSandboxStatus, DesktopControlSessionStatus, DesktopControlSnapshot,
-        DesktopControlTailnetDeviceStatus, DesktopControlTailnetStatus,
-        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
-        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
-        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
-        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
-        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
-        command_received_event, desktop_control_challenge_history_status,
-        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
-        validate_control_bind_addr,
+        DesktopControlRemoteTrainingExplorerStatus, DesktopControlRemoteTrainingRunStatus,
+        DesktopControlRemoteTrainingSelectedRunStatus, DesktopControlRemoteTrainingStatus,
+        DesktopControlRemoteTrainingTrackStatus, DesktopControlRuntime,
+        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
+        DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlTailnetDeviceStatus,
+        DesktopControlTailnetStatus, DesktopControlTrainingParticipantStatus,
+        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
+        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
+        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
+        build_nip90_sent_payments_report_payload, build_settlement_history,
+        challenges_by_delivery_proof, command_outcome_event, command_received_event,
+        desktop_control_challenge_history_status, desktop_control_proof_history_status,
+        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -10594,6 +11248,34 @@ mod tests {
                     bundle: None,
                 }),
                 compare_baseline: None,
+                compare: None,
+                topology_focus: None,
+                provenance_focus: None,
+                explorer: DesktopControlRemoteTrainingExplorerStatus {
+                    available: false,
+                    load_state: "loading".to_string(),
+                    source_root: Some("/tmp/psionic".to_string()),
+                    index_path: Some(
+                        "/tmp/psionic/fixtures/training/xtrain_explorer_index_v1.json".to_string(),
+                    ),
+                    snapshot_path: None,
+                    last_refreshed_at_epoch_ms: None,
+                    selected_view: "Overview".to_string(),
+                    selected_snapshot_id: None,
+                    selected_participant_id: None,
+                    network_id: None,
+                    current_epoch_id: None,
+                    active_window_id: None,
+                    participant_count: 0,
+                    window_count: 0,
+                    checkpoint_count: 0,
+                    event_count: 0,
+                    authoritative_artifact_count: 0,
+                    run_surface_link_count: 0,
+                    summary: "waiting for XTRAIN explorer snapshot".to_string(),
+                    last_error: None,
+                    last_action: Some("Waiting for XTRAIN explorer artifacts".to_string()),
+                },
                 last_error: None,
                 last_action: Some(
                     "Remote training mirror synced 2 runs and 2 cached bundles from the live source"
