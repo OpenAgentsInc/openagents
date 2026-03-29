@@ -666,6 +666,7 @@ dependencies = [
  "rustls 0.23.37",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tiny-skia",
  "tokio",

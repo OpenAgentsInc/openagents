@@ -24,6 +24,16 @@ It now consumes promoted and candidate module artifacts from the retained
 `psionic` compiled-agent promoted-artifact contract instead of hardcoding the
 route, grounded-answer, and verify behavior inside `openagents`.
 
+Phase three adds a normal runtime observability layer on top of that same
+contract. The slice no longer requires raw trace inspection just to answer:
+
+- which promoted artifact answered the request
+- which candidate artifact was shadowed
+- whether the answer came from promoted authority, fallback, or rollback
+- what the lowest retained primary confidence was
+- which governed receipt id and contract digest should correlate with `psionic`
+  ledger and replay truth
+
 ## Entry Point
 
 Run the harness from the repo root:
@@ -63,9 +73,22 @@ cargo run -p autopilot-desktop --bin autopilot-compiled-agent-harness -- \
   --show-trace
 ```
 
+Attach a user disagreement signal without changing the receipt schema:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilot-compiled-agent-harness -- \
+  --prompt "How many sats are in the wallet?" \
+  --user-disagreed \
+  --correction-text "Use the wallet balance plus recent earnings phrasing." \
+  --disagreement-reason-code grounded_synthesis_drift \
+  --operator-note "retain for governed runtime ingestion" \
+  --receipt-out target/compiled-agent/wallet-feedback.json
+```
+
 ## What It Emits
 
-The harness writes a JSON receipt with:
+The harness now writes a governed runtime receipt with the same narrow core
+shape that `psionic` normalizes into the learning ledger:
 
 - prompt lineage
 - selected route
@@ -77,6 +100,19 @@ The harness writes a JSON receipt with:
 - shadow artifact ids and digests
 - internal phase traces
 - runtime state used to answer the prompt
+
+It also writes normal runtime telemetry alongside the retained run:
+
+- stable runtime `receipt_id`
+- retained evidence class for the current learned-lane runtime
+- promoted-artifact contract `row_id` and digest
+- authority path: `promoted`, `fallback`, or `rollback`
+- primary confidence value and confidence band
+- per-phase artifact provenance including artifact ids, digests, row ids, and
+  retained revisions
+- shadow disagreements retained as first-class review rows
+- optional user disagreement and correction signals correlated to the same
+  lineage ids
 
 This is now the narrow runtime-adoption seam to `psionic` for:
 
@@ -114,3 +150,7 @@ Within that boundary:
   `compiled_agent.route.multinomial_nb_v1`
 - `last_known_good` is available as a rollback-safe route candidate
 - `psionic_candidate` is available for grounded-answer and verify shadow runs
+- runtime telemetry exposes exactly which path answered: promoted authority,
+  rollback-safe candidate authority, or confidence fallback
+- the harness prints runtime telemetry by default and keeps raw phase trace
+  behind `--show-trace`
