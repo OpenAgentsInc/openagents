@@ -307,6 +307,11 @@ fn run_session_log_writer(
         max_session_age,
         max_total_session_bytes,
     );
+    let mut session_bytes_written = file
+        .as_ref()
+        .and_then(|handle| handle.metadata().ok())
+        .map_or(0, |metadata| metadata.len());
+    let mut session_log_cap_reached = session_bytes_written >= max_total_session_bytes;
 
     if let Some(file_handle) = file.as_mut() {
         let started = json!({
@@ -319,13 +324,28 @@ fn run_session_log_writer(
             "log_dir": base_dir.display().to_string(),
             "session_path": session_path.display().to_string(),
         });
-        if let Err(error) = write_jsonl_entry(file_handle, &started) {
+        if session_log_cap_reached {
+            emit_session_log_fallback(&format!(
+                "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
+                session_path.display(),
+                max_total_session_bytes
+            ));
+        } else if let Err(error) = write_jsonl_entry(file_handle, &started).map(|written| {
+            session_bytes_written = session_bytes_written.saturating_add(written);
+        }) {
             emit_session_log_fallback(&format!(
                 "Autopilot session log entry write failed for {}: {}",
                 session_path.display(),
                 error
             ));
             file = None;
+        } else if session_bytes_written >= max_total_session_bytes {
+            session_log_cap_reached = true;
+            emit_session_log_fallback(&format!(
+                "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
+                session_path.display(),
+                max_total_session_bytes
+            ));
         }
     }
 
@@ -335,13 +355,48 @@ fn run_session_log_writer(
                 let Some(file_handle) = file.as_mut() else {
                     continue;
                 };
-                if let Err(error) = write_jsonl_entry(file_handle, &entry) {
+                if session_log_cap_reached {
+                    continue;
+                }
+                let serialized = match serialize_jsonl_entry(&entry) {
+                    Ok(serialized) => serialized,
+                    Err(error) => {
+                        emit_session_log_fallback(&format!(
+                            "Autopilot session log entry write failed for {}: {}",
+                            session_path.display(),
+                            error
+                        ));
+                        continue;
+                    }
+                };
+                let entry_bytes = jsonl_encoded_len(&serialized);
+                if session_bytes_written.saturating_add(entry_bytes) > max_total_session_bytes {
+                    session_log_cap_reached = true;
+                    emit_session_log_fallback(&format!(
+                        "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
+                        session_path.display(),
+                        max_total_session_bytes
+                    ));
+                    continue;
+                }
+                if let Err(error) = write_serialized_jsonl_entry(file_handle, &serialized)
+                    .map(|written| {
+                        session_bytes_written = session_bytes_written.saturating_add(written);
+                    })
+                {
                     emit_session_log_fallback(&format!(
                         "Autopilot session log entry write failed for {}: {}",
                         session_path.display(),
                         error
                     ));
                     file = None;
+                } else if session_bytes_written >= max_total_session_bytes {
+                    session_log_cap_reached = true;
+                    emit_session_log_fallback(&format!(
+                        "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
+                        session_path.display(),
+                        max_total_session_bytes
+                    ));
                 }
             }
             #[cfg(test)]
@@ -418,15 +473,26 @@ fn initialize_session_log_file(
     Some(file)
 }
 
-fn write_jsonl_entry(file: &mut File, entry: &Value) -> Result<(), String> {
-    let line = serde_json::to_string(entry)
-        .map_err(|error| format!("serialize session log entry: {error}"))?;
-    file.write_all(line.as_bytes())
+fn write_jsonl_entry(file: &mut File, entry: &Value) -> Result<u64, String> {
+    let serialized = serialize_jsonl_entry(entry)?;
+    write_serialized_jsonl_entry(file, &serialized)
+}
+
+fn serialize_jsonl_entry(entry: &Value) -> Result<String, String> {
+    serde_json::to_string(entry).map_err(|error| format!("serialize session log entry: {error}"))
+}
+
+fn jsonl_encoded_len(serialized: &str) -> u64 {
+    serialized.len().saturating_add(1) as u64
+}
+
+fn write_serialized_jsonl_entry(file: &mut File, serialized: &str) -> Result<u64, String> {
+    file.write_all(serialized.as_bytes())
         .and_then(|_| file.write_all(b"\n"))
         .map_err(|error| format!("append session log line: {error}"))?;
     file.flush()
         .map_err(|error| format!("flush session log file: {error}"))?;
-    Ok(())
+    Ok(jsonl_encoded_len(serialized))
 }
 
 fn refresh_latest_alias(session_path: &Path, latest_path: &Path) -> Result<(), String> {
