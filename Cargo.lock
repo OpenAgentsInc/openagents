@@ -11180,6 +11180,7 @@ version = "0.1.1"
 dependencies = [
  "bytemuck",
  "log",
+ "pollster",
  "resvg",
  "tiny-skia",
  "usvg",

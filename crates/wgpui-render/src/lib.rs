@@ -10,9 +10,14 @@
     )
 )]
 
+pub mod offscreen;
 pub mod renderer;
 pub mod svg;
 mod vector;
 
+pub use offscreen::{
+    OffscreenGlyphAtlas, OffscreenRenderError, OffscreenRenderOutput, OffscreenRenderRequest,
+    OffscreenRenderer, OffscreenRendererOptions,
+};
 pub use renderer::{RenderMetrics, Renderer};
 pub use svg::{SvgRasterized, SvgRenderer};
