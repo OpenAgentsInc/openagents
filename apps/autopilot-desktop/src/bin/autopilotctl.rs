@@ -200,10 +200,31 @@ enum ProviderCommand {
 #[derive(Subcommand, Debug)]
 enum PaneCommand {
     List,
-    Open { pane: String },
-    Focus { pane: String },
-    Close { pane: String },
-    Status { pane: String },
+    Open {
+        pane: String,
+    },
+    Focus {
+        pane: String,
+    },
+    Close {
+        pane: String,
+    },
+    Status {
+        pane: String,
+    },
+    Capture {
+        pane: String,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        width: Option<u32>,
+        #[arg(long)]
+        height: Option<u32>,
+        #[arg(long, default_value_t = 1.0)]
+        scale: f32,
+        #[arg(long)]
+        allow_fallback_adapter: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -734,8 +755,30 @@ impl PaneCommand {
             Self::Status { pane } => {
                 DesktopControlActionRequest::GetPaneSnapshot { pane: pane.clone() }
             }
+            Self::Capture {
+                pane,
+                output,
+                width,
+                height,
+                scale,
+                allow_fallback_adapter,
+            } => DesktopControlActionRequest::CapturePane {
+                pane: pane.clone(),
+                output_path: output.display().to_string(),
+                width: *width,
+                height: *height,
+                scale_factor_milli: scale_factor_milli(*scale),
+                allow_fallback_adapter: *allow_fallback_adapter,
+            },
         }
     }
+}
+
+fn scale_factor_milli(scale_factor: f32) -> u32 {
+    if !scale_factor.is_finite() || scale_factor <= 0.0 {
+        return 0;
+    }
+    (scale_factor * 1000.0).round().clamp(1.0, u32::MAX as f32) as u32
 }
 
 impl AttnResViewArg {
@@ -1800,6 +1843,16 @@ fn main() -> Result<()> {
                     print_json(payload)?;
                 } else {
                     print_pane_snapshot_text(payload);
+                }
+            }
+            PaneCommand::Capture { .. } => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    print_pane_capture_text(payload);
                 }
             }
             PaneCommand::Open { .. } | PaneCommand::Focus { .. } | PaneCommand::Close { .. } => {
@@ -3064,6 +3117,47 @@ fn print_pane_snapshot_text(payload: &Value) {
             );
         }
     }
+}
+
+fn print_pane_capture_text(payload: &Value) {
+    let kind = payload.get("kind").and_then(Value::as_str).unwrap_or("-");
+    let title = payload.get("title").and_then(Value::as_str).unwrap_or("-");
+    let pane_id = payload.get("pane_id").and_then(Value::as_u64);
+    let presentation = payload
+        .get("presentation")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    let png_path = payload
+        .get("png_path")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    let manifest_path = payload
+        .get("manifest_path")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    let width = payload.get("width").and_then(Value::as_u64).unwrap_or(0);
+    let height = payload.get("height").and_then(Value::as_u64).unwrap_or(0);
+    let scale_factor = payload
+        .get("scale_factor")
+        .and_then(Value::as_f64)
+        .unwrap_or(1.0);
+    let capture_target = payload
+        .get("capture_target")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+
+    println!("pane capture: {kind} ({title})");
+    println!(
+        "pane_id={} presentation={} capture_target={}",
+        pane_id
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        presentation,
+        capture_target
+    );
+    println!("size={}x{} scale={scale_factor:.2}", width, height);
+    println!("png: {png_path}");
+    println!("manifest: {manifest_path}");
 }
 
 fn print_data_market_snapshot_text(payload: &Value) {
