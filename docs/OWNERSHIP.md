@@ -114,6 +114,24 @@ Must not own:
 - App-to-kernel control flow that depends on `apps/autopilot-desktop`.
 - Long-term sandbox runtime engines, clustered transport, or validator logic.
 
+## `crates/openagents-compiled-agent`
+
+Owns:
+
+- Rust-native DSPy-like signature contracts for the first narrow agent graph.
+- Typed compiled-module inputs and outputs for route, tool policy, tool
+  arguments, grounded answer, and verify/refusal.
+- Reusable graph composition primitives and module-level eval interfaces.
+- Module manifests and other app-agnostic compiled-agent metadata.
+
+Must not own:
+
+- App UX or pane orchestration.
+- Product-specific workflow policy that belongs in `apps/autopilot-desktop`.
+- Model serving, training, or execution substrate that belongs in `psionic`.
+- Market settlement, wallet authority, or provider lifecycle state that belongs
+  in existing product or kernel crates.
+
 ## `OpenAgentsInc/psionic`
 
 Own:

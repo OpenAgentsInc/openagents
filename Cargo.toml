@@ -14,6 +14,7 @@ members = [
     "crates/cad",
     "crates/autopilot-spacetime",
     "crates/codex-client",
+    "crates/openagents-compiled-agent",
     "crates/openagents-kernel-core",
     "crates/openagents-kernel-proto",
     "crates/openagents-provider-substrate",
