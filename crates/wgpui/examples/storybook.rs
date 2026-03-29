@@ -20,6 +20,8 @@ mod constants;
 mod demos;
 #[path = "storybook/helpers.rs"]
 mod helpers;
+#[path = "storybook/scene.rs"]
+mod scene;
 #[path = "storybook/sections/mod.rs"]
 mod sections;
 #[path = "storybook/state.rs"]
