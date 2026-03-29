@@ -153,6 +153,7 @@ pub struct VerifyOutput {
 }
 
 /// Signature marker for route selection.
+#[derive(Clone, Copy, Debug)]
 pub struct IntentRouteSignature;
 
 impl Signature for IntentRouteSignature {
@@ -162,6 +163,7 @@ impl Signature for IntentRouteSignature {
 }
 
 /// Signature marker for tool policy selection.
+#[derive(Clone, Copy, Debug)]
 pub struct ToolPolicySignature;
 
 impl Signature for ToolPolicySignature {
@@ -171,6 +173,7 @@ impl Signature for ToolPolicySignature {
 }
 
 /// Signature marker for tool argument generation.
+#[derive(Clone, Copy, Debug)]
 pub struct ToolArgumentsSignature;
 
 impl Signature for ToolArgumentsSignature {
@@ -180,6 +183,7 @@ impl Signature for ToolArgumentsSignature {
 }
 
 /// Signature marker for grounded synthesis.
+#[derive(Clone, Copy, Debug)]
 pub struct GroundedAnswerSignature;
 
 impl Signature for GroundedAnswerSignature {
@@ -189,6 +193,7 @@ impl Signature for GroundedAnswerSignature {
 }
 
 /// Signature marker for verification or refusal.
+#[derive(Clone, Copy, Debug)]
 pub struct VerifySignature;
 
 impl Signature for VerifySignature {
@@ -196,4 +201,3 @@ impl Signature for VerifySignature {
     type Input = VerifyInput;
     type Output = VerifyOutput;
 }
-

@@ -8,10 +8,12 @@ This crate owns:
 - the first phase-separated agent graph contracts
 - module manifests
 - module-level evaluation interfaces
+- promoted vs candidate module hubs
+- shadow evaluation posture
+- confidence-gated fallback with separate user-visible output and internal traces
 
 This crate does not own:
 
 - app UX
 - product orchestration
 - model serving or training
-
