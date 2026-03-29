@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -45,5 +46,19 @@ pub trait TypedModule<S: Signature>: Send + Sync {
 
     /// Run the module against its typed input.
     fn run(&self, input: &S::Input) -> ModuleRun<S::Output>;
+}
+
+impl<S, T> TypedModule<S> for Arc<T>
+where
+    S: Signature,
+    T: TypedModule<S> + ?Sized,
+{
+    fn manifest(&self) -> &CompiledModuleManifest {
+        self.as_ref().manifest()
+    }
+
+    fn run(&self, input: &S::Input) -> ModuleRun<S::Output> {
+        self.as_ref().run(input)
+    }
 }
 

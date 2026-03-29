@@ -5785,6 +5785,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-compiled-agent"
+version = "0.1.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "openagents-ios-domain"
 version = "0.1.1"
 
