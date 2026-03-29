@@ -32,6 +32,7 @@ mod codex_lane;
 mod codex_remote;
 pub mod compute_mcp;
 mod credentials;
+pub mod compiled_agent_slice;
 mod data_buyer_control;
 mod data_market_control;
 mod data_seller_control;
