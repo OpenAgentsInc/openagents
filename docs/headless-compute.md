@@ -172,9 +172,11 @@ collecting or diffing perf runs.
 `autopilotctl pane status contributor_beta --json` is the operator and
 contributor-facing read path for the bounded external beta. It exposes the
 current contributor identity posture, contract and worker-role posture, trust
-tier, accepted or rejected or review counts, pending credit sats, recent
-submission digests, and the latest runtime disagreement receipt lineage without
-creating a separate beta-only control protocol.
+tier, accepted or rejected or review counts, confirmed and provisional credit
+state, review-queue depth and SLA posture, the Tailnet-first M5 plus NVIDIA
+pilot roster, the retained governed-run and XTRAIN digests, recent submission
+digests, and the latest runtime disagreement receipt lineage without creating a
+separate beta-only control protocol.
 
 `autopilotctl status` now prints the same app-owned inventory projection summary
 the Provider Control pane uses, including the projection source, kernel snapshot

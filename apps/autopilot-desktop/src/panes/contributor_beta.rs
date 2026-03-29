@@ -6,9 +6,7 @@ use crate::pane_renderer::{
     paint_primary_button, paint_secondary_button, paint_selectable_row_background,
     paint_source_badge, paint_state_summary,
 };
-use crate::pane_system::{
-    contributor_beta_action_button_bounds, contributor_beta_row_bounds,
-};
+use crate::pane_system::{contributor_beta_action_button_bounds, contributor_beta_row_bounds};
 
 const MAX_ROWS: usize = 5;
 
@@ -40,22 +38,22 @@ pub fn paint(
     if pane_state.identity_connected && pane_state.contract_accepted {
         paint_primary_button(
             contributor_beta_action_button_bounds(content_bounds, 2),
-            "Run Benchmark",
+            "Run Tailnet Pack",
             paint,
         );
         paint_primary_button(
             contributor_beta_action_button_bounds(content_bounds, 3),
-            "Submit Receipt",
+            "Submit Disagreement",
             paint,
         );
         paint_action_button(
             contributor_beta_action_button_bounds(content_bounds, 4),
-            "Cycle Worker",
+            "Cycle Role",
             paint,
         );
         paint_primary_button(
             contributor_beta_action_button_bounds(content_bounds, 5),
-            "Run Worker",
+            "Run Governed Role",
             paint,
         );
     } else {
@@ -63,10 +61,10 @@ pub fn paint(
             paint_disabled_button(
                 contributor_beta_action_button_bounds(content_bounds, index),
                 match index {
-                    2 => "Run Benchmark",
-                    3 => "Submit Receipt",
-                    4 => "Cycle Worker",
-                    _ => "Run Worker",
+                    2 => "Run Tailnet Pack",
+                    3 => "Submit Disagreement",
+                    4 => "Cycle Role",
+                    _ => "Run Governed Role",
                 },
                 paint,
             );
@@ -133,6 +131,28 @@ pub fn paint(
         "Admitted family",
         &pane_state.admitted_family,
     );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Tailnet pilot",
+        &format!(
+            "{}{}",
+            pane_state.tailnet_pilot_label,
+            pane_state
+                .tailnet_current_tailnet
+                .as_deref()
+                .map(|tailnet| format!(" ({tailnet})"))
+                .unwrap_or_default()
+        ),
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Nodes",
+        &tailnet_nodes_summary(pane_state),
+    );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
@@ -164,8 +184,21 @@ pub fn paint(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Pending credit sats",
-        &pane_state.pending_credit_sats.to_string(),
+        "Review queue",
+        &format!(
+            "{} ({})",
+            pane_state.review_queue_depth, pane_state.review_sla_label
+        ),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Confirmed / provisional",
+        &format!(
+            "{} / {} sats",
+            pane_state.confirmed_credit_sats, pane_state.pending_credit_sats
+        ),
     );
     y = paint_multiline_phrase(
         paint,
@@ -177,17 +210,42 @@ pub fn paint(
             .as_deref()
             .unwrap_or("pending identity"),
     );
-    let _ = paint_label_line(
+    y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Payment linkage",
         &pane_state.payment_link_state,
     );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Credit rules",
+        &pane_state.provisional_credit_rulebook,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Pilot digests",
+        &format!(
+            "run {} :: xtrain {}",
+            compact_digest(&pane_state.tailnet_last_governed_run_digest),
+            compact_digest(&pane_state.tailnet_last_xtrain_receipt_digest)
+        ),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Latest runtime",
+        &latest_runtime_summary(pane_state),
+    );
 
     let list_title_y = content_bounds.max_y() - 176.0;
     paint.scene.draw_text(paint.text.layout_mono(
-        "RECENT BETA SUBMISSIONS",
+        "RECENT TAILNET BETA SUBMISSIONS",
         Point::new(content_bounds.origin.x + 12.0, list_title_y),
         10.0,
         theme::text::MUTED,
@@ -211,14 +269,66 @@ pub fn paint(
         let detail = row
             .review_reason
             .as_deref()
-            .map(|reason| format!("{reason} :: {}", compact_digest(&row.digest)))
+            .map(|reason| {
+                format!(
+                    "{} :: {}",
+                    review_reason_label(reason),
+                    compact_digest(&row.digest)
+                )
+            })
             .unwrap_or_else(|| compact_digest(&row.digest));
+        let lineage = row
+            .source_receipt_id
+            .as_deref()
+            .map(|receipt_id| format!("{detail} :: {receipt_id}"))
+            .unwrap_or(detail);
         paint.scene.draw_text(paint.text.layout_mono(
-            &detail,
+            &lineage,
             Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 37.0),
             9.0,
             theme::text::MUTED,
         ));
+    }
+}
+
+fn tailnet_nodes_summary(pane_state: &ContributorBetaPaneState) -> String {
+    if pane_state.tailnet_nodes.is_empty() {
+        return "tailnet roster unavailable".to_string();
+    }
+    pane_state
+        .tailnet_nodes
+        .iter()
+        .map(|node| {
+            let ip = node.tailnet_ip.as_deref().unwrap_or("ip-pending");
+            format!("{} {} {} {}", node.role, node.device_name, node.status, ip)
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+fn latest_runtime_summary(pane_state: &ContributorBetaPaneState) -> String {
+    match pane_state.latest_runtime_receipt_id.as_deref() {
+        Some(receipt_id) => format!(
+            "{} :: {} :: {}",
+            receipt_id,
+            pane_state
+                .latest_runtime_authority_path
+                .as_deref()
+                .unwrap_or("authority-pending"),
+            pane_state
+                .latest_runtime_confidence_band
+                .as_deref()
+                .unwrap_or("confidence-pending")
+        ),
+        None => "no runtime disagreement captured yet".to_string(),
+    }
+}
+
+fn review_reason_label(reason: &str) -> &'static str {
+    match reason {
+        "grounded_synthesis_drift" => "grounded-synthesis drift",
+        "no_accepted_benchmark_lineage" => "no accepted benchmark lineage",
+        _ => "manual review",
     }
 }
 

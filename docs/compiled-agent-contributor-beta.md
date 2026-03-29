@@ -27,16 +27,26 @@ Current outside-facing contribution types are:
 The first product surface is the `Contributor Beta` pane in
 `apps/autopilot-desktop`.
 
+Phase 5 makes that pane Tailnet-first.
+
+The first real outside-compatible beta is still our own Tailnet, with this M5
+device acting as the governed coordinator and the `archlinux` NVIDIA machine
+acting as the first bounded worker node. The contributor surface now treats
+that dual-node run as the first external proof instead of pretending a broad
+public market already exists.
+
 That pane lets a contributor:
 
 - connect an identity
 - accept the governed external-beta contract
 - see environment class and declared capabilities
-- run the bounded benchmark pack
+- see the Tailnet pilot roster, governed-run digest, and retained XTRAIN digest
+- run the bounded benchmark pack in the Tailnet-first beta posture
 - submit a governed runtime disagreement receipt
 - choose and run one bounded worker role
 - inspect acceptance, quarantine, rejection, and review outcomes
-- inspect pending contributor credit state and account linkage posture
+- inspect review-queue depth and the current manual review SLA
+- inspect confirmed vs provisional contributor credit state and account linkage posture
 
 The pane is intentionally opinionated. It is not a generic upload screen.
 
@@ -76,9 +86,14 @@ The pane keeps trust and accounting narrow and operational.
 
 The pane also keeps a simple contributor credit surface:
 
-- pending credit sats from accepted or review-routed contributions
+- confirmed credit sats from accepted contributions
+- provisional credit sats from accepted or review-routed contributions
 - contributor credit-account identifier once identity is connected
 - payment linkage posture
+- a narrow rulebook:
+  - accepted submissions earn credit
+  - review-routed submissions remain provisional
+  - rejected and quarantined submissions earn zero
 
 This is intentionally not a marketplace or token system. It is the minimum
 credit and accounting shape needed for the bounded beta.
@@ -113,6 +128,9 @@ The pane-status snapshot surfaces the same product truth the UI uses:
 - identity and contract posture
 - worker-role posture
 - trust and accounting posture
+- Tailnet roster for the M5 coordinator and NVIDIA worker pilot
+- the retained Tailnet governed-run digest and latest XTRAIN digest
+- review queue depth and SLA posture
 - recent submission outcomes
 - latest runtime receipt lineage
 
