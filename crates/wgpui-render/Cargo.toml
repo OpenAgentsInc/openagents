@@ -21,3 +21,6 @@ wgpui-core = { path = "../wgpui-core" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 resvg = "0.44"
 usvg = "0.44"
+
+[dev-dependencies]
+pollster = "0.4"
