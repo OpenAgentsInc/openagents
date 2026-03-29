@@ -93,6 +93,87 @@ Default to:
 - When changing programmatic control, packaged verification, or Spark/NIP-90
   roundtrip behavior, update those docs if the behavior or contract changed.
 
+## WGPUI Screenshot Capture (agent)
+
+When the user asks for screenshots, visual review artifacts, or proof that a
+WGPUI surface actually renders, use the repo-native capture lane before trying
+OS-level screenshot tooling.
+
+Prefer repo-native capture when:
+
+- the target is a WGPUI example, storybook section, viz primitive, or
+  component showcase
+- the user wants reviewable PNGs after a visual change
+- the target is an app-owned pane and a typed desktop-control export exists
+- determinism matters more than whatever happens to be visible on screen
+
+Do not default to:
+
+- `screencapture`
+- `osascript` window automation
+- ad hoc manual screenshots of a visible app window
+
+Read these first:
+
+- `docs/wgpui/HEADLESS_CAPTURE.md`
+- `docs/headless-compute.md`
+- `scripts/wgpui/capture-gallery.sh`
+- `scripts/wgpui/capture-storybook.sh`
+- `crates/wgpui/examples/gallery_capture.rs`
+- `crates/wgpui/examples/storybook_capture.rs`
+- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+
+Useful commands:
+
+```bash
+scripts/wgpui/capture-gallery.sh \
+  --target viz-primitives \
+  --output target/wgpui-captures/review/viz-primitives.png
+
+scripts/wgpui/capture-gallery.sh \
+  --target component-showcase \
+  --output target/wgpui-captures/review/component-showcase.png
+
+scripts/wgpui/capture-storybook.sh \
+  --section Autopilot \
+  --output target/wgpui-captures/review/storybook-autopilot.png
+
+OPENAGENTS_DISABLE_CODEX=1 cargo run -p autopilot-desktop \
+  --bin autopilot_headless_data_market -- \
+  --manifest-path /tmp/openagents-pane-capture.json \
+  --bind 127.0.0.1:0
+
+cargo run -p autopilot-desktop --bin autopilotctl -- \
+  --manifest /tmp/openagents-pane-capture.json \
+  pane capture \
+  --output /tmp/psionic-remote-training-pane.png \
+  psionic_remote_training
+```
+
+Current pane-capture truth:
+
+- `autopilotctl pane capture` is the typed app-owned screenshot export path
+- the first honest supported pane target today is `psionic_remote_training`
+- pane capture writes both a PNG and a JSON manifest beside it
+
+Image review:
+
+- if the user wants the image opened locally on this Mac, run
+  `open /absolute/path/to/file.png`
+- if the agent needs to inspect the generated image inside the transcript, use
+  the image-view tool on the absolute local path
+- always report the exact output path back to the user
+
+Expected workflow:
+
+1. Prefer gallery or storybook capture for WGPUI-owned components.
+2. Use pane capture only when the user specifically needs a real app-owned
+   pane.
+3. After generating a PNG, inspect it yourself before reporting success.
+4. When visual changes land, offer fresh capture artifacts if that is the
+   clearest verification.
+
 ## Data Market Docs (agent)
 
 When the task is about packaging local material, publishing a listing/grant,
