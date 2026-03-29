@@ -2382,7 +2382,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2669,7 +2669,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3998,7 +3998,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -4018,7 +4018,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -4333,7 +4333,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5348,7 +5348,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6609,8 +6609,8 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.5.0",
- "itertools 0.14.0",
+ "heck 0.4.1",
+ "itertools 0.10.5",
  "log",
  "multimap 0.10.1",
  "once_cell",
@@ -6643,7 +6643,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -6740,7 +6740,7 @@ checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 [[package]]
 name = "psionic-adapters"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-core",
@@ -6755,7 +6755,7 @@ dependencies = [
 [[package]]
 name = "psionic-apple-fm"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "futures-util",
  "psionic-runtime",
@@ -6772,7 +6772,7 @@ dependencies = [
 [[package]]
 name = "psionic-array"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "psionic-backend-cuda",
  "psionic-backend-metal",
@@ -6790,7 +6790,7 @@ dependencies = [
 [[package]]
 name = "psionic-backend-cpu"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "psionic-compiler",
  "psionic-core",
@@ -6801,7 +6801,7 @@ dependencies = [
 [[package]]
 name = "psionic-backend-cuda"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "cc",
  "half",
@@ -6816,7 +6816,7 @@ dependencies = [
 [[package]]
 name = "psionic-backend-metal"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "metal 0.33.0",
  "psionic-compiler",
@@ -6828,7 +6828,7 @@ dependencies = [
 [[package]]
 name = "psionic-catalog"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "memmap2",
@@ -6842,7 +6842,7 @@ dependencies = [
 [[package]]
 name = "psionic-cluster"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -6860,7 +6860,7 @@ dependencies = [
 [[package]]
 name = "psionic-collectives"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-runtime",
@@ -6872,7 +6872,7 @@ dependencies = [
 [[package]]
 name = "psionic-compiler"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-core",
@@ -6890,7 +6890,7 @@ dependencies = [
 [[package]]
 name = "psionic-core"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "serde",
@@ -6900,7 +6900,7 @@ dependencies = [
 [[package]]
 name = "psionic-data"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-datastream",
@@ -6915,7 +6915,7 @@ dependencies = [
 [[package]]
 name = "psionic-datastream"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-runtime",
@@ -6927,7 +6927,7 @@ dependencies = [
 [[package]]
 name = "psionic-environments"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-data",
@@ -6941,7 +6941,7 @@ dependencies = [
 [[package]]
 name = "psionic-eval"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-adapters",
@@ -6971,7 +6971,7 @@ dependencies = [
 [[package]]
 name = "psionic-ir"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-core",
@@ -6986,7 +6986,7 @@ dependencies = [
 [[package]]
 name = "psionic-models"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "fancy-regex 0.16.2",
  "half",
@@ -7007,7 +7007,7 @@ dependencies = [
 [[package]]
 name = "psionic-net"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -7025,7 +7025,7 @@ dependencies = [
 [[package]]
 name = "psionic-nn"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-core",
@@ -7037,7 +7037,7 @@ dependencies = [
 [[package]]
 name = "psionic-observe"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -7047,7 +7047,7 @@ dependencies = [
 [[package]]
 name = "psionic-research"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-catalog",
@@ -7070,7 +7070,7 @@ dependencies = [
 [[package]]
 name = "psionic-router"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-compiler",
@@ -7088,7 +7088,7 @@ dependencies = [
 [[package]]
 name = "psionic-runtime"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "ed25519-dalek",
  "hex",
@@ -7113,7 +7113,7 @@ dependencies = [
 [[package]]
 name = "psionic-sandbox"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "hex",
  "psionic-compiler",
@@ -7129,7 +7129,7 @@ dependencies = [
 [[package]]
 name = "psionic-serve"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "axum 0.8.8",
  "futures-util",
@@ -7170,7 +7170,7 @@ dependencies = [
 [[package]]
 name = "psionic-train"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "ed25519-dalek",
  "flate2",
@@ -7193,6 +7193,7 @@ dependencies = [
  "psionic-sandbox",
  "psionic-transformer",
  "rayon",
+ "reqwest",
  "safetensors",
  "serde",
  "serde_json",
@@ -7204,7 +7205,7 @@ dependencies = [
 [[package]]
 name = "psionic-transformer"
 version = "0.1.1"
-source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=aebe7685872aaf8c0cad8d0401d292e9321c7ef3#aebe7685872aaf8c0cad8d0401d292e9321c7ef3"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=902b4a74337c07a983c4e9fb69e110e4c544d2e0#902b4a74337c07a983c4e9fb69e110e4c544d2e0"
 dependencies = [
  "psionic-array",
  "psionic-core",
@@ -7353,7 +7354,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.37",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -7390,9 +7391,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8126,7 +8127,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9472,7 +9473,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -11264,7 +11265,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -11309,24 +11310,11 @@ version = "0.58.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ba6d44ec8c2591c134257ce647b7ea6b20335bf6379a27dac5f1641fcf59f99"
 dependencies = [
- "windows-implement 0.58.0",
- "windows-interface 0.58.0",
+ "windows-implement",
+ "windows-interface",
  "windows-result 0.2.0",
  "windows-strings 0.1.0",
  "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-core"
-version = "0.62.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
-dependencies = [
- "windows-implement 0.60.2",
- "windows-interface 0.59.3",
- "windows-link",
- "windows-result 0.4.1",
- "windows-strings 0.5.1",
 ]
 
 [[package]]
@@ -11341,32 +11329,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "windows-implement"
-version = "0.60.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "windows-interface"
 version = "0.58.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "053c4c462dc91d3b1504c6fe5a726dd15e216ba718e84a0e46a88fbe5ded3515"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "windows-interface"
-version = "0.59.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
 dependencies = [
  "proc-macro2",
  "quote",

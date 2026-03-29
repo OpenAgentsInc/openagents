@@ -29,7 +29,7 @@ struct Args {
     recent_earnings_sats: u64,
     #[arg(long, value_enum, default_value_t = ShadowModeArg::Disabled)]
     shadow_mode: ShadowModeArg,
-    #[arg(long, default_value = "compact")]
+    #[arg(long, default_value = "psionic_candidate")]
     candidate_label: String,
     #[arg(long)]
     receipt_out: Option<PathBuf>,
@@ -64,14 +64,26 @@ fn main() -> Result<()> {
     println!("{:?}", receipt.run.public_response.kind);
     println!();
     println!("== Authority Manifests ==");
-    for manifest_id in &receipt.run.lineage.authority_manifest_ids {
-        println!("{manifest_id}");
+    for manifest in &receipt.run.lineage.authority_manifests {
+        println!(
+            "{} artifact_id={} artifact_digest={} rollback={}",
+            manifest.manifest_id(),
+            manifest.artifact_id.as_deref().unwrap_or("n/a"),
+            manifest.artifact_digest.as_deref().unwrap_or("n/a"),
+            manifest.rollback_artifact_id.as_deref().unwrap_or("n/a"),
+        );
     }
-    if !receipt.run.lineage.shadow_manifest_ids.is_empty() {
+    if !receipt.run.lineage.shadow_manifests.is_empty() {
         println!();
         println!("== Shadow Manifests ==");
-        for manifest_id in &receipt.run.lineage.shadow_manifest_ids {
-            println!("{manifest_id}");
+        for manifest in &receipt.run.lineage.shadow_manifests {
+            println!(
+                "{} artifact_id={} artifact_digest={} rollback={}",
+                manifest.manifest_id(),
+                manifest.artifact_id.as_deref().unwrap_or("n/a"),
+                manifest.artifact_digest.as_deref().unwrap_or("n/a"),
+                manifest.rollback_artifact_id.as_deref().unwrap_or("n/a"),
+            );
         }
     }
     if args.show_trace {
@@ -86,12 +98,11 @@ fn main() -> Result<()> {
 
     if let Some(path) = args.receipt_out {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("create receipt directory {}", parent.display())
-            })?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create receipt directory {}", parent.display()))?;
         }
-        let serialized = serde_json::to_string_pretty(&receipt)
-            .context("serialize compiled agent receipt")?;
+        let serialized =
+            serde_json::to_string_pretty(&receipt).context("serialize compiled agent receipt")?;
         fs::write(&path, serialized)
             .with_context(|| format!("write compiled agent receipt to {}", path.display()))?;
         println!();

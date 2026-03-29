@@ -10,9 +10,23 @@ use openagents_compiled_agent::{
     ToolPolicyOutput, ToolPolicySignature, ToolResult, ToolSpec, TypedModule, VerifyInput,
     VerifyOutput, VerifySignature, VerifyVerdict,
 };
+use psionic_eval::{
+    CompiledAgentModuleKind, CompiledAgentModuleRevisionSet, CompiledAgentRoute,
+    CompiledAgentToolCall, CompiledAgentToolResult, CompiledAgentToolSpec,
+    CompiledAgentVerifyVerdict, evaluate_compiled_agent_grounded_answer,
+    evaluate_compiled_agent_route, evaluate_compiled_agent_tool_arguments,
+    evaluate_compiled_agent_tool_policy, evaluate_compiled_agent_verify,
+    predict_compiled_agent_route,
+};
+use psionic_train::{
+    CompiledAgentArtifactContractEntry, CompiledAgentArtifactLifecycleState,
+    CompiledAgentArtifactPayload, CompiledAgentPromotedArtifactContract,
+    canonical_compiled_agent_promoted_artifact_contract,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 
+const FIRST_GRAPH_COMPATIBILITY_VERSION: &str = "openagents.compiled_agent.first_graph.v1";
 const PROVIDER_STATUS_TOOL: &str = "provider_status";
 const WALLET_STATUS_TOOL: &str = "wallet_status";
 
@@ -104,522 +118,435 @@ fn now_epoch_ms() -> u64 {
 }
 
 fn build_module_hub() -> FirstGraphModuleHub {
-    let promoted_route = Arc::new(KeywordIntentRouteModule::promoted());
-    let candidate_route = Arc::new(KeywordIntentRouteModule::candidate());
-    let promoted_policy = Arc::new(NarrowToolPolicyModule::promoted());
-    let candidate_policy = Arc::new(NarrowToolPolicyModule::candidate());
-    let promoted_arguments = Arc::new(NarrowToolArgumentsModule::promoted());
-    let candidate_arguments = Arc::new(NarrowToolArgumentsModule::candidate());
-    let promoted_grounded = Arc::new(NarrowGroundedAnswerModule::promoted());
-    let candidate_grounded = Arc::new(NarrowGroundedAnswerModule::candidate());
-    let promoted_verify = Arc::new(NarrowVerifyModule::promoted());
-    let candidate_verify = Arc::new(NarrowVerifyModule::candidate());
+    let contract = canonical_compiled_agent_promoted_artifact_contract()
+        .expect("psionic compiled-agent promoted-artifact contract should load");
+    build_module_hub_from_contract(&contract).expect(
+        "compiled-agent promoted-artifact contract should be compatible with the first graph",
+    )
+}
+
+fn build_module_hub_from_contract(
+    contract: &CompiledAgentPromotedArtifactContract,
+) -> Result<FirstGraphModuleHub, String> {
+    let promoted_route = Arc::new(PsionicIntentRouteModule::from_entry(
+        contract
+            .promoted_entry(CompiledAgentModuleKind::Route)
+            .ok_or_else(|| String::from("missing promoted route artifact"))?,
+    )?);
+    let promoted_policy = Arc::new(PsionicToolPolicyModule::from_entry(
+        contract
+            .promoted_entry(CompiledAgentModuleKind::ToolPolicy)
+            .ok_or_else(|| String::from("missing promoted tool-policy artifact"))?,
+    )?);
+    let promoted_arguments = Arc::new(PsionicToolArgumentsModule::from_entry(
+        contract
+            .promoted_entry(CompiledAgentModuleKind::ToolArguments)
+            .ok_or_else(|| String::from("missing promoted tool-arguments artifact"))?,
+    )?);
+    let promoted_grounded = Arc::new(PsionicGroundedAnswerModule::from_entry(
+        contract
+            .promoted_entry(CompiledAgentModuleKind::GroundedAnswer)
+            .ok_or_else(|| String::from("missing promoted grounded-answer artifact"))?,
+    )?);
+    let promoted_verify = Arc::new(PsionicVerifyModule::from_entry(
+        contract
+            .promoted_entry(CompiledAgentModuleKind::Verify)
+            .ok_or_else(|| String::from("missing promoted verify artifact"))?,
+    )?);
 
     let mut intent_route = ModuleFamilyHub::new(promoted_route);
-    intent_route.insert_candidate("compact", candidate_route);
-    let mut tool_policy = ModuleFamilyHub::new(promoted_policy);
-    tool_policy.insert_candidate("compact", candidate_policy);
-    let mut tool_arguments = ModuleFamilyHub::new(promoted_arguments);
-    tool_arguments.insert_candidate("compact", candidate_arguments);
-    let mut grounded_answer = ModuleFamilyHub::new(promoted_grounded);
-    grounded_answer.insert_candidate("compact", candidate_grounded);
-    let mut verify = ModuleFamilyHub::new(promoted_verify);
-    verify.insert_candidate("compact", candidate_verify);
+    for entry in contract.artifacts.iter().filter(|entry| {
+        entry.module == CompiledAgentModuleKind::Route
+            && entry.lifecycle_state == CompiledAgentArtifactLifecycleState::Candidate
+    }) {
+        if let Some(label) = entry.candidate_label.as_deref() {
+            intent_route.insert_candidate(
+                label,
+                Arc::new(PsionicIntentRouteModule::from_entry(entry)?),
+            );
+        }
+    }
 
-    FirstGraphModuleHub {
+    let tool_policy = ModuleFamilyHub::new(promoted_policy);
+    let tool_arguments = ModuleFamilyHub::new(promoted_arguments);
+
+    let mut grounded_answer = ModuleFamilyHub::new(promoted_grounded);
+    for entry in contract.artifacts.iter().filter(|entry| {
+        entry.module == CompiledAgentModuleKind::GroundedAnswer
+            && entry.lifecycle_state == CompiledAgentArtifactLifecycleState::Candidate
+    }) {
+        if let Some(label) = entry.candidate_label.as_deref() {
+            grounded_answer.insert_candidate(
+                label,
+                Arc::new(PsionicGroundedAnswerModule::from_entry(entry)?),
+            );
+        }
+    }
+
+    let mut verify = ModuleFamilyHub::new(promoted_verify);
+    for entry in contract.artifacts.iter().filter(|entry| {
+        entry.module == CompiledAgentModuleKind::Verify
+            && entry.lifecycle_state == CompiledAgentArtifactLifecycleState::Candidate
+    }) {
+        if let Some(label) = entry.candidate_label.as_deref() {
+            verify.insert_candidate(label, Arc::new(PsionicVerifyModule::from_entry(entry)?));
+        }
+    }
+
+    Ok(FirstGraphModuleHub {
         intent_route,
         tool_policy,
         tool_arguments,
         grounded_answer,
         verify,
+    })
+}
+
+fn manifest_from_entry(
+    entry: &CompiledAgentArtifactContractEntry,
+) -> Result<CompiledModuleManifest, String> {
+    if entry.compatibility_version != FIRST_GRAPH_COMPATIBILITY_VERSION {
+        return Err(format!(
+            "artifact {} is incompatible with {}",
+            entry.artifact_id, FIRST_GRAPH_COMPATIBILITY_VERSION
+        ));
+    }
+    Ok(CompiledModuleManifest {
+        module_name: entry.module_name.clone(),
+        signature_name: entry.signature_name.clone(),
+        implementation_family: entry.implementation_family.clone(),
+        implementation_label: entry.implementation_label.clone(),
+        version: entry.version.clone(),
+        promotion_state: match entry.lifecycle_state {
+            CompiledAgentArtifactLifecycleState::Promoted => ModulePromotionState::Promoted,
+            CompiledAgentArtifactLifecycleState::Candidate => ModulePromotionState::Candidate,
+        },
+        confidence_floor: entry.confidence_floor,
+        artifact_id: Some(entry.artifact_id.clone()),
+        artifact_digest: Some(entry.artifact_digest.clone()),
+        compatibility_version: Some(entry.compatibility_version.clone()),
+        row_id: Some(entry.row_id.clone()),
+        rollback_artifact_id: entry.rollback_artifact_id.clone(),
+    })
+}
+
+fn revision_payload(
+    entry: &CompiledAgentArtifactContractEntry,
+) -> Result<CompiledAgentModuleRevisionSet, String> {
+    match &entry.payload {
+        CompiledAgentArtifactPayload::RevisionSet { revision } => Ok(revision.clone()),
+        CompiledAgentArtifactPayload::RouteModel { .. } => Err(format!(
+            "module {} expected a revision-set payload but got a route-model payload",
+            entry.module_name
+        )),
     }
 }
 
-fn manifest(
-    module_name: &str,
-    implementation_label: &str,
-    promotion_state: ModulePromotionState,
-    confidence_floor: f32,
-) -> CompiledModuleManifest {
-    CompiledModuleManifest {
-        module_name: module_name.to_string(),
-        signature_name: module_name.to_string(),
-        implementation_family: "rule_v1".to_string(),
-        implementation_label: implementation_label.to_string(),
-        version: "2026-03-28".to_string(),
-        promotion_state,
-        confidence_floor,
+fn openagents_route_to_psionic(route: AgentRoute) -> CompiledAgentRoute {
+    match route {
+        AgentRoute::ProviderStatus => CompiledAgentRoute::ProviderStatus,
+        AgentRoute::WalletStatus => CompiledAgentRoute::WalletStatus,
+        AgentRoute::Unsupported => CompiledAgentRoute::Unsupported,
     }
 }
 
-fn normalized_tokens(text: &str) -> Vec<String> {
-    text.to_ascii_lowercase()
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|token| !token.is_empty())
-        .map(ToOwned::to_owned)
+fn psionic_route_to_openagents(route: CompiledAgentRoute) -> AgentRoute {
+    match route {
+        CompiledAgentRoute::ProviderStatus => AgentRoute::ProviderStatus,
+        CompiledAgentRoute::WalletStatus => AgentRoute::WalletStatus,
+        CompiledAgentRoute::Unsupported => AgentRoute::Unsupported,
+    }
+}
+
+fn psionic_tool_specs(tools: &[ToolSpec]) -> Vec<CompiledAgentToolSpec> {
+    tools
+        .iter()
+        .map(|tool| CompiledAgentToolSpec {
+            name: tool.name.clone(),
+            description: tool.description.clone(),
+        })
         .collect()
 }
 
-fn contains_any(tokens: &[String], needle_set: &[&str]) -> bool {
-    tokens
+fn psionic_tool_results(results: &[ToolResult]) -> Vec<CompiledAgentToolResult> {
+    results
         .iter()
-        .any(|token| needle_set.iter().any(|needle| token == needle))
+        .map(|result| CompiledAgentToolResult {
+            tool_name: result.tool_name.clone(),
+            payload: result.payload.clone(),
+        })
+        .collect()
 }
 
-struct KeywordIntentRouteModule {
+fn psionic_tool_calls_to_openagents(calls: Vec<CompiledAgentToolCall>) -> Vec<ToolCall> {
+    calls
+        .into_iter()
+        .map(|call| ToolCall {
+            tool_name: call.tool_name,
+            arguments: call.arguments,
+        })
+        .collect()
+}
+
+fn verify_verdict_to_openagents(verdict: CompiledAgentVerifyVerdict) -> VerifyVerdict {
+    match verdict {
+        CompiledAgentVerifyVerdict::AcceptGroundedAnswer => VerifyVerdict::AcceptGroundedAnswer,
+        CompiledAgentVerifyVerdict::UnsupportedRefusal => VerifyVerdict::UnsupportedRefusal,
+        CompiledAgentVerifyVerdict::NeedsFallback => VerifyVerdict::NeedsFallback,
+    }
+}
+
+fn grounded_confidence(route: AgentRoute, tool_results: &[ToolResult]) -> f32 {
+    match route {
+        AgentRoute::Unsupported => 0.95,
+        AgentRoute::ProviderStatus | AgentRoute::WalletStatus if tool_results.is_empty() => 0.4,
+        AgentRoute::ProviderStatus | AgentRoute::WalletStatus => 0.94,
+    }
+}
+
+struct PsionicIntentRouteModule {
     manifest: CompiledModuleManifest,
+    payload: CompiledAgentArtifactPayload,
 }
 
-impl KeywordIntentRouteModule {
-    fn promoted() -> Self {
-        Self {
-            manifest: manifest(
-                "intent_route",
-                "promoted",
-                ModulePromotionState::Promoted,
-                0.8,
-            ),
-        }
-    }
-
-    fn candidate() -> Self {
-        Self {
-            manifest: manifest(
-                "intent_route",
-                "compact",
-                ModulePromotionState::Candidate,
-                0.8,
-            ),
-        }
+impl PsionicIntentRouteModule {
+    fn from_entry(entry: &CompiledAgentArtifactContractEntry) -> Result<Self, String> {
+        Ok(Self {
+            manifest: manifest_from_entry(entry)?,
+            payload: entry.payload.clone(),
+        })
     }
 }
 
-impl TypedModule<IntentRouteSignature> for KeywordIntentRouteModule {
+impl TypedModule<IntentRouteSignature> for PsionicIntentRouteModule {
     fn manifest(&self) -> &CompiledModuleManifest {
         &self.manifest
     }
 
     fn run(&self, input: &IntentRouteInput) -> ModuleRun<IntentRouteOutput> {
-        let tokens = normalized_tokens(&input.user_request);
-        let asks_provider = contains_any(&tokens, &["provider", "online", "ready", "readiness"]);
-        let asks_wallet = contains_any(&tokens, &["wallet", "balance", "sats", "earnings"]);
-        let (route, rationale, confidence) = match (asks_provider, asks_wallet) {
-            (true, false) => (
-                AgentRoute::ProviderStatus,
-                "prompt asked about provider readiness".to_string(),
-                0.94,
-            ),
-            (false, true) => (
-                AgentRoute::WalletStatus,
-                "prompt asked about wallet state".to_string(),
-                0.94,
-            ),
-            (false, false) => (
-                AgentRoute::Unsupported,
-                "prompt is outside the narrow compiled-agent slice".to_string(),
-                0.93,
-            ),
-            (true, true) => (
-                AgentRoute::Unsupported,
-                "prompt mixed multiple intents outside the narrow slice".to_string(),
-                0.82,
-            ),
-        };
-        ModuleRun::new(
-            IntentRouteOutput { route, rationale },
-            confidence,
-            json!({
-                "tokens": tokens,
-                "implementation_label": self.manifest.implementation_label,
-            }),
-        )
+        match &self.payload {
+            CompiledAgentArtifactPayload::RouteModel { artifact } => {
+                let prediction =
+                    predict_compiled_agent_route(artifact, input.user_request.as_str());
+                let route = psionic_route_to_openagents(prediction.route);
+                ModuleRun::new(
+                    IntentRouteOutput {
+                        route,
+                        rationale: format!(
+                            "route selected by promoted psionic artifact {}",
+                            artifact.artifact_id
+                        ),
+                    },
+                    prediction.confidence,
+                    json!({
+                        "artifact_id": artifact.artifact_id,
+                        "artifact_digest": artifact.artifact_digest,
+                        "active_features": prediction.active_features,
+                        "score_margin": prediction.score_margin,
+                        "route_scores": prediction.route_scores,
+                    }),
+                )
+            }
+            CompiledAgentArtifactPayload::RevisionSet { revision } => {
+                let route = evaluate_compiled_agent_route(input.user_request.as_str(), revision);
+                ModuleRun::new(
+                    IntentRouteOutput {
+                        route: psionic_route_to_openagents(route),
+                        rationale: format!("route selected by revision {}", revision.revision_id),
+                    },
+                    0.93,
+                    json!({
+                        "revision_id": revision.revision_id,
+                        "artifact_id": self.manifest.artifact_id,
+                        "artifact_digest": self.manifest.artifact_digest,
+                    }),
+                )
+            }
+        }
     }
 }
 
-struct NarrowToolPolicyModule {
+struct PsionicToolPolicyModule {
     manifest: CompiledModuleManifest,
 }
 
-impl NarrowToolPolicyModule {
-    fn promoted() -> Self {
-        Self {
-            manifest: manifest(
-                "tool_policy",
-                "promoted",
-                ModulePromotionState::Promoted,
-                0.8,
-            ),
-        }
-    }
-
-    fn candidate() -> Self {
-        Self {
-            manifest: manifest(
-                "tool_policy",
-                "compact",
-                ModulePromotionState::Candidate,
-                0.8,
-            ),
-        }
+impl PsionicToolPolicyModule {
+    fn from_entry(entry: &CompiledAgentArtifactContractEntry) -> Result<Self, String> {
+        Ok(Self {
+            manifest: manifest_from_entry(entry)?,
+        })
     }
 }
 
-impl TypedModule<ToolPolicySignature> for NarrowToolPolicyModule {
+impl TypedModule<ToolPolicySignature> for PsionicToolPolicyModule {
     fn manifest(&self) -> &CompiledModuleManifest {
         &self.manifest
     }
 
     fn run(&self, input: &ToolPolicyInput) -> ModuleRun<ToolPolicyOutput> {
-        let selected_tools = match input.route {
-            AgentRoute::ProviderStatus => input
-                .available_tools
-                .iter()
-                .filter(|tool| tool.name == PROVIDER_STATUS_TOOL)
-                .cloned()
-                .collect(),
-            AgentRoute::WalletStatus => input
-                .available_tools
-                .iter()
-                .filter(|tool| tool.name == WALLET_STATUS_TOOL)
-                .cloned()
-                .collect(),
-            AgentRoute::Unsupported => Vec::new(),
-        };
+        let selected_tools = evaluate_compiled_agent_tool_policy(
+            openagents_route_to_psionic(input.route),
+            &psionic_tool_specs(&input.available_tools),
+        );
         ModuleRun::new(
             ToolPolicyOutput {
-                selected_tools,
-                rationale: "narrow slice exposes only the tool family required by the route"
-                    .to_string(),
+                selected_tools: selected_tools
+                    .into_iter()
+                    .map(|tool| ToolSpec {
+                        name: tool.name,
+                        description: tool.description,
+                    })
+                    .collect(),
+                rationale: format!(
+                    "tool policy selected by artifact {}",
+                    self.manifest
+                        .artifact_id
+                        .as_deref()
+                        .unwrap_or(self.manifest.implementation_label.as_str())
+                ),
             },
             0.92,
             json!({
                 "route": input.route,
-                "implementation_label": self.manifest.implementation_label,
+                "artifact_id": self.manifest.artifact_id,
             }),
         )
     }
 }
 
-struct NarrowToolArgumentsModule {
+struct PsionicToolArgumentsModule {
     manifest: CompiledModuleManifest,
 }
 
-impl NarrowToolArgumentsModule {
-    fn promoted() -> Self {
-        Self {
-            manifest: manifest(
-                "tool_arguments",
-                "promoted",
-                ModulePromotionState::Promoted,
-                0.8,
-            ),
-        }
-    }
-
-    fn candidate() -> Self {
-        Self {
-            manifest: manifest(
-                "tool_arguments",
-                "compact",
-                ModulePromotionState::Candidate,
-                0.8,
-            ),
-        }
+impl PsionicToolArgumentsModule {
+    fn from_entry(entry: &CompiledAgentArtifactContractEntry) -> Result<Self, String> {
+        Ok(Self {
+            manifest: manifest_from_entry(entry)?,
+        })
     }
 }
 
-impl TypedModule<ToolArgumentsSignature> for NarrowToolArgumentsModule {
+impl TypedModule<ToolArgumentsSignature> for PsionicToolArgumentsModule {
     fn manifest(&self) -> &CompiledModuleManifest {
         &self.manifest
     }
 
     fn run(&self, input: &ToolArgumentsInput) -> ModuleRun<ToolArgumentsOutput> {
-        let calls = input
+        let selected_tools = input
             .selected_tools
             .iter()
-            .map(|tool| ToolCall {
-                tool_name: tool.name.clone(),
-                arguments: json!({}),
-            })
+            .map(|tool| tool.name.clone())
             .collect::<Vec<_>>();
+        let calls = psionic_tool_calls_to_openagents(evaluate_compiled_agent_tool_arguments(
+            &selected_tools,
+        ));
         ModuleRun::new(
             ToolArgumentsOutput { calls },
             0.96,
             json!({
                 "route": input.route,
                 "tool_count": input.selected_tools.len(),
-                "implementation_label": self.manifest.implementation_label,
+                "artifact_id": self.manifest.artifact_id,
             }),
         )
     }
 }
 
-struct NarrowGroundedAnswerModule {
+struct PsionicGroundedAnswerModule {
     manifest: CompiledModuleManifest,
+    revision: CompiledAgentModuleRevisionSet,
 }
 
-impl NarrowGroundedAnswerModule {
-    fn promoted() -> Self {
-        Self {
-            manifest: manifest(
-                "grounded_answer",
-                "promoted",
-                ModulePromotionState::Promoted,
-                0.82,
-            ),
-        }
-    }
-
-    fn candidate() -> Self {
-        Self {
-            manifest: manifest(
-                "grounded_answer",
-                "compact",
-                ModulePromotionState::Candidate,
-                0.82,
-            ),
-        }
+impl PsionicGroundedAnswerModule {
+    fn from_entry(entry: &CompiledAgentArtifactContractEntry) -> Result<Self, String> {
+        Ok(Self {
+            manifest: manifest_from_entry(entry)?,
+            revision: revision_payload(entry)?,
+        })
     }
 }
 
-impl TypedModule<GroundedAnswerSignature> for NarrowGroundedAnswerModule {
+impl TypedModule<GroundedAnswerSignature> for PsionicGroundedAnswerModule {
     fn manifest(&self) -> &CompiledModuleManifest {
         &self.manifest
     }
 
     fn run(&self, input: &GroundedAnswerInput) -> ModuleRun<GroundedAnswerOutput> {
-        let output = match input.route {
-            AgentRoute::ProviderStatus => provider_grounded_answer(
-                input.tool_results.as_slice(),
-                self.manifest.implementation_label.as_str(),
-            ),
-            AgentRoute::WalletStatus => wallet_grounded_answer(
-                input.tool_results.as_slice(),
-                self.manifest.implementation_label.as_str(),
-            ),
-            AgentRoute::Unsupported => ModuleRun::new(
-                GroundedAnswerOutput {
-                    answer:
-                        "I can currently answer only provider readiness and wallet balance questions."
-                            .to_string(),
-                    grounded_tool_names: Vec::new(),
-                },
-                0.95,
-                json!({"reason":"unsupported_route"}),
-            ),
-        };
-        output
-    }
-}
-
-fn provider_grounded_answer(
-    tool_results: &[ToolResult],
-    implementation_label: &str,
-) -> ModuleRun<GroundedAnswerOutput> {
-    let provider_result = tool_results
-        .iter()
-        .find(|result| result.tool_name == PROVIDER_STATUS_TOOL);
-    let Some(provider_result) = provider_result else {
-        return ModuleRun::new(
-            GroundedAnswerOutput {
-                answer: "Provider status was unavailable.".to_string(),
-                grounded_tool_names: Vec::new(),
-            },
-            0.4,
-            json!({"reason":"missing_provider_status"}),
+        let answer = evaluate_compiled_agent_grounded_answer(
+            openagents_route_to_psionic(input.route),
+            &psionic_tool_results(&input.tool_results),
+            &self.revision,
         );
-    };
-
-    let ready = provider_result
-        .payload
-        .get("ready")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let blockers = provider_result
-        .payload
-        .get("blockers")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|value| value.as_str().map(ToOwned::to_owned))
-        .collect::<Vec<_>>();
-
-    let answer = match (ready, implementation_label) {
-        (true, "compact") => "Provider ready.".to_string(),
-        (true, _) => "Provider is ready to go online.".to_string(),
-        (false, "compact") if blockers.is_empty() => "Provider not ready.".to_string(),
-        (false, "compact") => format!("Provider not ready. Blockers: {}.", blockers.join(", ")),
-        (false, _) if blockers.is_empty() => "Provider is not ready to go online.".to_string(),
-        (false, _) => format!(
-            "Provider is not ready to go online. Blockers: {}.",
-            blockers.join(", ")
-        ),
-    };
-
-    ModuleRun::new(
-        GroundedAnswerOutput {
-            answer,
-            grounded_tool_names: vec![PROVIDER_STATUS_TOOL.to_string()],
-        },
-        0.94,
-        json!({
-            "ready": ready,
-            "blockers": blockers,
-            "implementation_label": implementation_label,
-        }),
-    )
-}
-
-fn wallet_grounded_answer(
-    tool_results: &[ToolResult],
-    implementation_label: &str,
-) -> ModuleRun<GroundedAnswerOutput> {
-    let wallet_result = tool_results
-        .iter()
-        .find(|result| result.tool_name == WALLET_STATUS_TOOL);
-    let Some(wallet_result) = wallet_result else {
-        return ModuleRun::new(
+        ModuleRun::new(
             GroundedAnswerOutput {
-                answer: "Wallet status was unavailable.".to_string(),
-                grounded_tool_names: Vec::new(),
+                answer,
+                grounded_tool_names: input
+                    .tool_results
+                    .iter()
+                    .map(|result| result.tool_name.clone())
+                    .collect(),
             },
-            0.4,
-            json!({"reason":"missing_wallet_status"}),
-        );
-    };
-
-    let balance_sats = wallet_result
-        .payload
-        .get("balance_sats")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    let recent_earnings_sats = wallet_result
-        .payload
-        .get("recent_earnings_sats")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-
-    let answer = if implementation_label == "compact" {
-        format!("Wallet: {balance_sats} sats.")
-    } else {
-        format!(
-            "Wallet balance is {balance_sats} sats, with {recent_earnings_sats} sats of recent earnings."
+            grounded_confidence(input.route, &input.tool_results),
+            json!({
+                "revision_id": self.revision.revision_id,
+                "artifact_id": self.manifest.artifact_id,
+                "artifact_digest": self.manifest.artifact_digest,
+            }),
         )
-    };
-
-    ModuleRun::new(
-        GroundedAnswerOutput {
-            answer,
-            grounded_tool_names: vec![WALLET_STATUS_TOOL.to_string()],
-        },
-        0.94,
-        json!({
-            "balance_sats": balance_sats,
-            "recent_earnings_sats": recent_earnings_sats,
-            "implementation_label": implementation_label,
-        }),
-    )
+    }
 }
 
-struct NarrowVerifyModule {
+struct PsionicVerifyModule {
     manifest: CompiledModuleManifest,
+    revision: CompiledAgentModuleRevisionSet,
 }
 
-impl NarrowVerifyModule {
-    fn promoted() -> Self {
-        Self {
-            manifest: manifest("verify", "promoted", ModulePromotionState::Promoted, 0.82),
-        }
-    }
-
-    fn candidate() -> Self {
-        Self {
-            manifest: manifest("verify", "compact", ModulePromotionState::Candidate, 0.82),
-        }
+impl PsionicVerifyModule {
+    fn from_entry(entry: &CompiledAgentArtifactContractEntry) -> Result<Self, String> {
+        Ok(Self {
+            manifest: manifest_from_entry(entry)?,
+            revision: revision_payload(entry)?,
+        })
     }
 }
 
-impl TypedModule<VerifySignature> for NarrowVerifyModule {
+impl TypedModule<VerifySignature> for PsionicVerifyModule {
     fn manifest(&self) -> &CompiledModuleManifest {
         &self.manifest
     }
 
     fn run(&self, input: &VerifyInput) -> ModuleRun<VerifyOutput> {
-        let (verdict, rationale) = match input.route {
-            AgentRoute::ProviderStatus => verify_provider_answer(input),
-            AgentRoute::WalletStatus => verify_wallet_answer(input),
-            AgentRoute::Unsupported => {
-                let refusal = input.tool_calls.is_empty()
-                    && input
-                        .candidate_answer
-                        .contains("provider readiness and wallet balance");
-                if refusal {
-                    (
-                        VerifyVerdict::UnsupportedRefusal,
-                        "unsupported request refused cleanly".to_string(),
-                    )
-                } else {
-                    (
-                        VerifyVerdict::NeedsFallback,
-                        "unsupported route did not stay inside the narrow refusal contract".to_string(),
-                    )
-                }
-            }
-        };
+        let selected_tools = input
+            .tool_calls
+            .iter()
+            .map(|call| call.tool_name.clone())
+            .collect::<Vec<_>>();
+        let verdict = evaluate_compiled_agent_verify(
+            openagents_route_to_psionic(input.route),
+            &selected_tools,
+            &psionic_tool_results(&input.tool_results),
+            input.candidate_answer.as_str(),
+            &self.revision,
+        );
         ModuleRun::new(
-            VerifyOutput { verdict, rationale },
+            VerifyOutput {
+                verdict: verify_verdict_to_openagents(verdict),
+                rationale: format!(
+                    "verify decision produced by artifact {}",
+                    self.manifest
+                        .artifact_id
+                        .as_deref()
+                        .unwrap_or(self.manifest.implementation_label.as_str())
+                ),
+            },
             0.94,
-            json!({"implementation_label": self.manifest.implementation_label}),
+            json!({
+                "revision_id": self.revision.revision_id,
+                "artifact_id": self.manifest.artifact_id,
+                "artifact_digest": self.manifest.artifact_digest,
+            }),
         )
     }
-}
-
-fn verify_provider_answer(input: &VerifyInput) -> (VerifyVerdict, String) {
-    let ready = input
-        .tool_results
-        .iter()
-        .find(|result| result.tool_name == PROVIDER_STATUS_TOOL)
-        .and_then(|result| result.payload.get("ready"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let answer = input.candidate_answer.to_ascii_lowercase();
-    if ready && answer.contains("ready") {
-        return (
-            VerifyVerdict::AcceptGroundedAnswer,
-            "provider answer reflects readiness".to_string(),
-        );
-    }
-    if !ready && answer.contains("not ready") {
-        return (
-            VerifyVerdict::AcceptGroundedAnswer,
-            "provider answer reflects blockers".to_string(),
-        );
-    }
-    (
-        VerifyVerdict::NeedsFallback,
-        "provider answer did not reflect the tool result".to_string(),
-    )
-}
-
-fn verify_wallet_answer(input: &VerifyInput) -> (VerifyVerdict, String) {
-    let balance_sats = input
-        .tool_results
-        .iter()
-        .find(|result| result.tool_name == WALLET_STATUS_TOOL)
-        .and_then(|result| result.payload.get("balance_sats"))
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    if input.candidate_answer.contains(balance_sats.to_string().as_str()) {
-        return (
-            VerifyVerdict::AcceptGroundedAnswer,
-            "wallet answer reflects the balance".to_string(),
-        );
-    }
-    (
-        VerifyVerdict::NeedsFallback,
-        "wallet answer omitted the returned balance".to_string(),
-    )
 }
 
 struct SliceToolRuntime {
@@ -661,7 +588,16 @@ mod tests {
         );
 
         assert_eq!(receipt.run.lineage.tool_calls.len(), 1);
-        assert_eq!(receipt.run.lineage.tool_calls[0].tool_name, "provider_status");
+        assert_eq!(
+            receipt.run.lineage.tool_calls[0].tool_name,
+            "provider_status"
+        );
+        assert_eq!(
+            receipt.run.lineage.authority_manifests[0]
+                .artifact_id
+                .as_deref(),
+            Some("compiled_agent.route.multinomial_nb_v1")
+        );
         assert_eq!(
             receipt.run.public_response.response,
             "Provider is ready to go online.".to_string()
@@ -702,20 +638,48 @@ mod tests {
             "How many sats are in the wallet?",
             &CompiledAgentSliceState::default(),
             ShadowMode::EvaluateCandidate {
-                label: "compact".to_string(),
+                label: "psionic_candidate".to_string(),
             },
         );
 
         assert!(!receipt.run.internal_trace.shadow_phases.is_empty());
-        assert!(receipt
-            .run
-            .lineage
-            .shadow_manifest_ids
-            .iter()
-            .any(|manifest_id| manifest_id.contains("compact")));
+        assert!(
+            receipt
+                .run
+                .lineage
+                .shadow_manifest_ids
+                .iter()
+                .any(|manifest_id| manifest_id.contains("psionic_candidate"))
+        );
+        assert!(receipt.run.lineage.shadow_manifests.iter().any(|manifest| {
+            manifest.artifact_id.as_deref()
+                == Some("compiled_agent.grounded_answer.rule_v2.recent_earnings")
+        }));
         assert_eq!(
             receipt.run.public_response.response,
-            "Wallet balance is 1200 sats, with 240 sats of recent earnings.".to_string()
+            "The wallet contains 1200 sats.".to_string()
+        );
+    }
+
+    #[test]
+    fn rollback_candidate_authority_uses_last_known_good_route_artifact() {
+        let receipt = run_compiled_agent_slice(
+            "Can I go online right now?",
+            &CompiledAgentSliceState::default(),
+            ShadowMode::CandidateAuthority {
+                label: "last_known_good".to_string(),
+            },
+        );
+
+        assert_eq!(
+            receipt.run.lineage.authority_manifests[0]
+                .artifact_id
+                .as_deref(),
+            Some("compiled_agent.baseline.rule_v1.route")
+        );
+        assert_eq!(
+            receipt.run.public_response.response,
+            "Provider is ready to go online.".to_string()
         );
     }
 }

@@ -3,8 +3,8 @@ use serde_json::{Value, to_value};
 
 use crate::{
     AgentRoute, CompiledModuleManifest, FirstGraphModuleHub, GraphAuthority, GroundedAnswerInput,
-    IntentRouteInput, SelectedGraph, ShadowMode, ToolArgumentsInput, ToolArgumentsOutput,
-    ToolCall, ToolPolicyInput, ToolResult, VerifyInput, VerifyVerdict,
+    IntentRouteInput, SelectedGraph, ShadowMode, ToolArgumentsInput, ToolArgumentsOutput, ToolCall,
+    ToolPolicyInput, ToolResult, VerifyInput, VerifyVerdict,
 };
 
 /// Confidence floors for the first compiled-agent executor.
@@ -104,8 +104,12 @@ pub struct CompiledAgentLineage {
     pub public_response: PublicAgentResponse,
     /// Manifest ids used by the authority graph.
     pub authority_manifest_ids: Vec<String>,
+    /// Full authority manifests including artifact ids and digests.
+    pub authority_manifests: Vec<CompiledModuleManifest>,
     /// Manifest ids used by the shadow graph, when enabled.
     pub shadow_manifest_ids: Vec<String>,
+    /// Full shadow manifests including artifact ids and digests.
+    pub shadow_manifests: Vec<CompiledModuleManifest>,
 }
 
 /// Full compiled-agent run outcome.
@@ -163,6 +167,7 @@ impl CompiledAgentExecutor {
             .into_iter()
             .map(|manifest| manifest.manifest_id())
             .collect::<Vec<_>>();
+        let authority_manifests = primary.phase_manifests();
         let shadow_manifest_ids = shadow
             .as_ref()
             .map(GraphRun::phase_manifests)
@@ -170,6 +175,10 @@ impl CompiledAgentExecutor {
             .into_iter()
             .map(|manifest| manifest.manifest_id())
             .collect::<Vec<_>>();
+        let shadow_manifests = shadow
+            .as_ref()
+            .map(GraphRun::phase_manifests)
+            .unwrap_or_default();
 
         CompiledAgentRun {
             public_response: public_response.clone(),
@@ -187,7 +196,9 @@ impl CompiledAgentExecutor {
                 tool_results: primary.tool_results,
                 public_response,
                 authority_manifest_ids,
+                authority_manifests,
                 shadow_manifest_ids,
+                shadow_manifests,
             },
         }
     }
@@ -215,9 +226,16 @@ impl CompiledAgentExecutor {
             route_run.confidence,
             route_run.trace.clone(),
         ));
-        if self.below_floor(route_run.confidence, graph.intent_route.manifest.confidence_floor, self.fallback_policy.intent_route_floor)
-        {
-            return GraphRun::fallback(phases, route_run.output.route, self.fallback_policy.fallback_response.clone());
+        if self.below_floor(
+            route_run.confidence,
+            graph.intent_route.manifest.confidence_floor,
+            self.fallback_policy.intent_route_floor,
+        ) {
+            return GraphRun::fallback(
+                phases,
+                route_run.output.route,
+                self.fallback_policy.fallback_response.clone(),
+            );
         }
 
         let tool_policy_input = ToolPolicyInput {
@@ -236,8 +254,11 @@ impl CompiledAgentExecutor {
             tool_policy_run.confidence,
             tool_policy_run.trace.clone(),
         ));
-        if self.below_floor(tool_policy_run.confidence, graph.tool_policy.manifest.confidence_floor, self.fallback_policy.tool_policy_floor)
-        {
+        if self.below_floor(
+            tool_policy_run.confidence,
+            graph.tool_policy.manifest.confidence_floor,
+            self.fallback_policy.tool_policy_floor,
+        ) {
             return GraphRun::fallback(
                 phases,
                 route_run.output.route,
@@ -261,8 +282,11 @@ impl CompiledAgentExecutor {
             tool_arguments_run.confidence,
             tool_arguments_run.trace.clone(),
         ));
-        if self.below_floor(tool_arguments_run.confidence, graph.tool_arguments.manifest.confidence_floor, self.fallback_policy.tool_arguments_floor)
-        {
+        if self.below_floor(
+            tool_arguments_run.confidence,
+            graph.tool_arguments.manifest.confidence_floor,
+            self.fallback_policy.tool_arguments_floor,
+        ) {
             return GraphRun::fallback(
                 phases,
                 route_run.output.route,
@@ -287,8 +311,11 @@ impl CompiledAgentExecutor {
             grounded_run.confidence,
             grounded_run.trace.clone(),
         ));
-        if self.below_floor(grounded_run.confidence, graph.grounded_answer.manifest.confidence_floor, self.fallback_policy.grounded_answer_floor)
-        {
+        if self.below_floor(
+            grounded_run.confidence,
+            graph.grounded_answer.manifest.confidence_floor,
+            self.fallback_policy.grounded_answer_floor,
+        ) {
             return GraphRun::fallback(
                 phases,
                 route_run.output.route,
@@ -314,8 +341,11 @@ impl CompiledAgentExecutor {
             verify_run.confidence,
             verify_run.trace.clone(),
         ));
-        if self.below_floor(verify_run.confidence, graph.verify.manifest.confidence_floor, self.fallback_policy.verify_floor)
-        {
+        if self.below_floor(
+            verify_run.confidence,
+            graph.verify.manifest.confidence_floor,
+            self.fallback_policy.verify_floor,
+        ) {
             return GraphRun::fallback(
                 phases,
                 route_run.output.route,
@@ -397,7 +427,11 @@ struct GraphRun {
 }
 
 impl GraphRun {
-    fn fallback(phases: Vec<PhaseTraceEntry>, route: AgentRoute, fallback_response: String) -> Self {
+    fn fallback(
+        phases: Vec<PhaseTraceEntry>,
+        route: AgentRoute,
+        fallback_response: String,
+    ) -> Self {
         Self {
             phases,
             route,
@@ -597,7 +631,12 @@ mod tests {
         }
     }
 
-    fn manifest(module_name: &str, label: &str, confidence_floor: f32, promotion_state: ModulePromotionState) -> CompiledModuleManifest {
+    fn manifest(
+        module_name: &str,
+        label: &str,
+        confidence_floor: f32,
+        promotion_state: ModulePromotionState,
+    ) -> CompiledModuleManifest {
         CompiledModuleManifest {
             module_name: module_name.to_string(),
             signature_name: module_name.to_string(),
@@ -606,43 +645,88 @@ mod tests {
             version: "2026-03-28".to_string(),
             promotion_state,
             confidence_floor,
+            artifact_id: None,
+            artifact_digest: None,
+            compatibility_version: None,
+            row_id: None,
+            rollback_artifact_id: None,
         }
     }
 
     fn build_hub(grounded_confidence: f32) -> FirstGraphModuleHub {
         let promoted_route = Arc::new(DemoRouteModule {
-            manifest: manifest("intent_route", "promoted", 0.7, ModulePromotionState::Promoted),
+            manifest: manifest(
+                "intent_route",
+                "promoted",
+                0.7,
+                ModulePromotionState::Promoted,
+            ),
             route: AgentRoute::ProviderStatus,
             confidence: 0.92,
         });
         let candidate_route = Arc::new(DemoRouteModule {
-            manifest: manifest("intent_route", "candidate", 0.7, ModulePromotionState::Candidate),
+            manifest: manifest(
+                "intent_route",
+                "candidate",
+                0.7,
+                ModulePromotionState::Candidate,
+            ),
             route: AgentRoute::WalletStatus,
             confidence: 0.91,
         });
         let promoted_policy = Arc::new(DemoPolicyModule {
-            manifest: manifest("tool_policy", "promoted", 0.7, ModulePromotionState::Promoted),
+            manifest: manifest(
+                "tool_policy",
+                "promoted",
+                0.7,
+                ModulePromotionState::Promoted,
+            ),
             confidence: 0.88,
         });
         let candidate_policy = Arc::new(DemoPolicyModule {
-            manifest: manifest("tool_policy", "candidate", 0.7, ModulePromotionState::Candidate),
+            manifest: manifest(
+                "tool_policy",
+                "candidate",
+                0.7,
+                ModulePromotionState::Candidate,
+            ),
             confidence: 0.87,
         });
         let promoted_args = Arc::new(DemoArgumentsModule {
-            manifest: manifest("tool_arguments", "promoted", 0.7, ModulePromotionState::Promoted),
+            manifest: manifest(
+                "tool_arguments",
+                "promoted",
+                0.7,
+                ModulePromotionState::Promoted,
+            ),
             confidence: 0.86,
         });
         let candidate_args = Arc::new(DemoArgumentsModule {
-            manifest: manifest("tool_arguments", "candidate", 0.7, ModulePromotionState::Candidate),
+            manifest: manifest(
+                "tool_arguments",
+                "candidate",
+                0.7,
+                ModulePromotionState::Candidate,
+            ),
             confidence: 0.85,
         });
         let promoted_grounded = Arc::new(DemoGroundedModule {
-            manifest: manifest("grounded_answer", "promoted", 0.75, ModulePromotionState::Promoted),
+            manifest: manifest(
+                "grounded_answer",
+                "promoted",
+                0.75,
+                ModulePromotionState::Promoted,
+            ),
             answer: "Provider is ready.".to_string(),
             confidence: grounded_confidence,
         });
         let candidate_grounded = Arc::new(DemoGroundedModule {
-            manifest: manifest("grounded_answer", "candidate", 0.75, ModulePromotionState::Candidate),
+            manifest: manifest(
+                "grounded_answer",
+                "candidate",
+                0.75,
+                ModulePromotionState::Candidate,
+            ),
             answer: "Wallet has 1200 sats.".to_string(),
             confidence: 0.9,
         });
@@ -692,10 +776,8 @@ mod tests {
 
     #[test]
     fn shadow_candidate_trace_does_not_replace_promoted_authority() {
-        let executor = CompiledAgentExecutor::new(
-            build_hub(0.9),
-            ConfidenceFallbackPolicy::default(),
-        );
+        let executor =
+            CompiledAgentExecutor::new(build_hub(0.9), ConfidenceFallbackPolicy::default());
         let run = executor.run(
             "am I ready to go online?",
             &tools(),
@@ -706,23 +788,25 @@ mod tests {
         );
 
         assert_eq!(run.public_response.kind, PublicOutcomeKind::GroundedAnswer);
-        assert_eq!(run.public_response.response, "Provider is ready.".to_string());
+        assert_eq!(
+            run.public_response.response,
+            "Provider is ready.".to_string()
+        );
         assert_eq!(run.internal_trace.primary_phases.len(), 5);
         assert_eq!(run.internal_trace.shadow_phases.len(), 5);
         assert_eq!(run.lineage.route, AgentRoute::ProviderStatus);
-        assert!(run
-            .lineage
-            .shadow_manifest_ids
-            .iter()
-            .any(|manifest_id| manifest_id.contains("candidate")));
+        assert!(
+            run.lineage
+                .shadow_manifest_ids
+                .iter()
+                .any(|manifest_id| manifest_id.contains("candidate"))
+        );
     }
 
     #[test]
     fn low_confidence_grounded_answer_falls_back_cleanly() {
-        let executor = CompiledAgentExecutor::new(
-            build_hub(0.5),
-            ConfidenceFallbackPolicy::default(),
-        );
+        let executor =
+            CompiledAgentExecutor::new(build_hub(0.5), ConfidenceFallbackPolicy::default());
         let run = executor.run(
             "am I ready to go online?",
             &tools(),
@@ -730,7 +814,10 @@ mod tests {
             ShadowMode::Disabled,
         );
 
-        assert_eq!(run.public_response.kind, PublicOutcomeKind::ConfidenceFallback);
+        assert_eq!(
+            run.public_response.kind,
+            PublicOutcomeKind::ConfidenceFallback
+        );
         assert_eq!(
             run.public_response.response,
             "I do not have enough grounded confidence to answer that safely.".to_string()
