@@ -11152,6 +11152,8 @@ dependencies = [
  "reqwest",
  "rive-rs",
  "rodio",
+ "serde",
+ "serde_json",
  "slotmap",
  "smallvec",
  "syntect",

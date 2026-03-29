@@ -40,6 +40,8 @@ pub mod animation;
 pub mod r#async;
 #[cfg(feature = "audio")]
 pub mod bleeps;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod capture;
 pub mod clipboard;
 pub mod color;
 pub mod components;
@@ -125,6 +127,11 @@ pub mod prelude {
 
 pub use action::{Action, AnyAction};
 pub use animation::{Animation, AnimationController, AnimatorState, Easing, SpringAnimation};
+#[cfg(not(target_arch = "wasm32"))]
+pub use capture::{
+    CaptureArtifact, CaptureClearColor, CaptureError, CaptureManifest, CaptureRequest,
+    CaptureTarget, capture_scene, write_capture_artifacts,
+};
 pub use color::Hsla;
 pub use components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
 pub use components::{
