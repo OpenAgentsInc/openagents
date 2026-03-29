@@ -120,6 +120,7 @@ pub fn paint_history_chart_body(
         / sample_count as f32)
         .max(1.0);
 
+    let mut sampled_points = vec![Vec::with_capacity(sample_count); populated.len()];
     for index in 0..sample_count {
         let x = chart_bounds.origin.x + index as f32 * (column_width + column_gap);
         let emphasis = if index + 1 == sample_count { 0.16 } else { 0.0 };
@@ -132,25 +133,62 @@ pub fn paint_history_chart_body(
                 .unwrap_or(min);
             let level = 1.0 - ((value - min) / span).clamp(0.0, 1.0);
             let y = chart_bounds.origin.y + level * chart_bounds.size.height;
+            let clamped_y = y.clamp(chart_bounds.origin.y + 2.0, chart_bounds.max_y() - 2.0);
             if series.fill_alpha > 0.0 {
                 paint.scene.draw_quad(
                     Quad::new(Bounds::new(
                         x,
-                        y.min(chart_bounds.max_y() - 2.0),
+                        clamped_y.min(chart_bounds.max_y() - 2.0),
                         column_width,
-                        (chart_bounds.max_y() - y).max(2.0),
+                        (chart_bounds.max_y() - clamped_y).max(2.0),
                     ))
                     .with_background(series.color.with_alpha(series.fill_alpha + emphasis)),
                 );
             }
+            sampled_points[series_index].push((x + column_width * 0.5, clamped_y));
+        }
+    }
+
+    for (series_index, series) in populated.iter().enumerate() {
+        for segment in sampled_points[series_index].windows(2) {
+            let (x0, y0) = segment[0];
+            let (x1, y1) = segment[1];
+            let horizontal_x = x0.min(x1);
+            let horizontal_w = (x1 - x0).abs().max(2.0);
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(horizontal_x, y0 - 1.0, horizontal_w, 2.0)).with_background(
+                    series
+                        .color
+                        .with_alpha((series.line_alpha + 0.08).clamp(0.0, 1.0)),
+                ),
+            );
+            let vertical_y = y0.min(y1);
+            let vertical_h = (y1 - y0).abs().max(2.0);
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(x1 - 1.0, vertical_y, 2.0, vertical_h)).with_background(
+                    series
+                        .color
+                        .with_alpha((series.line_alpha + 0.02).clamp(0.0, 1.0)),
+                ),
+            );
+        }
+
+        for (index, (x, y)) in sampled_points[series_index].iter().enumerate() {
+            let emphasis = if index + 1 == sample_count { 0.18 } else { 0.0 };
+            let point_size = if index + 1 == sample_count { 4.0 } else { 3.0 };
             paint.scene.draw_quad(
                 Quad::new(Bounds::new(
-                    x,
-                    y.clamp(chart_bounds.origin.y, chart_bounds.max_y() - 2.0),
-                    column_width,
-                    2.0,
+                    *x - point_size * 0.5,
+                    *y - point_size * 0.5,
+                    point_size,
+                    point_size,
                 ))
-                .with_background(series.color.with_alpha(series.line_alpha + emphasis)),
+                .with_background(
+                    series
+                        .color
+                        .with_alpha((series.line_alpha + 0.12 + emphasis).clamp(0.0, 1.0)),
+                )
+                .with_corner_radius(1.5),
             );
         }
     }
