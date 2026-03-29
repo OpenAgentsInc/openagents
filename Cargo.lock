@@ -11134,6 +11134,7 @@ name = "wgpui"
 version = "0.1.1"
 dependencies = [
  "bytemuck",
+ "clap",
  "console_error_panic_hook",
  "cosmic-text",
  "criterion",
