@@ -63,9 +63,10 @@ pub use crate::provider_inventory::{
 use crate::app_state::{
     AttnResLabViewMode, DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
-    MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, RenderState,
-    SnapshotTimingSample, TassadarLabReplayFamily, TassadarLabSourceMode, TassadarLabViewMode,
-    mission_control_buy_mode_interval_label, mission_control_local_runtime_view_model,
+    MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, PaneKind, PanePresentation,
+    RenderState, SnapshotTimingSample, TassadarLabReplayFamily, TassadarLabSourceMode,
+    TassadarLabViewMode, mission_control_buy_mode_interval_label,
+    mission_control_local_runtime_view_model,
 };
 use crate::apple_adapter_training_control::{
     AppleAdapterOperatorLaunchRequest, AppleAdapterOperatorStageState,
@@ -88,9 +89,18 @@ use crate::local_runtime_capabilities::{
     LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
 };
 use crate::pane_registry::{enabled_pane_specs, pane_spec};
-use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
+use crate::pane_system::{
+    BuyModePaymentsPaneAction, PANE_TITLE_HEIGHT, PaneController, PaneDescriptor,
+    ProviderControlPaneAction, pane_content_bounds_for_presentation,
+};
+use crate::panes::psionic_remote_training as psionic_remote_training_pane;
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
+use wgpui::components::hud::PaneFrame;
+use wgpui::{
+    Bounds, CaptureRequest, CaptureTarget, Component, PaintContext, Quad, Scene, TextSystem,
+    capture_scene, theme,
+};
 
 const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 20;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
@@ -145,6 +155,20 @@ pub struct DesktopControlSnapshot {
     pub nip28: DesktopControlNip28Status,
     pub recent_logs: Vec<String>,
     pub last_command: Option<DesktopControlLastCommandStatus>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPaneCaptureArtifactStatus {
+    pub kind: String,
+    pub title: String,
+    pub pane_id: Option<u64>,
+    pub presentation: String,
+    pub png_path: String,
+    pub manifest_path: String,
+    pub width: u32,
+    pub height: u32,
+    pub scale_factor: f32,
+    pub capture_target: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1504,6 +1528,14 @@ pub enum DesktopControlActionRequest {
     GetPaneSnapshot {
         pane: String,
     },
+    CapturePane {
+        pane: String,
+        output_path: String,
+        width: Option<u32>,
+        height: Option<u32>,
+        scale_factor_milli: u32,
+        allow_fallback_adapter: bool,
+    },
     GetDataMarketSellerStatus,
     SendDataMarketSellerPrompt {
         prompt: String,
@@ -1688,6 +1720,7 @@ impl DesktopControlActionRequest {
             Self::FocusPane { .. } => "pane-focus",
             Self::ClosePane { .. } => "pane-close",
             Self::GetPaneSnapshot { .. } => "pane-snapshot",
+            Self::CapturePane { .. } => "pane-capture",
             Self::GetDataMarketSellerStatus => "data-market-seller-status",
             Self::SendDataMarketSellerPrompt { .. } => "data-market-seller-prompt",
             Self::GetDataMarketBuyerStatus => "data-market-buyer-status",
@@ -2583,6 +2616,23 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetPaneSnapshot { pane } => json!({
             "command_label": action.label(),
             "pane": pane,
+        }),
+        DesktopControlActionRequest::CapturePane {
+            pane,
+            output_path,
+            width,
+            height,
+            scale_factor_milli,
+            allow_fallback_adapter,
+        } => json!({
+            "command_label": action.label(),
+            "pane": pane,
+            "output_path": output_path,
+            "width": width,
+            "height": height,
+            "scale_factor_milli": scale_factor_milli,
+            "scale_factor": f64::from(*scale_factor_milli) / 1000.0,
+            "allow_fallback_adapter": allow_fallback_adapter,
         }),
         DesktopControlActionRequest::GetDataMarketSellerStatus
         | DesktopControlActionRequest::GetDataMarketBuyerStatus
@@ -3757,6 +3807,23 @@ fn apply_action_request(
         DesktopControlActionRequest::GetPaneSnapshot { pane } => {
             pane_snapshot_payload_response(state, pane.as_str()).into()
         }
+        DesktopControlActionRequest::CapturePane {
+            pane,
+            output_path,
+            width,
+            height,
+            scale_factor_milli,
+            allow_fallback_adapter,
+        } => pane_capture_action(
+            state,
+            pane.as_str(),
+            output_path.as_str(),
+            *width,
+            *height,
+            *scale_factor_milli as f32 / 1000.0,
+            *allow_fallback_adapter,
+        )
+        .into(),
         DesktopControlActionRequest::GetDataMarketSellerStatus => data_market_tool_action_response(
             crate::input::desktop_control_data_market_seller_status(state),
         )
@@ -4914,6 +4981,195 @@ fn pane_snapshot_payload_response(
         ),
         crate::input::desktop_control_pane_snapshot_details(state, kind),
     )
+}
+
+fn pane_capture_action(
+    state: &mut RenderState,
+    pane_ref: &str,
+    output_path: &str,
+    width: Option<u32>,
+    height: Option<u32>,
+    scale_factor: f32,
+    allow_fallback_adapter: bool,
+) -> DesktopControlActionResponse {
+    let Some(kind) = crate::input::desktop_control_resolve_pane_kind_for_runtime(pane_ref) else {
+        return pane_resolution_error(pane_ref);
+    };
+    if output_path.trim().is_empty() {
+        return DesktopControlActionResponse::error("Pane capture output path cannot be empty.");
+    }
+    if width == Some(0) || height == Some(0) {
+        return DesktopControlActionResponse::error(
+            "Pane capture width and height must be greater than zero when provided.",
+        );
+    }
+    if !scale_factor.is_finite() || scale_factor <= 0.0 {
+        return DesktopControlActionResponse::error(
+            "Pane capture scale factor must be a finite value greater than zero.",
+        );
+    }
+    if kind != PaneKind::PsionicRemoteTraining {
+        return DesktopControlActionResponse::error(format!(
+            "Pane capture currently supports only '{}' but received '{}'.",
+            crate::input::desktop_control_pane_kind_key(PaneKind::PsionicRemoteTraining),
+            crate::input::desktop_control_pane_kind_key(kind)
+        ));
+    }
+
+    crate::remote_training_sync::refresh_remote_training_sync_cache_if_due(state, true);
+    match capture_psionic_remote_training_pane(
+        state,
+        output_path,
+        width,
+        height,
+        scale_factor,
+        allow_fallback_adapter,
+    ) {
+        Ok(payload) => match serde_json::to_value(payload) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!(
+                    "Captured pane screenshot for '{}'",
+                    crate::input::desktop_control_pane_kind_key(kind)
+                ),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Pane screenshot captured but failed to encode payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to capture pane '{}': {error}",
+            crate::input::desktop_control_pane_kind_key(kind)
+        )),
+    }
+}
+
+fn capture_psionic_remote_training_pane(
+    state: &RenderState,
+    output_path: &str,
+    width: Option<u32>,
+    height: Option<u32>,
+    scale_factor: f32,
+    allow_fallback_adapter: bool,
+) -> Result<DesktopControlPaneCaptureArtifactStatus, String> {
+    let kind = PaneKind::PsionicRemoteTraining;
+    let context = pane_capture_context(state, kind, width, height);
+    let mut scene = Scene::new();
+    let mut text_system = TextSystem::new(scale_factor);
+    let mut paint = PaintContext::new(&mut scene, &mut text_system, scale_factor);
+    paint
+        .scene
+        .draw_quad(Quad::new(context.bounds).with_background(theme::bg::APP));
+
+    let content_bounds = pane_content_bounds_for_presentation(context.bounds, context.presentation);
+    match context.presentation {
+        PanePresentation::Windowed => {
+            let mut frame = PaneFrame::new();
+            frame.set_title(context.title.clone());
+            frame.set_active(context.active);
+            frame.set_title_height(PANE_TITLE_HEIGHT);
+            frame.paint(context.bounds, &mut paint);
+            paint.scene.draw_quad(
+                Quad::new(content_bounds)
+                    .with_background(theme::bg::SURFACE)
+                    .with_corner_radius(6.0),
+            );
+        }
+        PanePresentation::Fullscreen | PanePresentation::DockedRight => {
+            paint
+                .scene
+                .draw_quad(Quad::new(content_bounds).with_background(theme::bg::SURFACE));
+        }
+    }
+
+    let remote_training = desktop_control_remote_training_status(state);
+    psionic_remote_training_pane::paint(content_bounds, &remote_training, &mut paint);
+    drop(paint);
+
+    let mut request = CaptureRequest::new(
+        CaptureTarget::AdHoc {
+            name: format!("pane_{}", crate::input::desktop_control_pane_kind_key(kind)),
+        },
+        context.width,
+        context.height,
+        PathBuf::from(output_path),
+    );
+    request.scale_factor = scale_factor;
+    request.allow_fallback_adapter = allow_fallback_adapter;
+    let artifact = capture_scene(&request, &scene, Some(&text_system))
+        .map_err(|error| format!("offscreen pane capture failed: {error}"))?;
+
+    Ok(DesktopControlPaneCaptureArtifactStatus {
+        kind: crate::input::desktop_control_pane_kind_key(kind).to_string(),
+        title: context.title,
+        pane_id: context.pane_id,
+        presentation: pane_capture_presentation_label(context.presentation).to_string(),
+        png_path: artifact.png_path.display().to_string(),
+        manifest_path: artifact.manifest_path.display().to_string(),
+        width: artifact.manifest.width,
+        height: artifact.manifest.height,
+        scale_factor: artifact.manifest.scale_factor,
+        capture_target: artifact.target.slug(),
+    })
+}
+
+fn pane_capture_presentation_label(presentation: PanePresentation) -> &'static str {
+    match presentation {
+        PanePresentation::Windowed => "windowed",
+        PanePresentation::Fullscreen => "fullscreen",
+        PanePresentation::DockedRight => "docked_right",
+    }
+}
+
+struct PaneCaptureContext {
+    pane_id: Option<u64>,
+    title: String,
+    bounds: Bounds,
+    presentation: PanePresentation,
+    active: bool,
+    width: u32,
+    height: u32,
+}
+
+fn pane_capture_context(
+    state: &RenderState,
+    kind: PaneKind,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> PaneCaptureContext {
+    let active_pane_id = PaneController::active(state);
+    if let Some(open_pane) = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == kind)
+        .max_by_key(|pane| pane.z_index)
+    {
+        let resolved_width = width.unwrap_or_else(|| open_pane.bounds.size.width.max(1.0) as u32);
+        let resolved_height =
+            height.unwrap_or_else(|| open_pane.bounds.size.height.max(1.0) as u32);
+        return PaneCaptureContext {
+            pane_id: Some(open_pane.id),
+            title: open_pane.title.clone(),
+            bounds: Bounds::new(0.0, 0.0, resolved_width as f32, resolved_height as f32),
+            presentation: open_pane.presentation,
+            active: active_pane_id == Some(open_pane.id),
+            width: resolved_width,
+            height: resolved_height,
+        };
+    }
+
+    let descriptor = PaneDescriptor::for_kind(kind);
+    let resolved_width = width.unwrap_or_else(|| descriptor.width.max(1.0) as u32);
+    let resolved_height = height.unwrap_or_else(|| descriptor.height.max(1.0) as u32);
+    PaneCaptureContext {
+        pane_id: None,
+        title: pane_spec(kind).title.to_string(),
+        bounds: Bounds::new(0.0, 0.0, resolved_width as f32, resolved_height as f32),
+        presentation: descriptor.presentation,
+        active: true,
+        width: resolved_width,
+        height: resolved_height,
+    }
 }
 
 fn attnres_status_response(
