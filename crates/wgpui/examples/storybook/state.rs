@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use web_time::Instant;
 
 use wgpui::components::atoms::{Mode, Model, StreamingIndicator};
@@ -151,6 +153,16 @@ impl Storybook {
         let now = Instant::now();
         let delta = now.saturating_duration_since(self.last_tick);
         self.last_tick = now;
+        self.advance(delta);
+    }
+
+    #[allow(dead_code)]
+    pub fn tick_with_delta(&mut self, delta: Duration) {
+        self.last_tick = Instant::now();
+        self.advance(delta);
+    }
+
+    fn advance(&mut self, delta: Duration) {
         self.streaming_indicator.tick();
         self.assistant_message.tick();
         self.light_frame_anim.tick(delta);
