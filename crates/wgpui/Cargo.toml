@@ -57,6 +57,8 @@ tokio = { version = "1", default-features = false, features = ["sync"] }
 
 # Logging
 log = "0.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Markdown
 pulldown-cmark = "0.12"
