@@ -3728,12 +3728,18 @@ pub fn mission_control_load_funds_popup_bounds(content_bounds: Bounds) -> Bounds
     let width = if is_docked_layout {
         max_width
     } else {
-        (content_bounds.size.width * 0.64).clamp(480.0, 760.0).min(max_width)
+        (content_bounds.size.width * 0.64)
+            .clamp(480.0, 760.0)
+            .min(max_width)
     };
     let height = if is_docked_layout {
-        (content_bounds.size.height * 0.82).clamp(360.0, 760.0).min(max_height)
+        (content_bounds.size.height * 0.82)
+            .clamp(360.0, 760.0)
+            .min(max_height)
     } else {
-        (content_bounds.size.height * 0.56).clamp(320.0, 440.0).min(max_height)
+        (content_bounds.size.height * 0.56)
+            .clamp(320.0, 440.0)
+            .min(max_height)
     };
     let x = if is_docked_layout {
         (content_bounds.max_x() - width - 8.0).max(8.0)
@@ -3767,12 +3773,18 @@ pub fn mission_control_buy_mode_popup_bounds(content_bounds: Bounds) -> Bounds {
     let width = if is_docked_layout {
         max_width
     } else {
-        (content_bounds.size.width * 0.62).clamp(500.0, 760.0).min(max_width)
+        (content_bounds.size.width * 0.62)
+            .clamp(500.0, 760.0)
+            .min(max_width)
     };
     let height = if is_docked_layout {
-        (content_bounds.size.height * 0.72).clamp(300.0, 600.0).min(max_height)
+        (content_bounds.size.height * 0.72)
+            .clamp(300.0, 600.0)
+            .min(max_height)
     } else {
-        (content_bounds.size.height * 0.40).clamp(220.0, 300.0).min(max_height)
+        (content_bounds.size.height * 0.40)
+            .clamp(220.0, 300.0)
+            .min(max_height)
     };
     let x = if is_docked_layout {
         (content_bounds.max_x() - width - 8.0).max(8.0)
@@ -5097,9 +5109,9 @@ pub fn psionic_remote_training_layout(content_bounds: Bounds) -> PsionicRemoteTr
     let detail_width = (status_row.size.width - runs_width - column_gap).max(420.0);
     let runs_panel = Bounds::new(status_row.origin.x, body_y, runs_width, body_height);
     let detail_x = runs_panel.max_x() + column_gap;
-    let hero_height = 104.0f32.min((body_height * 0.2).max(92.0));
+    let hero_height = 132.0f32.min((body_height * 0.24).max(124.0));
     let row_gap = 10.0;
-    let row_height = ((body_height - hero_height - row_gap * 3.0) / 3.0).max(132.0);
+    let row_height = ((body_height - hero_height - row_gap * 3.0) / 3.0).max(124.0);
     let half_width = ((detail_width - column_gap) / 2.0).max(200.0);
     let hero_panel = Bounds::new(detail_x, body_y, detail_width, hero_height);
     let loss_panel = Bounds::new(
@@ -5210,11 +5222,15 @@ fn psionic_remote_training_chart_body_bounds(panel: Bounds) -> Bounds {
 }
 
 pub fn psionic_remote_training_loss_chart_bounds(content_bounds: Bounds) -> Bounds {
-    psionic_remote_training_chart_body_bounds(psionic_remote_training_layout(content_bounds).loss_panel)
+    psionic_remote_training_chart_body_bounds(
+        psionic_remote_training_layout(content_bounds).loss_panel,
+    )
 }
 
 pub fn psionic_remote_training_math_chart_bounds(content_bounds: Bounds) -> Bounds {
-    psionic_remote_training_chart_body_bounds(psionic_remote_training_layout(content_bounds).math_panel)
+    psionic_remote_training_chart_body_bounds(
+        psionic_remote_training_layout(content_bounds).math_panel,
+    )
 }
 
 pub fn psionic_remote_training_runtime_chart_bounds(content_bounds: Bounds) -> Bounds {
@@ -5303,7 +5319,12 @@ pub fn xtrain_explorer_layout(content_bounds: Bounds) -> XtrainExplorerPaneLayou
         window_width,
         top_height,
     );
-    let detail_panel = Bounds::new(main_x, graph_panel.max_y() + column_gap, graph_width, bottom_height);
+    let detail_panel = Bounds::new(
+        main_x,
+        graph_panel.max_y() + column_gap,
+        graph_width,
+        bottom_height,
+    );
     let events_panel = Bounds::new(
         detail_panel.max_x() + column_gap,
         detail_panel.origin.y,
@@ -5332,7 +5353,8 @@ fn xtrain_explorer_panel_body_bounds(panel: Bounds) -> Bounds {
 }
 
 fn xtrain_explorer_detail_layout(content_bounds: Bounds) -> XtrainExplorerDetailLayout {
-    let body = xtrain_explorer_panel_body_bounds(xtrain_explorer_layout(content_bounds).detail_panel);
+    let body =
+        xtrain_explorer_panel_body_bounds(xtrain_explorer_layout(content_bounds).detail_panel);
     let participant_list_height = (body.size.height * 0.38)
         .clamp(
             XTRAIN_EXPLORER_PARTICIPANT_ROW_HEIGHT * 3.0,
@@ -5370,7 +5392,8 @@ pub fn xtrain_explorer_view_button_bounds(content_bounds: Bounds, view_index: us
 }
 
 pub fn xtrain_explorer_snapshot_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
-    let body = xtrain_explorer_panel_body_bounds(xtrain_explorer_layout(content_bounds).snapshots_panel);
+    let body =
+        xtrain_explorer_panel_body_bounds(xtrain_explorer_layout(content_bounds).snapshots_panel);
     let refresh = xtrain_explorer_refresh_button_bounds(content_bounds);
     Bounds::new(
         body.origin.x,
@@ -8629,8 +8652,7 @@ fn pane_hit_action_for_pane(
                 }
             }
             for row_index in 0..XTRAIN_EXPLORER_MAX_PARTICIPANT_ROWS {
-                if xtrain_explorer_participant_row_bounds(content_bounds, row_index)
-                    .contains(point)
+                if xtrain_explorer_participant_row_bounds(content_bounds, row_index).contains(point)
                 {
                     return Some(PaneHitAction::XtrainExplorer(
                         XtrainExplorerPaneAction::SelectParticipant(row_index),

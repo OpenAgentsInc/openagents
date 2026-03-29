@@ -2,25 +2,27 @@ use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use psionic_train::{
-    RemoteTrainingArtifactSourceKind, RemoteTrainingDistributedSample,
-    RemoteTrainingEventSeverity, RemoteTrainingGpuSample, RemoteTrainingSourceArtifact,
-    RemoteTrainingVisualizationBundleV2,
+    RemoteTrainingArtifactSourceKind, RemoteTrainingDistributedSample, RemoteTrainingEventSeverity,
+    RemoteTrainingGpuSample, RemoteTrainingSourceArtifact, RemoteTrainingVisualizationBundleV2,
 };
+use wgpui::components::hud::{DotShape, DotsGrid, Heatmap, RingGauge, Scanlines, SignalMeter};
 use wgpui::viz::badge::{BadgeTone, tone_color as badge_tone_color};
 use wgpui::viz::chart::{HistoryChartSeries, paint_history_chart_body};
 use wgpui::viz::feed::{EventFeedRow, paint_event_feed_body};
-use wgpui::viz::panel::{paint_shell as paint_panel_shell, paint_title as paint_panel_title};
+use wgpui::viz::panel::{
+    body_bounds as viz_panel_body_bounds, paint_shell as paint_panel_shell,
+    paint_texture as paint_panel_texture, paint_title as paint_panel_title,
+};
 use wgpui::viz::theme as viz_theme;
-use wgpui::{Bounds, Hsla, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
-use crate::app_state::PaneLoadState;
 use crate::desktop_control::{
     DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
     DesktopControlRemoteTrainingStatus,
 };
 use crate::pane_renderer::{
     paint_secondary_button, paint_selectable_row_background, paint_source_badge,
-    paint_state_summary, split_text_for_display,
+    split_text_for_display,
 };
 use crate::pane_system::{
     psionic_remote_training_clear_anchor_button_bounds,
@@ -185,6 +187,9 @@ pub fn paint(
         remote_mint(),
         paint,
     );
+    paint_panel_texture(layout.runs_panel, remote_gold(), phase, paint);
+    paint_panel_texture(layout.hero_panel, accent, phase, paint);
+    paint_panel_texture(layout.provenance_panel, remote_mint(), phase, paint);
 
     paint_runs_panel(content_bounds, remote_training, paint);
     paint_run_detail_panel(
@@ -193,6 +198,7 @@ pub fn paint(
         selected,
         compare.as_ref(),
         accent,
+        phase,
         paint,
     );
     paint_loss_panel(
@@ -236,7 +242,13 @@ pub fn paint(
         phase,
         paint,
     );
-    paint_provenance_panel(layout.provenance_panel, remote_training, selected, paint);
+    paint_provenance_panel(
+        layout.provenance_panel,
+        remote_training,
+        selected,
+        phase,
+        paint,
+    );
 }
 
 fn paint_runs_panel(
@@ -244,7 +256,6 @@ fn paint_runs_panel(
     remote_training: &DesktopControlRemoteTrainingStatus,
     paint: &mut PaintContext,
 ) {
-    let chunk_len = 32usize;
     for (index, run) in remote_training.runs.iter().take(8).enumerate() {
         let bounds = psionic_remote_training_run_row_bounds(content_bounds, index);
         let selected = remote_training.selected_run_id.as_deref() == Some(run.run_id.as_str());
@@ -267,7 +278,7 @@ fn paint_runs_panel(
                 run.profile_id
             )
             .as_str(),
-            bounds.size.width - 20.0,
+            bounds.size.width - 92.0,
             10.0,
         );
         paint.scene.draw_text(paint.text.layout_mono(
@@ -276,6 +287,19 @@ fn paint_runs_panel(
             10.0,
             accent,
         ));
+        let mid_line = run
+            .primary_score
+            .as_ref()
+            .map(primary_score_brief)
+            .unwrap_or_else(|| compact_label(run.result_classification.as_str()));
+        let mid_line = truncate_line(paint, mid_line.as_str(), bounds.size.width - 92.0, 10.0);
+        paint.scene.draw_text(paint.text.layout(
+            mid_line.as_str(),
+            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 22.0),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+
         let status_line = truncate_line(
             paint,
             format!(
@@ -285,45 +309,17 @@ fn paint_runs_panel(
                 compact_label(run.series_status.as_str())
             )
             .as_str(),
-            bounds.size.width - 20.0,
-            10.0,
+            bounds.size.width - 92.0,
+            9.0,
         );
-        paint.scene.draw_text(paint.text.layout(
+        paint.scene.draw_text(paint.text.layout_mono(
             status_line.as_str(),
-            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 23.0),
-            10.0,
+            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 36.0),
+            9.0,
             theme::text::MUTED,
         ));
-        let primary = run
-            .primary_score
-            .as_ref()
-            .map(primary_score_brief)
-            .or_else(|| run.topology_summary.clone())
-            .unwrap_or_else(|| truncate_to_chars(run.semantic_summary.as_str(), chunk_len));
-        let freshness = if let Some(error) = run.contract_error.as_deref() {
-            format!(
-                "{} // contract {}",
-                truncate_to_chars(primary.as_str(), chunk_len),
-                truncate_to_chars(error, 20)
-            )
-        } else {
-            format!(
-                "{} // {}",
-                truncate_to_chars(primary.as_str(), chunk_len),
-                freshness_label(run)
-            )
-        };
-        let freshness = truncate_line(paint, freshness.as_str(), bounds.size.width - 20.0, 10.0);
-        paint.scene.draw_text(paint.text.layout(
-            freshness.as_str(),
-            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 38.0),
-            10.0,
-            if run.contract_error.is_some() || run.stale {
-                theme::status::ERROR
-            } else {
-                theme::text::PRIMARY
-            },
-        ));
+
+        paint_run_row_status_matrix(run, bounds, selected, paint);
     }
 }
 
@@ -333,27 +329,21 @@ fn paint_run_detail_panel(
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
     compare: Option<&TrainingRunCompare<'_>>,
     accent: Hsla,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
-    let load_state = load_state_for_status(remote_training);
-    let mut y = paint_state_summary(
-        paint,
-        bounds.origin.x + 16.0,
-        bounds.origin.y + 34.0,
-        load_state,
-        selected
-            .map(|selected| selected.run.run_id.as_str())
-            .unwrap_or("No remote training run selected"),
-        remote_training.last_action.as_deref(),
-        remote_training.last_error.as_deref(),
-    );
-
+    let body = viz_panel_body_bounds(bounds);
     let Some(selected) = selected else {
+        paint.scene.draw_text(paint.text.layout(
+            "Select a run to inspect its live training field.",
+            Point::new(body.origin.x + 8.0, body.origin.y + 18.0),
+            12.0,
+            theme::text::MUTED,
+        ));
         return;
     };
     let bundle = selected.bundle.as_ref();
     let phase_line = latest_phase_label(bundle, &selected.run);
-    let subsystems = latest_subsystems_label(bundle);
     let track = &selected.run.track;
     let checkpoint = bundle
         .map(|bundle| {
@@ -364,9 +354,38 @@ fn paint_run_detail_panel(
                 .unwrap_or_else(|| "checkpoint unavailable".to_string())
         })
         .unwrap_or_else(|| "checkpoint unavailable".to_string());
+    let compare_summary = compare
+        .and_then(|compare| compare.delta_summary.as_deref())
+        .unwrap_or("compare idle");
+    let proof_label = score_surface_compact_label(&selected.run);
+    let freshness = freshness_label(&selected.run);
+    let summary_title = selected
+        .run
+        .primary_score
+        .as_ref()
+        .map(primary_score_brief)
+        .unwrap_or_else(|| compact_label(track.track_id.as_str()));
+    let detail_text = bundle
+        .and_then(|bundle| {
+            bundle
+                .score_surface
+                .as_ref()
+                .map(|surface| surface.semantic_summary.as_str())
+        })
+        .or_else(|| bundle.map(|bundle| bundle.summary.detail.as_str()))
+        .or_else(|| {
+            selected
+                .run
+                .score_surface
+                .as_ref()
+                .map(|surface| surface.semantic_summary.as_str())
+        })
+        .unwrap_or(selected.run.semantic_summary.as_str());
+    let wrap = split_text_for_display(detail_text, 34);
+    let badge_y = body.origin.y + 2.0;
     paint_badge_strip(
-        bounds.origin.x + 16.0,
-        y,
+        body.origin.x + 4.0,
+        badge_y,
         &[
             (
                 compact_label(track.track_family.as_str()).to_uppercase(),
@@ -392,138 +411,65 @@ fn paint_run_detail_panel(
         accent,
         paint,
     );
-    y += 22.0;
 
-    if let Some(compare) = compare {
-        for line in [
-            format!("compare: {}", baseline_compare_label(compare)),
-            format!("baseline: {}", compare.baseline.run.run_id),
-            format!(
-                "delta: {}",
-                compare
-                    .delta_summary
-                    .as_deref()
-                    .unwrap_or(compare.caveat.as_str())
-            ),
-        ] {
-            let line = truncate_line(paint, line.as_str(), bounds.size.width - 32.0, 10.0);
-            paint.scene.draw_text(paint.text.layout_mono(
-                line.as_str(),
-                Point::new(bounds.origin.x + 16.0, y),
-                10.0,
-                remote_gold(),
-            ));
-            y += 14.0;
-        }
-    }
+    let gauge_y = badge_y + 20.0;
+    let gauge_size = 54.0;
+    paint_metric_ring(
+        Bounds::new(body.origin.x + 4.0, gauge_y, gauge_size, gauge_size),
+        "PROOF",
+        proof_label.as_str(),
+        proof_level(track.proof_posture.as_str()),
+        accent,
+        paint,
+    );
+    paint_metric_ring(
+        Bounds::new(body.origin.x + 70.0, gauge_y, gauge_size, gauge_size),
+        "FRESH",
+        freshness.as_str(),
+        freshness_level(&selected.run),
+        remote_blue(),
+        paint,
+    );
+    paint_metric_ring(
+        Bounds::new(body.origin.x + 136.0, gauge_y, gauge_size, gauge_size),
+        "SERIES",
+        compact_label(selected.run.series_status.as_str()).as_str(),
+        series_coverage_level(bundle),
+        remote_gold(),
+        paint,
+    );
 
-    let score_line = selected
-        .run
-        .primary_score
-        .as_ref()
-        .map(primary_score_detail)
-        .unwrap_or_else(|| "score: unavailable".to_string());
-    let detail_lines = [
-        format!("track: {}", track.track_id),
-        format!("score: {score_line}"),
-        format!(
-            "closeout: {} // gate {}",
-            selected
-                .run
-                .score_surface
-                .as_ref()
-                .map(|surface| compact_label(surface.score_closeout_posture.as_str()))
-                .unwrap_or_else(|| "score unavailable".to_string()),
-            selected
-                .run
-                .score_surface
-                .as_ref()
-                .map(|surface| compact_label(surface.promotion_gate_posture.as_str()))
-                .unwrap_or_else(|| "n/a".to_string())
-        ),
-        format!("lane: {}", selected.run.lane_id),
-        format!("repo: {}", selected.run.repo_revision),
-        format!(
-            "score law: {}",
-            track.score_law_ref.as_deref().unwrap_or("-")
-        ),
-        format!(
-            "caps: artifact {} // wallclock {}",
-            track
-                .artifact_cap_bytes
-                .map(format_bytes_compact)
-                .unwrap_or_else(|| "-".to_string()),
-            track
-                .wallclock_cap_seconds
-                .map(|value| format!("{value}s"))
-                .unwrap_or_else(|| "-".to_string())
-        ),
-        format!("phase: {phase_line}"),
-        format!("subsystems: {subsystems}"),
-        format!("checkpoint: {checkpoint}"),
-        chart_anchor_footer(remote_training, Some(selected), compare)
-            .map(|anchor| format!("anchor: {anchor}"))
-            .unwrap_or_else(|| "anchor: live".to_string()),
-        format!(
-            "topology: {}",
-            selected
-                .run
-                .topology_summary
-                .as_deref()
-                .unwrap_or("topology unavailable")
-        ),
-        format!(
-            "contract: {}",
-            selected
-                .run
-                .contract_error
-                .as_deref()
-                .unwrap_or(selected.run.contract_state.as_str())
-        ),
-        format!("heartbeat: {}", freshness_label(&selected.run)),
-    ];
-    for line in detail_lines {
-        let line = truncate_line(paint, line.as_str(), bounds.size.width - 32.0, 10.0);
-        paint.scene.draw_text(paint.text.layout_mono(
-            line.as_str(),
-            Point::new(bounds.origin.x + 16.0, y),
-            10.0,
-            theme::text::PRIMARY,
-        ));
-        y += 14.0;
-    }
+    let matrix_bounds = Bounds::new(body.origin.x + 204.0, gauge_y + 2.0, 172.0, 60.0);
+    paint_run_telemetry_matrix(matrix_bounds, selected, accent, phase, paint);
 
-    let detail_text = bundle
-        .and_then(|bundle| {
-            bundle
-                .score_surface
-                .as_ref()
-                .map(|surface| surface.semantic_summary.as_str())
-        })
-        .or_else(|| bundle.map(|bundle| bundle.summary.detail.as_str()))
-        .or_else(|| {
-            selected
-                .run
-                .score_surface
-                .as_ref()
-                .map(|surface| surface.semantic_summary.as_str())
-        })
-        .unwrap_or(selected.run.semantic_summary.as_str());
-    let wrap = split_text_for_display(detail_text, 80);
-    let mut wrap_y = bounds.origin.y + 34.0;
-    let x = bounds.max_x() - 360.0;
+    let x = body.max_x() - 284.0;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             x - 10.0,
-            bounds.origin.y + 28.0,
-            350.0,
-            bounds.size.height - 36.0,
+            body.origin.y + 2.0,
+            286.0,
+            body.size.height - 4.0,
         ))
         .with_background(accent.with_alpha(0.08))
         .with_border(accent.with_alpha(0.22), 1.0)
         .with_corner_radius(8.0),
     );
-    for line in wrap.iter().take(4) {
+    let summary_title = truncate_line(paint, summary_title.as_str(), 254.0, 10.0);
+    let compare_summary = truncate_line(paint, compare_summary, 254.0, 9.0);
+    paint.scene.draw_text(paint.text.layout_mono(
+        summary_title.as_str(),
+        Point::new(x, body.origin.y + 10.0),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        compare_summary.as_str(),
+        Point::new(x, body.origin.y + 24.0),
+        9.0,
+        remote_gold(),
+    ));
+    let mut wrap_y = body.origin.y + 38.0;
+    for line in wrap.iter().take(2) {
         paint.scene.draw_text(paint.text.layout(
             line.as_str(),
             Point::new(x, wrap_y),
@@ -532,6 +478,43 @@ fn paint_run_detail_panel(
         ));
         wrap_y += 14.0;
     }
+
+    let footer_left = truncate_line(
+        paint,
+        format!(
+            "{} // {} // {}",
+            selected.run.lane_id,
+            phase_line,
+            chart_anchor_footer(remote_training, Some(selected), compare)
+                .unwrap_or_else(|| "anchor live".to_string())
+        )
+        .as_str(),
+        body.size.width - 24.0,
+        9.0,
+    );
+    let footer_right = truncate_line(
+        paint,
+        format!(
+            "{} // {}",
+            track.score_law_ref.as_deref().unwrap_or("score law -"),
+            truncate_to_chars(checkpoint.as_str(), 34)
+        )
+        .as_str(),
+        body.size.width - 24.0,
+        9.0,
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        footer_left.as_str(),
+        Point::new(body.origin.x + 4.0, body.max_y() - 18.0),
+        9.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        footer_right.as_str(),
+        Point::new(body.origin.x + 4.0, body.max_y() - 6.0),
+        9.0,
+        theme::text::MUTED,
+    ));
 }
 
 fn paint_loss_panel(
@@ -570,18 +553,15 @@ fn paint_loss_panel(
                 chart_anchor_footer(remote_training, Some(selected), Some(compare))
                     .unwrap_or_else(|| current_vs_baseline_footer(compare)),
             );
-            overlay.series.extend(
-                baseline
-                    .series
-                    .into_iter()
-                    .map(|series| OwnedChartSeries {
-                        label: series.label,
-                        values: series.values,
-                        color: series.color.with_alpha(0.55),
-                        fill_alpha: 0.0,
-                        line_alpha: 0.58,
-                    }),
-            );
+            overlay
+                .series
+                .extend(baseline.series.into_iter().map(|series| OwnedChartSeries {
+                    label: series.label,
+                    values: series.values,
+                    color: series.color.with_alpha(0.55),
+                    fill_alpha: 0.0,
+                    line_alpha: 0.58,
+                }));
             paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
             return;
         }
@@ -598,8 +578,8 @@ fn paint_loss_panel(
         }
     }
     let mut current = current;
-    current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
-        .or(current.footer.clone());
+    current.footer =
+        chart_anchor_footer(remote_training, Some(selected), compare).or(current.footer.clone());
     paint_chart_panel_view(bounds, accent, phase, &current, paint);
 }
 
@@ -639,18 +619,15 @@ fn paint_math_panel(
                 chart_anchor_footer(remote_training, Some(selected), Some(compare))
                     .unwrap_or_else(|| current_vs_baseline_footer(compare)),
             );
-            overlay.series.extend(
-                baseline
-                    .series
-                    .into_iter()
-                    .map(|series| OwnedChartSeries {
-                        label: series.label,
-                        values: series.values,
-                        color: series.color.with_alpha(0.55),
-                        fill_alpha: 0.0,
-                        line_alpha: 0.58,
-                    }),
-            );
+            overlay
+                .series
+                .extend(baseline.series.into_iter().map(|series| OwnedChartSeries {
+                    label: series.label,
+                    values: series.values,
+                    color: series.color.with_alpha(0.55),
+                    fill_alpha: 0.0,
+                    line_alpha: 0.58,
+                }));
             paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
             return;
         }
@@ -667,8 +644,8 @@ fn paint_math_panel(
         }
     }
     let mut current = current;
-    current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
-        .or(current.footer.clone());
+    current.footer =
+        chart_anchor_footer(remote_training, Some(selected), compare).or(current.footer.clone());
     paint_chart_panel_view(bounds, accent, phase, &current, paint);
 }
 
@@ -708,18 +685,15 @@ fn paint_runtime_panel(
                 chart_anchor_footer(remote_training, Some(selected), Some(compare))
                     .unwrap_or_else(|| current_vs_baseline_footer(compare)),
             );
-            overlay.series.extend(
-                baseline
-                    .series
-                    .into_iter()
-                    .map(|series| OwnedChartSeries {
-                        label: series.label,
-                        values: series.values,
-                        color: series.color.with_alpha(0.55),
-                        fill_alpha: 0.0,
-                        line_alpha: 0.58,
-                    }),
-            );
+            overlay
+                .series
+                .extend(baseline.series.into_iter().map(|series| OwnedChartSeries {
+                    label: series.label,
+                    values: series.values,
+                    color: series.color.with_alpha(0.55),
+                    fill_alpha: 0.0,
+                    line_alpha: 0.58,
+                }));
             paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
             return;
         }
@@ -736,8 +710,8 @@ fn paint_runtime_panel(
         }
     }
     let mut current = current;
-    current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
-        .or(current.footer.clone());
+    current.footer =
+        chart_anchor_footer(remote_training, Some(selected), compare).or(current.footer.clone());
     paint_chart_panel_view(bounds, accent, phase, &current, paint);
 }
 
@@ -778,20 +752,19 @@ fn paint_hardware_panel(
                 chart_anchor_footer(remote_training, Some(selected), Some(compare))
                     .unwrap_or_else(|| current_vs_baseline_footer(compare)),
             );
-            overlay.series.extend(
-                baseline
-                    .series
-                    .into_iter()
-                    .map(|series| OwnedChartSeries {
-                        label: series.label,
-                        values: series.values,
-                        color: series.color.with_alpha(0.55),
-                        fill_alpha: 0.0,
-                        line_alpha: 0.58,
-                    }),
-            );
+            overlay
+                .series
+                .extend(baseline.series.into_iter().map(|series| OwnedChartSeries {
+                    label: series.label,
+                    values: series.values,
+                    color: series.color.with_alpha(0.55),
+                    fill_alpha: 0.0,
+                    line_alpha: 0.58,
+                }));
             paint_chart_panel_view(bounds, accent, phase, &overlay, paint);
-        } else if compare.mode != CompareNormalizationMode::PendingBaseline {
+            return;
+        }
+        if compare.mode != CompareNormalizationMode::PendingBaseline {
             let mut current = current;
             current.footer = Some(
                 chart_anchor_footer(remote_training, Some(selected), Some(compare))
@@ -800,18 +773,55 @@ fn paint_hardware_panel(
             let mut baseline = hardware_chart_view(compare.baseline, "baseline");
             baseline.footer = Some(current_vs_baseline_footer(compare));
             paint_side_by_side_chart_views(bounds, accent, phase, &current, &baseline, paint);
-        } else {
-            let mut current = current;
-            current.footer = chart_anchor_footer(remote_training, Some(selected), Some(compare))
-                .or(current.footer.clone());
-            paint_chart_panel_view(bounds, accent, phase, &current, paint);
+            return;
         }
-    } else {
-        let mut current = current;
-        current.footer = chart_anchor_footer(remote_training, Some(selected), compare)
-            .or(current.footer.clone());
-        paint_chart_panel_view(bounds, accent, phase, &current, paint);
     }
+    let mut current = current;
+    current.footer =
+        chart_anchor_footer(remote_training, Some(selected), compare).or(current.footer.clone());
+
+    let body = viz_panel_body_bounds(bounds);
+    let content_body = Bounds::new(
+        body.origin.x,
+        body.origin.y,
+        body.size.width,
+        (body.size.height - 28.0).max(80.0),
+    );
+    let chart_width = (content_body.size.width * 0.56).max(180.0);
+    let chart_bounds = Bounds::new(
+        content_body.origin.x,
+        content_body.origin.y,
+        chart_width,
+        content_body.size.height,
+    );
+    paint_chart_panel_view(chart_bounds, accent, phase, &current, paint);
+
+    let side_bounds = Bounds::new(
+        chart_bounds.max_x() + 10.0,
+        content_body.origin.y,
+        (content_body.max_x() - chart_bounds.max_x() - 10.0).max(116.0),
+        content_body.size.height,
+    );
+    paint_topology_matrix(
+        Bounds::new(
+            side_bounds.origin.x,
+            side_bounds.origin.y + 2.0,
+            side_bounds.size.width,
+            side_bounds.size.height * 0.52,
+        ),
+        selected,
+        remote_training.focused_topology_target.as_deref(),
+        accent,
+        phase,
+        paint,
+    );
+    paint_hardware_signal_triplet(
+        side_bounds.origin.x + 8.0,
+        side_bounds.origin.y + side_bounds.size.height * 0.56,
+        selected,
+        accent,
+        paint,
+    );
 
     let focus_targets = topology_focus_targets(selected);
     for (index, target) in focus_targets.iter().enumerate() {
@@ -820,13 +830,11 @@ fn paint_hardware_panel(
             remote_training.focused_topology_target.as_deref() == Some(target.key.as_str());
         paint.scene.draw_quad(
             Quad::new(target_bounds)
-                .with_background(
-                    if selected_focus {
-                        accent.with_alpha(0.18)
-                    } else {
-                        theme::bg::APP.with_alpha(0.88)
-                    },
-                )
+                .with_background(if selected_focus {
+                    accent.with_alpha(0.18)
+                } else {
+                    theme::bg::APP.with_alpha(0.88)
+                })
                 .with_border(
                     if selected_focus {
                         accent
@@ -837,7 +845,12 @@ fn paint_hardware_panel(
                 )
                 .with_corner_radius(6.0),
         );
-        let label = truncate_line(paint, target.label.as_str(), target_bounds.size.width - 8.0, 9.0);
+        let label = truncate_line(
+            paint,
+            target.label.as_str(),
+            target_bounds.size.width - 8.0,
+            9.0,
+        );
         paint.scene.draw_text(paint.text.layout_mono(
             label.as_str(),
             Point::new(target_bounds.origin.x + 4.0, target_bounds.origin.y + 6.0),
@@ -880,12 +893,12 @@ fn paint_hardware_panel(
                 })
         })
         .unwrap_or_else(|| "focus unavailable".to_string());
-    let focus_detail = truncate_line(paint, focus_detail.as_str(), bounds.size.width - 32.0, 10.0);
+    let focus_detail = truncate_line(paint, focus_detail.as_str(), bounds.size.width - 32.0, 9.0);
     paint.scene.draw_text(paint.text.layout_mono(
         focus_detail.as_str(),
-        Point::new(bounds.origin.x + 16.0, bounds.max_y() - 44.0),
-        10.0,
-        theme::text::PRIMARY,
+        Point::new(bounds.origin.x + 16.0, bounds.max_y() - 40.0),
+        9.0,
+        theme::text::MUTED,
     ));
 }
 
@@ -922,7 +935,10 @@ fn paint_event_panel(
     let empty = compare
         .map(|compare| {
             if remote_training.focused_topology_target.is_some() {
-                format!("{} // {}", compare.caveat, "event feed filtered by topology focus")
+                format!(
+                    "{} // {}",
+                    compare.caveat, "event feed filtered by topology focus"
+                )
             } else {
                 compare.caveat.clone()
             }
@@ -948,122 +964,80 @@ fn paint_provenance_panel(
     bounds: Bounds,
     remote_training: &DesktopControlRemoteTrainingStatus,
     selected: Option<&DesktopControlRemoteTrainingSelectedRunStatus>,
+    _phase: f32,
     paint: &mut PaintContext,
 ) {
-    let load_state = load_state_for_status(remote_training);
-    let mut y = paint_state_summary(
-        paint,
-        bounds.origin.x + 16.0,
-        bounds.origin.y + 34.0,
-        load_state,
-        "Mirror health",
-        remote_training.last_action.as_deref(),
-        remote_training.last_error.as_deref(),
-    );
+    let body = viz_panel_body_bounds(bounds);
     let Some(selected) = selected else {
+        paint.scene.draw_text(paint.text.layout(
+            "Select a run to inspect retained evidence and mirror health.",
+            Point::new(body.origin.x + 8.0, body.origin.y + 18.0),
+            11.0,
+            theme::text::MUTED,
+        ));
         return;
     };
+
+    paint_signal_triplet(
+        body.origin.x + 6.0,
+        body.origin.y + 8.0,
+        [
+            ("FR", freshness_level(&selected.run), remote_blue()),
+            (
+                "CA",
+                if selected.run.bundle_cached {
+                    1.0
+                } else {
+                    0.12
+                },
+                remote_gold(),
+            ),
+            ("AU", provenance_authority_level(selected), remote_mint()),
+        ],
+        remote_mint(),
+        paint,
+    );
+
     let source_index = selected
         .source_index_path
         .as_deref()
         .unwrap_or("source index unavailable");
-    let lines = [
-        format!("sync: {}", remote_training.sync_state),
-        format!("selected: {}", selected.run.run_id),
-        format!("track: {}", selected.run.track.track_id),
+    let info_x = body.origin.x + 146.0;
+    for (index, line) in [
+        format!("sync {}", remote_training.sync_state),
+        truncate_to_chars(selected.run.run_id.as_str(), 30),
         format!(
-            "contract: {}",
-            selected
-                .run
-                .contract_error
-                .as_deref()
-                .unwrap_or(selected.run.contract_state.as_str())
+            "digest {}",
+            truncate_to_chars(selected.run.bundle_digest.as_deref().unwrap_or("-"), 22)
         ),
-        format!(
-            "digest: {}",
-            selected.run.bundle_digest.as_deref().unwrap_or("-")
-        ),
-        format!(
-            "score law: {}",
-            selected.run.track.score_law_ref.as_deref().unwrap_or("-")
-        ),
-        format!("index: {}", source_index),
-    ];
-    for line in lines {
-        let line = truncate_line(paint, line.as_str(), bounds.size.width - 32.0, 10.0);
+        format!("index {}", truncate_to_chars(source_index, 26)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let line = truncate_line(paint, line.as_str(), body.size.width - 154.0, 9.0);
         paint.scene.draw_text(paint.text.layout_mono(
             line.as_str(),
-            Point::new(bounds.origin.x + 16.0, y),
-            10.0,
+            Point::new(info_x, body.origin.y + 10.0 + index as f32 * 12.0),
+            9.0,
             theme::text::PRIMARY,
         ));
-        y += 14.0;
     }
 
     if let Some(bundle) = selected.bundle.as_ref() {
+        let tile_width = ((body.size.width - 14.0) / 2.0).max(96.0);
         for (index, artifact) in bundle.source_artifacts.iter().take(4).enumerate() {
+            let row = index / 2;
+            let col = index % 2;
             let row_bounds = Bounds::new(
-                bounds.origin.x + 16.0,
-                bounds.origin.y + 156.0 + index as f32 * 38.0,
-                (bounds.size.width - 32.0).max(0.0),
-                34.0,
+                body.origin.x + col as f32 * (tile_width + 10.0),
+                body.origin.y + 76.0 + row as f32 * 42.0,
+                tile_width,
+                36.0,
             );
-            let expanded = remote_training
-                .selected_provenance_artifact_role
-                .as_deref()
+            let expanded = remote_training.selected_provenance_artifact_role.as_deref()
                 == Some(artifact.artifact_role.as_str());
-            paint.scene.draw_quad(
-                Quad::new(row_bounds)
-                    .with_background(
-                        if expanded {
-                            remote_mint().with_alpha(0.16)
-                        } else {
-                            theme::bg::APP.with_alpha(0.72)
-                        },
-                    )
-                    .with_border(
-                        if expanded {
-                            remote_mint()
-                        } else {
-                            theme::border::DEFAULT
-                        },
-                        1.0,
-                    )
-                    .with_corner_radius(6.0),
-            );
-            let role = truncate_line(
-                paint,
-                format!(
-                    "{} // {}",
-                    artifact.artifact_role,
-                    artifact_source_kind_label(artifact.source_kind)
-                )
-                .as_str(),
-                row_bounds.size.width - 12.0,
-                9.0,
-            );
-            let detail = truncate_line(
-                paint,
-                artifact.detail.as_str(),
-                row_bounds.size.width - 12.0,
-                9.0,
-            );
-            paint.scene.draw_text(paint.text.layout_mono(
-                role.as_str(),
-                Point::new(row_bounds.origin.x + 6.0, row_bounds.origin.y + 6.0),
-                9.0,
-                if expanded {
-                    remote_mint()
-                } else {
-                    theme::text::PRIMARY
-                },
-            ));
-            paint.scene.draw_text(paint.text.layout(
-                detail.as_str(),
-                Point::new(row_bounds.origin.x + 6.0, row_bounds.origin.y + 18.0),
-                9.0,
-                theme::text::MUTED,
-            ));
+            paint_provenance_artifact_tile(row_bounds, artifact, expanded, paint);
         }
     }
 
@@ -1071,12 +1045,7 @@ fn paint_provenance_panel(
         selected,
         remote_training.selected_provenance_artifact_role.as_deref(),
     ) {
-        let detail_bounds = Bounds::new(
-            bounds.origin.x + 16.0,
-            bounds.max_y() - 66.0,
-            (bounds.size.width - 32.0).max(0.0),
-            50.0,
-        );
+        let detail_bounds = Bounds::new(body.origin.x, body.max_y() - 38.0, body.size.width, 32.0);
         paint.scene.draw_quad(
             Quad::new(detail_bounds)
                 .with_background(remote_mint().with_alpha(0.10))
@@ -1090,13 +1059,16 @@ fn paint_provenance_panel(
         };
         for (index, line) in [
             format!(
-                "{} // authoritative={} // digest={}",
+                "{} // auth={} // digest={}",
                 artifact.artifact_role,
                 artifact.authoritative,
-                artifact.artifact_digest.as_deref().unwrap_or("-"),
+                truncate_to_chars(artifact.artifact_digest.as_deref().unwrap_or("-"), 20),
             ),
-            truncate_to_chars(artifact.artifact_uri.as_str(), 64),
-            format!("receipts {receipts} // {}", artifact.detail),
+            format!(
+                "{} // receipts {}",
+                truncate_to_chars(artifact.artifact_uri.as_str(), 28),
+                truncate_to_chars(receipts.as_str(), 18)
+            ),
         ]
         .into_iter()
         .enumerate()
@@ -1105,7 +1077,7 @@ fn paint_provenance_panel(
                 line.as_str(),
                 Point::new(
                     detail_bounds.origin.x + 8.0,
-                    detail_bounds.origin.y + 12.0 + index as f32 * 12.0,
+                    detail_bounds.origin.y + 8.0 + index as f32 * 12.0,
                 ),
                 9.0,
                 if index == 0 {
@@ -1116,6 +1088,515 @@ fn paint_provenance_panel(
             ));
         }
     }
+}
+
+fn paint_run_row_status_matrix(
+    run: &DesktopControlRemoteTrainingRunStatus,
+    bounds: Bounds,
+    selected: bool,
+    paint: &mut PaintContext,
+) {
+    let cell_size = 7.0;
+    let gap = 4.0;
+    let origin_x = bounds.max_x() - 44.0;
+    let origin_y = bounds.origin.y + 9.0;
+    let track = run_track_accent(run);
+    let cells = [
+        (selected, track),
+        (!run.stale, remote_blue()),
+        (run.bundle_cached, remote_gold()),
+        (run.primary_score.is_some(), remote_mint()),
+        (run.series_status == "available", remote_coral()),
+        (run.contract_error.is_none(), theme::status::SUCCESS),
+        (
+            run.track.comparability_class != "not_comparable",
+            track.with_alpha(0.86),
+        ),
+        (
+            run.track.proof_posture != "summary_only",
+            remote_mint().with_alpha(0.92),
+        ),
+    ];
+    for (index, (active, color)) in cells.into_iter().enumerate() {
+        let row = index / 4;
+        let col = index % 4;
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                origin_x + col as f32 * (cell_size + gap),
+                origin_y + row as f32 * (cell_size + gap),
+                cell_size,
+                cell_size,
+            ))
+            .with_background(color.with_alpha(if active { 0.9 } else { 0.14 }))
+            .with_corner_radius(1.5),
+        );
+    }
+}
+
+fn paint_metric_ring(
+    bounds: Bounds,
+    label: &str,
+    value: &str,
+    level: f32,
+    color: Hsla,
+    paint: &mut PaintContext,
+) {
+    let mut ring = RingGauge::new()
+        .level(level.clamp(0.0, 1.0))
+        .segments(28)
+        .dot_size(3.0)
+        .active_color(color.with_alpha(0.92))
+        .inactive_color(viz_theme::surface::CHART_BG.with_alpha(0.78))
+        .head_color(theme::text::PRIMARY.with_alpha(0.98));
+    ring.paint(bounds, paint);
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 8.0),
+        8.0,
+        color.with_alpha(0.9),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        truncate_to_chars(value, 10).as_str(),
+        Point::new(bounds.origin.x + 6.0, bounds.max_y() - 12.0),
+        8.0,
+        theme::text::PRIMARY,
+    ));
+}
+
+fn paint_run_telemetry_matrix(
+    bounds: Bounds,
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+    accent: Hsla,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let labels = ["LS", "MA", "RT", "HW"];
+    let label_width = 18.0;
+    let matrix_bounds = Bounds::new(
+        bounds.origin.x + label_width,
+        bounds.origin.y,
+        (bounds.size.width - label_width).max(48.0),
+        bounds.size.height,
+    );
+
+    let mut dots = DotsGrid::new()
+        .shape(DotShape::Cross)
+        .distance(18.0)
+        .size(0.7)
+        .color(accent.with_alpha(0.12))
+        .animation_progress(1.0);
+    dots.paint(matrix_bounds, paint);
+
+    let mut heatmap = Heatmap::new()
+        .data(4, 12, build_run_telemetry_matrix(selected))
+        .range(0.0, 1.0)
+        .gap(2.0)
+        .low_color(viz_theme::surface::CHART_BG.with_alpha(0.94))
+        .mid_color(Some(accent.with_alpha(0.62)))
+        .high_color(theme::text::PRIMARY.with_alpha(0.98));
+    heatmap.paint(matrix_bounds, paint);
+
+    let mut scanlines = Scanlines::new()
+        .spacing(10.0)
+        .line_color(accent.with_alpha(0.05))
+        .scan_color(accent.with_alpha(0.14))
+        .scan_width(12.0)
+        .scan_progress(phase)
+        .opacity(0.82);
+    scanlines.paint(matrix_bounds, paint);
+
+    for (index, label) in labels.into_iter().enumerate() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            label,
+            Point::new(bounds.origin.x, bounds.origin.y + 8.0 + index as f32 * 14.0),
+            8.0,
+            accent.with_alpha(0.9),
+        ));
+    }
+}
+
+fn build_run_telemetry_matrix(
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+) -> Vec<f32> {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return vec![0.08; 48];
+    };
+    let loss = bundle
+        .loss_series
+        .iter()
+        .filter_map(|sample| sample.train_loss.or(sample.ema_loss))
+        .collect::<Vec<_>>();
+    let math = bundle
+        .math_series
+        .iter()
+        .filter_map(|sample| sample.gradient_norm.or(sample.update_norm))
+        .collect::<Vec<_>>();
+    let runtime = bundle
+        .runtime_series
+        .iter()
+        .filter_map(|sample| {
+            sample
+                .tokens_per_second
+                .map(|value| value as f32)
+                .or_else(|| {
+                    sample
+                        .samples_per_second_milli
+                        .map(|value| value as f32 / 1000.0)
+                })
+        })
+        .collect::<Vec<_>>();
+    let hardware = aggregated_gpu_percent(bundle, |sample| sample.utilization_bps as f32 / 100.0);
+
+    let mut data = Vec::with_capacity(48);
+    data.extend(sampled_normalized_series(loss.as_slice(), 12, true));
+    data.extend(sampled_normalized_series(math.as_slice(), 12, false));
+    data.extend(sampled_normalized_series(runtime.as_slice(), 12, false));
+    data.extend(sampled_normalized_series(hardware.as_slice(), 12, false));
+    data
+}
+
+fn sampled_normalized_series(values: &[f32], sample_count: usize, invert: bool) -> Vec<f32> {
+    if values.is_empty() {
+        return vec![0.08; sample_count];
+    }
+    let sampled = wgpui::viz::sampling::sample_history_series(values, sample_count);
+    let min = sampled.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = sampled.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let span = (max - min).abs();
+    if span < 1e-4 {
+        return vec![0.64; sample_count];
+    }
+    sampled
+        .into_iter()
+        .map(|value| {
+            let normalized = ((value - min) / span).clamp(0.0, 1.0);
+            if invert { 1.0 - normalized } else { normalized }
+        })
+        .collect()
+}
+
+fn paint_topology_matrix(
+    bounds: Bounds,
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+    focused_target: Option<&str>,
+    accent: Hsla,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_text(paint.text.layout_mono(
+        "DEVICE MATRIX",
+        Point::new(bounds.origin.x, bounds.origin.y),
+        8.0,
+        accent.with_alpha(0.92),
+    ));
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return;
+    };
+    let latest = latest_gpu_samples(bundle);
+    if latest.is_empty() {
+        return;
+    }
+
+    let label_width = 54.0;
+    let grid_bounds = Bounds::new(
+        bounds.origin.x + label_width,
+        bounds.origin.y + 12.0,
+        (bounds.size.width - label_width).max(44.0),
+        (bounds.size.height - 16.0).max(26.0),
+    );
+    let data = latest
+        .iter()
+        .flat_map(|sample| {
+            [
+                (sample.utilization_bps as f32 / 10_000.0).clamp(0.0, 1.0),
+                (sample.memory_used_bytes as f32 / sample.memory_total_bytes as f32)
+                    .clamp(0.0, 1.0),
+                sample
+                    .temperature_celsius
+                    .map(|value| (value as f32 / 100.0).clamp(0.0, 1.0))
+                    .unwrap_or(0.12),
+                sample
+                    .power_watts
+                    .map(|value| (value as f32 / 700.0).clamp(0.0, 1.0))
+                    .unwrap_or(0.12),
+            ]
+        })
+        .collect::<Vec<_>>();
+
+    let mut heatmap = Heatmap::new()
+        .data(latest.len().max(1), 4, data)
+        .range(0.0, 1.0)
+        .gap(2.0)
+        .low_color(viz_theme::surface::CHART_BG.with_alpha(0.94))
+        .mid_color(Some(accent.with_alpha(0.72)))
+        .high_color(theme::text::PRIMARY.with_alpha(0.98));
+    heatmap.paint(grid_bounds, paint);
+
+    let mut scanlines = Scanlines::new()
+        .spacing(10.0)
+        .line_color(accent.with_alpha(0.04))
+        .scan_color(accent.with_alpha(0.12))
+        .scan_width(12.0)
+        .scan_progress(phase)
+        .opacity(0.72);
+    scanlines.paint(grid_bounds, paint);
+
+    for (row, sample) in latest.iter().enumerate() {
+        let label = truncate_to_chars(sample.device_label.as_str(), 9);
+        let color = if focused_target == Some(format!("device:{}", sample.device_id).as_str()) {
+            accent
+        } else {
+            theme::text::MUTED
+        };
+        paint.scene.draw_text(paint.text.layout_mono(
+            label.as_str(),
+            Point::new(bounds.origin.x, bounds.origin.y + 20.0 + row as f32 * 14.0),
+            8.0,
+            color,
+        ));
+    }
+    for (index, label) in ["UT", "MM", "TP", "PW"].into_iter().enumerate() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            label,
+            Point::new(
+                grid_bounds.origin.x + 8.0 + index as f32 * 22.0,
+                bounds.origin.y,
+            ),
+            8.0,
+            accent.with_alpha(0.86),
+        ));
+    }
+}
+
+fn paint_hardware_signal_triplet(
+    origin_x: f32,
+    origin_y: f32,
+    selected: &DesktopControlRemoteTrainingSelectedRunStatus,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return;
+    };
+    let latest = latest_gpu_samples(bundle);
+    let util = average_f32(
+        latest
+            .iter()
+            .map(|sample| sample.utilization_bps as f32 / 10_000.0)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    let memory = average_f32(
+        latest
+            .iter()
+            .map(|sample| sample.memory_used_bytes as f32 / sample.memory_total_bytes as f32)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    let fabric = bundle
+        .distributed_series
+        .last()
+        .and_then(|sample| sample.rank_skew_ms)
+        .map(|value| (1.0 - value as f32 / 250.0).clamp(0.0, 1.0))
+        .unwrap_or_else(|| if latest.len() > 1 { 0.52 } else { 0.18 });
+
+    paint_signal_triplet(
+        origin_x,
+        origin_y,
+        [
+            ("UT", util, accent),
+            ("MM", memory, remote_blue()),
+            ("FX", fabric, remote_mint()),
+        ],
+        accent,
+        paint,
+    );
+}
+
+fn paint_signal_triplet(
+    origin_x: f32,
+    origin_y: f32,
+    specs: [(&str, f32, Hsla); 3],
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    for (index, (label, level, color)) in specs.into_iter().enumerate() {
+        let x = origin_x + index as f32 * 36.0;
+        let mut meter = SignalMeter::new()
+            .bars(6)
+            .gap(2.0)
+            .level(level.clamp(0.0, 1.0))
+            .min_bar_height(0.16)
+            .active_color(color.with_alpha(0.94))
+            .inactive_color(accent.with_alpha(0.08));
+        meter.paint(Bounds::new(x, origin_y, 18.0, 44.0), paint);
+        paint.scene.draw_text(paint.text.layout_mono(
+            label,
+            Point::new(x - 1.0, origin_y + 52.0),
+            8.0,
+            color.with_alpha(0.88),
+        ));
+    }
+}
+
+fn paint_provenance_artifact_tile(
+    bounds: Bounds,
+    artifact: &RemoteTrainingSourceArtifact,
+    expanded: bool,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(if expanded {
+                remote_mint().with_alpha(0.16)
+            } else {
+                theme::bg::APP.with_alpha(0.72)
+            })
+            .with_border(
+                if expanded {
+                    remote_mint()
+                } else {
+                    theme::border::DEFAULT
+                },
+                1.0,
+            )
+            .with_corner_radius(6.0),
+    );
+    if artifact.authoritative {
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.max_x() - 10.0,
+                bounds.origin.y + 6.0,
+                4.0,
+                4.0,
+            ))
+            .with_background(remote_mint()),
+        );
+    }
+    let role = truncate_line(
+        paint,
+        artifact.artifact_role.as_str(),
+        bounds.size.width - 14.0,
+        9.0,
+    );
+    let detail = truncate_line(
+        paint,
+        format!(
+            "{} // r{}",
+            artifact_source_kind_label(artifact.source_kind),
+            artifact.source_receipt_ids.len()
+        )
+        .as_str(),
+        bounds.size.width - 14.0,
+        8.0,
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        role.as_str(),
+        Point::new(bounds.origin.x + 6.0, bounds.origin.y + 7.0),
+        9.0,
+        if expanded {
+            remote_mint()
+        } else {
+            theme::text::PRIMARY
+        },
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        detail.as_str(),
+        Point::new(bounds.origin.x + 6.0, bounds.origin.y + 20.0),
+        8.0,
+        theme::text::MUTED,
+    ));
+}
+
+fn freshness_level(run: &DesktopControlRemoteTrainingRunStatus) -> f32 {
+    match run.heartbeat_age_ms {
+        Some(age_ms) if run.stale => (1.0 - age_ms as f32 / 120_000.0).clamp(0.08, 0.24),
+        Some(age_ms) => (1.0 - age_ms as f32 / 30_000.0).clamp(0.1, 1.0),
+        None => 0.08,
+    }
+}
+
+fn proof_level(proof_posture: &str) -> f32 {
+    match proof_posture {
+        "summary_only" => 0.22,
+        "runtime_measured" => 0.58,
+        "score_closeout_measured" => 0.82,
+        "bounded_train_to_infer" => 0.9,
+        "refused" => 0.12,
+        _ => 0.34,
+    }
+}
+
+fn series_coverage_level(bundle: Option<&RemoteTrainingVisualizationBundleV2>) -> f32 {
+    let Some(bundle) = bundle else {
+        return 0.12;
+    };
+    let mut present = 0.0_f32;
+    let total = 6.0_f32;
+    present += if bundle.loss_series.is_empty() {
+        0.0
+    } else {
+        1.0
+    };
+    present += if bundle.math_series.is_empty() {
+        0.0
+    } else {
+        1.0
+    };
+    present += if bundle.runtime_series.is_empty() {
+        0.0
+    } else {
+        1.0
+    };
+    present += if bundle.gpu_series.is_empty() {
+        0.0
+    } else {
+        1.0
+    };
+    present += if bundle.distributed_series.is_empty() {
+        0.0
+    } else {
+        1.0
+    };
+    present += if bundle.event_series.is_empty() {
+        0.0
+    } else {
+        1.0
+    };
+    if total == 0.0 {
+        0.0
+    } else {
+        (present / total).clamp(0.08_f32, 1.0_f32)
+    }
+}
+
+fn provenance_authority_level(selected: &DesktopControlRemoteTrainingSelectedRunStatus) -> f32 {
+    let Some(bundle) = selected.bundle.as_ref() else {
+        return 0.14;
+    };
+    if bundle.source_artifacts.is_empty() {
+        return 0.14;
+    }
+    let authoritative = bundle
+        .source_artifacts
+        .iter()
+        .filter(|artifact| artifact.authoritative)
+        .count();
+    (authoritative as f32 / bundle.source_artifacts.len() as f32).clamp(0.08, 1.0)
+}
+
+fn score_surface_compact_label(run: &DesktopControlRemoteTrainingRunStatus) -> String {
+    run.score_surface
+        .as_ref()
+        .map(|surface| compact_label(surface.score_closeout_posture.as_str()))
+        .unwrap_or_else(|| "score pending".to_string())
+}
+
+fn average_f32(values: &[f32]) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.iter().copied().sum::<f32>() / values.len() as f32
 }
 
 fn status_cards(
@@ -1231,14 +1712,6 @@ fn selected_summary_line(
     }
 }
 
-fn load_state_for_status(remote_training: &DesktopControlRemoteTrainingStatus) -> PaneLoadState {
-    match remote_training.sync_state.as_str() {
-        "ready" | "stale" => PaneLoadState::Ready,
-        "error" => PaneLoadState::Error,
-        _ => PaneLoadState::Loading,
-    }
-}
-
 fn latest_phase_label(
     bundle: Option<&RemoteTrainingVisualizationBundleV2>,
     run: &DesktopControlRemoteTrainingRunStatus,
@@ -1261,14 +1734,6 @@ fn latest_phase_label(
             })
         })
         .unwrap_or_else(|| format!("{} // {}", run.result_classification, run.series_status))
-}
-
-fn latest_subsystems_label(bundle: Option<&RemoteTrainingVisualizationBundleV2>) -> String {
-    bundle
-        .and_then(|bundle| bundle.heartbeat_series.last())
-        .map(|sample| sample.active_subsystems.join(", "))
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "no live heartbeat retained".to_string())
 }
 
 fn freshness_label(run: &DesktopControlRemoteTrainingRunStatus) -> String {
@@ -1394,7 +1859,8 @@ fn build_compare_state<'a>(
         .unwrap_or(false);
     let same_track = selected.run.track.track_id == baseline.run.track.track_id;
     let public_equivalent = score_metric_matches
-        && selected.run.track.public_equivalence_class == baseline.run.track.public_equivalence_class
+        && selected.run.track.public_equivalence_class
+            == baseline.run.track.public_equivalence_class
         && !matches!(
             selected.run.track.public_equivalence_class.as_str(),
             "not_applicable" | "not_public_equivalent"
@@ -1513,7 +1979,10 @@ fn compare_anchor_label(
     let selected = selected?;
     let ratio = remote_training.chart_anchor_ratio_milli?;
     let bundle = selected.bundle.as_ref()?;
-    match compare.map(|compare| compare.anchor_mode).unwrap_or(CompareAnchorMode::None) {
+    match compare
+        .map(|compare| compare.anchor_mode)
+        .unwrap_or(CompareAnchorMode::None)
+    {
         CompareAnchorMode::GlobalStep => anchor_global_step_label(bundle, ratio),
         CompareAnchorMode::ElapsedMs => anchor_elapsed_ms_label(bundle, ratio),
         CompareAnchorMode::None => anchor_elapsed_ms_label(bundle, ratio)
@@ -1530,7 +1999,10 @@ fn anchor_global_step_label(
         .map(|step| format!("anchor step {step}"))
 }
 
-fn anchor_elapsed_ms_label(bundle: &RemoteTrainingVisualizationBundleV2, ratio: u16) -> Option<String> {
+fn anchor_elapsed_ms_label(
+    bundle: &RemoteTrainingVisualizationBundleV2,
+    ratio: u16,
+) -> Option<String> {
     bundle_anchor_loss_sample(bundle, ratio).map(|sample| format!("anchor {}ms", sample.elapsed_ms))
 }
 
@@ -1558,7 +2030,8 @@ fn build_event_rows(
     focused_topology_target: Option<&str>,
     chart_anchor_ratio_milli: Option<u16>,
 ) -> Vec<EventFeedRow<'static>> {
-    let anchor_index = chart_anchor_ratio_milli.and_then(|ratio| anchor_index(bundle.event_series.len(), ratio));
+    let anchor_index =
+        chart_anchor_ratio_milli.and_then(|ratio| anchor_index(bundle.event_series.len(), ratio));
     let filtered = bundle
         .event_series
         .iter()
@@ -1660,7 +2133,12 @@ fn paint_chart_panel_view(
 fn split_chart_panel(bounds: Bounds) -> (Bounds, Bounds) {
     let half_height = ((bounds.size.height - 8.0) / 2.0).max(92.0);
     (
-        Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, half_height),
+        Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            half_height,
+        ),
         Bounds::new(
             bounds.origin.x,
             bounds.origin.y + half_height + 8.0,
@@ -1733,7 +2211,8 @@ fn comparison_header(
 ) -> String {
     compare
         .map(|compare| match compare.mode {
-            CompareNormalizationMode::DirectScore | CompareNormalizationMode::PublicEquivalentScore => {
+            CompareNormalizationMode::DirectScore
+            | CompareNormalizationMode::PublicEquivalentScore => {
                 format!("{current_summary} // baseline {baseline_summary}")
             }
             _ => format!("current {current_summary} // baseline {baseline_summary}"),
