@@ -95,6 +95,7 @@ pub const fn pane_search_tier(kind: PaneKind) -> PaneSearchTier {
         | PaneKind::PsionicViz
         | PaneKind::PsionicRemoteTraining
         | PaneKind::XtrainExplorer
+        | PaneKind::ContributorBeta
         | PaneKind::AttnResLab
         | PaneKind::TassadarLab
         | PaneKind::RivePreview
@@ -177,7 +178,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 66] = [
+const PANE_SPECS: [PaneSpec; 67] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -459,6 +460,21 @@ const PANE_SPECS: [PaneSpec; 66] = [
             id: "pane.xtrain_explorer",
             label: "XTRAIN Explorer",
             description: "Open the decentralized XTRAIN participant, window, checkpoint, and evidence explorer",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::ContributorBeta,
+        title: "Contributor Beta",
+        default_width: 1180.0,
+        default_height: 780.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.contributor_beta",
+            label: "Contributor Beta",
+            description: "Open the bounded external contributor beta for compiled-agent benchmarks, receipts, and governed worker roles",
             keybinding: None,
         }),
         hotbar: None,
@@ -1330,6 +1346,18 @@ mod tests {
         assert!(
             !spec.startup,
             "xtrain explorer pane should remain opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn contributor_beta_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.contributor_beta")
+            .expect("contributor beta command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::ContributorBeta);
+        assert!(spec.singleton, "contributor beta pane must be singleton");
+        assert!(
+            !spec.startup,
+            "contributor beta pane should remain opt-in instead of opening at startup"
         );
     }
 

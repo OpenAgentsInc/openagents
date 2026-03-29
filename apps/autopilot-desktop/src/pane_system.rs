@@ -722,6 +722,16 @@ pub enum XtrainExplorerPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContributorBetaPaneAction {
+    ConnectIdentity,
+    AcceptContract,
+    RunBenchmarkPack,
+    SubmitRuntimeReceipt,
+    CycleWorkerRole,
+    RunWorkerRole,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RivePreviewPaneAction {
     ReloadAsset,
     TogglePlayback,
@@ -1307,6 +1317,7 @@ pub enum PaneHitAction {
     AttnResLab(AttnResLabPaneAction),
     TassadarLab(TassadarLabPaneAction),
     XtrainExplorer(XtrainExplorerPaneAction),
+    ContributorBeta(ContributorBetaPaneAction),
     RivePreview(RivePreviewPaneAction),
     AppleFmWorkbench(AppleFmWorkbenchPaneAction),
     AppleAdapterTraining(AppleAdapterTrainingPaneAction),
@@ -1427,6 +1438,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
         PaneKind::XtrainExplorer => pane_size_for_content(1200.0, 760.0),
+        PaneKind::ContributorBeta => pane_size_for_content(1160.0, 740.0),
         PaneKind::AttnResLab | PaneKind::TassadarLab => pane_size_for_content(1080.0, 680.0),
         PaneKind::RivePreview => pane_size_for_content(1080.0, 700.0),
         PaneKind::Presentation => pane_size_for_content(640.0, 360.0),
@@ -1553,6 +1565,8 @@ impl PaneController {
             crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
         } else if kind == PaneKind::XtrainExplorer {
             crate::xtrain_explorer_control::refresh_xtrain_explorer_state(state, true);
+        } else if kind == PaneKind::ContributorBeta {
+            crate::contributor_beta_control::refresh_contributor_beta_state(state);
         } else if kind == PaneKind::AppleFmWorkbench {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleAdapterTraining {
@@ -2092,6 +2106,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::PsionicViz
             | PaneKind::PsionicRemoteTraining
             | PaneKind::XtrainExplorer
+            | PaneKind::ContributorBeta
             | PaneKind::AttnResLab
             | PaneKind::TassadarLab
             | PaneKind::RivePreview
@@ -5419,6 +5434,35 @@ pub fn xtrain_explorer_participant_row_bounds(content_bounds: Bounds, row_index:
     )
 }
 
+const CONTRIBUTOR_BETA_ACTION_BUTTON_WIDTH: f32 = 114.0;
+const CONTRIBUTOR_BETA_ACTION_BUTTON_GAP: f32 = 10.0;
+const CONTRIBUTOR_BETA_ROW_HEIGHT: f32 = 46.0;
+const CONTRIBUTOR_BETA_ROW_GAP: f32 = 8.0;
+
+pub fn contributor_beta_action_button_bounds(content_bounds: Bounds, button_index: usize) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x
+            + 12.0
+            + button_index.min(5) as f32
+                * (CONTRIBUTOR_BETA_ACTION_BUTTON_WIDTH + CONTRIBUTOR_BETA_ACTION_BUTTON_GAP),
+        content_bounds.origin.y + 12.0,
+        CONTRIBUTOR_BETA_ACTION_BUTTON_WIDTH,
+        28.0,
+    )
+}
+
+pub fn contributor_beta_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let visible_index = row_index.min(4) as f32;
+    let top = content_bounds.max_y() - 150.0
+        + visible_index * (CONTRIBUTOR_BETA_ROW_HEIGHT + CONTRIBUTOR_BETA_ROW_GAP);
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        top,
+        (content_bounds.size.width - 24.0).max(0.0),
+        CONTRIBUTOR_BETA_ROW_HEIGHT,
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AppleFmWorkbenchPaneLayout {
     pub status_row: Bounds,
@@ -8658,6 +8702,39 @@ fn pane_hit_action_for_pane(
                         XtrainExplorerPaneAction::SelectParticipant(row_index),
                     ));
                 }
+            }
+            None
+        }
+        PaneKind::ContributorBeta => {
+            if contributor_beta_action_button_bounds(content_bounds, 0).contains(point) {
+                return Some(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::ConnectIdentity,
+                ));
+            }
+            if contributor_beta_action_button_bounds(content_bounds, 1).contains(point) {
+                return Some(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::AcceptContract,
+                ));
+            }
+            if contributor_beta_action_button_bounds(content_bounds, 2).contains(point) {
+                return Some(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::RunBenchmarkPack,
+                ));
+            }
+            if contributor_beta_action_button_bounds(content_bounds, 3).contains(point) {
+                return Some(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::SubmitRuntimeReceipt,
+                ));
+            }
+            if contributor_beta_action_button_bounds(content_bounds, 4).contains(point) {
+                return Some(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::CycleWorkerRole,
+                ));
+            }
+            if contributor_beta_action_button_bounds(content_bounds, 5).contains(point) {
+                return Some(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::RunWorkerRole,
+                ));
             }
             None
         }

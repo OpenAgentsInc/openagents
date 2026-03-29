@@ -7,7 +7,8 @@ use crate::app_state::{
     AppleFmWorkbenchPaneState, AttnResLabPaneState, AutopilotChatState, BuyModePaymentsPaneState,
     CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs,
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
-    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, ContributorBetaPaneState,
+    CreateInvoicePaneInputs,
     CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
     DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState, DesktopPane,
     EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
@@ -100,7 +101,8 @@ use crate::panes::{
     apple_fm_workbench as apple_fm_workbench_pane, attnres_lab as attnres_lab_pane,
     buy_mode as buy_mode_pane, buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane,
     calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
-    credit as credit_pane, data_buyer as data_buyer_pane, data_market as data_market_pane,
+    contributor_beta as contributor_beta_pane, credit as credit_pane,
+    data_buyer as data_buyer_pane, data_market as data_market_pane,
     data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
     frame_debugger as frame_debugger_pane, key_ledger as key_ledger_pane,
     local_inference as local_inference_pane, log_stream as log_stream_pane,
@@ -200,6 +202,7 @@ impl PaneRenderer {
         attnres_lab: &AttnResLabPaneState,
         tassadar_lab: &TassadarLabPaneState,
         xtrain_explorer: &XtrainExplorerPaneState,
+        contributor_beta: &ContributorBetaPaneState,
         rive_preview: &mut RivePreviewPaneState,
         rive_preview_runtime: &mut RivePreviewRuntimeState,
         presentation: &mut PresentationPaneState,
@@ -538,6 +541,9 @@ impl PaneRenderer {
                 }
                 PaneKind::XtrainExplorer => {
                     xtrain_explorer_pane::paint(content_bounds, xtrain_explorer, paint);
+                }
+                PaneKind::ContributorBeta => {
+                    contributor_beta_pane::paint(content_bounds, contributor_beta, paint);
                 }
                 PaneKind::RivePreview => {
                     rive_pane::paint(content_bounds, rive_preview, rive_preview_runtime, paint);
