@@ -3700,6 +3700,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::AttnResLab(action) => run_attnres_lab_action(state, action),
         PaneHitAction::TassadarLab(action) => run_tassadar_lab_action(state, action),
         PaneHitAction::XtrainExplorer(action) => run_xtrain_explorer_action(state, action),
+        PaneHitAction::ContributorBeta(action) => run_contributor_beta_action(state, action),
         PaneHitAction::RivePreview(action) => run_rive_preview_action(state, action),
         PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
         PaneHitAction::AppleAdapterTraining(action) => {

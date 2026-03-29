@@ -432,6 +432,173 @@ impl Default for XtrainExplorerPaneState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContributorTrustTier {
+    Pending,
+    Governed,
+    Caution,
+}
+
+impl ContributorTrustTier {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Governed => "governed",
+            Self::Caution => "caution",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContributorSubmissionSource {
+    BenchmarkPack,
+    RuntimeReceipt,
+    WorkerOutput,
+}
+
+impl ContributorSubmissionSource {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BenchmarkPack => "benchmark_pack",
+            Self::RuntimeReceipt => "runtime_receipt",
+            Self::WorkerOutput => "worker_output",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContributorSubmissionOutcome {
+    Accepted,
+    Rejected,
+    Quarantined,
+    Review,
+}
+
+impl ContributorSubmissionOutcome {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Rejected => "rejected",
+            Self::Quarantined => "quarantined",
+            Self::Review => "review",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContributorWorkerRole {
+    ReplayGeneration,
+    RankingLabeling,
+    ValidatorScoring,
+    BoundedModuleTraining,
+}
+
+impl ContributorWorkerRole {
+    pub const ALL: [Self; 4] = [
+        Self::ReplayGeneration,
+        Self::RankingLabeling,
+        Self::ValidatorScoring,
+        Self::BoundedModuleTraining,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ReplayGeneration => "replay_generation",
+            Self::RankingLabeling => "ranking_labeling",
+            Self::ValidatorScoring => "validator_scoring",
+            Self::BoundedModuleTraining => "bounded_module_training",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ContributorBetaSubmissionRow {
+    pub submission_id: String,
+    pub source: ContributorSubmissionSource,
+    pub outcome: ContributorSubmissionOutcome,
+    pub summary: String,
+    pub digest: String,
+    pub recorded_at_epoch_ms: u64,
+    pub contract_version: String,
+    pub contributor_id: String,
+    pub environment_class: String,
+    pub capability_summary: String,
+    pub admitted_family: String,
+    pub authority_path: Option<String>,
+    pub confidence_band: Option<String>,
+    pub source_receipt_id: Option<String>,
+    pub worker_role: Option<String>,
+    pub review_reason: Option<String>,
+}
+
+pub struct ContributorBetaPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub identity_connected: bool,
+    pub contributor_id: String,
+    pub environment_class: String,
+    pub capability_summary: String,
+    pub contract_version: String,
+    pub contract_accepted: bool,
+    pub admitted_family: String,
+    pub benchmark_kit_version: String,
+    pub intake_contract_version: String,
+    pub worker_contract_version: String,
+    pub worker_role: ContributorWorkerRole,
+    pub trust_tier: ContributorTrustTier,
+    pub accepted_submission_count: u32,
+    pub rejected_submission_count: u32,
+    pub quarantined_submission_count: u32,
+    pub review_submission_count: u32,
+    pub pending_credit_sats: u64,
+    pub contributor_credit_account_id: Option<String>,
+    pub payment_link_state: String,
+    pub latest_runtime_receipt_id: Option<String>,
+    pub latest_runtime_authority_path: Option<String>,
+    pub latest_runtime_confidence_band: Option<String>,
+    pub submissions: Vec<ContributorBetaSubmissionRow>,
+    pub next_submission_seq: u64,
+}
+
+impl Default for ContributorBetaPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Contributor beta is ready for bounded onboarding".to_string()),
+            identity_connected: false,
+            contributor_id: "contributor.local.pending".to_string(),
+            environment_class: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+            capability_summary: "benchmark_pack".to_string(),
+            contract_version: "compiled_agent.external_beta.v1".to_string(),
+            contract_accepted: false,
+            admitted_family: "compiled_agent.first_graph.admitted_family.v1".to_string(),
+            benchmark_kit_version: "compiled_agent.external_benchmark_kit.v1".to_string(),
+            intake_contract_version: "compiled_agent.external_intake.v1".to_string(),
+            worker_contract_version: "compiled_agent.external_worker_beta.v1".to_string(),
+            worker_role: ContributorWorkerRole::ReplayGeneration,
+            trust_tier: ContributorTrustTier::Pending,
+            accepted_submission_count: 0,
+            rejected_submission_count: 0,
+            quarantined_submission_count: 0,
+            review_submission_count: 0,
+            pending_credit_sats: 0,
+            contributor_credit_account_id: None,
+            payment_link_state: "not_earned".to_string(),
+            latest_runtime_receipt_id: None,
+            latest_runtime_authority_path: None,
+            latest_runtime_confidence_band: None,
+            submissions: Vec::new(),
+            next_submission_seq: 1,
+        }
+    }
+}
+
 pub fn replay_attnres_lab_snapshot() -> AttnResLabSnapshot {
     AttnResLabSnapshot {
         source_badge: "replay.attnres".to_string(),

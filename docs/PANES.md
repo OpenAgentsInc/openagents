@@ -72,6 +72,12 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Shows a derived lattice, layer sweep, phase ribbons, and throughput/cache rings built from prompt/eval/load timings plus prompt/output token counts.
   - Explicitly labels the field as derived telemetry rather than raw tensor taps so the UI stays truthful about what the runtime exposes today.
   - Action: read-only visualization surface.
+- `Contributor Beta`
+  - Narrow external-contributor control surface for the admitted compiled-agent family.
+  - Connects contributor identity, accepts the governed beta contract, runs the retained benchmark pack, captures governed runtime disagreement receipts, and submits bounded worker-role output for replay generation, ranking and labeling, validator scoring, or bounded module training.
+  - Shows contributor identity, trust tier, environment class, capability summary, admitted family, contract versions, current worker role, accepted or review and rejected or quarantined counts, pending credit sats, credit-account linkage posture, and recent submission rows with digests and review reasons.
+  - Makes the evidence boundary explicit: submissions can be accepted, quarantined, rejected, or routed for review, but the pane never grants promotion authority or live runtime authority to contributors.
+  - Action: connect identity, accept contract, run benchmark pack, submit runtime receipt, cycle worker role, run bounded worker role.
 - `Rive Preview`
   - Workbench pane for the packaged Rive asset registry using the shared native `RiveSurface` path.
   - Remains the debug/workbench surface even after the production Provider Control pane embeds the packaged HUD asset.

@@ -13,8 +13,8 @@ use crate::local_runtime_capabilities::{
 use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
-    BuyModePaymentsPaneAction, DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
-    ChatHeaderMoreMenuItem,
+    BuyModePaymentsPaneAction, ChatHeaderMoreMenuItem, ContributorBetaPaneAction,
+    DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
     LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
     Nip90SentPaymentsPaneAction, ProviderControlPaneAction, PsionicRemoteTrainingPaneAction,
     RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
@@ -10079,6 +10079,38 @@ pub(super) fn run_xtrain_explorer_action(
         }
         XtrainExplorerPaneAction::NextParticipant => {
             step_xtrain_explorer_participant(state, 1);
+            true
+        }
+    }
+}
+
+pub(super) fn run_contributor_beta_action(
+    state: &mut crate::app_state::RenderState,
+    action: ContributorBetaPaneAction,
+) -> bool {
+    match action {
+        ContributorBetaPaneAction::ConnectIdentity => {
+            crate::contributor_beta_control::connect_identity(state);
+            true
+        }
+        ContributorBetaPaneAction::AcceptContract => {
+            crate::contributor_beta_control::accept_contract(state);
+            true
+        }
+        ContributorBetaPaneAction::RunBenchmarkPack => {
+            crate::contributor_beta_control::run_benchmark_pack(state);
+            true
+        }
+        ContributorBetaPaneAction::SubmitRuntimeReceipt => {
+            crate::contributor_beta_control::submit_runtime_receipt(state);
+            true
+        }
+        ContributorBetaPaneAction::CycleWorkerRole => {
+            crate::contributor_beta_control::cycle_worker_role(state);
+            true
+        }
+        ContributorBetaPaneAction::RunWorkerRole => {
+            crate::contributor_beta_control::run_worker_role(state);
             true
         }
     }

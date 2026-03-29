@@ -36,6 +36,8 @@ It can:
   validator outcomes, accepted training outcomes, checkpoint lineage, and
   settlement history when kernel authority is configured
 - list, open, focus, close, and inspect panes in the running desktop shell
+- inspect the bounded contributor-beta control surface and its governed
+  submission state through the same pane snapshot contract as the GUI
 - emit structured desktop perf snapshots from the app-owned `Frame Debugger`
   surface through `autopilotctl perf`
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
@@ -143,6 +145,8 @@ autopilotctl perf --json
 autopilotctl pane list
 autopilotctl pane status provider_control
 autopilotctl pane status frame_debugger --json
+autopilotctl pane open contributor_beta
+autopilotctl pane status contributor_beta --json
 autopilotctl pane close provider_control
 autopilotctl pane open provider_control
 ```
@@ -164,6 +168,13 @@ data for:
 
 That output is intended for harness automation, so prefer `--json` when you are
 collecting or diffing perf runs.
+
+`autopilotctl pane status contributor_beta --json` is the operator and
+contributor-facing read path for the bounded external beta. It exposes the
+current contributor identity posture, contract and worker-role posture, trust
+tier, accepted or rejected or review counts, pending credit sats, recent
+submission digests, and the latest runtime disagreement receipt lineage without
+creating a separate beta-only control protocol.
 
 `autopilotctl status` now prints the same app-owned inventory projection summary
 the Provider Control pane uses, including the projection source, kernel snapshot

@@ -44,9 +44,10 @@ use crate::pane_system::{
     AgentScheduleTickPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction,
     CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
-    CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
-    DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction, EarningsScoreboardPaneAction,
-    JobHistoryPaneAction, JobInboxPaneAction, LocalInferencePaneAction, MissionControlPaneAction,
+    ContributorBetaPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
+    CreditSettlementLedgerPaneAction, DataBuyerPaneAction, DataMarketPaneAction,
+    DataSellerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
+    JobInboxPaneAction, LocalInferencePaneAction, MissionControlPaneAction,
     NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
     ProviderControlPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
     SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
@@ -3773,6 +3774,38 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     }),
                 );
             }
+            PaneKind::ContributorBeta => {
+                map.insert(
+                    "contributor_beta".to_string(),
+                    json!({
+                        "identity_connected": state.contributor_beta.identity_connected,
+                        "contributor_id": state.contributor_beta.contributor_id,
+                        "environment_class": state.contributor_beta.environment_class,
+                        "capability_summary": state.contributor_beta.capability_summary,
+                        "trust_tier": state.contributor_beta.trust_tier.label(),
+                        "contract_version": state.contributor_beta.contract_version,
+                        "contract_accepted": state.contributor_beta.contract_accepted,
+                        "admitted_family": state.contributor_beta.admitted_family,
+                        "benchmark_kit_version": state.contributor_beta.benchmark_kit_version,
+                        "intake_contract_version": state.contributor_beta.intake_contract_version,
+                        "worker_contract_version": state.contributor_beta.worker_contract_version,
+                        "worker_role": state.contributor_beta.worker_role.label(),
+                        "accepted_submission_count": state.contributor_beta.accepted_submission_count,
+                        "rejected_submission_count": state.contributor_beta.rejected_submission_count,
+                        "quarantined_submission_count": state.contributor_beta.quarantined_submission_count,
+                        "review_submission_count": state.contributor_beta.review_submission_count,
+                        "pending_credit_sats": state.contributor_beta.pending_credit_sats,
+                        "contributor_credit_account_id": state.contributor_beta.contributor_credit_account_id,
+                        "payment_link_state": state.contributor_beta.payment_link_state,
+                        "latest_runtime_receipt_id": state.contributor_beta.latest_runtime_receipt_id,
+                        "latest_runtime_authority_path": state.contributor_beta.latest_runtime_authority_path,
+                        "latest_runtime_confidence_band": state.contributor_beta.latest_runtime_confidence_band,
+                        "last_action": state.contributor_beta.last_action,
+                        "last_error": state.contributor_beta.last_error,
+                        "submissions": state.contributor_beta.submissions.iter().take(5).collect::<Vec<_>>(),
+                    }),
+                );
+            }
             PaneKind::AttnResLab => {
                 let selected = state.attnres_lab.current_sublayer();
                 map.insert(
@@ -4263,6 +4296,31 @@ fn pane_action_to_hit_action(
             _ => unsupported(),
         },
         PaneKind::XtrainExplorer => unsupported(),
+        PaneKind::ContributorBeta => match action {
+            "connect" | "connect_identity" => Ok(PaneHitAction::ContributorBeta(
+                ContributorBetaPaneAction::ConnectIdentity,
+            )),
+            "accept" | "accept_contract" => Ok(PaneHitAction::ContributorBeta(
+                ContributorBetaPaneAction::AcceptContract,
+            )),
+            "benchmark" | "run_benchmark" | "run_benchmark_pack" => {
+                Ok(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::RunBenchmarkPack,
+                ))
+            }
+            "submit_receipt" | "runtime_receipt" | "submit_runtime_receipt" => {
+                Ok(PaneHitAction::ContributorBeta(
+                    ContributorBetaPaneAction::SubmitRuntimeReceipt,
+                ))
+            }
+            "cycle_worker" | "cycle_worker_role" => Ok(PaneHitAction::ContributorBeta(
+                ContributorBetaPaneAction::CycleWorkerRole,
+            )),
+            "run_worker" | "run_worker_role" => Ok(PaneHitAction::ContributorBeta(
+                ContributorBetaPaneAction::RunWorkerRole,
+            )),
+            _ => unsupported(),
+        },
         PaneKind::AttnResLab => unsupported(),
         PaneKind::TassadarLab => unsupported(),
         PaneKind::Presentation => unsupported(),
@@ -8233,6 +8291,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "training_viewer",
             "google_runpod_training",
         ],
+        PaneKind::ContributorBeta => &[
+            "contributor_beta",
+            "contributor",
+            "external_beta",
+            "bounded_beta",
+        ],
         PaneKind::RivePreview => &["rive", "rive_preview", "hud_preview"],
         PaneKind::Presentation => &["presentation", "deck", "slides", "present"],
         PaneKind::FrameDebugger => &[
@@ -8346,6 +8410,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::PsionicViz => "psionic_viz",
         PaneKind::PsionicRemoteTraining => "psionic_remote_training",
         PaneKind::XtrainExplorer => "xtrain_explorer",
+        PaneKind::ContributorBeta => "contributor_beta",
         PaneKind::AttnResLab => "attnres_lab",
         PaneKind::TassadarLab => "tassadar_lab",
         PaneKind::RivePreview => "rive_preview",
