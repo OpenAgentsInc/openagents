@@ -38,7 +38,7 @@ pub(crate) struct StoryLayout {
     content: Bounds,
 }
 
-pub(crate) struct Storybook {
+pub struct Storybook {
     pub(crate) nav_items: Vec<&'static str>,
     pub(crate) active_section: usize,
     pub(crate) hover_nav: Option<usize>,
@@ -63,7 +63,7 @@ pub(crate) struct Storybook {
 }
 
 impl Storybook {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let mut checkpoint_restore = CheckpointRestore::new();
         checkpoint_restore.add_checkpoint("v1.0");
         checkpoint_restore.add_checkpoint("v1.1");
@@ -147,7 +147,7 @@ impl Storybook {
         }
     }
 
-    pub(crate) fn tick(&mut self) {
+    pub fn tick(&mut self) {
         let now = Instant::now();
         let delta = now.saturating_duration_since(self.last_tick);
         self.last_tick = now;
@@ -209,7 +209,7 @@ impl Storybook {
         }
     }
 
-    pub(crate) fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+    pub fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         cx.scene
             .draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
 
@@ -271,7 +271,7 @@ impl Storybook {
         cx.scene.pop_clip();
     }
 
-    pub(crate) fn handle_input(&mut self, event: &InputEvent, bounds: Bounds) -> bool {
+    pub fn handle_input(&mut self, event: &InputEvent, bounds: Bounds) -> bool {
         let layout = self.layout(bounds);
         let mut handled = self.handle_nav_event(event, layout.nav);
 
@@ -332,6 +332,38 @@ impl Storybook {
         }
 
         handled
+    }
+
+    #[allow(dead_code)]
+    pub fn section_names(&self) -> &[&'static str] {
+        &self.nav_items
+    }
+
+    #[allow(dead_code)]
+    pub fn active_section_name(&self) -> Option<&'static str> {
+        self.nav_items.get(self.active_section).copied()
+    }
+
+    #[allow(dead_code)]
+    pub fn set_active_section(&mut self, index: usize) -> bool {
+        if index >= self.nav_items.len() {
+            return false;
+        }
+        self.active_section = index;
+        true
+    }
+
+    #[allow(dead_code)]
+    pub fn set_active_section_by_name(&mut self, name: &str) -> bool {
+        let Some(index) = self
+            .nav_items
+            .iter()
+            .position(|item| item.eq_ignore_ascii_case(name))
+        else {
+            return false;
+        };
+        self.active_section = index;
+        true
     }
 
     fn paint_header(&self, bounds: Bounds, cx: &mut PaintContext) {

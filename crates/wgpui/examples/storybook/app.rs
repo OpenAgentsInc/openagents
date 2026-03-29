@@ -3,8 +3,7 @@ use std::time::Duration;
 
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext, Point, Scene, Size,
-    TextSystem,
+    Bounds, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point, Scene, Size, TextSystem,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -269,9 +268,12 @@ impl ApplicationHandler for App {
                 let bounds = window_bounds(&state.config, state.scale_factor);
                 let mut scene = Scene::new();
                 state.story.tick();
-                state.story.paint(
+                crate::scene::build_storybook_scene(
+                    &mut state.story,
+                    &mut scene,
+                    &mut state.text_system,
                     bounds,
-                    &mut PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor),
+                    state.scale_factor,
                 );
 
                 state.renderer.resize(
