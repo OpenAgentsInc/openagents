@@ -643,6 +643,7 @@ dependencies = [
  "nostr 0.1.1",
  "nostr-client",
  "openagents-cad",
+ "openagents-compiled-agent",
  "openagents-kernel-core",
  "openagents-provider-substrate",
  "openagents-spark",

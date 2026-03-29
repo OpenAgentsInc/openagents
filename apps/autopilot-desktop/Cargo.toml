@@ -44,6 +44,10 @@ name = "autopilot-throughput-bench"
 path = "src/bin/autopilot_throughput_bench.rs"
 
 [[bin]]
+name = "autopilot-compiled-agent-harness"
+path = "src/bin/autopilot_compiled_agent_harness.rs"
+
+[[bin]]
 name = "apple-architecture-explainer-reference-run"
 path = "src/bin/apple_architecture_explainer_reference_run.rs"
 
@@ -72,6 +76,7 @@ psionic-sandbox = { workspace = true }
 psionic-serve = { workspace = true }
 psionic-train = { workspace = true }
 openagents-cad = { path = "../../crates/cad" }
+openagents-compiled-agent = { path = "../../crates/openagents-compiled-agent" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
 openagents-spark = { path = "../../crates/spark" }
