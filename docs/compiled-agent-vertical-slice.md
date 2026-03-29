@@ -20,6 +20,10 @@ It uses the reusable `openagents-compiled-agent` crate for:
 - confidence-gated fallback
 - replay-friendly lineage
 
+It now consumes promoted and candidate module artifacts from the retained
+`psionic` compiled-agent promoted-artifact contract instead of hardcoding the
+route, grounded-answer, and verify behavior inside `openagents`.
+
 ## Entry Point
 
 Run the harness from the repo root:
@@ -49,6 +53,16 @@ cargo run -p autopilot-desktop --bin autopilot-compiled-agent-harness -- \
   --show-trace
 ```
 
+Rollback example using the retained `last_known_good` route artifact:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilot-compiled-agent-harness -- \
+  --prompt "Can I go online right now?" \
+  --shadow-mode candidate-authority \
+  --candidate-label last_known_good \
+  --show-trace
+```
+
 ## What It Emits
 
 The harness writes a JSON receipt with:
@@ -58,12 +72,19 @@ The harness writes a JSON receipt with:
 - tool calls and tool results
 - public outcome
 - authority manifest ids
+- authority artifact ids and digests
 - shadow manifest ids
+- shadow artifact ids and digests
 - internal phase traces
 - runtime state used to answer the prompt
 
-This is the narrow handoff seam to `psionic` for receipt normalization, replay,
-and later bounded XTRAIN.
+This is now the narrow runtime-adoption seam to `psionic` for:
+
+- promoted artifact authority
+- candidate shadow comparison
+- receipt normalization
+- replay
+- bounded XTRAIN
 
 ## Why This Exists
 
@@ -78,3 +99,18 @@ compiled-agent path real:
 
 That path now produces structured lineage instead of a giant improvised prompt
 loop.
+
+## Current Authority Posture
+
+The current retained runtime contract keeps the admitted task family narrow:
+
+- provider readiness
+- wallet balance and recent earnings
+- unsupported refusal
+
+Within that boundary:
+
+- promoted route authority comes from the learned artifact
+  `compiled_agent.route.multinomial_nb_v1`
+- `last_known_good` is available as a rollback-safe route candidate
+- `psionic_candidate` is available for grounded-answer and verify shadow runs

@@ -27,6 +27,21 @@ pub struct CompiledModuleManifest {
     pub promotion_state: ModulePromotionState,
     /// Minimum confidence this module claims as acceptable authority.
     pub confidence_floor: f32,
+    /// Stable artifact id when the module comes from a promoted artifact contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_id: Option<String>,
+    /// Stable artifact digest for receipt lineage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_digest: Option<String>,
+    /// Compatibility contract for the consuming graph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_version: Option<String>,
+    /// Default learned row id that admitted this artifact when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_id: Option<String>,
+    /// Rollback target artifact id when the current artifact is promoted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollback_artifact_id: Option<String>,
 }
 
 impl CompiledModuleManifest {
@@ -39,4 +54,3 @@ impl CompiledModuleManifest {
         )
     }
 }
-

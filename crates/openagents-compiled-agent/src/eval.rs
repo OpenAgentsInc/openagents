@@ -109,6 +109,11 @@ mod tests {
                 version: "2026-03-28".to_string(),
                 promotion_state: ModulePromotionState::Promoted,
                 confidence_floor: 0.8,
+                artifact_id: None,
+                artifact_digest: None,
+                compatibility_version: None,
+                row_id: None,
+                rollback_artifact_id: None,
             },
         };
         let case = ModuleEvalCase::<IntentRouteSignature> {
