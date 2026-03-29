@@ -46,12 +46,12 @@ use crate::pane_system::{
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
     ContributorBetaPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
     CreditSettlementLedgerPaneAction, DataBuyerPaneAction, DataMarketPaneAction,
-    DataSellerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
-    JobInboxPaneAction, LocalInferencePaneAction, MissionControlPaneAction,
-    NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
-    ProviderControlPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
-    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
+    DataSellerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
+    LocalInferencePaneAction, MissionControlPaneAction, NetworkRequestsPaneAction,
+    Nip90SentPaymentsPaneAction, PaneController, PaneHitAction, ProviderControlPaneAction,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
+    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -3795,8 +3795,17 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "quarantined_submission_count": state.contributor_beta.quarantined_submission_count,
                         "review_submission_count": state.contributor_beta.review_submission_count,
                         "pending_credit_sats": state.contributor_beta.pending_credit_sats,
+                        "confirmed_credit_sats": state.contributor_beta.confirmed_credit_sats,
                         "contributor_credit_account_id": state.contributor_beta.contributor_credit_account_id,
                         "payment_link_state": state.contributor_beta.payment_link_state,
+                        "review_queue_depth": state.contributor_beta.review_queue_depth,
+                        "review_sla_label": state.contributor_beta.review_sla_label,
+                        "provisional_credit_rulebook": state.contributor_beta.provisional_credit_rulebook,
+                        "tailnet_current_tailnet": state.contributor_beta.tailnet_current_tailnet,
+                        "tailnet_pilot_label": state.contributor_beta.tailnet_pilot_label,
+                        "tailnet_last_governed_run_digest": state.contributor_beta.tailnet_last_governed_run_digest,
+                        "tailnet_last_xtrain_receipt_digest": state.contributor_beta.tailnet_last_xtrain_receipt_digest,
+                        "tailnet_nodes": state.contributor_beta.tailnet_nodes,
                         "latest_runtime_receipt_id": state.contributor_beta.latest_runtime_receipt_id,
                         "latest_runtime_authority_path": state.contributor_beta.latest_runtime_authority_path,
                         "latest_runtime_confidence_band": state.contributor_beta.latest_runtime_confidence_band,
@@ -4276,9 +4285,10 @@ fn pane_action_to_hit_action(
                 crate::pane_system::PsionicRemoteTrainingPaneAction::ClearCompareBaseline,
             )),
             "set_anchor" => Ok(PaneHitAction::PsionicRemoteTraining(
-                crate::pane_system::PsionicRemoteTrainingPaneAction::SetChartAnchor(
-                    require_index(action)? as u16,
-                ),
+                crate::pane_system::PsionicRemoteTrainingPaneAction::SetChartAnchor(require_index(
+                    action,
+                )?
+                    as u16),
             )),
             "clear_anchor" => Ok(PaneHitAction::PsionicRemoteTraining(
                 crate::pane_system::PsionicRemoteTrainingPaneAction::ClearChartAnchor,
@@ -4303,16 +4313,12 @@ fn pane_action_to_hit_action(
             "accept" | "accept_contract" => Ok(PaneHitAction::ContributorBeta(
                 ContributorBetaPaneAction::AcceptContract,
             )),
-            "benchmark" | "run_benchmark" | "run_benchmark_pack" => {
-                Ok(PaneHitAction::ContributorBeta(
-                    ContributorBetaPaneAction::RunBenchmarkPack,
-                ))
-            }
-            "submit_receipt" | "runtime_receipt" | "submit_runtime_receipt" => {
-                Ok(PaneHitAction::ContributorBeta(
-                    ContributorBetaPaneAction::SubmitRuntimeReceipt,
-                ))
-            }
+            "benchmark" | "run_benchmark" | "run_benchmark_pack" => Ok(
+                PaneHitAction::ContributorBeta(ContributorBetaPaneAction::RunBenchmarkPack),
+            ),
+            "submit_receipt" | "runtime_receipt" | "submit_runtime_receipt" => Ok(
+                PaneHitAction::ContributorBeta(ContributorBetaPaneAction::SubmitRuntimeReceipt),
+            ),
             "cycle_worker" | "cycle_worker_role" => Ok(PaneHitAction::ContributorBeta(
                 ContributorBetaPaneAction::CycleWorkerRole,
             )),

@@ -417,9 +417,11 @@ impl Default for XtrainExplorerPaneState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for XTRAIN explorer artifacts".to_string()),
-            source_root_hint: crate::xtrain_explorer_control::default_xtrain_explorer_source_root_hint(),
+            source_root_hint:
+                crate::xtrain_explorer_control::default_xtrain_explorer_source_root_hint(),
             source_root: None,
-            index_path_hint: crate::xtrain_explorer_control::default_xtrain_explorer_index_path_hint(),
+            index_path_hint:
+                crate::xtrain_explorer_control::default_xtrain_explorer_index_path_hint(),
             index_path: None,
             snapshot_path: None,
             last_refreshed_at_epoch_ms: None,
@@ -535,6 +537,16 @@ pub struct ContributorBetaSubmissionRow {
     pub review_reason: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ContributorBetaTailnetNodeStatus {
+    pub device_name: String,
+    pub node_id: String,
+    pub machine_class: String,
+    pub role: String,
+    pub status: String,
+    pub tailnet_ip: Option<String>,
+}
+
 pub struct ContributorBetaPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -556,8 +568,17 @@ pub struct ContributorBetaPaneState {
     pub quarantined_submission_count: u32,
     pub review_submission_count: u32,
     pub pending_credit_sats: u64,
+    pub confirmed_credit_sats: u64,
     pub contributor_credit_account_id: Option<String>,
     pub payment_link_state: String,
+    pub review_queue_depth: u32,
+    pub review_sla_label: String,
+    pub provisional_credit_rulebook: String,
+    pub tailnet_current_tailnet: Option<String>,
+    pub tailnet_pilot_label: String,
+    pub tailnet_last_governed_run_digest: String,
+    pub tailnet_last_xtrain_receipt_digest: String,
+    pub tailnet_nodes: Vec<ContributorBetaTailnetNodeStatus>,
     pub latest_runtime_receipt_id: Option<String>,
     pub latest_runtime_authority_path: Option<String>,
     pub latest_runtime_confidence_band: Option<String>,
@@ -588,8 +609,18 @@ impl Default for ContributorBetaPaneState {
             quarantined_submission_count: 0,
             review_submission_count: 0,
             pending_credit_sats: 0,
+            confirmed_credit_sats: 0,
             contributor_credit_account_id: None,
             payment_link_state: "not_earned".to_string(),
+            review_queue_depth: 0,
+            review_sla_label: "manual_triage_lt_24h".to_string(),
+            provisional_credit_rulebook:
+                "accepted=earned review=provisional rejected_or_quarantined=0".to_string(),
+            tailnet_current_tailnet: None,
+            tailnet_pilot_label: "Tailnet-first M5 + RTX 4080 governed beta".to_string(),
+            tailnet_last_governed_run_digest: String::new(),
+            tailnet_last_xtrain_receipt_digest: String::new(),
+            tailnet_nodes: Vec::new(),
             latest_runtime_receipt_id: None,
             latest_runtime_authority_path: None,
             latest_runtime_confidence_band: None,
