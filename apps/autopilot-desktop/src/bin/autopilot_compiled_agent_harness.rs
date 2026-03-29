@@ -2,7 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use autopilot_desktop::compiled_agent_slice::{CompiledAgentSliceState, run_compiled_agent_slice};
+use autopilot_desktop::compiled_agent_slice::{
+    CompiledAgentFeedbackSignal, CompiledAgentSliceState, run_compiled_agent_slice,
+};
 use clap::{Parser, ValueEnum};
 use openagents_compiled_agent::ShadowMode;
 
@@ -35,6 +37,14 @@ struct Args {
     receipt_out: Option<PathBuf>,
     #[arg(long, default_value_t = false)]
     show_trace: bool,
+    #[arg(long, default_value_t = false)]
+    user_disagreed: bool,
+    #[arg(long)]
+    correction_text: Option<String>,
+    #[arg(long)]
+    disagreement_reason_code: Option<String>,
+    #[arg(long)]
+    operator_note: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -55,7 +65,19 @@ fn main() -> Result<()> {
         },
     };
 
-    let receipt = run_compiled_agent_slice(&args.prompt, &state, shadow_mode);
+    let mut receipt = run_compiled_agent_slice(&args.prompt, &state, shadow_mode);
+    if args.user_disagreed
+        || args.correction_text.is_some()
+        || args.disagreement_reason_code.is_some()
+        || args.operator_note.is_some()
+    {
+        receipt = receipt.with_feedback(CompiledAgentFeedbackSignal {
+            disagreed: args.user_disagreed,
+            correction_text: args.correction_text.clone(),
+            reason_code: args.disagreement_reason_code.clone(),
+            operator_note: args.operator_note.clone(),
+        });
+    }
 
     println!("== Public Response ==");
     println!("{}", receipt.run.public_response.response);
@@ -63,29 +85,11 @@ fn main() -> Result<()> {
     println!("== Outcome ==");
     println!("{:?}", receipt.run.public_response.kind);
     println!();
-    println!("== Authority Manifests ==");
-    for manifest in &receipt.run.lineage.authority_manifests {
-        println!(
-            "{} artifact_id={} artifact_digest={} rollback={}",
-            manifest.manifest_id(),
-            manifest.artifact_id.as_deref().unwrap_or("n/a"),
-            manifest.artifact_digest.as_deref().unwrap_or("n/a"),
-            manifest.rollback_artifact_id.as_deref().unwrap_or("n/a"),
-        );
-    }
-    if !receipt.run.lineage.shadow_manifests.is_empty() {
-        println!();
-        println!("== Shadow Manifests ==");
-        for manifest in &receipt.run.lineage.shadow_manifests {
-            println!(
-                "{} artifact_id={} artifact_digest={} rollback={}",
-                manifest.manifest_id(),
-                manifest.artifact_id.as_deref().unwrap_or("n/a"),
-                manifest.artifact_digest.as_deref().unwrap_or("n/a"),
-                manifest.rollback_artifact_id.as_deref().unwrap_or("n/a"),
-            );
-        }
-    }
+    println!("== Runtime Telemetry ==");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&receipt.telemetry).context("serialize runtime telemetry")?
+    );
     if args.show_trace {
         println!();
         println!("== Internal Trace ==");
