@@ -64,11 +64,14 @@ pub fn paint_history_chart_body(
         legend_x += width + 12.0;
     }
 
+    let chart_height = (bounds.size.height - 116.0)
+        .max(56.0)
+        .min((bounds.size.height - 76.0).max(24.0));
     let chart_bounds = Bounds::new(
         bounds.origin.x + 16.0,
         bounds.origin.y + 60.0,
         bounds.size.width - 32.0,
-        (bounds.size.height - 116.0).max(104.0),
+        chart_height,
     );
     paint.scene.draw_quad(
         Quad::new(chart_bounds)
