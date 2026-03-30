@@ -492,6 +492,26 @@ impl ContributorSubmissionOutcome {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ContributorCreditDisposition {
+    NoCredit,
+    ReviewHold,
+    Provisional,
+    Confirmed,
+}
+
+impl ContributorCreditDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NoCredit => "no_credit",
+            Self::ReviewHold => "review_hold",
+            Self::Provisional => "provisional",
+            Self::Confirmed => "confirmed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ContributorWorkerRole {
     ReplayGeneration,
     RankingLabeling,
@@ -535,6 +555,15 @@ pub struct ContributorBetaSubmissionRow {
     pub source_receipt_id: Option<String>,
     pub worker_role: Option<String>,
     pub review_reason: Option<String>,
+    pub staging_state: String,
+    pub quarantine_state: String,
+    pub replay_status: String,
+    pub training_impact: String,
+    pub heldout_impact: String,
+    pub credit_disposition: ContributorCreditDisposition,
+    pub credit_reason: String,
+    pub provisional_credit_sats: u64,
+    pub confirmed_credit_sats: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -545,6 +574,22 @@ pub struct ContributorBetaTailnetNodeStatus {
     pub role: String,
     pub status: String,
     pub tailnet_ip: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ContributorKnownOperatorStatus {
+    pub operator_id: String,
+    pub display_name: String,
+    pub environment_class: String,
+    pub capability_summary: String,
+    pub contract_version: String,
+    pub contract_status: String,
+    pub readiness_status: String,
+    pub readiness_checks: Vec<String>,
+    pub latest_submission_state: String,
+    pub review_posture: String,
+    pub credit_posture: String,
+    pub latest_submission_digest: Option<String>,
 }
 
 pub struct ContributorBetaPaneState {
@@ -569,16 +614,22 @@ pub struct ContributorBetaPaneState {
     pub review_submission_count: u32,
     pub pending_credit_sats: u64,
     pub confirmed_credit_sats: u64,
+    pub review_hold_credit_sats: u64,
     pub contributor_credit_account_id: Option<String>,
     pub payment_link_state: String,
     pub review_queue_depth: u32,
     pub review_sla_label: String,
+    pub review_owner_label: String,
+    pub submission_state_summary: String,
     pub provisional_credit_rulebook: String,
+    pub credit_policy_summary: String,
     pub tailnet_current_tailnet: Option<String>,
     pub tailnet_pilot_label: String,
     pub tailnet_last_governed_run_digest: String,
     pub tailnet_last_xtrain_receipt_digest: String,
+    pub tailnet_last_operational_report_digest: String,
     pub tailnet_nodes: Vec<ContributorBetaTailnetNodeStatus>,
+    pub known_operators: Vec<ContributorKnownOperatorStatus>,
     pub latest_runtime_receipt_id: Option<String>,
     pub latest_runtime_authority_path: Option<String>,
     pub latest_runtime_confidence_band: Option<String>,
@@ -610,17 +661,25 @@ impl Default for ContributorBetaPaneState {
             review_submission_count: 0,
             pending_credit_sats: 0,
             confirmed_credit_sats: 0,
+            review_hold_credit_sats: 0,
             contributor_credit_account_id: None,
             payment_link_state: "not_earned".to_string(),
             review_queue_depth: 0,
             review_sla_label: "manual_triage_lt_24h".to_string(),
+            review_owner_label: "contributor_ops_manual".to_string(),
+            submission_state_summary: "accepted=0 review=0 quarantined=0 rejected=0".to_string(),
             provisional_credit_rulebook:
-                "accepted=earned review=provisional rejected_or_quarantined=0".to_string(),
+                "confirmed=replay_or_training_impact provisional=accepted_bounded_evidence review_hold=manual_review_pending no_credit=rejected_or_quarantined".to_string(),
+            credit_policy_summary:
+                "confirmed tracks retained replay or training impact; provisional tracks accepted bounded evidence that has not cleared into retained impact yet."
+                    .to_string(),
             tailnet_current_tailnet: None,
             tailnet_pilot_label: "Tailnet-first M5 + RTX 4080 governed beta".to_string(),
             tailnet_last_governed_run_digest: String::new(),
             tailnet_last_xtrain_receipt_digest: String::new(),
+            tailnet_last_operational_report_digest: String::new(),
             tailnet_nodes: Vec::new(),
+            known_operators: Vec::new(),
             latest_runtime_receipt_id: None,
             latest_runtime_authority_path: None,
             latest_runtime_confidence_band: None,

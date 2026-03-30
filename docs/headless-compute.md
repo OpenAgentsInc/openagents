@@ -173,10 +173,26 @@ collecting or diffing perf runs.
 contributor-facing read path for the bounded external beta. It exposes the
 current contributor identity posture, contract and worker-role posture, trust
 tier, accepted or rejected or review counts, confirmed and provisional credit
-state, review-queue depth and SLA posture, the Tailnet-first M5 plus NVIDIA
-pilot roster, the retained governed-run and XTRAIN digests, recent submission
-digests, and the latest runtime disagreement receipt lineage without creating a
-separate beta-only control protocol.
+state, review-hold posture, review-queue depth and SLA posture, the current
+manual review owner, the Tailnet-first M5 plus NVIDIA pilot roster, the known
+external-operator roster, the retained governed-run and XTRAIN and operational
+report digests, recent submission state machines, credit dispositions, and the
+latest runtime disagreement receipt lineage without creating a separate beta-only
+control protocol.
+
+The contributor-beta pane snapshot now also carries the narrow lineage chain
+contributors actually need:
+
+- source receipt id
+- staging state
+- quarantine state
+- replay status
+- training impact
+- held-out impact
+- credit disposition and credit reason
+
+That is the bounded answer to "what happened to my submission?" without asking
+contributors to read repo code or raw ledgers.
 
 `autopilotctl status` now prints the same app-owned inventory projection summary
 the Provider Control pane uses, including the projection source, kernel snapshot

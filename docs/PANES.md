@@ -75,7 +75,9 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 - `Contributor Beta`
   - Narrow external-contributor control surface for the admitted compiled-agent family.
   - Connects contributor identity, accepts the governed beta contract, runs the retained benchmark pack, captures governed runtime disagreement receipts, and submits bounded worker-role output for replay generation, ranking and labeling, validator scoring, or bounded module training.
-  - Shows contributor identity, trust tier, environment class, capability summary, admitted family, contract versions, current worker role, accepted or review and rejected or quarantined counts, pending credit sats, credit-account linkage posture, and recent submission rows with digests and review reasons.
+  - Shows contributor identity, trust tier, environment class, capability summary, admitted family, contract versions, current worker role, accepted or review-required or rejected or quarantined counts, review owner and SLA posture, provisional or confirmed or review-hold credit posture, and the retained Tailnet digests.
+  - Recent submission rows now carry stable review reasons plus the narrow lineage chain that matters: staging state, quarantine state, replay status, training impact, held-out impact, and credit disposition.
+  - Also surfaces the first known-operator beta roster so a bounded operator can tell whether identity, capabilities, contract acceptance, admitted family selection, and latest submission state are ready without reading internal notes.
   - Makes the evidence boundary explicit: submissions can be accepted, quarantined, rejected, or routed for review, but the pane never grants promotion authority or live runtime authority to contributors.
   - Action: connect identity, accept contract, run benchmark pack, submit runtime receipt, cycle worker role, run bounded worker role.
 - `Rive Preview`
