@@ -18,6 +18,7 @@ const WALLET_PANEL_RADIUS: f32 = 3.0;
 const WALLET_CARD_RADIUS: f32 = 3.0;
 const WALLET_DATA_LABEL_COLUMN_WIDTH: f32 = 164.0;
 const WALLET_DATA_VALUE_GAP: f32 = 8.0;
+const WALLET_DATA_VALUE_RIGHT_PADDING: f32 = 18.0;
 
 pub fn wallet_details_scroll_bounds(content_bounds: Bounds) -> Bounds {
     spark_pane::scroll_viewport_bounds(content_bounds)
@@ -166,7 +167,7 @@ pub fn paint_wallet_pane(
 
     let mut y = layout.details_origin.y;
     let row_x = details_section_bounds.origin.x + 12.0;
-    let row_width = (details_section_bounds.size.width - 24.0).max(180.0);
+    let row_width = (details_section_bounds.size.width - 32.0).max(180.0);
     let row_chunk_len = wallet_data_value_chunk_len(row_width);
     if state == PaneLoadState::Loading {
         paint.scene.draw_text(paint.text.layout(
@@ -784,7 +785,7 @@ fn wallet_supporting_details_height(
     spark_wallet: &SparkPaneState,
     state: PaneLoadState,
 ) -> f32 {
-    let row_width = (section_width - 24.0).max(180.0);
+    let row_width = (section_width - 32.0).max(180.0);
     let row_chunk_len = wallet_data_value_chunk_len(row_width);
     let mut height = 48.0;
     if state == PaneLoadState::Loading {
@@ -870,7 +871,7 @@ fn wallet_supporting_details_height(
     if !spark_wallet.recent_payments.is_empty() {
         height += 16.0 + spark_wallet.recent_payments.iter().take(6).count() as f32 * 14.0;
     }
-    height + 12.0
+    height + 4.0
 }
 
 fn spark_wallet_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneState) -> f32 {
@@ -891,7 +892,12 @@ fn wallet_data_row_height(value: &str, value_chunk_len: usize) -> f32 {
 }
 
 fn wallet_data_value_chunk_len(row_width: f32) -> usize {
-    (((row_width - (WALLET_DATA_LABEL_COLUMN_WIDTH + WALLET_DATA_VALUE_GAP)).max(120.0)) / 6.2)
+    (((row_width
+        - (WALLET_DATA_LABEL_COLUMN_WIDTH
+            + WALLET_DATA_VALUE_GAP
+            + WALLET_DATA_VALUE_RIGHT_PADDING))
+    .max(120.0))
+        / 6.2)
         .floor() as usize
 }
 
