@@ -16,6 +16,8 @@ use crate::ui_style::AppTextRole;
 
 const WALLET_PANEL_RADIUS: f32 = 3.0;
 const WALLET_CARD_RADIUS: f32 = 3.0;
+const WALLET_DATA_LABEL_COLUMN_WIDTH: f32 = 164.0;
+const WALLET_DATA_VALUE_GAP: f32 = 8.0;
 
 pub fn wallet_details_scroll_bounds(content_bounds: Bounds) -> Bounds {
     spark_pane::scroll_viewport_bounds(content_bounds)
@@ -165,7 +167,7 @@ pub fn paint_wallet_pane(
     let mut y = layout.details_origin.y;
     let row_x = details_section_bounds.origin.x + 12.0;
     let row_width = (details_section_bounds.size.width - 24.0).max(180.0);
-    let row_chunk_len = (((row_width - 130.0).max(120.0)) / 6.2).floor() as usize;
+    let row_chunk_len = wallet_data_value_chunk_len(row_width);
     if state == PaneLoadState::Loading {
         paint.scene.draw_text(paint.text.layout(
             "Waiting for first refresh to hydrate balance and payment history.",
@@ -269,7 +271,7 @@ pub fn paint_wallet_pane(
             paint,
             row_x,
             y,
-            "Wallet fingerprint",
+            "Fingerprint",
             fingerprint.as_str(),
             row_chunk_len,
             row_width,
@@ -783,7 +785,7 @@ fn wallet_supporting_details_height(
     state: PaneLoadState,
 ) -> f32 {
     let row_width = (section_width - 24.0).max(180.0);
-    let row_chunk_len = (((row_width - 130.0).max(120.0)) / 6.2).floor() as usize;
+    let row_chunk_len = wallet_data_value_chunk_len(row_width);
     let mut height = 48.0;
     if state == PaneLoadState::Loading {
         height += 16.0;
@@ -888,6 +890,11 @@ fn wallet_data_row_height(value: &str, value_chunk_len: usize) -> f32 {
     split_text_for_display(value, value_chunk_len.max(1)).len() as f32 * 18.0 + 13.0
 }
 
+fn wallet_data_value_chunk_len(row_width: f32) -> usize {
+    (((row_width - (WALLET_DATA_LABEL_COLUMN_WIDTH + WALLET_DATA_VALUE_GAP)).max(120.0)) / 6.2)
+        .floor() as usize
+}
+
 fn paint_wallet_scrollbar(
     viewport: Bounds,
     content_height: f32,
@@ -938,7 +945,7 @@ fn paint_wallet_data_row(
 ) -> f32 {
     let label_style = app_text_style(AppTextRole::FormLabel);
     let value_style = app_text_style(AppTextRole::FormValue);
-    let label_column_width = 122.0;
+    let label_column_width = WALLET_DATA_LABEL_COLUMN_WIDTH;
     let mut line_y = y;
     paint.scene.draw_text(paint.text.layout_mono(
         &format!("{label}:"),
@@ -950,7 +957,7 @@ fn paint_wallet_data_row(
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
-            Point::new(x + label_column_width, line_y),
+            Point::new(x + label_column_width + WALLET_DATA_VALUE_GAP, line_y),
             value_style.font_size,
             value_color,
         ));
@@ -1511,7 +1518,7 @@ fn pay_invoice_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneSt
     let layout = spark_pane::pay_invoice_layout_with_scroll(content_bounds, 0.0);
     let mut height = (layout.details_origin.y - content_bounds.origin.y).max(0.0);
     let row_width = (content_bounds.size.width - 48.0).max(180.0);
-    let row_chunk_len = ((row_width - 122.0) / 6.1).max(18.0) as usize;
+    let row_chunk_len = wallet_data_value_chunk_len(row_width).max(18);
 
     height += 34.0 + 8.0;
     if pay_invoice_view_state(spark_wallet) == PaneLoadState::Loading {
