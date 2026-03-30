@@ -98,6 +98,21 @@ pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> b
         || state.job_history_inputs.search_job_id.is_focused()
 }
 
+pub(super) fn non_chat_text_input_focused(state: &crate::app_state::RenderState) -> bool {
+    state.calculator_inputs.expression.is_focused()
+        || spark_inputs_focused(state)
+        || mission_control_inputs_focused(state)
+        || pay_invoice_inputs_focused(state)
+        || create_invoice_inputs_focused(state)
+        || network_requests_inputs_focused(state)
+        || local_inference_inputs_focused(state)
+        || apple_fm_workbench_inputs_focused(state)
+        || settings_inputs_focused(state)
+        || credentials_inputs_focused(state)
+        || state.relay_connections_inputs.relay_url.is_focused()
+        || state.job_history_inputs.search_job_id.is_focused()
+}
+
 pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderState) {
     state.calculator_inputs.expression.blur();
     state.spark_inputs.invoice_amount.blur();
