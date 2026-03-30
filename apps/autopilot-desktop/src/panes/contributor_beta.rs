@@ -8,7 +8,7 @@ use crate::pane_renderer::{
 };
 use crate::pane_system::{contributor_beta_action_button_bounds, contributor_beta_row_bounds};
 
-const MAX_ROWS: usize = 5;
+const MAX_ROWS: usize = 4;
 
 pub fn paint(
     content_bounds: Bounds,
@@ -164,6 +164,13 @@ pub fn paint(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "States",
+        &pane_state.submission_state_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Accepted / review",
         &format!(
             "{} / {}",
@@ -186,18 +193,22 @@ pub fn paint(
         y,
         "Review queue",
         &format!(
-            "{} ({})",
-            pane_state.review_queue_depth, pane_state.review_sla_label
+            "{} ({}) :: owner {}",
+            pane_state.review_queue_depth,
+            pane_state.review_sla_label,
+            pane_state.review_owner_label
         ),
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Confirmed / provisional",
+        "Confirmed / provisional / hold",
         &format!(
-            "{} / {} sats",
-            pane_state.confirmed_credit_sats, pane_state.pending_credit_sats
+            "{} / {} / {} sats",
+            pane_state.confirmed_credit_sats,
+            pane_state.pending_credit_sats,
+            pane_state.review_hold_credit_sats
         ),
     );
     y = paint_multiline_phrase(
@@ -228,19 +239,34 @@ pub fn paint(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Credit policy",
+        &pane_state.credit_policy_summary,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Pilot digests",
         &format!(
-            "run {} :: xtrain {}",
+            "run {} :: xtrain {} :: report {}",
             compact_digest(&pane_state.tailnet_last_governed_run_digest),
-            compact_digest(&pane_state.tailnet_last_xtrain_receipt_digest)
+            compact_digest(&pane_state.tailnet_last_xtrain_receipt_digest),
+            compact_digest(&pane_state.tailnet_last_operational_report_digest)
         ),
     );
-    let _ = paint_multiline_phrase(
+    y = paint_multiline_phrase(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Latest runtime",
         &latest_runtime_summary(pane_state),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Known operators",
+        &known_operator_summary(pane_state),
     );
 
     let list_title_y = content_bounds.max_y() - 176.0;
@@ -271,12 +297,19 @@ pub fn paint(
             .as_deref()
             .map(|reason| {
                 format!(
-                    "{} :: {}",
+                    "{} :: {} :: {}",
                     review_reason_label(reason),
+                    lineage_summary(row),
                     compact_digest(&row.digest)
                 )
             })
-            .unwrap_or_else(|| compact_digest(&row.digest));
+            .unwrap_or_else(|| {
+                format!(
+                    "{} :: {}",
+                    lineage_summary(row),
+                    compact_digest(&row.digest)
+                )
+            });
         let lineage = row
             .source_receipt_id
             .as_deref()
@@ -309,7 +342,7 @@ fn tailnet_nodes_summary(pane_state: &ContributorBetaPaneState) -> String {
 fn latest_runtime_summary(pane_state: &ContributorBetaPaneState) -> String {
     match pane_state.latest_runtime_receipt_id.as_deref() {
         Some(receipt_id) => format!(
-            "{} :: {} :: {}",
+            "{} :: {} :: {} :: review path replay_candidate_pending_review",
             receipt_id,
             pane_state
                 .latest_runtime_authority_path
@@ -326,10 +359,46 @@ fn latest_runtime_summary(pane_state: &ContributorBetaPaneState) -> String {
 
 fn review_reason_label(reason: &str) -> &'static str {
     match reason {
-        "grounded_synthesis_drift" => "grounded-synthesis drift",
+        "contract_mismatch" => "contract mismatch",
+        "digest_mismatch" => "digest mismatch",
+        "schema_violation" => "schema violation",
+        "low_signal_duplicate" => "low-signal duplicate",
+        "confidence_anomaly" => "confidence anomaly",
+        "disagreement_retained_for_replay_review" => "replay-review disagreement",
         "no_accepted_benchmark_lineage" => "no accepted benchmark lineage",
         _ => "manual review",
     }
+}
+
+fn lineage_summary(row: &crate::app_state::ContributorBetaSubmissionRow) -> String {
+    format!(
+        "{} -> {} -> {} -> {} -> {}",
+        row.staging_state,
+        row.quarantine_state,
+        row.replay_status,
+        row.training_impact,
+        row.credit_disposition.label()
+    )
+}
+
+fn known_operator_summary(pane_state: &ContributorBetaPaneState) -> String {
+    if pane_state.known_operators.is_empty() {
+        return "no known external operators admitted yet".to_string();
+    }
+    pane_state
+        .known_operators
+        .iter()
+        .map(|operator| {
+            format!(
+                "{} {} {} {}",
+                operator.display_name,
+                operator.contract_status,
+                operator.readiness_status,
+                operator.credit_posture
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 fn compact_digest(digest: &str) -> String {
