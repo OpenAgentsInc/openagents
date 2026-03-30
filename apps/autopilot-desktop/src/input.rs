@@ -533,15 +533,17 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 return;
             }
 
-            let chat_key_handled = map_winit_key(&event.logical_key).is_some_and(|key| {
-                dispatch_chat_input_event(
-                    state,
-                    &InputEvent::KeyDown {
-                        key,
-                        modifiers: state.input_modifiers,
-                    },
-                )
-            });
+            let route_key_to_chat = !non_chat_text_input_focused(state);
+            let chat_key_handled = route_key_to_chat
+                && map_winit_key(&event.logical_key).is_some_and(|key| {
+                    dispatch_chat_input_event(
+                        state,
+                        &InputEvent::KeyDown {
+                            key,
+                            modifiers: state.input_modifiers,
+                        },
+                    )
+                });
 
             if chat_key_handled
                 || dispatch_keyboard_submit_actions(state, &event.logical_key)
@@ -4054,6 +4056,9 @@ fn handle_chat_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
 ) -> bool {
+    if non_chat_text_input_focused(state) {
+        return false;
+    }
     if (state.chat_inputs.composer.is_focused() || state.chat_inputs.thread_search.is_focused())
         && is_chat_terminal_shortcut(logical_key, state.input_modifiers)
     {
