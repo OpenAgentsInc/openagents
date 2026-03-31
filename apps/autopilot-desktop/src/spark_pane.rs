@@ -36,7 +36,9 @@ pub enum SparkPaneAction {
     GenerateBitcoinAddress,
     CreateNewWallet,
     CopySparkAddress,
+    CopyBitcoinAddress,
     CreateInvoice,
+    CopyInvoice,
     SendPayment,
 }
 
@@ -58,11 +60,16 @@ pub struct SparkPaneLayout {
     pub refresh_button: Bounds,
     pub spark_address_button: Bounds,
     pub bitcoin_address_button: Bounds,
+    pub spark_address_value: Bounds,
+    pub bitcoin_address_value: Bounds,
+    pub invoice_value: Bounds,
     pub copy_spark_address_button: Bounds,
+    pub copy_bitcoin_address_button: Bounds,
     pub receive_section_bounds: Bounds,
     pub send_section_bounds: Bounds,
     pub invoice_amount_input: Bounds,
     pub create_invoice_button: Bounds,
+    pub copy_invoice_button: Bounds,
     pub send_request_input: Bounds,
     pub send_amount_input: Bounds,
     pub send_payment_button: Bounds,
@@ -124,55 +131,80 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
     let utility_width = (usable_width * 0.24).clamp(138.0, 186.0);
     let controls_y = utility_section_bounds.origin.y + 52.0;
     let refresh_button = Bounds::new(utility_content_x, controls_y, utility_width, CONTROL_HEIGHT);
-    let copy_spark_address_button = Bounds::new(
-        refresh_button.origin.x + refresh_button.size.width + GAP,
-        controls_y,
-        utility_width,
-        CONTROL_HEIGHT,
-    );
-
     let receive_section_y = utility_section_bounds.max_y() + SECTION_TO_SECTION_GAP;
-    let receive_section_height = SECTION_HEADER_HEIGHT
-        + SECTION_HEADER_TO_CONTROLS_GAP
-        + CONTROL_HEIGHT
-        + SECTION_CONTROLS_TO_FORM_GAP
-        + CONTROL_HEIGHT
-        + FLOW_SECTION_BOTTOM_PADDING;
-    let receive_section_bounds =
-        Bounds::new(origin_x, receive_section_y, usable_width, receive_section_height);
-    let receive_content_x = receive_section_bounds.origin.x + FLOW_SECTION_INSET;
-    let receive_content_width =
-        (receive_section_bounds.size.width - FLOW_SECTION_INSET * 2.0).max(180.0);
+    let receive_content_x = origin_x + FLOW_SECTION_INSET;
+    let receive_content_width = (usable_width - FLOW_SECTION_INSET * 2.0).max(180.0);
+    let copy_button_size = CONTROL_HEIGHT;
+    let value_gap = 8.0;
+    let value_width = (receive_content_width - copy_button_size - GAP).max(120.0);
+    let spark_row_gap = 12.0;
+    let value_row_height = 30.0;
+    let invoice_row_height = 50.0;
+
     let receive_y = receive_section_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
-    let receive_width = ((receive_content_width - GAP) / 2.0).max(140.0);
-    let spark_address_button = Bounds::new(
-        receive_content_x,
-        receive_y,
-        receive_width,
-        CONTROL_HEIGHT,
-    );
-    let bitcoin_address_button = Bounds::new(
-        spark_address_button.origin.x + spark_address_button.size.width + GAP,
-        receive_y,
-        receive_width,
-        CONTROL_HEIGHT,
+    let action_button_width = (receive_content_width * 0.40).clamp(180.0, 300.0);
+    let spark_address_button = Bounds::new(receive_content_x, receive_y, action_button_width, CONTROL_HEIGHT);
+    let spark_value_y = spark_address_button.max_y() + value_gap;
+    let spark_address_value =
+        Bounds::new(receive_content_x, spark_value_y, value_width, value_row_height);
+    let copy_spark_address_button = Bounds::new(
+        spark_address_value.max_x() + GAP,
+        spark_value_y + ((value_row_height - copy_button_size).max(0.0) * 0.5),
+        copy_button_size,
+        copy_button_size,
     );
 
-    let invoice_row_y = receive_y + CONTROL_HEIGHT + SECTION_CONTROLS_TO_FORM_GAP;
-    let invoice_input_width = (receive_content_width * 0.28).clamp(110.0, 180.0);
+    let bitcoin_button_y = spark_address_value.max_y() + spark_row_gap;
+    let bitcoin_address_button = Bounds::new(
+        receive_content_x,
+        bitcoin_button_y,
+        action_button_width,
+        CONTROL_HEIGHT,
+    );
+    let bitcoin_value_y = bitcoin_address_button.max_y() + value_gap;
+    let bitcoin_address_value =
+        Bounds::new(receive_content_x, bitcoin_value_y, value_width, value_row_height);
+    let copy_bitcoin_address_button = Bounds::new(
+        bitcoin_address_value.max_x() + GAP,
+        bitcoin_value_y + ((value_row_height - copy_button_size).max(0.0) * 0.5),
+        copy_button_size,
+        copy_button_size,
+    );
+
+    let invoice_row_y = bitcoin_address_value.max_y() + spark_row_gap;
+    let invoice_input_width = (receive_content_width * 0.22).clamp(104.0, 168.0);
     let invoice_amount_input =
         Bounds::new(receive_content_x, invoice_row_y, invoice_input_width, CONTROL_HEIGHT);
+    let create_invoice_width = (receive_content_width - invoice_input_width - GAP).max(140.0);
     let create_invoice_button = Bounds::new(
         invoice_amount_input.origin.x + invoice_amount_input.size.width + GAP,
         invoice_row_y,
-        (receive_content_width - invoice_input_width - GAP).max(120.0),
+        create_invoice_width,
         CONTROL_HEIGHT,
     );
+    let invoice_value_y = create_invoice_button.max_y() + value_gap;
+    let invoice_value = Bounds::new(
+        receive_content_x,
+        invoice_value_y,
+        value_width,
+        invoice_row_height,
+    );
+    let copy_invoice_button = Bounds::new(
+        invoice_value.max_x() + GAP,
+        invoice_value_y + ((invoice_row_height - copy_button_size).max(0.0) * 0.5),
+        copy_button_size,
+        copy_button_size,
+    );
+    let receive_section_height = invoice_value.max_y() - receive_section_y + FLOW_SECTION_BOTTOM_PADDING;
+    let receive_section_bounds =
+        Bounds::new(origin_x, receive_section_y, usable_width, receive_section_height.max(120.0));
 
     let send_section_y = receive_section_bounds.max_y() + SECTION_TO_SECTION_GAP;
-    let send_section_height = SECTION_HEADER_TO_FORM_GAP
+    let send_section_controls_top = send_section_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
+    let send_section_height = SECTION_HEADER_HEIGHT
+        + SECTION_HEADER_TO_CONTROLS_GAP
         + CONTROL_HEIGHT
-        + SECTION_CTA_ROW_GAP
+        + GAP
         + CONTROL_HEIGHT
         + FLOW_SECTION_BOTTOM_PADDING;
     let send_section_bounds =
@@ -180,11 +212,11 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
     let send_content_x = send_section_bounds.origin.x + FLOW_SECTION_INSET;
     let send_content_width =
         (send_section_bounds.size.width - FLOW_SECTION_INSET * 2.0).max(180.0);
-    let send_request_y = send_section_y + SECTION_HEADER_TO_FORM_GAP;
+    let send_request_y = send_section_controls_top;
     let send_request_input =
         Bounds::new(send_content_x, send_request_y, send_content_width, CONTROL_HEIGHT);
 
-    let send_row_y = send_request_y + CONTROL_HEIGHT + SECTION_CTA_ROW_GAP;
+    let send_row_y = send_request_y + CONTROL_HEIGHT + GAP;
     let send_amount_width = (send_content_width * 0.28).clamp(110.0, 180.0);
     let send_amount_input =
         Bounds::new(send_content_x, send_row_y, send_amount_width, CONTROL_HEIGHT);
@@ -207,11 +239,16 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
         refresh_button,
         spark_address_button,
         bitcoin_address_button,
+        spark_address_value,
+        bitcoin_address_value,
+        invoice_value,
         copy_spark_address_button,
+        copy_bitcoin_address_button,
         receive_section_bounds,
         send_section_bounds,
         invoice_amount_input,
         create_invoice_button,
+        copy_invoice_button,
         send_request_input,
         send_amount_input,
         send_payment_button,
@@ -233,8 +270,14 @@ pub fn hit_action(layout: SparkPaneLayout, point: Point) -> Option<SparkPaneActi
     if layout.copy_spark_address_button.contains(point) {
         return Some(SparkPaneAction::CopySparkAddress);
     }
+    if layout.copy_bitcoin_address_button.contains(point) {
+        return Some(SparkPaneAction::CopyBitcoinAddress);
+    }
     if layout.create_invoice_button.contains(point) {
         return Some(SparkPaneAction::CreateInvoice);
+    }
+    if layout.copy_invoice_button.contains(point) {
+        return Some(SparkPaneAction::CopyInvoice);
     }
     if layout.send_payment_button.contains(point) {
         return Some(SparkPaneAction::SendPayment);
@@ -349,10 +392,10 @@ pub fn pay_invoice_layout_with_scroll(
     let form_width = (usable_width * 0.82).clamp(300.0, 620.0);
     let origin_x = pane_origin_x + ((usable_width - form_width) * 0.5);
 
-    let request_y = origin_y + SECTION_HEADER_TO_FORM_GAP;
+    let request_y = origin_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
     let payment_request_input = Bounds::new(origin_x, request_y, form_width, CONTROL_HEIGHT);
 
-    let send_row_y = request_y + CONTROL_HEIGHT + SECTION_CTA_ROW_GAP;
+    let send_row_y = request_y + CONTROL_HEIGHT + GAP;
     let amount_width = (form_width * 0.24).clamp(110.0, 148.0);
     let send_width = (form_width * 0.34).clamp(152.0, 208.0);
     let amount_input = Bounds::new(origin_x, send_row_y, amount_width, CONTROL_HEIGHT);
@@ -436,6 +479,24 @@ mod tests {
         assert_eq!(
             hit_action(layout, copy),
             Some(SparkPaneAction::CopySparkAddress)
+        );
+
+        let copy_bitcoin = Point::new(
+            layout.copy_bitcoin_address_button.origin.x + 3.0,
+            layout.copy_bitcoin_address_button.origin.y + 3.0,
+        );
+        assert_eq!(
+            hit_action(layout, copy_bitcoin),
+            Some(SparkPaneAction::CopyBitcoinAddress)
+        );
+
+        let copy_invoice = Point::new(
+            layout.copy_invoice_button.origin.x + 3.0,
+            layout.copy_invoice_button.origin.y + 3.0,
+        );
+        assert_eq!(
+            hit_action(layout, copy_invoice),
+            Some(SparkPaneAction::CopyInvoice)
         );
     }
 

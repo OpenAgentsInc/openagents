@@ -14764,6 +14764,42 @@ pub(super) fn run_spark_action(
         return true;
     }
 
+    if action == SparkPaneAction::CopyBitcoinAddress {
+        state.spark_wallet.last_error = None;
+        let notice = match state.spark_wallet.bitcoin_address.as_deref() {
+            Some(address) if !address.trim().is_empty() => match copy_to_clipboard(address) {
+                Ok(()) => "Copied Bitcoin address to clipboard".to_string(),
+                Err(error) => format!("Failed to copy Bitcoin address: {error}"),
+            },
+            _ => "No Bitcoin address available yet. Generate one first.".to_string(),
+        };
+
+        if notice.starts_with("Failed") || notice.starts_with("No Bitcoin address available") {
+            state.spark_wallet.last_error = Some(notice);
+        } else {
+            state.spark_wallet.last_action = Some(notice);
+        }
+        return true;
+    }
+
+    if action == SparkPaneAction::CopyInvoice {
+        state.spark_wallet.last_error = None;
+        let notice = match state.spark_wallet.last_invoice.as_deref() {
+            Some(invoice) if !invoice.trim().is_empty() => match copy_to_clipboard(invoice) {
+                Ok(()) => "Copied Lightning invoice to clipboard".to_string(),
+                Err(error) => format!("Failed to copy Lightning invoice: {error}"),
+            },
+            _ => "No Lightning invoice generated yet. Create one first.".to_string(),
+        };
+
+        if notice.starts_with("Failed") || notice.starts_with("No Lightning invoice generated") {
+            state.spark_wallet.last_error = Some(notice);
+        } else {
+            state.spark_wallet.last_action = Some(notice);
+        }
+        return true;
+    }
+
     let command = match build_spark_command_for_action(
         action,
         state.spark_inputs.identity_path.get_value(),
@@ -14873,11 +14909,17 @@ pub(super) fn build_spark_command_for_action(
         SparkPaneAction::CopySparkAddress => {
             Err("Copy Spark address action is handled directly in UI".to_string())
         }
+        SparkPaneAction::CopyBitcoinAddress => {
+            Err("Copy Bitcoin address action is handled directly in UI".to_string())
+        }
         SparkPaneAction::CreateInvoice => Ok(SparkWalletCommand::CreateBolt11Invoice {
             amount_sats: parse_positive_amount_str(invoice_amount, "Invoice amount")?,
             description: Some("OpenAgents Lightning receive".to_string()),
             expiry_seconds: Some(3600),
         }),
+        SparkPaneAction::CopyInvoice => {
+            Err("Copy Lightning invoice action is handled directly in UI".to_string())
+        }
         SparkPaneAction::SendPayment => {
             let request = validate_lightning_payment_request(send_request)?;
             let amount = resolve_lightning_send_amount(send_amount, &request)?;
@@ -14945,6 +14987,12 @@ fn resolve_lightning_send_amount(
             Ok(None)
         }
     } else {
+        if !lightning_invoice_requires_amount(payment_request) {
+            return Err(
+                "Amount is already embedded in this invoice. Clear the amount field and try again."
+                    .to_string(),
+            );
+        }
         Ok(Some(parse_positive_amount_str(amount_sats, "Send amount")?))
     }
 }

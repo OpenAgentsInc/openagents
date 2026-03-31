@@ -423,14 +423,17 @@ impl Default for SparkPaneInputs {
             invoice_amount: wallet_text_input(
                 TextInput::new()
                     .value("1000")
-                    .placeholder("Lightning invoice sats"),
-            ),
+                    .placeholder("1000"),
+            )
+            .padding(36.0, 6.0),
             send_request: wallet_text_input(
                 TextInput::new()
-                    .placeholder("Lightning invoice / payment request")
+                    .placeholder("Lightning invoice / payment request (ln...)")
                     .mono(true),
             ),
-            send_amount: wallet_text_input(TextInput::new().placeholder("Send sats (optional)")),
+            send_amount: wallet_text_input(
+                TextInput::new().placeholder("Amount sats (optional)"),
+            ),
             identity_path: wallet_text_input(
                 TextInput::new()
                     .placeholder("Wallet seed path (identity mnemonic)")
@@ -452,9 +455,11 @@ impl Default for PayInvoicePaneInputs {
     fn default() -> Self {
         Self {
             payment_request: wallet_text_input(
-                TextInput::new().placeholder("Lightning invoice / payment request"),
+                TextInput::new().placeholder("Lightning invoice / payment request (ln...)"),
             ),
-            amount_sats: wallet_text_input(TextInput::new().placeholder("Send sats (optional)")),
+            amount_sats: wallet_text_input(
+                TextInput::new().placeholder("Amount sats (optional)"),
+            ),
         }
     }
 }

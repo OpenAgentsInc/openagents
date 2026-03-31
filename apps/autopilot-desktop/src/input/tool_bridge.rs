@@ -4899,11 +4899,16 @@ fn pane_action_to_hit_action(
             "generate_spark_address" => {
                 Ok(PaneHitAction::Spark(SparkPaneAction::GenerateSparkAddress))
             }
+            "copy_spark_address" => Ok(PaneHitAction::Spark(SparkPaneAction::CopySparkAddress)),
+            "copy_bitcoin_address" => {
+                Ok(PaneHitAction::Spark(SparkPaneAction::CopyBitcoinAddress))
+            }
             "generate_bitcoin_address" => Ok(PaneHitAction::Spark(
                 SparkPaneAction::GenerateBitcoinAddress,
             )),
             "create_new_wallet" => Ok(PaneHitAction::Spark(SparkPaneAction::CreateNewWallet)),
             "create_invoice" => Ok(PaneHitAction::Spark(SparkPaneAction::CreateInvoice)),
+            "copy_invoice" => Ok(PaneHitAction::Spark(SparkPaneAction::CopyInvoice)),
             "send_payment" => Ok(PaneHitAction::Spark(SparkPaneAction::SendPayment)),
             _ => unsupported(),
         },

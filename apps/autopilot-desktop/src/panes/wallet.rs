@@ -12,13 +12,14 @@ use crate::pane_renderer::{
 use crate::pane_system::pane_content_bounds;
 use crate::spark_pane;
 use crate::spark_wallet::SparkPaneState;
-use crate::ui_style::AppTextRole;
+use crate::ui_style::{AppButtonRole, AppTextRole};
 
 const WALLET_PANEL_RADIUS: f32 = 3.0;
 const WALLET_CARD_RADIUS: f32 = 3.0;
 const WALLET_DATA_LABEL_COLUMN_WIDTH: f32 = 164.0;
 const WALLET_DATA_VALUE_GAP: f32 = 8.0;
-const WALLET_DATA_VALUE_RIGHT_PADDING: f32 = 18.0;
+const WALLET_DATA_VALUE_RIGHT_PADDING: f32 = 28.0;
+const WALLET_SUPPORTING_DETAILS_BOTTOM_PADDING: f32 = 12.0;
 
 pub fn wallet_details_scroll_bounds(content_bounds: Bounds) -> Bounds {
     spark_pane::scroll_viewport_bounds(content_bounds)
@@ -82,33 +83,60 @@ pub fn paint_wallet_pane(
         paint,
     );
 
-    let label_style = app_text_style(AppTextRole::FormLabel);
     paint_wallet_utility_section(
         layout.utility_section_bounds,
         "Wallet utilities",
-        "Refresh state or copy your Spark address.",
+        "Refresh wallet state before running receive or send actions.",
         paint,
     );
-    paint_secondary_button(layout.refresh_button, "Refresh wallet", paint);
-    paint_secondary_button(layout.copy_spark_address_button, "Copy Spark", paint);
+    paint_secondary_button(layout.refresh_button, "Refresh Wallet", paint);
 
     paint_wallet_flow_section(
         layout.receive_section_bounds,
         "Receive",
-        "Create or refresh addresses, then generate a Lightning invoice.",
+        "Generate receive targets and copy each value directly from its output row.",
         paint,
     );
-    paint_secondary_button(layout.spark_address_button, "Spark receive", paint);
-    paint_secondary_button(layout.bitcoin_address_button, "Bitcoin receive", paint);
-    paint_primary_button(layout.create_invoice_button, "Create Lightning", paint);
+    paint_secondary_button(layout.spark_address_button, "Generate Spark Address", paint);
+    paint_wallet_receive_value_row(
+        layout.spark_address_value,
+        spark_wallet
+            .spark_address
+            .as_deref()
+            .unwrap_or("No Spark address yet. Generate one first."),
+        paint,
+    );
+    paint_wallet_copy_icon_button(layout.copy_spark_address_button, paint);
+
+    paint_secondary_button(layout.bitcoin_address_button, "Generate Bitcoin Address", paint);
+    paint_wallet_receive_value_row(
+        layout.bitcoin_address_value,
+        spark_wallet
+            .bitcoin_address
+            .as_deref()
+            .unwrap_or("No Bitcoin address yet. Generate one first."),
+        paint,
+    );
+    paint_wallet_copy_icon_button(layout.copy_bitcoin_address_button, paint);
+
+    paint_wallet_solid_blue_button(layout.create_invoice_button, "Create Lightning Invoice", paint);
+    paint_wallet_receive_value_row(
+        layout.invoice_value,
+        spark_wallet
+            .last_invoice
+            .as_deref()
+            .unwrap_or("No Lightning invoice yet. Create one first."),
+        paint,
+    );
+    paint_wallet_copy_icon_button(layout.copy_invoice_button, paint);
 
     paint_wallet_flow_section(
         layout.send_section_bounds,
         "Send",
-        "Paste a request or invoice, then optionally set the sats to send.",
+        "Paste a Lightning request (ln...). Amount is required only for zero-amount invoices. On-chain addresses are not supported here.",
         paint,
     );
-    paint_primary_button(layout.send_payment_button, "Send payment", paint);
+    paint_wallet_solid_blue_button(layout.send_payment_button, "Send Payment", paint);
     let details_section_bounds = Bounds::new(
         layout.details_section_bounds.origin.x,
         layout.details_section_bounds.origin.y,
@@ -146,28 +174,19 @@ pub fn paint_wallet_pane(
         .send_amount
         .paint(layout.send_amount_input, paint);
 
-    paint_wallet_input_label(
-        paint,
-        layout.invoice_amount_input,
-        "Lightning invoice sats",
-        label_style,
-    );
-    paint_wallet_input_label(
-        paint,
-        layout.send_request_input,
-        "Send request / invoice",
-        label_style,
-    );
-    paint_wallet_input_label(
-        paint,
-        layout.send_amount_input,
-        "Send sats (optional)",
-        label_style,
-    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        "₿",
+        Point::new(
+            layout.invoice_amount_input.origin.x + 11.0,
+            layout.invoice_amount_input.origin.y + 9.0,
+        ),
+        10.0,
+        app_text_style(AppTextRole::Helper).color.with_alpha(0.76),
+    ));
 
     let mut y = layout.details_origin.y;
     let row_x = details_section_bounds.origin.x + 12.0;
-    let row_width = (details_section_bounds.size.width - 32.0).max(180.0);
+    let row_width = (details_section_bounds.size.width - 40.0).max(180.0);
     let row_chunk_len = wallet_data_value_chunk_len(row_width);
     if state == PaneLoadState::Loading {
         paint.scene.draw_text(paint.text.layout(
@@ -457,6 +476,7 @@ fn paint_wallet_overview(
     connection: &str,
     paint: &mut PaintContext,
 ) {
+    const OVERVIEW_CONTENT_TOP_PADDING: f32 = 6.0;
     paint_wallet_panel_shell(bounds, state_color, 0.18, true, paint);
     paint_wallet_panel_heading(bounds, "WALLET OVERVIEW", state_color, true, paint);
 
@@ -464,7 +484,7 @@ fn paint_wallet_overview(
     let section_style = app_text_style(AppTextRole::SectionHeading);
     let value_style = app_text_style(AppTextRole::FormValue);
     let balance_x = bounds.origin.x + 18.0;
-    let balance_y = bounds.origin.y + 24.0;
+    let balance_y = bounds.origin.y + 24.0 + OVERVIEW_CONTENT_TOP_PADDING;
     let status_chip = Bounds::new(balance_x, balance_y - 2.0, 164.0, 24.0);
     paint.scene.draw_quad(
         Quad::new(status_chip)
@@ -491,13 +511,23 @@ fn paint_wallet_overview(
         section_style.font_size,
         helper_style.color.with_alpha(0.74),
     ));
-    paint.scene.draw_text(paint.text.layout_mono(
+    let balance_value_font_size = (value_style.font_size + 16.0).max(30.0);
+    let balance_value_run = paint.text.layout_mono(
         balance_sats,
-        Point::new(balance_x, balance_y + 70.0),
-        (value_style.font_size + 16.0).max(30.0),
+        Point::new(balance_x, balance_y + 62.0),
+        balance_value_font_size,
         value_style.color,
-    ));
-    let pending_chip = Bounds::new(balance_x + 118.0, balance_y + 60.0, 122.0, 22.0);
+    );
+    let balance_value_width = balance_value_run.bounds().size.width;
+    paint.scene.draw_text(balance_value_run);
+    let card_width = 186.0;
+    let card_height = 34.0;
+    let right_x = bounds.origin.x + bounds.size.width - card_width - 18.0;
+    let pending_width = 122.0;
+    let pending_x_min = balance_x + 118.0;
+    let pending_x_max = right_x - pending_width - 10.0;
+    let pending_x = (balance_x + balance_value_width + 16.0).clamp(pending_x_min, pending_x_max);
+    let pending_chip = Bounds::new(pending_x, balance_y + 58.0, pending_width, 22.0);
     paint.scene.draw_quad(
         Quad::new(pending_chip)
             .with_background(theme::bg::SURFACE.with_alpha(0.18))
@@ -511,9 +541,6 @@ fn paint_wallet_overview(
         helper_style.color.with_alpha(0.76),
     ));
 
-    let card_width = 186.0;
-    let card_height = 34.0;
-    let right_x = bounds.origin.x + bounds.size.width - card_width - 18.0;
     let network_bounds = Bounds::new(right_x, balance_y + 2.0, card_width, card_height);
     let connection_bounds = Bounds::new(right_x, balance_y + 44.0, card_width, card_height);
     paint_wallet_summary_card(
@@ -645,16 +672,22 @@ fn paint_wallet_panel_shell(
     show_left_rail: bool,
     paint: &mut PaintContext,
 ) {
+    let base_border = theme::border::DEFAULT.with_alpha(0.16);
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(theme::bg::SURFACE.with_alpha(background_alpha))
-            .with_border(accent.with_alpha(0.52), 1.0)
+            .with_border(base_border, 1.0)
             .with_corner_radius(WALLET_PANEL_RADIUS),
     );
+    // Keep a slightly brighter top edge while side/bottom borders stay dim.
     paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_border(accent.with_alpha(0.06), 1.0)
-            .with_corner_radius(WALLET_PANEL_RADIUS),
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width.max(0.0),
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.24)),
     );
     if show_left_rail {
         paint.scene.draw_quad(
@@ -785,7 +818,7 @@ fn wallet_supporting_details_height(
     spark_wallet: &SparkPaneState,
     state: PaneLoadState,
 ) -> f32 {
-    let row_width = (section_width - 32.0).max(180.0);
+    let row_width = (section_width - 40.0).max(180.0);
     let row_chunk_len = wallet_data_value_chunk_len(row_width);
     let mut height = 48.0;
     if state == PaneLoadState::Loading {
@@ -871,7 +904,7 @@ fn wallet_supporting_details_height(
     if !spark_wallet.recent_payments.is_empty() {
         height += 16.0 + spark_wallet.recent_payments.iter().take(6).count() as f32 * 14.0;
     }
-    height + 4.0
+    height + WALLET_SUPPORTING_DETAILS_BOTTOM_PADDING
 }
 
 fn spark_wallet_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneState) -> f32 {
@@ -882,7 +915,8 @@ fn spark_wallet_content_height(content_bounds: Bounds, spark_wallet: &SparkPaneS
         spark_wallet,
         state,
     );
-    let content_top = content_bounds.origin.y + 12.0;
+    let viewport = spark_pane::scroll_viewport_bounds(content_bounds);
+    let content_top = viewport.origin.y;
     let content_bottom = layout.details_section_bounds.origin.y + details_height;
     (content_bottom - content_top).max(0.0)
 }
@@ -892,13 +926,12 @@ fn wallet_data_row_height(value: &str, value_chunk_len: usize) -> f32 {
 }
 
 fn wallet_data_value_chunk_len(row_width: f32) -> usize {
-    (((row_width
-        - (WALLET_DATA_LABEL_COLUMN_WIDTH
-            + WALLET_DATA_VALUE_GAP
-            + WALLET_DATA_VALUE_RIGHT_PADDING))
-    .max(120.0))
-        / 6.2)
-        .floor() as usize
+    let available_width = (row_width
+        - (WALLET_DATA_LABEL_COLUMN_WIDTH + WALLET_DATA_VALUE_GAP + WALLET_DATA_VALUE_RIGHT_PADDING))
+    .max(48.0);
+    let value_font_size = app_text_style(AppTextRole::FormValue).font_size;
+    let estimated_char_width = (value_font_size * 0.66).max(1.0);
+    (available_width / estimated_char_width).floor().max(1.0) as usize
 }
 
 fn paint_wallet_scrollbar(
@@ -975,6 +1008,70 @@ fn paint_wallet_data_row(
             .with_background(theme::border::DEFAULT.with_alpha(0.08)),
     );
     divider_y + 11.0
+}
+
+fn paint_wallet_solid_blue_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    let background = Hsla::from_hex(crate::ui_style::button::PRIMARY_BORDER);
+    let border = Hsla::from_hex(crate::ui_style::button::PRIMARY_BORDER);
+    let text_color = Hsla::from_hex(0xFFFFFF);
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(background)
+            .with_border(border, 1.0)
+            .with_corner_radius(crate::ui_style::button::SECONDARY_CORNER_RADIUS),
+    );
+    let font_size = crate::ui_style::button::label_font_size(AppButtonRole::Secondary);
+    let text = paint
+        .text
+        .layout_mono(label, Point::new(0.0, 0.0), font_size, text_color);
+    let text_bounds = text.bounds();
+    let text_x = bounds.origin.x + (bounds.size.width - text_bounds.size.width).max(0.0) * 0.5;
+    let text_y = bounds.origin.y + (bounds.size.height - text_bounds.size.height).max(0.0) * 0.5;
+    paint.scene.draw_text(
+        paint.text
+            .layout_mono(label, Point::new(text_x, text_y), font_size, text_color),
+    );
+}
+
+fn paint_wallet_receive_value_row(bounds: Bounds, value: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.30))
+            .with_border(theme::border::DEFAULT.with_alpha(0.18), 1.0)
+            .with_corner_radius(WALLET_CARD_RADIUS),
+    );
+    let max_chars = ((bounds.size.width - 14.0).max(40.0) / 6.0).floor() as usize;
+    let lines = split_text_for_display(value, max_chars.max(16));
+    let mut y = bounds.origin.y + 7.0;
+    let max_lines = if bounds.size.height >= 50.0 { 3 } else { 2 };
+    for line in lines.iter().take(max_lines) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            line,
+            Point::new(bounds.origin.x + 7.0, y),
+            10.0,
+            theme::text::PRIMARY.with_alpha(0.92),
+        ));
+        y += 14.0;
+    }
+}
+
+fn paint_wallet_copy_icon_button(bounds: Bounds, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.36))
+            .with_border(theme::border::DEFAULT.with_alpha(0.24), 1.0)
+            .with_corner_radius(WALLET_CARD_RADIUS),
+    );
+    let stroke = app_text_style(AppTextRole::FormValue).color.with_alpha(0.86);
+    let back = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + 9.0,
+        (bounds.size.width - 16.0).max(6.0),
+        (bounds.size.height - 16.0).max(6.0),
+    );
+    let front = Bounds::new(back.origin.x - 3.0, back.origin.y - 3.0, back.size.width, back.size.height);
+    paint.scene.draw_quad(Quad::new(back).with_border(stroke, 1.0).with_corner_radius(2.0));
+    paint.scene.draw_quad(Quad::new(front).with_border(stroke, 1.0).with_corner_radius(2.0));
 }
 
 pub fn paint_create_invoice_pane(
@@ -1183,7 +1280,6 @@ pub fn paint_pay_invoice_pane(
         PaneLoadState::Loading => theme::accent::PRIMARY,
         PaneLoadState::Error => theme::status::ERROR,
     };
-    let label_style = app_text_style(AppTextRole::FormLabel);
     let form_section_top = content_bounds.origin.y + 12.0;
     let form_section_bounds = Bounds::new(
         content_bounds.origin.x + 12.0,
@@ -1200,7 +1296,7 @@ pub fn paint_pay_invoice_pane(
     paint_wallet_flow_section(
         form_section_bounds,
         "Send",
-        "Paste a request, then confirm the sats to pay.",
+        "Paste a Lightning request (ln...). Amount is required only for zero-amount invoices. On-chain addresses are not supported here.",
         paint,
     );
     paint_wallet_supporting_section(
@@ -1225,19 +1321,6 @@ pub fn paint_pay_invoice_pane(
     pay_invoice_inputs
         .amount_sats
         .paint(layout.amount_input, paint);
-
-    paint_wallet_input_label(
-        paint,
-        layout.payment_request_input,
-        "Lightning invoice / payment request",
-        label_style,
-    );
-    paint_wallet_input_label(
-        paint,
-        layout.amount_input,
-        "Send sats (optional)",
-        label_style,
-    );
 
     let mut y = layout.details_origin.y;
     y = paint_wallet_status_summary(
