@@ -7,7 +7,14 @@ AI Model Training Coordination
 `draft` `optional`
 
 This NIP defines the coordination and publishing layer for training AI models,
-including large language models (LLMs), on Nostr.
+including large language models (LLMs).
+
+Large multi-party training runs should be recoverable and forkable. If a
+coordinator disappears or a group wants to continue on different terms,
+another operator should be able to read the relay history, find the accepted
+checkpoint or weight pointers, see the active window and policy, and continue
+or fork from that state without depending on one private database or
+dashboard.
 
 Here, "model training" means training learned AI systems such as LLMs,
 multimodal models, embedding models, and related neural-network models.
@@ -19,17 +26,10 @@ and NIP-94 for public file metadata. TRN adds the missing shared records for
 training itself: networks, windows, assignments, validator results, artifact
 pointers, and closeouts.
 
-Large multi-party training runs should be recoverable and forkable. If a
-coordinator disappears or a group wants to continue on different terms,
-another operator should be able to read the relay history, find the accepted
-checkpoint or weight pointers, see the active window and policy, and continue
-or fork from that state without depending on one private database or
-dashboard.
-
 TRN is only the control plane. It standardizes network identity, node
 capability publication, window records, receipts, validator results, and
 pointers to checkpoints, weights, and proof files. It does not move model
-bytes, gradients, checkpoints, or runtime traffic over Nostr.
+bytes, gradients, checkpoints, or runtime traffic.
 
 TRN fits alongside NIP-01, NIP-32, NIP-44 and NIP-59, NIP-66, NIP-89,
 NIP-90, NIP-94, plus our in-repo drafts NIP-DS, NIP-SKL, and NIP-AC. Its
