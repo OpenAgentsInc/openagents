@@ -6,5 +6,6 @@ Draft Nostr Implementation Possibilities maintained in-repo:
 - **SA.md** — NIP-SA: Sovereign Agents
 - **SKL.md** — NIP-SKL: Agent Skill Registry
 - **AC.md** — NIP-AC: Agent Credit
+- **TRN.md** — NIP-TRN: Model Training Coordination
 
 These are the canonical locations for linking (e.g. from the web, docs, or other repos).
