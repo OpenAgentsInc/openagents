@@ -48,6 +48,16 @@ Primary OpenAgents coding surfaces reviewed:
 - `apps/autopilot-desktop/src/desktop_control.rs`
 - `apps/autopilot-desktop/src/bin/autopilotctl.rs`
 
+Related `psionic` Hermes/Qwen surfaces reviewed for this extension:
+
+- `../psionic/README.md`
+- `../psionic/docs/hermes/README.md`
+- `../psionic/docs/HERMES_QWEN35_COMPATIBILITY.md`
+- `../psionic/docs/HERMES_QWEN35_PARALLEL_ATTRIBUTION.md`
+- `../psionic/docs/HERMES_BACKEND_BENCHMARK.md`
+- `../psionic/crates/psionic-models/src/lib.rs`
+- `../psionic/crates/psionic-serve/src/openai_http.rs`
+
 ## Bottom Line
 
 `cc` is a native coding-agent runtime. Autopilot is not.
@@ -380,6 +390,94 @@ kept under control.
 
 Autopilot is currently better than many Codex wrappers on this exact point.
 
+## 11. Related `psionic` Hermes/Qwen track
+
+There is real prior work in the broader OpenAgents stack on Hermes, but it is
+important to describe it correctly.
+
+The honest characterization is not "we ported Hermes into OpenAgents" and it
+is not "Autopilot already has a native coding runtime somewhere else."
+
+What `psionic` actually explored and implemented was a backend lane for Hermes,
+especially around local `qwen3.5` compatibility.
+
+The strongest retained claims in the `psionic` repo are:
+
+- `docs/hermes/README.md`: Psionic can act as a real backend for Hermes on one
+  consumer GPU through the normal OpenAI-compatible `chat.completions` path.
+  Hermes remains a separate checkout. Psionic does not bundle a full Hermes
+  product or CLI.
+- `docs/HERMES_QWEN35_COMPATIBILITY.md`: the canonical retained direct proof is
+  green `6/6` on `2026-03-29` for native Psionic `qwen35` on the local
+  `archlinux` `RTX 4080` lane.
+- `docs/HERMES_QWEN35_PARALLEL_ATTRIBUTION.md`: the formerly hard same-turn
+  parallel-tool row is now green on Psionic and Ollama across `2b`, `4b`, and
+  `9b`.
+- `docs/HERMES_BACKEND_BENCHMARK.md`: the repo also kept same-host benchmark
+  receipts where Hermes stays fixed and only the backend endpoint and
+  backend-specific model identifier change.
+
+So there was real Hermes-related work. But the thing that got owned in
+`psionic` was the serving/runtime/tool-contract boundary, not the whole
+controller shell that Hermes itself provides.
+
+Concretely, that `psionic` work includes:
+
+- native Qwen-family support in `crates/psionic-models/src/lib.rs`, including
+  `Qwen35` tokenizer and prompt-template families, reasoning extraction, think
+  block stripping, decoder-family metadata, and Qwen-specific fixture coverage
+- OpenAI-compatible tool-call and replay handling in
+  `crates/psionic-serve/src/openai_http.rs`, including explicit
+  `parallel_tool_calls` handling, `minimum_required_tool_calls`, ordered tool
+  batch validation, and replay-safe tool-result behavior
+- repo-owned Hermes probes and harnesses under `scripts/release/` plus retained
+  receipts under `fixtures/qwen35/hermes/`
+
+That matters because it answers the user's likely question directly:
+
+- no, the repo did not absorb all of Hermes as a native OpenAgents agent shell
+- yes, the repo did do serious Hermes compatibility and backend-porting work
+  around Qwen, tool calls, replay, and same-turn multi-tool behavior
+
+This gives the broader stack three distinct ownership cuts:
+
+- `cc`: own the coding controller/runtime itself
+- Autopilot today: own the desktop product shell around Codex
+- `psionic` Hermes/Qwen lane: own the inference/backend contract while leaving
+  the controller layer in external Hermes code
+
+That third point changes the comparison in one useful way.
+
+OpenAgents is not starting from zero if it ever wants less dependence on Codex.
+The stack already has real prior work on:
+
+- OpenAI-compatible backend serving
+- Qwen-family local model support
+- tool-loop correctness
+- tool-result replay
+- strict same-turn parallel tool behavior
+
+But that prior work reduces backend risk, not controller/runtime risk.
+
+It does not mean OpenAgents already has:
+
+- a native coding query loop
+- an app-owned tool scheduler
+- an app-owned permission engine
+- an app-owned coding-task or subagent runtime
+- a full coding-session UI/runtime comparable to `cc`
+
+So the right interpretation is:
+
+- `cc` shows what it looks like to own the coding runtime
+- the `psionic` Hermes/Qwen lane shows what it looks like to own the serving
+  substrate for an external agent/controller
+- Autopilot today shows what it looks like to own the product shell around an
+  external agent/runtime
+
+Those are different layers, and mixing them together would make the audit less
+honest.
+
 ## What `cc` Has That Autopilot Still Does Not
 
 The most important missing capabilities are:
@@ -411,6 +509,12 @@ near-term product move for this repo.
 
 OpenAgents should currently think about `cc` in two different ways.
 
+There is also a third relevant reference inside the broader stack: the
+`psionic` Hermes/Qwen lane. That work proves OpenAgents has already explored
+backend ownership for an external agent, especially around Qwen tool-call
+correctness and replay behavior. It does not prove that OpenAgents already owns
+the controller/runtime layer that `cc` owns.
+
 ### 1. Near-term reference
 
 Use `cc` as a reference for:
@@ -434,6 +538,15 @@ we decide we want to own:
 - MCP/plugin/memory/task infrastructure
 
 That is a much larger decision than "improve Autopilot coding UX."
+
+If that longer-term decision ever happens, the current internal starting points
+are different:
+
+- `cc` is the better reference for controller/runtime ownership
+- `psionic` is the better reference for owned backend/model/tool-contract
+  behavior
+- Autopilot is the better reference for the app-owned operator and product
+  shell
 
 ## Recommended Direction For `openagents`
 
@@ -460,13 +573,24 @@ Lower-leverage near-term imports:
 
 That would fight both `docs/MVP.md` and `docs/OWNERSHIP.md`.
 
+Related implication from the `psionic` Hermes lane:
+
+- preserve the backend lessons separately from the shell lessons
+- treat Hermes-on-Psionic as evidence that backend independence is plausible
+- do not confuse that with proof that the Autopilot coding shell can already
+  replace Codex
+- if OpenAgents ever wants a post-Codex path, the likely sequence is:
+  stronger Autopilot shell first, stronger owned backend second, owned
+  controller/runtime only after that decision is explicit
+
 ## Decision
 
 The honest current description is:
 
 - `cc` is a runtime we can study if we want to own the coding engine.
+- `psionic` contains real Hermes/Qwen backend compatibility work, but that work
+  owns the backend contract rather than the full agent shell.
 - Autopilot today is a serious Codex shell with real product integration, not a
   native coding runtime.
 - The right next step is to make that shell stronger, not to pretend we
   already own the engine.
-
