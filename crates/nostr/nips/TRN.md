@@ -1,13 +1,16 @@
 NIP-TRN
 =======
 
-Model Training Coordination
----------------------------
+AI Model Training Coordination
+------------------------------
 
 `draft` `optional`
 
-This NIP defines the coordination and publishing layer for model training on
-Nostr.
+This NIP defines the coordination and publishing layer for training AI models,
+including large language models (LLMs), on Nostr.
+
+In this document, "model training" means training learned AI systems such as
+LLMs, multimodal models, embedding models, and related neural-network models.
 
 Nostr already has several pieces that can help with training coordination.
 NIP-89 can announce services and handlers. NIP-90 can carry small one-off
@@ -17,7 +20,7 @@ and NIP-59 can wrap private coordination messages. NIP-66 can help describe
 relay quality. What Nostr does not yet have is one shared training format
 that ties those pieces together. This NIP introduces that format.
 
-The goal is to make model-training coordination easy to understand across
+The goal is to make AI model training coordination easy to understand across
 nodes, validators, operators, and supporting services so they can refer to the
 same network, the same window, the same assignments, the same verdicts, and the
 same accepted checkpoint or result without falling back to private
@@ -65,7 +68,7 @@ NIP-90, and TRN-Reputation via NIP-32.
 
 ## Abstract
 
-The training system needs one public answer to the questions that sit above the
+The AI training system needs one public answer to the questions that sit above the
 runtime: what network is this node participating in, what role is it claiming,
 what training window is active, what work was assigned, what result did
 validators produce, which checkpoint or file was accepted, and what reward,
@@ -87,8 +90,8 @@ NIP-89 is useful for service and handler discovery, but it does not define
 shared network records, window identity, validator results, or checkpoint
 pointer records for training.
 
-Model training is also broader than one service request. A training cycle may
-span a network contract, multiple node records, one or more windows, many
+Training AI models is also broader than one service request. A training cycle
+may span a network contract, multiple node records, one or more windows, many
 assignments, validator-owned results, accepted or held checkpoint state, and a
 reward or no-reward final outcome. These objects need to stay linked even when
 different parties publish them.
