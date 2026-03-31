@@ -18,6 +18,9 @@ Owns:
 - Pane orchestration, app-level event routing, and UX flows.
 - Composition of reusable crates (`wgpui`, `nostr`, `spark`, `openagents-provider-substrate`).
 - App-owned execution snapshots, payout UX, inventory presentation, and provider orchestration.
+- App-owned coding-shell behavior: chat/thread/workspace/project state,
+  operator controls, remote supervision, and product-specific tool projection
+  whether the underlying engine is Codex today or Probe later.
 
 Must not own:
 
@@ -154,6 +157,30 @@ Must not own:
 
 `openagents` consumes these crates through pinned git dependencies rather than
 through an in-repo subtree.
+
+## `OpenAgentsInc/probe`
+
+Own:
+
+- Reusable coding-agent runtime ownership: sessions, turns, transcripts,
+  compaction, and recovery.
+- Tool registry, permission policy, approval model, and MCP / connector loading
+  for the coding runtime.
+- Headless and operator-facing execution surfaces such as CLI, daemon/server,
+  and stable supervision protocol.
+- Multi-workspace routing, per-project runtime state, and engine-owned
+  subagent/task orchestration.
+
+Must not own:
+
+- Autopilot pane UX, chat shell behavior, or desktop-specific product
+  orchestration.
+- Wallet, payout, provider, marketplace, data-market, or CAD product truth.
+- App-owned remote companion behavior for the desktop product surface.
+- Final operator projections that belong to `apps/autopilot-desktop`.
+
+`openagents` should consume Probe through a stable runtime boundary rather than
+through app-to-engine internal coupling.
 
 ## `crates/openagents-kernel-core` and `crates/openagents-kernel-proto`
 

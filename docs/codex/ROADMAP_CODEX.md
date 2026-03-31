@@ -1,9 +1,9 @@
 # Codex Roadmap
 
-> Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
-> OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
-> `docs/OWNERSHIP.md`, after re-checking the current desktop lane, pane, and
-> turn-input surfaces on `main`, and after landing `CX-13` on `main`.
+> Status: updated 2026-03-31 after re-auditing the current Autopilot coding
+> shell on `main`, re-reading `docs/MVP.md` and `docs/OWNERSHIP.md`, and
+> clarifying the future Probe runtime boundary alongside the current Codex
+> integration lane.
 >
 > This is the live roadmap for Codex product work in OpenAgents Desktop. The
 > goal is not to clone T3 Code's TypeScript server/web/Electron architecture.
@@ -20,6 +20,12 @@ access control, workspace state, plan artifacts, and diff artifacts in
 
 Roadmap hygiene rule: after each shipped roadmap slice, update this document so
 it reflects the new truthful state on `main`. Do not leave the roadmap stale.
+
+This document is the roadmap for the current Codex-backed implementation lane.
+It is not a claim that Codex is the final runtime. Autopilot is the product
+shell. Future Probe work should replace or supplement the engine without moving
+workspace/project/thread/artifact/remote truth out of
+`apps/autopilot-desktop`.
 
 Primary reference: the comparison basis for this roadmap is
 `docs/audits/2026-03-10-t3code-codex-wrapper-gap-audit.md`.
@@ -58,6 +64,18 @@ This roadmap must keep `docs/OWNERSHIP.md` intact:
 - Remote surfaces must consume app-owned state derived from desktop truth; they
   must not become a second source of truth for threads, plans, workspace state,
   provider state, or wallet state.
+
+## Relation To Probe
+
+- Codex is the current engine integrated into Autopilot.
+- Probe is the planned owned runtime that should eventually support the same
+  Autopilot shell while also standing alone as CLI and server infrastructure.
+- The app-owned contracts that matter now should stay engine-agnostic:
+  workspace and project identity, thread lifecycle, approvals, tool prompts,
+  plan/review/diff/compact artifacts, remote snapshots, and product-specific
+  dynamic tools.
+- Do not turn Autopilot into a thin generic runtime viewer. The desktop keeps
+  owning the user-facing coding shell even if the backing engine changes.
 
 ## Product Rules
 

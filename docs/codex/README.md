@@ -4,17 +4,25 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 
 ## Suggested Reading Order
 
-1. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
-2. [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
-3. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
-4. [`CAD_PHASE2_DEMO_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md)
-5. [`EXEC.md`](/Users/christopherdavid/code/openagents/docs/codex/EXEC.md)
-6. [`REMOTE.md`](/Users/christopherdavid/code/openagents/docs/codex/REMOTE.md)
+1. [`ROADMAP_CODEX.md`](./ROADMAP_CODEX.md)
+2. [`AUTOPILOT_CODING_SHELL_AND_PROBE_DIRECTION.md`](./AUTOPILOT_CODING_SHELL_AND_PROBE_DIRECTION.md)
+3. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](./CAD_CHAT_BUILD_IMPLEMENTATION.md)
+4. [`CODEX_PANE_CAD_TOOLING.md`](./CODEX_PANE_CAD_TOOLING.md)
+5. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](./CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+6. [`CAD_PHASE2_DEMO_RUNBOOK.md`](./CAD_PHASE2_DEMO_RUNBOOK.md)
+7. [`EXEC.md`](./EXEC.md)
+8. [`REMOTE.md`](./REMOTE.md)
 
 ## Documents
 
 ### Implementation + Contracts
 
+- [`ROADMAP_CODEX.md`](./ROADMAP_CODEX.md)
+  - live roadmap for the current Codex-backed Autopilot lane, including the
+    explicit boundary between the app-owned shell and a future Probe runtime.
+- [`AUTOPILOT_CODING_SHELL_AND_PROBE_DIRECTION.md`](./AUTOPILOT_CODING_SHELL_AND_PROBE_DIRECTION.md)
+  - architecture explanation of how Autopilot currently embeds Codex and how
+    the same product shell should transition to Probe.
 - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
   - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
 - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)

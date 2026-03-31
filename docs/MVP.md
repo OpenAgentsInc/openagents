@@ -8,7 +8,7 @@ The “why” is simple and visceral: **Autopilot turns your machine into a mone
 
 This is not “another chat app.” It is a **two-sided marketplace** collapsed into one product surface:
 
-* **Buy side:** you use Autopilot as a personal agent (a high-leverage wrapper around Codex + your computer) and can submit work requests out to the network when it makes sense.
+* **Buy side:** you use Autopilot as a personal agent through an app-owned local coding shell, currently backed by Codex and designed to host our own Probe runtime later, and can submit work requests out to the network when it makes sense.
 * **Sell side:** you provide compute now (and later additional provider lanes such as liquidity solving and plugins/skills) to the network and **earn Bitcoin**.
 
 Autopilot Earn is a provider marketplace with multiple potential revenue lanes. The MVP's primary paid loop remains the compute-provider lane; liquidity-solver mode is future scope.
@@ -193,9 +193,19 @@ Lane B is deliberately out of MVP scope and must never auto-activate for users.
 
 ## 9) Functional behavior: what the system must do
 
-### 9.1 Autopilot as a personal agent (Codex wrapper on your machine)
+### 9.1 Autopilot as a personal agent (current Codex-backed shell, future Probe host)
 
-Autopilot is not just a chat box. It is an agent that can do work locally, using Codex as the primary engine for “ask → plan → execute → report.”
+Autopilot is not just a chat box. It is an app-owned local agent shell that can
+do work on your machine through an explicit engine boundary.
+
+Today that engine boundary is Codex. The desktop owns the user-facing thread,
+workspace, project, artifact, approval, and remote-control surfaces, while
+Codex provides the underlying coding loop.
+
+That boundary should stay intact as we build Probe. Probe is the planned owned
+coding runtime that can supplement or replace Codex underneath the same
+Autopilot product shell, while also being deployable separately on servers or
+through CLI flows.
 
 For MVP purposes, Autopilot must at least support:
 
