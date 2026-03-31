@@ -1451,7 +1451,7 @@ pub fn dispatch_spark_input_event(state: &mut RenderState, event: &InputEvent) -
     let content_bounds = pane_content_bounds(bounds);
     let layout = spark_pane::layout_with_scroll(
         spark_pane::scroll_content_bounds(content_bounds),
-        state.spark_wallet_scroll_offset,
+        state.spark_wallet_pane.scroll_offset(),
     );
     let mut handled = false;
 

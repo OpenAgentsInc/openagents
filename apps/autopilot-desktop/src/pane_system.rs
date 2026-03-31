@@ -9780,12 +9780,9 @@ pub fn dispatch_wallet_scroll_event(
     {
         return false;
     }
-    let next = (state.spark_wallet_scroll_offset - scroll_dy).clamp(0.0, 4000.0);
-    if (next - state.spark_wallet_scroll_offset).abs() <= f32::EPSILON {
-        return false;
-    }
-    state.spark_wallet_scroll_offset = next;
-    true
+    let before = state.spark_wallet_pane.scroll_offset();
+    state.spark_wallet_pane.scroll_by(scroll_dy);
+    (state.spark_wallet_pane.scroll_offset() - before).abs() > f32::EPSILON
 }
 
 pub fn dispatch_log_stream_scroll_event(
