@@ -31,11 +31,34 @@ capability publication, window records, receipts, validator results, and
 pointers to checkpoints, weights, and proof files. It does not move model
 bytes, gradients, checkpoints, or runtime traffic.
 
-TRN fits alongside NIP-01, NIP-32, NIP-44 and NIP-59, NIP-66, NIP-89,
-NIP-90, NIP-94, plus our in-repo drafts NIP-DS, NIP-SKL, and NIP-AC. Its
-core surface is network, node, window, receipt, verdict, artifact pointer,
-and closeout records, with discovery, private coordination, challenge, and
-reputation left as optional profiles.
+TRN fits alongside:
+
+- NIP-01 for base events, tags, and subscriptions
+- NIP-32 for fraud and reputation labels
+- NIP-44 and NIP-59 for private coordination
+- NIP-66 for relay health and discovery
+- NIP-89 for service discovery
+- NIP-90 for small check and replay jobs
+- NIP-94 for public file metadata
+- our in-repo drafts NIP-DS, NIP-SKL, and NIP-AC for datasets, skills, and
+  settlement-related flows
+
+TRN core covers:
+
+- network records
+- node records
+- window records
+- receipts
+- verdicts
+- artifact pointers
+- closeouts
+
+Optional profiles cover:
+
+- discovery
+- private coordination
+- challenge
+- reputation
 
 ## Abstract
 
