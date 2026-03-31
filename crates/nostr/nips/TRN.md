@@ -27,14 +27,23 @@ same accepted checkpoint or result without falling back to private
 spreadsheets, operator-only host lists, lane-specific dashboards, ad hoc JSON
 receipts, or unverified reward and result claims.
 
+This matters most for large multi-party AI training runs. Those runs do not
+fail cleanly. A coordinator can disappear, a validator set can change, a relay
+can go down, or a group can decide to keep going without the original
+operator. When that happens, another party should be able to read the relay
+history, see the last accepted checkpoint and model-weight pointers, see which
+window and policy were active, and continue the run or fork a new one from
+that state instead of starting over.
+
 In practical terms, this NIP is not about putting training itself on Nostr. It
 is about making the coordination layer around training work across tools and
 easy to check. That means network identity, node capability publication,
 training-window identity, assignment and transition receipts, validator
-results, pointers to checkpoints or proof files, and final contribution
-outcomes all get one shared protocol surface, while trainer execution, collective synchronization,
-checkpoint or weight transfer, rollout payload transport, gradient exchange,
-and other fast-moving runtime work remain outside this NIP.
+results, pointers to checkpoints, model weights, or proof files, and final
+contribution outcomes all get one shared protocol surface, while trainer
+execution, collective synchronization, checkpoint or weight transfer, rollout
+payload transport, gradient exchange, and other fast-moving runtime work
+remain outside this NIP.
 
 TRN should support more than one training shape. A network may be public and
 easy to discover, or private and based on an approved list of nodes. A
@@ -71,9 +80,9 @@ NIP-90, and TRN-Reputation via NIP-32.
 The AI training system needs one public answer to the questions that sit above the
 runtime: what network is this node participating in, what role is it claiming,
 what training window is active, what work was assigned, what result did
-validators produce, which checkpoint or file was accepted, and what reward,
-hold, quarantine, or refusal followed. TRN defines lightweight, signed
-control records for those answers.
+validators produce, which checkpoint or file was accepted, what earlier run or
+artifact this run builds on, and what reward, hold, quarantine, or refusal
+followed. TRN defines lightweight, signed control records for those answers.
 
 The design rule is simple:
 
@@ -96,6 +105,14 @@ assignments, validator-owned results, accepted or held checkpoint state, and a
 reward or no-reward final outcome. These objects need to stay linked even when
 different parties publish them.
 
+Large training runs also need reusable state. If one operator disappears,
+another should be able to recover the last known state from relays instead of
+asking for a private database export. If part of the network wants to continue
+on different terms, it should be able to publish a new run that points back to
+the earlier network, window, checkpoint, weight files, and proofs it started
+from. TRN makes that recovery and fork trail part of the protocol instead of
+an after-the-fact spreadsheet.
+
 TRN introduces a training coordination layer that can be used with
 public discovery through node records and handler announcements, private or
 permissioned coordination through wrapped receipts and pointers, small
@@ -115,8 +132,11 @@ public or partly public checking, and a permanent record of receipts.
 - `assignment`: one piece of work given to one node in one window
 - `verdict`: one validator result about a submission, assignment, or claimed
   result
-- `artifact locator`: a signed pointer to a checkpoint, update bundle, proof
-  file, or other large object without embedding that large object in the event
+- `artifact locator`: a signed pointer to a checkpoint, model-weight file,
+  update bundle, proof file, or other large object without embedding that large
+  object in the event
+- `fork`: one new training run or window that continues from earlier published
+  state
 - `closeout`: one final published outcome for a contribution or window, such as
   rewarded, held, quarantined, or refused
 
@@ -132,6 +152,7 @@ TRN core is normative and defines:
 - lightweight assignment and state-change receipts
 - validator result publication
 - signed artifact pointer metadata
+- recovery and fork links to earlier runs, windows, or artifacts
 - final outcome linkage
 
 ### Optional Profiles
@@ -204,14 +225,20 @@ TRN uses these common tags:
 - `["cap", "<capability_name>", "<value>"]` — capability declaration
 - `["class", "<execution_class>"]` — allowed execution class
 - `["k", "<kind>"]` — optional supported kind or handler signal where relevant
-- `["e", "<event_id>", "<relay>", "<marker>"]` — referenced events
-- `["a", "<coordinate>", "<relay>", "<marker>"]` — referenced addressable events
+- `["e", "<event_id>", "<relay>", "<marker>"]` — referenced events such as
+  source windows, verdicts, or receipts
+- `["a", "<coordinate>", "<relay>", "<marker>"]` — referenced addressable
+  events such as source networks, source windows, checkpoint pointers, or
+  weight pointers
 - `["x", "<sha256_digest>"]` — file or bundle digest
 - `["url", "<location_hint>"]` — public or semi-public location hint
 - `["reason", "<reason_code>"]` — machine-readable reason
 
 Implementations MAY add additional tags, but parsers MUST NOT treat unknown
 tags as invalid by default.
+
+Markers such as `source`, `resume`, `fork`, `bootstrap`, and `weights` are
+RECOMMENDED when they make recovery or fork lineage clearer.
 
 ## 1. Training Network Contract (`kind:39500`)
 
@@ -232,6 +259,7 @@ It SHOULD define:
 - window timing
 - allowed roles
 - software or manifest compatibility rules
+- source network or source artifacts when the run resumes or forks earlier work
 - reward rules
 - supported optional profiles
 
@@ -250,6 +278,14 @@ Recommended tags:
 - `["profile", "trn-private"]`
 - `["profile", "trn-challenge"]`
 - `["profile", "trn-reputation"]`
+- `["a", "39500:<pubkey>:<network_id>", "<relay>", "source"]`
+- `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "bootstrap"]`
+- `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "weights"]`
+
+A training network that continues earlier work SHOULD reference the source
+network contract and the source artifact locators it starts from, especially
+the accepted checkpoint or model-weight files needed to continue or fork the
+run.
 
 `content` SHOULD be a JSON object containing the network's human-readable and
 machine-readable policy summary.
@@ -330,6 +366,7 @@ It SHOULD name:
 - active policy revision
 - workload family
 - assignment seed used to choose work
+- source window or recovery point, if the window resumes earlier work
 - current state
 
 Recommended states:
@@ -349,6 +386,8 @@ Recommended tags:
 - `["status", "planned|active|sealed|scored|reconciled|canceled"]`
 - `["assignment_seed", "<seed_digest>"]`
 - `["workload", "<workload_family>"]`
+- `["a", "39510:<pubkey>:<window_id>", "<relay>", "resume"]`
+- `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "bootstrap"]`
 
 ## 4. Training Receipt (`kind:39511`)
 
@@ -433,6 +472,9 @@ Its address is:
 Valid artifact classes include:
 
 - checkpoints
+- model weight files
+- optimizer snapshots
+- config bundles
 - update bundles
 - eval result bundles
 - proof files
@@ -451,9 +493,10 @@ Recommended tags:
 - `["manifest", "<manifest_digest>"]`
 - `["x", "<file_digest>"]`
 - `["url", "<location_hint>"]`
-- `["class", "checkpoint|delta|eval|proof|score"]`
+- `["class", "checkpoint|weights|optimizer|config|delta|eval|proof|score"]`
 - `["policy", "<policy_revision_id>"]`
 - `["reason", "<reason_code>"]`
+- `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "source"]`
 
 Location hints MAY reference:
 
@@ -466,6 +509,11 @@ TRN does not require one storage backend.
 
 It requires only that the pointer metadata be signed and easy for software to
 read.
+
+Artifact locators are also the main reuse, recovery, and fork surface in TRN.
+When a locator is meant to support resume or fork, its manifest SHOULD identify
+the files another operator needs to continue the run, such as checkpoint files,
+model weights, optimizer snapshots, config bundles, or proof files.
 
 ## 7. Training Contribution Closeout (`kind:39530`)
 
@@ -505,6 +553,19 @@ Implementations MAY link this closeout to:
 - NIP-AC settlement receipts
 - internal accounting records
 - later reward systems
+
+## Recovery And Forking
+
+TRN is designed so large AI training runs can survive partial failure. If a
+coordinator, validator service, or operator disappears, another operator can
+rebuild the last known public state from the network contract, the latest
+window records, receipts, verdicts, and artifact locators on relays.
+
+TRN is also designed so runs can fork cleanly. A new network contract, window,
+or artifact locator SHOULD link back to the source network, the source window,
+and the accepted checkpoint or weight locators it builds on. That makes it
+possible for other participants to see exactly what was reused, what changed,
+and where the new run started.
 
 ## Optional Profiles
 
@@ -597,8 +658,11 @@ One training cycle can look like this:
 4. Assignment receipts are emitted as `kind:39511` events.
 5. Heavy artifacts move outside Nostr.
 6. Validators publish `kind:39512` verdicts.
-7. Checkpoint or proof metadata is published through `kind:39520`.
+7. Checkpoint, model-weight, or proof metadata is published through
+   `kind:39520`.
 8. Final reward, hold, or quarantine status is published through `kind:39530`.
+9. If the run needs to resume or fork, a new network or window points back to
+   the accepted artifacts and keeps going.
 
 This preserves one shared public coordination trail without pretending the
 training itself runs on relays.
