@@ -9,71 +9,33 @@ AI Model Training Coordination
 This NIP defines the coordination and publishing layer for training AI models,
 including large language models (LLMs), on Nostr.
 
-In this document, "model training" means training learned AI systems such as
-LLMs, multimodal models, embedding models, and related neural-network models.
+Here, "model training" means training learned AI systems such as LLMs,
+multimodal models, embedding models, and related neural-network models.
 
-Nostr already has several pieces that can help with training coordination.
-NIP-89 can announce services and handlers. NIP-90 can carry small one-off
-jobs like "check this result", "rerun this work", "show proof", or "score
-this model". NIP-32 can publish fraud markers and reputation signals. NIP-44
-and NIP-59 can wrap private coordination messages. NIP-66 can help describe
-relay quality. What Nostr does not yet have is one shared training format
-that ties those pieces together. This NIP introduces that format.
+Nostr already covers parts of this problem: NIP-89 for service discovery,
+NIP-90 for small check or replay jobs, NIP-32 for fraud and reputation
+labels, NIP-44 and NIP-59 for private coordination, NIP-66 for relay health,
+and NIP-94 for public file metadata. TRN adds the missing shared records for
+training itself: networks, windows, assignments, validator results, artifact
+pointers, and closeouts.
 
-The goal is to make AI model training coordination easy to understand across
-nodes, validators, operators, and supporting services so they can refer to the
-same network, the same window, the same assignments, the same verdicts, and the
-same accepted checkpoint or result without falling back to private
-spreadsheets, operator-only host lists, lane-specific dashboards, ad hoc JSON
-receipts, or unverified reward and result claims.
+Large multi-party training runs should be recoverable and forkable. If a
+coordinator disappears or a group wants to continue on different terms,
+another operator should be able to read the relay history, find the accepted
+checkpoint or weight pointers, see the active window and policy, and continue
+or fork from that state without depending on one private database or
+dashboard.
 
-This matters most for large multi-party AI training runs. Those runs do not
-fail cleanly. A coordinator can disappear, a validator set can change, a relay
-can go down, or a group can decide to keep going without the original
-operator. When that happens, another party should be able to read the relay
-history, see the last accepted checkpoint and model-weight pointers, see which
-window and policy were active, and continue the run or fork a new one from
-that state instead of starting over.
+TRN is only the control plane. It standardizes network identity, node
+capability publication, window records, receipts, validator results, and
+pointers to checkpoints, weights, and proof files. It does not move model
+bytes, gradients, checkpoints, or runtime traffic over Nostr.
 
-In practical terms, this NIP is not about putting training itself on Nostr. It
-is about making the coordination layer around training work across tools and
-easy to check. That means network identity, node capability publication,
-training-window identity, assignment and transition receipts, validator
-results, pointers to checkpoints, model weights, or proof files, and final
-contribution outcomes all get one shared protocol surface, while trainer
-execution, collective synchronization, checkpoint or weight transfer, rollout
-payload transport, gradient exchange, and other fast-moving runtime work
-remain outside this NIP.
-
-TRN should support more than one training shape. A network may be public and
-easy to discover, or private and based on an approved list of nodes. A
-validator may need a small replay job through NIP-90, while an operator may
-need wrapped private assignment messages through NIP-44 and NIP-59. Another
-network may only want public proof and settlement publication. This NIP
-therefore defines one small core for the shared training objects and leaves discovery, privacy, challenge,
-and reputation as optional profiles layered alongside that core.
-
-This NIP is designed to fit alongside:
-
-- NIP-01: events, tags, subscriptions
-- NIP-32: labels and reputation signals
-- NIP-44 / NIP-59: wrapped private coordination messages
-- NIP-66: relay discovery and health signals
-- NIP-89: handler and service announcements
-- NIP-90: small check, rerun, and proof jobs
-- NIP-94: file and bundle metadata when public artifact references are needed
-
-It also fits alongside our in-repo drafts:
-
-- NIP-DS for dataset identity and delivery
-- NIP-SKL for reusable skill identity and trust
-- NIP-AC for credit, settlement, and limited spend flows where training
-  incentives or challenge payments later need an interoperable payment layer
-
-TRN core covers network, node, window, receipt, verdict, artifact pointer,
-and final outcome records. The optional profiles are TRN-Discovery via
-NIP-89 and NIP-66, TRN-Private via NIP-44 and NIP-59, TRN-Challenge via
-NIP-90, and TRN-Reputation via NIP-32.
+TRN fits alongside NIP-01, NIP-32, NIP-44 and NIP-59, NIP-66, NIP-89,
+NIP-90, NIP-94, plus our in-repo drafts NIP-DS, NIP-SKL, and NIP-AC. Its
+core surface is network, node, window, receipt, verdict, artifact pointer,
+and closeout records, with discovery, private coordination, challenge, and
+reputation left as optional profiles.
 
 ## Abstract
 
