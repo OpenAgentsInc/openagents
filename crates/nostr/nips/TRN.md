@@ -6,115 +6,116 @@ Model Training Coordination
 
 `draft` `optional`
 
-This NIP defines the coordination and publication substrate for model training
-on Nostr.
+This NIP defines the coordination and publishing layer for model training on
+Nostr.
 
-Nostr already has several pieces that can participate in training
-coordination. NIP-89 can announce services and handlers. NIP-90 can carry
-bounded challenge, replay, proof, or evaluation jobs. NIP-32 can publish fraud
-markers and reputation signals. NIP-44 and NIP-59 can wrap private coordination
-payloads. NIP-66 can help describe relay posture. What Nostr does not yet have
-is a canonical training-coordination primitive that ties those pieces together.
-This NIP introduces that primitive.
+Nostr already has several pieces that can help with training coordination.
+NIP-89 can announce services and handlers. NIP-90 can carry small one-off
+jobs like "check this result", "rerun this work", "show proof", or "score
+this model". NIP-32 can publish fraud markers and reputation signals. NIP-44
+and NIP-59 can wrap private coordination messages. NIP-66 can help describe
+relay quality. What Nostr does not yet have is one shared training format
+that ties those pieces together. This NIP introduces that format.
 
-The goal is to make model-training coordination legible across nodes,
-validators, operators, and supporting services so they can refer to the same
-network, the same window, the same assignments, the same verdicts, and the
-same promoted artifact state without falling back to private spreadsheets,
-operator-only host lists, lane-specific dashboards, ad hoc JSON receipts, or
-unverifiable reward and verdict claims.
+The goal is to make model-training coordination easy to understand across
+nodes, validators, operators, and supporting services so they can refer to the
+same network, the same window, the same assignments, the same verdicts, and the
+same accepted checkpoint or result without falling back to private
+spreadsheets, operator-only host lists, lane-specific dashboards, ad hoc JSON
+receipts, or unverified reward and result claims.
 
 In practical terms, this NIP is not about putting training itself on Nostr. It
-is about making the coordination layer around training portable and auditable.
-That means network identity, node capability publication, training-window
-identity, assignment and transition receipts, validator verdicts, checkpoint
-and proof-bundle locator metadata, and contribution closeout all get one shared
-protocol surface, while trainer execution, collective synchronization,
+is about making the coordination layer around training work across tools and
+easy to check. That means network identity, node capability publication,
+training-window identity, assignment and transition receipts, validator
+results, pointers to checkpoints or proof files, and final contribution
+outcomes all get one shared protocol surface, while trainer execution, collective synchronization,
 checkpoint or weight transfer, rollout payload transport, gradient exchange,
-and other hot-path runtime mechanics remain outside this NIP.
+and other fast-moving runtime work remain outside this NIP.
 
 TRN should support more than one training shape. A network may be public and
-discovery-heavy, or permissioned and registry-first. A validator may need a
-bounded replay job through NIP-90, while an operator may need wrapped private
-assignment envelopes through NIP-44 and NIP-59. Another network may only want
-public proof and settlement publication. This NIP therefore defines one small
-core for the shared training objects and leaves discovery, privacy, challenge,
+easy to discover, or private and based on an approved list of nodes. A
+validator may need a small replay job through NIP-90, while an operator may
+need wrapped private assignment messages through NIP-44 and NIP-59. Another
+network may only want public proof and settlement publication. This NIP
+therefore defines one small core for the shared training objects and leaves discovery, privacy, challenge,
 and reputation as optional profiles layered alongside that core.
 
 This NIP is designed to fit alongside:
 
 - NIP-01: events, tags, subscriptions
 - NIP-32: labels and reputation signals
-- NIP-44 / NIP-59: private coordination envelopes
-- NIP-66: relay discovery and liveness posture
+- NIP-44 / NIP-59: wrapped private coordination messages
+- NIP-66: relay discovery and health signals
 - NIP-89: handler and service announcements
-- NIP-90: bounded challenge, replay, and proof-request jobs
+- NIP-90: small check, rerun, and proof jobs
 - NIP-94: file and bundle metadata when public artifact references are needed
 
 It also fits alongside our in-repo drafts:
 
 - NIP-DS for dataset identity and delivery
 - NIP-SKL for reusable skill identity and trust
-- NIP-AC for credit, settlement, and bounded spend flows where training
+- NIP-AC for credit, settlement, and limited spend flows where training
   incentives or challenge payments later need an interoperable payment layer
 
-TRN core covers network, node, window, receipt, verdict, locator, and
-closeout objects. The optional profiles are TRN-Discovery via NIP-89 and
-NIP-66, TRN-Private via NIP-44 and NIP-59, TRN-Challenge via NIP-90, and
-TRN-Reputation via NIP-32.
+TRN core covers network, node, window, receipt, verdict, artifact pointer,
+and final outcome records. The optional profiles are TRN-Discovery via
+NIP-89 and NIP-66, TRN-Private via NIP-44 and NIP-59, TRN-Challenge via
+NIP-90, and TRN-Reputation via NIP-32.
 
 ## Abstract
 
 The training system needs one public answer to the questions that sit above the
 runtime: what network is this node participating in, what role is it claiming,
-what training window is active, what work was assigned, what verdict did
-validators produce, what checkpoint or artifact state was promoted, and what
-reward, hold, quarantine, or refusal followed. TRN defines lightweight,
-signed, replayable control objects for those answers.
+what training window is active, what work was assigned, what result did
+validators produce, which checkpoint or file was accepted, and what reward,
+hold, quarantine, or refusal followed. TRN defines lightweight, signed
+control records for those answers.
 
 The design rule is simple:
 
-> TRN carries ids, refs, digests, policy revisions, locators, and receipts.
-> Heavy training bytes stay off-Nostr.
+> TRN carries names, links, checksums, version ids, pointers, and receipts.
+> Big training files stay off Nostr.
 
 ## Rationale
 
-NIP-90 is a good fit for bounded challenge, replay, proof, or evaluation jobs,
-but it is not, by itself, a good fit for questions like "what training network
-is this node in?", "what role is this node claiming?", or "what checkpoint
-state was actually promoted?" Likewise, NIP-89 is useful for service and
-handler discoverability, but it does not define canonical network contracts,
-window identity, validator verdicts, or artifact-locator semantics for
-training.
+NIP-90 is a good fit for small jobs like "check this result", "rerun this
+work", "show proof", or "score this model", but it is not, by itself, a good
+fit for questions like "what training network is this node in?", "what role is
+this node claiming?", or "which checkpoint became the accepted one?" Likewise,
+NIP-89 is useful for service and handler discovery, but it does not define
+shared network records, window identity, validator results, or checkpoint
+pointer records for training.
 
 Model training is also broader than one service request. A training cycle may
 span a network contract, multiple node records, one or more windows, many
-assignments, validator-owned verdicts, promoted or held artifact state, and a
-reward or no-reward closeout. These objects need to stay linked even when
+assignments, validator-owned results, accepted or held checkpoint state, and a
+reward or no-reward final outcome. These objects need to stay linked even when
 different parties publish them.
 
-TRN introduces a training-native coordination layer that can be used with
+TRN introduces a training coordination layer that can be used with
 public discovery through node records and handler announcements, private or
-permissioned coordination through wrapped receipts and locators, bounded
-challenge or replay through NIP-90, and public or semi-public reputation and
-fraud signaling through NIP-32. It is therefore not trying to make Nostr do
-everything. It is trying to standardize the narrow layer that benefits most
-from signatures, relay replication, interoperable discovery, public or
-semi-public auditability, and append-only receipt publication.
+permissioned coordination through wrapped receipts and pointers, small
+challenge or rerun jobs through NIP-90, and public or partly public
+reputation and fraud signaling through NIP-32. It is therefore not trying to
+make Nostr do everything. It is trying to standardize the narrow layer that
+benefits most from signatures, copying events across relays, shared discovery,
+public or partly public checking, and a permanent record of receipts.
 
 ## Terms
 
-- `network`: one named model-training coordination domain
-- `node`: one published participant identity and capability record
-- `window`: one bounded training interval, assignment interval, or validation
-  interval
-- `assignment`: one declared work unit for a node in a specific window
-- `verdict`: one validator-owned outcome over a submission, assignment, or
-  claimed result
-- `artifact locator`: metadata that points to a checkpoint, delta bundle, eval
-  bundle, or other heavy object without embedding the heavy object itself
-- `closeout`: one durable publication of reward, no-reward, hold, quarantine,
-  or refusal outcome for a contribution or window
+- `network`: one named training group
+- `node`: one published participant record that says who a machine is and what
+  it can do
+- `window`: one limited chunk of training time, assignment time, or validation
+  time
+- `assignment`: one piece of work given to one node in one window
+- `verdict`: one validator result about a submission, assignment, or claimed
+  result
+- `artifact locator`: a signed pointer to a checkpoint, update bundle, proof
+  file, or other large object without embedding that large object in the event
+- `closeout`: one final published outcome for a contribution or window, such as
+  rewarded, held, quarantined, or refused
 
 ## Scope And Layering
 
@@ -122,13 +123,13 @@ semi-public auditability, and append-only receipt publication.
 
 TRN core is normative and defines:
 
-- canonical network identity
-- canonical node registry records
-- canonical training-window identity
-- lightweight assignment and transition receipts
-- validator verdict publication
-- artifact locator metadata
-- contribution closeout linkage
+- one shared network record
+- one shared node record format
+- one shared training window record
+- lightweight assignment and state-change receipts
+- validator result publication
+- signed artifact pointer metadata
+- final outcome linkage
 
 ### Optional Profiles
 
@@ -146,16 +147,16 @@ Optional profiles are:
 
 This NIP does not standardize:
 
-- live trainer internals
-- distributed optimizer state
-- dense-rank mesh behavior
-- collective transport cadence
-- checkpoint shard movement
-- policy-weight broadcast bytes
-- dataset page transport
-- rollout payload delivery
+- training code internals
+- optimizer state shared between machines
+- how machines talk to each other during training
+- how often machines exchange live training data
+- moving checkpoint pieces between machines
+- moving model weights between machines
+- dataset transfer
+- rollout data transfer
 - sandbox runtime behavior
-- exact incentive math
+- exact reward math
 
 Those belong in runtime and artifact systems outside Nostr.
 
@@ -181,29 +182,29 @@ This NIP reuses:
 | 5 | NIP-09 | publisher-origin revocation |
 | 30166 / 10166 | NIP-66 | coordination relay discovery and monitoring |
 | 31989 / 31990 | NIP-89 | handler and service discovery |
-| 5000-5999 / 6000-6999 / 7000 | NIP-90 | optional challenge, replay, proof, or eval jobs |
+| 5000-5999 / 6000-6999 / 7000 | NIP-90 | optional check, rerun, proof, or eval jobs |
 
 ## Common Tags
 
 TRN uses these common tags:
 
-- `["d", "<identifier>"]` — addressable-event identifier
-- `["network", "<network_id>"]` — canonical training network id
-- `["window", "<window_id>"]` — canonical training window id
-- `["assignment", "<assignment_id>"]` — canonical assignment id
-- `["artifact", "<artifact_id>"]` — canonical artifact id
-- `["checkpoint", "<checkpoint_id>"]` — canonical checkpoint id
+- `["d", "<identifier>"]` — id for an addressable event
+- `["network", "<network_id>"]` — shared training network id
+- `["window", "<window_id>"]` — shared training window id
+- `["assignment", "<assignment_id>"]` — shared assignment id
+- `["artifact", "<artifact_id>"]` — shared artifact id
+- `["checkpoint", "<checkpoint_id>"]` — shared checkpoint id
 - `["policy", "<policy_revision_id>"]` — policy revision bound to the event
 - `["manifest", "<manifest_digest>"]` — artifact or checkpoint manifest digest
 - `["status", "<value>"]` — machine-readable state
 - `["role", "<role_name>"]` — node or receipt role
 - `["cap", "<capability_name>", "<value>"]` — capability declaration
-- `["class", "<execution_class>"]` — admitted execution class
+- `["class", "<execution_class>"]` — allowed execution class
 - `["k", "<kind>"]` — optional supported kind or handler signal where relevant
 - `["e", "<event_id>", "<relay>", "<marker>"]` — referenced events
 - `["a", "<coordinate>", "<relay>", "<marker>"]` — referenced addressable events
-- `["x", "<sha256_digest>"]` — payload or bundle digest
-- `["url", "<location_hint>"]` — public or semi-public locator hint
+- `["x", "<sha256_digest>"]` — file or bundle digest
+- `["url", "<location_hint>"]` — public or semi-public location hint
 - `["reason", "<reason_code>"]` — machine-readable reason
 
 Implementations MAY add additional tags, but parsers MUST NOT treat unknown
@@ -211,10 +212,10 @@ tags as invalid by default.
 
 ## 1. Training Network Contract (`kind:39500`)
 
-The training network contract is the root coordination object for one training
-domain.
+The training network contract is the main shared record for one training
+network.
 
-Its canonical coordinate is:
+Its address is:
 
 ```text
 39500:<publisher_pubkey>:<network_id>
@@ -222,13 +223,13 @@ Its canonical coordinate is:
 
 It SHOULD define:
 
-- canonical `network_id`
-- current or admitted governance revision
+- network id
+- current governance revision
 - model family or workload family
-- window cadence or epoch cadence
-- admitted role vocabulary
-- compatibility surface for node software or manifest revisions
-- settlement posture
+- window timing
+- allowed roles
+- software or manifest compatibility rules
+- reward rules
 - supported optional profiles
 
 Recommended tags:
@@ -272,10 +273,10 @@ Minimal example:
 
 ## 2. Training Node Record (`kind:39501`)
 
-The node record publishes one node's identity and admitted capability posture
-inside a training network.
+The node record publishes one node's identity and allowed capabilities inside a
+training network.
 
-Its canonical coordinate is:
+Its address is:
 
 ```text
 39501:<node_pubkey>:<network_id>
@@ -284,12 +285,12 @@ Its canonical coordinate is:
 Core responsibilities:
 
 - bind a node to one network
-- declare admitted roles
-- declare admitted execution classes
+- declare allowed roles
+- declare allowed execution classes
 - publish build or software digest
-- publish capability posture
+- publish capabilities
 - publish coordination endpoints or relay hints
-- publish revocation or replacement posture
+- publish whether the node was replaced or revoked
 
 Recommended tags:
 
@@ -310,22 +311,22 @@ public publication and delivered privately.
 
 ## 3. Training Window (`kind:39510`)
 
-The training window is the canonical coordination object for one bounded
-training interval or validation interval.
+The training window is the main shared record for one training round or
+validation round.
 
-Its canonical coordinate is:
+Its address is:
 
 ```text
 39510:<publisher_pubkey>:<window_id>
 ```
 
-It SHOULD bind:
+It SHOULD name:
 
 - `network_id`
 - `window_id`
-- policy revision in
+- active policy revision
 - workload family
-- assignment seed or selection seed
+- assignment seed used to choose work
 - current state
 
 Recommended states:
@@ -348,13 +349,13 @@ Recommended tags:
 
 ## 4. Training Receipt (`kind:39511`)
 
-The training receipt is the append-only event for assignments and window-level
-state transitions.
+The training receipt is the append-only record for assignments and window state
+changes.
 
 This is intentionally one generic receipt kind so implementations can evolve
 without exploding the kind space.
 
-Its job is to publish lightweight control-plane outcomes such as:
+Its job is to publish lightweight coordination updates such as:
 
 - assignment published
 - assignment accepted
@@ -392,8 +393,8 @@ Example statuses:
 
 ## 5. Validator Verdict (`kind:39512`)
 
-The validator verdict is the machine-readable result over one contribution,
-artifact, assignment, or claimed outcome.
+The validator verdict is the simple machine-readable result for one
+contribution, artifact, assignment, or claimed outcome.
 
 Required tags:
 
@@ -411,16 +412,16 @@ Recommended tags:
 - `["x", "<artifact_or_bundle_digest>"]`
 - `["e", "<challenge_or_request_event_id>", "<relay>", "challenge"]`
 
-`content` SHOULD contain a compact JSON verdict summary. Large proof bundles
+`content` SHOULD contain a compact JSON verdict summary. Large proof files
 SHOULD be stored off-Nostr and referenced through `kind:39520` artifact
-locators or optional NIP-90 result flows.
+pointers or optional NIP-90 result flows.
 
 ## 6. Training Artifact Locator (`kind:39520`)
 
-The artifact locator publishes metadata for a heavy training object without
-embedding the heavy object itself.
+The artifact locator publishes metadata for a large training file without
+embedding the file itself.
 
-Its canonical coordinate is:
+Its address is:
 
 ```text
 39520:<publisher_pubkey>:<artifact_id>
@@ -429,23 +430,23 @@ Its canonical coordinate is:
 Valid artifact classes include:
 
 - checkpoints
-- delta bundles
-- eval bundles
-- proof bundles
-- score bundles
+- update bundles
+- eval result bundles
+- proof files
+- score files
 
 Required tags:
 
 - `["d", "<artifact_id>"]`
 - `["network", "<network_id>"]`
-- `["status", "staged|durable|promoted|revoked"]`
+- `["status", "staged|stored|accepted|revoked"]`
 
 Recommended tags:
 
 - `["artifact", "<artifact_id>"]`
 - `["checkpoint", "<checkpoint_id>"]`
 - `["manifest", "<manifest_digest>"]`
-- `["x", "<payload_digest>"]`
+- `["x", "<file_digest>"]`
 - `["url", "<location_hint>"]`
 - `["class", "checkpoint|delta|eval|proof|score"]`
 - `["policy", "<policy_revision_id>"]`
@@ -460,12 +461,13 @@ Location hints MAY reference:
 
 TRN does not require one storage backend.
 
-It requires only that the locator metadata be signed and machine-legible.
+It requires only that the pointer metadata be signed and easy for software to
+read.
 
 ## 7. Training Contribution Closeout (`kind:39530`)
 
-The contribution closeout is the durable publication of the final economic or
-operator-facing outcome for a contribution or sealed window.
+The contribution closeout is the final published payment or operational outcome
+for a contribution or sealed window.
 
 This kind is intentionally broad enough to publish:
 
@@ -508,30 +510,30 @@ Implementations MAY link this closeout to:
 Implementations MAY use:
 
 - NIP-89 `kind:31990` to advertise TRN handlers, registries, validators, or
-  artifact-index services
+  artifact index services
 - NIP-66 relay-discovery events to publish preferred coordination relays and
-  relay-quality posture
+  relay health
 
 ### TRN-Private
 
 Implementations MAY use NIP-44 and NIP-59 for:
 
-- private assignment payloads
+- private assignment details
 - private challenge details
 - private operator instructions
 - private locator hints
 
-TRN-Private SHOULD be used only for low-frequency control payloads, not for
-hot-path runtime coordination.
+TRN-Private SHOULD be used only for occasional coordination messages, not for
+fast runtime traffic.
 
 ### TRN-Challenge
 
 Implementations MAY use NIP-90 for:
 
-- validator challenge jobs
+- validator check jobs
 - replay requests
-- proof-generation requests
-- bounded benchmark or eval jobs
+- requests to generate proof files
+- small benchmark or eval jobs
 
 TRN does not require NIP-90, but it composes well with it for narrow challenge
 flows.
@@ -550,14 +552,14 @@ Implementations MAY use NIP-32 labels for:
 
 ### Do not move heavy bytes onto Nostr
 
-Checkpoints, policy weights, rollout payloads, gradients, and optimizer state
+Checkpoints, model weights, rollout payloads, gradients, and optimizer state
 SHOULD NOT be embedded in TRN events.
 
 TRN is for coordination metadata, not heavy artifact transfer.
 
-### Distinguish locators from proofs
+### Distinguish pointers from proofs
 
-A signed locator proves who published a reference and what digest they claimed.
+A signed pointer shows who published a reference and what digest they claimed.
 
 It does not, by itself, prove the underlying artifact is valid. Validator
 verdicts and external proof flows remain necessary.
@@ -568,7 +570,7 @@ Some training systems use the word `relay` for runtime transport or overlay
 roles. TRN uses Nostr relays only for event distribution and coordination
 publication.
 
-These roles SHOULD NOT be conflated.
+These roles SHOULD NOT be mixed up.
 
 ### Private coordination is still metadata-sensitive
 
@@ -577,17 +579,17 @@ sensitive metadata leakage through relay choice, timing, and tag structure.
 
 ### Revocation and replacement
 
-Addressable events define the current head for a network contract, node record,
-window state, or artifact locator. Historical receipts and verdicts remain
-append-only and SHOULD NOT be rewritten.
+For addressable events, the latest version is the current one for a network
+contract, node record, window state, or artifact locator. Historical receipts
+and verdicts are append-only and SHOULD NOT be rewritten.
 
 ## Example Flow
 
-One bounded training cycle can look like this:
+One training cycle can look like this:
 
 1. A coordinator publishes a `kind:39500` training network contract.
 2. Participants publish `kind:39501` node records advertising roles and
-   capability posture.
+   capabilities.
 3. A coordinator publishes a `kind:39510` window.
 4. Assignment receipts are emitted as `kind:39511` events.
 5. Heavy artifacts move outside Nostr.
@@ -596,7 +598,7 @@ One bounded training cycle can look like this:
 8. Final reward, hold, or quarantine status is published through `kind:39530`.
 
 This preserves one shared public coordination trail without pretending the
-training runtime itself lives on relays.
+training itself runs on relays.
 
 ## Changelog
 
