@@ -9,6 +9,64 @@ Model Training Coordination
 This NIP defines the coordination and publication substrate for model training
 on Nostr.
 
+Nostr already has several pieces that can participate in training
+coordination:
+
+- NIP-32 for labels, fraud markers, and reputation signals
+- NIP-44 and NIP-59 for private coordination envelopes
+- NIP-66 for relay discovery and liveness posture
+- NIP-89 for handler and service announcements
+- NIP-90 for bounded challenge, replay, proof, or eval jobs
+- NIP-94 for public file or bundle metadata when artifact references need to be
+  published
+
+What it does not yet have is a canonical training-coordination primitive.
+
+This NIP introduces that primitive.
+
+The goal is to make model-training coordination legible across nodes,
+validators, operators, and supporting services so they can refer to the same
+network, the same window, the same assignments, the same verdicts, and the
+same promoted artifact state without relying on:
+
+- private spreadsheets
+- operator-only host lists
+- lane-specific dashboards
+- ad hoc JSON receipts
+- unverifiable reward or verdict claims
+
+In practical terms, this NIP is not about putting training itself on Nostr.
+
+It is about making the coordination layer around training portable and
+auditable. That includes:
+
+- public or semi-public train networks
+- permissioned registries of training nodes
+- validator-owned challenge and verdict flows
+- checkpoint and proof-bundle locator publication
+- contribution closeout and settlement linkage
+
+The point is to establish best practices for how training coordination should
+move on Nostr:
+
+- how a training network is identified
+- how nodes declare capability and role posture
+- how windows are identified and published
+- how assignments and state transitions are receipted
+- how validator outcomes are published
+- how heavy training artifacts are referenced without embedding them
+- how contribution outcomes become durable public or private closeouts
+
+One protocol should support more than one training shape:
+
+- sometimes a network is public and wants broad discovery
+- sometimes it is permissioned and only wants signed registry records
+- sometimes a validator needs a bounded challenge/replay job
+- sometimes an operator needs private assignment envelopes
+- sometimes a network only wants public proof and settlement publication
+
+This NIP separates those concerns into a small core plus optional profiles.
+
 It covers:
 
 - training network identity
@@ -48,6 +106,15 @@ It also fits alongside our in-repo drafts:
 - NIP-AC for credit, settlement, and bounded spend flows where training
   incentives or challenge payments later need an interoperable payment layer
 
+This NIP separates those concerns into:
+
+- TRN core for network, node, window, receipt, verdict, locator, and closeout
+  objects
+- TRN-Discovery via NIP-89 and NIP-66
+- TRN-Private via NIP-44 and NIP-59
+- TRN-Challenge via NIP-90
+- TRN-Reputation via NIP-32
+
 ## Abstract
 
 The training system needs one public answer to these questions:
@@ -69,24 +136,38 @@ The design rule is simple:
 
 ## Rationale
 
-Model training is increasingly multi-party:
+NIP-90 is a good fit for bounded challenge, replay, proof, or evaluation jobs.
 
-- one node may train
-- another may validate
-- another may publish checkpoints
-- another may score or settle outcomes
+It is not, by itself, a good fit for "what training network is this node in?",
+"what role is this node claiming?", or "what checkpoint state was actually
+promoted?"
 
-Without a shared coordination vocabulary, these participants fall back to:
+Likewise, NIP-89 is a good fit for service and handler discoverability, but it
+does not define canonical network contracts, window identity, validator
+verdicts, or artifact-locator semantics for training.
 
-- private spreadsheets
-- operator-only host lists
-- ad hoc JSON blobs
-- lane-specific dashboards
-- unverifiable payout and verdict claims
+Model training is also broader than one service request. A training cycle may
+span:
 
-TRN makes those coordination objects portable.
+- a network contract
+- multiple node records
+- one or more windows
+- many assignments
+- validator-owned verdicts
+- promoted or held artifact state
+- reward or no-reward closeout
 
-It is not trying to make Nostr do everything.
+These objects need to stay linked even when different parties publish them.
+
+TRN introduces a training-native coordination layer that can be used with
+either model:
+
+- public discovery through node records and handler announcements
+- private or permissioned coordination through wrapped receipts and locators
+- bounded challenge or replay through NIP-90
+- public or semi-public reputation and fraud signaling through NIP-32
+
+TRN is therefore not trying to make Nostr do everything.
 
 It is trying to standardize the narrow layer that benefits from:
 
