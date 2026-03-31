@@ -6,8 +6,9 @@ AI Model Training Coordination
 
 `draft` `optional`
 
-This NIP defines the coordination and publishing layer for training AI models,
-including large language models (LLMs).
+This NIP defines the coordination and publishing layer for training AI models
+such as LLMs, multimodal models, embedding models, and related neural-network
+models.
 
 Large multi-party training runs should be recoverable and forkable. If a
 coordinator disappears or a group wants to continue on different terms,
@@ -16,13 +17,10 @@ checkpoint or weight pointers, see the active window and policy, and continue
 or fork from that state without depending on one private database or
 dashboard.
 
-Here, "model training" means training learned AI systems such as LLMs,
-multimodal models, embedding models, and related neural-network models.
-
-TRN is only the control plane. It standardizes network identity, node
-capability publication, window records, receipts, validator results, and
-pointers to checkpoints, weights, and proof files. It does not move model
-bytes, gradients, checkpoints, or runtime traffic.
+TRN standardizes network identity, node capability publication, window
+records, receipts, validator results, and pointers to checkpoints, weights,
+and proof files. It does not move model bytes, gradients, checkpoints, or
+runtime traffic.
 
 TRN builds on:
 
