@@ -19,19 +19,12 @@ dashboard.
 Here, "model training" means training learned AI systems such as LLMs,
 multimodal models, embedding models, and related neural-network models.
 
-Nostr already covers parts of this problem: NIP-89 for service discovery,
-NIP-90 for small check or replay jobs, NIP-32 for fraud and reputation
-labels, NIP-44 and NIP-59 for private coordination, NIP-66 for relay health,
-and NIP-94 for public file metadata. TRN adds the missing shared records for
-training itself: networks, windows, assignments, validator results, artifact
-pointers, and closeouts.
-
 TRN is only the control plane. It standardizes network identity, node
 capability publication, window records, receipts, validator results, and
 pointers to checkpoints, weights, and proof files. It does not move model
 bytes, gradients, checkpoints, or runtime traffic.
 
-TRN fits alongside:
+TRN builds on:
 
 - NIP-01 for base events, tags, and subscriptions
 - NIP-32 for fraud and reputation labels
