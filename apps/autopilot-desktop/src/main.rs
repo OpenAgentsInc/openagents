@@ -35,6 +35,7 @@ fn main() -> ExitCode {
     }
 }
 
+#[derive(Debug)]
 enum Action {
     RunDesktop,
     RunInternalProbeServer { probe_home: Option<PathBuf> },
@@ -42,7 +43,11 @@ enum Action {
 }
 
 fn parse_args() -> std::result::Result<Action, String> {
-    let mut args = std::env::args().skip(1);
+    parse_args_from(std::env::args().skip(1))
+}
+
+fn parse_args_from(args: impl IntoIterator<Item = String>) -> std::result::Result<Action, String> {
+    let mut args = args.into_iter();
     let Some(first) = args.next() else {
         return Ok(Action::RunDesktop);
     };
@@ -73,4 +78,60 @@ fn parse_args() -> std::result::Result<Action, String> {
     } else {
         Action::RunInternalProbeServer { probe_home }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Action, parse_args_from};
+    use std::path::PathBuf;
+
+    #[test]
+    fn desktop_action_is_default_for_normal_launch() {
+        assert!(matches!(
+            parse_args_from(Vec::<String>::new()),
+            Ok(Action::RunDesktop)
+        ));
+        assert!(matches!(
+            parse_args_from(vec![String::from("--not-an-internal-subcommand")]),
+            Ok(Action::RunDesktop)
+        ));
+    }
+
+    #[test]
+    fn parses_internal_probe_server_subcommand() {
+        let result = parse_args_from(vec![
+            probe_client::INTERNAL_SERVER_SUBCOMMAND.to_string(),
+            String::from("--probe-home"),
+            String::from("/tmp/probe-home"),
+        ]);
+        assert!(matches!(
+            result,
+            Ok(Action::RunInternalProbeServer { probe_home })
+                if probe_home == Some(PathBuf::from("/tmp/probe-home"))
+        ));
+    }
+
+    #[test]
+    fn parses_internal_probe_daemon_subcommand() {
+        let result = parse_args_from(vec![
+            probe_client::INTERNAL_DAEMON_SUBCOMMAND.to_string(),
+            String::from("--probe-home"),
+            String::from("/tmp/probe-home"),
+        ]);
+        assert!(matches!(
+            result,
+            Ok(Action::RunInternalProbeDaemon { probe_home })
+                if probe_home == Some(PathBuf::from("/tmp/probe-home"))
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_internal_probe_arguments() {
+        let error = parse_args_from(vec![
+            probe_client::INTERNAL_SERVER_SUBCOMMAND.to_string(),
+            String::from("--bogus"),
+        ])
+        .expect_err("unknown args should fail");
+        assert!(error.contains("unknown argument"));
+    }
 }

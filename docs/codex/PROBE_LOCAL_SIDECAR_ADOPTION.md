@@ -11,6 +11,27 @@ It is intentionally narrow:
 - Probe stays the runtime
 - the first consumer path is local-first and same-machine
 
+## Status
+
+This is the shipped resolution of `openagents#4066`.
+
+The umbrella issue was opened when the honest Phase 1 Probe seam was still
+described as a local `probe-server` child process over stdio. That changed once
+Probe shipped its local daemon attach path.
+
+The current OpenAgents position is:
+
+- prefer the local `probe-daemon` socket transport first
+- auto-start that daemon when the socket is missing
+- keep a direct stdio `probe-server` fallback for packaged-app and debug cases
+
+That preserves the original boundary that mattered in `#4066`:
+
+- Autopilot supervises a local Probe sidecar boundary instead of linking Probe
+  runtime internals directly into app state
+- the desktop still owns thread, pane, artifact, and operator projection
+- the runtime contract stays local-first and typed
+
 ## Runtime Selection
 
 The Probe lane is still explicitly gated.

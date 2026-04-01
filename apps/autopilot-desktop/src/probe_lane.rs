@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -31,6 +32,20 @@ use probe_protocol::session::{
 
 const PROBE_LANE_POLL: Duration = Duration::from_millis(750);
 const PROBE_DAEMON_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProbeCommandPlan {
+    program: PathBuf,
+    args: Vec<OsString>,
+}
+
+impl ProbeCommandPlan {
+    fn into_command(self) -> Command {
+        let mut command = Command::new(self.program);
+        command.args(self.args);
+        command
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ProbeLaneConfig {
@@ -1686,24 +1701,7 @@ fn spawn_stdio_transport(config: &ProbeLaneConfig) -> Result<ProbeTransport, Str
 }
 
 fn build_server_command(config: &ProbeLaneConfig) -> Result<Command, String> {
-    let mut command = if let Some(path) = config
-        .server_binary
-        .clone()
-        .or_else(|| env::var_os("PROBE_SERVER_BIN").map(PathBuf::from))
-    {
-        Command::new(path)
-    } else {
-        let current_exe = env::current_exe()
-            .map_err(|error| format!("failed to resolve current exe: {error}"))?;
-        let sibling_server = sibling_probe_server_path(current_exe.as_path());
-        if sibling_server.exists() {
-            Command::new(sibling_server)
-        } else {
-            let mut command = Command::new(current_exe);
-            command.arg(probe_client::INTERNAL_SERVER_SUBCOMMAND);
-            command
-        }
-    };
+    let mut command = resolve_server_command_plan(config)?.into_command();
     command
         .arg("--probe-home")
         .arg(config.probe_home.as_path())
@@ -1711,6 +1709,42 @@ fn build_server_command(config: &ProbeLaneConfig) -> Result<Command, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
     Ok(command)
+}
+
+fn resolve_server_command_plan(config: &ProbeLaneConfig) -> Result<ProbeCommandPlan, String> {
+    let current_exe =
+        env::current_exe().map_err(|error| format!("failed to resolve current exe: {error}"))?;
+    Ok(resolve_server_command_plan_from(
+        config.server_binary.clone(),
+        env::var_os("PROBE_SERVER_BIN").map(PathBuf::from),
+        current_exe,
+    ))
+}
+
+fn resolve_server_command_plan_from(
+    explicit_server_binary: Option<PathBuf>,
+    env_server_binary: Option<PathBuf>,
+    current_exe: PathBuf,
+) -> ProbeCommandPlan {
+    if let Some(path) = explicit_server_binary.or(env_server_binary) {
+        return ProbeCommandPlan {
+            program: path,
+            args: Vec::new(),
+        };
+    }
+
+    let sibling_server = sibling_probe_server_path(current_exe.as_path());
+    if sibling_server.exists() {
+        return ProbeCommandPlan {
+            program: sibling_server,
+            args: Vec::new(),
+        };
+    }
+
+    ProbeCommandPlan {
+        program: current_exe,
+        args: vec![OsString::from(probe_client::INTERNAL_SERVER_SUBCOMMAND)],
+    }
 }
 
 fn build_transport_from_streams(
@@ -1803,24 +1837,41 @@ fn spawn_local_daemon(probe_home: &Path) -> Result<(), String> {
 }
 
 fn build_daemon_command() -> Result<Command, String> {
-    if let Some(path) = env::var_os("PROBE_DAEMON_BIN").map(PathBuf::from) {
-        let mut command = Command::new(path);
-        command.arg("run");
-        return Ok(command);
-    }
+    resolve_daemon_command_plan().map(ProbeCommandPlan::into_command)
+}
 
+fn resolve_daemon_command_plan() -> Result<ProbeCommandPlan, String> {
     let current_exe =
         env::current_exe().map_err(|error| format!("failed to resolve current exe: {error}"))?;
-    let sibling_daemon = sibling_named_binary_path(current_exe.as_path(), "probe-daemon");
-    if sibling_daemon.exists() {
-        let mut command = Command::new(sibling_daemon);
-        command.arg("run");
-        return Ok(command);
+    Ok(resolve_daemon_command_plan_from(
+        env::var_os("PROBE_DAEMON_BIN").map(PathBuf::from),
+        current_exe,
+    ))
+}
+
+fn resolve_daemon_command_plan_from(
+    env_daemon_binary: Option<PathBuf>,
+    current_exe: PathBuf,
+) -> ProbeCommandPlan {
+    if let Some(path) = env_daemon_binary {
+        return ProbeCommandPlan {
+            program: path,
+            args: vec![OsString::from("run")],
+        };
     }
 
-    let mut command = Command::new(current_exe);
-    command.arg(probe_client::INTERNAL_DAEMON_SUBCOMMAND);
-    Ok(command)
+    let sibling_daemon = sibling_named_binary_path(current_exe.as_path(), "probe-daemon");
+    if sibling_daemon.exists() {
+        return ProbeCommandPlan {
+            program: sibling_daemon,
+            args: vec![OsString::from("run")],
+        };
+    }
+
+    ProbeCommandPlan {
+        program: current_exe,
+        args: vec![OsString::from(probe_client::INTERNAL_DAEMON_SUBCOMMAND)],
+    }
 }
 
 fn wait_for_local_daemon(config: &ProbeLaneConfig, wait_timeout: Duration) -> Result<(), String> {
@@ -1860,6 +1911,106 @@ fn sibling_named_binary_path(current_exe: &Path, binary_name: &str) -> PathBuf {
         })
         .unwrap_or_else(|| Path::new("."));
     base_dir.join(format!("{binary_name}{}", env::consts::EXE_SUFFIX))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        resolve_daemon_command_plan_from, resolve_server_command_plan_from,
+        sibling_named_binary_path,
+    };
+    use std::ffi::OsString;
+    use std::fs;
+    use std::path::PathBuf;
+
+    use tempfile::tempdir;
+
+    #[test]
+    fn server_command_plan_prefers_explicit_binary() {
+        let current_exe = PathBuf::from("/tmp/autopilot-desktop");
+        let explicit_server = PathBuf::from("/tmp/custom-probe-server");
+        let plan =
+            resolve_server_command_plan_from(Some(explicit_server.clone()), None, current_exe);
+        assert_eq!(plan.program, explicit_server);
+        assert!(plan.args.is_empty());
+    }
+
+    #[test]
+    fn server_command_plan_prefers_env_override_before_sibling_or_internal_fallback() {
+        let temp = tempdir().expect("temp dir");
+        let current_exe = temp.path().join("autopilot-desktop");
+        fs::write(&current_exe, "").expect("write current exe");
+        let sibling_server = sibling_named_binary_path(&current_exe, "probe-server");
+        fs::write(&sibling_server, "").expect("write sibling server");
+
+        let env_server = temp.path().join("env-probe-server");
+        let plan = resolve_server_command_plan_from(None, Some(env_server.clone()), current_exe);
+        assert_eq!(plan.program, env_server);
+        assert!(plan.args.is_empty());
+    }
+
+    #[test]
+    fn server_command_plan_uses_sibling_binary_when_present() {
+        let temp = tempdir().expect("temp dir");
+        let current_exe = temp.path().join("autopilot-desktop");
+        fs::write(&current_exe, "").expect("write current exe");
+        let sibling_server = sibling_named_binary_path(&current_exe, "probe-server");
+        fs::write(&sibling_server, "").expect("write sibling server");
+
+        let plan = resolve_server_command_plan_from(None, None, current_exe);
+        assert_eq!(plan.program, sibling_server);
+        assert!(plan.args.is_empty());
+    }
+
+    #[test]
+    fn server_command_plan_falls_back_to_internal_subcommand_when_no_binary_exists() {
+        let temp = tempdir().expect("temp dir");
+        let current_exe = temp.path().join("autopilot-desktop");
+        fs::write(&current_exe, "").expect("write current exe");
+
+        let plan = resolve_server_command_plan_from(None, None, current_exe.clone());
+        assert_eq!(plan.program, current_exe);
+        assert_eq!(
+            plan.args,
+            vec![OsString::from(probe_client::INTERNAL_SERVER_SUBCOMMAND)]
+        );
+    }
+
+    #[test]
+    fn daemon_command_plan_prefers_env_override() {
+        let current_exe = PathBuf::from("/tmp/autopilot-desktop");
+        let daemon_bin = PathBuf::from("/tmp/custom-probe-daemon");
+        let plan = resolve_daemon_command_plan_from(Some(daemon_bin.clone()), current_exe);
+        assert_eq!(plan.program, daemon_bin);
+        assert_eq!(plan.args, vec![OsString::from("run")]);
+    }
+
+    #[test]
+    fn daemon_command_plan_uses_sibling_binary_when_present() {
+        let temp = tempdir().expect("temp dir");
+        let current_exe = temp.path().join("autopilot-desktop");
+        fs::write(&current_exe, "").expect("write current exe");
+        let sibling_daemon = sibling_named_binary_path(&current_exe, "probe-daemon");
+        fs::write(&sibling_daemon, "").expect("write sibling daemon");
+
+        let plan = resolve_daemon_command_plan_from(None, current_exe);
+        assert_eq!(plan.program, sibling_daemon);
+        assert_eq!(plan.args, vec![OsString::from("run")]);
+    }
+
+    #[test]
+    fn daemon_command_plan_falls_back_to_internal_subcommand_when_no_binary_exists() {
+        let temp = tempdir().expect("temp dir");
+        let current_exe = temp.path().join("autopilot-desktop");
+        fs::write(&current_exe, "").expect("write current exe");
+
+        let plan = resolve_daemon_command_plan_from(None, current_exe.clone());
+        assert_eq!(plan.program, current_exe);
+        assert_eq!(
+            plan.args,
+            vec![OsString::from(probe_client::INTERNAL_DAEMON_SUBCOMMAND)]
+        );
+    }
 }
 
 fn tool_loop_recipe_from_config(config: &ToolLoopConfig) -> Result<ToolLoopRecipe, String> {
