@@ -1568,6 +1568,53 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
                     state.autopilot_chat.last_error = None;
                     super::super::actions::restore_chat_composer_draft(state);
+                    let coding_agent_requested_thread = state
+                        .coding_agent
+                        .pending_thread_start_workspace_root
+                        .as_deref()
+                        .zip(
+                            state
+                                .autopilot_chat
+                                .project_for_thread(&thread_id)
+                                .map(|project| project.workspace_root.as_str())
+                                .or_else(|| {
+                                    state
+                                        .autopilot_chat
+                                        .thread_metadata
+                                        .get(&thread_id)
+                                        .and_then(|metadata| metadata.workspace_root.as_deref())
+                                })
+                                .or_else(|| {
+                                    state
+                                        .autopilot_chat
+                                        .thread_metadata
+                                        .get(&thread_id)
+                                        .and_then(|metadata| metadata.cwd.as_deref())
+                                }),
+                        )
+                        .is_some_and(|(expected, actual)| expected == actual);
+                    if coding_agent_requested_thread {
+                        state.coding_agent.selected_workspace_root = state
+                            .autopilot_chat
+                            .project_for_thread(&thread_id)
+                            .map(|project| project.workspace_root.clone())
+                            .or_else(|| {
+                                state
+                                    .autopilot_chat
+                                    .thread_metadata
+                                    .get(&thread_id)
+                                    .and_then(|metadata| metadata.workspace_root.clone())
+                            });
+                        state.coding_agent.active_thread_id = Some(thread_id.clone());
+                        state.coding_agent.selected_project_id = state
+                            .autopilot_chat
+                            .project_for_thread(&thread_id)
+                            .map(|project| project.project_id.clone());
+                    }
+                    let _ = super::super::actions::run_coding_agent_resume_pending_submission_for_thread(
+                        state,
+                        &thread_id,
+                    );
                     queue_thread_history_refresh(state);
                 }
             }

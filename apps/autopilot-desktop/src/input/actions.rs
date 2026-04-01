@@ -37,6 +37,12 @@ const MISSION_CONTROL_BUY_MODE_PROMPT: &str = "Reply with the exact text BUY MOD
 const MISSION_CONTROL_LOCAL_FM_SUMMARY_INSTRUCTIONS: &str = "You are the Mission Control local Foundation Models test. Summarize only the supplied context in 3 short markdown bullets. Highlight the latest result, current buyer/provider state, and the next operator action. Do not invent facts or mention missing data unless it matters.";
 const MNEMONIC_CLIPBOARD_EXPIRY_SECONDS: u64 = 300;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CodingAgentProjectDirection {
+    Previous,
+    Next,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ManagedChatComposerIntent {
     ChannelMessage {
@@ -5719,6 +5725,26 @@ pub(super) fn run_chat_pending_thread_history_refresh_tick(
     true
 }
 
+fn queue_coding_agent_thread_history_refresh_for_workspace(
+    state: &mut crate::app_state::RenderState,
+    workspace_root: &str,
+) -> Result<(), String> {
+    let mut params = state
+        .autopilot_chat
+        .build_thread_list_params(Some(workspace_root.to_string()));
+    params.model_providers = None;
+    params.source_kinds = None;
+    params.search_term = None;
+    state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(params))?;
+    state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadLoadedList(
+        ThreadLoadedListParams {
+            cursor: None,
+            limit: Some(200),
+        },
+    ))?;
+    Ok(())
+}
+
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
     sync_chat_composer_draft(state);
@@ -6326,6 +6352,763 @@ pub(super) fn run_chat_select_workspace_action(
     state.autopilot_chat.select_chat_workspace_by_index(index)
 }
 
+pub(super) fn run_coding_agent_cycle_project_action(
+    state: &mut crate::app_state::RenderState,
+    direction: CodingAgentProjectDirection,
+) -> bool {
+    coding_agent_store_active_thread_view_state(state);
+    let project_ids = coding_agent_sorted_project_ids(&state.autopilot_chat);
+    if project_ids.is_empty() {
+        return false;
+    }
+
+    let current_project_id = state
+        .coding_agent
+        .selected_project_id
+        .clone()
+        .filter(|project_id| state.autopilot_chat.project_registry.contains_key(project_id))
+        .or_else(|| {
+            state
+                .coding_agent
+                .active_thread_id
+                .as_deref()
+                .and_then(|thread_id| state.autopilot_chat.project_for_thread(thread_id))
+                .map(|project| project.project_id.clone())
+        })
+        .or_else(|| {
+            state
+                .autopilot_chat
+                .active_project()
+                .map(|project| project.project_id.clone())
+        })
+        .or_else(|| project_ids.first().cloned());
+
+    let Some(current_project_id) = current_project_id else {
+        return false;
+    };
+    let current_index = project_ids
+        .iter()
+        .position(|project_id| project_id == &current_project_id)
+        .unwrap_or(0);
+    let next_index = match direction {
+        CodingAgentProjectDirection::Previous => {
+            if current_index == 0 {
+                project_ids.len().saturating_sub(1)
+            } else {
+                current_index - 1
+            }
+        }
+        CodingAgentProjectDirection::Next => (current_index + 1) % project_ids.len(),
+    };
+    let next_project_id = project_ids[next_index].clone();
+    let next_thread_id = coding_agent_preferred_thread_for_project(
+        &state.autopilot_chat,
+        &state.coding_agent.active_thread_id,
+        &next_project_id,
+    );
+    let next_workspace_root = state
+        .autopilot_chat
+        .project_registry
+        .get(&next_project_id)
+        .map(|project| project.workspace_root.clone());
+
+    state.coding_agent.selected_workspace_root = next_workspace_root;
+    state.coding_agent.selected_project_id = Some(next_project_id);
+    state.coding_agent.active_thread_id = next_thread_id;
+    state.coding_agent.status_drawer_open = false;
+    state.coding_agent.approval_drawer_open = false;
+    state.coding_agent.selected_diff_file_path = None;
+    state.coding_agent.right_rail_tab = crate::app_state::CodingAgentRailTab::ChangedFiles;
+    state.coding_agent.thread_list_scroll_offset = 0.0;
+    state.coding_agent.thread_scroll_offset = f32::MAX;
+    state.coding_agent.terminal_scroll_offset = 0.0;
+    state.coding_agent.diff_scroll_offset = 0.0;
+    state.coding_agent.approval_scroll_offset = 0.0;
+    let next_active_thread_id = state.coding_agent.active_thread_id.clone();
+    coding_agent_restore_thread_view_state(state, next_active_thread_id.as_deref());
+    state.coding_agent_inputs.composer.blur();
+    state.coding_agent_inputs.terminal_input.blur();
+    if let Some(workspace_root) = state.coding_agent.selected_workspace_root.clone() {
+        if let Err(error) = ensure_coding_agent_terminal_session(state, workspace_root.as_str()) {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    state.autopilot_chat.last_error = None;
+    true
+}
+
+pub(super) fn run_coding_agent_choose_folder_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    coding_agent_store_active_thread_view_state(state);
+    let Some(workspace_root) = choose_local_folder_for_coding_agent() else {
+        return false;
+    };
+    let workspace_root_for_session = workspace_root.clone();
+    let project_id = state
+        .autopilot_chat
+        .project_registry
+        .values()
+        .find(|project| project.workspace_root == workspace_root)
+        .map(|project| project.project_id.clone());
+    let next_thread_id = project_id.as_deref().and_then(|project_id| {
+        coding_agent_preferred_thread_for_project(
+            &state.autopilot_chat,
+            &state.coding_agent.active_thread_id,
+            project_id,
+        )
+    });
+
+    state.coding_agent.selected_workspace_root = Some(workspace_root.clone());
+    state.coding_agent.selected_project_id = project_id;
+    state.coding_agent.active_thread_id = next_thread_id;
+    state.coding_agent.pending_thread_start_workspace_root = None;
+    state.coding_agent.pending_thread_start_prompt = None;
+    state.coding_agent.status_drawer_open = false;
+    state.coding_agent.approval_drawer_open = false;
+    state.coding_agent.selected_diff_file_path = None;
+    state.coding_agent.right_rail_tab = crate::app_state::CodingAgentRailTab::ChangedFiles;
+    state.coding_agent.thread_list_scroll_offset = 0.0;
+    state.coding_agent.thread_scroll_offset = f32::MAX;
+    state.coding_agent.terminal_scroll_offset = 0.0;
+    state.coding_agent.diff_scroll_offset = 0.0;
+    state.coding_agent.approval_scroll_offset = 0.0;
+    let next_active_thread_id = state.coding_agent.active_thread_id.clone();
+    coding_agent_restore_thread_view_state(state, next_active_thread_id.as_deref());
+    state.coding_agent_inputs.terminal_input.blur();
+    state.coding_agent_inputs.composer.focus();
+    if let Err(error) =
+        queue_coding_agent_thread_history_refresh_for_workspace(state, workspace_root_for_session.as_str())
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    if let Err(error) =
+        ensure_coding_agent_terminal_session(state, workspace_root_for_session.as_str())
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    state.autopilot_chat.last_error = None;
+    true
+}
+
+pub(super) fn run_coding_agent_new_thread_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    coding_agent_store_active_thread_view_state(state);
+    let Some(workspace_root) = coding_agent_workspace_root(state) else {
+        state.autopilot_chat.last_error =
+            Some("Select a local folder before creating a coding thread.".to_string());
+        return true;
+    };
+
+    let command = crate::codex_lane::CodexLaneCommand::ThreadStart(codex_client::ThreadStartParams {
+        model: coding_agent_selected_model(state),
+        model_provider: None,
+        service_tier: coding_agent_service_tier(state),
+        cwd: Some(workspace_root.clone()),
+        approval_policy: coding_agent_approval_policy(state),
+        sandbox: coding_agent_thread_sandbox_mode(state),
+        personality: coding_agent_personality(state),
+        ephemeral: None,
+        dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
+    });
+    match state.queue_codex_command(command) {
+        Ok(_) => {
+            state.coding_agent.selected_workspace_root = Some(workspace_root.clone());
+            state.coding_agent.selected_project_id = coding_agent_selected_project_id(state);
+            state.coding_agent.active_thread_id = None;
+            state.coding_agent.pending_thread_start_workspace_root = Some(workspace_root);
+            state.coding_agent.pending_thread_start_prompt = Some(String::new());
+            state.coding_agent.thread_scroll_offset = f32::MAX;
+            coding_agent_restore_thread_view_state(state, None);
+            state.coding_agent_inputs.terminal_input.blur();
+            state.coding_agent_inputs.composer.focus();
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.coding_agent.pending_thread_start_workspace_root = None;
+            state.coding_agent.pending_thread_start_prompt = None;
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+pub(super) fn run_coding_agent_select_thread_action(
+    state: &mut crate::app_state::RenderState,
+    index: usize,
+) -> bool {
+    coding_agent_store_active_thread_view_state(state);
+    let Some(thread_id) = coding_agent_thread_ids_for_current_selection(state)
+        .get(index)
+        .cloned()
+    else {
+        return false;
+    };
+
+    state.coding_agent.active_thread_id = Some(thread_id.clone());
+    state.coding_agent.selected_project_id = state
+        .autopilot_chat
+        .project_for_thread(&thread_id)
+        .map(|project| project.project_id.clone())
+        .or_else(|| coding_agent_selected_project_id(state));
+    state.coding_agent.selected_workspace_root = state
+        .autopilot_chat
+        .project_for_thread(&thread_id)
+        .map(|project| project.workspace_root.clone())
+        .or_else(|| {
+            state
+                .autopilot_chat
+                .thread_metadata
+                .get(&thread_id)
+                .and_then(|metadata| metadata.workspace_root.clone().or(metadata.cwd.clone()))
+        });
+    state.coding_agent.pending_thread_start_workspace_root = None;
+    state.coding_agent.pending_thread_start_prompt = None;
+    state.coding_agent.status_drawer_open = false;
+    state.coding_agent.approval_drawer_open = false;
+    state.coding_agent.selected_diff_file_path = None;
+    state.coding_agent.right_rail_tab = crate::app_state::CodingAgentRailTab::ChangedFiles;
+    state.coding_agent.thread_scroll_offset = f32::MAX;
+    state.coding_agent.diff_scroll_offset = 0.0;
+    state.coding_agent.approval_scroll_offset = 0.0;
+    coding_agent_restore_thread_view_state(state, Some(thread_id.as_str()));
+    state.coding_agent_inputs.terminal_input.blur();
+    state.coding_agent_inputs.composer.focus();
+
+    if let Some(workspace_root) = state.coding_agent.selected_workspace_root.clone()
+        && let Err(error) = ensure_coding_agent_terminal_session(state, workspace_root.as_str())
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+
+    let read = crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
+        thread_id,
+        include_turns: true,
+    });
+    if let Err(error) = state.queue_codex_command(read) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.last_error = None;
+    }
+    true
+}
+
+pub(super) fn run_coding_agent_toggle_approval_drawer_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let Some(project_id) = coding_agent_selected_project_id(state) else {
+        state.coding_agent.approval_drawer_open = false;
+        return false;
+    };
+    let Some(project) = state.autopilot_chat.project_registry.get(&project_id) else {
+        state.coding_agent.approval_drawer_open = false;
+        return false;
+    };
+    if !coding_agent_has_pending_approvals_for_threads(
+        &state.autopilot_chat,
+        project.thread_ids.as_slice(),
+    ) {
+        state.coding_agent.approval_drawer_open = false;
+        state.coding_agent.approval_scroll_offset = 0.0;
+        return false;
+    }
+    state.coding_agent.approval_drawer_open = !state.coding_agent.approval_drawer_open;
+    if state.coding_agent.approval_drawer_open {
+        state.coding_agent.approval_scroll_offset = 0.0;
+    }
+    true
+}
+
+pub(super) fn run_coding_agent_start_task_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let Some(workspace_root) = coding_agent_workspace_root(state) else {
+        state.autopilot_chat.last_error =
+            Some("Select a local folder before starting a coding task.".to_string());
+        return true;
+    };
+    let project_id = coding_agent_selected_project_id(state);
+
+    state.coding_agent.selected_workspace_root = Some(workspace_root.clone());
+    state.coding_agent.selected_project_id = project_id.clone();
+    state.coding_agent.active_thread_id = project_id.as_deref().and_then(|project_id| {
+        coding_agent_preferred_thread_for_project(
+            &state.autopilot_chat,
+            &state.coding_agent.active_thread_id,
+            project_id,
+        )
+    });
+    state.coding_agent.approval_drawer_open = false;
+    state.coding_agent.approval_scroll_offset = 0.0;
+    let next_active_thread_id = state.coding_agent.active_thread_id.clone();
+    coding_agent_restore_thread_view_state(state, next_active_thread_id.as_deref());
+    state.coding_agent_inputs.terminal_input.blur();
+    state.coding_agent_inputs.composer.focus();
+    if let Err(error) = ensure_coding_agent_terminal_session(state, workspace_root.as_str()) {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    state.autopilot_chat.last_error = None;
+    true
+}
+
+pub(super) fn run_coding_agent_review_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let Some(project_id) = coding_agent_selected_project_id(state) else {
+        state.autopilot_chat.last_error =
+            Some("Select a repo before starting review.".to_string());
+        return true;
+    };
+    let Some(thread_id) = coding_agent_selected_thread_id(state) else {
+        state.autopilot_chat.last_error =
+            Some("No coding thread is available to review for this repo.".to_string());
+        return true;
+    };
+
+    state.coding_agent.selected_project_id = Some(project_id);
+    state.coding_agent.active_thread_id = Some(thread_id.clone());
+    state.coding_agent.approval_drawer_open = false;
+    state.coding_agent.approval_scroll_offset = 0.0;
+    state.coding_agent.right_rail_tab = crate::app_state::CodingAgentRailTab::ChangedFiles;
+    state.coding_agent.diff_scroll_offset = 0.0;
+
+    let command =
+        crate::codex_lane::CodexLaneCommand::ReviewStart(codex_client::ReviewStartParams {
+            thread_id: thread_id.clone(),
+            target: codex_client::ReviewTarget::UncommittedChanges,
+            delivery: Some(codex_client::ReviewDelivery::Inline),
+        });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.last_error = None;
+        state
+            .autopilot_chat
+            .record_turn_timeline_event("coding-agent review/start queued");
+    }
+    true
+}
+
+pub(super) fn run_coding_agent_focus_terminal_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    if !crate::panes::coding_agent::terminal_input_enabled(
+        &state.coding_agent,
+        &state.autopilot_chat,
+    ) {
+        return false;
+    }
+    state.coding_agent_inputs.composer.blur();
+    state.coding_agent_inputs.terminal_input.focus();
+    true
+}
+
+pub(super) fn run_coding_agent_terminal_submit_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let text = state
+        .coding_agent_inputs
+        .terminal_input
+        .get_value()
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return false;
+    }
+
+    let Some(workspace) = coding_agent_workspace_root(state) else {
+        state.autopilot_chat.last_error =
+            Some("Select a local folder before using the terminal.".to_string());
+        return true;
+    };
+    if let Some(project_id) = coding_agent_selected_project_id(state) {
+        state.coding_agent.selected_project_id = Some(project_id);
+    }
+    if let Some(thread_id) = coding_agent_selected_thread_id(state) {
+        state.coding_agent.active_thread_id = Some(thread_id.clone());
+        if state
+            .autopilot_chat
+            .active_turn_metadata()
+            .is_some_and(|metadata| metadata.thread_id == thread_id)
+        {
+            state.autopilot_chat.last_error =
+                Some("Terminal input is locked while the agent is running.".to_string());
+            return true;
+        }
+    };
+    state.coding_agent.selected_workspace_root = Some(workspace.clone());
+    let session_id = match ensure_coding_agent_terminal_session(state, workspace.as_str()) {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    };
+
+    if let Err(error) = queue_terminal_command(
+        state,
+        crate::chat_terminal::ChatTerminalCommand::Write {
+            thread_id: session_id.clone(),
+            text: text.clone(),
+        },
+    ) {
+        state
+            .autopilot_chat
+            .record_terminal_session_failure(session_id.as_str(), error.clone());
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+
+    state.autopilot_chat.last_error = None;
+    state
+        .autopilot_chat
+        .record_turn_timeline_event(format!("coding-agent terminal input: {}", truncate_line(&text, 72)));
+    state.coding_agent_inputs.terminal_input.set_value(String::new());
+    state.coding_agent.terminal_input_draft.clear();
+    true
+}
+
+pub(super) fn run_coding_agent_approval_response_action(
+    state: &mut crate::app_state::RenderState,
+    decision: ApprovalDecision,
+) -> bool {
+    let Some(project_id) = coding_agent_selected_project_id(state) else {
+        state.autopilot_chat.last_error =
+            Some("No Coding Agent repo is selected for approval review.".to_string());
+        state.coding_agent.approval_drawer_open = false;
+        state.coding_agent.approval_scroll_offset = 0.0;
+        return true;
+    };
+    let Some(project) = state.autopilot_chat.project_registry.get(&project_id) else {
+        state.autopilot_chat.last_error =
+            Some("Selected Coding Agent repo is no longer available.".to_string());
+        state.coding_agent.approval_drawer_open = false;
+        state.coding_agent.approval_scroll_offset = 0.0;
+        return true;
+    };
+    let thread_ids = project.thread_ids.clone();
+
+    if let Some((index, request)) =
+        coding_agent_take_project_command_approval(state, thread_ids.as_slice())
+    {
+        let decision_label = format!("{:?}", decision);
+        let command = crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
+            request_id: request.request_id.clone(),
+            response: CommandExecutionRequestApprovalResponse {
+                decision: decision.clone(),
+            },
+        };
+        if let Err(error) = state.queue_codex_command(command) {
+            state
+                .autopilot_chat
+                .pending_command_approvals
+                .insert(index, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "coding-agent command approval response: {}",
+                decision_label
+            ));
+            state.autopilot_chat.record_turn_command_approval_response(
+                request.turn_id.as_str(),
+                request.item_id.as_str(),
+                decision_label.as_str(),
+                current_epoch_millis(),
+            );
+        }
+        if !coding_agent_has_pending_approvals_for_threads(&state.autopilot_chat, thread_ids.as_slice())
+        {
+            state.coding_agent.approval_drawer_open = false;
+            state.coding_agent.approval_scroll_offset = 0.0;
+        }
+        return true;
+    }
+
+    if let Some((index, request)) =
+        coding_agent_take_project_file_approval(state, thread_ids.as_slice())
+    {
+        let decision_label = format!("{:?}", decision);
+        let command = crate::codex_lane::CodexLaneCommand::ServerRequestFileApprovalRespond {
+            request_id: request.request_id.clone(),
+            response: FileChangeRequestApprovalResponse { decision },
+        };
+        if let Err(error) = state.queue_codex_command(command) {
+            state
+                .autopilot_chat
+                .pending_file_change_approvals
+                .insert(index, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("coding-agent file approval response submitted");
+            state
+                .autopilot_chat
+                .record_turn_file_change_approval_response(
+                    request.turn_id.as_str(),
+                    request.item_id.as_str(),
+                    decision_label.as_str(),
+                    current_epoch_millis(),
+                );
+        }
+        if !coding_agent_has_pending_approvals_for_threads(&state.autopilot_chat, thread_ids.as_slice())
+        {
+            state.coding_agent.approval_drawer_open = false;
+            state.coding_agent.approval_scroll_offset = 0.0;
+        }
+        return true;
+    }
+
+    state.autopilot_chat.last_error =
+        Some("No pending approvals are waiting for this Coding Agent repo.".to_string());
+    state.coding_agent.approval_drawer_open = false;
+    state.coding_agent.approval_scroll_offset = 0.0;
+    true
+}
+
+pub(super) fn run_coding_agent_select_diff_file_action(
+    state: &mut crate::app_state::RenderState,
+    index: usize,
+) -> bool {
+    let Some(project_id) = coding_agent_selected_project_id(state) else {
+        return false;
+    };
+    let Some(project) = state.autopilot_chat.project_registry.get(&project_id) else {
+        return false;
+    };
+    let thread_id = state
+        .coding_agent
+        .active_thread_id
+        .as_deref()
+        .filter(|thread_id| project.thread_ids.iter().any(|candidate| candidate == *thread_id))
+        .map(ToString::to_string)
+        .or_else(|| {
+            coding_agent_preferred_thread_for_project(
+                &state.autopilot_chat,
+                &state.coding_agent.active_thread_id,
+                &project_id,
+            )
+        });
+    let Some(thread_id) = thread_id else {
+        return false;
+    };
+    let Some(artifact) = state.autopilot_chat.diff_artifact_for_thread(thread_id.as_str()) else {
+        return false;
+    };
+    let Some(file) = artifact.files.get(index) else {
+        return false;
+    };
+    state.coding_agent.selected_diff_file_path = Some(file.path.clone());
+    state.coding_agent.right_rail_tab = crate::app_state::CodingAgentRailTab::Diff;
+    state.coding_agent.diff_scroll_offset = 0.0;
+    true
+}
+
+pub(super) fn run_coding_agent_select_right_rail_tab_action(
+    state: &mut crate::app_state::RenderState,
+    tab: crate::app_state::CodingAgentRailTab,
+) -> bool {
+    if state.coding_agent.approval_drawer_open {
+        return false;
+    }
+    if matches!(tab, crate::app_state::CodingAgentRailTab::Diff)
+        && state.coding_agent.selected_diff_file_path.is_none()
+    {
+        let Some(project_id) = coding_agent_selected_project_id(state) else {
+            return false;
+        };
+        let Some(project) = state.autopilot_chat.project_registry.get(&project_id) else {
+            return false;
+        };
+        let thread_id = state
+            .coding_agent
+            .active_thread_id
+            .as_deref()
+            .filter(|thread_id| project.thread_ids.iter().any(|candidate| candidate == *thread_id))
+            .map(ToString::to_string)
+            .or_else(|| {
+                coding_agent_preferred_thread_for_project(
+                    &state.autopilot_chat,
+                    &state.coding_agent.active_thread_id,
+                    &project_id,
+                )
+            });
+        let Some(thread_id) = thread_id else {
+            return false;
+        };
+        let Some(artifact) = state.autopilot_chat.diff_artifact_for_thread(thread_id.as_str()) else {
+            return false;
+        };
+        let Some(file) = artifact.files.first() else {
+            return false;
+        };
+        state.coding_agent.selected_diff_file_path = Some(file.path.clone());
+    }
+    state.coding_agent.right_rail_tab = tab;
+    state.coding_agent.diff_scroll_offset = 0.0;
+    true
+}
+
+pub(super) fn run_coding_agent_submit_action(state: &mut crate::app_state::RenderState) -> bool {
+    let prompt = state.coding_agent_inputs.composer.get_value().to_string();
+    let trimmed_prompt = prompt.trim().to_string();
+    if trimmed_prompt.is_empty() {
+        return false;
+    }
+    if state.coding_agent.pending_thread_start_prompt.is_some() {
+        state.autopilot_chat.last_error = Some(
+            "Coding Agent is still starting a repo session. We’ll carry this prompt forward automatically."
+                .to_string(),
+        );
+        return true;
+    }
+
+    let Some(workspace_root) = coding_agent_workspace_root(state) else {
+        state.autopilot_chat.last_error = Some(
+            "No workspace is available yet for Coding Agent. Select a local folder first."
+                .to_string(),
+        );
+        return true;
+    };
+
+    if let Some(thread_id) = coding_agent_selected_thread_id(state) {
+        return run_coding_agent_submit_prompt_to_thread(
+            state,
+            thread_id.as_str(),
+            prompt,
+            workspace_root.as_str(),
+        );
+    }
+
+    let command = crate::codex_lane::CodexLaneCommand::ThreadStart(codex_client::ThreadStartParams {
+        model: coding_agent_selected_model(state),
+        model_provider: None,
+        service_tier: coding_agent_service_tier(state),
+        cwd: Some(workspace_root.clone()),
+        approval_policy: coding_agent_approval_policy(state),
+        sandbox: coding_agent_thread_sandbox_mode(state),
+        personality: coding_agent_personality(state),
+        ephemeral: None,
+        dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
+    });
+    match state.queue_codex_command(command) {
+        Ok(_) => {
+            state.coding_agent.selected_workspace_root = Some(workspace_root.clone());
+            state.coding_agent.pending_thread_start_workspace_root = Some(workspace_root);
+            state.coding_agent.pending_thread_start_prompt = Some(prompt);
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.coding_agent.pending_thread_start_workspace_root = None;
+            state.coding_agent.pending_thread_start_prompt = None;
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+pub(super) fn run_coding_agent_interrupt_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    let Some(thread_id) = coding_agent_selected_thread_id(state) else {
+        state.autopilot_chat.last_error =
+            Some("No Coding Agent thread is selected to interrupt.".to_string());
+        return true;
+    };
+    let Some(turn_id) = state.autopilot_chat.active_turn_id.clone() else {
+        state.autopilot_chat.last_error =
+            Some("No active Coding Agent turn is running for this repo.".to_string());
+        return true;
+    };
+    let Some(metadata) = state.autopilot_chat.active_turn_metadata() else {
+        state.autopilot_chat.last_error =
+            Some("No active Coding Agent turn metadata is available.".to_string());
+        return true;
+    };
+    if metadata.thread_id != thread_id {
+        state.autopilot_chat.last_error =
+            Some("The selected Coding Agent repo does not own the active turn.".to_string());
+        return true;
+    }
+
+    let command =
+        crate::codex_lane::CodexLaneCommand::TurnInterrupt(codex_client::TurnInterruptParams {
+            thread_id: thread_id.clone(),
+            turn_id: turn_id.clone(),
+        });
+    match state.queue_codex_command(command) {
+        Ok(_) => {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("coding-agent interrupt requested: {turn_id}"));
+            state
+                .autopilot_chat
+                .set_turn_status(Some("interruptRequested".to_string()));
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+pub(super) fn run_coding_agent_resume_pending_submission_for_thread(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) -> bool {
+    let Some(expected_workspace_root) = state
+        .coding_agent
+        .pending_thread_start_workspace_root
+        .clone()
+    else {
+        return false;
+    };
+    let actual_workspace_root = state
+        .autopilot_chat
+        .project_for_thread(thread_id)
+        .map(|project| project.workspace_root.clone())
+        .or_else(|| {
+            state
+                .autopilot_chat
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.workspace_root.clone())
+        })
+        .or_else(|| {
+            state
+                .autopilot_chat
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.cwd.clone())
+        });
+    if actual_workspace_root.as_deref() != Some(expected_workspace_root.as_str()) {
+        return false;
+    }
+    let Some(prompt) = state.coding_agent.pending_thread_start_prompt.clone() else {
+        return false;
+    };
+    if prompt.trim().is_empty() {
+        state.coding_agent.pending_thread_start_workspace_root = None;
+        state.coding_agent.pending_thread_start_prompt = None;
+        return false;
+    }
+    run_coding_agent_submit_prompt_to_thread(
+        state,
+        thread_id,
+        prompt,
+        expected_workspace_root.as_str(),
+    )
+}
+
 pub(super) fn run_chat_toggle_category_action(
     state: &mut crate::app_state::RenderState,
     index: usize,
@@ -6336,6 +7119,617 @@ pub(super) fn run_chat_toggle_category_action(
     state
         .autopilot_chat
         .toggle_managed_chat_category_by_row_index(index)
+}
+
+fn coding_agent_sorted_project_ids(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Vec<String> {
+    let mut projects = chat.project_registry.values().collect::<Vec<_>>();
+    projects.sort_by(|left, right| {
+        left.project_name
+            .to_ascii_lowercase()
+            .cmp(&right.project_name.to_ascii_lowercase())
+            .then_with(|| {
+                left.workspace_root
+                    .to_ascii_lowercase()
+                    .cmp(&right.workspace_root.to_ascii_lowercase())
+            })
+    });
+    projects
+        .into_iter()
+        .map(|project| project.project_id.clone())
+        .collect()
+}
+
+fn coding_agent_selected_thread_id(state: &crate::app_state::RenderState) -> Option<String> {
+    if let Some(project_id) = coding_agent_selected_project_id(state) {
+        return state
+            .autopilot_chat
+            .project_registry
+            .get(&project_id)
+            .and_then(|project| {
+                state
+                    .coding_agent
+                    .active_thread_id
+                    .as_deref()
+                    .filter(|thread_id| {
+                        project
+                            .thread_ids
+                            .iter()
+                            .any(|candidate| candidate == *thread_id)
+                    })
+                    .map(ToString::to_string)
+            })
+            .or_else(|| {
+                coding_agent_preferred_thread_for_project(
+                    &state.autopilot_chat,
+                    &state.coding_agent.active_thread_id,
+                    &project_id,
+                )
+            });
+    }
+
+    let workspace_root = coding_agent_workspace_root(state)?;
+    state
+        .coding_agent
+        .active_thread_id
+        .as_deref()
+        .filter(|thread_id| {
+            state
+                .autopilot_chat
+                .thread_metadata
+                .get(*thread_id)
+                .and_then(|metadata| metadata.workspace_root.as_deref().or(metadata.cwd.as_deref()))
+                == Some(workspace_root.as_str())
+        })
+        .map(ToString::to_string)
+}
+
+fn coding_agent_preferred_thread_for_project(
+    chat: &crate::app_state::AutopilotChatState,
+    pane_active_thread_id: &Option<String>,
+    project_id: &str,
+) -> Option<String> {
+    let project = chat.project_registry.get(project_id)?;
+    if let Some(thread_id) = pane_active_thread_id.as_deref() {
+        if project.thread_ids.iter().any(|candidate| candidate == thread_id) {
+            return Some(thread_id.to_string());
+        }
+    }
+    if let Some(thread_id) = chat.active_thread_id.as_deref() {
+        if project.thread_ids.iter().any(|candidate| candidate == thread_id) {
+            return Some(thread_id.to_string());
+        }
+    }
+    project
+        .thread_ids
+        .iter()
+        .max_by_key(|thread_id| {
+            chat.thread_metadata
+                .get(*thread_id)
+                .and_then(|metadata| metadata.updated_at)
+                .unwrap_or_default()
+        })
+        .cloned()
+}
+
+fn coding_agent_selected_project_id(
+    state: &crate::app_state::RenderState,
+) -> Option<String> {
+    state
+        .coding_agent
+        .selected_project_id
+        .clone()
+        .filter(|project_id| state.autopilot_chat.project_registry.contains_key(project_id))
+        .or_else(|| {
+            state
+                .coding_agent
+                .active_thread_id
+                .as_deref()
+                .and_then(|thread_id| state.autopilot_chat.project_for_thread(thread_id))
+                .map(|project| project.project_id.clone())
+        })
+        .or_else(|| {
+            state
+                .coding_agent
+                .selected_workspace_root
+                .as_deref()
+                .and_then(|workspace_root| {
+                    state
+                        .autopilot_chat
+                        .project_registry
+                        .values()
+                        .find(|project| project.workspace_root == workspace_root)
+                        .map(|project| project.project_id.clone())
+                })
+        })
+}
+
+fn coding_agent_workspace_root(state: &crate::app_state::RenderState) -> Option<String> {
+    if let Some(workspace_root) = state.coding_agent.selected_workspace_root.as_ref()
+        && !workspace_root.trim().is_empty()
+    {
+        return Some(workspace_root.clone());
+    }
+    coding_agent_selected_project_id(state)
+        .and_then(|project_id| {
+            state
+                .autopilot_chat
+                .project_registry
+                .get(&project_id)
+                .map(|project| project.workspace_root.clone())
+        })
+}
+
+fn coding_agent_thread_ids_for_current_selection(
+    state: &crate::app_state::RenderState,
+) -> Vec<String> {
+    if let Some(project_id) = coding_agent_selected_project_id(state)
+        && let Some(project) = state.autopilot_chat.project_registry.get(&project_id)
+    {
+        let mut thread_ids = project.thread_ids.clone();
+        thread_ids.sort_by(|left, right| {
+            state
+                .autopilot_chat
+                .thread_metadata
+                .get(right)
+                .and_then(|metadata| metadata.updated_at)
+                .unwrap_or_default()
+                .cmp(
+                    &state
+                        .autopilot_chat
+                        .thread_metadata
+                        .get(left)
+                        .and_then(|metadata| metadata.updated_at)
+                        .unwrap_or_default(),
+                )
+        });
+        return thread_ids;
+    }
+
+    let Some(workspace_root) = coding_agent_workspace_root(state) else {
+        return Vec::new();
+    };
+    let mut thread_ids = state
+        .autopilot_chat
+        .threads
+        .iter()
+        .filter(|thread_id| {
+            state
+                .autopilot_chat
+                .thread_metadata
+                .get(thread_id.as_str())
+                .and_then(|metadata| metadata.workspace_root.as_deref().or(metadata.cwd.as_deref()))
+                == Some(workspace_root.as_str())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    thread_ids.sort_by(|left, right| {
+        state
+            .autopilot_chat
+            .thread_metadata
+            .get(right)
+            .and_then(|metadata| metadata.updated_at)
+            .unwrap_or_default()
+            .cmp(
+                &state
+                    .autopilot_chat
+                    .thread_metadata
+                    .get(left)
+                    .and_then(|metadata| metadata.updated_at)
+                    .unwrap_or_default(),
+            )
+    });
+    thread_ids
+}
+
+fn coding_agent_store_active_thread_view_state(state: &mut crate::app_state::RenderState) {
+    let Some(thread_id) = state.coding_agent.active_thread_id.clone() else {
+        return;
+    };
+    let draft = state.coding_agent_inputs.composer.get_value().to_string();
+    if draft.trim().is_empty() {
+        state.coding_agent.thread_composer_drafts.remove(&thread_id);
+    } else {
+        state
+            .coding_agent
+            .thread_composer_drafts
+            .insert(thread_id.clone(), draft);
+    }
+    state
+        .coding_agent
+        .thread_message_scroll_offsets
+        .insert(thread_id, state.coding_agent.thread_scroll_offset);
+}
+
+fn coding_agent_restore_thread_view_state(
+    state: &mut crate::app_state::RenderState,
+    thread_id: Option<&str>,
+) {
+    if let Some(thread_id) = thread_id {
+        let draft = state
+            .coding_agent
+            .thread_composer_drafts
+            .get(thread_id)
+            .cloned()
+            .unwrap_or_default();
+        state.coding_agent_inputs.composer.set_value(draft);
+        state.coding_agent.thread_scroll_offset = state
+            .coding_agent
+            .thread_message_scroll_offsets
+            .get(thread_id)
+            .copied()
+            .unwrap_or(f32::MAX);
+    } else if state.coding_agent.pending_thread_start_prompt.is_none() {
+        state.coding_agent_inputs.composer.set_value(String::new());
+        state.coding_agent.thread_scroll_offset = f32::MAX;
+    }
+}
+
+fn coding_agent_terminal_session_id_for_workspace(workspace_root: &str) -> String {
+    format!("coding-agent-terminal::{workspace_root}")
+}
+
+fn ensure_coding_agent_terminal_session(
+    state: &mut crate::app_state::RenderState,
+    workspace_root: &str,
+) -> Result<String, String> {
+    let session_id = coding_agent_terminal_session_id_for_workspace(workspace_root);
+    let session = state
+        .autopilot_chat
+        .terminal_session_for_thread(session_id.as_str())
+        .cloned();
+    if session.as_ref().is_some_and(|existing| existing.status.is_active()) {
+        return Ok(session_id);
+    }
+
+    let (cols, rows) = session
+        .as_ref()
+        .map(|existing| (existing.cols, existing.rows))
+        .unwrap_or_else(crate::chat_terminal::default_terminal_size);
+    state.autopilot_chat.prepare_terminal_session(
+        session_id.as_str(),
+        workspace_root.to_string(),
+        current_terminal_shell_label(),
+        cols,
+        rows,
+    );
+    queue_terminal_command(
+        state,
+        crate::chat_terminal::ChatTerminalCommand::Open {
+            thread_id: session_id.clone(),
+            workspace: workspace_root.to_string(),
+            cols,
+            rows,
+        },
+    )
+    .map_err(|error| {
+        state
+            .autopilot_chat
+            .record_terminal_session_failure(session_id.as_str(), error.clone());
+        error
+    })?;
+    Ok(session_id)
+}
+
+fn choose_local_folder_for_coding_agent() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("osascript")
+            .args([
+                "-e",
+                "set chosenFolder to choose folder with prompt \"Select a local folder for Coding Agent\"",
+                "-e",
+                "POSIX path of chosenFolder",
+            ])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return normalize_coding_agent_workspace_root(raw);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+fn normalize_coding_agent_workspace_root(raw: String) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = std::fs::canonicalize(trimmed).unwrap_or_else(|_| std::path::PathBuf::from(trimmed));
+    if !path.is_dir() {
+        return None;
+    }
+    let git_output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&path)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok();
+    if let Some(output) = git_output
+        && output.status.success()
+    {
+        let git_root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !git_root.is_empty() {
+            return Some(git_root);
+        }
+    }
+    Some(path.display().to_string())
+}
+
+fn coding_agent_selected_model(state: &crate::app_state::RenderState) -> Option<String> {
+    coding_agent_selected_project_id(state)
+        .and_then(|project_id| {
+            state
+                .autopilot_chat
+                .project_registry
+                .get(&project_id)
+                .and_then(|project| project.defaults.model.clone())
+        })
+        .or_else(|| state.autopilot_chat.selected_model_override())
+}
+
+fn coding_agent_service_tier(
+    state: &crate::app_state::RenderState,
+) -> Option<Option<codex_client::ServiceTier>> {
+    coding_agent_selected_project_id(state)
+        .and_then(|project_id| {
+            state
+                .autopilot_chat
+                .project_registry
+                .get(&project_id)
+                .map(|project| project.defaults.service_tier.request_value())
+        })
+        .flatten()
+        .or_else(|| chat_session_service_tier(state))
+}
+
+fn coding_agent_approval_policy(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::AskForApproval> {
+    coding_agent_selected_project_id(state)
+        .and_then(|project_id| {
+            state
+                .autopilot_chat
+                .project_registry
+                .get(&project_id)
+                .and_then(|project| project.defaults.approval_policy)
+        })
+        .or_else(|| chat_session_approval_policy(state))
+}
+
+fn coding_agent_thread_sandbox_mode(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::SandboxMode> {
+    coding_agent_selected_project_id(state)
+        .and_then(|project_id| {
+            state
+                .autopilot_chat
+                .project_registry
+                .get(&project_id)
+                .and_then(|project| project.defaults.sandbox_mode)
+        })
+        .or_else(|| chat_session_thread_sandbox_mode(state))
+}
+
+fn coding_agent_turn_sandbox_policy(
+    state: &crate::app_state::RenderState,
+    workspace_root: &str,
+) -> Option<codex_client::SandboxPolicy> {
+    match coding_agent_thread_sandbox_mode(state) {
+        Some(codex_client::SandboxMode::DangerFullAccess) => dangerous_sandbox_policy(),
+        Some(codex_client::SandboxMode::ReadOnly) => Some(codex_client::SandboxPolicy::ReadOnly),
+        Some(codex_client::SandboxMode::WorkspaceWrite) => {
+            Some(codex_client::SandboxPolicy::WorkspaceWrite {
+                writable_roots: vec![workspace_root.to_string()],
+                network_access: true,
+                exclude_tmpdir_env_var: false,
+                exclude_slash_tmp: false,
+            })
+        }
+        None => None,
+    }
+}
+
+fn coding_agent_personality(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::Personality> {
+    coding_agent_selected_project_id(state)
+        .and_then(|project_id| {
+            state
+                .autopilot_chat
+                .project_registry
+                .get(&project_id)
+                .and_then(|project| project.defaults.personality.request_value())
+        })
+        .or_else(|| chat_session_personality(state))
+}
+
+fn coding_agent_reasoning_effort(
+    state: &crate::app_state::RenderState,
+) -> Option<codex_client::ReasoningEffort> {
+    let raw = coding_agent_selected_project_id(state)
+        .and_then(|project_id| {
+            state
+                .autopilot_chat
+                .project_registry
+                .get(&project_id)
+                .and_then(|project| project.defaults.reasoning_effort.clone())
+        })
+        .or_else(|| state.autopilot_chat.reasoning_effort.clone())?;
+    let trimmed = raw.trim();
+    serde_json::from_str::<codex_client::ReasoningEffort>(&format!("\"{trimmed}\"")).ok()
+}
+
+fn coding_agent_collaboration_mode(
+    state: &crate::app_state::RenderState,
+    model: Option<&str>,
+) -> Option<serde_json::Value> {
+    let Some(project_id) = coding_agent_selected_project_id(state) else {
+        return None;
+    };
+    let mode = match state
+        .autopilot_chat
+        .project_registry
+        .get(&project_id)
+        .map(|project| project.defaults.collaboration_mode)
+        .unwrap_or(state.autopilot_chat.collaboration_mode)
+    {
+        crate::app_state::AutopilotChatCollaborationMode::Off => return None,
+        crate::app_state::AutopilotChatCollaborationMode::Default => "default",
+        crate::app_state::AutopilotChatCollaborationMode::Plan => "plan",
+    };
+    let Some(model) = model else {
+        return None;
+    };
+    Some(serde_json::json!({
+        "mode": mode,
+        "model": model,
+    }))
+}
+
+fn run_coding_agent_submit_prompt_to_thread(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+    prompt: String,
+    workspace_root: &str,
+) -> bool {
+    let trimmed_prompt = prompt.trim().to_string();
+    if trimmed_prompt.is_empty() {
+        return false;
+    }
+
+    let (parsed_prompt, attachment_error) =
+        parse_chat_turn_prompt(prompt.clone(), Some(workspace_root));
+    if let Some(error) = attachment_error {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    let (input, input_error) = assemble_chat_turn_input(parsed_prompt, Vec::new());
+    if let Some(error) = input_error {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+
+    let model = coding_agent_selected_model(state);
+    let selected_project_id = coding_agent_selected_project_id(state);
+    let collaboration_mode = coding_agent_collaboration_mode(state, model.as_deref());
+    let active_turn_id = state
+        .autopilot_chat
+        .active_turn_id
+        .clone()
+        .filter(|_| {
+            state
+                .autopilot_chat
+                .active_turn_metadata()
+                .is_some_and(|metadata| metadata.thread_id == thread_id)
+        });
+    let command = if let Some(active_turn_id) = active_turn_id {
+        crate::codex_lane::CodexLaneCommand::TurnSteer(codex_client::TurnSteerParams {
+            thread_id: thread_id.to_string(),
+            input,
+            expected_turn_id: active_turn_id,
+        })
+    } else {
+        crate::codex_lane::CodexLaneCommand::TurnStart(codex_client::TurnStartParams {
+            thread_id: thread_id.to_string(),
+            input,
+            cwd: Some(std::path::PathBuf::from(workspace_root)),
+            approval_policy: coding_agent_approval_policy(state),
+            sandbox_policy: coding_agent_turn_sandbox_policy(state, workspace_root),
+            model,
+            service_tier: coding_agent_service_tier(state),
+            effort: coding_agent_reasoning_effort(state),
+            summary: None,
+            personality: coding_agent_personality(state),
+            output_schema: None,
+            collaboration_mode,
+        })
+    };
+
+    match state.queue_codex_command(command) {
+        Ok(_) => {
+            state.coding_agent.selected_workspace_root = Some(workspace_root.to_string());
+            state.coding_agent.selected_project_id = state
+                .autopilot_chat
+                .project_for_thread(thread_id)
+                .map(|project| project.project_id.clone())
+                .or(selected_project_id);
+            state.coding_agent.active_thread_id = Some(thread_id.to_string());
+            state.coding_agent.pending_thread_start_workspace_root = None;
+            state.coding_agent.pending_thread_start_prompt = None;
+            state
+                .autopilot_chat
+                .append_cached_thread_message(thread_id, crate::app_state::AutopilotRole::User, trimmed_prompt);
+            state.coding_agent.thread_composer_drafts.remove(thread_id);
+            state
+                .coding_agent
+                .thread_message_scroll_offsets
+                .insert(thread_id.to_string(), f32::MAX);
+            state.coding_agent.thread_scroll_offset = f32::MAX;
+            state.coding_agent_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.coding_agent.pending_thread_start_workspace_root = None;
+            state.coding_agent.pending_thread_start_prompt = None;
+            state.coding_agent_inputs.composer.set_value(prompt);
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+fn coding_agent_has_pending_approvals_for_threads(
+    chat: &crate::app_state::AutopilotChatState,
+    thread_ids: &[String],
+) -> bool {
+    chat.pending_command_approvals
+        .iter()
+        .any(|request| thread_ids.iter().any(|thread_id| thread_id == &request.thread_id))
+        || chat
+            .pending_file_change_approvals
+            .iter()
+            .any(|request| thread_ids.iter().any(|thread_id| thread_id == &request.thread_id))
+}
+
+fn coding_agent_take_project_command_approval(
+    state: &mut crate::app_state::RenderState,
+    thread_ids: &[String],
+) -> Option<(usize, crate::app_state::AutopilotApprovalRequest)> {
+    let index = state
+        .autopilot_chat
+        .pending_command_approvals
+        .iter()
+        .position(|request| thread_ids.iter().any(|thread_id| thread_id == &request.thread_id))?;
+    Some((
+        index,
+        state.autopilot_chat.pending_command_approvals.remove(index),
+    ))
+}
+
+fn coding_agent_take_project_file_approval(
+    state: &mut crate::app_state::RenderState,
+    thread_ids: &[String],
+) -> Option<(usize, crate::app_state::AutopilotFileChangeApprovalRequest)> {
+    let index = state
+        .autopilot_chat
+        .pending_file_change_approvals
+        .iter()
+        .position(|request| thread_ids.iter().any(|thread_id| thread_id == &request.thread_id))?;
+    Some((
+        index,
+        state
+            .autopilot_chat
+            .pending_file_change_approvals
+            .remove(index),
+    ))
 }
 
 pub(super) fn run_chat_approval_response_action(

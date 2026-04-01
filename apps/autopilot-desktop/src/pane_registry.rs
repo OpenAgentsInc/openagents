@@ -178,7 +178,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 67] = [
+const PANE_SPECS: [PaneSpec; 68] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -200,6 +200,21 @@ const PANE_SPECS: [PaneSpec; 67] = [
             id: "pane.codex",
             label: "CHAT",
             description: "Open a simple local Autopilot conversation pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodingAgent,
+        title: "Coding Agent",
+        default_width: 1180.0,
+        default_height: 720.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.coding_agent",
+            label: "Coding Agent",
+            description: "Open the local coding-agent workspace with terminal and diff review",
             keybinding: None,
         }),
         hotbar: None,

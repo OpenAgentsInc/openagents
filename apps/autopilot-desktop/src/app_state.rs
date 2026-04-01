@@ -88,6 +88,7 @@ const PANE_SIZE_MEMORY_SCHEMA_VERSION: u32 = 1;
 pub enum PaneKind {
     Empty,
     AutopilotChat,
+    CodingAgent,
     ProjectOps,
     CodexAccount,
     CodexModels,
@@ -742,6 +743,28 @@ impl Default for DataSellerPaneInputs {
         Self {
             composer: TextInput::new()
                 .placeholder("Describe the data you want to sell, the intended buyer, and the price or permission posture...")
+                .border_color_focused(theme::border::FOCUS),
+        }
+    }
+}
+
+pub struct CodingAgentPaneInputs {
+    pub composer: TextInput,
+    pub terminal_input: TextInput,
+}
+
+impl Default for CodingAgentPaneInputs {
+    fn default() -> Self {
+        Self {
+            composer: TextInput::new()
+                .placeholder("Describe the coding task, steer the current run, or request a review...")
+                .mono(true)
+                .font_size(theme::font_size::SM - 1.0)
+                .border_color_focused(theme::border::FOCUS),
+            terminal_input: TextInput::new()
+                .placeholder("Run a local terminal command when the agent is idle...")
+                .mono(true)
+                .font_size(theme::font_size::SM - 1.0)
                 .border_color_focused(theme::border::FOCUS),
         }
     }
@@ -1610,6 +1633,63 @@ pub struct DataBuyerRequestDraft {
     pub preview_posture: String,
     pub bid_sats: u64,
     pub timeout_seconds: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CodingAgentRailTab {
+    ChangedFiles,
+    Diff,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CodingAgentPaneState {
+    pub selected_workspace_root: Option<String>,
+    pub selected_project_id: Option<String>,
+    pub active_thread_id: Option<String>,
+    pub thread_composer_drafts: std::collections::HashMap<String, String>,
+    pub thread_message_scroll_offsets: std::collections::HashMap<String, f32>,
+    pub pending_thread_start_workspace_root: Option<String>,
+    pub pending_thread_start_prompt: Option<String>,
+    pub header_repo_menu_open: bool,
+    pub status_drawer_open: bool,
+    pub approval_drawer_open: bool,
+    pub selected_diff_file_path: Option<String>,
+    pub right_rail_tab: CodingAgentRailTab,
+    pub thread_list_scroll_offset: f32,
+    pub thread_scroll_offset: f32,
+    pub terminal_scroll_offset: f32,
+    pub diff_scroll_offset: f32,
+    pub approval_scroll_offset: f32,
+    pub terminal_input_draft: String,
+    pub split_main_ratio: f32,
+    pub split_terminal_ratio: f32,
+}
+
+impl Default for CodingAgentPaneState {
+    fn default() -> Self {
+        Self {
+            selected_workspace_root: None,
+            selected_project_id: None,
+            active_thread_id: None,
+            thread_composer_drafts: std::collections::HashMap::new(),
+            thread_message_scroll_offsets: std::collections::HashMap::new(),
+            pending_thread_start_workspace_root: None,
+            pending_thread_start_prompt: None,
+            header_repo_menu_open: false,
+            status_drawer_open: false,
+            approval_drawer_open: false,
+            selected_diff_file_path: None,
+            right_rail_tab: CodingAgentRailTab::ChangedFiles,
+            thread_list_scroll_offset: 0.0,
+            thread_scroll_offset: 0.0,
+            terminal_scroll_offset: 0.0,
+            diff_scroll_offset: 0.0,
+            approval_scroll_offset: 0.0,
+            terminal_input_draft: String::new(),
+            split_main_ratio: 0.68,
+            split_terminal_ratio: 0.62,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -9911,10 +9991,20 @@ impl AutopilotChatState {
             .and_then(|artifacts| artifacts.first())
     }
 
+    pub fn diff_artifact_for_thread(&self, thread_id: &str) -> Option<&AutopilotDiffArtifact> {
+        self.thread_diff_artifacts
+            .get(thread_id)
+            .and_then(|artifacts| artifacts.first())
+    }
+
     pub fn active_review_artifact(&self) -> Option<&AutopilotReviewArtifact> {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.thread_review_artifacts.get(thread_id))
+    }
+
+    pub fn review_artifact_for_thread(&self, thread_id: &str) -> Option<&AutopilotReviewArtifact> {
+        self.thread_review_artifacts.get(thread_id)
     }
 
     pub fn active_compaction_artifact(&self) -> Option<&AutopilotCompactionArtifact> {
@@ -16000,6 +16090,7 @@ pub struct RenderState {
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
+    pub coding_agent_inputs: CodingAgentPaneInputs,
     pub data_seller_inputs: DataSellerPaneInputs,
     pub calculator_inputs: CalculatorPaneInputs,
     pub provider_control: ProviderControlPaneState,
@@ -16015,6 +16106,7 @@ pub struct RenderState {
     pub data_market: DataMarketPaneState,
     pub spark_replay: SparkReplayPaneState,
     pub autopilot_chat: AutopilotChatState,
+    pub coding_agent: CodingAgentPaneState,
     pub project_ops: ProjectOpsPaneState,
     pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,
     pub codex_account: CodexAccountPaneState,

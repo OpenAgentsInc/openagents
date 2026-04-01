@@ -4273,6 +4273,7 @@ fn pane_action_to_hit_action(
     };
 
     match kind {
+        PaneKind::CodingAgent => unsupported(),
         PaneKind::ProjectOps => unsupported(),
         PaneKind::PsionicViz => unsupported(),
         PaneKind::PsionicRemoteTraining => match action {
@@ -8410,6 +8411,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
     match kind {
         PaneKind::Empty => "pane",
         PaneKind::AutopilotChat => "autopilot_chat",
+        PaneKind::CodingAgent => "coding_agent",
         PaneKind::ProjectOps => "project_ops",
         PaneKind::CodexAccount => "codex_account",
         PaneKind::CodexModels => "codex_models",

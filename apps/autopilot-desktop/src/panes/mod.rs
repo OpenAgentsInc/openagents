@@ -8,6 +8,7 @@ pub mod cad;
 pub mod calculator;
 pub mod cast;
 pub mod chat;
+pub mod coding_agent;
 pub mod codex;
 pub mod contributor_beta;
 pub mod credit;

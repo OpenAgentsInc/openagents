@@ -13,9 +13,10 @@ use crate::pane_registry::pane_spec;
 use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
-    chat as chat_pane, data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
-    local_inference as local_inference_pane, relay_connections as relay_connections_pane,
-    rive as rive_pane, voice_playground as voice_playground_pane, wallet as wallet_pane,
+    chat as chat_pane, coding_agent as coding_agent_pane, data_seller as data_seller_pane,
+    earnings_jobs as earnings_jobs_pane, local_inference as local_inference_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
+    voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::render::{
     hotbar_drag_handle_bounds_for_state, logical_size, pane_fullscreen_active,
@@ -1291,6 +1292,23 @@ pub enum PaneHitAction {
     ChatSelectWorkspace(usize),
     ChatToggleCategory(usize),
     ChatSelectThread(usize),
+    CodingAgentNewThread,
+    CodingAgentSelectThread(usize),
+    CodingAgentChooseFolder,
+    CodingAgentSelectPrevProject,
+    CodingAgentSelectNextProject,
+    CodingAgentApprovalInspect,
+    CodingAgentApprovalAccept,
+    CodingAgentApprovalDecline,
+    CodingAgentShowChangedFiles,
+    CodingAgentShowDiff,
+    CodingAgentSelectDiffFile(usize),
+    CodingAgentStartTask,
+    CodingAgentReview,
+    CodingAgentTerminalSend,
+    CodingAgentFocusTerminal,
+    CodingAgentSend,
+    CodingAgentInterrupt,
     GoOnlineToggle,
     MissionControl(MissionControlPaneAction),
     ProviderControl(ProviderControlPaneAction),
@@ -1425,6 +1443,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
 
     match kind {
         PaneKind::AutopilotChat => pane_size_for_content(620.0, 500.0),
+        PaneKind::CodingAgent => pane_size_for_content(980.0, 620.0),
         PaneKind::CodexAccount
         | PaneKind::CodexModels
         | PaneKind::CodexConfig
@@ -1552,11 +1571,32 @@ impl PaneController {
     }
 
     pub fn create_for_kind(state: &mut RenderState, kind: PaneKind) -> u64 {
+        let was_open = state.panes.iter().any(|pane| pane.kind == kind);
         let id = Self::create(state, PaneDescriptor::for_kind(kind));
         if kind == PaneKind::AutopilotChat {
             state.autopilot_chat.selected_workspace = ChatWorkspaceSelection::Autopilot;
             focus_chat_composer_for_pane_open(state);
             queue_chat_thread_history_refresh_for_pane_open(state);
+        } else if kind == PaneKind::CodingAgent && !was_open {
+            state.coding_agent.selected_workspace_root = None;
+            state.coding_agent.selected_project_id = None;
+            state.coding_agent.active_thread_id = None;
+            state.coding_agent.thread_composer_drafts.clear();
+            state.coding_agent.thread_message_scroll_offsets.clear();
+            state.coding_agent.pending_thread_start_workspace_root = None;
+            state.coding_agent.pending_thread_start_prompt = None;
+            state.coding_agent.header_repo_menu_open = false;
+            state.coding_agent.status_drawer_open = false;
+            state.coding_agent.approval_drawer_open = false;
+            state.coding_agent.selected_diff_file_path = None;
+            state.coding_agent.right_rail_tab = crate::app_state::CodingAgentRailTab::ChangedFiles;
+            state.coding_agent.thread_list_scroll_offset = 0.0;
+            state.coding_agent.thread_scroll_offset = 0.0;
+            state.coding_agent.terminal_scroll_offset = 0.0;
+            state.coding_agent.diff_scroll_offset = 0.0;
+            state.coding_agent.approval_scroll_offset = 0.0;
+            state.coding_agent_inputs.composer.blur();
+            state.coding_agent_inputs.terminal_input.blur();
         } else if kind == PaneKind::LocalInference {
             focus_local_inference_prompt_for_pane_open(state);
         } else if kind == PaneKind::AttnResLab {
@@ -1967,6 +2007,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
+            PaneKind::CodingAgent => {}
             PaneKind::Calculator => {
                 if calculator_expression_input_bounds(content_bounds).contains(point) {
                     return CursorIcon::Text;
@@ -7628,6 +7669,53 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::CodingAgent => {
+            if coding_agent_pane::thread_rail_new_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodingAgentNewThread);
+            }
+            if let Some(index) = coding_agent_pane::thread_rail_row_index_at_point(
+                content_bounds,
+                &state.coding_agent,
+                &state.autopilot_chat,
+                point,
+            ) {
+                return Some(PaneHitAction::CodingAgentSelectThread(index));
+            }
+            if coding_agent_pane::repo_prev_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodingAgentSelectPrevProject);
+            }
+            if coding_agent_pane::repo_selector_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodingAgentChooseFolder);
+            }
+            if coding_agent_pane::terminal_send_enabled(
+                &state.coding_agent,
+                &state.autopilot_chat,
+                &state.coding_agent_inputs,
+            )
+                && coding_agent_pane::terminal_send_button_bounds(content_bounds).contains(point)
+            {
+                return Some(PaneHitAction::CodingAgentTerminalSend);
+            }
+            if coding_agent_pane::terminal_input_enabled(
+                &state.coding_agent,
+                &state.autopilot_chat,
+            ) && coding_agent_pane::terminal_shell_bounds(content_bounds).contains(point)
+            {
+                return Some(PaneHitAction::CodingAgentFocusTerminal);
+            }
+            if coding_agent_pane::composer_send_enabled(
+                &state.coding_agent,
+                &state.autopilot_chat,
+                &state.coding_agent_inputs,
+            ) && coding_agent_pane::composer_send_button_bounds(content_bounds).contains(point)
+            {
+                return Some(PaneHitAction::CodingAgentSend);
+            }
+            if coding_agent_pane::repo_next_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodingAgentSelectNextProject);
+            }
+            None
+        }
         PaneKind::ProjectOps => None,
         PaneKind::AutopilotChat => {
             set_chat_shell_layout_state(
@@ -9744,6 +9832,10 @@ pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) ->
     chat_pane::dispatch_input_event(state, event)
 }
 
+pub fn dispatch_coding_agent_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    coding_agent_pane::dispatch_input_event(state, event)
+}
+
 pub fn dispatch_data_seller_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     data_seller_pane::dispatch_input_event(state, event)
 }
@@ -9758,6 +9850,64 @@ pub fn dispatch_chat_scroll_event(
     scroll_dy: f32,
 ) -> bool {
     chat_pane::dispatch_transcript_scroll_event(state, cursor_position, scroll_dy)
+}
+
+pub fn dispatch_coding_agent_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    if scroll_dy.abs() <= f32::EPSILON {
+        return false;
+    }
+    let Some(pane_idx) = pane_indices_by_z_desc(state).into_iter().find(|index| {
+        let pane = &state.panes[*index];
+        pane.kind == PaneKind::CodingAgent && pane.bounds.contains(cursor_position)
+    }) else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    let content_bounds = pane_content_bounds_for_pane(pane);
+    let thread_list_viewport = coding_agent_pane::thread_rail_scroll_viewport_bounds(content_bounds);
+    if thread_list_viewport.contains(cursor_position) {
+        let before = state.coding_agent.thread_list_scroll_offset;
+        let content_height = coding_agent_pane::thread_rail_content_height(
+            content_bounds,
+            &state.coding_agent,
+            &state.autopilot_chat,
+        );
+        let max_scroll = (content_height - thread_list_viewport.size.height).max(0.0);
+        state.coding_agent.thread_list_scroll_offset =
+            (state.coding_agent.thread_list_scroll_offset + scroll_dy).clamp(0.0, max_scroll);
+        return (state.coding_agent.thread_list_scroll_offset - before).abs() > f32::EPSILON;
+    }
+    let task_viewport = coding_agent_pane::task_thread_scroll_viewport_bounds(content_bounds);
+    if task_viewport.contains(cursor_position) {
+        let before = state.coding_agent.thread_scroll_offset;
+        let content_height = coding_agent_pane::task_thread_content_height(
+            content_bounds,
+            &state.coding_agent,
+            &state.autopilot_chat,
+        );
+        let max_scroll = (content_height - task_viewport.size.height).max(0.0);
+        state.coding_agent.thread_scroll_offset =
+            (state.coding_agent.thread_scroll_offset + scroll_dy).clamp(0.0, max_scroll);
+        return (state.coding_agent.thread_scroll_offset - before).abs() > f32::EPSILON;
+    }
+    let terminal_viewport = coding_agent_pane::terminal_scroll_viewport_bounds(content_bounds);
+    if terminal_viewport.contains(cursor_position) {
+        let before = state.coding_agent.terminal_scroll_offset;
+        let content_height = coding_agent_pane::terminal_content_height(
+            content_bounds,
+            &state.coding_agent,
+            &state.autopilot_chat,
+        );
+        let max_scroll = (content_height - terminal_viewport.size.height).max(0.0);
+        state.coding_agent.terminal_scroll_offset =
+            (state.coding_agent.terminal_scroll_offset + scroll_dy).clamp(0.0, max_scroll);
+        return (state.coding_agent.terminal_scroll_offset - before).abs() > f32::EPSILON;
+    }
+    false
 }
 
 pub fn dispatch_wallet_scroll_event(

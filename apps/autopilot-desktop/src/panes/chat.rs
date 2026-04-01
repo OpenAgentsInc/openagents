@@ -42,8 +42,8 @@ use crate::pane_system::{
 use crate::ui_style::{self, AppSpacingRole, AppTextRole};
 use wgpui::components::sections::TerminalStream;
 
-const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
-const CHAT_MARKDOWN_FONT_SIZE: f32 = 11.0;
+const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 13.0;
+const CHAT_MARKDOWN_FONT_SIZE: f32 = 10.0;
 const CHAT_MARKDOWN_MIN_WIDTH: f32 = 84.0;
 const CHAT_PROGRESS_HEADER_LINE_HEIGHT: f32 = 12.0;
 const CHAT_PROGRESS_ROW_LINE_HEIGHT: f32 = 12.0;

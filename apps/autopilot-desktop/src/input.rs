@@ -65,7 +65,8 @@ use crate::pane_system::{
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_adapter_training_input_event,
     dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
-    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
+    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_coding_agent_input_event,
+    dispatch_coding_agent_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_data_buyer_scroll_event,
     dispatch_data_market_scroll_event, dispatch_data_seller_input_event,
     dispatch_data_seller_scroll_event, dispatch_earnings_scoreboard_scroll_event,
@@ -2999,6 +3000,9 @@ fn dispatch_mouse_scroll(
                 handled |= dispatch_wallet_scroll_event(state, point, *dy);
             }
             if !handled {
+                handled |= dispatch_coding_agent_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_chat_scroll_event(state, point, *dy);
             }
         }
@@ -3317,6 +3321,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
             Some(PaneKind::Settings) => dispatch_settings_input_event(state, event),
             Some(PaneKind::Credentials) => dispatch_credentials_input_event(state, event),
             Some(PaneKind::AutopilotChat) => dispatch_chat_input_event(state, event),
+            Some(PaneKind::CodingAgent) => dispatch_coding_agent_input_event(state, event),
             Some(PaneKind::DataSeller) => dispatch_data_seller_input_event(state, event),
             Some(PaneKind::Calculator) => dispatch_calculator_input_event(state, event),
             Some(PaneKind::JobHistory) => dispatch_job_history_input_event(state, event),
@@ -3338,6 +3343,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
+    handled |= dispatch_coding_agent_input_event(state, event);
     handled |= dispatch_data_seller_input_event(state, event);
     handled |= dispatch_calculator_input_event(state, event);
     handled |= dispatch_job_history_input_event(state, event);
@@ -3540,6 +3546,7 @@ fn dispatch_keyboard_submit_actions(
     logical_key: &WinitLogicalKey,
 ) -> bool {
     handle_chat_keyboard_input(state, logical_key)
+        || handle_coding_agent_keyboard_input(state, logical_key)
         || handle_data_seller_keyboard_input(state, logical_key)
         || handle_spark_wallet_keyboard_input(state, logical_key)
         || handle_mission_control_keyboard_input(state, logical_key)
@@ -3661,6 +3668,45 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatSelectWorkspace(index) => run_chat_select_workspace_action(state, index),
         PaneHitAction::ChatToggleCategory(index) => run_chat_toggle_category_action(state, index),
         PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
+        PaneHitAction::CodingAgentNewThread => run_coding_agent_new_thread_action(state),
+        PaneHitAction::CodingAgentSelectThread(index) => {
+            run_coding_agent_select_thread_action(state, index)
+        }
+        PaneHitAction::CodingAgentChooseFolder => run_coding_agent_choose_folder_action(state),
+        PaneHitAction::CodingAgentSelectPrevProject => {
+            run_coding_agent_cycle_project_action(state, CodingAgentProjectDirection::Previous)
+        }
+        PaneHitAction::CodingAgentSelectNextProject => {
+            run_coding_agent_cycle_project_action(state, CodingAgentProjectDirection::Next)
+        }
+        PaneHitAction::CodingAgentApprovalInspect => {
+            run_coding_agent_toggle_approval_drawer_action(state)
+        }
+        PaneHitAction::CodingAgentApprovalAccept => {
+            run_coding_agent_approval_response_action(state, ApprovalDecision::Accept)
+        }
+        PaneHitAction::CodingAgentApprovalDecline => {
+            run_coding_agent_approval_response_action(state, ApprovalDecision::Decline)
+        }
+        PaneHitAction::CodingAgentShowChangedFiles => {
+            run_coding_agent_select_right_rail_tab_action(
+                state,
+                crate::app_state::CodingAgentRailTab::ChangedFiles,
+            )
+        }
+        PaneHitAction::CodingAgentShowDiff => run_coding_agent_select_right_rail_tab_action(
+            state,
+            crate::app_state::CodingAgentRailTab::Diff,
+        ),
+        PaneHitAction::CodingAgentSelectDiffFile(index) => {
+            run_coding_agent_select_diff_file_action(state, index)
+        }
+        PaneHitAction::CodingAgentStartTask => run_coding_agent_start_task_action(state),
+        PaneHitAction::CodingAgentReview => run_coding_agent_review_action(state),
+        PaneHitAction::CodingAgentTerminalSend => run_coding_agent_terminal_submit_action(state),
+        PaneHitAction::CodingAgentFocusTerminal => run_coding_agent_focus_terminal_action(state),
+        PaneHitAction::CodingAgentSend => run_coding_agent_submit_action(state),
+        PaneHitAction::CodingAgentInterrupt => run_coding_agent_interrupt_action(state),
         PaneHitAction::GoOnlineToggle => apply_provider_mode_target(
             state,
             matches!(
@@ -4094,6 +4140,78 @@ fn handle_chat_keyboard_input(
             false
         },
     )
+}
+
+fn handle_coding_agent_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let composer_focused = state.coding_agent_inputs.composer.is_focused();
+    let terminal_focused = state.coding_agent_inputs.terminal_input.is_focused();
+    if !composer_focused && !terminal_focused {
+        return false;
+    }
+
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+
+    match key {
+        Key::Named(NamedKey::Escape) => {
+            state.coding_agent_inputs.composer.blur();
+            state.coding_agent_inputs.terminal_input.blur();
+            return true;
+        }
+        Key::Named(NamedKey::Tab) => {
+            let terminal_enabled = crate::panes::coding_agent::terminal_input_enabled(
+                &state.coding_agent,
+                &state.autopilot_chat,
+            );
+            if composer_focused && terminal_enabled {
+                state.coding_agent_inputs.composer.blur();
+                state.coding_agent_inputs.terminal_input.focus();
+                return true;
+            }
+            if terminal_focused {
+                state.coding_agent_inputs.terminal_input.blur();
+                state.coding_agent_inputs.composer.focus();
+                return true;
+            }
+            return true;
+        }
+        _ => {}
+    }
+
+    let key_event = InputEvent::KeyDown {
+        key: key.clone(),
+        modifiers: state.input_modifiers,
+    };
+    let handled_by_input = dispatch_coding_agent_input_event(state, &key_event);
+
+    if matches!(key, Key::Named(NamedKey::Enter)) {
+        if state.coding_agent_inputs.composer.is_focused() {
+            if crate::panes::coding_agent::composer_send_enabled(
+                &state.coding_agent,
+                &state.autopilot_chat,
+                &state.coding_agent_inputs,
+            ) {
+                return run_coding_agent_submit_action(state);
+            }
+            return true;
+        }
+        if state.coding_agent_inputs.terminal_input.is_focused() {
+            if crate::panes::coding_agent::terminal_send_enabled(
+                &state.coding_agent,
+                &state.autopilot_chat,
+                &state.coding_agent_inputs,
+            ) {
+                return run_coding_agent_terminal_submit_action(state);
+            }
+            return true;
+        }
+    }
+
+    handled_by_input
 }
 
 fn handle_data_seller_keyboard_input(
