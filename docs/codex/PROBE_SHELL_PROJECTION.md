@@ -126,6 +126,24 @@ Current local-first behavior:
 - reviewer-facing evidence state is rendered honestly as missing, partial,
   complete, or failed
 
+## Delivery Receipt Layer
+
+Autopilot now also keeps one app-owned delivery receipt above the shared
+session and evidence bundle.
+
+Current local-first behavior:
+
+- one delivery receipt is linked from the Forge shared session
+- the receipt points back at the evidence bundle that justified the delivery
+- `/deliver pr [base-branch] [pr-url]` records branch, commit, compare URL,
+  optional GitHub PR URL, and suggested title/body state
+- `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`
+  records reviewer outcome explicitly
+- `/deliver merge <reviewer-label> [summary]` records merge closure explicitly
+- authorship mapping is stored as an explicit product object with separate local
+  human and local Probe agent roles instead of leaving that inference to raw
+  transcript history
+
 ## Artifact Ownership
 
 Plan, diff, review, and compaction presentation stays app-owned.

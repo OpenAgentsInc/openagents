@@ -8570,6 +8570,125 @@ impl ForgeEvidenceBundle {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeDeliveryReceiptStatus {
+    Prepared,
+    Opened,
+    Merged,
+}
+
+impl ForgeDeliveryReceiptStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Prepared => "prepared",
+            Self::Opened => "opened",
+            Self::Merged => "merged",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Prepared => "prepared locally",
+            Self::Opened => "opened on GitHub",
+            Self::Merged => "merged",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeDeliveryContributorRole {
+    Operator,
+    Implementation,
+    Reviewer,
+    Approver,
+}
+
+impl ForgeDeliveryContributorRole {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Operator => "operator",
+            Self::Implementation => "implementation",
+            Self::Reviewer => "reviewer",
+            Self::Approver => "approver",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Operator => "operator",
+            Self::Implementation => "implementation",
+            Self::Reviewer => "reviewer",
+            Self::Approver => "approver",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeDeliveryReviewerOutcome {
+    Commented,
+    Approved,
+    ChangesRequested,
+}
+
+impl ForgeDeliveryReviewerOutcome {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Commented => "commented",
+            Self::Approved => "approved",
+            Self::ChangesRequested => "changes_requested",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Commented => "commented",
+            Self::Approved => "approved",
+            Self::ChangesRequested => "changes requested",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryContributor {
+    pub participant_id: String,
+    pub display_name: String,
+    pub kind: ForgeSharedSessionControlOwner,
+    pub role: ForgeDeliveryContributorRole,
+    pub summary: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryReviewDecision {
+    pub reviewer_label: String,
+    pub outcome: ForgeDeliveryReviewerOutcome,
+    pub summary: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryReceipt {
+    pub delivery_receipt_id: String,
+    pub shared_session_id: String,
+    pub evidence_bundle_id: Option<String>,
+    pub probe_session_ids: Vec<String>,
+    pub status: ForgeDeliveryReceiptStatus,
+    pub base_branch: String,
+    pub base_commit: Option<String>,
+    pub head_branch: String,
+    pub head_commit: String,
+    pub compare_url: Option<String>,
+    pub pr_url: Option<String>,
+    pub suggested_title: String,
+    pub suggested_body: String,
+    pub contributors: Vec<ForgeDeliveryContributor>,
+    pub latest_review_decision: Option<ForgeDeliveryReviewDecision>,
+    pub merged_at_epoch_ms: Option<u64>,
+    pub updated_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSession {
     pub shared_session_id: String,
@@ -8960,8 +9079,10 @@ pub struct AutopilotChatState {
     thread_compaction_artifacts: std::collections::HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
     forge_evidence_bundles: std::collections::HashMap<String, ForgeEvidenceBundle>,
+    forge_delivery_receipts: std::collections::HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
     next_forge_evidence_bundle_seq: u64,
+    next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
@@ -9080,8 +9201,10 @@ impl Default for AutopilotChatState {
             thread_compaction_artifacts,
             forge_shared_sessions,
             forge_evidence_bundles,
+            forge_delivery_receipts,
             next_forge_shared_session_seq,
             next_forge_evidence_bundle_seq,
+            next_forge_delivery_receipt_seq,
             review_thread_source_map,
             artifact_load_error,
         ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -9091,8 +9214,10 @@ impl Default for AutopilotChatState {
                 projection.thread_compaction_artifacts,
                 projection.forge_shared_sessions,
                 projection.forge_evidence_bundles,
+                projection.forge_delivery_receipts,
                 projection.next_forge_shared_session_seq,
                 projection.next_forge_evidence_bundle_seq,
+                projection.next_forge_delivery_receipt_seq,
                 projection.review_thread_source_map,
                 None,
             ),
@@ -9102,6 +9227,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 1,
                 HashMap::new(),
@@ -9130,8 +9257,10 @@ impl Default for AutopilotChatState {
             thread_compaction_artifacts,
             forge_shared_sessions,
             forge_evidence_bundles,
+            forge_delivery_receipts,
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
+            next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
             review_thread_source_map,
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
@@ -9233,10 +9362,14 @@ struct CodexArtifactProjectionDocumentV2 {
     shared_sessions: Vec<ForgeSharedSession>,
     #[serde(default)]
     evidence_bundles: Vec<ForgeEvidenceBundle>,
+    #[serde(default)]
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
     #[serde(default = "default_next_forge_shared_session_seq")]
     next_shared_session_seq: u64,
     #[serde(default = "default_next_forge_evidence_bundle_seq")]
     next_evidence_bundle_seq: u64,
+    #[serde(default = "default_next_forge_delivery_receipt_seq")]
+    next_delivery_receipt_seq: u64,
 }
 
 struct LoadedCodexArtifactProjection {
@@ -9245,8 +9378,10 @@ struct LoadedCodexArtifactProjection {
     thread_compaction_artifacts: HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: HashMap<String, ForgeSharedSession>,
     forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
+    forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
     next_forge_evidence_bundle_seq: u64,
+    next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: HashMap<String, String>,
 }
 
@@ -9255,6 +9390,10 @@ fn default_next_forge_shared_session_seq() -> u64 {
 }
 
 fn default_next_forge_evidence_bundle_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_delivery_receipt_seq() -> u64 {
     1
 }
 
@@ -9537,6 +9676,83 @@ fn normalize_forge_evidence_bundles(
     bundles
 }
 
+fn normalize_forge_delivery_receipts(
+    mut receipts: Vec<ForgeDeliveryReceipt>,
+) -> Vec<ForgeDeliveryReceipt> {
+    receipts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.delivery_receipt_id.cmp(&rhs.delivery_receipt_id))
+    });
+    let mut seen_ids = HashSet::new();
+    receipts.retain(|receipt| {
+        let delivery_receipt_id = receipt.delivery_receipt_id.trim();
+        !delivery_receipt_id.is_empty() && seen_ids.insert(delivery_receipt_id.to_string())
+    });
+    for receipt in &mut receipts {
+        receipt.delivery_receipt_id = receipt.delivery_receipt_id.trim().to_string();
+        receipt.shared_session_id = receipt.shared_session_id.trim().to_string();
+        receipt.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut receipt.probe_session_ids));
+        receipt.evidence_bundle_id = receipt
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.base_branch = receipt.base_branch.trim().to_string();
+        receipt.base_commit = receipt
+            .base_commit
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.head_branch = receipt.head_branch.trim().to_string();
+        receipt.head_commit = receipt.head_commit.trim().to_string();
+        receipt.compare_url = receipt
+            .compare_url
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.pr_url = receipt
+            .pr_url
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.suggested_title = receipt.suggested_title.trim().to_string();
+        receipt.suggested_body = receipt.suggested_body.trim().to_string();
+        receipt.contributors = receipt
+            .contributors
+            .drain(..)
+            .filter_map(|mut contributor| {
+                contributor.participant_id = contributor.participant_id.trim().to_string();
+                contributor.display_name = contributor.display_name.trim().to_string();
+                contributor.summary = contributor
+                    .summary
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+                (!contributor.participant_id.is_empty() && !contributor.display_name.is_empty())
+                    .then_some(contributor)
+            })
+            .collect();
+        if let Some(review) = receipt.latest_review_decision.as_mut() {
+            review.reviewer_label = review.reviewer_label.trim().to_string();
+            review.summary = review
+                .summary
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+    }
+    receipts.retain(|receipt| {
+        !receipt.shared_session_id.is_empty()
+            && !receipt.probe_session_ids.is_empty()
+            && !receipt.base_branch.is_empty()
+            && !receipt.head_branch.is_empty()
+            && !receipt.head_commit.is_empty()
+    });
+    receipts
+}
+
 fn persist_codex_artifact_projection(
     path: &Path,
     diff_artifacts: &HashMap<String, Vec<AutopilotDiffArtifact>>,
@@ -9544,8 +9760,10 @@ fn persist_codex_artifact_projection(
     compaction_artifacts: &HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
     forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
+    forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
     next_forge_evidence_bundle_seq: u64,
+    next_forge_delivery_receipt_seq: u64,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -9572,8 +9790,12 @@ fn persist_codex_artifact_projection(
         evidence_bundles: normalize_forge_evidence_bundles(
             forge_evidence_bundles.values().cloned().collect(),
         ),
+        delivery_receipts: normalize_forge_delivery_receipts(
+            forge_delivery_receipts.values().cloned().collect(),
+        ),
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
         next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
+        next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
@@ -9595,8 +9817,10 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 thread_compaction_artifacts: HashMap::new(),
                 forge_shared_sessions: HashMap::new(),
                 forge_evidence_bundles: HashMap::new(),
+                forge_delivery_receipts: HashMap::new(),
                 next_forge_shared_session_seq: 1,
                 next_forge_evidence_bundle_seq: 1,
+                next_forge_delivery_receipt_seq: 1,
                 review_thread_source_map: HashMap::new(),
             });
         }
@@ -9638,6 +9862,8 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         1,
         1,
+        Vec::new(),
+        1,
     ))
 }
 
@@ -9660,6 +9886,8 @@ fn load_codex_artifact_projection_v2(
         document.evidence_bundles,
         document.next_shared_session_seq,
         document.next_evidence_bundle_seq,
+        document.delivery_receipts,
+        document.next_delivery_receipt_seq,
     ))
 }
 
@@ -9671,6 +9899,8 @@ fn build_loaded_codex_artifact_projection(
     evidence_bundles: Vec<ForgeEvidenceBundle>,
     next_shared_session_seq: u64,
     next_evidence_bundle_seq: u64,
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    next_delivery_receipt_seq: u64,
 ) -> LoadedCodexArtifactProjection {
     let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
     for artifact in normalize_codex_diff_artifacts(diff_artifacts) {
@@ -9705,14 +9935,21 @@ fn build_loaded_codex_artifact_projection(
         forge_evidence_bundles.insert(bundle.evidence_bundle_id.clone(), bundle);
     }
 
+    let mut forge_delivery_receipts = HashMap::<String, ForgeDeliveryReceipt>::new();
+    for receipt in normalize_forge_delivery_receipts(delivery_receipts) {
+        forge_delivery_receipts.insert(receipt.delivery_receipt_id.clone(), receipt);
+    }
+
     LoadedCodexArtifactProjection {
         thread_diff_artifacts,
         thread_review_artifacts,
         thread_compaction_artifacts,
         forge_shared_sessions,
         forge_evidence_bundles,
+        forge_delivery_receipts,
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
         next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
+        next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
         review_thread_source_map,
     }
 }
@@ -10092,8 +10329,10 @@ impl AutopilotChatState {
                 state.thread_compaction_artifacts = projection.thread_compaction_artifacts;
                 state.forge_shared_sessions = projection.forge_shared_sessions;
                 state.forge_evidence_bundles = projection.forge_evidence_bundles;
+                state.forge_delivery_receipts = projection.forge_delivery_receipts;
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
                 state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
+                state.next_forge_delivery_receipt_seq = projection.next_forge_delivery_receipt_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
                 state.last_error = None;
             }
@@ -10103,8 +10342,10 @@ impl AutopilotChatState {
                 state.thread_compaction_artifacts.clear();
                 state.forge_shared_sessions.clear();
                 state.forge_evidence_bundles.clear();
+                state.forge_delivery_receipts.clear();
                 state.next_forge_shared_session_seq = 1;
                 state.next_forge_evidence_bundle_seq = 1;
+                state.next_forge_delivery_receipt_seq = 1;
                 state.review_thread_source_map.clear();
                 state.last_error = Some(error);
             }
@@ -10679,6 +10920,18 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.evidence_bundle_for_thread(thread_id))
     }
 
+    fn delivery_receipt_for_thread(&self, thread_id: &str) -> Option<&ForgeDeliveryReceipt> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let delivery_receipt_id = shared_session.delivery_receipt_id.as_deref()?;
+        self.forge_delivery_receipts.get(delivery_receipt_id)
+    }
+
+    pub fn active_delivery_receipt(&self) -> Option<&ForgeDeliveryReceipt> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.delivery_receipt_for_thread(thread_id))
+    }
+
     pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
         self.forge_shared_sessions.values().find(|session| {
             session
@@ -10709,6 +10962,14 @@ impl AutopilotChatState {
         let evidence_bundle_id = format!("forge-evidence-{}", self.next_forge_evidence_bundle_seq);
         self.next_forge_evidence_bundle_seq = self.next_forge_evidence_bundle_seq.saturating_add(1);
         evidence_bundle_id
+    }
+
+    fn next_delivery_receipt_id(&mut self) -> String {
+        let delivery_receipt_id =
+            format!("forge-delivery-{}", self.next_forge_delivery_receipt_seq);
+        self.next_forge_delivery_receipt_seq =
+            self.next_forge_delivery_receipt_seq.saturating_add(1);
+        delivery_receipt_id
     }
 
     fn sync_shared_session_fields_for_thread(
@@ -10932,6 +11193,360 @@ impl AutopilotChatState {
         )?;
         self.persist_codex_artifact_projection();
         Ok(evidence_bundle_id)
+    }
+
+    fn delivery_contributors_for_shared_session(
+        &self,
+        shared_session: &ForgeSharedSession,
+        evidence_bundle: Option<&ForgeEvidenceBundle>,
+        latest_review_decision: Option<&ForgeDeliveryReviewDecision>,
+        status: ForgeDeliveryReceiptStatus,
+    ) -> Vec<ForgeDeliveryContributor> {
+        let has_diff = evidence_bundle.is_some_and(|bundle| bundle.diff_ref.is_some());
+        let mut contributors = Vec::new();
+        for participant in &shared_session.participants {
+            let (role, summary) = match participant.kind {
+                ForgeSharedSessionControlOwner::HumanLocal => {
+                    if matches!(status, ForgeDeliveryReceiptStatus::Merged) {
+                        (
+                            ForgeDeliveryContributorRole::Approver,
+                            Some("Accepted and merged the delivery from the local product shell."),
+                        )
+                    } else if latest_review_decision.is_some() {
+                        (
+                            ForgeDeliveryContributorRole::Reviewer,
+                            Some("Reviewed the delivery from the local product shell."),
+                        )
+                    } else {
+                        (
+                            ForgeDeliveryContributorRole::Operator,
+                            Some(
+                                "Prepared and supervised the delivery from the local product shell.",
+                            ),
+                        )
+                    }
+                }
+                ForgeSharedSessionControlOwner::ProbeLocalAgent => {
+                    if has_diff {
+                        (
+                            ForgeDeliveryContributorRole::Implementation,
+                            Some("Produced the implementation attached to this delivery."),
+                        )
+                    } else {
+                        (
+                            ForgeDeliveryContributorRole::Operator,
+                            Some(
+                                "Participated in the shared session before delivery was prepared.",
+                            ),
+                        )
+                    }
+                }
+            };
+            contributors.push(ForgeDeliveryContributor {
+                participant_id: participant.participant_id.clone(),
+                display_name: participant.display_name.clone(),
+                kind: participant.kind,
+                role,
+                summary: summary.map(str::to_string),
+            });
+        }
+        contributors
+    }
+
+    fn ensure_probe_delivery_receipt_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        if let Some(existing) = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .and_then(|session| session.delivery_receipt_id.clone())
+            && self.forge_delivery_receipts.contains_key(existing.as_str())
+        {
+            return Ok(existing);
+        }
+
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before a delivery receipt could be created."
+                )
+            })?;
+        let delivery_receipt_id = self.next_delivery_receipt_id();
+        let evidence_bundle = shared_session
+            .evidence_bundle_id
+            .as_deref()
+            .and_then(|bundle_id| self.forge_evidence_bundles.get(bundle_id));
+        self.forge_delivery_receipts.insert(
+            delivery_receipt_id.clone(),
+            ForgeDeliveryReceipt {
+                delivery_receipt_id: delivery_receipt_id.clone(),
+                shared_session_id: shared_session_id.to_string(),
+                evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
+                probe_session_ids: normalize_probe_session_ids(
+                    shared_session.probe_session_ids.clone(),
+                ),
+                status: ForgeDeliveryReceiptStatus::Prepared,
+                base_branch: "main".to_string(),
+                base_commit: None,
+                head_branch: "unknown".to_string(),
+                head_commit: "unknown".to_string(),
+                compare_url: None,
+                pr_url: None,
+                suggested_title: String::new(),
+                suggested_body: String::new(),
+                contributors: self.delivery_contributors_for_shared_session(
+                    &shared_session,
+                    evidence_bundle,
+                    None,
+                    ForgeDeliveryReceiptStatus::Prepared,
+                ),
+                latest_review_decision: None,
+                merged_at_epoch_ms: None,
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the delivery receipt link could be recorded."
+                )
+            })?;
+        shared_session.delivery_receipt_id = Some(delivery_receipt_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        Ok(delivery_receipt_id)
+    }
+
+    pub fn record_probe_delivery_pr_for_thread(
+        &mut self,
+        thread_id: &str,
+        base_branch: impl Into<String>,
+        base_commit: Option<String>,
+        head_branch: impl Into<String>,
+        head_commit: impl Into<String>,
+        compare_url: Option<String>,
+        pr_url: Option<String>,
+        suggested_title: impl Into<String>,
+        suggested_body: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let evidence_bundle_id = self.sync_evidence_bundle_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        )?;
+        let delivery_receipt_id = self.ensure_probe_delivery_receipt_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        )?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before delivery receipt state could be updated."
+                )
+            })?;
+        let evidence_bundle = self.forge_evidence_bundles.get(&evidence_bundle_id);
+        let existing_receipt = self
+            .forge_delivery_receipts
+            .get(&delivery_receipt_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before it could be updated."
+                )
+            })?;
+        let next_status = if pr_url
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            ForgeDeliveryReceiptStatus::Opened
+        } else {
+            existing_receipt.status
+        };
+        let final_status = match existing_receipt.status {
+            ForgeDeliveryReceiptStatus::Merged => ForgeDeliveryReceiptStatus::Merged,
+            ForgeDeliveryReceiptStatus::Opened
+                if next_status == ForgeDeliveryReceiptStatus::Prepared =>
+            {
+                ForgeDeliveryReceiptStatus::Opened
+            }
+            _ => next_status,
+        };
+        let next_probe_session_ids =
+            normalize_probe_session_ids(shared_session.probe_session_ids.clone());
+        let next_base_branch = base_branch.into().trim().to_string();
+        let next_base_commit = base_commit
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let next_head_branch = head_branch.into().trim().to_string();
+        let next_head_commit = head_commit.into().trim().to_string();
+        let next_compare_url = compare_url
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let next_pr_url = pr_url
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or(existing_receipt.pr_url.clone());
+        let next_suggested_title = suggested_title.into().trim().to_string();
+        let next_suggested_body = suggested_body.into().trim().to_string();
+        let next_review = existing_receipt.latest_review_decision.clone();
+        let next_contributors = self.delivery_contributors_for_shared_session(
+            &shared_session,
+            evidence_bundle,
+            next_review.as_ref(),
+            final_status,
+        );
+        let receipt = self
+            .forge_delivery_receipts
+            .get_mut(&delivery_receipt_id)
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before it could be updated."
+                )
+            })?;
+        receipt.shared_session_id = shared_session_id.clone();
+        receipt.evidence_bundle_id = Some(evidence_bundle_id.clone());
+        receipt.probe_session_ids = next_probe_session_ids;
+        receipt.status = final_status;
+        receipt.base_branch = next_base_branch;
+        receipt.base_commit = next_base_commit;
+        receipt.head_branch = next_head_branch;
+        receipt.head_commit = next_head_commit;
+        receipt.compare_url = next_compare_url;
+        receipt.pr_url = next_pr_url;
+        if !next_suggested_title.is_empty() {
+            receipt.suggested_title = next_suggested_title;
+        }
+        if !next_suggested_body.is_empty() {
+            receipt.suggested_body = next_suggested_body;
+        }
+        receipt.contributors = next_contributors;
+        receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok((delivery_receipt_id, evidence_bundle_id))
+    }
+
+    pub fn record_probe_delivery_review_for_thread(
+        &mut self,
+        thread_id: &str,
+        outcome: ForgeDeliveryReviewerOutcome,
+        reviewer_label: impl Into<String>,
+        summary: Option<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let delivery_receipt_id = shared_session.delivery_receipt_id.clone().ok_or_else(|| {
+            "Prepare a delivery receipt first with `/deliver pr ...`.".to_string()
+        })?;
+        let evidence_bundle = shared_session
+            .evidence_bundle_id
+            .as_deref()
+            .and_then(|bundle_id| self.forge_evidence_bundles.get(bundle_id))
+            .cloned();
+        let current_status = self
+            .forge_delivery_receipts
+            .get(&delivery_receipt_id)
+            .map(|receipt| receipt.status)
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before review outcome could be recorded."
+                )
+            })?;
+        let reviewer_label = reviewer_label.into().trim().to_string();
+        if reviewer_label.is_empty() {
+            return Err("Delivery reviewer label cannot be empty.".to_string());
+        }
+        let next_review_decision = ForgeDeliveryReviewDecision {
+            reviewer_label,
+            outcome,
+            summary: summary
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+            recorded_at_epoch_ms: updated_at_epoch_ms,
+        };
+        let next_contributors = self.delivery_contributors_for_shared_session(
+            &shared_session,
+            evidence_bundle.as_ref(),
+            Some(&next_review_decision),
+            current_status,
+        );
+        let receipt = self
+            .forge_delivery_receipts
+            .get_mut(&delivery_receipt_id)
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before review outcome could be recorded."
+                )
+            })?;
+        receipt.latest_review_decision = Some(next_review_decision);
+        receipt.contributors = next_contributors;
+        receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(delivery_receipt_id)
+    }
+
+    pub fn record_probe_delivery_merge_for_thread(
+        &mut self,
+        thread_id: &str,
+        reviewer_label: impl Into<String>,
+        summary: Option<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let delivery_receipt_id = self.record_probe_delivery_review_for_thread(
+            thread_id,
+            ForgeDeliveryReviewerOutcome::Approved,
+            reviewer_label,
+            summary,
+            updated_at_epoch_ms,
+        )?;
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let evidence_bundle = shared_session
+            .evidence_bundle_id
+            .as_deref()
+            .and_then(|bundle_id| self.forge_evidence_bundles.get(bundle_id))
+            .cloned();
+        let latest_review = self
+            .forge_delivery_receipts
+            .get(&delivery_receipt_id)
+            .and_then(|receipt| receipt.latest_review_decision.clone());
+        let next_contributors = self.delivery_contributors_for_shared_session(
+            &shared_session,
+            evidence_bundle.as_ref(),
+            latest_review.as_ref(),
+            ForgeDeliveryReceiptStatus::Merged,
+        );
+        let receipt = self
+            .forge_delivery_receipts
+            .get_mut(&delivery_receipt_id)
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before merge state could be recorded."
+                )
+            })?;
+        receipt.status = ForgeDeliveryReceiptStatus::Merged;
+        receipt.merged_at_epoch_ms = Some(updated_at_epoch_ms);
+        receipt.contributors = next_contributors;
+        receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(delivery_receipt_id)
     }
 
     pub fn ensure_probe_shared_session_for_thread(
@@ -14350,8 +14965,10 @@ impl AutopilotChatState {
             &self.thread_compaction_artifacts,
             &self.forge_shared_sessions,
             &self.forge_evidence_bundles,
+            &self.forge_delivery_receipts,
             self.next_forge_shared_session_seq,
             self.next_forge_evidence_bundle_seq,
+            self.next_forge_delivery_receipt_seq,
         ) {
             tracing::warn!("failed to persist codex artifacts: {error}");
         }
@@ -18052,6 +18669,7 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use crate::app_state::{
+        ForgeDeliveryContributorRole, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeSharedSessionControlOwner,
         ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
@@ -23106,6 +23724,126 @@ mod tests {
         assert_eq!(
             reloaded_bundle.log_refs[0].reference.as_str(),
             "target/test.log"
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_delivery_receipt() {
+        let repo = init_git_workspace("delivery-receipt");
+        let projection_path = unique_codex_artifact_projection_path("delivery-receipt");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Looks good overall.",
+            1_700_000_130,
+            false,
+        );
+        chat.record_probe_evidence_verification_for_thread(
+            "thread-a",
+            "cargo-test",
+            ForgeEvidenceVerificationStatus::Passed,
+            Some("target/test.log".to_string()),
+            Some("12 tests passed".to_string()),
+            1_700_000_140,
+        )
+        .expect("verification evidence should record");
+
+        let (delivery_receipt_id, evidence_bundle_id) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("abc123".to_string()),
+                "feature/probe-delivery",
+                "def456",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/probe-delivery?expand=1"
+                        .to_string(),
+                ),
+                Some("https://github.com/OpenAgentsInc/openagents/pull/42".to_string()),
+                "Add Probe delivery receipt shell",
+                "## Summary\n- wire receipts",
+                1_700_000_150,
+            )
+            .expect("delivery receipt should record");
+        chat.record_probe_delivery_review_for_thread(
+            "thread-a",
+            ForgeDeliveryReviewerOutcome::Approved,
+            "chris",
+            Some("ready to merge".to_string()),
+            1_700_000_160,
+        )
+        .expect("review outcome should record");
+        chat.record_probe_delivery_merge_for_thread(
+            "thread-a",
+            "chris",
+            Some("merged after reviewer approval".to_string()),
+            1_700_000_170,
+        )
+        .expect("merge should record");
+
+        let receipt = chat
+            .active_delivery_receipt()
+            .expect("active delivery receipt should exist");
+        assert_eq!(receipt.delivery_receipt_id, delivery_receipt_id);
+        assert_eq!(
+            receipt.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(receipt.status, ForgeDeliveryReceiptStatus::Merged);
+        assert_eq!(
+            receipt
+                .latest_review_decision
+                .as_ref()
+                .map(|review| review.outcome),
+            Some(ForgeDeliveryReviewerOutcome::Approved)
+        );
+        assert!(receipt.contributors.iter().any(|contributor| {
+            contributor.role == ForgeDeliveryContributorRole::Implementation
+        }));
+        assert!(
+            receipt
+                .contributors
+                .iter()
+                .any(|contributor| { contributor.role == ForgeDeliveryContributorRole::Approver })
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_receipt = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.delivery_receipt_id.as_deref())
+            .and_then(|receipt_id| reloaded.forge_delivery_receipts.get(receipt_id))
+            .expect("reloaded delivery receipt");
+        assert_eq!(reloaded_receipt.status, ForgeDeliveryReceiptStatus::Merged);
+        assert_eq!(
+            reloaded_receipt.pr_url.as_deref(),
+            Some("https://github.com/OpenAgentsInc/openagents/pull/42")
         );
 
         let _ = std::fs::remove_file(projection_path);

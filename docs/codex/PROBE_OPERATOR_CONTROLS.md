@@ -16,6 +16,10 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/evidence log <label> <reference>`
   - `/evidence preview <label> <reference>`
   - `/evidence screenshot <label> <reference>`
+- The desktop command surface now also exposes delivery tracking through:
+  - `/deliver pr [base-branch] [pr-url]`
+  - `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`
+  - `/deliver merge <reviewer-label> [summary]`
 
 ## Current UI Semantics
 
@@ -25,6 +29,8 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - evidence commands stay app-owned: Probe provides raw runtime truth, and the
   desktop groups that truth into one reviewer-facing evidence bundle per shared
   session
+- delivery commands also stay app-owned: Probe does not become the hidden home
+  for PR state, reviewer outcome, or authorship attribution
 
 ## Honest Limits
 
@@ -32,3 +38,6 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - Queue cancel is currently command-driven in the desktop shell. There is not yet a dedicated pane button for cancelling a specific queued Probe turn.
 - Evidence references are local-first. They can point at local files or capture
   current terminal excerpts, but they are not a hosted artifact registry.
+- Delivery receipts are also local-first. The first cut tracks GitHub PR state
+  and reviewer outcome above the local shell rather than inventing a hosted
+  publication substrate.

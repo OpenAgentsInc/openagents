@@ -12,10 +12,10 @@ use crate::app_state::{
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
-    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeEvidenceBundle,
-    ForgeSharedSession, ManagedChatChannelProjection, ManagedChatDeliveryState,
-    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
-    RenderState,
+    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeDeliveryReceipt,
+    ForgeEvidenceBundle, ForgeSharedSession, ManagedChatChannelProjection,
+    ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
+    ManagedChatRelayState, PaneKind, RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -2752,6 +2752,18 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
                 .join(", ")
         ));
     }
+    if let Some(evidence_bundle_id) = session.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = session.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
+    }
     lines.push(format!(
         "- **workspace startup:** {}",
         session.workspace_restore.startup_kind.display_label()
@@ -2928,6 +2940,106 @@ fn active_evidence_bundle_markdown_source(bundle: &ForgeEvidenceBundle) -> Strin
         }
     } else {
         lines.push("- **product artifacts:** _none recorded_".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_delivery_receipt_meta_line(receipt: &ForgeDeliveryReceipt) -> String {
+    let mut parts = vec![format!(
+        "receipt:{}",
+        compact_display_token(receipt.delivery_receipt_id.as_str(), 18)
+    )];
+    parts.push(format!("status:{}", receipt.status.label()));
+    parts.push(format!(
+        "base:{}",
+        compact_display_token(receipt.base_branch.as_str(), 14)
+    ));
+    parts.push(format!(
+        "head:{}",
+        compact_display_token(receipt.head_branch.as_str(), 14)
+    ));
+    if let Some(review) = receipt.latest_review_decision.as_ref() {
+        parts.push(format!("review:{}", review.outcome.label()));
+    }
+    if let Some(updated) = format_thread_timestamp(receipt.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_delivery_receipt_markdown_source(receipt: &ForgeDeliveryReceipt) -> String {
+    let mut lines = vec![format!(
+        "- **delivery state:** {}",
+        receipt.status.display_label()
+    )];
+    if let Some(evidence_bundle_id) = receipt.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    lines.push(format!(
+        "- **base branch:** `{}`{}",
+        receipt.base_branch,
+        receipt
+            .base_commit
+            .as_deref()
+            .map(|commit| format!("  •  `{}`", compact_display_token(commit, 16)))
+            .unwrap_or_default()
+    ));
+    lines.push(format!(
+        "- **head branch:** `{}`  •  `{}`",
+        receipt.head_branch,
+        compact_display_token(receipt.head_commit.as_str(), 16)
+    ));
+    if let Some(compare_url) = receipt.compare_url.as_deref() {
+        lines.push(format!(
+            "- **compare URL:** `{}`",
+            compact_display_token(compare_url, 72)
+        ));
+    }
+    if let Some(pr_url) = receipt.pr_url.as_deref() {
+        lines.push(format!(
+            "- **pull request:** `{}`",
+            compact_display_token(pr_url, 72)
+        ));
+    } else {
+        lines.push("- **pull request:** _not opened yet_".to_string());
+    }
+    if !receipt.suggested_title.trim().is_empty() {
+        lines.push(format!(
+            "- **suggested title:** {}",
+            compact_display_token(receipt.suggested_title.as_str(), 92)
+        ));
+    }
+    if let Some(review) = receipt.latest_review_decision.as_ref() {
+        lines.push(format!(
+            "- **review decision:** {} by `{}`",
+            review.outcome.display_label(),
+            compact_display_token(review.reviewer_label.as_str(), 24)
+        ));
+        if let Some(summary) = review.summary.as_deref() {
+            lines.push(format!(
+                "- **review summary:** {}",
+                compact_display_token(summary, 92)
+            ));
+        }
+    } else {
+        lines.push("- **review decision:** _not recorded_".to_string());
+    }
+    if !receipt.contributors.is_empty() {
+        lines.push("- **authorship map:**".to_string());
+        for contributor in receipt.contributors.iter().take(4) {
+            let mut line = format!(
+                "  - {}: {}",
+                contributor.display_name,
+                contributor.role.display_label()
+            );
+            if let Some(summary) = contributor.summary.as_deref() {
+                line.push_str(&format!("  •  {}", compact_display_token(summary, 56)));
+            }
+            lines.push(line);
+        }
     }
     lines.join("\n")
 }
@@ -5301,6 +5413,47 @@ pub fn paint(
                 }
                 y += 10.0;
             }
+            if let Some(delivery_receipt) = autopilot_chat.active_delivery_receipt() {
+                let delivery_color = match delivery_receipt.status {
+                    crate::app_state::ForgeDeliveryReceiptStatus::Prepared => {
+                        theme::status::WARNING
+                    }
+                    crate::app_state::ForgeDeliveryReceiptStatus::Opened => theme::accent::PRIMARY,
+                    crate::app_state::ForgeDeliveryReceiptStatus::Merged => theme::status::SUCCESS,
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[delivery receipt]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    delivery_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_delivery_receipt_meta_line(delivery_receipt),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let delivery_markdown = active_delivery_receipt_markdown_source(delivery_receipt);
+                if !delivery_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&delivery_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(review_artifact) = autopilot_chat.active_review_artifact() {
                 paint.scene.draw_text(paint.text.layout_mono(
                     "[latest review]",
@@ -5640,9 +5793,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);

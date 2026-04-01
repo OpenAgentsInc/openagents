@@ -215,6 +215,19 @@ enum ChatForgeComposerIntent {
         label: String,
         reference: String,
     },
+    DeliveryPr {
+        base_branch: Option<String>,
+        pr_url: Option<String>,
+    },
+    DeliveryReview {
+        outcome: crate::app_state::ForgeDeliveryReviewerOutcome,
+        reviewer_label: String,
+        summary: Option<String>,
+    },
+    DeliveryMerge {
+        reviewer_label: String,
+        summary: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4177,10 +4190,84 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if first_word != "/handoff" && first_word != "/restore" && first_word != "/evidence" {
+    if first_word != "/handoff"
+        && first_word != "/restore"
+        && first_word != "/evidence"
+        && first_word != "/deliver"
+    {
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
+    if first_word == "/deliver" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Delivery commands: `/deliver pr [base-branch] [pr-url]`, `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`, `/deliver merge <reviewer-label> [summary]`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "pr" => {
+                if words.len() > 4 {
+                    return Err("Usage: `/deliver pr [base-branch] [pr-url]`.".to_string());
+                }
+                let second = words.get(2).cloned();
+                let third = words.get(3).cloned();
+                let (base_branch, pr_url) = match (second, third) {
+                    (None, None) => (None, None),
+                    (Some(value), None) if value.contains("github.com/") || value.contains("/pull/") => {
+                        (None, Some(value))
+                    }
+                    (Some(value), None) => (Some(value), None),
+                    (Some(base_branch), Some(pr_url)) => (Some(base_branch), Some(pr_url)),
+                    (None, Some(pr_url)) => (None, Some(pr_url)),
+                };
+                Ok(Some(ChatForgeComposerIntent::DeliveryPr { base_branch, pr_url }))
+            }
+            "review" => {
+                let Some(outcome) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`.".to_string(),
+                    );
+                };
+                let Some(reviewer_label) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`.".to_string(),
+                    );
+                };
+                let outcome = match outcome {
+                    "commented" | "comment" => crate::app_state::ForgeDeliveryReviewerOutcome::Commented,
+                    "approved" | "approve" => crate::app_state::ForgeDeliveryReviewerOutcome::Approved,
+                    "changes_requested" | "changes-requested" | "changes" => {
+                        crate::app_state::ForgeDeliveryReviewerOutcome::ChangesRequested
+                    }
+                    _ => {
+                        return Err(
+                            "Review outcome must be `commented`, `approved`, or `changes_requested`."
+                                .to_string(),
+                        );
+                    }
+                };
+                Ok(Some(ChatForgeComposerIntent::DeliveryReview {
+                    outcome,
+                    reviewer_label,
+                    summary: (words.len() > 4).then(|| words[4..].join(" ")),
+                }))
+            }
+            "merge" => {
+                let Some(reviewer_label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/deliver merge <reviewer-label> [summary]`.".to_string(),
+                    );
+                };
+                Ok(Some(ChatForgeComposerIntent::DeliveryMerge {
+                    reviewer_label,
+                    summary: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
+            _ => Err(
+                "Delivery commands: `/deliver pr [base-branch] [pr-url]`, `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`, `/deliver merge <reviewer-label> [summary]`.".to_string(),
+            ),
+        };
+    }
     if first_word == "/evidence" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
@@ -5530,6 +5617,128 @@ fn run_chat_forge_action(
                 format!(
                     "Recorded {} evidence in `{evidence_bundle_id}`: `{recorded_label}` -> `{reference}`.",
                     kind.display_label()
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::DeliveryPr {
+            base_branch,
+            pr_url,
+        } => {
+            let workspace = match chat_git_command_workspace(state) {
+                Ok(workspace) => workspace,
+                Err(error) => {
+                    return append_chat_command_result(state, prompt, error, true);
+                }
+            };
+            let head_branch = match git_current_branch(workspace.as_path()) {
+                Ok(branch) => branch,
+                Err(error) => {
+                    return append_chat_command_result(state, prompt, error, true);
+                }
+            };
+            let base_branch = base_branch
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+                .unwrap_or_else(|| {
+                    default_pr_base_branch(workspace.as_path(), head_branch.as_str())
+                });
+            let head_commit = match git_command_checked(workspace.as_path(), &["rev-parse", "HEAD"])
+            {
+                Ok(value) => value.trim().to_string(),
+                Err(error) => {
+                    return append_chat_command_result(state, prompt, error, true);
+                }
+            };
+            let base_commit =
+                git_command_optional(workspace.as_path(), &["rev-parse", base_branch.as_str()])
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+            let compare_url = git_remote_origin_url(workspace.as_path()).and_then(|remote| {
+                github_compare_url(remote.as_str(), base_branch.as_str(), head_branch.as_str())
+            });
+            let suggested_title = suggested_pr_title(state, head_branch.as_str())
+                .unwrap_or_else(|| format!("Update {head_branch}"));
+            let suggested_body = suggested_pr_body(state);
+            match state.autopilot_chat.record_probe_delivery_pr_for_thread(
+                thread_id.as_str(),
+                base_branch.clone(),
+                base_commit,
+                head_branch.clone(),
+                head_commit.clone(),
+                compare_url.clone(),
+                pr_url.clone(),
+                suggested_title.clone(),
+                suggested_body,
+                current_epoch_millis(),
+            ) {
+                Ok((delivery_receipt_id, evidence_bundle_id)) => append_chat_command_result(
+                    state,
+                    prompt,
+                    format!(
+                        "Recorded delivery receipt `{delivery_receipt_id}` for evidence bundle `{evidence_bundle_id}`.\n\nbase: `{}`\nhead: `{}` @ `{}`\npr: {}\ncompare: {}",
+                        base_branch,
+                        head_branch,
+                        head_commit,
+                        pr_url.as_deref().unwrap_or("not opened yet"),
+                        compare_url.as_deref().unwrap_or("unavailable")
+                    ),
+                    false,
+                ),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::DeliveryReview {
+            outcome,
+            reviewer_label,
+            summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_delivery_review_for_thread(
+                thread_id.as_str(),
+                outcome,
+                reviewer_label.clone(),
+                summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(delivery_receipt_id) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded {} review outcome on `{delivery_receipt_id}` from `{}`.{}",
+                    outcome.display_label(),
+                    reviewer_label,
+                    summary
+                        .as_deref()
+                        .map(|value| format!("\n\n{value}"))
+                        .unwrap_or_default()
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::DeliveryMerge {
+            reviewer_label,
+            summary,
+        } => match state.autopilot_chat.record_probe_delivery_merge_for_thread(
+            thread_id.as_str(),
+            reviewer_label.clone(),
+            summary.clone(),
+            current_epoch_millis(),
+        ) {
+            Ok(delivery_receipt_id) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Marked delivery receipt `{delivery_receipt_id}` as merged by `{}`.{}",
+                    reviewer_label,
+                    summary
+                        .as_deref()
+                        .map(|value| format!("\n\n{value}"))
+                        .unwrap_or_default()
                 ),
                 false,
             ),
@@ -17503,9 +17712,28 @@ mod tests {
                 reference: "/tmp/login.png".to_string(),
             })
         );
+        assert_eq!(
+            parse_chat_forge_intent(
+                "/deliver pr main https://github.com/OpenAgentsInc/openagents/pull/42"
+            )
+            .unwrap(),
+            Some(ChatForgeComposerIntent::DeliveryPr {
+                base_branch: Some("main".to_string()),
+                pr_url: Some("https://github.com/OpenAgentsInc/openagents/pull/42".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/deliver review approved chris ready-to-merge").unwrap(),
+            Some(ChatForgeComposerIntent::DeliveryReview {
+                outcome: crate::app_state::ForgeDeliveryReviewerOutcome::Approved,
+                reviewer_label: "chris".to_string(),
+                summary: Some("ready-to-merge".to_string()),
+            })
+        );
         assert!(parse_chat_forge_intent("/handoff").is_err());
         assert!(parse_chat_forge_intent("/restore").is_err());
         assert!(parse_chat_forge_intent("/evidence").is_err());
+        assert!(parse_chat_forge_intent("/deliver").is_err());
     }
 
     #[test]
