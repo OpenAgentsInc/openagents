@@ -312,6 +312,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 let _ = process.child.wait();
             }
             state.codex_lane_worker.shutdown_async();
+            state.probe_lane_worker.shutdown_async();
             state.kernel_projection_worker.shutdown_async();
             event_loop.exit();
         }

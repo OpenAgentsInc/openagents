@@ -7,6 +7,7 @@ mod codex;
 mod jobs;
 mod local_inference;
 mod provider_ingress;
+mod probe;
 mod sa;
 mod skl;
 mod voice_playground;
@@ -197,6 +198,21 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             }
             crate::codex_lane::CodexLaneUpdate::Notification(notification) => {
                 codex::apply_notification(state, notification);
+            }
+        }
+    }
+
+    for update in state.probe_lane_worker.drain_updates() {
+        changed = true;
+        match update {
+            crate::probe_lane::ProbeLaneUpdate::Snapshot(snapshot) => {
+                probe::apply_lane_snapshot(state, *snapshot);
+            }
+            crate::probe_lane::ProbeLaneUpdate::CommandResponse(response) => {
+                probe::apply_command_response(state, response);
+            }
+            crate::probe_lane::ProbeLaneUpdate::Notification(notification) => {
+                probe::apply_notification(state, notification);
             }
         }
     }

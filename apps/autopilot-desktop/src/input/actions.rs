@@ -5295,6 +5295,17 @@ fn chat_session_concrete_model(state: &crate::app_state::RenderState) -> Option<
         })
 }
 
+fn probe_backend_profile_for_chat_session(
+    state: &crate::app_state::RenderState,
+) -> probe_protocol::backend::BackendProfile {
+    let mut profile = probe_core::backend_profiles::openai_codex_subscription();
+    if let Some(model) = chat_session_concrete_model(state) {
+        profile.model = model;
+    }
+    profile.reasoning_level = state.autopilot_chat.reasoning_effort.clone();
+    profile
+}
+
 pub(super) fn chat_session_collaboration_mode(
     state: &crate::app_state::RenderState,
 ) -> Option<serde_json::Value> {
@@ -5641,6 +5652,17 @@ fn sync_chat_thread_search_term(state: &mut crate::app_state::RenderState) {
 
 pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
     sync_chat_thread_search_term(state);
+    if state.uses_probe_runtime() {
+        let cwd = current_chat_workspace_root(state).map(std::path::PathBuf::from);
+        if let Err(error) = state.queue_probe_command(crate::probe_lane::ProbeLaneCommand::RefreshSessions {
+            workspace_cwd: cwd,
+        }) {
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
     let cwd = current_chat_workspace_root(state).or_else(|| {
         std::env::current_dir()
             .ok()
@@ -5687,6 +5709,20 @@ pub(super) fn run_chat_pending_thread_history_refresh_tick(
     {
         return false;
     }
+    if state.uses_probe_runtime() {
+        sync_chat_thread_search_term(state);
+        let cwd = current_chat_workspace_root(state).map(std::path::PathBuf::from);
+        let result = state.queue_probe_command(crate::probe_lane::ProbeLaneCommand::RefreshSessions {
+            workspace_cwd: cwd,
+        });
+        if let Err(error) = result {
+            state.autopilot_chat.last_error = Some(error);
+            return false;
+        }
+        state.autopilot_chat.last_error = None;
+        state.autopilot_chat.pending_thread_history_refresh_on_ready = false;
+        return true;
+    }
     state
         .autopilot_chat
         .note_thread_history_refresh_retry_attempt(now);
@@ -5722,6 +5758,41 @@ pub(super) fn run_chat_pending_thread_history_refresh_tick(
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
     sync_chat_composer_draft(state);
+    if state.uses_probe_runtime() {
+        let cwd = state
+            .autopilot_chat
+            .active_project()
+            .map(|project| project.workspace_root.clone())
+            .or_else(|| current_chat_workspace_root(state))
+            .and_then(|value| {
+                let trimmed = value.trim().to_string();
+                (!trimmed.is_empty()).then_some(trimmed)
+            })
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::current_dir().ok());
+        let Some(cwd) = cwd else {
+            state.autopilot_chat.last_error =
+                Some("No workspace available for new Probe session".to_string());
+            return true;
+        };
+        let title = state
+            .autopilot_chat
+            .active_project()
+            .map(|project| project.project_name.clone())
+            .or_else(|| Some(state.autopilot_chat.next_thread_name()));
+        let command = crate::probe_lane::ProbeLaneCommand::StartSession {
+            title,
+            cwd,
+            profile: probe_backend_profile_for_chat_session(state),
+            system_prompt: None,
+        };
+        if let Err(error) = state.queue_probe_command(command) {
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
     let project_defaults = state
         .autopilot_chat
         .active_project()
@@ -6263,6 +6334,19 @@ pub(super) fn run_chat_select_thread_action(
             let Some(target) = state.autopilot_chat.select_thread_by_index(preview_index) else {
                 return false;
             };
+            if state.uses_probe_runtime() {
+                restore_chat_composer_draft(state);
+                focus_chat_composer(state);
+                let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
+                    session_id: probe_protocol::session::SessionId::new(target.thread_id),
+                };
+                if let Err(error) = state.queue_probe_command(command) {
+                    state.autopilot_chat.last_error = Some(error);
+                } else {
+                    state.autopilot_chat.last_error = None;
+                }
+                return true;
+            }
             restore_chat_composer_draft(state);
             focus_chat_composer(state);
             let experimental_api = state.codex_lane_config.experimental_api;

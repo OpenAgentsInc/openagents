@@ -68,6 +68,10 @@ psionic-data = { workspace = true }
 psionic-environments = { workspace = true }
 psionic-eval = { workspace = true, features = ["full"] }
 psionic-models = { workspace = true }
+probe-client = { workspace = true }
+probe-core = { workspace = true }
+probe-protocol = { workspace = true }
+probe-server = { workspace = true }
 psionic-adapters = { workspace = true }
 psionic-apple-fm = { workspace = true }
 psionic-research = { workspace = true }

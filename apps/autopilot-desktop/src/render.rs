@@ -17,7 +17,8 @@ use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::window::Window;
 
 use crate::app_state::{
-    PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
+    AutopilotCodingRuntimeKind, PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT,
+    WINDOW_TITLE, WINDOW_WIDTH,
 };
 use crate::apple_fm_bridge::{AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
@@ -42,6 +43,7 @@ use crate::pane_system::{
     sidebar_reserved_width,
 };
 use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
+use crate::probe_lane::{ProbeLaneConfig, ProbeLaneSnapshot, ProbeLaneWorker};
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, SaLaneSnapshot, SaLaneWorker,
     SaLifecycleCommand, SklLaneSnapshot, SklLaneWorker,
@@ -59,6 +61,7 @@ const SIDEBAR_HANDLE_ICON_TOP_PAD: f32 = 12.0;
 const SIDEBAR_HANDLE_ICON_LEFT_INSET: f32 = 2.0;
 const SIDEBAR_COLLAPSED_RAIL_WIDTH: f32 = 28.0;
 const LOCAL_SIM_RUNTIME_BOOTSTRAP_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_SIMULATION_LANES";
+const AUTOPILOT_RUNTIME_ENV: &str = "OPENAGENTS_AUTOPILOT_RUNTIME";
 
 fn app_glass_overlay_color() -> Hsla {
     Hsla::from_hex(0x08111A)
@@ -89,6 +92,17 @@ fn preferred_surface_alpha_mode(
         .first()
         .copied()
         .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+}
+
+fn autopilot_coding_runtime_from_env() -> AutopilotCodingRuntimeKind {
+    match std::env::var(AUTOPILOT_RUNTIME_ENV)
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("probe") => AutopilotCodingRuntimeKind::Probe,
+        _ => AutopilotCodingRuntimeKind::Codex,
+    }
 }
 pub(crate) const COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION: &str = "pane.search_filter.cycle";
 const BACKDROP_BLUR_SHADER: &str = r#"
@@ -603,10 +617,16 @@ pub fn init_state(
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
         let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
+        let autopilot_coding_runtime = autopilot_coding_runtime_from_env();
         let mut codex_lane_config = CodexLaneConfig::default();
         codex_lane_config.connect_on_startup = false;
         codex_lane_config.bootstrap_thread = false;
         let codex_lane_worker = CodexLaneWorker::spawn(codex_lane_config.clone());
+        let mut probe_lane_config = ProbeLaneConfig::default();
+        probe_lane_config.workspace_cwd = std::env::current_dir().ok();
+        probe_lane_config.connect_on_startup =
+            matches!(autopilot_coding_runtime, AutopilotCodingRuntimeKind::Probe);
+        let probe_lane_worker = ProbeLaneWorker::spawn(probe_lane_config.clone());
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
@@ -747,6 +767,7 @@ pub fn init_state(
             desktop_control: crate::app_state::DesktopControlState::default(),
             codex_remote: crate::app_state::CodexRemoteState::default(),
             codex_diagnostics: crate::app_state::CodexDiagnosticsPaneState::default(),
+            autopilot_coding_runtime,
             codex_disabled: disable_codex,
             codex_lane: CodexLaneSnapshot::idle(),
             codex_lane_config,
@@ -754,6 +775,17 @@ pub fn init_state(
             codex_command_responses: Vec::new(),
             codex_notifications: Vec::new(),
             next_codex_command_seq: 1,
+            probe_lane: if matches!(autopilot_coding_runtime, AutopilotCodingRuntimeKind::Probe)
+            {
+                ProbeLaneSnapshot::default()
+            } else {
+                ProbeLaneSnapshot::idle()
+            },
+            probe_lane_config,
+            probe_lane_worker,
+            probe_command_responses: Vec::new(),
+            probe_notifications: Vec::new(),
+            next_probe_command_seq: 1,
             sa_lane: SaLaneSnapshot::default(),
             skl_lane: SklLaneSnapshot::default(),
             ac_lane: AcLaneSnapshot::default(),
@@ -862,6 +894,11 @@ pub fn init_state(
             command_palette_actions,
             pane_search_filter: default_pane_search_filter,
         };
+        if matches!(state.autopilot_coding_runtime, AutopilotCodingRuntimeKind::Probe) {
+            state
+                .autopilot_chat
+                .set_connection_status(state.probe_lane.lifecycle.label());
+        }
         rehydrate_startup_earnings_history(&mut state);
         apply_spacetime_sync_bootstrap(&mut state);
         bootstrap_runtime_lanes(&mut state);

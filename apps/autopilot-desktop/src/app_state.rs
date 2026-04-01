@@ -49,6 +49,10 @@ use crate::{
         CodexLaneCommand, CodexLaneCommandResponse, CodexLaneNotification, CodexLaneSnapshot,
         CodexLaneWorker,
     },
+    probe_lane::{
+        ProbeLaneCommand, ProbeLaneCommandResponse, ProbeLaneNotification, ProbeLaneSnapshot,
+        ProbeLaneWorker,
+    },
     spark_wallet::{SparkPaneState, SparkWalletCommand, SparkWalletWorker},
     stablesats_blink_worker::StableSatsBlinkWorker,
 };
@@ -71,6 +75,21 @@ pub const WINDOW_HEIGHT: f64 = 800.0;
 pub struct App {
     pub state: Option<RenderState>,
     pub cursor_position: Point,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AutopilotCodingRuntimeKind {
+    Codex,
+    Probe,
+}
+
+impl AutopilotCodingRuntimeKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Probe => "probe",
+        }
+    }
 }
 
 impl Default for App {
@@ -16026,6 +16045,7 @@ pub struct RenderState {
     pub desktop_control: DesktopControlState,
     pub codex_remote: CodexRemoteState,
     pub codex_diagnostics: CodexDiagnosticsPaneState,
+    pub autopilot_coding_runtime: AutopilotCodingRuntimeKind,
     pub codex_disabled: bool,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_config: crate::codex_lane::CodexLaneConfig,
@@ -16033,6 +16053,12 @@ pub struct RenderState {
     pub codex_command_responses: Vec<CodexLaneCommandResponse>,
     pub codex_notifications: Vec<CodexLaneNotification>,
     pub next_codex_command_seq: u64,
+    pub probe_lane: ProbeLaneSnapshot,
+    pub probe_lane_config: crate::probe_lane::ProbeLaneConfig,
+    pub probe_lane_worker: ProbeLaneWorker,
+    pub probe_command_responses: Vec<ProbeLaneCommandResponse>,
+    pub probe_notifications: Vec<ProbeLaneNotification>,
+    pub next_probe_command_seq: u64,
     pub sa_lane: SaLaneSnapshot,
     pub skl_lane: SklLaneSnapshot,
     pub ac_lane: AcLaneSnapshot,
@@ -16225,12 +16251,27 @@ impl RenderState {
         seq
     }
 
+    fn allocate_probe_command_seq(&mut self) -> u64 {
+        let seq = self.next_probe_command_seq;
+        self.next_probe_command_seq = self.next_probe_command_seq.saturating_add(1);
+        seq
+    }
+
+    pub const fn uses_probe_runtime(&self) -> bool {
+        matches!(self.autopilot_coding_runtime, AutopilotCodingRuntimeKind::Probe)
+    }
+
     pub fn queue_codex_command(&mut self, command: CodexLaneCommand) -> Result<u64, String> {
         if self.codex_disabled {
             return Err("Codex lane disabled for this desktop session".to_string());
         }
         let seq = self.allocate_codex_command_seq();
         self.codex_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn queue_probe_command(&mut self, command: ProbeLaneCommand) -> Result<u64, String> {
+        let seq = self.allocate_probe_command_seq();
+        self.probe_lane_worker.enqueue(seq, command).map(|()| seq)
     }
 
     pub fn restart_codex_lane(&mut self) {
@@ -16255,6 +16296,23 @@ impl RenderState {
                 "idle"
             });
         tracing::info!("codex lane restart dispatched (non-blocking shutdown)");
+    }
+
+    pub fn restart_probe_lane(&mut self) {
+        tracing::info!("probe lane restart requested");
+        let replacement = ProbeLaneWorker::spawn(self.probe_lane_config.clone());
+        let mut previous = std::mem::replace(&mut self.probe_lane_worker, replacement);
+        previous.shutdown_async();
+        self.probe_lane = if self.probe_lane_config.connect_on_startup {
+            ProbeLaneSnapshot::default()
+        } else {
+            ProbeLaneSnapshot::idle()
+        };
+        if self.uses_probe_runtime() {
+            self.autopilot_chat
+                .set_connection_status(self.probe_lane.lifecycle.label());
+        }
+        tracing::info!("probe lane restart dispatched (non-blocking shutdown)");
     }
 
     pub fn sync_credentials_runtime(&mut self, restart_codex: bool) {
@@ -16314,6 +16372,22 @@ impl RenderState {
         if self.codex_notifications.len() > 256 {
             let overflow = self.codex_notifications.len().saturating_sub(256);
             self.codex_notifications.drain(0..overflow);
+        }
+    }
+
+    pub fn record_probe_command_response(&mut self, response: ProbeLaneCommandResponse) {
+        self.probe_command_responses.push(response);
+        if self.probe_command_responses.len() > 128 {
+            let overflow = self.probe_command_responses.len().saturating_sub(128);
+            self.probe_command_responses.drain(0..overflow);
+        }
+    }
+
+    pub fn record_probe_notification(&mut self, notification: ProbeLaneNotification) {
+        self.probe_notifications.push(notification);
+        if self.probe_notifications.len() > 256 {
+            let overflow = self.probe_notifications.len().saturating_sub(256);
+            self.probe_notifications.drain(0..overflow);
         }
     }
 
