@@ -312,8 +312,11 @@ pub(super) fn run_chat_submit_action_with_trigger(
         }
     }
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
-        state.autopilot_chat.last_error =
-            Some("No active thread yet. Wait for Codex lane readiness.".to_string());
+        state.autopilot_chat.last_error = Some(if state.uses_probe_runtime() {
+            "No active Probe session yet. Start a new thread first.".to_string()
+        } else {
+            "No active thread yet. Wait for Codex lane readiness.".to_string()
+        });
         return true;
     };
     let session_cwd = current_chat_session_cwd(state);
@@ -411,6 +414,16 @@ pub(super) fn run_chat_submit_action_with_trigger(
         .collect::<Vec<_>>();
 
     log_chat_prompt_to_console(&thread_id, &prompt);
+    if state.uses_probe_runtime() {
+        return run_probe_chat_submit_action(
+            state,
+            thread_id,
+            prompt,
+            parsed_prompt,
+            prompt_chars,
+            selected_skill_names,
+        );
+    }
     let (input, skill_error) = assemble_chat_turn_input(parsed_prompt, turn_skill_attachments);
     if let Some(skill_error) = skill_error {
         state.autopilot_chat.last_error = Some(skill_error);
@@ -528,6 +541,79 @@ pub(super) fn run_chat_submit_action_with_trigger(
         Err(error) => {
             state.chat_inputs.composer.set_value(prompt.clone());
             state.autopilot_chat.record_composer_draft(prompt.clone());
+            state
+                .autopilot_chat
+                .mark_pending_turn_dispatch_failed(error);
+        }
+    }
+    true
+}
+
+fn run_probe_chat_submit_action(
+    state: &mut crate::app_state::RenderState,
+    thread_id: String,
+    prompt: String,
+    parsed_prompt: ParsedChatTurnPrompt,
+    prompt_chars: usize,
+    selected_skill_names: Vec<String>,
+) -> bool {
+    if !parsed_prompt.mention_attachments.is_empty() || !parsed_prompt.image_attachments.is_empty()
+    {
+        state.autopilot_chat.last_error = Some(
+            "Probe-backed turns do not yet support desktop mention or image attachments."
+                .to_string(),
+        );
+        return true;
+    }
+
+    if state.autopilot_chat.active_turn_id.is_some() {
+        state.autopilot_chat.last_error = Some(
+            "This Probe session already has an active turn. Queued follow-ups are handled in the next operator-control slice."
+                .to_string(),
+        );
+        return true;
+    }
+
+    let prompt_text = parsed_prompt.prompt_text.trim().to_string();
+    if prompt_text.is_empty() {
+        state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
+        return true;
+    }
+
+    state
+        .autopilot_chat
+        .remember_submission_draft(&thread_id, prompt.clone());
+    state.chat_inputs.composer.set_value(String::new());
+    state.autopilot_chat.record_composer_draft(String::new());
+
+    if !selected_skill_names.is_empty() {
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "probe runtime kept {} shell-selected skill attachment(s) app-owned; tool attachment forwarding is not wired yet",
+            selected_skill_names.len()
+        ));
+    }
+
+    state.autopilot_chat.submit_prompt(prompt.clone());
+    tracing::info!(
+        "probe turn/continue request thread_id={} model={} chars={}",
+        thread_id,
+        state.autopilot_chat.current_model(),
+        prompt_chars
+    );
+    let command = crate::probe_lane::ProbeLaneCommand::RunTurn {
+        session_id: probe_protocol::session::SessionId::new(thread_id.clone()),
+        prompt: prompt_text,
+        profile: probe_backend_profile_for_chat_session(state),
+        tool_loop: Some(probe_tool_loop_config_for_chat_session(state)),
+        submission_mode: crate::probe_lane::ProbeLaneTurnSubmissionMode::Continue,
+    };
+    match state.queue_probe_command(command) {
+        Ok(_) => {
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.chat_inputs.composer.set_value(prompt.clone());
+            state.autopilot_chat.record_composer_draft(prompt);
             state
                 .autopilot_chat
                 .mark_pending_turn_dispatch_failed(error);
@@ -5306,6 +5392,38 @@ fn probe_backend_profile_for_chat_session(
     profile
 }
 
+fn probe_tool_loop_config_for_chat_session(
+    state: &crate::app_state::RenderState,
+) -> probe_core::tools::ToolLoopConfig {
+    let mut config = probe_core::tools::ToolLoopConfig::coding_bootstrap(
+        probe_core::tools::ProbeToolChoice::Auto,
+        false,
+    );
+    config.approval.allow_write_tools = false;
+    config.approval.allow_network_shell = false;
+    config.approval.allow_destructive_shell = false;
+    config.approval.denied_action = probe_core::tools::ToolDeniedAction::Pause;
+
+    if matches!(
+        state.autopilot_chat.approval_mode,
+        codex_client::AskForApproval::Never
+    ) {
+        match state.autopilot_chat.sandbox_mode {
+            codex_client::SandboxMode::ReadOnly => {}
+            codex_client::SandboxMode::WorkspaceWrite => {
+                config.approval.allow_write_tools = true;
+            }
+            codex_client::SandboxMode::DangerFullAccess => {
+                config.approval.allow_write_tools = true;
+                config.approval.allow_network_shell = true;
+                config.approval.allow_destructive_shell = true;
+            }
+        }
+    }
+
+    config
+}
+
 pub(super) fn chat_session_collaboration_mode(
     state: &crate::app_state::RenderState,
 ) -> Option<serde_json::Value> {
@@ -6036,11 +6154,24 @@ pub(super) fn active_thread_id(state: &crate::app_state::RenderState) -> Option<
     state.autopilot_chat.active_thread_id.clone()
 }
 
+fn probe_runtime_action_unavailable(
+    state: &mut crate::app_state::RenderState,
+    action: &str,
+) -> bool {
+    state.autopilot_chat.last_error = Some(format!(
+        "{action} is not wired for Probe-backed sessions yet."
+    ));
+    true
+}
+
 pub(super) fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     let Some(thread_id) = active_thread_id(state) else {
         state.autopilot_chat.last_error = Some("No active thread to fork".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread fork");
+    }
     let cwd = current_chat_session_cwd(state);
     let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadFork(ThreadForkParams {
@@ -6068,6 +6199,9 @@ pub(super) fn run_chat_archive_thread_action(state: &mut crate::app_state::Rende
         state.autopilot_chat.last_error = Some("No active thread to archive".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread archive");
+    }
     if let Err(error) = state.queue_codex_command(
         crate::codex_lane::CodexLaneCommand::ThreadArchive(ThreadArchiveParams { thread_id }),
     ) {
@@ -6081,6 +6215,9 @@ pub(super) fn run_chat_unarchive_thread_action(state: &mut crate::app_state::Ren
         state.autopilot_chat.last_error = Some("No active thread to unarchive".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread unarchive");
+    }
     if let Err(error) = state.queue_codex_command(
         crate::codex_lane::CodexLaneCommand::ThreadUnarchive(ThreadUnarchiveParams { thread_id }),
     ) {
@@ -6094,6 +6231,9 @@ pub(super) fn run_chat_rename_thread_action(state: &mut crate::app_state::Render
         state.autopilot_chat.last_error = Some("No active thread to rename".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread rename");
+    }
     let name = state
         .autopilot_chat
         .suggested_thread_name(&thread_id)
@@ -6115,6 +6255,17 @@ pub(super) fn run_chat_reload_thread_action(state: &mut crate::app_state::Render
         state.autopilot_chat.last_error = Some("No active thread to reload".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
+            session_id: probe_protocol::session::SessionId::new(thread_id),
+        };
+        if let Err(error) = state.queue_probe_command(command) {
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
     let command = crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
         thread_id,
         include_turns: true,
@@ -6207,6 +6358,9 @@ pub(super) fn run_chat_rollback_thread_action(state: &mut crate::app_state::Rend
         state.autopilot_chat.last_error = Some("No active thread to rollback".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread rollback");
+    }
     let command = crate::codex_lane::CodexLaneCommand::ThreadRollback(ThreadRollbackParams {
         thread_id,
         num_turns: 1,
@@ -6264,6 +6418,9 @@ pub(super) fn run_chat_review_action(state: &mut crate::app_state::RenderState) 
         state.autopilot_chat.last_error = Some("No active thread to review".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Review");
+    }
     let command =
         crate::codex_lane::CodexLaneCommand::ReviewStart(codex_client::ReviewStartParams {
             thread_id,
@@ -6281,6 +6438,9 @@ pub(super) fn run_chat_compact_thread_action(state: &mut crate::app_state::Rende
         state.autopilot_chat.last_error = Some("No active thread to compact".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Compaction");
+    }
     let command =
         crate::codex_lane::CodexLaneCommand::ThreadCompactStart(ThreadCompactStartParams {
             thread_id,
@@ -6298,6 +6458,9 @@ pub(super) fn run_chat_unsubscribe_thread_action(
         state.autopilot_chat.last_error = Some("No active thread to unsubscribe".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread unsubscribe");
+    }
     let command = crate::codex_lane::CodexLaneCommand::ThreadUnsubscribe(ThreadUnsubscribeParams {
         thread_id,
     });
@@ -6337,6 +6500,9 @@ pub(super) fn run_chat_select_thread_action(
             if state.uses_probe_runtime() {
                 restore_chat_composer_draft(state);
                 focus_chat_composer(state);
+                state
+                    .autopilot_chat
+                    .restore_session_preferences_from_thread(&target.thread_id);
                 let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
                     session_id: probe_protocol::session::SessionId::new(target.thread_id),
                 };

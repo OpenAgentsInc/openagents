@@ -7,12 +7,13 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 1. [`ROADMAP_CODEX.md`](./ROADMAP_CODEX.md)
 2. [`AUTOPILOT_CODING_SHELL_AND_PROBE_DIRECTION.md`](./AUTOPILOT_CODING_SHELL_AND_PROBE_DIRECTION.md)
 3. [`PROBE_LOCAL_SIDECAR_ADOPTION.md`](./PROBE_LOCAL_SIDECAR_ADOPTION.md)
-4. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](./CAD_CHAT_BUILD_IMPLEMENTATION.md)
-5. [`CODEX_PANE_CAD_TOOLING.md`](./CODEX_PANE_CAD_TOOLING.md)
-6. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](./CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
-7. [`CAD_PHASE2_DEMO_RUNBOOK.md`](./CAD_PHASE2_DEMO_RUNBOOK.md)
-8. [`EXEC.md`](./EXEC.md)
-9. [`REMOTE.md`](./REMOTE.md)
+4. [`PROBE_SHELL_PROJECTION.md`](./PROBE_SHELL_PROJECTION.md)
+5. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](./CAD_CHAT_BUILD_IMPLEMENTATION.md)
+6. [`CODEX_PANE_CAD_TOOLING.md`](./CODEX_PANE_CAD_TOOLING.md)
+7. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](./CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+8. [`CAD_PHASE2_DEMO_RUNBOOK.md`](./CAD_PHASE2_DEMO_RUNBOOK.md)
+9. [`EXEC.md`](./EXEC.md)
+10. [`REMOTE.md`](./REMOTE.md)
 
 ## Documents
 
@@ -28,6 +29,9 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
   - the shipped daemon-first local consumer boundary for Autopilot's Probe
     lane, including runtime selection, fallback, reconnect, and failure
     posture.
+- [`PROBE_SHELL_PROJECTION.md`](./PROBE_SHELL_PROJECTION.md)
+  - the current app-owned mapping from Probe sessions and turn-control truth
+    into Autopilot thread, transcript, workspace, and artifact state.
 - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
   - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
 - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)

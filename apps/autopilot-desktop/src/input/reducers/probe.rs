@@ -52,6 +52,11 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
         ProbeLaneNotification::SessionLoaded { snapshot, control } => {
             let thread_id = snapshot.session.id.as_str().to_string();
             state.autopilot_chat.ensure_thread(thread_id.clone());
+            if let Some(metadata) = state.autopilot_chat.thread_metadata.get_mut(&thread_id) {
+                metadata.loaded = true;
+                metadata.created_at = Some(snapshot.session.created_at_ms as i64);
+                metadata.updated_at = Some(snapshot.session.updated_at_ms as i64);
+            }
             state.autopilot_chat.set_thread_name(
                 thread_id.as_str(),
                 Some(snapshot.session.title.clone()),
