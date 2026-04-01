@@ -95,14 +95,29 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
             approvals,
         } => {
             hydrate_probe_pending_approvals(state, session_id.as_str(), approvals.as_slice());
-            if approvals.is_empty() && state.autopilot_chat.last_turn_status.as_deref() == Some("paused") {
-                state
+            if approvals.is_empty()
+                && state
                     .autopilot_chat
-                    .set_turn_status(Some(String::from("running")));
+                    .last_turn_status
+                    .as_deref()
+                    .is_some_and(|status| status.starts_with("paused"))
+            {
+                let next_status = if state
+                    .autopilot_chat
+                    .active_thread_status()
+                    .is_some_and(|status| status.contains("queued"))
+                {
+                    String::from("running+queued")
+                } else {
+                    String::from("running")
+                };
+                state.autopilot_chat.set_turn_status(Some(next_status));
             }
         }
         ProbeLaneNotification::TurnQueued { response, control } => {
-            state.autopilot_chat.set_turn_status(Some(String::from("queued")));
+            state
+                .autopilot_chat
+                .set_turn_status(Some(probe_control_status_label(control)));
             state.autopilot_chat.set_thread_status(
                 response.turn.session_id.as_str(),
                 Some(probe_control_status_label(control)),
@@ -232,43 +247,9 @@ fn hydrate_probe_pending_approvals(
 }
 
 fn sync_probe_turn_status(state: &mut RenderState, control: &probe_protocol::runtime::InspectSessionTurnsResponse) {
-    if let Some(active_turn) = control.active_turn.as_ref() {
-        let status = if active_turn.awaiting_approval {
-            "paused"
-        } else {
-            "running"
-        };
-        state
-            .autopilot_chat
-            .set_turn_status(Some(status.to_string()));
-        return;
-    }
-    if let Some(recent_turn) = control.recent_turns.first() {
-        let status = match recent_turn.status {
-            QueuedTurnStatus::Queued => "queued",
-            QueuedTurnStatus::Running => {
-                if recent_turn.awaiting_approval {
-                    "paused"
-                } else {
-                    "running"
-                }
-            }
-            QueuedTurnStatus::Completed => "completed",
-            QueuedTurnStatus::Failed => {
-                if recent_turn
-                    .failure_message
-                    .as_deref()
-                    .is_some_and(|message| message.to_ascii_lowercase().contains("timed out"))
-                {
-                    "timed_out"
-                } else {
-                    "failed"
-                }
-            }
-            QueuedTurnStatus::Cancelled => "cancelled",
-            QueuedTurnStatus::TimedOut => "timed_out",
-        };
-        state.autopilot_chat.set_turn_status(Some(status.to_string()));
+    let status = probe_control_status_label(control);
+    if !status.is_empty() {
+        state.autopilot_chat.set_turn_status(Some(status));
     }
 }
 
@@ -317,10 +298,15 @@ fn probe_control_status_label(
     control: &probe_protocol::runtime::InspectSessionTurnsResponse,
 ) -> String {
     if let Some(active_turn) = control.active_turn.as_ref() {
-        return if active_turn.awaiting_approval {
-            String::from("paused")
+        let active_status = if active_turn.awaiting_approval {
+            "paused"
         } else {
-            String::from("running")
+            "running"
+        };
+        return if control.queued_turns.is_empty() {
+            active_status.to_string()
+        } else {
+            format!("{active_status}+queued")
         };
     }
     if !control.queued_turns.is_empty() {

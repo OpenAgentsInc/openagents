@@ -1123,6 +1123,14 @@ fn local_turn_status_summary(status: Option<&str>) -> Option<&'static str> {
         Some("completed") => Some("completed locally; not a labor verdict or settlement"),
         Some("failed") => Some("local execution failed"),
         Some("inProgress") => Some("local execution in progress"),
+        Some("queued") => Some("probe follow-up queued"),
+        Some("running") => Some("probe turn running"),
+        Some("paused") => Some("probe turn paused for approval"),
+        Some("running+queued") => Some("probe turn running with queued follow-ups"),
+        Some("paused+queued") => Some("probe turn paused with queued follow-ups"),
+        Some("cancelled") => Some("probe turn cancelled"),
+        Some("timed_out") => Some("probe turn timed out"),
+        Some("refused") => Some("probe tool execution was refused"),
         _ => None,
     }
 }

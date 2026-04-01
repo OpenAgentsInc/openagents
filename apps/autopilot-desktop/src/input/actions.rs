@@ -174,6 +174,10 @@ enum ChatRequestComposerIntent {
         decision: ApprovalDecision,
         label: &'static str,
     },
+    QueueSummary,
+    QueueCancel {
+        turn_id: Option<String>,
+    },
     ToolCallRespond,
     ToolUserInputRespond,
     AuthRefreshRespond,
@@ -566,19 +570,13 @@ fn run_probe_chat_submit_action(
         return true;
     }
 
-    if state.autopilot_chat.active_turn_id.is_some() {
-        state.autopilot_chat.last_error = Some(
-            "This Probe session already has an active turn. Queued follow-ups are handled in the next operator-control slice."
-                .to_string(),
-        );
-        return true;
-    }
-
     let prompt_text = parsed_prompt.prompt_text.trim().to_string();
     if prompt_text.is_empty() {
         state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
         return true;
     }
+
+    let has_active_turn = state.autopilot_chat.active_turn_id.is_some();
 
     state
         .autopilot_chat
@@ -593,6 +591,47 @@ fn run_probe_chat_submit_action(
         ));
     }
 
+    let session_id = probe_protocol::session::SessionId::new(thread_id.clone());
+    let profile = probe_backend_profile_for_chat_session(state);
+    let tool_loop = probe_tool_loop_config_for_chat_session(state);
+    if has_active_turn {
+        tracing::info!(
+            "probe turn/queue request thread_id={} model={} chars={}",
+            thread_id,
+            state.autopilot_chat.current_model(),
+            prompt_chars
+        );
+        let command = crate::probe_lane::ProbeLaneCommand::QueueTurn {
+            session_id,
+            prompt: prompt_text,
+            profile,
+            tool_loop: Some(tool_loop),
+        };
+        match state.queue_probe_command(command) {
+            Ok(_) => {
+                state.autopilot_chat.submit_steer_prompt(prompt.clone());
+                state
+                    .autopilot_chat
+                    .set_turn_status(Some(String::from("running+queued")));
+                state
+                    .autopilot_chat
+                    .set_thread_status(thread_id.as_str(), Some(String::from("running+queued")));
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event(String::from(
+                        "probe follow-up queued while the current turn is still running",
+                    ));
+                state.autopilot_chat.last_error = None;
+            }
+            Err(error) => {
+                state.chat_inputs.composer.set_value(prompt.clone());
+                state.autopilot_chat.record_composer_draft(prompt);
+                state.autopilot_chat.last_error = Some(error);
+            }
+        }
+        return true;
+    }
+
     state.autopilot_chat.submit_prompt(prompt.clone());
     tracing::info!(
         "probe turn/continue request thread_id={} model={} chars={}",
@@ -601,10 +640,10 @@ fn run_probe_chat_submit_action(
         prompt_chars
     );
     let command = crate::probe_lane::ProbeLaneCommand::RunTurn {
-        session_id: probe_protocol::session::SessionId::new(thread_id.clone()),
+        session_id,
         prompt: prompt_text,
-        profile: probe_backend_profile_for_chat_session(state),
-        tool_loop: Some(probe_tool_loop_config_for_chat_session(state)),
+        profile,
+        tool_loop: Some(tool_loop),
         submission_mode: crate::probe_lane::ProbeLaneTurnSubmissionMode::Continue,
     };
     match state.queue_probe_command(command) {
@@ -3875,7 +3914,7 @@ fn parse_chat_request_intent(prompt: &str) -> Result<Option<ChatRequestComposerI
     };
     if !matches!(
         first_word,
-        "/requests" | "/approvals" | "/approval" | "/tool" | "/auth"
+        "/requests" | "/approvals" | "/approval" | "/tool" | "/auth" | "/queue" | "/queued"
     ) {
         return Ok(None);
     }
@@ -3915,6 +3954,15 @@ fn parse_chat_request_intent(prompt: &str) -> Result<Option<ChatRequestComposerI
                 "Approval commands: `/approvals`, `/approvals accept`, `/approvals session`, `/approvals decline`, `/approvals cancel`"
                     .to_string(),
             ),
+        },
+        "/queue" | "/queued" => match words.get(1).map(String::as_str) {
+            None | Some("list") if words.len() <= 2 => {
+                Ok(Some(ChatRequestComposerIntent::QueueSummary))
+            }
+            Some("cancel") if words.len() <= 3 => Ok(Some(ChatRequestComposerIntent::QueueCancel {
+                turn_id: words.get(2).cloned(),
+            })),
+            _ => Err("Queue commands: `/queue`, `/queue cancel [turn-id]`".to_string()),
         },
         "/tool" => match words.get(1).map(String::as_str) {
             Some("respond") if words.len() == 2 => Ok(Some(ChatRequestComposerIntent::ToolCallRespond)),
@@ -4360,6 +4408,14 @@ fn format_apps_summary(state: &crate::app_state::RenderState) -> String {
 }
 
 fn format_request_summary(state: &crate::app_state::RenderState) -> String {
+    let has_request_prompts = !state.autopilot_chat.pending_command_approvals.is_empty()
+        || !state
+            .autopilot_chat
+            .pending_file_change_approvals
+            .is_empty()
+        || !state.autopilot_chat.pending_tool_calls.is_empty()
+        || !state.autopilot_chat.pending_tool_user_input.is_empty()
+        || !state.autopilot_chat.pending_auth_refresh.is_empty();
     let mut lines = vec![format!(
         "Pending requests: command approvals={}, file approvals={}, tool calls={}, tool prompts={}, auth refresh={}.",
         state.autopilot_chat.pending_command_approvals.len(),
@@ -4411,16 +4467,36 @@ fn format_request_summary(state: &crate::app_state::RenderState) -> String {
             request.previous_account_id.as_deref().unwrap_or("n/a")
         ));
     }
-    if lines.len() == 1
-        && state.autopilot_chat.pending_command_approvals.is_empty()
-        && state
-            .autopilot_chat
-            .pending_file_change_approvals
-            .is_empty()
-        && state.autopilot_chat.pending_tool_calls.is_empty()
-        && state.autopilot_chat.pending_tool_user_input.is_empty()
-        && state.autopilot_chat.pending_auth_refresh.is_empty()
+    if state.uses_probe_runtime()
+        && let Some(thread_id) = state.autopilot_chat.active_thread_id.as_deref()
     {
+        if let Some(control) = latest_probe_turn_control_for_thread(state, thread_id) {
+            lines.push(format!(
+                "Probe turn control: active={} queued={} recent={}.",
+                control
+                    .active_turn
+                    .as_ref()
+                    .map(|turn| turn.turn_id.as_str())
+                    .unwrap_or("none"),
+                control.queued_turns.len(),
+                control.recent_turns.len()
+            ));
+            for queued_turn in control.queued_turns.iter().take(3) {
+                lines.push(format!(
+                    "Queued turn: id={} position={} author={}",
+                    queued_turn.turn_id,
+                    queued_turn.queue_position.unwrap_or(0),
+                    queued_turn.author.client_name
+                ));
+            }
+        } else {
+            lines.push(
+                "Probe turn control cache is empty for the active thread. Reload the session if queue state looks stale."
+                    .to_string(),
+            );
+        }
+    }
+    if !has_request_prompts {
         lines.push("No pending approvals or request-flow prompts.".to_string());
     } else {
         lines.push(
@@ -4428,7 +4504,72 @@ fn format_request_summary(state: &crate::app_state::RenderState) -> String {
                 .to_string(),
         );
     }
+    if state.uses_probe_runtime() {
+        lines.push("Probe queue commands: `/queue`, `/queue cancel [turn-id]`.".to_string());
+    }
     lines.join("\n")
+}
+
+fn latest_probe_turn_control_for_thread(
+    state: &crate::app_state::RenderState,
+    thread_id: &str,
+) -> Option<probe_protocol::runtime::InspectSessionTurnsResponse> {
+    state
+        .probe_notifications
+        .iter()
+        .rev()
+        .find_map(|notification| match notification {
+            crate::probe_lane::ProbeLaneNotification::SessionLoaded { snapshot, control }
+                if snapshot.session.id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            crate::probe_lane::ProbeLaneNotification::TurnQueued { response, control }
+                if response.turn.session_id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            crate::probe_lane::ProbeLaneNotification::TurnInterrupted { response, control }
+                if response.session_id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            crate::probe_lane::ProbeLaneNotification::QueuedTurnCancelled { response, control }
+                if response.session_id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            _ => None,
+        })
+}
+
+fn resolve_probe_queue_cancel_target(
+    control: &probe_protocol::runtime::InspectSessionTurnsResponse,
+    turn_id: Option<&str>,
+) -> Result<String, String> {
+    if control.queued_turns.is_empty() {
+        return Err(
+            "No queued Probe turns are available to cancel. Use interrupt to stop the active turn."
+                .to_string(),
+        );
+    }
+    let requested = match turn_id.map(str::trim) {
+        Some(value) if !value.is_empty() && value != "latest" && value != "newest" => Some(value),
+        _ => None,
+    };
+    if let Some(requested) = requested {
+        return control
+            .queued_turns
+            .iter()
+            .find(|turn| turn.turn_id == requested)
+            .map(|turn| turn.turn_id.clone())
+            .ok_or_else(|| format!("Queued Probe turn `{requested}` is not in the current queue."));
+    }
+    control
+        .queued_turns
+        .last()
+        .map(|turn| turn.turn_id.clone())
+        .ok_or_else(|| "No queued Probe turns are available to cancel.".to_string())
 }
 
 fn append_chat_command_result(
@@ -4754,6 +4895,9 @@ fn run_chat_request_action(
         ChatRequestComposerIntent::Summary => {
             append_chat_command_result(state, prompt, format_request_summary(state), false)
         }
+        ChatRequestComposerIntent::QueueSummary => {
+            append_chat_command_result(state, prompt, format_request_summary(state), false)
+        }
         ChatRequestComposerIntent::Approval { decision, label } => {
             let had_requests = !state.autopilot_chat.pending_command_approvals.is_empty()
                 || !state
@@ -4774,6 +4918,52 @@ fn run_chat_request_action(
                 "No pending approval requests".to_string()
             };
             append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatRequestComposerIntent::QueueCancel { turn_id } => {
+            if !state.uses_probe_runtime() {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "Queued turn cancel is only wired for Probe-backed sessions.".to_string(),
+                    true,
+                );
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "No active Probe session is selected.".to_string(),
+                    true,
+                );
+            };
+            let Some(control) = latest_probe_turn_control_for_thread(state, thread_id.as_str())
+            else {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "Probe queue state is not loaded yet. Reload the session and try again."
+                        .to_string(),
+                    true,
+                );
+            };
+            let target_turn_id =
+                match resolve_probe_queue_cancel_target(&control, turn_id.as_deref()) {
+                    Ok(turn_id) => turn_id,
+                    Err(error) => return append_chat_command_result(state, prompt, error, true),
+                };
+            let command = crate::probe_lane::ProbeLaneCommand::CancelQueuedTurn {
+                session_id: probe_protocol::session::SessionId::new(thread_id),
+                turn_id: target_turn_id.clone(),
+            };
+            match state.queue_probe_command(command) {
+                Ok(_) => append_chat_command_result(
+                    state,
+                    prompt,
+                    format!("Queued Probe turn cancel for `{target_turn_id}`."),
+                    false,
+                ),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
         }
         ChatRequestComposerIntent::ToolCallRespond => {
             let had_requests = !state.autopilot_chat.pending_tool_calls.is_empty();
@@ -6128,6 +6318,27 @@ pub(super) fn run_chat_interrupt_turn_action(state: &mut crate::app_state::Rende
         return true;
     };
 
+    if state.uses_probe_runtime() {
+        let command = crate::probe_lane::ProbeLaneCommand::InterruptTurn {
+            session_id: probe_protocol::session::SessionId::new(thread_id),
+        };
+        match state.queue_probe_command(command) {
+            Ok(_) => {
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event(format!("probe interrupt requested: {turn_id}"));
+                state
+                    .autopilot_chat
+                    .set_turn_status(Some("interruptRequested".to_string()));
+                state.autopilot_chat.last_error = None;
+            }
+            Err(error) => {
+                state.autopilot_chat.last_error = Some(error);
+            }
+        }
+        return true;
+    }
+
     let command =
         crate::codex_lane::CodexLaneCommand::TurnInterrupt(codex_client::TurnInterruptParams {
             thread_id,
@@ -6592,6 +6803,61 @@ pub(super) fn run_chat_approval_response_action(
     state: &mut crate::app_state::RenderState,
     decision: ApprovalDecision,
 ) -> bool {
+    if state.uses_probe_runtime() {
+        let Some(request) = state.autopilot_chat.pop_command_approval() else {
+            state.autopilot_chat.last_error = Some("No pending approval requests".to_string());
+            return true;
+        };
+        let (resolution, decision_label) = match decision {
+            ApprovalDecision::Accept => (
+                probe_protocol::session::ToolApprovalResolution::Approved,
+                "Accept",
+            ),
+            ApprovalDecision::AcceptForSession => (
+                probe_protocol::session::ToolApprovalResolution::Approved,
+                "AcceptForSession (mapped to per-call Probe approval)",
+            ),
+            ApprovalDecision::Decline => (
+                probe_protocol::session::ToolApprovalResolution::Rejected,
+                "Decline",
+            ),
+            ApprovalDecision::Cancel => (
+                probe_protocol::session::ToolApprovalResolution::Rejected,
+                "Cancel (mapped to reject)",
+            ),
+            ApprovalDecision::Unknown => (
+                probe_protocol::session::ToolApprovalResolution::Rejected,
+                "Unknown (mapped to reject)",
+            ),
+        };
+        let command = crate::probe_lane::ProbeLaneCommand::ResolvePendingApproval {
+            session_id: probe_protocol::session::SessionId::new(request.thread_id.clone()),
+            call_id: request.item_id.clone(),
+            resolution,
+            profile: probe_backend_profile_for_chat_session(state),
+            tool_loop: probe_tool_loop_config_for_chat_session(state),
+        };
+        if let Err(error) = state.queue_probe_command(command) {
+            state
+                .autopilot_chat
+                .pending_command_approvals
+                .insert(0, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("probe approval response: {decision_label}"));
+            state.autopilot_chat.record_turn_command_approval_response(
+                request.turn_id.as_str(),
+                request.item_id.as_str(),
+                decision_label,
+                current_epoch_millis(),
+            );
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
+
     if let Some(request) = state.autopilot_chat.pop_command_approval() {
         let decision_label = format!("{:?}", decision);
         let command = crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
@@ -16726,6 +16992,16 @@ mod tests {
                 label: "accept-for-session",
                 ..
             })
+        ));
+        assert!(matches!(
+            parse_chat_request_intent("/queue").unwrap(),
+            Some(ChatRequestComposerIntent::QueueSummary)
+        ));
+        assert!(matches!(
+            parse_chat_request_intent("/queue cancel turn-queued-1").unwrap(),
+            Some(ChatRequestComposerIntent::QueueCancel {
+                turn_id: Some(turn_id)
+            }) if turn_id == "turn-queued-1"
         ));
         assert!(matches!(
             parse_chat_request_intent("/tool prompt respond").unwrap(),

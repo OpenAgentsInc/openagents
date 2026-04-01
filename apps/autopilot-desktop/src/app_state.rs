@@ -12182,6 +12182,19 @@ impl AutopilotChatState {
         }
     }
 
+    fn allocate_assistant_message_slot(&mut self) -> u64 {
+        let assistant_message_id = self.next_message_id;
+        self.messages.push(AutopilotMessage {
+            id: assistant_message_id,
+            role: AutopilotRole::Codex,
+            status: AutopilotMessageStatus::Queued,
+            content: String::new(),
+            structured: Some(AutopilotStructuredMessage::default()),
+        });
+        self.next_message_id = self.next_message_id.saturating_add(1);
+        assistant_message_id
+    }
+
     pub fn mark_turn_started(&mut self, turn_id: String) {
         self.active_turn_id = Some(turn_id.clone());
         if let Some(mut metadata) = self.pending_turn_metadata.pop_front() {
@@ -12204,7 +12217,13 @@ impl AutopilotChatState {
             }
         }
         self.last_turn_status = Some("inProgress".to_string());
-        if let Some(assistant_message_id) = self.bind_turn_to_assistant_message(&turn_id)
+        let assistant_message_id = self.bind_turn_to_assistant_message(&turn_id).or_else(|| {
+            let assistant_message_id = self.allocate_assistant_message_slot();
+            self.turn_assistant_message_ids
+                .insert(turn_id.clone(), assistant_message_id);
+            Some(assistant_message_id)
+        });
+        if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
                 .messages
                 .iter_mut()
@@ -21600,6 +21619,23 @@ mod tests {
             Some("follow up")
         );
         assert_eq!(chat.pending_assistant_message_ids.len(), pending_before);
+    }
+
+    #[test]
+    fn chat_state_allocates_assistant_slot_when_turn_starts_without_placeholder() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.submit_steer_prompt("queued follow up".to_string());
+
+        chat.mark_turn_started("turn-queued".to_string());
+
+        let assistant = chat
+            .messages
+            .iter()
+            .find(|message| message.role == AutopilotRole::Codex)
+            .expect("assistant slot should be created when the queued turn starts");
+        assert_eq!(assistant.status, AutopilotMessageStatus::Running);
+        assert_eq!(chat.active_assistant_message_id, Some(assistant.id));
     }
 
     #[test]
