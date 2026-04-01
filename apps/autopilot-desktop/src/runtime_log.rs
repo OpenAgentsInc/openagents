@@ -2,17 +2,22 @@ use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{OnceLock, mpsc};
+use std::sync::{mpsc, OnceLock};
 
 use chrono::Utc;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tracing::Level;
 use wgpui::components::sections::TerminalStream;
 
 const ENV_AUTOPILOT_LOG_DIR: &str = "OPENAGENTS_AUTOPILOT_LOG_DIR";
-const DEFAULT_MAX_SESSION_FILES: usize = 12;
-const DEFAULT_MAX_SESSION_LOG_AGE_DAYS: u64 = 7;
-const DEFAULT_MAX_TOTAL_SESSION_LOG_BYTES: u64 = 256 * 1024 * 1024;
+const ENV_MAX_SESSION_FILES: &str = "OPENAGENTS_AUTOPILOT_MAX_SESSION_LOG_FILES";
+const ENV_MAX_SESSION_LOG_AGE_DAYS: &str = "OPENAGENTS_AUTOPILOT_MAX_SESSION_LOG_AGE_DAYS";
+const ENV_MAX_SESSION_LOG_BYTES: &str = "OPENAGENTS_AUTOPILOT_MAX_SESSION_LOG_BYTES";
+const ENV_MAX_TOTAL_SESSION_LOG_BYTES: &str = "OPENAGENTS_AUTOPILOT_MAX_TOTAL_SESSION_LOG_BYTES";
+const DEFAULT_MAX_SESSION_FILES: usize = 8;
+const DEFAULT_MAX_SESSION_LOG_AGE_DAYS: u64 = 3;
+const DEFAULT_MAX_SESSION_LOG_BYTES: u64 = 32 * 1024 * 1024;
+const DEFAULT_MAX_TOTAL_SESSION_LOG_BYTES: u64 = 96 * 1024 * 1024;
 
 static SESSION_LOG_WRITER: OnceLock<SessionLogWriter> = OnceLock::new();
 
@@ -38,7 +43,8 @@ struct SessionLogConfig {
     base_dir: PathBuf,
     max_session_files: usize,
     max_session_age: std::time::Duration,
-    max_total_session_bytes: u64,
+    max_session_bytes: u64,
+    max_total_retained_session_bytes: u64,
     session_id: String,
 }
 
@@ -153,7 +159,8 @@ impl SessionLogWriter {
             base_dir,
             max_session_files,
             max_session_age,
-            max_total_session_bytes,
+            max_session_bytes,
+            max_total_retained_session_bytes,
             session_id,
         } = config;
         let session_dir = base_dir.join("sessions");
@@ -177,7 +184,8 @@ impl SessionLogWriter {
                     thread_session_id,
                     max_session_files,
                     max_session_age,
-                    max_total_session_bytes,
+                    max_session_bytes,
+                    max_total_retained_session_bytes,
                 );
             });
         if let Err(error) = spawn_result {
@@ -296,7 +304,8 @@ fn run_session_log_writer(
     session_id: String,
     max_session_files: usize,
     max_session_age: std::time::Duration,
-    max_total_session_bytes: u64,
+    max_session_bytes: u64,
+    max_total_retained_session_bytes: u64,
 ) {
     let mut file = initialize_session_log_file(
         base_dir.as_path(),
@@ -305,13 +314,13 @@ fn run_session_log_writer(
         latest_path.as_path(),
         max_session_files,
         max_session_age,
-        max_total_session_bytes,
+        max_total_retained_session_bytes,
     );
     let mut session_bytes_written = file
         .as_ref()
         .and_then(|handle| handle.metadata().ok())
         .map_or(0, |metadata| metadata.len());
-    let mut session_log_cap_reached = session_bytes_written >= max_total_session_bytes;
+    let mut session_log_cap_reached = session_bytes_written >= max_session_bytes;
 
     if let Some(file_handle) = file.as_mut() {
         let started = json!({
@@ -328,7 +337,7 @@ fn run_session_log_writer(
             emit_session_log_fallback(&format!(
                 "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
                 session_path.display(),
-                max_total_session_bytes
+                max_session_bytes
             ));
         } else if let Err(error) = write_jsonl_entry(file_handle, &started).map(|written| {
             session_bytes_written = session_bytes_written.saturating_add(written);
@@ -339,12 +348,12 @@ fn run_session_log_writer(
                 error
             ));
             file = None;
-        } else if session_bytes_written >= max_total_session_bytes {
+        } else if session_bytes_written >= max_session_bytes {
             session_log_cap_reached = true;
             emit_session_log_fallback(&format!(
                 "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
                 session_path.display(),
-                max_total_session_bytes
+                max_session_bytes
             ));
         }
     }
@@ -370,17 +379,17 @@ fn run_session_log_writer(
                     }
                 };
                 let entry_bytes = jsonl_encoded_len(&serialized);
-                if session_bytes_written.saturating_add(entry_bytes) > max_total_session_bytes {
+                if session_bytes_written.saturating_add(entry_bytes) > max_session_bytes {
                     session_log_cap_reached = true;
                     emit_session_log_fallback(&format!(
                         "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
                         session_path.display(),
-                        max_total_session_bytes
+                        max_session_bytes
                     ));
                     continue;
                 }
-                if let Err(error) = write_serialized_jsonl_entry(file_handle, &serialized)
-                    .map(|written| {
+                if let Err(error) =
+                    write_serialized_jsonl_entry(file_handle, &serialized).map(|written| {
                         session_bytes_written = session_bytes_written.saturating_add(written);
                     })
                 {
@@ -390,12 +399,12 @@ fn run_session_log_writer(
                         error
                     ));
                     file = None;
-                } else if session_bytes_written >= max_total_session_bytes {
+                } else if session_bytes_written >= max_session_bytes {
                     session_log_cap_reached = true;
                     emit_session_log_fallback(&format!(
                         "Autopilot session log reached byte cap for {} ({} bytes); dropping new entries",
                         session_path.display(),
-                        max_total_session_bytes
+                        max_session_bytes
                     ));
                 }
             }
@@ -417,7 +426,7 @@ fn initialize_session_log_file(
     latest_path: &Path,
     max_session_files: usize,
     max_session_age: std::time::Duration,
-    max_total_session_bytes: u64,
+    max_total_retained_session_bytes: u64,
 ) -> Option<File> {
     if let Err(error) = fs::create_dir_all(base_dir) {
         emit_session_log_fallback(&format!(
@@ -439,7 +448,7 @@ fn initialize_session_log_file(
         session_dir,
         max_session_files,
         max_session_age,
-        max_total_session_bytes,
+        max_total_retained_session_bytes,
     ) {
         emit_session_log_fallback(&format!(
             "Autopilot session log retention cleanup failed for {}: {}",
@@ -527,13 +536,13 @@ fn prune_old_session_logs(
     session_dir: &Path,
     max_session_files: usize,
     max_session_age: std::time::Duration,
-    max_total_session_bytes: u64,
+    max_total_retained_session_bytes: u64,
 ) -> Result<(), String> {
     prune_old_session_logs_at(
         session_dir,
         max_session_files,
         max_session_age,
-        max_total_session_bytes,
+        max_total_retained_session_bytes,
         std::time::SystemTime::now(),
     )
 }
@@ -542,7 +551,7 @@ fn prune_old_session_logs_at(
     session_dir: &Path,
     max_session_files: usize,
     max_session_age: std::time::Duration,
-    max_total_session_bytes: u64,
+    max_total_retained_session_bytes: u64,
     now: std::time::SystemTime,
 ) -> Result<(), String> {
     let mut files = fs::read_dir(session_dir)
@@ -590,7 +599,7 @@ fn prune_old_session_logs_at(
     let mut total_size = files
         .iter()
         .fold(0_u64, |acc, (_, _, size)| acc.saturating_add(*size));
-    while files.len() > max_session_files || total_size > max_total_session_bytes {
+    while files.len() > max_session_files || total_size > max_total_retained_session_bytes {
         let Some((entry, _, size)) = files.first() else {
             break;
         };
@@ -614,15 +623,42 @@ fn terminal_stream_label(stream: &TerminalStream) -> &'static str {
 }
 
 fn default_session_log_config() -> SessionLogConfig {
+    let max_session_files =
+        env_usize_with_default(ENV_MAX_SESSION_FILES, DEFAULT_MAX_SESSION_FILES).max(1);
+    let max_session_age_days = env_u64_with_default(
+        ENV_MAX_SESSION_LOG_AGE_DAYS,
+        DEFAULT_MAX_SESSION_LOG_AGE_DAYS,
+    );
+    let max_session_bytes =
+        env_u64_with_default(ENV_MAX_SESSION_LOG_BYTES, DEFAULT_MAX_SESSION_LOG_BYTES).max(1024);
+    let max_total_retained_session_bytes = env_u64_with_default(
+        ENV_MAX_TOTAL_SESSION_LOG_BYTES,
+        DEFAULT_MAX_TOTAL_SESSION_LOG_BYTES,
+    )
+    .max(max_session_bytes);
+
     SessionLogConfig {
         base_dir: default_autopilot_log_dir(),
-        max_session_files: DEFAULT_MAX_SESSION_FILES,
-        max_session_age: std::time::Duration::from_secs(
-            DEFAULT_MAX_SESSION_LOG_AGE_DAYS * 24 * 60 * 60,
-        ),
-        max_total_session_bytes: DEFAULT_MAX_TOTAL_SESSION_LOG_BYTES,
+        max_session_files,
+        max_session_age: std::time::Duration::from_secs(max_session_age_days * 24 * 60 * 60),
+        max_session_bytes,
+        max_total_retained_session_bytes,
         session_id: default_session_id(),
     }
+}
+
+fn env_u64_with_default(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
+fn env_usize_with_default(key: &str, default: usize) -> usize {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(default)
 }
 
 fn default_session_id() -> String {
@@ -680,12 +716,12 @@ mod tests {
     use std::ffi::OsString;
     use std::path::PathBuf;
 
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use tempfile::tempdir;
 
     use super::{
-        DEFAULT_MAX_SESSION_FILES, SessionLogConfig, current_timestamp_ms, domain_projection,
-        prune_old_session_logs_at, resolve_log_dir_from, session_log_writer_for_tests,
+        current_timestamp_ms, domain_projection, prune_old_session_logs_at, resolve_log_dir_from,
+        session_log_writer_for_tests, SessionLogConfig, DEFAULT_MAX_SESSION_FILES,
     };
 
     #[test]
@@ -710,7 +746,8 @@ mod tests {
             base_dir: temp.path().join("logs"),
             max_session_files: DEFAULT_MAX_SESSION_FILES,
             max_session_age: std::time::Duration::from_secs(7 * 24 * 60 * 60),
-            max_total_session_bytes: 256 * 1024 * 1024,
+            max_session_bytes: 8 * 1024 * 1024,
+            max_total_retained_session_bytes: 8 * 1024 * 1024,
             session_id: "20260311T214500Z-pid12345".to_string(),
         });
 
@@ -888,7 +925,8 @@ mod tests {
             base_dir: temp.path().join("logs"),
             max_session_files: DEFAULT_MAX_SESSION_FILES,
             max_session_age: std::time::Duration::from_secs(7 * 24 * 60 * 60),
-            max_total_session_bytes: 256 * 1024 * 1024,
+            max_session_bytes: 8 * 1024 * 1024,
+            max_total_retained_session_bytes: 8 * 1024 * 1024,
             session_id: "20260311T230000Z-pid67890".to_string(),
         });
 
