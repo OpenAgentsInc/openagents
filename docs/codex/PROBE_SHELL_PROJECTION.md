@@ -15,9 +15,9 @@ The current local mapping is intentionally simple:
 - Probe `session_id` is the Autopilot thread id
 - the session `cwd` and transcript path map into existing thread workspace
   metadata
-- Probe turn-control status maps into the existing shell status vocabulary:
-  `queued`, `running`, `paused`, `completed`, `failed`, `cancelled`,
-  `timed_out`
+- Probe turn-control status now maps into explicit desktop session states:
+  `attached`, `attached:running`, `attached:paused`, `queued`, `idle`,
+  `completed`, `failed`, `cancelled`, `timed_out`, and `archived`
 - runtime progress events update the existing active assistant message flow
 
 This keeps project, transcript, and operator state app-owned even when the
@@ -31,11 +31,22 @@ The desktop lane restores an existing Probe-backed thread by reloading the same
 Current local-first behavior:
 
 - startup refresh lists the available Probe sessions
-- the active workspace can attach to the matching session if one is already
-  present
+- startup refresh now inspects per-session turn-control state so the thread
+  rail can distinguish idle, completed, attached, and archived sessions instead
+  of flattening them into one generic active row
+- the active workspace reattaches to the matching live session if one is
+  already present
 - reloading a thread uses the same Probe session id
 - session selection restores the thread's saved shell preferences before the
   Probe load command runs
+- `new thread` in a Probe-backed workspace now runs an attach-vs-create policy:
+  - if exactly one live session already matches the workspace, Autopilot
+    attaches to it instead of starting a replacement
+  - if the currently attached Probe session already matches the workspace,
+    Autopilot reuses that session and reloads it into the shell
+  - if multiple live sessions match the workspace and none is already attached,
+    Autopilot refuses honestly and tells the operator to choose one from the
+    thread rail instead of fabricating a new session
 
 ## Transcript And Status Projection
 
@@ -48,6 +59,10 @@ The reducer layer now translates these Probe shapes into app state:
 
 That gives one Probe-backed thread a coherent transcript and runtime status
 inside the existing shell.
+
+Attach failures also stay visible at the shell layer. If the desktop cannot
+reload the selected Probe session, the error is surfaced directly instead of
+falling back to silent session creation.
 
 ## Artifact Ownership
 

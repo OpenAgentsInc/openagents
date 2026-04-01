@@ -439,20 +439,14 @@ fn wallet_text_input(input: TextInput) -> TextInput {
 impl Default for SparkPaneInputs {
     fn default() -> Self {
         Self {
-            invoice_amount: wallet_text_input(
-                TextInput::new()
-                    .value("1000")
-                    .placeholder("1000"),
-            )
-            .padding(36.0, 6.0),
+            invoice_amount: wallet_text_input(TextInput::new().value("1000").placeholder("1000"))
+                .padding(36.0, 6.0),
             send_request: wallet_text_input(
                 TextInput::new()
                     .placeholder("Lightning invoice / payment request (ln...)")
                     .mono(true),
             ),
-            send_amount: wallet_text_input(
-                TextInput::new().placeholder("Amount sats (optional)"),
-            ),
+            send_amount: wallet_text_input(TextInput::new().placeholder("Amount sats (optional)")),
             identity_path: wallet_text_input(
                 TextInput::new()
                     .placeholder("Wallet seed path (identity mnemonic)")
@@ -476,9 +470,7 @@ impl Default for PayInvoicePaneInputs {
             payment_request: wallet_text_input(
                 TextInput::new().placeholder("Lightning invoice / payment request (ln...)"),
             ),
-            amount_sats: wallet_text_input(
-                TextInput::new().placeholder("Amount sats (optional)"),
-            ),
+            amount_sats: wallet_text_input(TextInput::new().placeholder("Amount sats (optional)")),
         }
     }
 }
@@ -8516,6 +8508,8 @@ pub struct AutopilotThreadMetadata {
     pub thread_name: Option<String>,
     pub preview: Option<String>,
     pub status: Option<String>,
+    pub probe_runtime_status: Option<String>,
+    pub probe_archived: bool,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
@@ -8541,6 +8535,8 @@ impl Default for AutopilotThreadMetadata {
             thread_name: None,
             preview: None,
             status: None,
+            probe_runtime_status: None,
+            probe_archived: false,
             loaded: false,
             cwd: None,
             path: None,
@@ -9146,6 +9142,33 @@ fn normalized_optional_path(value: Option<&str>) -> Option<PathBuf> {
     }
     let path = PathBuf::from(trimmed);
     Some(std::fs::canonicalize(&path).unwrap_or(path))
+}
+
+fn normalized_workspace_identity(value: &str) -> Option<String> {
+    normalized_optional_path(Some(value)).map(|path| path.display().to_string())
+}
+
+fn compose_probe_thread_status(
+    runtime_status: Option<&str>,
+    archived: bool,
+    attached: bool,
+) -> String {
+    if archived {
+        return String::from("archived");
+    }
+    let base = runtime_status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("idle");
+    if attached {
+        if base == "idle" {
+            String::from("attached")
+        } else {
+            format!("attached:{base}")
+        }
+    } else {
+        base.to_string()
+    }
 }
 
 fn workspace_root_for_thread_paths(cwd: Option<&str>, path: Option<&str>) -> Option<String> {
@@ -11344,6 +11367,8 @@ impl AutopilotChatState {
                         Some(entry.preview)
                     },
                     status: entry.status,
+                    probe_runtime_status: previous.probe_runtime_status.clone(),
+                    probe_archived: previous.probe_archived,
                     loaded: entry.loaded,
                     cwd: entry.cwd.or(previous.cwd.clone()),
                     path: entry.path.or(previous.path.clone()),
@@ -11487,6 +11512,14 @@ impl AutopilotChatState {
             cwd: metadata.as_ref().and_then(|value| value.cwd.clone()),
             path: metadata.and_then(|value| value.path),
         })
+    }
+
+    pub fn select_thread_by_id(&mut self, thread_id: &str) -> Option<AutopilotThreadResumeTarget> {
+        let index = self
+            .threads
+            .iter()
+            .position(|existing| existing == thread_id)?;
+        self.select_thread_by_index(index)
     }
 
     pub fn remember_thread(&mut self, thread_id: impl Into<String>) {
@@ -12957,6 +12990,26 @@ impl AutopilotChatState {
         self.thread_metadata.insert(thread_id.to_string(), metadata);
     }
 
+    pub fn set_probe_thread_projection_state(
+        &mut self,
+        thread_id: &str,
+        runtime_status: Option<String>,
+        archived: bool,
+        attached: bool,
+    ) {
+        let metadata = self
+            .thread_metadata
+            .entry(thread_id.to_string())
+            .or_default();
+        metadata.probe_runtime_status = runtime_status.clone();
+        metadata.probe_archived = archived;
+        metadata.status = Some(compose_probe_thread_status(
+            runtime_status.as_deref(),
+            archived,
+            attached,
+        ));
+    }
+
     pub fn set_thread_name(&mut self, thread_id: &str, thread_name: Option<String>) {
         if let Some(metadata) = self.thread_metadata.get_mut(thread_id) {
             metadata.thread_name = thread_name;
@@ -13032,6 +13085,41 @@ impl AutopilotChatState {
         self.thread_metadata
             .get(thread_id)
             .and_then(|metadata| metadata.updated_at)
+    }
+
+    pub fn probe_workspace_thread_ids(&self, workspace_root: &str) -> Vec<String> {
+        let Some(target_workspace) = normalized_workspace_identity(workspace_root) else {
+            return Vec::new();
+        };
+        let mut matches = self
+            .thread_metadata
+            .iter()
+            .filter(|(_, metadata)| {
+                (metadata.probe_runtime_status.is_some() || metadata.probe_archived)
+                    && !metadata.probe_archived
+            })
+            .filter_map(|(thread_id, metadata)| {
+                let candidate = metadata
+                    .workspace_root
+                    .as_deref()
+                    .and_then(normalized_workspace_identity)
+                    .or_else(|| {
+                        metadata
+                            .cwd
+                            .as_deref()
+                            .and_then(normalized_workspace_identity)
+                    })?;
+                if candidate != target_workspace {
+                    return None;
+                }
+                Some((thread_id.clone(), metadata.updated_at.unwrap_or_default()))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+        matches
+            .into_iter()
+            .map(|(thread_id, _)| thread_id)
+            .collect()
     }
 
     pub fn suggested_thread_name(&self, thread_id: &str) -> Option<String> {
@@ -16277,7 +16365,10 @@ impl RenderState {
     }
 
     pub const fn uses_probe_runtime(&self) -> bool {
-        matches!(self.autopilot_coding_runtime, AutopilotCodingRuntimeKind::Probe)
+        matches!(
+            self.autopilot_coding_runtime,
+            AutopilotCodingRuntimeKind::Probe
+        )
     }
 
     pub fn queue_codex_command(&mut self, command: CodexLaneCommand) -> Result<u64, String> {
@@ -20929,6 +21020,107 @@ mod tests {
 
         assert_eq!(selected.thread_id, "thread-b");
         assert!(chat.messages.is_empty());
+    }
+
+    #[test]
+    fn chat_state_selects_thread_by_id() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.set_active_thread_transcript(
+            "thread-a",
+            vec![(AutopilotRole::User, "alpha".to_string())],
+        );
+        chat.remember_thread("thread-b");
+
+        let selected = chat
+            .select_thread_by_id("thread-b")
+            .expect("known thread should select by id");
+
+        assert_eq!(selected.thread_id, "thread-b");
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-b"));
+    }
+
+    #[test]
+    fn chat_state_tracks_probe_projection_status_and_workspace_candidates() {
+        let workspace = unique_temp_dir("probe-workspace-match");
+        let workspace_root = std::fs::canonicalize(&workspace)
+            .expect("workspace should canonicalize")
+            .display()
+            .to_string();
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-attached".to_string(),
+                thread_name: Some("Attached".to_string()),
+                preview: "attached preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_200,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-other".to_string(),
+                thread_name: Some("Other".to_string()),
+                preview: "other preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-archived".to_string(),
+                thread_name: Some("Archived".to_string()),
+                preview: "archived preview".to_string(),
+                status: Some("archived".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_050,
+            },
+        ]);
+
+        chat.set_probe_thread_projection_state(
+            "thread-attached",
+            Some("idle".to_string()),
+            false,
+            true,
+        );
+        chat.set_probe_thread_projection_state(
+            "thread-other",
+            Some("completed".to_string()),
+            false,
+            false,
+        );
+        chat.set_probe_thread_projection_state(
+            "thread-archived",
+            Some("completed".to_string()),
+            true,
+            false,
+        );
+
+        assert_eq!(
+            chat.thread_metadata["thread-attached"].status.as_deref(),
+            Some("attached")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-other"].status.as_deref(),
+            Some("completed")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-archived"].status.as_deref(),
+            Some("archived")
+        );
+        assert_eq!(
+            chat.probe_workspace_thread_ids(workspace_root.as_str()),
+            vec!["thread-attached".to_string(), "thread-other".to_string()]
+        );
+
+        let _ = std::fs::remove_dir_all(workspace);
     }
 
     #[test]

@@ -1,8 +1,7 @@
-use crate::app_state::{
-    AutopilotRole, AutopilotThreadListEntry, RenderState,
-};
+use crate::app_state::{AutopilotRole, AutopilotThreadListEntry, RenderState};
 use crate::probe_lane::{
     ProbeLaneCommandResponse, ProbeLaneLifecycle, ProbeLaneNotification, ProbeLaneSnapshot,
+    ProbeListedSession,
 };
 use probe_protocol::runtime::{QueuedTurnStatus, RuntimeProgressEvent};
 use probe_protocol::session::{SessionMetadata, TranscriptEvent, TranscriptItemKind};
@@ -12,8 +11,15 @@ fn probe_live_turn_id(session_id: &str) -> String {
 }
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProbeLaneSnapshot) {
+    let previous_active_session_id = state.probe_lane.active_session_id.clone();
     let lifecycle = snapshot.lifecycle;
     state.probe_lane = snapshot;
+    let next_active_session_id = state.probe_lane.active_session_id.clone();
+    sync_probe_attached_thread_projection(
+        state,
+        previous_active_session_id.as_deref(),
+        next_active_session_id.as_deref(),
+    );
     if state.uses_probe_runtime() {
         state
             .autopilot_chat
@@ -25,7 +31,9 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProbeLaneSn
 }
 
 pub(super) fn apply_command_response(state: &mut RenderState, response: ProbeLaneCommandResponse) {
-    if state.uses_probe_runtime() && response.status == crate::probe_lane::ProbeLaneCommandStatus::Error {
+    if state.uses_probe_runtime()
+        && response.status == crate::probe_lane::ProbeLaneCommandStatus::Error
+    {
         state.autopilot_chat.last_error = response.error.clone();
     }
     state.record_probe_command_response(response);
@@ -36,38 +44,71 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
         ProbeLaneNotification::SessionsListed {
             sessions,
             workspace_session_id,
+            workspace_collision_session_ids,
         } => {
             let entries = sessions
                 .iter()
                 .map(session_metadata_to_thread_entry)
                 .collect::<Vec<_>>();
             state.autopilot_chat.set_thread_entries(entries);
+            for listed in sessions {
+                let runtime_status = listed
+                    .control
+                    .as_ref()
+                    .map(probe_control_status_label)
+                    .or_else(|| {
+                        (listed.session.state == probe_protocol::session::SessionState::Active)
+                            .then_some(String::from("idle"))
+                    });
+                let attached = state.probe_lane.active_session_id.as_deref()
+                    == Some(listed.session.id.as_str());
+                state.autopilot_chat.set_probe_thread_projection_state(
+                    listed.session.id.as_str(),
+                    runtime_status,
+                    listed.session.state == probe_protocol::session::SessionState::Archived,
+                    attached,
+                );
+            }
             if let Some(session_id) = workspace_session_id.as_deref() {
                 state.autopilot_chat.ensure_thread(session_id.to_string());
             }
             if state.uses_probe_runtime() {
-                state.autopilot_chat.last_error = None;
+                state.autopilot_chat.last_error = if workspace_collision_session_ids.is_empty() {
+                    None
+                } else {
+                    Some(format!(
+                        "Multiple live Probe sessions match the current workspace: {}. Select one from the thread rail instead of starting a new session.",
+                        workspace_collision_session_ids.join(", ")
+                    ))
+                };
             }
         }
         ProbeLaneNotification::SessionLoaded { snapshot, control } => {
             let thread_id = snapshot.session.id.as_str().to_string();
+            let previous_active_session_id = state.probe_lane.active_session_id.clone();
             state.autopilot_chat.ensure_thread(thread_id.clone());
             if let Some(metadata) = state.autopilot_chat.thread_metadata.get_mut(&thread_id) {
                 metadata.loaded = true;
                 metadata.created_at = Some(snapshot.session.created_at_ms as i64);
                 metadata.updated_at = Some(snapshot.session.updated_at_ms as i64);
             }
-            state.autopilot_chat.set_thread_name(
-                thread_id.as_str(),
-                Some(snapshot.session.title.clone()),
-            );
+            state
+                .autopilot_chat
+                .set_thread_name(thread_id.as_str(), Some(snapshot.session.title.clone()));
             state.autopilot_chat.set_thread_preview(
                 thread_id.as_str(),
                 probe_session_preview(&snapshot.session, snapshot.transcript.as_slice()),
             );
-            state.autopilot_chat.set_thread_status(
+            state.autopilot_chat.set_probe_thread_projection_state(
                 thread_id.as_str(),
-                Some(probe_status_label(&snapshot.session, control)),
+                Some(probe_control_status_label(control)),
+                snapshot.session.state == probe_protocol::session::SessionState::Archived,
+                true,
+            );
+            sync_probe_attached_thread_projection(
+                state,
+                previous_active_session_id.as_deref(),
+                Some(thread_id.as_str()),
             );
             state.autopilot_chat.set_thread_workspace_location(
                 thread_id.as_str(),
@@ -78,7 +119,11 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                 thread_id.as_str(),
                 probe_transcript_messages(snapshot.transcript.as_slice()),
             );
-            hydrate_probe_pending_approvals(state, &thread_id, snapshot.pending_approvals.as_slice());
+            hydrate_probe_pending_approvals(
+                state,
+                &thread_id,
+                snapshot.pending_approvals.as_slice(),
+            );
             sync_probe_turn_status(state, control);
             if state.uses_probe_runtime() {
                 state
@@ -115,12 +160,15 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
             }
         }
         ProbeLaneNotification::TurnQueued { response, control } => {
+            let thread_id = response.turn.session_id.as_str();
             state
                 .autopilot_chat
                 .set_turn_status(Some(probe_control_status_label(control)));
-            state.autopilot_chat.set_thread_status(
-                response.turn.session_id.as_str(),
+            state.autopilot_chat.set_probe_thread_projection_state(
+                thread_id,
                 Some(probe_control_status_label(control)),
+                probe_thread_is_archived(state, thread_id),
+                true,
             );
             state.autopilot_chat.record_turn_timeline_event(format!(
                 "probe queued turn: {} position={}",
@@ -129,20 +177,30 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
             ));
         }
         ProbeLaneNotification::TurnInterrupted { response, control } => {
-            state.autopilot_chat.set_turn_status(Some(String::from("cancelled")));
-            state.autopilot_chat.set_thread_status(
-                response.session_id.as_str(),
+            let thread_id = response.session_id.as_str();
+            state
+                .autopilot_chat
+                .set_turn_status(Some(String::from("cancelled")));
+            state.autopilot_chat.set_probe_thread_projection_state(
+                thread_id,
                 Some(probe_control_status_label(control)),
+                probe_thread_is_archived(state, thread_id),
+                true,
             );
             state
                 .autopilot_chat
                 .record_turn_timeline_event(format!("probe interrupt: {}", response.message));
         }
         ProbeLaneNotification::QueuedTurnCancelled { response, control } => {
-            state.autopilot_chat.set_turn_status(Some(String::from("cancelled")));
-            state.autopilot_chat.set_thread_status(
-                response.session_id.as_str(),
+            let thread_id = response.session_id.as_str();
+            state
+                .autopilot_chat
+                .set_turn_status(Some(String::from("cancelled")));
+            state.autopilot_chat.set_probe_thread_projection_state(
+                thread_id,
                 Some(probe_control_status_label(control)),
+                probe_thread_is_archived(state, thread_id),
+                true,
             );
             state
                 .autopilot_chat
@@ -160,9 +218,12 @@ fn apply_runtime_progress(state: &mut RenderState, session_id: &str, event: &Run
             state
                 .autopilot_chat
                 .set_turn_status(Some(String::from("running")));
-            state
-                .autopilot_chat
-                .set_thread_status(session_id, Some(String::from("running")));
+            state.autopilot_chat.set_probe_thread_projection_state(
+                session_id,
+                Some(String::from("running")),
+                probe_thread_is_archived(state, session_id),
+                true,
+            );
         }
         RuntimeProgressEvent::AssistantDelta { delta, .. } => {
             state
@@ -199,18 +260,20 @@ fn apply_runtime_progress(state: &mut RenderState, session_id: &str, event: &Run
             ));
         }
         RuntimeProgressEvent::ToolRefused { tool, .. } => {
-            state.autopilot_chat.set_turn_status(Some(String::from("refused")));
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "probe tool refused: {}",
-                tool.name
-            ));
+            state
+                .autopilot_chat
+                .set_turn_status(Some(String::from("refused")));
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("probe tool refused: {}", tool.name));
         }
         RuntimeProgressEvent::ToolPaused { tool, .. } => {
-            state.autopilot_chat.set_turn_status(Some(String::from("paused")));
-            state.autopilot_chat.record_turn_timeline_event(format!(
-                "probe tool paused: {}",
-                tool.name
-            ));
+            state
+                .autopilot_chat
+                .set_turn_status(Some(String::from("paused")));
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("probe tool paused: {}", tool.name));
         }
         RuntimeProgressEvent::AssistantStreamFinished { .. }
         | RuntimeProgressEvent::ModelRequestStarted { .. }
@@ -246,27 +309,30 @@ fn hydrate_probe_pending_approvals(
         .collect();
 }
 
-fn sync_probe_turn_status(state: &mut RenderState, control: &probe_protocol::runtime::InspectSessionTurnsResponse) {
+fn sync_probe_turn_status(
+    state: &mut RenderState,
+    control: &probe_protocol::runtime::InspectSessionTurnsResponse,
+) {
     let status = probe_control_status_label(control);
     if !status.is_empty() {
         state.autopilot_chat.set_turn_status(Some(status));
     }
 }
 
-fn session_metadata_to_thread_entry(session: &SessionMetadata) -> AutopilotThreadListEntry {
+fn session_metadata_to_thread_entry(session: &ProbeListedSession) -> AutopilotThreadListEntry {
     AutopilotThreadListEntry {
-        thread_id: session.id.as_str().to_string(),
-        thread_name: Some(session.title.clone()),
-        preview: session.cwd.display().to_string(),
-        status: Some(match session.state {
-            probe_protocol::session::SessionState::Active => String::from("active"),
+        thread_id: session.session.id.as_str().to_string(),
+        thread_name: Some(session.session.title.clone()),
+        preview: session.session.cwd.display().to_string(),
+        status: Some(match session.session.state {
+            probe_protocol::session::SessionState::Active => String::from("idle"),
             probe_protocol::session::SessionState::Archived => String::from("archived"),
         }),
         loaded: true,
-        cwd: Some(session.cwd.display().to_string()),
-        path: Some(session.transcript_path.display().to_string()),
-        created_at: session.created_at_ms as i64,
-        updated_at: session.updated_at_ms as i64,
+        cwd: Some(session.session.cwd.display().to_string()),
+        path: Some(session.session.transcript_path.display().to_string()),
+        created_at: session.session.created_at_ms as i64,
+        updated_at: session.session.updated_at_ms as i64,
     }
 }
 
@@ -281,17 +347,6 @@ fn probe_session_preview(
         .map(|item| item.text.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| Some(session.cwd.display().to_string()))
-}
-
-fn probe_status_label(
-    session: &SessionMetadata,
-    control: &probe_protocol::runtime::InspectSessionTurnsResponse,
-) -> String {
-    let state = match session.state {
-        probe_protocol::session::SessionState::Active => "active",
-        probe_protocol::session::SessionState::Archived => "archived",
-    };
-    format!("{state}:{}", probe_control_status_label(control))
 }
 
 fn probe_control_status_label(
@@ -329,6 +384,50 @@ fn probe_control_status_label(
         };
     }
     String::from("idle")
+}
+
+fn probe_thread_is_archived(state: &RenderState, thread_id: &str) -> bool {
+    state
+        .autopilot_chat
+        .thread_metadata
+        .get(thread_id)
+        .map(|metadata| metadata.probe_archived)
+        .unwrap_or(false)
+}
+
+fn sync_probe_attached_thread_projection(
+    state: &mut RenderState,
+    previous_active_session_id: Option<&str>,
+    next_active_session_id: Option<&str>,
+) {
+    let mut session_ids = Vec::<String>::new();
+    for session_id in [previous_active_session_id, next_active_session_id]
+        .into_iter()
+        .flatten()
+    {
+        if !session_ids.iter().any(|existing| existing == session_id) {
+            session_ids.push(session_id.to_string());
+        }
+    }
+    for session_id in session_ids {
+        let Some(metadata) = state
+            .autopilot_chat
+            .thread_metadata
+            .get(&session_id)
+            .cloned()
+        else {
+            continue;
+        };
+        if metadata.probe_runtime_status.is_none() && !metadata.probe_archived {
+            continue;
+        }
+        state.autopilot_chat.set_probe_thread_projection_state(
+            session_id.as_str(),
+            metadata.probe_runtime_status,
+            metadata.probe_archived,
+            next_active_session_id == Some(session_id.as_str()),
+        );
+    }
 }
 
 fn probe_transcript_messages(transcript: &[TranscriptEvent]) -> Vec<(AutopilotRole, String)> {

@@ -14,18 +14,20 @@ use std::os::unix::net::UnixStream;
 
 use probe_core::tools::{ProbeToolChoice, ToolDeniedAction, ToolLoopConfig};
 use probe_protocol::backend::BackendProfile;
+use probe_protocol::default_local_daemon_socket_path;
 use probe_protocol::runtime::{
     CancelQueuedTurnRequest, CancelQueuedTurnResponse, ClientMessage, EventEnvelope,
     InitializeRequest, InspectSessionTurnsResponse, InterruptTurnRequest, InterruptTurnResponse,
     QueueTurnResponse, QueuedTurnStatus, RequestEnvelope, ResolvePendingApprovalRequest,
     ResolvePendingApprovalResponse, ResponseBody, ResponseEnvelope, RuntimeProgressEvent,
     RuntimeRequest, RuntimeResponse, ServerEvent, ServerMessage, SessionLookupRequest,
-    SessionSnapshot, StartSessionRequest, ToolApprovalRecipe, ToolChoice, ToolDeniedAction as ProtocolDeniedAction,
-    ToolLongContextRecipe, ToolLoopRecipe, ToolOracleRecipe, ToolSetKind, TurnAuthor,
-    TurnRequest, TurnResponse,
+    SessionSnapshot, StartSessionRequest, ToolApprovalRecipe, ToolChoice,
+    ToolDeniedAction as ProtocolDeniedAction, ToolLongContextRecipe, ToolLoopRecipe,
+    ToolOracleRecipe, ToolSetKind, TurnAuthor, TurnRequest, TurnResponse,
 };
-use probe_protocol::session::{PendingToolApproval, SessionId, SessionMetadata, ToolApprovalResolution};
-use probe_protocol::default_local_daemon_socket_path;
+use probe_protocol::session::{
+    PendingToolApproval, SessionId, SessionMetadata, ToolApprovalResolution,
+};
 
 const PROBE_LANE_POLL: Duration = Duration::from_millis(750);
 const PROBE_DAEMON_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -204,10 +206,17 @@ impl ProbeLaneCommand {
 }
 
 #[derive(Clone, Debug)]
+pub struct ProbeListedSession {
+    pub session: SessionMetadata,
+    pub control: Option<InspectSessionTurnsResponse>,
+}
+
+#[derive(Clone, Debug)]
 pub enum ProbeLaneNotification {
     SessionsListed {
-        sessions: Vec<SessionMetadata>,
+        sessions: Vec<ProbeListedSession>,
         workspace_session_id: Option<String>,
+        workspace_collision_session_ids: Vec<String>,
     },
     SessionLoaded {
         snapshot: SessionSnapshot,
@@ -261,6 +270,12 @@ struct ProbeTransportInner {
     stdin: Mutex<Box<dyn Write + Send>>,
     pending: Mutex<HashMap<String, Sender<ProbeTransportMessage>>>,
     next_request_id: AtomicU64,
+}
+
+enum WorkspaceSessionSelection<'a> {
+    None,
+    Match(&'a SessionId),
+    Collision(Vec<&'a SessionId>),
 }
 
 enum ProbeTransportMessage {
@@ -441,7 +456,10 @@ fn run_probe_lane_loop(
                 };
                 let mut removed = Vec::new();
                 for session_id in watched_sessions.keys().cloned().collect::<Vec<_>>() {
-                    match inspect_session_bundle(current_transport.handle(), &SessionId::new(session_id.clone())) {
+                    match inspect_session_bundle(
+                        current_transport.handle(),
+                        &SessionId::new(session_id.clone()),
+                    ) {
                         Ok((snapshot_value, control)) => {
                             let next_signature =
                                 probe_session_watch_signature(&snapshot_value, &control);
@@ -529,7 +547,8 @@ fn handle_probe_command(
             match inspect_session_bundle(transport, &session_id) {
                 Ok((session_snapshot, control)) => {
                     snapshot.active_session_id = Some(session_id_label.clone());
-                    snapshot.last_status = Some(format!("Attached Probe session {session_id_label}"));
+                    snapshot.last_status =
+                        Some(format!("Attached Probe session {session_id_label}"));
                     snapshot.last_error = None;
                     watched_sessions.insert(
                         session_id_label.clone(),
@@ -643,13 +662,11 @@ fn handle_probe_command(
                         probe_session_watch_signature(&refreshed, &control),
                     );
                     snapshot.active_session_id = Some(session_id_label.clone());
-                    snapshot.last_status = Some(format!("Queued Probe turn for {session_id_label}"));
+                    snapshot.last_status =
+                        Some(format!("Queued Probe turn for {session_id_label}"));
                     snapshot.last_error = None;
                     let _ = update_tx.send(ProbeLaneUpdate::Notification(
-                        ProbeLaneNotification::TurnQueued {
-                            response,
-                            control,
-                        },
+                        ProbeLaneNotification::TurnQueued { response, control },
                     ));
                     let _ = update_tx.send(ProbeLaneUpdate::Notification(
                         ProbeLaneNotification::SessionLoaded {
@@ -658,11 +675,13 @@ fn handle_probe_command(
                                 transport.clone(),
                                 &SessionId::new(session_id_label.clone()),
                             )
-                            .unwrap_or_else(|_| InspectSessionTurnsResponse {
-                                session_id: SessionId::new(session_id_label.clone()),
-                                active_turn: None,
-                                queued_turns: Vec::new(),
-                                recent_turns: Vec::new(),
+                            .unwrap_or_else(|_| {
+                                InspectSessionTurnsResponse {
+                                    session_id: SessionId::new(session_id_label.clone()),
+                                    active_turn: None,
+                                    queued_turns: Vec::new(),
+                                    recent_turns: Vec::new(),
+                                }
                             }),
                         },
                     ));
@@ -728,13 +747,18 @@ fn handle_probe_command(
                     let _ = update_tx.send(ProbeLaneUpdate::Notification(
                         ProbeLaneNotification::SessionLoaded {
                             snapshot: refreshed,
-                            control: inspect_session_turns_only(transport.clone(), &SessionId::new(session_id_label.clone()))
-                                .unwrap_or_else(|_| InspectSessionTurnsResponse {
+                            control: inspect_session_turns_only(
+                                transport.clone(),
+                                &SessionId::new(session_id_label.clone()),
+                            )
+                            .unwrap_or_else(|_| {
+                                InspectSessionTurnsResponse {
                                     session_id: SessionId::new(session_id_label.clone()),
                                     active_turn: None,
                                     queued_turns: Vec::new(),
                                     recent_turns: Vec::new(),
-                                }),
+                                }
+                            }),
                         },
                     ));
                     let _ = update_tx.send(ProbeLaneUpdate::Snapshot(Box::new(snapshot.clone())));
@@ -759,7 +783,10 @@ fn handle_probe_command(
                 ),
             }
         }
-        ProbeLaneCommand::CancelQueuedTurn { session_id, turn_id } => {
+        ProbeLaneCommand::CancelQueuedTurn {
+            session_id,
+            turn_id,
+        } => {
             let session_id_label = session_id.as_str().to_string();
             match cancel_queued_turn_request(transport.clone(), &session_id, turn_id.clone()) {
                 Ok((response, control, refreshed)) => {
@@ -776,13 +803,18 @@ fn handle_probe_command(
                     let _ = update_tx.send(ProbeLaneUpdate::Notification(
                         ProbeLaneNotification::SessionLoaded {
                             snapshot: refreshed,
-                            control: inspect_session_turns_only(transport.clone(), &SessionId::new(session_id_label.clone()))
-                                .unwrap_or_else(|_| InspectSessionTurnsResponse {
+                            control: inspect_session_turns_only(
+                                transport.clone(),
+                                &SessionId::new(session_id_label.clone()),
+                            )
+                            .unwrap_or_else(|_| {
+                                InspectSessionTurnsResponse {
                                     session_id: SessionId::new(session_id_label.clone()),
                                     active_turn: None,
                                     queued_turns: Vec::new(),
                                     recent_turns: Vec::new(),
-                                }),
+                                }
+                            }),
                         },
                     ));
                     let _ = update_tx.send(ProbeLaneUpdate::Snapshot(Box::new(snapshot.clone())));
@@ -821,22 +853,51 @@ fn refresh_sessions_internal(
     watched_sessions: &mut HashMap<String, ProbeSessionWatchSignature>,
 ) -> Result<String, String> {
     let sessions = list_sessions_request(transport.clone())?;
-    let workspace_session_id = workspace_cwd
+    let preferred_session_id = snapshot.active_session_id.as_deref();
+    let workspace_selection = workspace_cwd
         .as_ref()
-        .and_then(|cwd| select_workspace_session(&sessions, cwd))
-        .map(|session_id| session_id.as_str().to_string());
+        .map(|cwd| select_workspace_session(&sessions, cwd, preferred_session_id))
+        .unwrap_or(WorkspaceSessionSelection::None);
+    let workspace_session_id = match &workspace_selection {
+        WorkspaceSessionSelection::Match(session_id) => Some(session_id.as_str().to_string()),
+        WorkspaceSessionSelection::None | WorkspaceSessionSelection::Collision(_) => None,
+    };
+    let workspace_collision_session_ids = match &workspace_selection {
+        WorkspaceSessionSelection::Collision(session_ids) => session_ids
+            .iter()
+            .map(|session_id| session_id.as_str().to_string())
+            .collect::<Vec<_>>(),
+        WorkspaceSessionSelection::None | WorkspaceSessionSelection::Match(_) => Vec::new(),
+    };
+    let listed_sessions = sessions
+        .iter()
+        .map(|session| ProbeListedSession {
+            session: session.clone(),
+            control: inspect_session_turns_only(transport.clone(), &session.id).ok(),
+        })
+        .collect::<Vec<_>>();
     snapshot.session_count = sessions.len();
     snapshot.active_session_id = workspace_session_id.clone().or_else(|| {
-        sessions
-            .first()
-            .map(|session| session.id.as_str().to_string())
+        preferred_session_id.map(str::to_string).or_else(|| {
+            sessions
+                .first()
+                .map(|session| session.id.as_str().to_string())
+        })
     });
-    snapshot.last_status = Some(format!("Loaded {} Probe session(s)", sessions.len()));
+    snapshot.last_status = Some(if workspace_collision_session_ids.is_empty() {
+        format!("Loaded {} Probe session(s)", sessions.len())
+    } else {
+        format!(
+            "Loaded {} Probe session(s); multiple live workspace matches need selection",
+            sessions.len()
+        )
+    });
     snapshot.last_error = None;
     let _ = update_tx.send(ProbeLaneUpdate::Notification(
         ProbeLaneNotification::SessionsListed {
-            sessions: sessions.clone(),
+            sessions: listed_sessions,
             workspace_session_id: workspace_session_id.clone(),
+            workspace_collision_session_ids,
         },
     ));
     if let Some(session_id) = workspace_session_id {
@@ -852,7 +913,9 @@ fn refresh_sessions_internal(
                 control,
             },
         ));
-        return Ok(String::from("Probe sessions refreshed and workspace session attached"));
+        return Ok(String::from(
+            "Probe sessions refreshed and workspace session attached",
+        ));
     }
     Ok(String::from("Probe sessions refreshed"))
 }
@@ -922,48 +985,46 @@ fn spawn_turn_request_handler(
             handle_runtime_event_notification(&update_tx, &session_id, event);
         }) {
             Ok(RuntimeResponse::StartTurn(response))
-            | Ok(RuntimeResponse::ContinueTurn(response)) => {
-                match response {
-                    TurnResponse::Completed(completed) => {
-                        let _ = refresh_loaded_session_notification(
-                            transport.clone(),
-                            &update_tx,
-                            &completed.session.id,
-                        );
-                        send_probe_command_response(
-                            &update_tx,
-                            command_seq,
-                            ProbeLaneCommandKind::RunTurn,
-                            ProbeLaneCommandStatus::Ok,
-                            Some(session_id_label),
-                            Some(String::from("Probe turn completed")),
-                            None,
-                        );
-                    }
-                    TurnResponse::Paused(paused) => {
-                        let _ = update_tx.send(ProbeLaneUpdate::Notification(
-                            ProbeLaneNotification::PendingApprovalsUpdated {
-                                session_id: paused.session.id.as_str().to_string(),
-                                approvals: paused.pending_approvals.clone(),
-                            },
-                        ));
-                        let _ = refresh_loaded_session_notification(
-                            transport.clone(),
-                            &update_tx,
-                            &paused.session.id,
-                        );
-                        send_probe_command_response(
-                            &update_tx,
-                            command_seq,
-                            ProbeLaneCommandKind::RunTurn,
-                            ProbeLaneCommandStatus::Ok,
-                            Some(session_id_label),
-                            Some(String::from("Probe turn paused for approval")),
-                            None,
-                        );
-                    }
+            | Ok(RuntimeResponse::ContinueTurn(response)) => match response {
+                TurnResponse::Completed(completed) => {
+                    let _ = refresh_loaded_session_notification(
+                        transport.clone(),
+                        &update_tx,
+                        &completed.session.id,
+                    );
+                    send_probe_command_response(
+                        &update_tx,
+                        command_seq,
+                        ProbeLaneCommandKind::RunTurn,
+                        ProbeLaneCommandStatus::Ok,
+                        Some(session_id_label),
+                        Some(String::from("Probe turn completed")),
+                        None,
+                    );
                 }
-            }
+                TurnResponse::Paused(paused) => {
+                    let _ = update_tx.send(ProbeLaneUpdate::Notification(
+                        ProbeLaneNotification::PendingApprovalsUpdated {
+                            session_id: paused.session.id.as_str().to_string(),
+                            approvals: paused.pending_approvals.clone(),
+                        },
+                    ));
+                    let _ = refresh_loaded_session_notification(
+                        transport.clone(),
+                        &update_tx,
+                        &paused.session.id,
+                    );
+                    send_probe_command_response(
+                        &update_tx,
+                        command_seq,
+                        ProbeLaneCommandKind::RunTurn,
+                        ProbeLaneCommandStatus::Ok,
+                        Some(session_id_label),
+                        Some(String::from("Probe turn paused for approval")),
+                        None,
+                    );
+                }
+            },
             Ok(other) => {
                 send_probe_command_response(
                     &update_tx,
@@ -1043,51 +1104,49 @@ fn spawn_pending_approval_handler(
         match wait_for_runtime_response(stream, |event| {
             handle_runtime_event_notification(&update_tx, &session_id, event);
         }) {
-            Ok(RuntimeResponse::ResolvePendingApproval(response)) => {
-                match response {
-                    ResolvePendingApprovalResponse::StillPending {
-                        session,
-                        pending_approvals,
-                    } => {
-                        let _ = update_tx.send(ProbeLaneUpdate::Notification(
-                            ProbeLaneNotification::PendingApprovalsUpdated {
-                                session_id: session.id.as_str().to_string(),
-                                approvals: pending_approvals,
-                            },
-                        ));
-                        let _ = refresh_loaded_session_notification(
-                            transport.clone(),
-                            &update_tx,
-                            &session.id,
-                        );
-                        send_probe_command_response(
-                            &update_tx,
-                            command_seq,
-                            ProbeLaneCommandKind::ResolvePendingApproval,
-                            ProbeLaneCommandStatus::Ok,
-                            Some(session_id_label),
-                            Some(String::from("Probe approval still pending")),
-                            None,
-                        );
-                    }
-                    ResolvePendingApprovalResponse::Resumed(completed) => {
-                        let _ = refresh_loaded_session_notification(
-                            transport.clone(),
-                            &update_tx,
-                            &completed.session.id,
-                        );
-                        send_probe_command_response(
-                            &update_tx,
-                            command_seq,
-                            ProbeLaneCommandKind::ResolvePendingApproval,
-                            ProbeLaneCommandStatus::Ok,
-                            Some(session_id_label),
-                            Some(String::from("Probe approval resumed session")),
-                            None,
-                        );
-                    }
+            Ok(RuntimeResponse::ResolvePendingApproval(response)) => match response {
+                ResolvePendingApprovalResponse::StillPending {
+                    session,
+                    pending_approvals,
+                } => {
+                    let _ = update_tx.send(ProbeLaneUpdate::Notification(
+                        ProbeLaneNotification::PendingApprovalsUpdated {
+                            session_id: session.id.as_str().to_string(),
+                            approvals: pending_approvals,
+                        },
+                    ));
+                    let _ = refresh_loaded_session_notification(
+                        transport.clone(),
+                        &update_tx,
+                        &session.id,
+                    );
+                    send_probe_command_response(
+                        &update_tx,
+                        command_seq,
+                        ProbeLaneCommandKind::ResolvePendingApproval,
+                        ProbeLaneCommandStatus::Ok,
+                        Some(session_id_label),
+                        Some(String::from("Probe approval still pending")),
+                        None,
+                    );
                 }
-            }
+                ResolvePendingApprovalResponse::Resumed(completed) => {
+                    let _ = refresh_loaded_session_notification(
+                        transport.clone(),
+                        &update_tx,
+                        &completed.session.id,
+                    );
+                    send_probe_command_response(
+                        &update_tx,
+                        command_seq,
+                        ProbeLaneCommandKind::ResolvePendingApproval,
+                        ProbeLaneCommandStatus::Ok,
+                        Some(session_id_label),
+                        Some(String::from("Probe approval resumed session")),
+                        None,
+                    );
+                }
+            },
             Ok(other) => {
                 send_probe_command_response(
                     &update_tx,
@@ -1164,7 +1223,14 @@ fn queue_turn_request(
     prompt: String,
     profile: BackendProfile,
     tool_loop: Option<ToolLoopConfig>,
-) -> Result<(QueueTurnResponse, InspectSessionTurnsResponse, SessionSnapshot), String> {
+) -> Result<
+    (
+        QueueTurnResponse,
+        InspectSessionTurnsResponse,
+        SessionSnapshot,
+    ),
+    String,
+> {
     let tool_loop = tool_loop
         .as_ref()
         .map(tool_loop_recipe_from_config)
@@ -1194,7 +1260,14 @@ fn queue_turn_request(
 fn interrupt_turn_request(
     transport: ProbeTransportHandle,
     session_id: &SessionId,
-) -> Result<(InterruptTurnResponse, InspectSessionTurnsResponse, SessionSnapshot), String> {
+) -> Result<
+    (
+        InterruptTurnResponse,
+        InspectSessionTurnsResponse,
+        SessionSnapshot,
+    ),
+    String,
+> {
     let response = wait_for_runtime_response(
         transport.send_request(RuntimeRequest::InterruptTurn(InterruptTurnRequest {
             session_id: session_id.clone(),
@@ -1213,7 +1286,14 @@ fn cancel_queued_turn_request(
     transport: ProbeTransportHandle,
     session_id: &SessionId,
     turn_id: String,
-) -> Result<(CancelQueuedTurnResponse, InspectSessionTurnsResponse, SessionSnapshot), String> {
+) -> Result<
+    (
+        CancelQueuedTurnResponse,
+        InspectSessionTurnsResponse,
+        SessionSnapshot,
+    ),
+    String,
+> {
     let response = wait_for_runtime_response(
         transport.send_request(RuntimeRequest::CancelQueuedTurn(CancelQueuedTurnRequest {
             session_id: session_id.clone(),
@@ -1230,9 +1310,14 @@ fn cancel_queued_turn_request(
 }
 
 fn list_sessions_request(transport: ProbeTransportHandle) -> Result<Vec<SessionMetadata>, String> {
-    let response = wait_for_runtime_response(transport.send_request(RuntimeRequest::ListSessions)?, |_| {})?;
+    let response = wait_for_runtime_response(
+        transport.send_request(RuntimeRequest::ListSessions)?,
+        |_| {},
+    )?;
     let RuntimeResponse::ListSessions(response) = response else {
-        return Err(format!("unexpected Probe list sessions response: {response:?}"));
+        return Err(format!(
+            "unexpected Probe list sessions response: {response:?}"
+        ));
     };
     let mut sessions = response.sessions;
     sessions.sort_by(|left, right| {
@@ -1255,7 +1340,9 @@ fn inspect_session_only(
         |_| {},
     )?;
     let RuntimeResponse::InspectSession(snapshot) = response else {
-        return Err(format!("unexpected Probe inspect session response: {response:?}"));
+        return Err(format!(
+            "unexpected Probe inspect session response: {response:?}"
+        ));
     };
     Ok(snapshot)
 }
@@ -1305,7 +1392,9 @@ fn start_session_request(
         |_| {},
     )?;
     let RuntimeResponse::StartSession(snapshot) = response else {
-        return Err(format!("unexpected Probe start session response: {response:?}"));
+        return Err(format!(
+            "unexpected Probe start session response: {response:?}"
+        ));
     };
     let control = inspect_session_turns_only(transport, &snapshot.session.id)?;
     Ok((snapshot, control))
@@ -1388,7 +1477,8 @@ impl ProbeTransport {
         {
             let _ = wait_for_runtime_response(stream, |_| {});
         }
-        self.handle.close_pending(String::from("Probe lane shutting down"));
+        self.handle
+            .close_pending(String::from("Probe lane shutting down"));
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
@@ -1502,7 +1592,7 @@ fn run_transport_reader(mut reader: Box<dyn BufRead + Send>, inner: Arc<ProbeTra
                 ProbeTransportHandle {
                     inner: Arc::clone(&inner),
                 }
-                    .close_pending(format!("probe-server io error: {error}"));
+                .close_pending(format!("probe-server io error: {error}"));
                 return;
             }
         };
@@ -1510,7 +1600,7 @@ fn run_transport_reader(mut reader: Box<dyn BufRead + Send>, inner: Arc<ProbeTra
             ProbeTransportHandle {
                 inner: Arc::clone(&inner),
             }
-                .close_pending(String::from("probe-server exited"));
+            .close_pending(String::from("probe-server exited"));
             return;
         }
         let message = match serde_json::from_str::<ServerMessage>(line.trim_end()) {
@@ -1519,7 +1609,7 @@ fn run_transport_reader(mut reader: Box<dyn BufRead + Send>, inner: Arc<ProbeTra
                 ProbeTransportHandle {
                     inner: Arc::clone(&inner),
                 }
-                    .close_pending(format!("probe-server protocol decode failed: {error}"));
+                .close_pending(format!("probe-server protocol decode failed: {error}"));
                 return;
             }
         };
@@ -1603,8 +1693,8 @@ fn build_server_command(config: &ProbeLaneConfig) -> Result<Command, String> {
     {
         Command::new(path)
     } else {
-        let current_exe =
-            env::current_exe().map_err(|error| format!("failed to resolve current exe: {error}"))?;
+        let current_exe = env::current_exe()
+            .map_err(|error| format!("failed to resolve current exe: {error}"))?;
         let sibling_server = sibling_probe_server_path(current_exe.as_path());
         if sibling_server.exists() {
             Command::new(sibling_server)
@@ -1656,15 +1746,18 @@ fn connect_or_autostart_local_daemon_transport(
         Err(error) if is_missing_local_daemon_error(&error) => {
             spawn_local_daemon(config.probe_home.as_path())?;
             wait_for_local_daemon(config, PROBE_DAEMON_WAIT_TIMEOUT)?;
-            connect_local_daemon_transport(config)
-                .map_err(|error| format!("failed to connect to probe-daemon after autostart: {error}"))
+            connect_local_daemon_transport(config).map_err(|error| {
+                format!("failed to connect to probe-daemon after autostart: {error}")
+            })
         }
         Err(error) => Err(format!("failed to connect to probe-daemon: {error}")),
     }
 }
 
 #[cfg(unix)]
-fn connect_local_daemon_transport(config: &ProbeLaneConfig) -> Result<ProbeTransport, std::io::Error> {
+fn connect_local_daemon_transport(
+    config: &ProbeLaneConfig,
+) -> Result<ProbeTransport, std::io::Error> {
     let socket_path = default_local_daemon_socket_path(config.probe_home.as_path());
     let stream = UnixStream::connect(&socket_path)?;
     let writer = stream.try_clone()?;
@@ -1680,7 +1773,9 @@ fn connect_local_daemon_transport(config: &ProbeLaneConfig) -> Result<ProbeTrans
 }
 
 #[cfg(not(unix))]
-fn connect_local_daemon_transport(_config: &ProbeLaneConfig) -> Result<ProbeTransport, std::io::Error> {
+fn connect_local_daemon_transport(
+    _config: &ProbeLaneConfig,
+) -> Result<ProbeTransport, std::io::Error> {
     Err(std::io::Error::other(
         "local probe-daemon transport is only available on unix platforms",
     ))
@@ -1816,9 +1911,7 @@ fn default_probe_home_path() -> PathBuf {
         return PathBuf::from(value);
     }
     dirs::data_local_dir()
-        .unwrap_or_else(|| {
-            env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        })
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
         .join("openagents")
         .join("probe")
 }
@@ -1826,20 +1919,42 @@ fn default_probe_home_path() -> PathBuf {
 fn select_workspace_session<'a>(
     sessions: &'a [SessionMetadata],
     workspace_cwd: &Path,
-) -> Option<&'a SessionId> {
+    preferred_session_id: Option<&str>,
+) -> WorkspaceSessionSelection<'a> {
     let target = workspace_cwd
         .canonicalize()
         .unwrap_or_else(|_| workspace_cwd.to_path_buf());
-    sessions
-        .iter()
-        .find(|session| {
-            session
-                .cwd
-                .canonicalize()
-                .unwrap_or_else(|_| session.cwd.clone())
-                == target
+    if let Some(preferred_session_id) = preferred_session_id
+        && let Some(session) = sessions.iter().find(|session| {
+            session.id.as_str() == preferred_session_id
+                && session.state == probe_protocol::session::SessionState::Active
+                && session
+                    .cwd
+                    .canonicalize()
+                    .unwrap_or_else(|_| session.cwd.clone())
+                    == target
         })
-        .map(|session| &session.id)
+    {
+        return WorkspaceSessionSelection::Match(&session.id);
+    }
+    let matches = sessions
+        .iter()
+        .filter(|session| {
+            session.state == probe_protocol::session::SessionState::Active
+                && session
+                    .cwd
+                    .canonicalize()
+                    .unwrap_or_else(|_| session.cwd.clone())
+                    == target
+        })
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => WorkspaceSessionSelection::None,
+        [session] => WorkspaceSessionSelection::Match(&session.id),
+        _ => WorkspaceSessionSelection::Collision(
+            matches.into_iter().map(|session| &session.id).collect(),
+        ),
+    }
 }
 
 fn probe_session_watch_signature(
@@ -1848,13 +1963,10 @@ fn probe_session_watch_signature(
 ) -> ProbeSessionWatchSignature {
     ProbeSessionWatchSignature {
         updated_at_ms: snapshot.session.updated_at_ms,
-        active_turn: control.active_turn.as_ref().map(|turn| {
-            (
-                turn.turn_id.clone(),
-                turn.status,
-                turn.awaiting_approval,
-            )
-        }),
+        active_turn: control
+            .active_turn
+            .as_ref()
+            .map(|turn| (turn.turn_id.clone(), turn.status, turn.awaiting_approval)),
         queued_turns: control
             .queued_turns
             .iter()
