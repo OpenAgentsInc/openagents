@@ -192,6 +192,14 @@ enum ChatRemoteComposerIntent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatForgeComposerIntent {
+    Handoff {
+        owner: crate::app_state::ForgeSharedSessionControlOwner,
+        summary: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ChatWalletMessageSource {
     reference_label: String,
     message_id: String,
@@ -308,6 +316,16 @@ pub(super) fn run_chat_submit_action_with_trigger(
     match parse_chat_remote_intent(&trimmed_prompt) {
         Ok(Some(intent)) => {
             return run_chat_remote_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_forge_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_forge_action(state, prompt, intent);
         }
         Ok(None) => {}
         Err(error) => {
@@ -4133,6 +4151,41 @@ fn parse_chat_remote_intent(prompt: &str) -> Result<Option<ChatRemoteComposerInt
     }
 }
 
+fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let Some(first_word) = trimmed.split_whitespace().next() else {
+        return Ok(None);
+    };
+    if first_word != "/handoff" {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    let owner = match words.get(1).map(String::as_str) {
+        Some("human") | Some("local-human") => {
+            crate::app_state::ForgeSharedSessionControlOwner::HumanLocal
+        }
+        Some("agent") | Some("probe") | Some("local-probe") => {
+            crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent
+        }
+        _ => {
+            return Err(
+                "Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string(),
+            );
+        }
+    };
+    if words.len() < 3 {
+        return Err("Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string());
+    }
+    let summary = words[2..].join(" ").trim().to_string();
+    if summary.is_empty() {
+        return Err("Shared-session handoff summary cannot be empty.".to_string());
+    }
+    Ok(Some(ChatForgeComposerIntent::Handoff { owner, summary }))
+}
+
 fn resolve_discovered_skill_index(
     state: &crate::app_state::RenderState,
     query: Option<&str>,
@@ -5191,6 +5244,62 @@ fn run_chat_remote_action(
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
         }
+    }
+}
+
+fn run_chat_forge_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatForgeComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+        return append_chat_command_result(
+            state,
+            prompt,
+            "No active Probe-backed thread is selected for shared-session handoff.".to_string(),
+            true,
+        );
+    };
+    let probe_backed_thread = state
+        .autopilot_chat
+        .thread_metadata
+        .get(&thread_id)
+        .map(|metadata| metadata.probe_runtime_status.is_some() || metadata.probe_archived)
+        .unwrap_or(false);
+    if !probe_backed_thread {
+        return append_chat_command_result(
+            state,
+            prompt,
+            "Shared-session handoff is only available for Probe-backed threads.".to_string(),
+            true,
+        );
+    }
+
+    match intent {
+        ChatForgeComposerIntent::Handoff { owner, summary } => match state
+            .autopilot_chat
+            .record_shared_session_handoff_for_thread(
+                thread_id.as_str(),
+                owner,
+                summary.clone(),
+                "operator.command:/handoff",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded shared-session handoff `{shared_session_id}` to {}.\n\n{}",
+                    owner.display_label(),
+                    summary
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
     }
 }
 
@@ -15939,28 +16048,28 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 mod tests {
     use super::{
         ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL, ChatAppsComposerIntent,
-        ChatGitComposerIntent, ChatMcpComposerIntent, ChatRemoteComposerIntent,
-        ChatRequestComposerIntent, ChatSkillsComposerIntent, ChatSpacetimeComposerIntent,
-        ChatTerminalComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
-        DirectMessageComposerIntent, MISSION_CONTROL_BUY_MODE_PROMPT, ManagedChatComposerIntent,
-        ProbeWorkspaceAttachDecision, active_job_payment_evidence_refresh_due,
-        build_direct_message_outbound_message, build_managed_chat_join_request_event,
-        build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
-        build_managed_chat_outbound_message, build_managed_chat_reaction_event,
-        build_mission_control_buy_mode_request_event,
+        ChatForgeComposerIntent, ChatGitComposerIntent, ChatMcpComposerIntent,
+        ChatRemoteComposerIntent, ChatRequestComposerIntent, ChatSkillsComposerIntent,
+        ChatSpacetimeComposerIntent, ChatTerminalComposerIntent, ChatWalletComposerIntent,
+        ChatWalletMessagePayload, DirectMessageComposerIntent, MISSION_CONTROL_BUY_MODE_PROMPT,
+        ManagedChatComposerIntent, ProbeWorkspaceAttachDecision,
+        active_job_payment_evidence_refresh_due, build_direct_message_outbound_message,
+        build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
+        build_managed_chat_moderation_event, build_managed_chat_outbound_message,
+        build_managed_chat_reaction_event, build_mission_control_buy_mode_request_event,
         build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
         classify_provider_failure, decide_probe_workspace_attach_for_chat, default_pr_base_branch,
         extract_chat_wallet_payload, extract_target_provider_pubkeys, git_common_worktree_root,
         git_current_branch, git_local_branch_exists, github_compare_url,
         is_taxonomy_failure_detail, loop_integrity_alert_specs,
         nip90_request_kind_for_request_type, note_active_job_waiting_for_payment_evidence,
-        parse_chat_apps_intent, parse_chat_git_intent, parse_chat_mcp_intent,
-        parse_chat_remote_intent, parse_chat_request_intent, parse_chat_skills_intent,
-        parse_chat_spacetime_intent, parse_chat_terminal_intent, parse_chat_wallet_intent,
-        parse_direct_message_creation_intent, parse_direct_message_room_intent,
-        parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
-        parse_shell_like_words, resolve_apple_fm_workbench_session_id,
-        resolve_wallet_blink_env_from_secure_values,
+        parse_chat_apps_intent, parse_chat_forge_intent, parse_chat_git_intent,
+        parse_chat_mcp_intent, parse_chat_remote_intent, parse_chat_request_intent,
+        parse_chat_skills_intent, parse_chat_spacetime_intent, parse_chat_terminal_intent,
+        parse_chat_wallet_intent, parse_direct_message_creation_intent,
+        parse_direct_message_room_intent, parse_managed_chat_composer_intent,
+        parse_managed_chat_mention_prefix, parse_shell_like_words,
+        resolve_apple_fm_workbench_session_id, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces,
         stable_sats_period_convert_totals_from_receipts,
@@ -17118,6 +17227,25 @@ mod tests {
             Some(ChatTerminalComposerIntent::CleanClosed)
         );
         assert!(parse_chat_terminal_intent("/term resize 140").is_err());
+    }
+
+    #[test]
+    fn chat_handoff_commands_parse_human_and_agent_targets() {
+        assert_eq!(
+            parse_chat_forge_intent("/handoff human reviewed the diff manually").unwrap(),
+            Some(ChatForgeComposerIntent::Handoff {
+                owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
+                summary: "reviewed the diff manually".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff agent continue with the implementation").unwrap(),
+            Some(ChatForgeComposerIntent::Handoff {
+                owner: crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                summary: "continue with the implementation".to_string(),
+            })
+        );
+        assert!(parse_chat_forge_intent("/handoff").is_err());
     }
 
     #[test]

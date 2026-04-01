@@ -8260,6 +8260,61 @@ pub struct AutopilotCompactionArtifact {
     pub restored_from_thread_read: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeSharedSessionControlOwner {
+    HumanLocal,
+    ProbeLocalAgent,
+}
+
+impl ForgeSharedSessionControlOwner {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::HumanLocal => "human_local",
+            Self::ProbeLocalAgent => "probe_local_agent",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::HumanLocal => "local human",
+            Self::ProbeLocalAgent => "local Probe agent",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionParticipant {
+    pub participant_id: String,
+    pub kind: ForgeSharedSessionControlOwner,
+    pub display_name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionHandoff {
+    pub from_owner: ForgeSharedSessionControlOwner,
+    pub to_owner: ForgeSharedSessionControlOwner,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSession {
+    pub shared_session_id: String,
+    pub probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub control_owner: ForgeSharedSessionControlOwner,
+    pub participants: Vec<ForgeSharedSessionParticipant>,
+    pub last_handoff: Option<ForgeSharedSessionHandoff>,
+    pub evidence_bundle_id: Option<String>,
+    pub delivery_receipt_id: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AutopilotProjectDefaults {
     pub model: Option<String>,
@@ -8630,6 +8685,8 @@ pub struct AutopilotChatState {
     thread_diff_artifacts: std::collections::HashMap<String, Vec<AutopilotDiffArtifact>>,
     thread_review_artifacts: std::collections::HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: std::collections::HashMap<String, AutopilotCompactionArtifact>,
+    forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
+    next_forge_shared_session_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
@@ -8746,6 +8803,8 @@ impl Default for AutopilotChatState {
             thread_diff_artifacts,
             thread_review_artifacts,
             thread_compaction_artifacts,
+            forge_shared_sessions,
+            next_forge_shared_session_seq,
             review_thread_source_map,
             artifact_load_error,
         ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -8753,6 +8812,8 @@ impl Default for AutopilotChatState {
                 projection.thread_diff_artifacts,
                 projection.thread_review_artifacts,
                 projection.thread_compaction_artifacts,
+                projection.forge_shared_sessions,
+                projection.next_forge_shared_session_seq,
                 projection.review_thread_source_map,
                 None,
             ),
@@ -8760,6 +8821,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 HashMap::new(),
                 Some(error),
             ),
@@ -8784,6 +8847,8 @@ impl Default for AutopilotChatState {
             thread_diff_artifacts,
             thread_review_artifacts,
             thread_compaction_artifacts,
+            forge_shared_sessions,
+            next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             review_thread_source_map,
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
@@ -8860,8 +8925,9 @@ impl Default for AutopilotChatState {
     }
 }
 
-const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 1;
-const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v1";
+const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 2;
+const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v2";
+const CODEX_ARTIFACT_PROJECTION_STREAM_ID_V1: &str = "stream.codex_artifacts.v1";
 const CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD: usize = 8;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -8873,11 +8939,30 @@ struct CodexArtifactProjectionDocumentV1 {
     compaction_artifacts: Vec<AutopilotCompactionArtifact>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct CodexArtifactProjectionDocumentV2 {
+    schema_version: u16,
+    stream_id: String,
+    diff_artifacts: Vec<AutopilotDiffArtifact>,
+    review_artifacts: Vec<AutopilotReviewArtifact>,
+    compaction_artifacts: Vec<AutopilotCompactionArtifact>,
+    #[serde(default)]
+    shared_sessions: Vec<ForgeSharedSession>,
+    #[serde(default = "default_next_forge_shared_session_seq")]
+    next_shared_session_seq: u64,
+}
+
 struct LoadedCodexArtifactProjection {
     thread_diff_artifacts: HashMap<String, Vec<AutopilotDiffArtifact>>,
     thread_review_artifacts: HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: HashMap<String, AutopilotCompactionArtifact>,
+    forge_shared_sessions: HashMap<String, ForgeSharedSession>,
+    next_forge_shared_session_seq: u64,
     review_thread_source_map: HashMap<String, String>,
+}
+
+fn default_next_forge_shared_session_seq() -> u64 {
+    1
 }
 
 fn codex_artifact_projection_file_path() -> PathBuf {
@@ -8993,17 +9078,70 @@ fn normalize_codex_compaction_artifacts(
     artifacts
 }
 
+fn default_forge_shared_session_participants() -> Vec<ForgeSharedSessionParticipant> {
+    vec![
+        ForgeSharedSessionParticipant {
+            participant_id: "local-human".to_string(),
+            kind: ForgeSharedSessionControlOwner::HumanLocal,
+            display_name: "Local human".to_string(),
+        },
+        ForgeSharedSessionParticipant {
+            participant_id: "local-probe-agent".to_string(),
+            kind: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+            display_name: "Local Probe agent".to_string(),
+        },
+    ]
+}
+
+fn normalize_probe_session_ids(mut session_ids: Vec<String>) -> Vec<String> {
+    session_ids = session_ids
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect();
+    session_ids.sort();
+    session_ids.dedup();
+    session_ids
+}
+
+fn normalize_forge_shared_sessions(
+    mut sessions: Vec<ForgeSharedSession>,
+) -> Vec<ForgeSharedSession> {
+    sessions.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.shared_session_id.cmp(&rhs.shared_session_id))
+    });
+    let mut seen_ids = HashSet::new();
+    sessions.retain(|session| {
+        let shared_session_id = session.shared_session_id.trim();
+        !shared_session_id.is_empty() && seen_ids.insert(shared_session_id.to_string())
+    });
+    for session in &mut sessions {
+        session.shared_session_id = session.shared_session_id.trim().to_string();
+        session.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut session.probe_session_ids));
+        if session.participants.is_empty() {
+            session.participants = default_forge_shared_session_participants();
+        }
+    }
+    sessions.retain(|session| !session.probe_session_ids.is_empty());
+    sessions
+}
+
 fn persist_codex_artifact_projection(
     path: &Path,
     diff_artifacts: &HashMap<String, Vec<AutopilotDiffArtifact>>,
     review_artifacts: &HashMap<String, AutopilotReviewArtifact>,
     compaction_artifacts: &HashMap<String, AutopilotCompactionArtifact>,
+    forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
+    next_forge_shared_session_seq: u64,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("Failed to create Codex artifact dir: {error}"))?;
     }
-    let document = CodexArtifactProjectionDocumentV1 {
+    let document = CodexArtifactProjectionDocumentV2 {
         schema_version: CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION,
         stream_id: CODEX_ARTIFACT_PROJECTION_STREAM_ID.to_string(),
         diff_artifacts: normalize_codex_diff_artifacts(
@@ -9018,6 +9156,10 @@ fn persist_codex_artifact_projection(
         compaction_artifacts: normalize_codex_compaction_artifacts(
             compaction_artifacts.values().cloned().collect(),
         ),
+        shared_sessions: normalize_forge_shared_sessions(
+            forge_shared_sessions.values().cloned().collect(),
+        ),
+        next_shared_session_seq: next_forge_shared_session_seq.max(1),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
@@ -9037,28 +9179,79 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 thread_diff_artifacts: HashMap::new(),
                 thread_review_artifacts: HashMap::new(),
                 thread_compaction_artifacts: HashMap::new(),
+                forge_shared_sessions: HashMap::new(),
+                next_forge_shared_session_seq: 1,
                 review_thread_source_map: HashMap::new(),
             });
         }
         Err(error) => return Err(format!("Failed to read Codex artifacts: {error}")),
     };
-    let document = serde_json::from_str::<CodexArtifactProjectionDocumentV1>(&raw)
+    let document = serde_json::from_str::<serde_json::Value>(&raw)
         .map_err(|error| format!("Failed to parse Codex artifacts: {error}"))?;
-    if document.schema_version != CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION {
+    let schema_version = document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "Missing Codex artifact schema version".to_string())?
+        as u16;
+
+    match schema_version {
+        1 => load_codex_artifact_projection_v1(document),
+        CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION => load_codex_artifact_projection_v2(document),
+        other => Err(format!(
+            "Unsupported Codex artifact schema version: {other}"
+        )),
+    }
+}
+
+fn load_codex_artifact_projection_v1(
+    value: serde_json::Value,
+) -> Result<LoadedCodexArtifactProjection, String> {
+    let document = serde_json::from_value::<CodexArtifactProjectionDocumentV1>(value)
+        .map_err(|error| format!("Failed to decode Codex v1 artifacts: {error}"))?;
+    if document.stream_id != CODEX_ARTIFACT_PROJECTION_STREAM_ID_V1 {
         return Err(format!(
-            "Unsupported Codex artifact schema version: {}",
-            document.schema_version
+            "Unsupported Codex artifact stream id: {}",
+            document.stream_id
         ));
     }
+    Ok(build_loaded_codex_artifact_projection(
+        document.diff_artifacts,
+        document.review_artifacts,
+        document.compaction_artifacts,
+        Vec::new(),
+        1,
+    ))
+}
+
+fn load_codex_artifact_projection_v2(
+    value: serde_json::Value,
+) -> Result<LoadedCodexArtifactProjection, String> {
+    let document = serde_json::from_value::<CodexArtifactProjectionDocumentV2>(value)
+        .map_err(|error| format!("Failed to decode Codex v2 artifacts: {error}"))?;
     if document.stream_id != CODEX_ARTIFACT_PROJECTION_STREAM_ID {
         return Err(format!(
             "Unsupported Codex artifact stream id: {}",
             document.stream_id
         ));
     }
+    Ok(build_loaded_codex_artifact_projection(
+        document.diff_artifacts,
+        document.review_artifacts,
+        document.compaction_artifacts,
+        document.shared_sessions,
+        document.next_shared_session_seq,
+    ))
+}
 
+fn build_loaded_codex_artifact_projection(
+    diff_artifacts: Vec<AutopilotDiffArtifact>,
+    review_artifacts: Vec<AutopilotReviewArtifact>,
+    compaction_artifacts: Vec<AutopilotCompactionArtifact>,
+    shared_sessions: Vec<ForgeSharedSession>,
+    next_shared_session_seq: u64,
+) -> LoadedCodexArtifactProjection {
     let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
-    for artifact in normalize_codex_diff_artifacts(document.diff_artifacts) {
+    for artifact in normalize_codex_diff_artifacts(diff_artifacts) {
         thread_diff_artifacts
             .entry(artifact.thread_id.clone())
             .or_default()
@@ -9067,7 +9260,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
 
     let mut thread_review_artifacts = HashMap::<String, AutopilotReviewArtifact>::new();
     let mut review_thread_source_map = HashMap::<String, String>::new();
-    for artifact in normalize_codex_review_artifacts(document.review_artifacts) {
+    for artifact in normalize_codex_review_artifacts(review_artifacts) {
         review_thread_source_map.insert(
             artifact.review_thread_id.clone(),
             artifact.source_thread_id.clone(),
@@ -9076,16 +9269,23 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
     }
 
     let mut thread_compaction_artifacts = HashMap::<String, AutopilotCompactionArtifact>::new();
-    for artifact in normalize_codex_compaction_artifacts(document.compaction_artifacts) {
+    for artifact in normalize_codex_compaction_artifacts(compaction_artifacts) {
         thread_compaction_artifacts.insert(artifact.thread_id.clone(), artifact);
     }
 
-    Ok(LoadedCodexArtifactProjection {
+    let mut forge_shared_sessions = HashMap::<String, ForgeSharedSession>::new();
+    for session in normalize_forge_shared_sessions(shared_sessions) {
+        forge_shared_sessions.insert(session.shared_session_id.clone(), session);
+    }
+
+    LoadedCodexArtifactProjection {
         thread_diff_artifacts,
         thread_review_artifacts,
         thread_compaction_artifacts,
+        forge_shared_sessions,
+        next_forge_shared_session_seq: next_shared_session_seq.max(1),
         review_thread_source_map,
-    })
+    }
 }
 
 fn parse_diff_file_artifacts(raw_diff: &str) -> Vec<AutopilotDiffFileArtifact> {
@@ -9168,6 +9368,23 @@ fn compose_probe_thread_status(
         }
     } else {
         base.to_string()
+    }
+}
+
+fn forge_shared_session_owner_for_runtime_status(
+    runtime_status: Option<&str>,
+) -> ForgeSharedSessionControlOwner {
+    let status = runtime_status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("idle");
+    if matches!(
+        status,
+        "running" | "running+queued" | "paused" | "queued" | "attached:running" | "attached:paused"
+    ) {
+        ForgeSharedSessionControlOwner::ProbeLocalAgent
+    } else {
+        ForgeSharedSessionControlOwner::HumanLocal
     }
 }
 
@@ -9408,6 +9625,8 @@ impl AutopilotChatState {
                 state.thread_diff_artifacts = projection.thread_diff_artifacts;
                 state.thread_review_artifacts = projection.thread_review_artifacts;
                 state.thread_compaction_artifacts = projection.thread_compaction_artifacts;
+                state.forge_shared_sessions = projection.forge_shared_sessions;
+                state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
                 state.last_error = None;
             }
@@ -9415,6 +9634,8 @@ impl AutopilotChatState {
                 state.thread_diff_artifacts.clear();
                 state.thread_review_artifacts.clear();
                 state.thread_compaction_artifacts.clear();
+                state.forge_shared_sessions.clear();
+                state.next_forge_shared_session_seq = 1;
                 state.review_thread_source_map.clear();
                 state.last_error = Some(error);
             }
@@ -9700,6 +9921,14 @@ impl AutopilotChatState {
             }
         }
         self.rebuild_project_registry();
+        if let Some(shared_session_id) = self.shared_session_id_for_thread(thread_id) {
+            self.sync_shared_session_fields_for_thread(
+                shared_session_id.as_str(),
+                thread_id,
+                current_epoch_millis_for_state(),
+            );
+            self.persist_codex_artifact_projection();
+        }
     }
 
     pub fn active_terminal_session(&self) -> Option<&AutopilotTerminalSession> {
@@ -9963,6 +10192,194 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.thread_compaction_artifacts.get(thread_id))
+    }
+
+    pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
+        self.forge_shared_sessions.values().find(|session| {
+            session
+                .probe_session_ids
+                .iter()
+                .any(|session_id| session_id == thread_id)
+        })
+    }
+
+    pub fn active_shared_session(&self) -> Option<&ForgeSharedSession> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.shared_session_for_thread(thread_id))
+    }
+
+    fn shared_session_id_for_thread(&self, thread_id: &str) -> Option<String> {
+        self.shared_session_for_thread(thread_id)
+            .map(|session| session.shared_session_id.clone())
+    }
+
+    fn next_shared_session_id(&mut self) -> String {
+        let shared_session_id = format!("forge-session-{}", self.next_forge_shared_session_seq);
+        self.next_forge_shared_session_seq = self.next_forge_shared_session_seq.saturating_add(1);
+        shared_session_id
+    }
+
+    fn sync_shared_session_fields_for_thread(
+        &mut self,
+        shared_session_id: &str,
+        thread_id: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        let Some(metadata) = self.thread_metadata.get(thread_id).cloned() else {
+            return;
+        };
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(shared_session_id) else {
+            return;
+        };
+        shared_session.probe_session_ids.push(thread_id.to_string());
+        shared_session.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut shared_session.probe_session_ids));
+        shared_session.workspace_root = metadata.workspace_root.or(metadata.cwd);
+        shared_session.project_id = metadata.project_id;
+        shared_session.project_name = metadata.project_name;
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        if shared_session.participants.is_empty() {
+            shared_session.participants = default_forge_shared_session_participants();
+        }
+    }
+
+    pub fn ensure_probe_shared_session_for_thread(
+        &mut self,
+        thread_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Option<String> {
+        if !self.thread_metadata.contains_key(thread_id) {
+            return None;
+        }
+        if let Some(shared_session_id) = self.shared_session_id_for_thread(thread_id) {
+            self.sync_shared_session_fields_for_thread(
+                shared_session_id.as_str(),
+                thread_id,
+                updated_at_epoch_ms,
+            );
+            self.persist_codex_artifact_projection();
+            return Some(shared_session_id);
+        }
+
+        let metadata = self.thread_metadata.get(thread_id).cloned()?;
+        let workspace_root = metadata.workspace_root.clone().or(metadata.cwd.clone());
+        let project_id = metadata.project_id.clone();
+        let mut candidates = self
+            .forge_shared_sessions
+            .values()
+            .filter(|session| {
+                session
+                    .project_id
+                    .as_deref()
+                    .zip(project_id.as_deref())
+                    .is_some_and(|(left, right)| left == right)
+                    || session
+                        .workspace_root
+                        .as_deref()
+                        .zip(workspace_root.as_deref())
+                        .is_some_and(|(left, right)| left == right)
+            })
+            .map(|session| session.shared_session_id.clone())
+            .collect::<Vec<_>>();
+        candidates.sort();
+        candidates.dedup();
+
+        let shared_session_id = if candidates.len() == 1 {
+            candidates.remove(0)
+        } else {
+            let created_at_epoch_ms = updated_at_epoch_ms.max(current_epoch_millis_for_state());
+            let shared_session_id = self.next_shared_session_id();
+            let control_owner = forge_shared_session_owner_for_runtime_status(
+                metadata.probe_runtime_status.as_deref(),
+            );
+            self.forge_shared_sessions.insert(
+                shared_session_id.clone(),
+                ForgeSharedSession {
+                    shared_session_id: shared_session_id.clone(),
+                    probe_session_ids: vec![thread_id.to_string()],
+                    workspace_root,
+                    project_id,
+                    project_name: metadata.project_name,
+                    control_owner,
+                    participants: default_forge_shared_session_participants(),
+                    last_handoff: None,
+                    evidence_bundle_id: None,
+                    delivery_receipt_id: None,
+                    created_at_epoch_ms,
+                    updated_at_epoch_ms: created_at_epoch_ms,
+                },
+            );
+            shared_session_id
+        };
+
+        self.sync_shared_session_fields_for_thread(
+            shared_session_id.as_str(),
+            thread_id,
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Some(shared_session_id)
+    }
+
+    pub fn record_shared_session_handoff_for_thread(
+        &mut self,
+        thread_id: &str,
+        next_owner: ForgeSharedSessionControlOwner,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff summary cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before handoff state could be recorded."
+            ));
+        };
+        let previous_owner = shared_session.control_owner;
+        shared_session.control_owner = next_owner;
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
+            from_owner: previous_owner,
+            to_owner: next_owner,
+            summary,
+            provenance: provenance.into().trim().to_string(),
+            recorded_at_epoch_ms,
+        });
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn maybe_record_probe_owner_transition(
+        &mut self,
+        thread_id: &str,
+        next_owner: ForgeSharedSessionControlOwner,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Option<String> {
+        let existing_owner = self
+            .shared_session_for_thread(thread_id)
+            .map(|session| session.control_owner);
+        if existing_owner == Some(next_owner) {
+            return self.shared_session_id_for_thread(thread_id);
+        }
+        self.record_shared_session_handoff_for_thread(
+            thread_id,
+            next_owner,
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        )
+        .ok()
     }
 
     pub fn record_composer_draft(&mut self, draft: impl Into<String>) {
@@ -11572,6 +11989,18 @@ impl AutopilotChatState {
             .retain(|pending| pending.thread_id != thread_id);
         self.turn_metadata_by_turn_id
             .retain(|_, metadata| metadata.thread_id != thread_id);
+        let mut orphaned_shared_sessions = Vec::<String>::new();
+        for (shared_session_id, shared_session) in &mut self.forge_shared_sessions {
+            shared_session
+                .probe_session_ids
+                .retain(|session_id| session_id != thread_id);
+            if shared_session.probe_session_ids.is_empty() {
+                orphaned_shared_sessions.push(shared_session_id.clone());
+            }
+        }
+        for shared_session_id in orphaned_shared_sessions {
+            self.forge_shared_sessions.remove(&shared_session_id);
+        }
         if self
             .last_submitted_turn_metadata
             .as_ref()
@@ -12955,6 +13384,8 @@ impl AutopilotChatState {
             &self.thread_diff_artifacts,
             &self.thread_review_artifacts,
             &self.thread_compaction_artifacts,
+            &self.forge_shared_sessions,
+            self.next_forge_shared_session_seq,
         ) {
             tracing::warn!("failed to persist codex artifacts: {error}");
         }
@@ -13008,6 +13439,14 @@ impl AutopilotChatState {
             archived,
             attached,
         ));
+        if let Some(shared_session_id) = self.shared_session_id_for_thread(thread_id) {
+            if let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) {
+                shared_session.control_owner =
+                    forge_shared_session_owner_for_runtime_status(runtime_status.as_deref());
+                shared_session.updated_at_epoch_ms =
+                    current_epoch_millis_for_state().max(shared_session.updated_at_epoch_ms);
+            }
+        }
     }
 
     pub fn set_thread_name(&mut self, thread_id: &str, thread_name: Option<String>) {
@@ -16646,6 +17085,8 @@ impl RenderState {
 
 #[cfg(test)]
 mod tests {
+    use crate::app_state::ForgeSharedSessionControlOwner;
+
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
@@ -21388,6 +21829,85 @@ mod tests {
                 .expect("reloaded compaction artifact")
                 .source_turn_id,
             "turn-compact"
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
+    fn chat_state_persists_forge_shared_session_handoffs() {
+        let projection_path = unique_codex_artifact_projection_path("shared-session");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("thread-a", 1_700_000_120)
+            .expect("shared session");
+        assert_ne!(shared_session_id, "thread-a");
+        let shared_session = chat.active_shared_session().expect("active shared session");
+        assert_eq!(
+            shared_session.control_owner,
+            ForgeSharedSessionControlOwner::HumanLocal
+        );
+        assert_eq!(
+            shared_session.probe_session_ids,
+            vec!["thread-a".to_string()]
+        );
+
+        let recorded_shared_session_id = chat
+            .record_shared_session_handoff_for_thread(
+                "thread-a",
+                ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                "Hand control back to the local Probe worker to continue implementation.",
+                "operator.command:/handoff",
+                1_700_000_140,
+            )
+            .expect("handoff should record");
+        assert_eq!(recorded_shared_session_id, shared_session_id);
+
+        let handoff = chat
+            .active_shared_session()
+            .and_then(|session| session.last_handoff.as_ref())
+            .expect("last handoff");
+        assert_eq!(
+            handoff.from_owner,
+            ForgeSharedSessionControlOwner::HumanLocal
+        );
+        assert_eq!(
+            handoff.to_owner,
+            ForgeSharedSessionControlOwner::ProbeLocalAgent
+        );
+        assert_eq!(handoff.provenance, "operator.command:/handoff");
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(reloaded_session.shared_session_id, shared_session_id);
+        assert_eq!(
+            reloaded_session.control_owner,
+            ForgeSharedSessionControlOwner::ProbeLocalAgent
+        );
+        assert_eq!(reloaded_session.project_name.as_deref(), Some("a"));
+        assert_eq!(
+            reloaded_session
+                .last_handoff
+                .as_ref()
+                .map(|handoff| handoff.summary.as_str()),
+            Some("Hand control back to the local Probe worker to continue implementation.")
         );
 
         let _ = std::fs::remove_file(projection_path);

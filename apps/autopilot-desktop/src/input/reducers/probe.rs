@@ -10,6 +10,13 @@ fn probe_live_turn_id(session_id: &str) -> String {
     format!("probe-live:{session_id}")
 }
 
+fn current_epoch_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProbeLaneSnapshot) {
     let previous_active_session_id = state.probe_lane.active_session_id.clone();
     let lifecycle = snapshot.lifecycle;
@@ -115,6 +122,10 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                 Some(snapshot.session.cwd.display().to_string()),
                 Some(snapshot.session.transcript_path.display().to_string()),
             );
+            let _ = state.autopilot_chat.ensure_probe_shared_session_for_thread(
+                thread_id.as_str(),
+                snapshot.session.updated_at_ms,
+            );
             state.autopilot_chat.set_active_thread_transcript(
                 thread_id.as_str(),
                 probe_transcript_messages(snapshot.transcript.as_slice()),
@@ -175,6 +186,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                 response.turn.turn_id,
                 response.turn.queue_position.unwrap_or(0)
             ));
+            let _ = state.autopilot_chat.maybe_record_probe_owner_transition(
+                thread_id,
+                crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                "Queued a new Probe turn from the Autopilot shell.",
+                "probe.turn_queued",
+                current_epoch_millis(),
+            );
         }
         ProbeLaneNotification::TurnInterrupted { response, control } => {
             let thread_id = response.session_id.as_str();
@@ -190,6 +208,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
             state
                 .autopilot_chat
                 .record_turn_timeline_event(format!("probe interrupt: {}", response.message));
+            let _ = state.autopilot_chat.maybe_record_probe_owner_transition(
+                thread_id,
+                crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
+                "Interrupted the active Probe turn and returned control to the local human.",
+                "probe.turn_interrupted",
+                current_epoch_millis(),
+            );
         }
         ProbeLaneNotification::QueuedTurnCancelled { response, control } => {
             let thread_id = response.session_id.as_str();
@@ -205,6 +230,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
             state
                 .autopilot_chat
                 .record_turn_timeline_event(format!("probe queue cancel: {}", response.message));
+            let _ = state.autopilot_chat.maybe_record_probe_owner_transition(
+                thread_id,
+                crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
+                "Cancelled the queued Probe turn and kept control in the local shell.",
+                "probe.queued_turn_cancelled",
+                current_epoch_millis(),
+            );
         }
     }
     state.record_probe_notification(notification);
@@ -223,6 +255,13 @@ fn apply_runtime_progress(state: &mut RenderState, session_id: &str, event: &Run
                 Some(String::from("running")),
                 probe_thread_is_archived(state, session_id),
                 true,
+            );
+            let _ = state.autopilot_chat.maybe_record_probe_owner_transition(
+                session_id,
+                crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                "Probe resumed execution in the attached shared session.",
+                "probe.turn_started",
+                current_epoch_millis(),
             );
         }
         RuntimeProgressEvent::AssistantDelta { delta, .. } => {

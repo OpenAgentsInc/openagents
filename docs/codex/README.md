@@ -32,8 +32,8 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     posture.
 - [`PROBE_SHELL_PROJECTION.md`](./PROBE_SHELL_PROJECTION.md)
   - the current app-owned mapping from Probe sessions and turn-control truth
-    into Autopilot thread, transcript, workspace, artifact, and attach-resume
-    state.
+    into Autopilot thread, transcript, workspace, artifact, attach-resume, and
+    shared-session handoff state.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
     follow-ups, interrupt, approval resolution, and queued-turn cancel.

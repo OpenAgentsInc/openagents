@@ -64,6 +64,29 @@ Attach failures also stay visible at the shell layer. If the desktop cannot
 reload the selected Probe session, the error is surfaced directly instead of
 falling back to silent session creation.
 
+## Shared Session Layer
+
+Autopilot now keeps an app-owned Forge shared session object above raw Probe
+session ids.
+
+Current local-first rules:
+
+- the Forge shared session id is distinct from the Probe `session_id`
+- one shared session can point at one or more Probe sessions over time
+- the shared session records the local human and the local Probe agent as
+  explicit participants
+- the current control owner is stored separately from raw Probe runtime status
+- explicit handoffs persist summary, provenance, and timestamp in the desktop
+  artifact projection
+- reducer-level interrupt and resume events also update control-owner posture so
+  the shell does not lose lineage when control flips between the operator and
+  the background agent
+
+The first operator-facing control is the chat command:
+
+- `/handoff human <summary>`
+- `/handoff agent <summary>`
+
 ## Artifact Ownership
 
 Plan, diff, review, and compaction presentation stays app-owned.
