@@ -2704,6 +2704,10 @@ fn active_shared_session_meta_line(session: &ForgeSharedSession) -> String {
         compact_display_token(session.shared_session_id.as_str(), 18)
     )];
     parts.push(format!("owner:{}", session.control_owner.label()));
+    parts.push(format!(
+        "startup:{}",
+        session.workspace_restore.startup_kind.label()
+    ));
     if let Some(project_name) = session.project_name.as_deref() {
         parts.push(format!(
             "project:{}",
@@ -2746,6 +2750,51 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
+    }
+    lines.push(format!(
+        "- **workspace startup:** {}",
+        session.workspace_restore.startup_kind.display_label()
+    ));
+    if let Some(restore_pointer) = session.workspace_restore.restore_pointer.as_deref() {
+        lines.push(format!(
+            "- **restore pointer:** `{}`",
+            compact_display_token(restore_pointer, 36)
+        ));
+    }
+    if let Some(snapshot_ref) = session.workspace_restore.snapshot_ref.as_deref() {
+        lines.push(format!(
+            "- **snapshot ref:** `{}`",
+            compact_display_token(snapshot_ref, 36)
+        ));
+    } else {
+        lines.push(format!(
+            "- **snapshot ref:** _{}_",
+            session.workspace_restore.snapshot_ref_status.label()
+        ));
+    }
+    if let Some(detail) = session.workspace_restore.snapshot_ref_detail.as_deref() {
+        lines.push(format!("- **snapshot detail:** {}", detail));
+    }
+    if session.workspace_restore.base_repo.remote_url.is_some()
+        || session.workspace_restore.base_repo.git_branch.is_some()
+        || session.workspace_restore.base_repo.head_commit.is_some()
+    {
+        let mut base_repo_parts = Vec::new();
+        if let Some(remote_url) = session.workspace_restore.base_repo.remote_url.as_deref() {
+            base_repo_parts.push(compact_display_token(remote_url, 42));
+        }
+        if let Some(git_branch) = session.workspace_restore.base_repo.git_branch.as_deref() {
+            base_repo_parts.push(format!("branch:{git_branch}"));
+        }
+        if let Some(head_commit) = session.workspace_restore.base_repo.head_commit.as_deref() {
+            base_repo_parts.push(format!(
+                "head:{}",
+                compact_display_token(head_commit, 16)
+            ));
+        }
+        if !base_repo_parts.is_empty() {
+            lines.push(format!("- **base repo:** {}", base_repo_parts.join("  •  ")));
+        }
     }
     if let Some(handoff) = session.last_handoff.as_ref() {
         lines.push(String::new());
@@ -5425,9 +5474,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);

@@ -197,6 +197,10 @@ enum ChatForgeComposerIntent {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
         summary: String,
     },
+    RestoreMark {
+        restore_pointer: String,
+        snapshot_ref: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4159,10 +4163,22 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if first_word != "/handoff" {
+    if first_word != "/handoff" && first_word != "/restore" {
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
+    if first_word == "/restore" {
+        let Some(restore_pointer) = words.get(1).cloned() else {
+            return Err("Usage: `/restore <restore-pointer>` or `/restore <restore-pointer> <snapshot-ref>`.".to_string());
+        };
+        if words.len() > 3 {
+            return Err("Usage: `/restore <restore-pointer>` or `/restore <restore-pointer> <snapshot-ref>`.".to_string());
+        }
+        return Ok(Some(ChatForgeComposerIntent::RestoreMark {
+            restore_pointer,
+            snapshot_ref: words.get(2).cloned(),
+        }));
+    }
     let owner = match words.get(1).map(String::as_str) {
         Some("human") | Some("local-human") => {
             crate::app_state::ForgeSharedSessionControlOwner::HumanLocal
@@ -5295,6 +5311,28 @@ fn run_chat_forge_action(
                     "Recorded shared-session handoff `{shared_session_id}` to {}.\n\n{}",
                     owner.display_label(),
                     summary
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::RestoreMark {
+            restore_pointer,
+            snapshot_ref,
+        } => match state
+            .autopilot_chat
+            .mark_probe_workspace_restored_for_thread(
+                thread_id.as_str(),
+                restore_pointer.clone(),
+                snapshot_ref.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Marked shared session `{shared_session_id}` as restored from `{restore_pointer}`. Snapshot ref: {}.",
+                    snapshot_ref.as_deref().unwrap_or("unavailable from current Probe seam")
                 ),
                 false,
             ),
@@ -17245,7 +17283,15 @@ mod tests {
                 summary: "continue with the implementation".to_string(),
             })
         );
+        assert_eq!(
+            parse_chat_forge_intent("/restore restore-point-42 snapshot-ref-9").unwrap(),
+            Some(ChatForgeComposerIntent::RestoreMark {
+                restore_pointer: "restore-point-42".to_string(),
+                snapshot_ref: Some("snapshot-ref-9".to_string()),
+            })
+        );
         assert!(parse_chat_forge_intent("/handoff").is_err());
+        assert!(parse_chat_forge_intent("/restore").is_err());
     }
 
     #[test]

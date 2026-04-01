@@ -38,6 +38,31 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProbeLaneSn
 }
 
 pub(super) fn apply_command_response(state: &mut RenderState, response: ProbeLaneCommandResponse) {
+    if response.status == crate::probe_lane::ProbeLaneCommandStatus::Ok {
+        match (
+            response.command,
+            response.session_id.as_deref(),
+        ) {
+            (crate::probe_lane::ProbeLaneCommandKind::StartSession, Some(session_id)) => {
+                let _ = state
+                    .autopilot_chat
+                    .mark_probe_workspace_cold_start_for_thread(
+                        session_id,
+                        current_epoch_millis(),
+                    );
+            }
+            (crate::probe_lane::ProbeLaneCommandKind::LoadSession, Some(session_id)) => {
+                let _ = state
+                    .autopilot_chat
+                    .mark_probe_workspace_warm_start_for_thread(
+                        session_id,
+                        Some(format!("probe-session:{session_id}")),
+                        current_epoch_millis(),
+                    );
+            }
+            _ => {}
+        }
+    }
     if state.uses_probe_runtime()
         && response.status == crate::probe_lane::ProbeLaneCommandStatus::Error
     {

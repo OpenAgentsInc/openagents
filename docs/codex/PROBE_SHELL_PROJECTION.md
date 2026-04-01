@@ -87,6 +87,23 @@ The first operator-facing control is the chat command:
 - `/handoff human <summary>`
 - `/handoff agent <summary>`
 
+## Workspace Restore Provenance
+
+The shared session now also carries app-owned workspace restore provenance.
+
+Current local-first behavior:
+
+- `StartSession` marks the shared workspace as a `cold_start`
+- `LoadSession` marks the shared workspace as a `warm_start` and records a
+  local restore pointer derived from the Probe session id
+- operators can explicitly mark a session as `restored` with:
+  - `/restore <restore-pointer>`
+  - `/restore <restore-pointer> <snapshot-ref>`
+- base repo identity is captured from the local git workspace when available:
+  remote origin, current branch, and current head commit
+- when Probe cannot supply a snapshot ref, the shell says so directly instead of
+  pretending a real snapshot registry already exists
+
 ## Artifact Ownership
 
 Plan, diff, review, and compaction presentation stays app-owned.

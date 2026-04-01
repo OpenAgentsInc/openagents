@@ -8299,6 +8299,84 @@ pub struct ForgeSharedSessionHandoff {
     pub recorded_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeWorkspaceStartupKind {
+    #[default]
+    ColdStart,
+    WarmStart,
+    Restored,
+}
+
+impl ForgeWorkspaceStartupKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ColdStart => "cold_start",
+            Self::WarmStart => "warm_start",
+            Self::Restored => "restored",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::ColdStart => "cold start",
+            Self::WarmStart => "warm local reuse",
+            Self::Restored => "explicit restore",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeWorkspaceSnapshotRefStatus {
+    #[default]
+    MissingFromProbe,
+    Available,
+}
+
+impl ForgeWorkspaceSnapshotRefStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::MissingFromProbe => "missing_from_probe",
+            Self::Available => "available",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeWorkspaceBaseRepoRef {
+    pub remote_url: Option<String>,
+    pub git_branch: Option<String>,
+    pub head_commit: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeWorkspaceRestoreProvenance {
+    pub startup_kind: ForgeWorkspaceStartupKind,
+    pub base_repo: ForgeWorkspaceBaseRepoRef,
+    pub snapshot_ref: Option<String>,
+    pub restore_pointer: Option<String>,
+    pub snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus,
+    pub snapshot_ref_detail: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+impl Default for ForgeWorkspaceRestoreProvenance {
+    fn default() -> Self {
+        Self {
+            startup_kind: ForgeWorkspaceStartupKind::ColdStart,
+            base_repo: ForgeWorkspaceBaseRepoRef::default(),
+            snapshot_ref: None,
+            restore_pointer: None,
+            snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus::MissingFromProbe,
+            snapshot_ref_detail: Some(
+                "Current Probe seam does not expose snapshot refs yet.".to_string(),
+            ),
+            updated_at_epoch_ms: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSession {
     pub shared_session_id: String,
@@ -8309,6 +8387,8 @@ pub struct ForgeSharedSession {
     pub control_owner: ForgeSharedSessionControlOwner,
     pub participants: Vec<ForgeSharedSessionParticipant>,
     pub last_handoff: Option<ForgeSharedSessionHandoff>,
+    #[serde(default)]
+    pub workspace_restore: ForgeWorkspaceRestoreProvenance,
     pub evidence_bundle_id: Option<String>,
     pub delivery_receipt_id: Option<String>,
     pub created_at_epoch_ms: u64,
@@ -9124,6 +9204,16 @@ fn normalize_forge_shared_sessions(
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
         }
+        if session.workspace_restore.snapshot_ref.is_some() {
+            session.workspace_restore.snapshot_ref_status = ForgeWorkspaceSnapshotRefStatus::Available;
+            session.workspace_restore.snapshot_ref_detail = None;
+        } else {
+            session.workspace_restore.snapshot_ref_status =
+                ForgeWorkspaceSnapshotRefStatus::MissingFromProbe;
+            if session.workspace_restore.snapshot_ref_detail.is_none() {
+                session.workspace_restore.snapshot_ref_detail = Some(forge_probe_snapshot_ref_detail());
+            }
+        }
     }
     sessions.retain(|session| !session.probe_session_ids.is_empty());
     sessions
@@ -9416,6 +9506,12 @@ fn git_workspace_root(start: &Path) -> Option<String> {
         .and_then(|value| (!value.is_empty()).then_some(value))
 }
 
+fn git_remote_origin_url_for_workspace_root(workspace_root: &str) -> Option<String> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["config", "--get", "remote.origin.url"])
+        .and_then(|value| (!value.is_empty()).then_some(value))
+}
+
 fn git_branch_for_workspace_root(workspace_root: &str) -> Option<String> {
     let root = Path::new(workspace_root);
     git_command_output(root, &["branch", "--show-current"])
@@ -9424,6 +9520,11 @@ fn git_branch_for_workspace_root(workspace_root: &str) -> Option<String> {
             git_command_output(root, &["rev-parse", "--short", "HEAD"])
                 .and_then(|value| (!value.is_empty()).then_some(value))
         })
+}
+
+fn git_head_commit_for_workspace_root(workspace_root: &str) -> Option<String> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["rev-parse", "HEAD"]).and_then(|value| (!value.is_empty()).then_some(value))
 }
 
 fn git_dirty_for_workspace_root(workspace_root: &str) -> Option<bool> {
@@ -9447,6 +9548,30 @@ fn current_epoch_millis_for_state() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn forge_probe_snapshot_ref_detail() -> String {
+    "Current Probe seam does not expose snapshot refs yet.".to_string()
+}
+
+fn forge_workspace_base_repo_ref(
+    workspace_root: Option<&str>,
+    git_branch: Option<&str>,
+) -> ForgeWorkspaceBaseRepoRef {
+    let Some(workspace_root) = workspace_root.filter(|value| !value.trim().is_empty()) else {
+        return ForgeWorkspaceBaseRepoRef {
+            remote_url: None,
+            git_branch: git_branch.map(str::to_string),
+            head_commit: None,
+        };
+    };
+    ForgeWorkspaceBaseRepoRef {
+        remote_url: git_remote_origin_url_for_workspace_root(workspace_root),
+        git_branch: git_branch
+            .map(str::to_string)
+            .or_else(|| git_branch_for_workspace_root(workspace_root)),
+        head_commit: git_head_commit_for_workspace_root(workspace_root),
+    }
 }
 
 fn project_defaults_from_thread_metadata(
@@ -10240,6 +10365,10 @@ impl AutopilotChatState {
         shared_session.project_name = metadata.project_name;
         shared_session.updated_at_epoch_ms =
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.workspace_restore.base_repo = forge_workspace_base_repo_ref(
+            shared_session.workspace_root.as_deref(),
+            metadata.git_branch.as_deref(),
+        );
         if shared_session.participants.is_empty() {
             shared_session.participants = default_forge_shared_session_participants();
         }
@@ -10294,6 +10423,10 @@ impl AutopilotChatState {
             let control_owner = forge_shared_session_owner_for_runtime_status(
                 metadata.probe_runtime_status.as_deref(),
             );
+            let base_repo = forge_workspace_base_repo_ref(
+                workspace_root.as_deref(),
+                metadata.git_branch.as_deref(),
+            );
             self.forge_shared_sessions.insert(
                 shared_session_id.clone(),
                 ForgeSharedSession {
@@ -10305,6 +10438,15 @@ impl AutopilotChatState {
                     control_owner,
                     participants: default_forge_shared_session_participants(),
                     last_handoff: None,
+                    workspace_restore: ForgeWorkspaceRestoreProvenance {
+                        startup_kind: ForgeWorkspaceStartupKind::ColdStart,
+                        base_repo,
+                        snapshot_ref: None,
+                        restore_pointer: None,
+                        snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus::MissingFromProbe,
+                        snapshot_ref_detail: Some(forge_probe_snapshot_ref_detail()),
+                        updated_at_epoch_ms: created_at_epoch_ms,
+                    },
                     evidence_bundle_id: None,
                     delivery_receipt_id: None,
                     created_at_epoch_ms,
@@ -10356,6 +10498,116 @@ impl AutopilotChatState {
         });
         self.persist_codex_artifact_projection();
         Ok(shared_session_id)
+    }
+
+    fn set_probe_workspace_restore_provenance_for_thread(
+        &mut self,
+        thread_id: &str,
+        startup_kind: ForgeWorkspaceStartupKind,
+        restore_pointer: Option<String>,
+        snapshot_ref: Option<String>,
+        updated_at_epoch_ms: u64,
+        preserve_existing_restore: bool,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let metadata = self.thread_metadata.get(thread_id).cloned();
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before workspace restore state could be recorded."
+            ));
+        };
+        if preserve_existing_restore
+            && shared_session.workspace_restore.startup_kind == ForgeWorkspaceStartupKind::Restored
+        {
+            shared_session.workspace_restore.base_repo = forge_workspace_base_repo_ref(
+                shared_session.workspace_root.as_deref(),
+                metadata.as_ref().and_then(|value| value.git_branch.as_deref()),
+            );
+            shared_session.workspace_restore.updated_at_epoch_ms = updated_at_epoch_ms.max(
+                shared_session.workspace_restore.updated_at_epoch_ms,
+            );
+            self.persist_codex_artifact_projection();
+            return Ok(shared_session_id);
+        }
+
+        let restore_pointer = restore_pointer
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let snapshot_ref = snapshot_ref
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        shared_session.workspace_restore = ForgeWorkspaceRestoreProvenance {
+            startup_kind,
+            base_repo: forge_workspace_base_repo_ref(
+                shared_session.workspace_root.as_deref(),
+                metadata.as_ref().and_then(|value| value.git_branch.as_deref()),
+            ),
+            snapshot_ref: snapshot_ref.clone(),
+            restore_pointer,
+            snapshot_ref_status: if snapshot_ref.is_some() {
+                ForgeWorkspaceSnapshotRefStatus::Available
+            } else {
+                ForgeWorkspaceSnapshotRefStatus::MissingFromProbe
+            },
+            snapshot_ref_detail: if snapshot_ref.is_some() {
+                None
+            } else {
+                Some(forge_probe_snapshot_ref_detail())
+            },
+            updated_at_epoch_ms,
+        };
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn mark_probe_workspace_cold_start_for_thread(
+        &mut self,
+        thread_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        self.set_probe_workspace_restore_provenance_for_thread(
+            thread_id,
+            ForgeWorkspaceStartupKind::ColdStart,
+            None,
+            None,
+            updated_at_epoch_ms,
+            false,
+        )
+    }
+
+    pub fn mark_probe_workspace_warm_start_for_thread(
+        &mut self,
+        thread_id: &str,
+        restore_pointer: Option<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        self.set_probe_workspace_restore_provenance_for_thread(
+            thread_id,
+            ForgeWorkspaceStartupKind::WarmStart,
+            restore_pointer,
+            None,
+            updated_at_epoch_ms,
+            true,
+        )
+    }
+
+    pub fn mark_probe_workspace_restored_for_thread(
+        &mut self,
+        thread_id: &str,
+        restore_pointer: impl Into<String>,
+        snapshot_ref: Option<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        self.set_probe_workspace_restore_provenance_for_thread(
+            thread_id,
+            ForgeWorkspaceStartupKind::Restored,
+            Some(restore_pointer.into()),
+            snapshot_ref,
+            updated_at_epoch_ms,
+            false,
+        )
     }
 
     pub fn maybe_record_probe_owner_transition(
@@ -17085,7 +17337,10 @@ impl RenderState {
 
 #[cfg(test)]
 mod tests {
-    use crate::app_state::ForgeSharedSessionControlOwner;
+    use crate::app_state::{
+        ForgeSharedSessionControlOwner, ForgeWorkspaceSnapshotRefStatus,
+        ForgeWorkspaceStartupKind,
+    };
 
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
@@ -21911,6 +22166,111 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
+    fn chat_state_tracks_workspace_restore_provenance() {
+        let repo = init_git_workspace("workspace-restore");
+        let remote_add_status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args([
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/OpenAgentsInc/openagents.git",
+            ])
+            .status()
+            .expect("git remote add should launch");
+        assert!(remote_add_status.success(), "git remote add should succeed");
+
+        let projection_path = unique_codex_artifact_projection_path("workspace-restore");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.mark_probe_workspace_warm_start_for_thread(
+            "thread-a",
+            Some("probe-session:thread-a".to_string()),
+            1_700_000_120,
+        )
+        .expect("warm start should record");
+
+        let warm = chat
+            .shared_session_for_thread("thread-a")
+            .expect("warm shared session");
+        assert_eq!(warm.workspace_restore.startup_kind, ForgeWorkspaceStartupKind::WarmStart);
+        assert_eq!(
+            warm.workspace_restore.restore_pointer.as_deref(),
+            Some("probe-session:thread-a")
+        );
+        assert_eq!(
+            warm.workspace_restore.snapshot_ref_status,
+            ForgeWorkspaceSnapshotRefStatus::MissingFromProbe
+        );
+        assert_eq!(
+            warm.workspace_restore.base_repo.remote_url.as_deref(),
+            Some("https://github.com/OpenAgentsInc/openagents.git")
+        );
+        assert!(
+            warm.workspace_restore.base_repo.head_commit.is_some(),
+            "head commit should be captured"
+        );
+
+        chat.mark_probe_workspace_restored_for_thread(
+            "thread-a",
+            "restore-point-7",
+            Some("snapshot-ref-7".to_string()),
+            1_700_000_140,
+        )
+        .expect("restore should record");
+
+        let restored = chat
+            .shared_session_for_thread("thread-a")
+            .expect("restored shared session");
+        assert_eq!(restored.workspace_restore.startup_kind, ForgeWorkspaceStartupKind::Restored);
+        assert_eq!(
+            restored.workspace_restore.restore_pointer.as_deref(),
+            Some("restore-point-7")
+        );
+        assert_eq!(
+            restored.workspace_restore.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
+        assert_eq!(
+            restored.workspace_restore.snapshot_ref_status,
+            ForgeWorkspaceSnapshotRefStatus::Available
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded restore session");
+        assert_eq!(
+            reloaded_session.workspace_restore.startup_kind,
+            ForgeWorkspaceStartupKind::Restored
+        );
+        assert_eq!(
+            reloaded_session.workspace_restore.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
     }
 
     #[test]
