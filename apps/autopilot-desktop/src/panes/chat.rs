@@ -12,9 +12,10 @@ use crate::app_state::{
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
-    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeSharedSession,
-    ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
-    ManagedChatMessageProjection, ManagedChatRelayState, PaneKind, RenderState,
+    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeEvidenceBundle,
+    ForgeSharedSession, ManagedChatChannelProjection, ManagedChatDeliveryState,
+    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
+    RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -2787,13 +2788,13 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             base_repo_parts.push(format!("branch:{git_branch}"));
         }
         if let Some(head_commit) = session.workspace_restore.base_repo.head_commit.as_deref() {
-            base_repo_parts.push(format!(
-                "head:{}",
-                compact_display_token(head_commit, 16)
-            ));
+            base_repo_parts.push(format!("head:{}", compact_display_token(head_commit, 16)));
         }
         if !base_repo_parts.is_empty() {
-            lines.push(format!("- **base repo:** {}", base_repo_parts.join("  •  ")));
+            lines.push(format!(
+                "- **base repo:** {}",
+                base_repo_parts.join("  •  ")
+            ));
         }
     }
     if let Some(handoff) = session.last_handoff.as_ref() {
@@ -2815,6 +2816,118 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
     } else {
         lines.push(String::new());
         lines.push("_No explicit handoff recorded yet._".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_evidence_bundle_meta_line(bundle: &ForgeEvidenceBundle) -> String {
+    let status = bundle.reviewer_status();
+    let (passed, failed, running) = bundle.verification_counts();
+    let mut parts = vec![format!(
+        "bundle:{}",
+        compact_display_token(bundle.evidence_bundle_id.as_str(), 18)
+    )];
+    parts.push(format!("status:{}", status.label()));
+    parts.push(format!(
+        "diff:{}",
+        if bundle.diff_ref.is_some() {
+            "ready"
+        } else {
+            "missing"
+        }
+    ));
+    parts.push(format!("verify:{passed}/{failed}/{running}"));
+    if let Some(updated) = format_thread_timestamp(bundle.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_evidence_bundle_markdown_source(bundle: &ForgeEvidenceBundle) -> String {
+    let status = bundle.reviewer_status();
+    let (passed, failed, running) = bundle.verification_counts();
+    let mut lines = vec![format!("- **reviewer state:** {}", status.display_label())];
+    lines.push(format!(
+        "- **probe sessions:** {}",
+        bundle
+            .probe_session_ids
+            .iter()
+            .map(|session_id| format!("`{}`", compact_display_token(session_id, 18)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    if let Some(diff) = bundle.diff_ref.as_ref() {
+        lines.push(format!(
+            "- **diff:** `{}`  •  files:{}  •  +{} / -{}",
+            compact_display_token(diff.source_turn_id.as_str(), 18),
+            diff.file_count,
+            diff.added_line_count,
+            diff.removed_line_count
+        ));
+    } else {
+        lines.push("- **diff:** _missing_".to_string());
+    }
+    if let Some(review) = bundle.review_ref.as_ref() {
+        lines.push(format!(
+            "- **review:** {}  •  target:{}  •  {}",
+            compact_display_token(review.review_thread_id.as_str(), 18),
+            review.target,
+            review.status
+        ));
+        if let Some(summary) = review.summary.as_deref() {
+            lines.push(format!(
+                "- **review summary:** {}",
+                compact_display_token(summary, 92)
+            ));
+        }
+    } else {
+        lines.push("- **review:** _missing_".to_string());
+    }
+    lines.push(format!(
+        "- **verification:** passed {}  •  failed {}  •  running {}",
+        passed, failed, running
+    ));
+    for run in bundle.verification_runs.iter().take(3) {
+        let mut line = format!(
+            "  - `{}`: {}",
+            compact_display_token(run.label.as_str(), 20),
+            run.status.display_label()
+        );
+        if let Some(reference) = run.reference.as_deref() {
+            line.push_str(&format!("  •  `{}`", compact_display_token(reference, 28)));
+        }
+        if let Some(summary) = run.summary.as_deref() {
+            line.push_str(&format!("  •  {}", compact_display_token(summary, 44)));
+        }
+        lines.push(line);
+    }
+    if !bundle.log_refs.is_empty() {
+        lines.push(format!("- **logs:** {}", bundle.log_refs.len()));
+        for log in bundle.log_refs.iter().take(3) {
+            lines.push(format!(
+                "  - `{}` -> `{}`",
+                compact_display_token(log.label.as_str(), 20),
+                compact_display_token(log.reference.as_str(), 36)
+            ));
+        }
+    } else {
+        lines.push("- **logs:** _none recorded_".to_string());
+    }
+    if !bundle.product_artifacts.is_empty() {
+        lines.push(format!(
+            "- **product artifacts:** {}",
+            bundle.product_artifacts.len()
+        ));
+        for artifact in bundle.product_artifacts.iter().take(3) {
+            lines.push(format!(
+                "  - {} `{}` -> `{}`",
+                artifact.kind.display_label(),
+                compact_display_token(artifact.label.as_str(), 20),
+                compact_display_token(artifact.reference.as_str(), 36)
+            ));
+        }
+    } else {
+        lines.push("- **product artifacts:** _none recorded_".to_string());
     }
     lines.join("\n")
 }
@@ -3270,7 +3383,13 @@ fn paint_header_control_trigger(
             (bounds.size.width - 2.0).max(0.0),
             1.0,
         ))
-        .with_background(accent.with_alpha(if open { 0.34 } else if hovered { 0.18 } else { 0.10 })),
+        .with_background(accent.with_alpha(if open {
+            0.34
+        } else if hovered {
+            0.18
+        } else {
+            0.10
+        })),
     );
     paint.scene.draw_text(paint.text.layout_mono(
         eyebrow,
@@ -3373,8 +3492,14 @@ fn paint_header_menu_row(
     }
     let trailing_reserved = trailing_value.map(|_| 84.0).unwrap_or(18.0);
     paint.scene.draw_text(paint.text.layout_mono(
-        &truncate_for_width(label, (bounds.size.width - 18.0 - trailing_reserved).max(36.0)),
-        Point::new(bounds.origin.x + if current { 11.0 } else { 10.0 }, bounds.origin.y + 8.0),
+        &truncate_for_width(
+            label,
+            (bounds.size.width - 18.0 - trailing_reserved).max(36.0),
+        ),
+        Point::new(
+            bounds.origin.x + if current { 11.0 } else { 10.0 },
+            bounds.origin.y + 8.0,
+        ),
         9.5,
         if highlighted || current {
             chat_mission_text_color().with_alpha(0.98)
@@ -3414,7 +3539,8 @@ fn chat_header_menu_hovered_index(
     if !pane_is_active || !menu_bounds.contains(cursor_position) {
         return None;
     }
-    (0..item_count).find(|&index| chat_header_menu_row_bounds(menu_bounds, index).contains(cursor_position))
+    (0..item_count)
+        .find(|&index| chat_header_menu_row_bounds(menu_bounds, index).contains(cursor_position))
 }
 
 fn paint_open_chat_header_menu_overlay(
@@ -5135,6 +5261,46 @@ pub fn paint(
                 }
                 y += 10.0;
             }
+            if let Some(evidence_bundle) = autopilot_chat.active_evidence_bundle() {
+                let evidence_color = match evidence_bundle.reviewer_status() {
+                    crate::app_state::ForgeEvidenceBundleStatus::Missing => theme::text::MUTED,
+                    crate::app_state::ForgeEvidenceBundleStatus::Partial => theme::status::WARNING,
+                    crate::app_state::ForgeEvidenceBundleStatus::Complete => theme::status::SUCCESS,
+                    crate::app_state::ForgeEvidenceBundleStatus::Failed => theme::status::ERROR,
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[evidence bundle]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    evidence_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_evidence_bundle_meta_line(evidence_bundle),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let evidence_markdown = active_evidence_bundle_markdown_source(evidence_bundle);
+                if !evidence_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&evidence_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(review_artifact) = autopilot_chat.active_review_artifact() {
                 paint.scene.draw_text(paint.text.layout_mono(
                     "[latest review]",
@@ -5474,9 +5640,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);
@@ -5629,13 +5795,16 @@ fn move_chat_header_menu_selection(state: &mut RenderState, step: isize) -> bool
     if item_count == 0 {
         return false;
     }
-    let current = state.autopilot_chat.header_menu_keyboard_index.unwrap_or_else(|| {
-        if step < 0 {
-            item_count.saturating_sub(1)
-        } else {
-            0
-        }
-    });
+    let current = state
+        .autopilot_chat
+        .header_menu_keyboard_index
+        .unwrap_or_else(|| {
+            if step < 0 {
+                item_count.saturating_sub(1)
+            } else {
+                0
+            }
+        });
     let next = if step < 0 {
         if current == 0 {
             item_count.saturating_sub(1)
@@ -5657,12 +5826,15 @@ fn activate_chat_header_menu_selection(state: &mut RenderState) -> bool {
             if state.autopilot_chat.models.is_empty() {
                 return false;
             }
-            let index = state.autopilot_chat.header_menu_keyboard_index.unwrap_or_else(|| {
-                state
-                    .autopilot_chat
-                    .selected_model
-                    .min(state.autopilot_chat.models.len().saturating_sub(1))
-            });
+            let index = state
+                .autopilot_chat
+                .header_menu_keyboard_index
+                .unwrap_or_else(|| {
+                    state
+                        .autopilot_chat
+                        .selected_model
+                        .min(state.autopilot_chat.models.len().saturating_sub(1))
+                });
             crate::input::actions::run_chat_select_model_action(state, index)
         }
         Some(ChatHeaderMenuKind::More) => {
@@ -5696,7 +5868,8 @@ fn point_hits_chat_header_menu_target(
             chat_model_menu_bounds(content_bounds, autopilot_chat.models.len()).contains(point)
         }
         Some(ChatHeaderMenuKind::More) => {
-            chat_more_menu_bounds(content_bounds, chat_header_more_menu_items().len()).contains(point)
+            chat_more_menu_bounds(content_bounds, chat_header_more_menu_items().len())
+                .contains(point)
         }
         _ => false,
     }
@@ -6046,9 +6219,7 @@ fn maybe_expand_managed_system_history_window(
     }
 
     let expanded_messages = autopilot_chat.visible_managed_system_messages();
-    let newly_revealed_count = expanded_messages
-        .len()
-        .saturating_sub(previous_count);
+    let newly_revealed_count = expanded_messages.len().saturating_sub(previous_count);
     let added_layouts = managed_system_visible_row_layouts(
         &expanded_messages[..newly_revealed_count],
         markdown_width,

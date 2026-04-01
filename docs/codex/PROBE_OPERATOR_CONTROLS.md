@@ -11,14 +11,24 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - The desktop command surface now exposes queue inspection and queue cancel through:
   - `/queue`
   - `/queue cancel [turn-id]`
+- The desktop command surface now also exposes reviewer evidence recording through:
+  - `/evidence verify <label> <passed|failed|running> [reference]`
+  - `/evidence log <label> <reference>`
+  - `/evidence preview <label> <reference>`
+  - `/evidence screenshot <label> <reference>`
 
 ## Current UI Semantics
 
 - Probe turn state distinguishes `queued`, `running`, `paused`, `running+queued`, `cancelled`, and `timed_out`.
 - `/requests` now includes Probe queue state when the active thread is Probe-backed.
 - `/approvals session` is accepted for UX continuity, but Probe currently only supports per-call approval resolution, so the desktop maps that action to a single approval.
+- evidence commands stay app-owned: Probe provides raw runtime truth, and the
+  desktop groups that truth into one reviewer-facing evidence bundle per shared
+  session
 
 ## Honest Limits
 
 - Queue inspection is based on the current Probe session-control snapshot already projected into the desktop app. If that cache looks stale, reload the thread before cancelling a queued turn.
 - Queue cancel is currently command-driven in the desktop shell. There is not yet a dedicated pane button for cancelling a specific queued Probe turn.
+- Evidence references are local-first. They can point at local files or capture
+  current terminal excerpts, but they are not a hosted artifact registry.

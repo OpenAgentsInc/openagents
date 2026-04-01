@@ -8377,6 +8377,199 @@ impl Default for ForgeWorkspaceRestoreProvenance {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeEvidenceVerificationStatus {
+    Running,
+    Passed,
+    Failed,
+}
+
+impl ForgeEvidenceVerificationStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeEvidenceProductArtifactKind {
+    Screenshot,
+    Preview,
+    Other,
+}
+
+impl ForgeEvidenceProductArtifactKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Screenshot => "screenshot",
+            Self::Preview => "preview",
+            Self::Other => "other",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Screenshot => "screenshot",
+            Self::Preview => "preview",
+            Self::Other => "artifact",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ForgeEvidenceBundleStatus {
+    Missing,
+    Partial,
+    Complete,
+    Failed,
+}
+
+impl ForgeEvidenceBundleStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::Partial => "partial",
+            Self::Complete => "complete",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Missing => "missing evidence",
+            Self::Partial => "partial evidence",
+            Self::Complete => "review ready",
+            Self::Failed => "failed evidence",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeEvidenceDiffRef {
+    pub thread_id: String,
+    pub source_turn_id: String,
+    pub file_count: usize,
+    pub added_line_count: u32,
+    pub removed_line_count: u32,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeEvidenceReviewRef {
+    pub thread_id: String,
+    pub source_thread_id: String,
+    pub source_turn_id: String,
+    pub review_thread_id: String,
+    pub delivery: String,
+    pub target: String,
+    pub summary: Option<String>,
+    pub status: String,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeEvidenceVerificationRun {
+    pub label: String,
+    pub status: ForgeEvidenceVerificationStatus,
+    pub summary: Option<String>,
+    pub reference: Option<String>,
+    pub terminal_excerpt: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeEvidenceLogRef {
+    pub label: String,
+    pub reference: String,
+    pub terminal_excerpt: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeEvidenceProductArtifact {
+    pub kind: ForgeEvidenceProductArtifactKind,
+    pub label: String,
+    pub reference: String,
+    pub summary: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeEvidenceBundle {
+    pub evidence_bundle_id: String,
+    pub shared_session_id: String,
+    pub probe_session_ids: Vec<String>,
+    pub diff_ref: Option<ForgeEvidenceDiffRef>,
+    pub review_ref: Option<ForgeEvidenceReviewRef>,
+    pub verification_runs: Vec<ForgeEvidenceVerificationRun>,
+    pub log_refs: Vec<ForgeEvidenceLogRef>,
+    pub product_artifacts: Vec<ForgeEvidenceProductArtifact>,
+    pub updated_at_epoch_ms: u64,
+}
+
+impl ForgeEvidenceBundle {
+    pub fn reviewer_status(&self) -> ForgeEvidenceBundleStatus {
+        let verification_failed = self
+            .verification_runs
+            .iter()
+            .any(|run| run.status == ForgeEvidenceVerificationStatus::Failed);
+        let review_failed = self
+            .review_ref
+            .as_ref()
+            .is_some_and(|review| review.status.trim().eq_ignore_ascii_case("failed"));
+        if verification_failed || review_failed {
+            return ForgeEvidenceBundleStatus::Failed;
+        }
+
+        let has_diff = self.diff_ref.is_some();
+        let has_completed_review = self
+            .review_ref
+            .as_ref()
+            .is_some_and(|review| review.status.trim().eq_ignore_ascii_case("completed"));
+        let has_passed_verification = self
+            .verification_runs
+            .iter()
+            .any(|run| run.status == ForgeEvidenceVerificationStatus::Passed);
+        let has_any_evidence = has_diff
+            || self.review_ref.is_some()
+            || !self.verification_runs.is_empty()
+            || !self.log_refs.is_empty()
+            || !self.product_artifacts.is_empty();
+        if has_diff && has_completed_review && has_passed_verification {
+            ForgeEvidenceBundleStatus::Complete
+        } else if has_any_evidence {
+            ForgeEvidenceBundleStatus::Partial
+        } else {
+            ForgeEvidenceBundleStatus::Missing
+        }
+    }
+
+    pub fn verification_counts(&self) -> (usize, usize, usize) {
+        self.verification_runs
+            .iter()
+            .fold((0, 0, 0), |(passed, failed, running), run| {
+                match run.status {
+                    ForgeEvidenceVerificationStatus::Passed => (passed + 1, failed, running),
+                    ForgeEvidenceVerificationStatus::Failed => (passed, failed + 1, running),
+                    ForgeEvidenceVerificationStatus::Running => (passed, failed, running + 1),
+                }
+            })
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSession {
     pub shared_session_id: String,
@@ -8766,7 +8959,9 @@ pub struct AutopilotChatState {
     thread_review_artifacts: std::collections::HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: std::collections::HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
+    forge_evidence_bundles: std::collections::HashMap<String, ForgeEvidenceBundle>,
     next_forge_shared_session_seq: u64,
+    next_forge_evidence_bundle_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
@@ -8884,7 +9079,9 @@ impl Default for AutopilotChatState {
             thread_review_artifacts,
             thread_compaction_artifacts,
             forge_shared_sessions,
+            forge_evidence_bundles,
             next_forge_shared_session_seq,
+            next_forge_evidence_bundle_seq,
             review_thread_source_map,
             artifact_load_error,
         ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -8893,7 +9090,9 @@ impl Default for AutopilotChatState {
                 projection.thread_review_artifacts,
                 projection.thread_compaction_artifacts,
                 projection.forge_shared_sessions,
+                projection.forge_evidence_bundles,
                 projection.next_forge_shared_session_seq,
+                projection.next_forge_evidence_bundle_seq,
                 projection.review_thread_source_map,
                 None,
             ),
@@ -8902,6 +9101,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 HashMap::new(),
                 Some(error),
@@ -8928,7 +9129,9 @@ impl Default for AutopilotChatState {
             thread_review_artifacts,
             thread_compaction_artifacts,
             forge_shared_sessions,
+            forge_evidence_bundles,
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
+            next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
             review_thread_source_map,
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
@@ -9028,8 +9231,12 @@ struct CodexArtifactProjectionDocumentV2 {
     compaction_artifacts: Vec<AutopilotCompactionArtifact>,
     #[serde(default)]
     shared_sessions: Vec<ForgeSharedSession>,
+    #[serde(default)]
+    evidence_bundles: Vec<ForgeEvidenceBundle>,
     #[serde(default = "default_next_forge_shared_session_seq")]
     next_shared_session_seq: u64,
+    #[serde(default = "default_next_forge_evidence_bundle_seq")]
+    next_evidence_bundle_seq: u64,
 }
 
 struct LoadedCodexArtifactProjection {
@@ -9037,11 +9244,17 @@ struct LoadedCodexArtifactProjection {
     thread_review_artifacts: HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: HashMap<String, ForgeSharedSession>,
+    forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
     next_forge_shared_session_seq: u64,
+    next_forge_evidence_bundle_seq: u64,
     review_thread_source_map: HashMap<String, String>,
 }
 
 fn default_next_forge_shared_session_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_evidence_bundle_seq() -> u64 {
     1
 }
 
@@ -9205,18 +9418,123 @@ fn normalize_forge_shared_sessions(
             session.participants = default_forge_shared_session_participants();
         }
         if session.workspace_restore.snapshot_ref.is_some() {
-            session.workspace_restore.snapshot_ref_status = ForgeWorkspaceSnapshotRefStatus::Available;
+            session.workspace_restore.snapshot_ref_status =
+                ForgeWorkspaceSnapshotRefStatus::Available;
             session.workspace_restore.snapshot_ref_detail = None;
         } else {
             session.workspace_restore.snapshot_ref_status =
                 ForgeWorkspaceSnapshotRefStatus::MissingFromProbe;
             if session.workspace_restore.snapshot_ref_detail.is_none() {
-                session.workspace_restore.snapshot_ref_detail = Some(forge_probe_snapshot_ref_detail());
+                session.workspace_restore.snapshot_ref_detail =
+                    Some(forge_probe_snapshot_ref_detail());
             }
         }
     }
     sessions.retain(|session| !session.probe_session_ids.is_empty());
     sessions
+}
+
+fn normalize_forge_evidence_bundles(
+    mut bundles: Vec<ForgeEvidenceBundle>,
+) -> Vec<ForgeEvidenceBundle> {
+    bundles.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.evidence_bundle_id.cmp(&rhs.evidence_bundle_id))
+    });
+    let mut seen_ids = HashSet::new();
+    bundles.retain(|bundle| {
+        let evidence_bundle_id = bundle.evidence_bundle_id.trim();
+        !evidence_bundle_id.is_empty() && seen_ids.insert(evidence_bundle_id.to_string())
+    });
+    for bundle in &mut bundles {
+        bundle.evidence_bundle_id = bundle.evidence_bundle_id.trim().to_string();
+        bundle.shared_session_id = bundle.shared_session_id.trim().to_string();
+        bundle.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut bundle.probe_session_ids));
+
+        bundle.verification_runs = bundle
+            .verification_runs
+            .drain(..)
+            .filter_map(|mut run| {
+                run.label = run.label.trim().to_string();
+                run.summary = run
+                    .summary
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+                run.reference = run
+                    .reference
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+                run.terminal_excerpt = run
+                    .terminal_excerpt
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+                (!run.label.is_empty()).then_some(run)
+            })
+            .collect();
+        bundle.verification_runs.sort_by(|lhs, rhs| {
+            rhs.recorded_at_epoch_ms
+                .cmp(&lhs.recorded_at_epoch_ms)
+                .then_with(|| lhs.label.cmp(&rhs.label))
+        });
+        if bundle.verification_runs.len() > 16 {
+            bundle.verification_runs.truncate(16);
+        }
+
+        bundle.log_refs = bundle
+            .log_refs
+            .drain(..)
+            .filter_map(|mut log| {
+                log.label = log.label.trim().to_string();
+                log.reference = log.reference.trim().to_string();
+                log.terminal_excerpt = log
+                    .terminal_excerpt
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+                (!log.label.is_empty() && !log.reference.is_empty()).then_some(log)
+            })
+            .collect();
+        bundle.log_refs.sort_by(|lhs, rhs| {
+            rhs.recorded_at_epoch_ms
+                .cmp(&lhs.recorded_at_epoch_ms)
+                .then_with(|| lhs.label.cmp(&rhs.label))
+        });
+        if bundle.log_refs.len() > 16 {
+            bundle.log_refs.truncate(16);
+        }
+
+        bundle.product_artifacts = bundle
+            .product_artifacts
+            .drain(..)
+            .filter_map(|mut artifact| {
+                artifact.label = artifact.label.trim().to_string();
+                artifact.reference = artifact.reference.trim().to_string();
+                artifact.summary = artifact
+                    .summary
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+                (!artifact.label.is_empty() && !artifact.reference.is_empty()).then_some(artifact)
+            })
+            .collect();
+        bundle.product_artifacts.sort_by(|lhs, rhs| {
+            rhs.recorded_at_epoch_ms
+                .cmp(&lhs.recorded_at_epoch_ms)
+                .then_with(|| lhs.label.cmp(&rhs.label))
+        });
+        if bundle.product_artifacts.len() > 16 {
+            bundle.product_artifacts.truncate(16);
+        }
+    }
+    bundles.retain(|bundle| {
+        !bundle.shared_session_id.is_empty() && !bundle.probe_session_ids.is_empty()
+    });
+    bundles
 }
 
 fn persist_codex_artifact_projection(
@@ -9225,7 +9543,9 @@ fn persist_codex_artifact_projection(
     review_artifacts: &HashMap<String, AutopilotReviewArtifact>,
     compaction_artifacts: &HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
+    forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
     next_forge_shared_session_seq: u64,
+    next_forge_evidence_bundle_seq: u64,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -9249,7 +9569,11 @@ fn persist_codex_artifact_projection(
         shared_sessions: normalize_forge_shared_sessions(
             forge_shared_sessions.values().cloned().collect(),
         ),
+        evidence_bundles: normalize_forge_evidence_bundles(
+            forge_evidence_bundles.values().cloned().collect(),
+        ),
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
+        next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
@@ -9270,7 +9594,9 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 thread_review_artifacts: HashMap::new(),
                 thread_compaction_artifacts: HashMap::new(),
                 forge_shared_sessions: HashMap::new(),
+                forge_evidence_bundles: HashMap::new(),
                 next_forge_shared_session_seq: 1,
+                next_forge_evidence_bundle_seq: 1,
                 review_thread_source_map: HashMap::new(),
             });
         }
@@ -9309,6 +9635,8 @@ fn load_codex_artifact_projection_v1(
         document.review_artifacts,
         document.compaction_artifacts,
         Vec::new(),
+        Vec::new(),
+        1,
         1,
     ))
 }
@@ -9329,7 +9657,9 @@ fn load_codex_artifact_projection_v2(
         document.review_artifacts,
         document.compaction_artifacts,
         document.shared_sessions,
+        document.evidence_bundles,
         document.next_shared_session_seq,
+        document.next_evidence_bundle_seq,
     ))
 }
 
@@ -9338,7 +9668,9 @@ fn build_loaded_codex_artifact_projection(
     review_artifacts: Vec<AutopilotReviewArtifact>,
     compaction_artifacts: Vec<AutopilotCompactionArtifact>,
     shared_sessions: Vec<ForgeSharedSession>,
+    evidence_bundles: Vec<ForgeEvidenceBundle>,
     next_shared_session_seq: u64,
+    next_evidence_bundle_seq: u64,
 ) -> LoadedCodexArtifactProjection {
     let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
     for artifact in normalize_codex_diff_artifacts(diff_artifacts) {
@@ -9368,12 +9700,19 @@ fn build_loaded_codex_artifact_projection(
         forge_shared_sessions.insert(session.shared_session_id.clone(), session);
     }
 
+    let mut forge_evidence_bundles = HashMap::<String, ForgeEvidenceBundle>::new();
+    for bundle in normalize_forge_evidence_bundles(evidence_bundles) {
+        forge_evidence_bundles.insert(bundle.evidence_bundle_id.clone(), bundle);
+    }
+
     LoadedCodexArtifactProjection {
         thread_diff_artifacts,
         thread_review_artifacts,
         thread_compaction_artifacts,
         forge_shared_sessions,
+        forge_evidence_bundles,
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
+        next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
         review_thread_source_map,
     }
 }
@@ -9524,7 +9863,8 @@ fn git_branch_for_workspace_root(workspace_root: &str) -> Option<String> {
 
 fn git_head_commit_for_workspace_root(workspace_root: &str) -> Option<String> {
     let root = Path::new(workspace_root);
-    git_command_output(root, &["rev-parse", "HEAD"]).and_then(|value| (!value.is_empty()).then_some(value))
+    git_command_output(root, &["rev-parse", "HEAD"])
+        .and_then(|value| (!value.is_empty()).then_some(value))
 }
 
 fn git_dirty_for_workspace_root(workspace_root: &str) -> Option<bool> {
@@ -9751,7 +10091,9 @@ impl AutopilotChatState {
                 state.thread_review_artifacts = projection.thread_review_artifacts;
                 state.thread_compaction_artifacts = projection.thread_compaction_artifacts;
                 state.forge_shared_sessions = projection.forge_shared_sessions;
+                state.forge_evidence_bundles = projection.forge_evidence_bundles;
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
+                state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
                 state.last_error = None;
             }
@@ -9760,7 +10102,9 @@ impl AutopilotChatState {
                 state.thread_review_artifacts.clear();
                 state.thread_compaction_artifacts.clear();
                 state.forge_shared_sessions.clear();
+                state.forge_evidence_bundles.clear();
                 state.next_forge_shared_session_seq = 1;
+                state.next_forge_evidence_bundle_seq = 1;
                 state.review_thread_source_map.clear();
                 state.last_error = Some(error);
             }
@@ -10052,6 +10396,10 @@ impl AutopilotChatState {
                 thread_id,
                 current_epoch_millis_for_state(),
             );
+            let _ = self.sync_evidence_bundle_for_shared_session(
+                shared_session_id.as_str(),
+                current_epoch_millis_for_state(),
+            );
             self.persist_codex_artifact_projection();
         }
     }
@@ -10319,6 +10667,18 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.thread_compaction_artifacts.get(thread_id))
     }
 
+    fn evidence_bundle_for_thread(&self, thread_id: &str) -> Option<&ForgeEvidenceBundle> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let evidence_bundle_id = shared_session.evidence_bundle_id.as_deref()?;
+        self.forge_evidence_bundles.get(evidence_bundle_id)
+    }
+
+    pub fn active_evidence_bundle(&self) -> Option<&ForgeEvidenceBundle> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.evidence_bundle_for_thread(thread_id))
+    }
+
     pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
         self.forge_shared_sessions.values().find(|session| {
             session
@@ -10343,6 +10703,12 @@ impl AutopilotChatState {
         let shared_session_id = format!("forge-session-{}", self.next_forge_shared_session_seq);
         self.next_forge_shared_session_seq = self.next_forge_shared_session_seq.saturating_add(1);
         shared_session_id
+    }
+
+    fn next_evidence_bundle_id(&mut self) -> String {
+        let evidence_bundle_id = format!("forge-evidence-{}", self.next_forge_evidence_bundle_seq);
+        self.next_forge_evidence_bundle_seq = self.next_forge_evidence_bundle_seq.saturating_add(1);
+        evidence_bundle_id
     }
 
     fn sync_shared_session_fields_for_thread(
@@ -10374,6 +10740,200 @@ impl AutopilotChatState {
         }
     }
 
+    fn latest_diff_artifact_for_probe_sessions(
+        &self,
+        probe_session_ids: &[String],
+    ) -> Option<AutopilotDiffArtifact> {
+        probe_session_ids
+            .iter()
+            .filter_map(|thread_id| self.thread_diff_artifacts.get(thread_id))
+            .flat_map(|artifacts| artifacts.iter())
+            .cloned()
+            .max_by(|lhs, rhs| {
+                lhs.updated_at_epoch_ms
+                    .cmp(&rhs.updated_at_epoch_ms)
+                    .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+                    .then_with(|| lhs.source_turn_id.cmp(&rhs.source_turn_id))
+            })
+    }
+
+    fn latest_review_artifact_for_probe_sessions(
+        &self,
+        probe_session_ids: &[String],
+    ) -> Option<AutopilotReviewArtifact> {
+        let probe_session_ids = probe_session_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        self.thread_review_artifacts
+            .values()
+            .filter(|artifact| {
+                probe_session_ids.contains(artifact.thread_id.as_str())
+                    || probe_session_ids.contains(artifact.source_thread_id.as_str())
+            })
+            .cloned()
+            .max_by(|lhs, rhs| {
+                lhs.updated_at_epoch_ms
+                    .cmp(&rhs.updated_at_epoch_ms)
+                    .then_with(|| lhs.thread_id.cmp(&rhs.thread_id))
+            })
+    }
+
+    fn terminal_excerpt_for_thread(&self, thread_id: &str, max_lines: usize) -> Option<String> {
+        let session = self.terminal_sessions.get(thread_id)?;
+        let mut lines = session
+            .lines
+            .iter()
+            .rev()
+            .filter_map(|line| {
+                let trimmed = line.text.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            })
+            .take(max_lines)
+            .collect::<Vec<_>>();
+        if lines.is_empty() {
+            return None;
+        }
+        lines.reverse();
+        Some(lines.join("\n"))
+    }
+
+    fn ensure_probe_evidence_bundle_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        if let Some(existing) = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .and_then(|session| session.evidence_bundle_id.clone())
+            && self.forge_evidence_bundles.contains_key(existing.as_str())
+        {
+            return Ok(existing);
+        }
+
+        let session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before an evidence bundle could be created."
+                )
+            })?;
+        let evidence_bundle_id = self.next_evidence_bundle_id();
+        self.forge_evidence_bundles.insert(
+            evidence_bundle_id.clone(),
+            ForgeEvidenceBundle {
+                evidence_bundle_id: evidence_bundle_id.clone(),
+                shared_session_id: shared_session_id.to_string(),
+                probe_session_ids: normalize_probe_session_ids(session.probe_session_ids),
+                diff_ref: None,
+                review_ref: None,
+                verification_runs: Vec::new(),
+                log_refs: Vec::new(),
+                product_artifacts: Vec::new(),
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the evidence bundle link could be recorded."
+                )
+            })?;
+        shared_session.evidence_bundle_id = Some(evidence_bundle_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        Ok(evidence_bundle_id)
+    }
+
+    fn sync_evidence_bundle_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let evidence_bundle_id = self.ensure_probe_evidence_bundle_for_shared_session(
+            shared_session_id,
+            updated_at_epoch_ms,
+        )?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before evidence could be refreshed."
+                )
+            })?;
+        let latest_diff =
+            self.latest_diff_artifact_for_probe_sessions(&shared_session.probe_session_ids);
+        let latest_review =
+            self.latest_review_artifact_for_probe_sessions(&shared_session.probe_session_ids);
+        let bundle = self
+            .forge_evidence_bundles
+            .get_mut(&evidence_bundle_id)
+            .ok_or_else(|| {
+                format!(
+                    "Evidence bundle `{evidence_bundle_id}` disappeared before it could be refreshed."
+                )
+            })?;
+        bundle.shared_session_id = shared_session_id.to_string();
+        bundle.probe_session_ids = normalize_probe_session_ids(shared_session.probe_session_ids);
+        bundle.diff_ref = latest_diff.as_ref().map(|artifact| ForgeEvidenceDiffRef {
+            thread_id: artifact.thread_id.clone(),
+            source_turn_id: artifact.source_turn_id.clone(),
+            file_count: artifact.files.len(),
+            added_line_count: artifact.added_line_count,
+            removed_line_count: artifact.removed_line_count,
+            updated_at_epoch_ms: artifact.updated_at_epoch_ms,
+        });
+        bundle.review_ref = latest_review
+            .as_ref()
+            .map(|artifact| ForgeEvidenceReviewRef {
+                thread_id: artifact.thread_id.clone(),
+                source_thread_id: artifact.source_thread_id.clone(),
+                source_turn_id: artifact.source_turn_id.clone(),
+                review_thread_id: artifact.review_thread_id.clone(),
+                delivery: artifact.delivery.clone(),
+                target: artifact.target.clone(),
+                summary: artifact.summary.clone(),
+                status: artifact.status.clone(),
+                updated_at_epoch_ms: artifact.updated_at_epoch_ms,
+            });
+        bundle.updated_at_epoch_ms = updated_at_epoch_ms
+            .max(bundle.updated_at_epoch_ms)
+            .max(
+                latest_diff
+                    .as_ref()
+                    .map_or(0, |artifact| artifact.updated_at_epoch_ms),
+            )
+            .max(
+                latest_review
+                    .as_ref()
+                    .map_or(0, |artifact| artifact.updated_at_epoch_ms),
+            );
+        Ok(evidence_bundle_id)
+    }
+
+    fn sync_evidence_bundle_for_thread(
+        &mut self,
+        thread_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let evidence_bundle_id = self.sync_evidence_bundle_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        )?;
+        self.persist_codex_artifact_projection();
+        Ok(evidence_bundle_id)
+    }
+
     pub fn ensure_probe_shared_session_for_thread(
         &mut self,
         thread_id: &str,
@@ -10386,6 +10946,10 @@ impl AutopilotChatState {
             self.sync_shared_session_fields_for_thread(
                 shared_session_id.as_str(),
                 thread_id,
+                updated_at_epoch_ms,
+            );
+            let _ = self.sync_evidence_bundle_for_shared_session(
+                shared_session_id.as_str(),
                 updated_at_epoch_ms,
             );
             self.persist_codex_artifact_projection();
@@ -10461,6 +11025,10 @@ impl AutopilotChatState {
             thread_id,
             updated_at_epoch_ms,
         );
+        let _ = self.sync_evidence_bundle_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Some(shared_session_id)
     }
@@ -10523,11 +11091,12 @@ impl AutopilotChatState {
         {
             shared_session.workspace_restore.base_repo = forge_workspace_base_repo_ref(
                 shared_session.workspace_root.as_deref(),
-                metadata.as_ref().and_then(|value| value.git_branch.as_deref()),
+                metadata
+                    .as_ref()
+                    .and_then(|value| value.git_branch.as_deref()),
             );
-            shared_session.workspace_restore.updated_at_epoch_ms = updated_at_epoch_ms.max(
-                shared_session.workspace_restore.updated_at_epoch_ms,
-            );
+            shared_session.workspace_restore.updated_at_epoch_ms =
+                updated_at_epoch_ms.max(shared_session.workspace_restore.updated_at_epoch_ms);
             self.persist_codex_artifact_projection();
             return Ok(shared_session_id);
         }
@@ -10542,7 +11111,9 @@ impl AutopilotChatState {
             startup_kind,
             base_repo: forge_workspace_base_repo_ref(
                 shared_session.workspace_root.as_deref(),
-                metadata.as_ref().and_then(|value| value.git_branch.as_deref()),
+                metadata
+                    .as_ref()
+                    .and_then(|value| value.git_branch.as_deref()),
             ),
             snapshot_ref: snapshot_ref.clone(),
             restore_pointer,
@@ -10608,6 +11179,143 @@ impl AutopilotChatState {
             updated_at_epoch_ms,
             false,
         )
+    }
+
+    pub fn record_probe_evidence_verification_for_thread(
+        &mut self,
+        thread_id: &str,
+        label: impl Into<String>,
+        status: ForgeEvidenceVerificationStatus,
+        reference: Option<String>,
+        summary: Option<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let evidence_bundle_id =
+            self.sync_evidence_bundle_for_thread(thread_id, recorded_at_epoch_ms)?;
+        let terminal_excerpt = self.terminal_excerpt_for_thread(thread_id, 12);
+        let bundle = self
+            .forge_evidence_bundles
+            .get_mut(&evidence_bundle_id)
+            .ok_or_else(|| {
+                format!(
+                    "Evidence bundle `{evidence_bundle_id}` disappeared before verification evidence could be recorded."
+                )
+            })?;
+        let label = label.into().trim().to_string();
+        if label.is_empty() {
+            return Err("Evidence verification label cannot be empty.".to_string());
+        }
+        bundle.verification_runs.insert(
+            0,
+            ForgeEvidenceVerificationRun {
+                label: label.clone(),
+                status,
+                summary: summary
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                reference: reference
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                terminal_excerpt,
+                recorded_at_epoch_ms,
+            },
+        );
+        bundle.updated_at_epoch_ms = recorded_at_epoch_ms.max(bundle.updated_at_epoch_ms);
+        bundle.verification_runs = normalize_forge_evidence_bundles(vec![bundle.clone()])
+            .into_iter()
+            .next()
+            .map(|normalized| normalized.verification_runs)
+            .unwrap_or_default();
+        self.persist_codex_artifact_projection();
+        Ok((evidence_bundle_id, label))
+    }
+
+    pub fn record_probe_evidence_log_ref_for_thread(
+        &mut self,
+        thread_id: &str,
+        label: impl Into<String>,
+        reference: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let evidence_bundle_id =
+            self.sync_evidence_bundle_for_thread(thread_id, recorded_at_epoch_ms)?;
+        let terminal_excerpt = self.terminal_excerpt_for_thread(thread_id, 12);
+        let bundle = self
+            .forge_evidence_bundles
+            .get_mut(&evidence_bundle_id)
+            .ok_or_else(|| {
+                format!(
+                    "Evidence bundle `{evidence_bundle_id}` disappeared before a log reference could be recorded."
+                )
+            })?;
+        let label = label.into().trim().to_string();
+        let reference = reference.into().trim().to_string();
+        if label.is_empty() || reference.is_empty() {
+            return Err("Evidence log label and reference are both required.".to_string());
+        }
+        bundle.log_refs.insert(
+            0,
+            ForgeEvidenceLogRef {
+                label: label.clone(),
+                reference,
+                terminal_excerpt,
+                recorded_at_epoch_ms,
+            },
+        );
+        bundle.updated_at_epoch_ms = recorded_at_epoch_ms.max(bundle.updated_at_epoch_ms);
+        bundle.log_refs = normalize_forge_evidence_bundles(vec![bundle.clone()])
+            .into_iter()
+            .next()
+            .map(|normalized| normalized.log_refs)
+            .unwrap_or_default();
+        self.persist_codex_artifact_projection();
+        Ok((evidence_bundle_id, label))
+    }
+
+    pub fn record_probe_evidence_product_artifact_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeEvidenceProductArtifactKind,
+        label: impl Into<String>,
+        reference: impl Into<String>,
+        summary: Option<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let evidence_bundle_id =
+            self.sync_evidence_bundle_for_thread(thread_id, recorded_at_epoch_ms)?;
+        let bundle = self
+            .forge_evidence_bundles
+            .get_mut(&evidence_bundle_id)
+            .ok_or_else(|| {
+                format!(
+                    "Evidence bundle `{evidence_bundle_id}` disappeared before a product artifact could be recorded."
+                )
+            })?;
+        let label = label.into().trim().to_string();
+        let reference = reference.into().trim().to_string();
+        if label.is_empty() || reference.is_empty() {
+            return Err("Evidence artifact label and reference are both required.".to_string());
+        }
+        bundle.product_artifacts.insert(
+            0,
+            ForgeEvidenceProductArtifact {
+                kind,
+                label: label.clone(),
+                reference,
+                summary: summary
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                recorded_at_epoch_ms,
+            },
+        );
+        bundle.updated_at_epoch_ms = recorded_at_epoch_ms.max(bundle.updated_at_epoch_ms);
+        bundle.product_artifacts = normalize_forge_evidence_bundles(vec![bundle.clone()])
+            .into_iter()
+            .next()
+            .map(|normalized| normalized.product_artifacts)
+            .unwrap_or_default();
+        self.persist_codex_artifact_projection();
+        Ok((evidence_bundle_id, label))
     }
 
     pub fn maybe_record_probe_owner_transition(
@@ -13492,6 +14200,7 @@ impl AutopilotChatState {
         if self.is_active_thread(thread_id) {
             self.turn_diff = Some(artifact.raw_diff.clone());
         }
+        let _ = self.sync_evidence_bundle_for_thread(thread_id, updated_at_epoch_ms);
         self.persist_codex_artifact_projection();
     }
 
@@ -13530,6 +14239,7 @@ impl AutopilotChatState {
                 },
             );
         }
+        let _ = self.sync_evidence_bundle_for_thread(thread_id, updated_at_epoch_ms);
         self.persist_codex_artifact_projection();
     }
 
@@ -13583,6 +14293,8 @@ impl AutopilotChatState {
                 },
             );
         }
+        let _ =
+            self.sync_evidence_bundle_for_thread(source_thread_id.as_str(), updated_at_epoch_ms);
         self.persist_codex_artifact_projection();
     }
 
@@ -13637,7 +14349,9 @@ impl AutopilotChatState {
             &self.thread_review_artifacts,
             &self.thread_compaction_artifacts,
             &self.forge_shared_sessions,
+            &self.forge_evidence_bundles,
             self.next_forge_shared_session_seq,
+            self.next_forge_evidence_bundle_seq,
         ) {
             tracing::warn!("failed to persist codex artifacts: {error}");
         }
@@ -17338,8 +18052,9 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use crate::app_state::{
-        ForgeSharedSessionControlOwner, ForgeWorkspaceSnapshotRefStatus,
-        ForgeWorkspaceStartupKind,
+        ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
+        ForgeEvidenceVerificationStatus, ForgeSharedSessionControlOwner,
+        ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
     };
 
     use super::{
@@ -22212,7 +22927,10 @@ mod tests {
         let warm = chat
             .shared_session_for_thread("thread-a")
             .expect("warm shared session");
-        assert_eq!(warm.workspace_restore.startup_kind, ForgeWorkspaceStartupKind::WarmStart);
+        assert_eq!(
+            warm.workspace_restore.startup_kind,
+            ForgeWorkspaceStartupKind::WarmStart
+        );
         assert_eq!(
             warm.workspace_restore.restore_pointer.as_deref(),
             Some("probe-session:thread-a")
@@ -22241,7 +22959,10 @@ mod tests {
         let restored = chat
             .shared_session_for_thread("thread-a")
             .expect("restored shared session");
-        assert_eq!(restored.workspace_restore.startup_kind, ForgeWorkspaceStartupKind::Restored);
+        assert_eq!(
+            restored.workspace_restore.startup_kind,
+            ForgeWorkspaceStartupKind::Restored
+        );
         assert_eq!(
             restored.workspace_restore.restore_pointer.as_deref(),
             Some("restore-point-7")
@@ -22267,6 +22988,124 @@ mod tests {
         assert_eq!(
             reloaded_session.workspace_restore.snapshot_ref.as_deref(),
             Some("snapshot-ref-7")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_evidence_bundle_summary() {
+        let repo = init_git_workspace("evidence-bundle");
+        let projection_path = unique_codex_artifact_projection_path("evidence-bundle");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Looks good overall.",
+            1_700_000_130,
+            false,
+        );
+        chat.append_terminal_session_output(
+            "thread-a",
+            TerminalStream::Stdout,
+            "cargo test\nok - 12 passed",
+        );
+        chat.record_probe_evidence_verification_for_thread(
+            "thread-a",
+            "cargo-test",
+            ForgeEvidenceVerificationStatus::Passed,
+            Some("target/test.log".to_string()),
+            Some("12 tests passed".to_string()),
+            1_700_000_140,
+        )
+        .expect("verification evidence should record");
+        chat.record_probe_evidence_log_ref_for_thread(
+            "thread-a",
+            "test-log",
+            "target/test.log",
+            1_700_000_145,
+        )
+        .expect("log evidence should record");
+        chat.record_probe_evidence_product_artifact_for_thread(
+            "thread-a",
+            ForgeEvidenceProductArtifactKind::Screenshot,
+            "login-flow",
+            "/tmp/login-flow.png",
+            None,
+            1_700_000_150,
+        )
+        .expect("product artifact should record");
+
+        let bundle = chat
+            .active_evidence_bundle()
+            .expect("active evidence bundle should exist");
+        assert_eq!(
+            bundle.reviewer_status(),
+            ForgeEvidenceBundleStatus::Complete
+        );
+        assert_eq!(
+            bundle
+                .diff_ref
+                .as_ref()
+                .map(|diff| diff.source_turn_id.as_str()),
+            Some("turn-diff-1")
+        );
+        assert_eq!(
+            bundle
+                .review_ref
+                .as_ref()
+                .map(|review| review.status.as_str()),
+            Some("completed")
+        );
+        assert_eq!(bundle.verification_runs.len(), 1);
+        assert_eq!(bundle.log_refs.len(), 1);
+        assert_eq!(bundle.product_artifacts.len(), 1);
+        assert_eq!(
+            bundle.product_artifacts[0].kind,
+            ForgeEvidenceProductArtifactKind::Screenshot
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.evidence_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_evidence_bundles.get(bundle_id))
+            .expect("reloaded evidence bundle");
+        assert_eq!(
+            reloaded_bundle.reviewer_status(),
+            ForgeEvidenceBundleStatus::Complete
+        );
+        assert_eq!(
+            reloaded_bundle.verification_runs[0].status,
+            ForgeEvidenceVerificationStatus::Passed
+        );
+        assert_eq!(
+            reloaded_bundle.log_refs[0].reference.as_str(),
+            "target/test.log"
         );
 
         let _ = std::fs::remove_file(projection_path);

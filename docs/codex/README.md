@@ -33,10 +33,12 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 - [`PROBE_SHELL_PROJECTION.md`](./PROBE_SHELL_PROJECTION.md)
   - the current app-owned mapping from Probe sessions and turn-control truth
     into Autopilot thread, transcript, workspace, artifact, attach-resume, and
-    shared-session handoff plus workspace-restore provenance state.
+    shared-session handoff, workspace-restore provenance, and reviewer evidence
+    bundle state.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
-    follow-ups, interrupt, approval resolution, and queued-turn cancel.
+    follow-ups, interrupt, approval resolution, queued-turn cancel, and
+    evidence recording commands.
 - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
   - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
 - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)

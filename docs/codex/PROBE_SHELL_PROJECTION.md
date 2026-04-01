@@ -104,6 +104,28 @@ Current local-first behavior:
 - when Probe cannot supply a snapshot ref, the shell says so directly instead of
   pretending a real snapshot registry already exists
 
+## Evidence Bundle Layer
+
+Autopilot now also keeps one app-owned evidence bundle above the shared session.
+
+Current local-first behavior:
+
+- the evidence bundle is linked from the Forge shared session and persists in
+  the same desktop artifact projection
+- latest diff and latest review truth are pulled into the bundle automatically
+  from app-owned shell artifacts instead of asking the reviewer to spelunk the
+  raw transcript
+- operators can extend the bundle with:
+  - `/evidence verify <label> <passed|failed|running> [reference]`
+  - `/evidence log <label> <reference>`
+  - `/evidence preview <label> <reference>`
+  - `/evidence screenshot <label> <reference>`
+- verification and log entries capture the current terminal tail when available
+  so a reviewer gets durable evidence even though the live terminal buffer is
+  not the persistence contract
+- reviewer-facing evidence state is rendered honestly as missing, partial,
+  complete, or failed
+
 ## Artifact Ownership
 
 Plan, diff, review, and compaction presentation stays app-owned.

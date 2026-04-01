@@ -201,6 +201,20 @@ enum ChatForgeComposerIntent {
         restore_pointer: String,
         snapshot_ref: Option<String>,
     },
+    EvidenceVerify {
+        label: String,
+        status: crate::app_state::ForgeEvidenceVerificationStatus,
+        reference: Option<String>,
+    },
+    EvidenceLog {
+        label: String,
+        reference: String,
+    },
+    EvidenceProductArtifact {
+        kind: crate::app_state::ForgeEvidenceProductArtifactKind,
+        label: String,
+        reference: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4163,10 +4177,120 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if first_word != "/handoff" && first_word != "/restore" {
+    if first_word != "/handoff" && first_word != "/restore" && first_word != "/evidence" {
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
+    if first_word == "/evidence" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Evidence commands: `/evidence verify <label> <passed|failed|running> [reference]`, `/evidence log <label> <reference>`, `/evidence preview <label> <reference>`, `/evidence screenshot <label> <reference>`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "verify" | "test" => {
+                let Some(label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/evidence verify <label> <passed|failed|running> [reference]`."
+                            .to_string(),
+                    );
+                };
+                let Some(status) = words.get(3).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/evidence verify <label> <passed|failed|running> [reference]`."
+                            .to_string(),
+                    );
+                };
+                if words.len() > 5 {
+                    return Err(
+                        "Usage: `/evidence verify <label> <passed|failed|running> [reference]`."
+                            .to_string(),
+                    );
+                }
+                let status = match status {
+                    "passed" | "pass" | "ok" => {
+                        crate::app_state::ForgeEvidenceVerificationStatus::Passed
+                    }
+                    "failed" | "fail" | "error" => {
+                        crate::app_state::ForgeEvidenceVerificationStatus::Failed
+                    }
+                    "running" | "pending" => {
+                        crate::app_state::ForgeEvidenceVerificationStatus::Running
+                    }
+                    _ => {
+                        return Err(
+                            "Verification status must be `passed`, `failed`, or `running`."
+                                .to_string(),
+                        );
+                    }
+                };
+                Ok(Some(ChatForgeComposerIntent::EvidenceVerify {
+                    label,
+                    status,
+                    reference: words.get(4).cloned(),
+                }))
+            }
+            "log" => {
+                let Some(label) = words.get(2).cloned() else {
+                    return Err("Usage: `/evidence log <label> <reference>`.".to_string());
+                };
+                let Some(reference) = words.get(3).cloned() else {
+                    return Err("Usage: `/evidence log <label> <reference>`.".to_string());
+                };
+                if words.len() != 4 {
+                    return Err("Usage: `/evidence log <label> <reference>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::EvidenceLog { label, reference }))
+            }
+            "preview" | "artifact" => {
+                let Some(label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/evidence preview <label> <reference>`.".to_string(),
+                    );
+                };
+                let Some(reference) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/evidence preview <label> <reference>`.".to_string(),
+                    );
+                };
+                if words.len() != 4 {
+                    return Err(
+                        "Usage: `/evidence preview <label> <reference>`.".to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::EvidenceProductArtifact {
+                    kind: crate::app_state::ForgeEvidenceProductArtifactKind::Preview,
+                    label,
+                    reference,
+                }))
+            }
+            "screenshot" => {
+                let Some(label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/evidence screenshot <label> <reference>`.".to_string(),
+                    );
+                };
+                let Some(reference) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/evidence screenshot <label> <reference>`.".to_string(),
+                    );
+                };
+                if words.len() != 4 {
+                    return Err(
+                        "Usage: `/evidence screenshot <label> <reference>`.".to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::EvidenceProductArtifact {
+                    kind: crate::app_state::ForgeEvidenceProductArtifactKind::Screenshot,
+                    label,
+                    reference,
+                }))
+            }
+            _ => Err(
+                "Evidence commands: `/evidence verify <label> <passed|failed|running> [reference]`, `/evidence log <label> <reference>`, `/evidence preview <label> <reference>`, `/evidence screenshot <label> <reference>`.".to_string(),
+            ),
+        };
+    }
     if first_word == "/restore" {
         let Some(restore_pointer) = words.get(1).cloned() else {
             return Err("Usage: `/restore <restore-pointer>` or `/restore <restore-pointer> <snapshot-ref>`.".to_string());
@@ -5332,7 +5456,80 @@ fn run_chat_forge_action(
                 prompt,
                 format!(
                     "Marked shared session `{shared_session_id}` as restored from `{restore_pointer}`. Snapshot ref: {}.",
-                    snapshot_ref.as_deref().unwrap_or("unavailable from current Probe seam")
+                    snapshot_ref
+                        .as_deref()
+                        .unwrap_or("unavailable from current Probe seam")
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::EvidenceVerify {
+            label,
+            status,
+            reference,
+        } => match state
+            .autopilot_chat
+            .record_probe_evidence_verification_for_thread(
+                thread_id.as_str(),
+                label.clone(),
+                status,
+                reference.clone(),
+                None,
+                current_epoch_millis(),
+            ) {
+            Ok((evidence_bundle_id, recorded_label)) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded verification evidence in `{evidence_bundle_id}`: `{recorded_label}` is {}. Reference: {}.",
+                    status.display_label(),
+                    reference
+                        .as_deref()
+                        .unwrap_or("captured from the current terminal context")
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::EvidenceLog { label, reference } => match state
+            .autopilot_chat
+            .record_probe_evidence_log_ref_for_thread(
+                thread_id.as_str(),
+                label.clone(),
+                reference.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok((evidence_bundle_id, recorded_label)) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded log evidence in `{evidence_bundle_id}`: `{recorded_label}` -> `{reference}`."
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::EvidenceProductArtifact {
+            kind,
+            label,
+            reference,
+        } => match state
+            .autopilot_chat
+            .record_probe_evidence_product_artifact_for_thread(
+                thread_id.as_str(),
+                kind,
+                label.clone(),
+                reference.clone(),
+                None,
+                current_epoch_millis(),
+            ) {
+            Ok((evidence_bundle_id, recorded_label)) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded {} evidence in `{evidence_bundle_id}`: `{recorded_label}` -> `{reference}`.",
+                    kind.display_label()
                 ),
                 false,
             ),
@@ -17290,8 +17487,25 @@ mod tests {
                 snapshot_ref: Some("snapshot-ref-9".to_string()),
             })
         );
+        assert_eq!(
+            parse_chat_forge_intent("/evidence verify cargo-test passed target/test.log").unwrap(),
+            Some(ChatForgeComposerIntent::EvidenceVerify {
+                label: "cargo-test".to_string(),
+                status: crate::app_state::ForgeEvidenceVerificationStatus::Passed,
+                reference: Some("target/test.log".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/evidence screenshot login-flow /tmp/login.png").unwrap(),
+            Some(ChatForgeComposerIntent::EvidenceProductArtifact {
+                kind: crate::app_state::ForgeEvidenceProductArtifactKind::Screenshot,
+                label: "login-flow".to_string(),
+                reference: "/tmp/login.png".to_string(),
+            })
+        );
         assert!(parse_chat_forge_intent("/handoff").is_err());
         assert!(parse_chat_forge_intent("/restore").is_err());
+        assert!(parse_chat_forge_intent("/evidence").is_err());
     }
 
     #[test]
