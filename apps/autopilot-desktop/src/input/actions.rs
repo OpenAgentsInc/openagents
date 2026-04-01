@@ -14,10 +14,10 @@ use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
     BuyModePaymentsPaneAction, ChatHeaderMoreMenuItem, ContributorBetaPaneAction,
-    DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
-    LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
-    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, PsionicRemoteTrainingPaneAction,
-    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
+    DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction, LocalInferencePaneAction,
+    LogStreamPaneAction, MissionControlPaneAction, Nip90SentPaymentsPaneAction,
+    ProviderControlPaneAction, PsionicRemoteTrainingPaneAction, RivePreviewPaneAction,
+    SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
     XtrainExplorerPaneAction,
 };
 use crate::spark_wallet::{
@@ -180,6 +180,10 @@ enum ChatRequestComposerIntent {
         decision: ApprovalDecision,
         label: &'static str,
     },
+    QueueSummary,
+    QueueCancel {
+        turn_id: Option<String>,
+    },
     ToolCallRespond,
     ToolUserInputRespond,
     AuthRefreshRespond,
@@ -191,6 +195,18 @@ enum ChatRemoteComposerIntent {
     Enable { bind_addr: Option<String> },
     Disable,
     RotateToken,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatForgeComposerIntent {
+    Handoff {
+        owner: crate::app_state::ForgeSharedSessionControlOwner,
+        summary: String,
+    },
+    RestoreMark {
+        restore_pointer: String,
+        snapshot_ref: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -317,9 +333,22 @@ pub(super) fn run_chat_submit_action_with_trigger(
             return true;
         }
     }
+    match parse_chat_forge_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_forge_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
-        state.autopilot_chat.last_error =
-            Some("No active thread yet. Wait for Codex lane readiness.".to_string());
+        state.autopilot_chat.last_error = Some(if state.uses_probe_runtime() {
+            "No active Probe session yet. Start a new thread first.".to_string()
+        } else {
+            "No active thread yet. Wait for Codex lane readiness.".to_string()
+        });
         return true;
     };
     let session_cwd = current_chat_session_cwd(state);
@@ -417,6 +446,16 @@ pub(super) fn run_chat_submit_action_with_trigger(
         .collect::<Vec<_>>();
 
     log_chat_prompt_to_console(&thread_id, &prompt);
+    if state.uses_probe_runtime() {
+        return run_probe_chat_submit_action(
+            state,
+            thread_id,
+            prompt,
+            parsed_prompt,
+            prompt_chars,
+            selected_skill_names,
+        );
+    }
     let (input, skill_error) = assemble_chat_turn_input(parsed_prompt, turn_skill_attachments);
     if let Some(skill_error) = skill_error {
         state.autopilot_chat.last_error = Some(skill_error);
@@ -534,6 +573,114 @@ pub(super) fn run_chat_submit_action_with_trigger(
         Err(error) => {
             state.chat_inputs.composer.set_value(prompt.clone());
             state.autopilot_chat.record_composer_draft(prompt.clone());
+            state
+                .autopilot_chat
+                .mark_pending_turn_dispatch_failed(error);
+        }
+    }
+    true
+}
+
+fn run_probe_chat_submit_action(
+    state: &mut crate::app_state::RenderState,
+    thread_id: String,
+    prompt: String,
+    parsed_prompt: ParsedChatTurnPrompt,
+    prompt_chars: usize,
+    selected_skill_names: Vec<String>,
+) -> bool {
+    if !parsed_prompt.mention_attachments.is_empty() || !parsed_prompt.image_attachments.is_empty()
+    {
+        state.autopilot_chat.last_error = Some(
+            "Probe-backed turns do not yet support desktop mention or image attachments."
+                .to_string(),
+        );
+        return true;
+    }
+
+    let prompt_text = parsed_prompt.prompt_text.trim().to_string();
+    if prompt_text.is_empty() {
+        state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
+        return true;
+    }
+
+    let has_active_turn = state.autopilot_chat.active_turn_id.is_some();
+
+    state
+        .autopilot_chat
+        .remember_submission_draft(&thread_id, prompt.clone());
+    state.chat_inputs.composer.set_value(String::new());
+    state.autopilot_chat.record_composer_draft(String::new());
+
+    if !selected_skill_names.is_empty() {
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "probe runtime kept {} shell-selected skill attachment(s) app-owned; tool attachment forwarding is not wired yet",
+            selected_skill_names.len()
+        ));
+    }
+
+    let session_id = probe_protocol::session::SessionId::new(thread_id.clone());
+    let profile = probe_backend_profile_for_chat_session(state);
+    let tool_loop = probe_tool_loop_config_for_chat_session(state);
+    if has_active_turn {
+        tracing::info!(
+            "probe turn/queue request thread_id={} model={} chars={}",
+            thread_id,
+            state.autopilot_chat.current_model(),
+            prompt_chars
+        );
+        let command = crate::probe_lane::ProbeLaneCommand::QueueTurn {
+            session_id,
+            prompt: prompt_text,
+            profile,
+            tool_loop: Some(tool_loop),
+        };
+        match state.queue_probe_command(command) {
+            Ok(_) => {
+                state.autopilot_chat.submit_steer_prompt(prompt.clone());
+                state
+                    .autopilot_chat
+                    .set_turn_status(Some(String::from("running+queued")));
+                state
+                    .autopilot_chat
+                    .set_thread_status(thread_id.as_str(), Some(String::from("running+queued")));
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event(String::from(
+                        "probe follow-up queued while the current turn is still running",
+                    ));
+                state.autopilot_chat.last_error = None;
+            }
+            Err(error) => {
+                state.chat_inputs.composer.set_value(prompt.clone());
+                state.autopilot_chat.record_composer_draft(prompt);
+                state.autopilot_chat.last_error = Some(error);
+            }
+        }
+        return true;
+    }
+
+    state.autopilot_chat.submit_prompt(prompt.clone());
+    tracing::info!(
+        "probe turn/continue request thread_id={} model={} chars={}",
+        thread_id,
+        state.autopilot_chat.current_model(),
+        prompt_chars
+    );
+    let command = crate::probe_lane::ProbeLaneCommand::RunTurn {
+        session_id,
+        prompt: prompt_text,
+        profile,
+        tool_loop: Some(tool_loop),
+        submission_mode: crate::probe_lane::ProbeLaneTurnSubmissionMode::Continue,
+    };
+    match state.queue_probe_command(command) {
+        Ok(_) => {
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.chat_inputs.composer.set_value(prompt.clone());
+            state.autopilot_chat.record_composer_draft(prompt);
             state
                 .autopilot_chat
                 .mark_pending_turn_dispatch_failed(error);
@@ -2792,6 +2939,117 @@ fn current_chat_workspace_root(state: &crate::app_state::RenderState) -> Option<
         })
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum ProbeWorkspaceAttachDecision {
+    StartNew,
+    Attach {
+        thread_id: String,
+        reused_attached_session: bool,
+        sibling_matches: Vec<String>,
+    },
+    Collision {
+        thread_ids: Vec<String>,
+    },
+}
+
+fn decide_probe_workspace_attach_for_chat(
+    chat: &crate::app_state::AutopilotChatState,
+    workspace_root: &str,
+    attached_session_id: Option<&str>,
+) -> ProbeWorkspaceAttachDecision {
+    let candidates = chat.probe_workspace_thread_ids(workspace_root);
+    if candidates.is_empty() {
+        return ProbeWorkspaceAttachDecision::StartNew;
+    }
+    if let Some(attached_session_id) = attached_session_id
+        && let Some(index) = candidates
+            .iter()
+            .position(|thread_id| thread_id == attached_session_id)
+    {
+        let mut sibling_matches = candidates.clone();
+        sibling_matches.remove(index);
+        return ProbeWorkspaceAttachDecision::Attach {
+            thread_id: attached_session_id.to_string(),
+            reused_attached_session: true,
+            sibling_matches,
+        };
+    }
+    if candidates.len() == 1 {
+        return ProbeWorkspaceAttachDecision::Attach {
+            thread_id: candidates[0].clone(),
+            reused_attached_session: false,
+            sibling_matches: Vec::new(),
+        };
+    }
+    ProbeWorkspaceAttachDecision::Collision {
+        thread_ids: candidates,
+    }
+}
+
+fn decide_probe_workspace_attach(
+    state: &crate::app_state::RenderState,
+    workspace_root: &str,
+) -> ProbeWorkspaceAttachDecision {
+    decide_probe_workspace_attach_for_chat(
+        &state.autopilot_chat,
+        workspace_root,
+        state.probe_lane.active_session_id.as_deref(),
+    )
+}
+
+fn attach_existing_probe_thread(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+    workspace_label: &str,
+    reused_attached_session: bool,
+    sibling_matches: &[String],
+) -> bool {
+    let Some(target) = state.autopilot_chat.select_thread_by_id(thread_id) else {
+        state.autopilot_chat.last_error = Some(format!(
+            "Probe session `{thread_id}` is known locally but the desktop could not select it."
+        ));
+        return true;
+    };
+    restore_chat_composer_draft(state);
+    focus_chat_composer(state);
+    state
+        .autopilot_chat
+        .restore_session_preferences_from_thread(&target.thread_id);
+    let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
+        session_id: probe_protocol::session::SessionId::new(target.thread_id.clone()),
+    };
+    if let Err(error) = state.queue_probe_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    let reuse_prefix = if reused_attached_session {
+        "Reattached the Probe session already attached for this workspace"
+    } else {
+        "Attached the existing Probe session for this workspace"
+    };
+    let sibling_note = if sibling_matches.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Other live sessions still exist: {}.",
+            sibling_matches.join(", ")
+        )
+    };
+    state.autopilot_chat.set_copy_notice(
+        std::time::Instant::now(),
+        format!("{reuse_prefix}: {}.{}", target.thread_id, sibling_note),
+    );
+    state.autopilot_chat.last_error = None;
+    tracing::info!(
+        "probe session attach workspace={} thread_id={} reused_attached_session={} sibling_matches={}",
+        workspace_label,
+        target.thread_id,
+        reused_attached_session,
+        sibling_matches.join(",")
+    );
+    true
+}
+
 fn remember_chat_command_prompt(state: &mut crate::app_state::RenderState, prompt: &str) {
     if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
         state
@@ -3795,7 +4053,7 @@ fn parse_chat_request_intent(prompt: &str) -> Result<Option<ChatRequestComposerI
     };
     if !matches!(
         first_word,
-        "/requests" | "/approvals" | "/approval" | "/tool" | "/auth"
+        "/requests" | "/approvals" | "/approval" | "/tool" | "/auth" | "/queue" | "/queued"
     ) {
         return Ok(None);
     }
@@ -3835,6 +4093,15 @@ fn parse_chat_request_intent(prompt: &str) -> Result<Option<ChatRequestComposerI
                 "Approval commands: `/approvals`, `/approvals accept`, `/approvals session`, `/approvals decline`, `/approvals cancel`"
                     .to_string(),
             ),
+        },
+        "/queue" | "/queued" => match words.get(1).map(String::as_str) {
+            None | Some("list") if words.len() <= 2 => {
+                Ok(Some(ChatRequestComposerIntent::QueueSummary))
+            }
+            Some("cancel") if words.len() <= 3 => Ok(Some(ChatRequestComposerIntent::QueueCancel {
+                turn_id: words.get(2).cloned(),
+            })),
+            _ => Err("Queue commands: `/queue`, `/queue cancel [turn-id]`".to_string()),
         },
         "/tool" => match words.get(1).map(String::as_str) {
             Some("respond") if words.len() == 2 => Ok(Some(ChatRequestComposerIntent::ToolCallRespond)),
@@ -3892,6 +4159,53 @@ fn parse_chat_remote_intent(prompt: &str) -> Result<Option<ChatRemoteComposerInt
                 .to_string(),
         ),
     }
+}
+
+fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let Some(first_word) = trimmed.split_whitespace().next() else {
+        return Ok(None);
+    };
+    if first_word != "/handoff" && first_word != "/restore" {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    if first_word == "/restore" {
+        let Some(restore_pointer) = words.get(1).cloned() else {
+            return Err("Usage: `/restore <restore-pointer>` or `/restore <restore-pointer> <snapshot-ref>`.".to_string());
+        };
+        if words.len() > 3 {
+            return Err("Usage: `/restore <restore-pointer>` or `/restore <restore-pointer> <snapshot-ref>`.".to_string());
+        }
+        return Ok(Some(ChatForgeComposerIntent::RestoreMark {
+            restore_pointer,
+            snapshot_ref: words.get(2).cloned(),
+        }));
+    }
+    let owner = match words.get(1).map(String::as_str) {
+        Some("human") | Some("local-human") => {
+            crate::app_state::ForgeSharedSessionControlOwner::HumanLocal
+        }
+        Some("agent") | Some("probe") | Some("local-probe") => {
+            crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent
+        }
+        _ => {
+            return Err(
+                "Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string(),
+            );
+        }
+    };
+    if words.len() < 3 {
+        return Err("Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string());
+    }
+    let summary = words[2..].join(" ").trim().to_string();
+    if summary.is_empty() {
+        return Err("Shared-session handoff summary cannot be empty.".to_string());
+    }
+    Ok(Some(ChatForgeComposerIntent::Handoff { owner, summary }))
 }
 
 fn resolve_discovered_skill_index(
@@ -4280,6 +4594,14 @@ fn format_apps_summary(state: &crate::app_state::RenderState) -> String {
 }
 
 fn format_request_summary(state: &crate::app_state::RenderState) -> String {
+    let has_request_prompts = !state.autopilot_chat.pending_command_approvals.is_empty()
+        || !state
+            .autopilot_chat
+            .pending_file_change_approvals
+            .is_empty()
+        || !state.autopilot_chat.pending_tool_calls.is_empty()
+        || !state.autopilot_chat.pending_tool_user_input.is_empty()
+        || !state.autopilot_chat.pending_auth_refresh.is_empty();
     let mut lines = vec![format!(
         "Pending requests: command approvals={}, file approvals={}, tool calls={}, tool prompts={}, auth refresh={}.",
         state.autopilot_chat.pending_command_approvals.len(),
@@ -4331,16 +4653,36 @@ fn format_request_summary(state: &crate::app_state::RenderState) -> String {
             request.previous_account_id.as_deref().unwrap_or("n/a")
         ));
     }
-    if lines.len() == 1
-        && state.autopilot_chat.pending_command_approvals.is_empty()
-        && state
-            .autopilot_chat
-            .pending_file_change_approvals
-            .is_empty()
-        && state.autopilot_chat.pending_tool_calls.is_empty()
-        && state.autopilot_chat.pending_tool_user_input.is_empty()
-        && state.autopilot_chat.pending_auth_refresh.is_empty()
+    if state.uses_probe_runtime()
+        && let Some(thread_id) = state.autopilot_chat.active_thread_id.as_deref()
     {
+        if let Some(control) = latest_probe_turn_control_for_thread(state, thread_id) {
+            lines.push(format!(
+                "Probe turn control: active={} queued={} recent={}.",
+                control
+                    .active_turn
+                    .as_ref()
+                    .map(|turn| turn.turn_id.as_str())
+                    .unwrap_or("none"),
+                control.queued_turns.len(),
+                control.recent_turns.len()
+            ));
+            for queued_turn in control.queued_turns.iter().take(3) {
+                lines.push(format!(
+                    "Queued turn: id={} position={} author={}",
+                    queued_turn.turn_id,
+                    queued_turn.queue_position.unwrap_or(0),
+                    queued_turn.author.client_name
+                ));
+            }
+        } else {
+            lines.push(
+                "Probe turn control cache is empty for the active thread. Reload the session if queue state looks stale."
+                    .to_string(),
+            );
+        }
+    }
+    if !has_request_prompts {
         lines.push("No pending approvals or request-flow prompts.".to_string());
     } else {
         lines.push(
@@ -4348,7 +4690,74 @@ fn format_request_summary(state: &crate::app_state::RenderState) -> String {
                 .to_string(),
         );
     }
+    if state.uses_probe_runtime() {
+        lines.push("Probe queue commands: `/queue`, `/queue cancel [turn-id]`.".to_string());
+    }
     lines.join("\n")
+}
+
+fn latest_probe_turn_control_for_thread(
+    state: &crate::app_state::RenderState,
+    thread_id: &str,
+) -> Option<probe_protocol::runtime::InspectSessionTurnsResponse> {
+    state
+        .probe_notifications
+        .iter()
+        .rev()
+        .find_map(|notification| match notification {
+            crate::probe_lane::ProbeLaneNotification::SessionLoaded { snapshot, control }
+                if snapshot.session.id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            crate::probe_lane::ProbeLaneNotification::TurnQueued { response, control }
+                if response.turn.session_id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            crate::probe_lane::ProbeLaneNotification::TurnInterrupted { response, control }
+                if response.session_id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            crate::probe_lane::ProbeLaneNotification::QueuedTurnCancelled { response, control }
+                if response.session_id.as_str() == thread_id =>
+            {
+                Some(control.clone())
+            }
+            _ => None,
+        })
+}
+
+fn resolve_probe_queue_cancel_target(
+    control: &probe_protocol::runtime::InspectSessionTurnsResponse,
+    turn_id: Option<&str>,
+) -> Result<String, String> {
+    if control.queued_turns.is_empty() {
+        return Err(
+            "No queued Probe turns are available to cancel. Use interrupt to stop the active turn."
+                .to_string(),
+        );
+    }
+    let requested = match turn_id.map(str::trim) {
+        Some(value) if !value.is_empty() && value != "latest" && value != "newest" => Some(value),
+        _ => None,
+    };
+    if let Some(requested) = requested {
+        return control
+            .queued_turns
+            .iter()
+            .find(|turn| turn.turn_id == requested)
+            .map(|turn| turn.turn_id.clone())
+            .ok_or_else(|| {
+                format!("Queued Probe turn `{requested}` is not in the current queue.")
+            });
+    }
+    control
+        .queued_turns
+        .last()
+        .map(|turn| turn.turn_id.clone())
+        .ok_or_else(|| "No queued Probe turns are available to cancel.".to_string())
 }
 
 fn append_chat_command_result(
@@ -4674,6 +5083,9 @@ fn run_chat_request_action(
         ChatRequestComposerIntent::Summary => {
             append_chat_command_result(state, prompt, format_request_summary(state), false)
         }
+        ChatRequestComposerIntent::QueueSummary => {
+            append_chat_command_result(state, prompt, format_request_summary(state), false)
+        }
         ChatRequestComposerIntent::Approval { decision, label } => {
             let had_requests = !state.autopilot_chat.pending_command_approvals.is_empty()
                 || !state
@@ -4694,6 +5106,52 @@ fn run_chat_request_action(
                 "No pending approval requests".to_string()
             };
             append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatRequestComposerIntent::QueueCancel { turn_id } => {
+            if !state.uses_probe_runtime() {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "Queued turn cancel is only wired for Probe-backed sessions.".to_string(),
+                    true,
+                );
+            }
+            let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "No active Probe session is selected.".to_string(),
+                    true,
+                );
+            };
+            let Some(control) = latest_probe_turn_control_for_thread(state, thread_id.as_str())
+            else {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "Probe queue state is not loaded yet. Reload the session and try again."
+                        .to_string(),
+                    true,
+                );
+            };
+            let target_turn_id =
+                match resolve_probe_queue_cancel_target(&control, turn_id.as_deref()) {
+                    Ok(turn_id) => turn_id,
+                    Err(error) => return append_chat_command_result(state, prompt, error, true),
+                };
+            let command = crate::probe_lane::ProbeLaneCommand::CancelQueuedTurn {
+                session_id: probe_protocol::session::SessionId::new(thread_id),
+                turn_id: target_turn_id.clone(),
+            };
+            match state.queue_probe_command(command) {
+                Ok(_) => append_chat_command_result(
+                    state,
+                    prompt,
+                    format!("Queued Probe turn cancel for `{target_turn_id}`."),
+                    false,
+                ),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
         }
         ChatRequestComposerIntent::ToolCallRespond => {
             let had_requests = !state.autopilot_chat.pending_tool_calls.is_empty();
@@ -4808,6 +5266,84 @@ fn run_chat_remote_action(
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
         }
+    }
+}
+
+fn run_chat_forge_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatForgeComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
+        return append_chat_command_result(
+            state,
+            prompt,
+            "No active Probe-backed thread is selected for shared-session handoff.".to_string(),
+            true,
+        );
+    };
+    let probe_backed_thread = state
+        .autopilot_chat
+        .thread_metadata
+        .get(&thread_id)
+        .map(|metadata| metadata.probe_runtime_status.is_some() || metadata.probe_archived)
+        .unwrap_or(false);
+    if !probe_backed_thread {
+        return append_chat_command_result(
+            state,
+            prompt,
+            "Shared-session handoff is only available for Probe-backed threads.".to_string(),
+            true,
+        );
+    }
+
+    match intent {
+        ChatForgeComposerIntent::Handoff { owner, summary } => match state
+            .autopilot_chat
+            .record_shared_session_handoff_for_thread(
+                thread_id.as_str(),
+                owner,
+                summary.clone(),
+                "operator.command:/handoff",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded shared-session handoff `{shared_session_id}` to {}.\n\n{}",
+                    owner.display_label(),
+                    summary
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::RestoreMark {
+            restore_pointer,
+            snapshot_ref,
+        } => match state
+            .autopilot_chat
+            .mark_probe_workspace_restored_for_thread(
+                thread_id.as_str(),
+                restore_pointer.clone(),
+                snapshot_ref.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Marked shared session `{shared_session_id}` as restored from `{restore_pointer}`. Snapshot ref: {}.",
+                    snapshot_ref.as_deref().unwrap_or("unavailable from current Probe seam")
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
     }
 }
 
@@ -5301,6 +5837,49 @@ fn chat_session_concrete_model(state: &crate::app_state::RenderState) -> Option<
         })
 }
 
+fn probe_backend_profile_for_chat_session(
+    state: &crate::app_state::RenderState,
+) -> probe_protocol::backend::BackendProfile {
+    let mut profile = probe_core::backend_profiles::openai_codex_subscription();
+    if let Some(model) = chat_session_concrete_model(state) {
+        profile.model = model;
+    }
+    profile.reasoning_level = state.autopilot_chat.reasoning_effort.clone();
+    profile
+}
+
+fn probe_tool_loop_config_for_chat_session(
+    state: &crate::app_state::RenderState,
+) -> probe_core::tools::ToolLoopConfig {
+    let mut config = probe_core::tools::ToolLoopConfig::coding_bootstrap(
+        probe_core::tools::ProbeToolChoice::Auto,
+        false,
+    );
+    config.approval.allow_write_tools = false;
+    config.approval.allow_network_shell = false;
+    config.approval.allow_destructive_shell = false;
+    config.approval.denied_action = probe_core::tools::ToolDeniedAction::Pause;
+
+    if matches!(
+        state.autopilot_chat.approval_mode,
+        codex_client::AskForApproval::Never
+    ) {
+        match state.autopilot_chat.sandbox_mode {
+            codex_client::SandboxMode::ReadOnly => {}
+            codex_client::SandboxMode::WorkspaceWrite => {
+                config.approval.allow_write_tools = true;
+            }
+            codex_client::SandboxMode::DangerFullAccess => {
+                config.approval.allow_write_tools = true;
+                config.approval.allow_network_shell = true;
+                config.approval.allow_destructive_shell = true;
+            }
+        }
+    }
+
+    config
+}
+
 pub(super) fn chat_session_collaboration_mode(
     state: &crate::app_state::RenderState,
 ) -> Option<serde_json::Value> {
@@ -5647,6 +6226,19 @@ fn sync_chat_thread_search_term(state: &mut crate::app_state::RenderState) {
 
 pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
     sync_chat_thread_search_term(state);
+    if state.uses_probe_runtime() {
+        let cwd = current_chat_workspace_root(state).map(std::path::PathBuf::from);
+        if let Err(error) =
+            state.queue_probe_command(crate::probe_lane::ProbeLaneCommand::RefreshSessions {
+                workspace_cwd: cwd,
+            })
+        {
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
     let cwd = current_chat_workspace_root(state).or_else(|| {
         std::env::current_dir()
             .ok()
@@ -5692,6 +6284,21 @@ pub(super) fn run_chat_pending_thread_history_refresh_tick(
         .thread_history_refresh_retry_due(now, std::time::Duration::from_secs(2))
     {
         return false;
+    }
+    if state.uses_probe_runtime() {
+        sync_chat_thread_search_term(state);
+        let cwd = current_chat_workspace_root(state).map(std::path::PathBuf::from);
+        let result =
+            state.queue_probe_command(crate::probe_lane::ProbeLaneCommand::RefreshSessions {
+                workspace_cwd: cwd,
+            });
+        if let Err(error) = result {
+            state.autopilot_chat.last_error = Some(error);
+            return false;
+        }
+        state.autopilot_chat.last_error = None;
+        state.autopilot_chat.pending_thread_history_refresh_on_ready = false;
+        return true;
     }
     state
         .autopilot_chat
@@ -5748,6 +6355,70 @@ fn queue_coding_agent_thread_history_refresh_for_workspace(
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
     sync_chat_composer_draft(state);
+    if state.uses_probe_runtime() {
+        let workspace_root = state
+            .autopilot_chat
+            .active_project()
+            .map(|project| project.workspace_root.clone())
+            .or_else(|| current_chat_workspace_root(state))
+            .and_then(|value| {
+                let trimmed = value.trim().to_string();
+                (!trimmed.is_empty()).then_some(trimmed)
+            });
+        let cwd = workspace_root
+            .clone()
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::current_dir().ok());
+        let Some(cwd) = cwd else {
+            state.autopilot_chat.last_error =
+                Some("No workspace available for new Probe session".to_string());
+            return true;
+        };
+        let workspace_label = workspace_root
+            .clone()
+            .unwrap_or_else(|| cwd.display().to_string());
+        match decide_probe_workspace_attach(state, workspace_label.as_str()) {
+            ProbeWorkspaceAttachDecision::Attach {
+                thread_id,
+                reused_attached_session,
+                sibling_matches,
+            } => {
+                return attach_existing_probe_thread(
+                    state,
+                    thread_id.as_str(),
+                    workspace_label.as_str(),
+                    reused_attached_session,
+                    sibling_matches.as_slice(),
+                );
+            }
+            ProbeWorkspaceAttachDecision::Collision { thread_ids } => {
+                state.autopilot_chat.last_error = Some(format!(
+                    "Multiple live Probe sessions already exist for {}: {}. Select one from the thread rail instead of starting a new session.",
+                    workspace_label,
+                    thread_ids.join(", ")
+                ));
+                return true;
+            }
+            ProbeWorkspaceAttachDecision::StartNew => {}
+        }
+        let title = state
+            .autopilot_chat
+            .active_project()
+            .map(|project| project.project_name.clone())
+            .or_else(|| Some(state.autopilot_chat.next_thread_name()));
+        let command = crate::probe_lane::ProbeLaneCommand::StartSession {
+            title,
+            cwd,
+            profile: probe_backend_profile_for_chat_session(state),
+            system_prompt: None,
+        };
+        if let Err(error) = state.queue_probe_command(command) {
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
     let project_defaults = state
         .autopilot_chat
         .active_project()
@@ -5793,12 +6464,15 @@ pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderSta
 }
 
 pub(crate) fn run_chat_toggle_model_menu_action(state: &mut crate::app_state::RenderState) -> bool {
-    let keyboard_index = (!state.autopilot_chat.models.is_empty())
-        .then_some(state.autopilot_chat.selected_model.min(state.autopilot_chat.models.len() - 1));
-    state.autopilot_chat.toggle_header_menu(
-        crate::app_state::ChatHeaderMenuKind::Model,
-        keyboard_index,
+    let keyboard_index = (!state.autopilot_chat.models.is_empty()).then_some(
+        state
+            .autopilot_chat
+            .selected_model
+            .min(state.autopilot_chat.models.len() - 1),
     );
+    state
+        .autopilot_chat
+        .toggle_header_menu(crate::app_state::ChatHeaderMenuKind::Model, keyboard_index);
     true
 }
 
@@ -5965,6 +6639,27 @@ pub(super) fn run_chat_interrupt_turn_action(state: &mut crate::app_state::Rende
         return true;
     };
 
+    if state.uses_probe_runtime() {
+        let command = crate::probe_lane::ProbeLaneCommand::InterruptTurn {
+            session_id: probe_protocol::session::SessionId::new(thread_id),
+        };
+        match state.queue_probe_command(command) {
+            Ok(_) => {
+                state
+                    .autopilot_chat
+                    .record_turn_timeline_event(format!("probe interrupt requested: {turn_id}"));
+                state
+                    .autopilot_chat
+                    .set_turn_status(Some("interruptRequested".to_string()));
+                state.autopilot_chat.last_error = None;
+            }
+            Err(error) => {
+                state.autopilot_chat.last_error = Some(error);
+            }
+        }
+        return true;
+    }
+
     let command =
         crate::codex_lane::CodexLaneCommand::TurnInterrupt(codex_client::TurnInterruptParams {
             thread_id,
@@ -5991,11 +6686,24 @@ pub(super) fn active_thread_id(state: &crate::app_state::RenderState) -> Option<
     state.autopilot_chat.active_thread_id.clone()
 }
 
+fn probe_runtime_action_unavailable(
+    state: &mut crate::app_state::RenderState,
+    action: &str,
+) -> bool {
+    state.autopilot_chat.last_error = Some(format!(
+        "{action} is not wired for Probe-backed sessions yet."
+    ));
+    true
+}
+
 pub(super) fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     let Some(thread_id) = active_thread_id(state) else {
         state.autopilot_chat.last_error = Some("No active thread to fork".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread fork");
+    }
     let cwd = current_chat_session_cwd(state);
     let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadFork(ThreadForkParams {
@@ -6023,6 +6731,9 @@ pub(super) fn run_chat_archive_thread_action(state: &mut crate::app_state::Rende
         state.autopilot_chat.last_error = Some("No active thread to archive".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread archive");
+    }
     if let Err(error) = state.queue_codex_command(
         crate::codex_lane::CodexLaneCommand::ThreadArchive(ThreadArchiveParams { thread_id }),
     ) {
@@ -6036,6 +6747,9 @@ pub(super) fn run_chat_unarchive_thread_action(state: &mut crate::app_state::Ren
         state.autopilot_chat.last_error = Some("No active thread to unarchive".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread unarchive");
+    }
     if let Err(error) = state.queue_codex_command(
         crate::codex_lane::CodexLaneCommand::ThreadUnarchive(ThreadUnarchiveParams { thread_id }),
     ) {
@@ -6049,6 +6763,9 @@ pub(super) fn run_chat_rename_thread_action(state: &mut crate::app_state::Render
         state.autopilot_chat.last_error = Some("No active thread to rename".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread rename");
+    }
     let name = state
         .autopilot_chat
         .suggested_thread_name(&thread_id)
@@ -6070,6 +6787,17 @@ pub(super) fn run_chat_reload_thread_action(state: &mut crate::app_state::Render
         state.autopilot_chat.last_error = Some("No active thread to reload".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
+            session_id: probe_protocol::session::SessionId::new(thread_id),
+        };
+        if let Err(error) = state.queue_probe_command(command) {
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
     let command = crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
         thread_id,
         include_turns: true,
@@ -6162,6 +6890,9 @@ pub(super) fn run_chat_rollback_thread_action(state: &mut crate::app_state::Rend
         state.autopilot_chat.last_error = Some("No active thread to rollback".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread rollback");
+    }
     let command = crate::codex_lane::CodexLaneCommand::ThreadRollback(ThreadRollbackParams {
         thread_id,
         num_turns: 1,
@@ -6219,6 +6950,9 @@ pub(super) fn run_chat_review_action(state: &mut crate::app_state::RenderState) 
         state.autopilot_chat.last_error = Some("No active thread to review".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Review");
+    }
     let command =
         crate::codex_lane::CodexLaneCommand::ReviewStart(codex_client::ReviewStartParams {
             thread_id,
@@ -6236,6 +6970,9 @@ pub(super) fn run_chat_compact_thread_action(state: &mut crate::app_state::Rende
         state.autopilot_chat.last_error = Some("No active thread to compact".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Compaction");
+    }
     let command =
         crate::codex_lane::CodexLaneCommand::ThreadCompactStart(ThreadCompactStartParams {
             thread_id,
@@ -6253,6 +6990,9 @@ pub(super) fn run_chat_unsubscribe_thread_action(
         state.autopilot_chat.last_error = Some("No active thread to unsubscribe".to_string());
         return true;
     };
+    if state.uses_probe_runtime() {
+        return probe_runtime_action_unavailable(state, "Thread unsubscribe");
+    }
     let command = crate::codex_lane::CodexLaneCommand::ThreadUnsubscribe(ThreadUnsubscribeParams {
         thread_id,
     });
@@ -6289,6 +7029,22 @@ pub(super) fn run_chat_select_thread_action(
             let Some(target) = state.autopilot_chat.select_thread_by_index(preview_index) else {
                 return false;
             };
+            if state.uses_probe_runtime() {
+                restore_chat_composer_draft(state);
+                focus_chat_composer(state);
+                state
+                    .autopilot_chat
+                    .restore_session_preferences_from_thread(&target.thread_id);
+                let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
+                    session_id: probe_protocol::session::SessionId::new(target.thread_id),
+                };
+                if let Err(error) = state.queue_probe_command(command) {
+                    state.autopilot_chat.last_error = Some(error);
+                } else {
+                    state.autopilot_chat.last_error = None;
+                }
+                return true;
+            }
             restore_chat_composer_draft(state);
             focus_chat_composer(state);
             let experimental_api = state.codex_lane_config.experimental_api;
@@ -7736,6 +8492,61 @@ pub(super) fn run_chat_approval_response_action(
     state: &mut crate::app_state::RenderState,
     decision: ApprovalDecision,
 ) -> bool {
+    if state.uses_probe_runtime() {
+        let Some(request) = state.autopilot_chat.pop_command_approval() else {
+            state.autopilot_chat.last_error = Some("No pending approval requests".to_string());
+            return true;
+        };
+        let (resolution, decision_label) = match decision {
+            ApprovalDecision::Accept => (
+                probe_protocol::session::ToolApprovalResolution::Approved,
+                "Accept",
+            ),
+            ApprovalDecision::AcceptForSession => (
+                probe_protocol::session::ToolApprovalResolution::Approved,
+                "AcceptForSession (mapped to per-call Probe approval)",
+            ),
+            ApprovalDecision::Decline => (
+                probe_protocol::session::ToolApprovalResolution::Rejected,
+                "Decline",
+            ),
+            ApprovalDecision::Cancel => (
+                probe_protocol::session::ToolApprovalResolution::Rejected,
+                "Cancel (mapped to reject)",
+            ),
+            ApprovalDecision::Unknown => (
+                probe_protocol::session::ToolApprovalResolution::Rejected,
+                "Unknown (mapped to reject)",
+            ),
+        };
+        let command = crate::probe_lane::ProbeLaneCommand::ResolvePendingApproval {
+            session_id: probe_protocol::session::SessionId::new(request.thread_id.clone()),
+            call_id: request.item_id.clone(),
+            resolution,
+            profile: probe_backend_profile_for_chat_session(state),
+            tool_loop: probe_tool_loop_config_for_chat_session(state),
+        };
+        if let Err(error) = state.queue_probe_command(command) {
+            state
+                .autopilot_chat
+                .pending_command_approvals
+                .insert(0, request);
+            state.autopilot_chat.last_error = Some(error);
+        } else {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("probe approval response: {decision_label}"));
+            state.autopilot_chat.record_turn_command_approval_response(
+                request.turn_id.as_str(),
+                request.item_id.as_str(),
+                decision_label,
+                current_epoch_millis(),
+            );
+            state.autopilot_chat.last_error = None;
+        }
+        return true;
+    }
+
     if let Some(request) = state.autopilot_chat.pop_command_approval() {
         let decision_label = format!("{:?}", decision);
         let command = crate::codex_lane::CodexLaneCommand::ServerRequestCommandApprovalRespond {
@@ -11287,8 +12098,12 @@ pub(super) fn run_psionic_remote_training_action(
             let run_id = status.runs.get(row_index).map(|run| run.run_id.clone());
             if let Some(run_id) = run_id {
                 state.desktop_control.remote_training.selected_run_id = Some(run_id.clone());
-                state.desktop_control.remote_training.focused_topology_target = None;
-                state.desktop_control
+                state
+                    .desktop_control
+                    .remote_training
+                    .focused_topology_target = None;
+                state
+                    .desktop_control
                     .remote_training
                     .selected_provenance_artifact_role = None;
                 state.desktop_control.remote_training.last_action =
@@ -11304,9 +12119,17 @@ pub(super) fn run_psionic_remote_training_action(
                 .remote_training
                 .selected_run_id
                 .clone()
-                .or_else(|| status.selected_run.as_ref().map(|selected| selected.run.run_id.clone()));
+                .or_else(|| {
+                    status
+                        .selected_run
+                        .as_ref()
+                        .map(|selected| selected.run.run_id.clone())
+                });
             if let Some(run_id) = baseline_run_id {
-                state.desktop_control.remote_training.compare_baseline_run_id = Some(run_id.clone());
+                state
+                    .desktop_control
+                    .remote_training
+                    .compare_baseline_run_id = Some(run_id.clone());
                 state.desktop_control.remote_training.last_action =
                     Some(format!("Pinned compare baseline {run_id}"));
                 state.desktop_control.remote_training.last_error = None;
@@ -11314,14 +12137,20 @@ pub(super) fn run_psionic_remote_training_action(
             true
         }
         PsionicRemoteTrainingPaneAction::ClearCompareBaseline => {
-            state.desktop_control.remote_training.compare_baseline_run_id = None;
+            state
+                .desktop_control
+                .remote_training
+                .compare_baseline_run_id = None;
             state.desktop_control.remote_training.last_action =
                 Some("Cleared remote training compare baseline".to_string());
             state.desktop_control.remote_training.last_error = None;
             true
         }
         PsionicRemoteTrainingPaneAction::SetChartAnchor(ratio) => {
-            state.desktop_control.remote_training.chart_anchor_ratio_milli = Some(ratio.min(1000));
+            state
+                .desktop_control
+                .remote_training
+                .chart_anchor_ratio_milli = Some(ratio.min(1000));
             state.desktop_control.remote_training.last_action = Some(format!(
                 "Set remote training chart anchor {}%",
                 ratio.min(1000) as f32 / 10.0
@@ -11330,7 +12159,10 @@ pub(super) fn run_psionic_remote_training_action(
             true
         }
         PsionicRemoteTrainingPaneAction::ClearChartAnchor => {
-            state.desktop_control.remote_training.chart_anchor_ratio_milli = None;
+            state
+                .desktop_control
+                .remote_training
+                .chart_anchor_ratio_milli = None;
             state.desktop_control.remote_training.last_action =
                 Some("Returned remote training charts to the live anchor".to_string());
             state.desktop_control.remote_training.last_error = None;
@@ -11351,14 +12183,21 @@ pub(super) fn run_psionic_remote_training_action(
                     .as_deref()
                     == Some(target.key.as_str())
                 {
-                    state.desktop_control.remote_training.focused_topology_target = None;
+                    state
+                        .desktop_control
+                        .remote_training
+                        .focused_topology_target = None;
                     state.desktop_control.remote_training.last_action =
                         Some("Cleared remote training topology focus".to_string());
                 } else {
-                    state.desktop_control.remote_training.focused_topology_target =
-                        Some(target.key.clone());
-                    state.desktop_control.remote_training.last_action =
-                        Some(format!("Focused remote training topology on {}", target.label));
+                    state
+                        .desktop_control
+                        .remote_training
+                        .focused_topology_target = Some(target.key.clone());
+                    state.desktop_control.remote_training.last_action = Some(format!(
+                        "Focused remote training topology on {}",
+                        target.label
+                    ));
                 }
                 state.desktop_control.remote_training.last_error = None;
             }
@@ -11379,13 +12218,15 @@ pub(super) fn run_psionic_remote_training_action(
                     .as_deref()
                     == Some(artifact_role.as_str())
                 {
-                    state.desktop_control
+                    state
+                        .desktop_control
                         .remote_training
                         .selected_provenance_artifact_role = None;
                     state.desktop_control.remote_training.last_action =
                         Some("Collapsed remote training provenance detail".to_string());
                 } else {
-                    state.desktop_control
+                    state
+                        .desktop_control
                         .remote_training
                         .selected_provenance_artifact_role = Some(artifact_role.clone());
                     state.desktop_control.remote_training.last_action = Some(format!(
@@ -11423,8 +12264,10 @@ pub(super) fn run_xtrain_explorer_action(
             let next_view = crate::app_state::XtrainExplorerViewMode::ALL
                 [(current_index + 1) % crate::app_state::XtrainExplorerViewMode::ALL.len()];
             state.xtrain_explorer.selected_view = next_view;
-            state.xtrain_explorer.last_action =
-                Some(format!("Selected XTRAIN explorer {} view", next_view.label()));
+            state.xtrain_explorer.last_action = Some(format!(
+                "Selected XTRAIN explorer {} view",
+                next_view.label()
+            ));
             state.xtrain_explorer.last_error = None;
             true
         }
@@ -11461,8 +12304,9 @@ pub(super) fn run_xtrain_explorer_action(
                 .map(|participant| participant.participant_id.clone());
             if let Some(participant_id) = participant_id {
                 state.xtrain_explorer.selected_participant_id = Some(participant_id.clone());
-                state.xtrain_explorer.last_action =
-                    Some(format!("Selected XTRAIN explorer participant {participant_id}"));
+                state.xtrain_explorer.last_action = Some(format!(
+                    "Selected XTRAIN explorer participant {participant_id}"
+                ));
                 state.xtrain_explorer.last_error = None;
             }
             true
@@ -11526,8 +12370,7 @@ fn step_xtrain_explorer_snapshot(state: &mut crate::app_state::RenderState, delt
                     == Some(entry.snapshot_id.as_str())
             })
             .unwrap_or(0) as isize;
-        let next_index =
-            (current_index + delta).rem_euclid(index.entries.len() as isize) as usize;
+        let next_index = (current_index + delta).rem_euclid(index.entries.len() as isize) as usize;
         index.entries[next_index].snapshot_id.clone()
     };
     state.xtrain_explorer.selected_snapshot_id = Some(snapshot_id.clone());
@@ -11556,8 +12399,9 @@ fn step_xtrain_explorer_participant(state: &mut crate::app_state::RenderState, d
         (current_index + delta).rem_euclid(snapshot.participants.len() as isize) as usize;
     let participant_id = snapshot.participants[next_index].participant_id.clone();
     state.xtrain_explorer.selected_participant_id = Some(participant_id.clone());
-    state.xtrain_explorer.last_action =
-        Some(format!("Selected XTRAIN explorer participant {participant_id}"));
+    state.xtrain_explorer.last_action = Some(format!(
+        "Selected XTRAIN explorer participant {participant_id}"
+    ));
     state.xtrain_explorer.last_error = None;
 }
 
@@ -16107,7 +16951,12 @@ pub(super) fn run_spark_action(
     action: SparkPaneAction,
 ) -> bool {
     if action == SparkPaneAction::UseMnemonicPhrase {
-        let phrase = state.spark_inputs.mnemonic_phrase.get_value().trim().to_string();
+        let phrase = state
+            .spark_inputs
+            .mnemonic_phrase
+            .get_value()
+            .trim()
+            .to_string();
         // Never keep mnemonic text visible in the UI after submit.
         state.spark_inputs.mnemonic_phrase.set_value(String::new());
         if phrase.is_empty() {
@@ -16289,9 +17138,9 @@ pub(super) fn build_spark_command_for_action(
                 path: Some(std::path::PathBuf::from(trimmed)),
             })
         }
-        SparkPaneAction::UseDefaultIdentity => Ok(SparkWalletCommand::SetIdentityPathOverride {
-            path: None,
-        }),
+        SparkPaneAction::UseDefaultIdentity => {
+            Ok(SparkWalletCommand::SetIdentityPathOverride { path: None })
+        }
         SparkPaneAction::UseMnemonicPhrase => {
             Err("Mnemonic import action is handled directly in UI".to_string())
         }
@@ -16328,7 +17177,8 @@ pub(super) fn build_spark_command_for_action(
 
 fn generate_wallet_mnemonic_phrase() -> Result<String, String> {
     let mut entropy = [0_u8; 16];
-    getrandom::fill(&mut entropy).map_err(|error| format!("Failed to generate entropy: {error}"))?;
+    getrandom::fill(&mut entropy)
+        .map_err(|error| format!("Failed to generate entropy: {error}"))?;
     bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy)
         .map(|mnemonic| mnemonic.to_string())
         .map_err(|error| format!("Failed to create wallet mnemonic: {error}"))
@@ -16453,10 +17303,7 @@ fn schedule_sensitive_clipboard_clear(expected_contents: String, delay: std::tim
 }
 
 fn normalize_clipboard_for_compare(value: &str) -> String {
-    value
-        .trim_end_matches(['\r', '\n'])
-        .trim()
-        .to_string()
+    value.trim_end_matches(['\r', '\n']).trim().to_string()
 }
 
 fn read_system_clipboard_for_sensitive_expiry() -> Option<String> {
@@ -16633,23 +17480,25 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 mod tests {
     use super::{
         ACTIVE_JOB_PAYMENT_EVIDENCE_REFRESH_INTERVAL, ChatAppsComposerIntent,
-        ChatGitComposerIntent, ChatMcpComposerIntent, ChatRemoteComposerIntent,
-        ChatRequestComposerIntent, ChatSkillsComposerIntent, ChatSpacetimeComposerIntent,
-        ChatTerminalComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
-        DirectMessageComposerIntent, MISSION_CONTROL_BUY_MODE_PROMPT, ManagedChatComposerIntent,
+        ChatForgeComposerIntent, ChatGitComposerIntent, ChatMcpComposerIntent,
+        ChatRemoteComposerIntent, ChatRequestComposerIntent, ChatSkillsComposerIntent,
+        ChatSpacetimeComposerIntent, ChatTerminalComposerIntent, ChatWalletComposerIntent,
+        ChatWalletMessagePayload, DirectMessageComposerIntent, MISSION_CONTROL_BUY_MODE_PROMPT,
+        ManagedChatComposerIntent, ProbeWorkspaceAttachDecision,
         active_job_payment_evidence_refresh_due, build_direct_message_outbound_message,
         build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
         build_managed_chat_moderation_event, build_managed_chat_outbound_message,
         build_managed_chat_reaction_event, build_mission_control_buy_mode_request_event,
         build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
-        classify_provider_failure, default_pr_base_branch, extract_chat_wallet_payload,
-        extract_target_provider_pubkeys, git_common_worktree_root, git_current_branch,
-        git_local_branch_exists, github_compare_url, is_taxonomy_failure_detail,
-        loop_integrity_alert_specs, nip90_request_kind_for_request_type,
-        note_active_job_waiting_for_payment_evidence, parse_chat_apps_intent,
-        parse_chat_git_intent, parse_chat_mcp_intent, parse_chat_remote_intent,
-        parse_chat_request_intent, parse_chat_skills_intent, parse_chat_spacetime_intent,
-        parse_chat_terminal_intent, parse_chat_wallet_intent, parse_direct_message_creation_intent,
+        classify_provider_failure, decide_probe_workspace_attach_for_chat, default_pr_base_branch,
+        extract_chat_wallet_payload, extract_target_provider_pubkeys, git_common_worktree_root,
+        git_current_branch, git_local_branch_exists, github_compare_url,
+        is_taxonomy_failure_detail, loop_integrity_alert_specs,
+        nip90_request_kind_for_request_type, note_active_job_waiting_for_payment_evidence,
+        parse_chat_apps_intent, parse_chat_forge_intent, parse_chat_git_intent,
+        parse_chat_mcp_intent, parse_chat_remote_intent, parse_chat_request_intent,
+        parse_chat_skills_intent, parse_chat_spacetime_intent, parse_chat_terminal_intent,
+        parse_chat_wallet_intent, parse_direct_message_creation_intent,
         parse_direct_message_room_intent, parse_managed_chat_composer_intent,
         parse_managed_chat_mention_prefix, parse_shell_like_words,
         resolve_apple_fm_workbench_session_id, resolve_wallet_blink_env_from_secure_values,
@@ -17813,6 +18662,33 @@ mod tests {
     }
 
     #[test]
+    fn chat_handoff_commands_parse_human_and_agent_targets() {
+        assert_eq!(
+            parse_chat_forge_intent("/handoff human reviewed the diff manually").unwrap(),
+            Some(ChatForgeComposerIntent::Handoff {
+                owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
+                summary: "reviewed the diff manually".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff agent continue with the implementation").unwrap(),
+            Some(ChatForgeComposerIntent::Handoff {
+                owner: crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                summary: "continue with the implementation".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/restore restore-point-42 snapshot-ref-9").unwrap(),
+            Some(ChatForgeComposerIntent::RestoreMark {
+                restore_pointer: "restore-point-42".to_string(),
+                snapshot_ref: Some("snapshot-ref-9".to_string()),
+            })
+        );
+        assert!(parse_chat_forge_intent("/handoff").is_err());
+        assert!(parse_chat_forge_intent("/restore").is_err());
+    }
+
+    #[test]
     fn chat_skills_commands_parse_local_and_remote_workflows() {
         assert_eq!(
             parse_chat_skills_intent("/skills").unwrap(),
@@ -17872,6 +18748,16 @@ mod tests {
             })
         ));
         assert!(matches!(
+            parse_chat_request_intent("/queue").unwrap(),
+            Some(ChatRequestComposerIntent::QueueSummary)
+        ));
+        assert!(matches!(
+            parse_chat_request_intent("/queue cancel turn-queued-1").unwrap(),
+            Some(ChatRequestComposerIntent::QueueCancel {
+                turn_id: Some(turn_id)
+            }) if turn_id == "turn-queued-1"
+        ));
+        assert!(matches!(
             parse_chat_request_intent("/tool prompt respond").unwrap(),
             Some(ChatRequestComposerIntent::ToolUserInputRespond)
         ));
@@ -17888,6 +18774,81 @@ mod tests {
         assert_eq!(
             parse_chat_remote_intent("/remote rotate-token").unwrap(),
             Some(ChatRemoteComposerIntent::RotateToken)
+        );
+    }
+
+    #[test]
+    fn probe_workspace_attach_decision_reuses_attached_or_collides_honestly() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let workspace_root = std::fs::canonicalize(workspace.path())
+            .expect("workspace should canonicalize")
+            .display()
+            .to_string();
+        let mut chat = crate::app_state::AutopilotChatState::default();
+        chat.set_thread_entries(vec![
+            crate::app_state::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Thread A".to_string()),
+                preview: "a".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_200,
+            },
+            crate::app_state::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: Some("Thread B".to_string()),
+                preview: "b".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+        ]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, false);
+        chat.set_probe_thread_projection_state(
+            "thread-b",
+            Some("completed".to_string()),
+            false,
+            false,
+        );
+
+        assert_eq!(
+            decide_probe_workspace_attach_for_chat(
+                &chat,
+                workspace_root.as_str(),
+                Some("thread-b")
+            ),
+            ProbeWorkspaceAttachDecision::Attach {
+                thread_id: "thread-b".to_string(),
+                reused_attached_session: true,
+                sibling_matches: vec!["thread-a".to_string()],
+            }
+        );
+        assert_eq!(
+            decide_probe_workspace_attach_for_chat(&chat, workspace_root.as_str(), None),
+            ProbeWorkspaceAttachDecision::Collision {
+                thread_ids: vec!["thread-a".to_string(), "thread-b".to_string()],
+            }
+        );
+
+        chat.set_probe_thread_projection_state(
+            "thread-a",
+            Some("completed".to_string()),
+            true,
+            false,
+        );
+        assert_eq!(
+            decide_probe_workspace_attach_for_chat(&chat, workspace_root.as_str(), None),
+            ProbeWorkspaceAttachDecision::Attach {
+                thread_id: "thread-b".to_string(),
+                reused_attached_session: false,
+                sibling_matches: Vec::new(),
+            }
         );
     }
 

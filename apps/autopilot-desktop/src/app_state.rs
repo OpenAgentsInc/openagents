@@ -49,6 +49,10 @@ use crate::{
         CodexLaneCommand, CodexLaneCommandResponse, CodexLaneNotification, CodexLaneSnapshot,
         CodexLaneWorker,
     },
+    probe_lane::{
+        ProbeLaneCommand, ProbeLaneCommandResponse, ProbeLaneNotification, ProbeLaneSnapshot,
+        ProbeLaneWorker,
+    },
     spark_wallet::{SparkPaneState, SparkWalletCommand, SparkWalletWorker},
     stablesats_blink_worker::StableSatsBlinkWorker,
 };
@@ -71,6 +75,21 @@ pub const WINDOW_HEIGHT: f64 = 800.0;
 pub struct App {
     pub state: Option<RenderState>,
     pub cursor_position: Point,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AutopilotCodingRuntimeKind {
+    Codex,
+    Probe,
+}
+
+impl AutopilotCodingRuntimeKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Probe => "probe",
+        }
+    }
 }
 
 impl Default for App {
@@ -421,20 +440,14 @@ fn wallet_text_input(input: TextInput) -> TextInput {
 impl Default for SparkPaneInputs {
     fn default() -> Self {
         Self {
-            invoice_amount: wallet_text_input(
-                TextInput::new()
-                    .value("1000")
-                    .placeholder("1000"),
-            )
-            .padding(36.0, 6.0),
+            invoice_amount: wallet_text_input(TextInput::new().value("1000").placeholder("1000"))
+                .padding(36.0, 6.0),
             send_request: wallet_text_input(
                 TextInput::new()
                     .placeholder("Lightning invoice / payment request (ln...)")
                     .mono(true),
             ),
-            send_amount: wallet_text_input(
-                TextInput::new().placeholder("Amount sats (optional)"),
-            ),
+            send_amount: wallet_text_input(TextInput::new().placeholder("Amount sats (optional)")),
             identity_path: wallet_text_input(
                 TextInput::new()
                     .placeholder("Wallet seed path (identity mnemonic)")
@@ -458,9 +471,7 @@ impl Default for PayInvoicePaneInputs {
             payment_request: wallet_text_input(
                 TextInput::new().placeholder("Lightning invoice / payment request (ln...)"),
             ),
-            amount_sats: wallet_text_input(
-                TextInput::new().placeholder("Amount sats (optional)"),
-            ),
+            amount_sats: wallet_text_input(TextInput::new().placeholder("Amount sats (optional)")),
         }
     }
 }
@@ -8329,6 +8340,141 @@ pub struct AutopilotCompactionArtifact {
     pub restored_from_thread_read: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeSharedSessionControlOwner {
+    HumanLocal,
+    ProbeLocalAgent,
+}
+
+impl ForgeSharedSessionControlOwner {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::HumanLocal => "human_local",
+            Self::ProbeLocalAgent => "probe_local_agent",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::HumanLocal => "local human",
+            Self::ProbeLocalAgent => "local Probe agent",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionParticipant {
+    pub participant_id: String,
+    pub kind: ForgeSharedSessionControlOwner,
+    pub display_name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionHandoff {
+    pub from_owner: ForgeSharedSessionControlOwner,
+    pub to_owner: ForgeSharedSessionControlOwner,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeWorkspaceStartupKind {
+    #[default]
+    ColdStart,
+    WarmStart,
+    Restored,
+}
+
+impl ForgeWorkspaceStartupKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ColdStart => "cold_start",
+            Self::WarmStart => "warm_start",
+            Self::Restored => "restored",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::ColdStart => "cold start",
+            Self::WarmStart => "warm local reuse",
+            Self::Restored => "explicit restore",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeWorkspaceSnapshotRefStatus {
+    #[default]
+    MissingFromProbe,
+    Available,
+}
+
+impl ForgeWorkspaceSnapshotRefStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::MissingFromProbe => "missing_from_probe",
+            Self::Available => "available",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeWorkspaceBaseRepoRef {
+    pub remote_url: Option<String>,
+    pub git_branch: Option<String>,
+    pub head_commit: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeWorkspaceRestoreProvenance {
+    pub startup_kind: ForgeWorkspaceStartupKind,
+    pub base_repo: ForgeWorkspaceBaseRepoRef,
+    pub snapshot_ref: Option<String>,
+    pub restore_pointer: Option<String>,
+    pub snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus,
+    pub snapshot_ref_detail: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+impl Default for ForgeWorkspaceRestoreProvenance {
+    fn default() -> Self {
+        Self {
+            startup_kind: ForgeWorkspaceStartupKind::ColdStart,
+            base_repo: ForgeWorkspaceBaseRepoRef::default(),
+            snapshot_ref: None,
+            restore_pointer: None,
+            snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus::MissingFromProbe,
+            snapshot_ref_detail: Some(
+                "Current Probe seam does not expose snapshot refs yet.".to_string(),
+            ),
+            updated_at_epoch_ms: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSession {
+    pub shared_session_id: String,
+    pub probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub control_owner: ForgeSharedSessionControlOwner,
+    pub participants: Vec<ForgeSharedSessionParticipant>,
+    pub last_handoff: Option<ForgeSharedSessionHandoff>,
+    #[serde(default)]
+    pub workspace_restore: ForgeWorkspaceRestoreProvenance,
+    pub evidence_bundle_id: Option<String>,
+    pub delivery_receipt_id: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AutopilotProjectDefaults {
     pub model: Option<String>,
@@ -8577,6 +8723,8 @@ pub struct AutopilotThreadMetadata {
     pub thread_name: Option<String>,
     pub preview: Option<String>,
     pub status: Option<String>,
+    pub probe_runtime_status: Option<String>,
+    pub probe_archived: bool,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
@@ -8602,6 +8750,8 @@ impl Default for AutopilotThreadMetadata {
             thread_name: None,
             preview: None,
             status: None,
+            probe_runtime_status: None,
+            probe_archived: false,
             loaded: false,
             cwd: None,
             path: None,
@@ -8695,6 +8845,8 @@ pub struct AutopilotChatState {
     thread_diff_artifacts: std::collections::HashMap<String, Vec<AutopilotDiffArtifact>>,
     thread_review_artifacts: std::collections::HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: std::collections::HashMap<String, AutopilotCompactionArtifact>,
+    forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
+    next_forge_shared_session_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
@@ -8811,6 +8963,8 @@ impl Default for AutopilotChatState {
             thread_diff_artifacts,
             thread_review_artifacts,
             thread_compaction_artifacts,
+            forge_shared_sessions,
+            next_forge_shared_session_seq,
             review_thread_source_map,
             artifact_load_error,
         ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -8818,6 +8972,8 @@ impl Default for AutopilotChatState {
                 projection.thread_diff_artifacts,
                 projection.thread_review_artifacts,
                 projection.thread_compaction_artifacts,
+                projection.forge_shared_sessions,
+                projection.next_forge_shared_session_seq,
                 projection.review_thread_source_map,
                 None,
             ),
@@ -8825,6 +8981,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 HashMap::new(),
                 Some(error),
             ),
@@ -8849,6 +9007,8 @@ impl Default for AutopilotChatState {
             thread_diff_artifacts,
             thread_review_artifacts,
             thread_compaction_artifacts,
+            forge_shared_sessions,
+            next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             review_thread_source_map,
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
@@ -8925,8 +9085,9 @@ impl Default for AutopilotChatState {
     }
 }
 
-const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 1;
-const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v1";
+const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 2;
+const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v2";
+const CODEX_ARTIFACT_PROJECTION_STREAM_ID_V1: &str = "stream.codex_artifacts.v1";
 const CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD: usize = 8;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -8938,11 +9099,30 @@ struct CodexArtifactProjectionDocumentV1 {
     compaction_artifacts: Vec<AutopilotCompactionArtifact>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct CodexArtifactProjectionDocumentV2 {
+    schema_version: u16,
+    stream_id: String,
+    diff_artifacts: Vec<AutopilotDiffArtifact>,
+    review_artifacts: Vec<AutopilotReviewArtifact>,
+    compaction_artifacts: Vec<AutopilotCompactionArtifact>,
+    #[serde(default)]
+    shared_sessions: Vec<ForgeSharedSession>,
+    #[serde(default = "default_next_forge_shared_session_seq")]
+    next_shared_session_seq: u64,
+}
+
 struct LoadedCodexArtifactProjection {
     thread_diff_artifacts: HashMap<String, Vec<AutopilotDiffArtifact>>,
     thread_review_artifacts: HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: HashMap<String, AutopilotCompactionArtifact>,
+    forge_shared_sessions: HashMap<String, ForgeSharedSession>,
+    next_forge_shared_session_seq: u64,
     review_thread_source_map: HashMap<String, String>,
+}
+
+fn default_next_forge_shared_session_seq() -> u64 {
+    1
 }
 
 fn codex_artifact_projection_file_path() -> PathBuf {
@@ -9058,17 +9238,80 @@ fn normalize_codex_compaction_artifacts(
     artifacts
 }
 
+fn default_forge_shared_session_participants() -> Vec<ForgeSharedSessionParticipant> {
+    vec![
+        ForgeSharedSessionParticipant {
+            participant_id: "local-human".to_string(),
+            kind: ForgeSharedSessionControlOwner::HumanLocal,
+            display_name: "Local human".to_string(),
+        },
+        ForgeSharedSessionParticipant {
+            participant_id: "local-probe-agent".to_string(),
+            kind: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+            display_name: "Local Probe agent".to_string(),
+        },
+    ]
+}
+
+fn normalize_probe_session_ids(mut session_ids: Vec<String>) -> Vec<String> {
+    session_ids = session_ids
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect();
+    session_ids.sort();
+    session_ids.dedup();
+    session_ids
+}
+
+fn normalize_forge_shared_sessions(
+    mut sessions: Vec<ForgeSharedSession>,
+) -> Vec<ForgeSharedSession> {
+    sessions.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.shared_session_id.cmp(&rhs.shared_session_id))
+    });
+    let mut seen_ids = HashSet::new();
+    sessions.retain(|session| {
+        let shared_session_id = session.shared_session_id.trim();
+        !shared_session_id.is_empty() && seen_ids.insert(shared_session_id.to_string())
+    });
+    for session in &mut sessions {
+        session.shared_session_id = session.shared_session_id.trim().to_string();
+        session.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut session.probe_session_ids));
+        if session.participants.is_empty() {
+            session.participants = default_forge_shared_session_participants();
+        }
+        if session.workspace_restore.snapshot_ref.is_some() {
+            session.workspace_restore.snapshot_ref_status = ForgeWorkspaceSnapshotRefStatus::Available;
+            session.workspace_restore.snapshot_ref_detail = None;
+        } else {
+            session.workspace_restore.snapshot_ref_status =
+                ForgeWorkspaceSnapshotRefStatus::MissingFromProbe;
+            if session.workspace_restore.snapshot_ref_detail.is_none() {
+                session.workspace_restore.snapshot_ref_detail = Some(forge_probe_snapshot_ref_detail());
+            }
+        }
+    }
+    sessions.retain(|session| !session.probe_session_ids.is_empty());
+    sessions
+}
+
 fn persist_codex_artifact_projection(
     path: &Path,
     diff_artifacts: &HashMap<String, Vec<AutopilotDiffArtifact>>,
     review_artifacts: &HashMap<String, AutopilotReviewArtifact>,
     compaction_artifacts: &HashMap<String, AutopilotCompactionArtifact>,
+    forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
+    next_forge_shared_session_seq: u64,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("Failed to create Codex artifact dir: {error}"))?;
     }
-    let document = CodexArtifactProjectionDocumentV1 {
+    let document = CodexArtifactProjectionDocumentV2 {
         schema_version: CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION,
         stream_id: CODEX_ARTIFACT_PROJECTION_STREAM_ID.to_string(),
         diff_artifacts: normalize_codex_diff_artifacts(
@@ -9083,6 +9326,10 @@ fn persist_codex_artifact_projection(
         compaction_artifacts: normalize_codex_compaction_artifacts(
             compaction_artifacts.values().cloned().collect(),
         ),
+        shared_sessions: normalize_forge_shared_sessions(
+            forge_shared_sessions.values().cloned().collect(),
+        ),
+        next_shared_session_seq: next_forge_shared_session_seq.max(1),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
@@ -9102,28 +9349,79 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 thread_diff_artifacts: HashMap::new(),
                 thread_review_artifacts: HashMap::new(),
                 thread_compaction_artifacts: HashMap::new(),
+                forge_shared_sessions: HashMap::new(),
+                next_forge_shared_session_seq: 1,
                 review_thread_source_map: HashMap::new(),
             });
         }
         Err(error) => return Err(format!("Failed to read Codex artifacts: {error}")),
     };
-    let document = serde_json::from_str::<CodexArtifactProjectionDocumentV1>(&raw)
+    let document = serde_json::from_str::<serde_json::Value>(&raw)
         .map_err(|error| format!("Failed to parse Codex artifacts: {error}"))?;
-    if document.schema_version != CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION {
+    let schema_version = document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "Missing Codex artifact schema version".to_string())?
+        as u16;
+
+    match schema_version {
+        1 => load_codex_artifact_projection_v1(document),
+        CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION => load_codex_artifact_projection_v2(document),
+        other => Err(format!(
+            "Unsupported Codex artifact schema version: {other}"
+        )),
+    }
+}
+
+fn load_codex_artifact_projection_v1(
+    value: serde_json::Value,
+) -> Result<LoadedCodexArtifactProjection, String> {
+    let document = serde_json::from_value::<CodexArtifactProjectionDocumentV1>(value)
+        .map_err(|error| format!("Failed to decode Codex v1 artifacts: {error}"))?;
+    if document.stream_id != CODEX_ARTIFACT_PROJECTION_STREAM_ID_V1 {
         return Err(format!(
-            "Unsupported Codex artifact schema version: {}",
-            document.schema_version
+            "Unsupported Codex artifact stream id: {}",
+            document.stream_id
         ));
     }
+    Ok(build_loaded_codex_artifact_projection(
+        document.diff_artifacts,
+        document.review_artifacts,
+        document.compaction_artifacts,
+        Vec::new(),
+        1,
+    ))
+}
+
+fn load_codex_artifact_projection_v2(
+    value: serde_json::Value,
+) -> Result<LoadedCodexArtifactProjection, String> {
+    let document = serde_json::from_value::<CodexArtifactProjectionDocumentV2>(value)
+        .map_err(|error| format!("Failed to decode Codex v2 artifacts: {error}"))?;
     if document.stream_id != CODEX_ARTIFACT_PROJECTION_STREAM_ID {
         return Err(format!(
             "Unsupported Codex artifact stream id: {}",
             document.stream_id
         ));
     }
+    Ok(build_loaded_codex_artifact_projection(
+        document.diff_artifacts,
+        document.review_artifacts,
+        document.compaction_artifacts,
+        document.shared_sessions,
+        document.next_shared_session_seq,
+    ))
+}
 
+fn build_loaded_codex_artifact_projection(
+    diff_artifacts: Vec<AutopilotDiffArtifact>,
+    review_artifacts: Vec<AutopilotReviewArtifact>,
+    compaction_artifacts: Vec<AutopilotCompactionArtifact>,
+    shared_sessions: Vec<ForgeSharedSession>,
+    next_shared_session_seq: u64,
+) -> LoadedCodexArtifactProjection {
     let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
-    for artifact in normalize_codex_diff_artifacts(document.diff_artifacts) {
+    for artifact in normalize_codex_diff_artifacts(diff_artifacts) {
         thread_diff_artifacts
             .entry(artifact.thread_id.clone())
             .or_default()
@@ -9132,7 +9430,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
 
     let mut thread_review_artifacts = HashMap::<String, AutopilotReviewArtifact>::new();
     let mut review_thread_source_map = HashMap::<String, String>::new();
-    for artifact in normalize_codex_review_artifacts(document.review_artifacts) {
+    for artifact in normalize_codex_review_artifacts(review_artifacts) {
         review_thread_source_map.insert(
             artifact.review_thread_id.clone(),
             artifact.source_thread_id.clone(),
@@ -9141,16 +9439,23 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
     }
 
     let mut thread_compaction_artifacts = HashMap::<String, AutopilotCompactionArtifact>::new();
-    for artifact in normalize_codex_compaction_artifacts(document.compaction_artifacts) {
+    for artifact in normalize_codex_compaction_artifacts(compaction_artifacts) {
         thread_compaction_artifacts.insert(artifact.thread_id.clone(), artifact);
     }
 
-    Ok(LoadedCodexArtifactProjection {
+    let mut forge_shared_sessions = HashMap::<String, ForgeSharedSession>::new();
+    for session in normalize_forge_shared_sessions(shared_sessions) {
+        forge_shared_sessions.insert(session.shared_session_id.clone(), session);
+    }
+
+    LoadedCodexArtifactProjection {
         thread_diff_artifacts,
         thread_review_artifacts,
         thread_compaction_artifacts,
+        forge_shared_sessions,
+        next_forge_shared_session_seq: next_shared_session_seq.max(1),
         review_thread_source_map,
-    })
+    }
 }
 
 fn parse_diff_file_artifacts(raw_diff: &str) -> Vec<AutopilotDiffFileArtifact> {
@@ -9209,6 +9514,50 @@ fn normalized_optional_path(value: Option<&str>) -> Option<PathBuf> {
     Some(std::fs::canonicalize(&path).unwrap_or(path))
 }
 
+fn normalized_workspace_identity(value: &str) -> Option<String> {
+    normalized_optional_path(Some(value)).map(|path| path.display().to_string())
+}
+
+fn compose_probe_thread_status(
+    runtime_status: Option<&str>,
+    archived: bool,
+    attached: bool,
+) -> String {
+    if archived {
+        return String::from("archived");
+    }
+    let base = runtime_status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("idle");
+    if attached {
+        if base == "idle" {
+            String::from("attached")
+        } else {
+            format!("attached:{base}")
+        }
+    } else {
+        base.to_string()
+    }
+}
+
+fn forge_shared_session_owner_for_runtime_status(
+    runtime_status: Option<&str>,
+) -> ForgeSharedSessionControlOwner {
+    let status = runtime_status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("idle");
+    if matches!(
+        status,
+        "running" | "running+queued" | "paused" | "queued" | "attached:running" | "attached:paused"
+    ) {
+        ForgeSharedSessionControlOwner::ProbeLocalAgent
+    } else {
+        ForgeSharedSessionControlOwner::HumanLocal
+    }
+}
+
 fn workspace_root_for_thread_paths(cwd: Option<&str>, path: Option<&str>) -> Option<String> {
     let base = normalized_optional_path(cwd).or_else(|| {
         normalized_optional_path(path).and_then(|path| path.parent().map(Path::to_path_buf))
@@ -9237,6 +9586,12 @@ fn git_workspace_root(start: &Path) -> Option<String> {
         .and_then(|value| (!value.is_empty()).then_some(value))
 }
 
+fn git_remote_origin_url_for_workspace_root(workspace_root: &str) -> Option<String> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["config", "--get", "remote.origin.url"])
+        .and_then(|value| (!value.is_empty()).then_some(value))
+}
+
 fn git_branch_for_workspace_root(workspace_root: &str) -> Option<String> {
     let root = Path::new(workspace_root);
     git_command_output(root, &["branch", "--show-current"])
@@ -9245,6 +9600,11 @@ fn git_branch_for_workspace_root(workspace_root: &str) -> Option<String> {
             git_command_output(root, &["rev-parse", "--short", "HEAD"])
                 .and_then(|value| (!value.is_empty()).then_some(value))
         })
+}
+
+fn git_head_commit_for_workspace_root(workspace_root: &str) -> Option<String> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["rev-parse", "HEAD"]).and_then(|value| (!value.is_empty()).then_some(value))
 }
 
 fn git_dirty_for_workspace_root(workspace_root: &str) -> Option<bool> {
@@ -9268,6 +9628,30 @@ fn current_epoch_millis_for_state() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn forge_probe_snapshot_ref_detail() -> String {
+    "Current Probe seam does not expose snapshot refs yet.".to_string()
+}
+
+fn forge_workspace_base_repo_ref(
+    workspace_root: Option<&str>,
+    git_branch: Option<&str>,
+) -> ForgeWorkspaceBaseRepoRef {
+    let Some(workspace_root) = workspace_root.filter(|value| !value.trim().is_empty()) else {
+        return ForgeWorkspaceBaseRepoRef {
+            remote_url: None,
+            git_branch: git_branch.map(str::to_string),
+            head_commit: None,
+        };
+    };
+    ForgeWorkspaceBaseRepoRef {
+        remote_url: git_remote_origin_url_for_workspace_root(workspace_root),
+        git_branch: git_branch
+            .map(str::to_string)
+            .or_else(|| git_branch_for_workspace_root(workspace_root)),
+        head_commit: git_head_commit_for_workspace_root(workspace_root),
+    }
 }
 
 fn project_defaults_from_thread_metadata(
@@ -9446,6 +9830,8 @@ impl AutopilotChatState {
                 state.thread_diff_artifacts = projection.thread_diff_artifacts;
                 state.thread_review_artifacts = projection.thread_review_artifacts;
                 state.thread_compaction_artifacts = projection.thread_compaction_artifacts;
+                state.forge_shared_sessions = projection.forge_shared_sessions;
+                state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
                 state.last_error = None;
             }
@@ -9453,6 +9839,8 @@ impl AutopilotChatState {
                 state.thread_diff_artifacts.clear();
                 state.thread_review_artifacts.clear();
                 state.thread_compaction_artifacts.clear();
+                state.forge_shared_sessions.clear();
+                state.next_forge_shared_session_seq = 1;
                 state.review_thread_source_map.clear();
                 state.last_error = Some(error);
             }
@@ -9738,6 +10126,14 @@ impl AutopilotChatState {
             }
         }
         self.rebuild_project_registry();
+        if let Some(shared_session_id) = self.shared_session_id_for_thread(thread_id) {
+            self.sync_shared_session_fields_for_thread(
+                shared_session_id.as_str(),
+                thread_id,
+                current_epoch_millis_for_state(),
+            );
+            self.persist_codex_artifact_projection();
+        }
     }
 
     pub fn active_terminal_session(&self) -> Option<&AutopilotTerminalSession> {
@@ -10011,6 +10407,321 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.thread_compaction_artifacts.get(thread_id))
+    }
+
+    pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
+        self.forge_shared_sessions.values().find(|session| {
+            session
+                .probe_session_ids
+                .iter()
+                .any(|session_id| session_id == thread_id)
+        })
+    }
+
+    pub fn active_shared_session(&self) -> Option<&ForgeSharedSession> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.shared_session_for_thread(thread_id))
+    }
+
+    fn shared_session_id_for_thread(&self, thread_id: &str) -> Option<String> {
+        self.shared_session_for_thread(thread_id)
+            .map(|session| session.shared_session_id.clone())
+    }
+
+    fn next_shared_session_id(&mut self) -> String {
+        let shared_session_id = format!("forge-session-{}", self.next_forge_shared_session_seq);
+        self.next_forge_shared_session_seq = self.next_forge_shared_session_seq.saturating_add(1);
+        shared_session_id
+    }
+
+    fn sync_shared_session_fields_for_thread(
+        &mut self,
+        shared_session_id: &str,
+        thread_id: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        let Some(metadata) = self.thread_metadata.get(thread_id).cloned() else {
+            return;
+        };
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(shared_session_id) else {
+            return;
+        };
+        shared_session.probe_session_ids.push(thread_id.to_string());
+        shared_session.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut shared_session.probe_session_ids));
+        shared_session.workspace_root = metadata.workspace_root.or(metadata.cwd);
+        shared_session.project_id = metadata.project_id;
+        shared_session.project_name = metadata.project_name;
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.workspace_restore.base_repo = forge_workspace_base_repo_ref(
+            shared_session.workspace_root.as_deref(),
+            metadata.git_branch.as_deref(),
+        );
+        if shared_session.participants.is_empty() {
+            shared_session.participants = default_forge_shared_session_participants();
+        }
+    }
+
+    pub fn ensure_probe_shared_session_for_thread(
+        &mut self,
+        thread_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Option<String> {
+        if !self.thread_metadata.contains_key(thread_id) {
+            return None;
+        }
+        if let Some(shared_session_id) = self.shared_session_id_for_thread(thread_id) {
+            self.sync_shared_session_fields_for_thread(
+                shared_session_id.as_str(),
+                thread_id,
+                updated_at_epoch_ms,
+            );
+            self.persist_codex_artifact_projection();
+            return Some(shared_session_id);
+        }
+
+        let metadata = self.thread_metadata.get(thread_id).cloned()?;
+        let workspace_root = metadata.workspace_root.clone().or(metadata.cwd.clone());
+        let project_id = metadata.project_id.clone();
+        let mut candidates = self
+            .forge_shared_sessions
+            .values()
+            .filter(|session| {
+                session
+                    .project_id
+                    .as_deref()
+                    .zip(project_id.as_deref())
+                    .is_some_and(|(left, right)| left == right)
+                    || session
+                        .workspace_root
+                        .as_deref()
+                        .zip(workspace_root.as_deref())
+                        .is_some_and(|(left, right)| left == right)
+            })
+            .map(|session| session.shared_session_id.clone())
+            .collect::<Vec<_>>();
+        candidates.sort();
+        candidates.dedup();
+
+        let shared_session_id = if candidates.len() == 1 {
+            candidates.remove(0)
+        } else {
+            let created_at_epoch_ms = updated_at_epoch_ms.max(current_epoch_millis_for_state());
+            let shared_session_id = self.next_shared_session_id();
+            let control_owner = forge_shared_session_owner_for_runtime_status(
+                metadata.probe_runtime_status.as_deref(),
+            );
+            let base_repo = forge_workspace_base_repo_ref(
+                workspace_root.as_deref(),
+                metadata.git_branch.as_deref(),
+            );
+            self.forge_shared_sessions.insert(
+                shared_session_id.clone(),
+                ForgeSharedSession {
+                    shared_session_id: shared_session_id.clone(),
+                    probe_session_ids: vec![thread_id.to_string()],
+                    workspace_root,
+                    project_id,
+                    project_name: metadata.project_name,
+                    control_owner,
+                    participants: default_forge_shared_session_participants(),
+                    last_handoff: None,
+                    workspace_restore: ForgeWorkspaceRestoreProvenance {
+                        startup_kind: ForgeWorkspaceStartupKind::ColdStart,
+                        base_repo,
+                        snapshot_ref: None,
+                        restore_pointer: None,
+                        snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus::MissingFromProbe,
+                        snapshot_ref_detail: Some(forge_probe_snapshot_ref_detail()),
+                        updated_at_epoch_ms: created_at_epoch_ms,
+                    },
+                    evidence_bundle_id: None,
+                    delivery_receipt_id: None,
+                    created_at_epoch_ms,
+                    updated_at_epoch_ms: created_at_epoch_ms,
+                },
+            );
+            shared_session_id
+        };
+
+        self.sync_shared_session_fields_for_thread(
+            shared_session_id.as_str(),
+            thread_id,
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Some(shared_session_id)
+    }
+
+    pub fn record_shared_session_handoff_for_thread(
+        &mut self,
+        thread_id: &str,
+        next_owner: ForgeSharedSessionControlOwner,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff summary cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before handoff state could be recorded."
+            ));
+        };
+        let previous_owner = shared_session.control_owner;
+        shared_session.control_owner = next_owner;
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
+            from_owner: previous_owner,
+            to_owner: next_owner,
+            summary,
+            provenance: provenance.into().trim().to_string(),
+            recorded_at_epoch_ms,
+        });
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    fn set_probe_workspace_restore_provenance_for_thread(
+        &mut self,
+        thread_id: &str,
+        startup_kind: ForgeWorkspaceStartupKind,
+        restore_pointer: Option<String>,
+        snapshot_ref: Option<String>,
+        updated_at_epoch_ms: u64,
+        preserve_existing_restore: bool,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let metadata = self.thread_metadata.get(thread_id).cloned();
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before workspace restore state could be recorded."
+            ));
+        };
+        if preserve_existing_restore
+            && shared_session.workspace_restore.startup_kind == ForgeWorkspaceStartupKind::Restored
+        {
+            shared_session.workspace_restore.base_repo = forge_workspace_base_repo_ref(
+                shared_session.workspace_root.as_deref(),
+                metadata.as_ref().and_then(|value| value.git_branch.as_deref()),
+            );
+            shared_session.workspace_restore.updated_at_epoch_ms = updated_at_epoch_ms.max(
+                shared_session.workspace_restore.updated_at_epoch_ms,
+            );
+            self.persist_codex_artifact_projection();
+            return Ok(shared_session_id);
+        }
+
+        let restore_pointer = restore_pointer
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let snapshot_ref = snapshot_ref
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        shared_session.workspace_restore = ForgeWorkspaceRestoreProvenance {
+            startup_kind,
+            base_repo: forge_workspace_base_repo_ref(
+                shared_session.workspace_root.as_deref(),
+                metadata.as_ref().and_then(|value| value.git_branch.as_deref()),
+            ),
+            snapshot_ref: snapshot_ref.clone(),
+            restore_pointer,
+            snapshot_ref_status: if snapshot_ref.is_some() {
+                ForgeWorkspaceSnapshotRefStatus::Available
+            } else {
+                ForgeWorkspaceSnapshotRefStatus::MissingFromProbe
+            },
+            snapshot_ref_detail: if snapshot_ref.is_some() {
+                None
+            } else {
+                Some(forge_probe_snapshot_ref_detail())
+            },
+            updated_at_epoch_ms,
+        };
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn mark_probe_workspace_cold_start_for_thread(
+        &mut self,
+        thread_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        self.set_probe_workspace_restore_provenance_for_thread(
+            thread_id,
+            ForgeWorkspaceStartupKind::ColdStart,
+            None,
+            None,
+            updated_at_epoch_ms,
+            false,
+        )
+    }
+
+    pub fn mark_probe_workspace_warm_start_for_thread(
+        &mut self,
+        thread_id: &str,
+        restore_pointer: Option<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        self.set_probe_workspace_restore_provenance_for_thread(
+            thread_id,
+            ForgeWorkspaceStartupKind::WarmStart,
+            restore_pointer,
+            None,
+            updated_at_epoch_ms,
+            true,
+        )
+    }
+
+    pub fn mark_probe_workspace_restored_for_thread(
+        &mut self,
+        thread_id: &str,
+        restore_pointer: impl Into<String>,
+        snapshot_ref: Option<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        self.set_probe_workspace_restore_provenance_for_thread(
+            thread_id,
+            ForgeWorkspaceStartupKind::Restored,
+            Some(restore_pointer.into()),
+            snapshot_ref,
+            updated_at_epoch_ms,
+            false,
+        )
+    }
+
+    pub fn maybe_record_probe_owner_transition(
+        &mut self,
+        thread_id: &str,
+        next_owner: ForgeSharedSessionControlOwner,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Option<String> {
+        let existing_owner = self
+            .shared_session_for_thread(thread_id)
+            .map(|session| session.control_owner);
+        if existing_owner == Some(next_owner) {
+            return self.shared_session_id_for_thread(thread_id);
+        }
+        self.record_shared_session_handoff_for_thread(
+            thread_id,
+            next_owner,
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        )
+        .ok()
     }
 
     pub fn record_composer_draft(&mut self, draft: impl Into<String>) {
@@ -11415,6 +12126,8 @@ impl AutopilotChatState {
                         Some(entry.preview)
                     },
                     status: entry.status,
+                    probe_runtime_status: previous.probe_runtime_status.clone(),
+                    probe_archived: previous.probe_archived,
                     loaded: entry.loaded,
                     cwd: entry.cwd.or(previous.cwd.clone()),
                     path: entry.path.or(previous.path.clone()),
@@ -11560,6 +12273,14 @@ impl AutopilotChatState {
         })
     }
 
+    pub fn select_thread_by_id(&mut self, thread_id: &str) -> Option<AutopilotThreadResumeTarget> {
+        let index = self
+            .threads
+            .iter()
+            .position(|existing| existing == thread_id)?;
+        self.select_thread_by_index(index)
+    }
+
     pub fn remember_thread(&mut self, thread_id: impl Into<String>) {
         let thread_id = thread_id.into();
         if !self.threads.iter().any(|existing| existing == &thread_id) {
@@ -11610,6 +12331,18 @@ impl AutopilotChatState {
             .retain(|pending| pending.thread_id != thread_id);
         self.turn_metadata_by_turn_id
             .retain(|_, metadata| metadata.thread_id != thread_id);
+        let mut orphaned_shared_sessions = Vec::<String>::new();
+        for (shared_session_id, shared_session) in &mut self.forge_shared_sessions {
+            shared_session
+                .probe_session_ids
+                .retain(|session_id| session_id != thread_id);
+            if shared_session.probe_session_ids.is_empty() {
+                orphaned_shared_sessions.push(shared_session_id.clone());
+            }
+        }
+        for shared_session_id in orphaned_shared_sessions {
+            self.forge_shared_sessions.remove(&shared_session_id);
+        }
         if self
             .last_submitted_turn_metadata
             .as_ref()
@@ -12253,6 +12986,19 @@ impl AutopilotChatState {
         }
     }
 
+    fn allocate_assistant_message_slot(&mut self) -> u64 {
+        let assistant_message_id = self.next_message_id;
+        self.messages.push(AutopilotMessage {
+            id: assistant_message_id,
+            role: AutopilotRole::Codex,
+            status: AutopilotMessageStatus::Queued,
+            content: String::new(),
+            structured: Some(AutopilotStructuredMessage::default()),
+        });
+        self.next_message_id = self.next_message_id.saturating_add(1);
+        assistant_message_id
+    }
+
     pub fn mark_turn_started(&mut self, turn_id: String) {
         self.active_turn_id = Some(turn_id.clone());
         if let Some(mut metadata) = self.pending_turn_metadata.pop_front() {
@@ -12275,7 +13021,13 @@ impl AutopilotChatState {
             }
         }
         self.last_turn_status = Some("inProgress".to_string());
-        if let Some(assistant_message_id) = self.bind_turn_to_assistant_message(&turn_id)
+        let assistant_message_id = self.bind_turn_to_assistant_message(&turn_id).or_else(|| {
+            let assistant_message_id = self.allocate_assistant_message_slot();
+            self.turn_assistant_message_ids
+                .insert(turn_id.clone(), assistant_message_id);
+            Some(assistant_message_id)
+        });
+        if let Some(assistant_message_id) = assistant_message_id
             && let Some(message) = self
                 .messages
                 .iter_mut()
@@ -12974,6 +13726,8 @@ impl AutopilotChatState {
             &self.thread_diff_artifacts,
             &self.thread_review_artifacts,
             &self.thread_compaction_artifacts,
+            &self.forge_shared_sessions,
+            self.next_forge_shared_session_seq,
         ) {
             tracing::warn!("failed to persist codex artifacts: {error}");
         }
@@ -13007,6 +13761,34 @@ impl AutopilotChatState {
         let mut metadata = AutopilotThreadMetadata::default();
         metadata.status = status;
         self.thread_metadata.insert(thread_id.to_string(), metadata);
+    }
+
+    pub fn set_probe_thread_projection_state(
+        &mut self,
+        thread_id: &str,
+        runtime_status: Option<String>,
+        archived: bool,
+        attached: bool,
+    ) {
+        let metadata = self
+            .thread_metadata
+            .entry(thread_id.to_string())
+            .or_default();
+        metadata.probe_runtime_status = runtime_status.clone();
+        metadata.probe_archived = archived;
+        metadata.status = Some(compose_probe_thread_status(
+            runtime_status.as_deref(),
+            archived,
+            attached,
+        ));
+        if let Some(shared_session_id) = self.shared_session_id_for_thread(thread_id) {
+            if let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) {
+                shared_session.control_owner =
+                    forge_shared_session_owner_for_runtime_status(runtime_status.as_deref());
+                shared_session.updated_at_epoch_ms =
+                    current_epoch_millis_for_state().max(shared_session.updated_at_epoch_ms);
+            }
+        }
     }
 
     pub fn set_thread_name(&mut self, thread_id: &str, thread_name: Option<String>) {
@@ -13084,6 +13866,41 @@ impl AutopilotChatState {
         self.thread_metadata
             .get(thread_id)
             .and_then(|metadata| metadata.updated_at)
+    }
+
+    pub fn probe_workspace_thread_ids(&self, workspace_root: &str) -> Vec<String> {
+        let Some(target_workspace) = normalized_workspace_identity(workspace_root) else {
+            return Vec::new();
+        };
+        let mut matches = self
+            .thread_metadata
+            .iter()
+            .filter(|(_, metadata)| {
+                (metadata.probe_runtime_status.is_some() || metadata.probe_archived)
+                    && !metadata.probe_archived
+            })
+            .filter_map(|(thread_id, metadata)| {
+                let candidate = metadata
+                    .workspace_root
+                    .as_deref()
+                    .and_then(normalized_workspace_identity)
+                    .or_else(|| {
+                        metadata
+                            .cwd
+                            .as_deref()
+                            .and_then(normalized_workspace_identity)
+                    })?;
+                if candidate != target_workspace {
+                    return None;
+                }
+                Some((thread_id.clone(), metadata.updated_at.unwrap_or_default()))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+        matches
+            .into_iter()
+            .map(|(thread_id, _)| thread_id)
+            .collect()
     }
 
     pub fn suggested_thread_name(&self, thread_id: &str) -> Option<String> {
@@ -16118,6 +16935,7 @@ pub struct RenderState {
     pub desktop_control: DesktopControlState,
     pub codex_remote: CodexRemoteState,
     pub codex_diagnostics: CodexDiagnosticsPaneState,
+    pub autopilot_coding_runtime: AutopilotCodingRuntimeKind,
     pub codex_disabled: bool,
     pub codex_lane: CodexLaneSnapshot,
     pub codex_lane_config: crate::codex_lane::CodexLaneConfig,
@@ -16125,6 +16943,12 @@ pub struct RenderState {
     pub codex_command_responses: Vec<CodexLaneCommandResponse>,
     pub codex_notifications: Vec<CodexLaneNotification>,
     pub next_codex_command_seq: u64,
+    pub probe_lane: ProbeLaneSnapshot,
+    pub probe_lane_config: crate::probe_lane::ProbeLaneConfig,
+    pub probe_lane_worker: ProbeLaneWorker,
+    pub probe_command_responses: Vec<ProbeLaneCommandResponse>,
+    pub probe_notifications: Vec<ProbeLaneNotification>,
+    pub next_probe_command_seq: u64,
     pub sa_lane: SaLaneSnapshot,
     pub skl_lane: SklLaneSnapshot,
     pub ac_lane: AcLaneSnapshot,
@@ -16317,12 +17141,30 @@ impl RenderState {
         seq
     }
 
+    fn allocate_probe_command_seq(&mut self) -> u64 {
+        let seq = self.next_probe_command_seq;
+        self.next_probe_command_seq = self.next_probe_command_seq.saturating_add(1);
+        seq
+    }
+
+    pub const fn uses_probe_runtime(&self) -> bool {
+        matches!(
+            self.autopilot_coding_runtime,
+            AutopilotCodingRuntimeKind::Probe
+        )
+    }
+
     pub fn queue_codex_command(&mut self, command: CodexLaneCommand) -> Result<u64, String> {
         if self.codex_disabled {
             return Err("Codex lane disabled for this desktop session".to_string());
         }
         let seq = self.allocate_codex_command_seq();
         self.codex_lane_worker.enqueue(seq, command).map(|()| seq)
+    }
+
+    pub fn queue_probe_command(&mut self, command: ProbeLaneCommand) -> Result<u64, String> {
+        let seq = self.allocate_probe_command_seq();
+        self.probe_lane_worker.enqueue(seq, command).map(|()| seq)
     }
 
     pub fn restart_codex_lane(&mut self) {
@@ -16347,6 +17189,23 @@ impl RenderState {
                 "idle"
             });
         tracing::info!("codex lane restart dispatched (non-blocking shutdown)");
+    }
+
+    pub fn restart_probe_lane(&mut self) {
+        tracing::info!("probe lane restart requested");
+        let replacement = ProbeLaneWorker::spawn(self.probe_lane_config.clone());
+        let mut previous = std::mem::replace(&mut self.probe_lane_worker, replacement);
+        previous.shutdown_async();
+        self.probe_lane = if self.probe_lane_config.connect_on_startup {
+            ProbeLaneSnapshot::default()
+        } else {
+            ProbeLaneSnapshot::idle()
+        };
+        if self.uses_probe_runtime() {
+            self.autopilot_chat
+                .set_connection_status(self.probe_lane.lifecycle.label());
+        }
+        tracing::info!("probe lane restart dispatched (non-blocking shutdown)");
     }
 
     pub fn sync_credentials_runtime(&mut self, restart_codex: bool) {
@@ -16406,6 +17265,22 @@ impl RenderState {
         if self.codex_notifications.len() > 256 {
             let overflow = self.codex_notifications.len().saturating_sub(256);
             self.codex_notifications.drain(0..overflow);
+        }
+    }
+
+    pub fn record_probe_command_response(&mut self, response: ProbeLaneCommandResponse) {
+        self.probe_command_responses.push(response);
+        if self.probe_command_responses.len() > 128 {
+            let overflow = self.probe_command_responses.len().saturating_sub(128);
+            self.probe_command_responses.drain(0..overflow);
+        }
+    }
+
+    pub fn record_probe_notification(&mut self, notification: ProbeLaneNotification) {
+        self.probe_notifications.push(notification);
+        if self.probe_notifications.len() > 256 {
+            let overflow = self.probe_notifications.len().saturating_sub(256);
+            self.probe_notifications.drain(0..overflow);
         }
     }
 
@@ -16554,6 +17429,11 @@ impl RenderState {
 
 #[cfg(test)]
 mod tests {
+    use crate::app_state::{
+        ForgeSharedSessionControlOwner, ForgeWorkspaceSnapshotRefStatus,
+        ForgeWorkspaceStartupKind,
+    };
+
     use super::{
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AlertDomain, AlertLifecycle, AlertsRecoveryState, AutopilotChatState,
@@ -20931,6 +21811,107 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_selects_thread_by_id() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.set_active_thread_transcript(
+            "thread-a",
+            vec![(AutopilotRole::User, "alpha".to_string())],
+        );
+        chat.remember_thread("thread-b");
+
+        let selected = chat
+            .select_thread_by_id("thread-b")
+            .expect("known thread should select by id");
+
+        assert_eq!(selected.thread_id, "thread-b");
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-b"));
+    }
+
+    #[test]
+    fn chat_state_tracks_probe_projection_status_and_workspace_candidates() {
+        let workspace = unique_temp_dir("probe-workspace-match");
+        let workspace_root = std::fs::canonicalize(&workspace)
+            .expect("workspace should canonicalize")
+            .display()
+            .to_string();
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-attached".to_string(),
+                thread_name: Some("Attached".to_string()),
+                preview: "attached preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_200,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-other".to_string(),
+                thread_name: Some("Other".to_string()),
+                preview: "other preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-archived".to_string(),
+                thread_name: Some("Archived".to_string()),
+                preview: "archived preview".to_string(),
+                status: Some("archived".to_string()),
+                loaded: true,
+                cwd: Some(workspace_root.clone()),
+                path: None,
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_050,
+            },
+        ]);
+
+        chat.set_probe_thread_projection_state(
+            "thread-attached",
+            Some("idle".to_string()),
+            false,
+            true,
+        );
+        chat.set_probe_thread_projection_state(
+            "thread-other",
+            Some("completed".to_string()),
+            false,
+            false,
+        );
+        chat.set_probe_thread_projection_state(
+            "thread-archived",
+            Some("completed".to_string()),
+            true,
+            false,
+        );
+
+        assert_eq!(
+            chat.thread_metadata["thread-attached"].status.as_deref(),
+            Some("attached")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-other"].status.as_deref(),
+            Some("completed")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-archived"].status.as_deref(),
+            Some("archived")
+        );
+        assert_eq!(
+            chat.probe_workspace_thread_ids(workspace_root.as_str()),
+            vec!["thread-attached".to_string(), "thread-other".to_string()]
+        );
+
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
     fn chat_state_tracks_plan_artifacts_per_thread() {
         let mut chat = AutopilotChatState::default();
         chat.set_thread_entries(vec![
@@ -21198,6 +22179,190 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
+    fn chat_state_persists_forge_shared_session_handoffs() {
+        let projection_path = unique_codex_artifact_projection_path("shared-session");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("thread-a", 1_700_000_120)
+            .expect("shared session");
+        assert_ne!(shared_session_id, "thread-a");
+        let shared_session = chat.active_shared_session().expect("active shared session");
+        assert_eq!(
+            shared_session.control_owner,
+            ForgeSharedSessionControlOwner::HumanLocal
+        );
+        assert_eq!(
+            shared_session.probe_session_ids,
+            vec!["thread-a".to_string()]
+        );
+
+        let recorded_shared_session_id = chat
+            .record_shared_session_handoff_for_thread(
+                "thread-a",
+                ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                "Hand control back to the local Probe worker to continue implementation.",
+                "operator.command:/handoff",
+                1_700_000_140,
+            )
+            .expect("handoff should record");
+        assert_eq!(recorded_shared_session_id, shared_session_id);
+
+        let handoff = chat
+            .active_shared_session()
+            .and_then(|session| session.last_handoff.as_ref())
+            .expect("last handoff");
+        assert_eq!(
+            handoff.from_owner,
+            ForgeSharedSessionControlOwner::HumanLocal
+        );
+        assert_eq!(
+            handoff.to_owner,
+            ForgeSharedSessionControlOwner::ProbeLocalAgent
+        );
+        assert_eq!(handoff.provenance, "operator.command:/handoff");
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(reloaded_session.shared_session_id, shared_session_id);
+        assert_eq!(
+            reloaded_session.control_owner,
+            ForgeSharedSessionControlOwner::ProbeLocalAgent
+        );
+        assert_eq!(reloaded_session.project_name.as_deref(), Some("a"));
+        assert_eq!(
+            reloaded_session
+                .last_handoff
+                .as_ref()
+                .map(|handoff| handoff.summary.as_str()),
+            Some("Hand control back to the local Probe worker to continue implementation.")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
+    fn chat_state_tracks_workspace_restore_provenance() {
+        let repo = init_git_workspace("workspace-restore");
+        let remote_add_status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args([
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/OpenAgentsInc/openagents.git",
+            ])
+            .status()
+            .expect("git remote add should launch");
+        assert!(remote_add_status.success(), "git remote add should succeed");
+
+        let projection_path = unique_codex_artifact_projection_path("workspace-restore");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.mark_probe_workspace_warm_start_for_thread(
+            "thread-a",
+            Some("probe-session:thread-a".to_string()),
+            1_700_000_120,
+        )
+        .expect("warm start should record");
+
+        let warm = chat
+            .shared_session_for_thread("thread-a")
+            .expect("warm shared session");
+        assert_eq!(warm.workspace_restore.startup_kind, ForgeWorkspaceStartupKind::WarmStart);
+        assert_eq!(
+            warm.workspace_restore.restore_pointer.as_deref(),
+            Some("probe-session:thread-a")
+        );
+        assert_eq!(
+            warm.workspace_restore.snapshot_ref_status,
+            ForgeWorkspaceSnapshotRefStatus::MissingFromProbe
+        );
+        assert_eq!(
+            warm.workspace_restore.base_repo.remote_url.as_deref(),
+            Some("https://github.com/OpenAgentsInc/openagents.git")
+        );
+        assert!(
+            warm.workspace_restore.base_repo.head_commit.is_some(),
+            "head commit should be captured"
+        );
+
+        chat.mark_probe_workspace_restored_for_thread(
+            "thread-a",
+            "restore-point-7",
+            Some("snapshot-ref-7".to_string()),
+            1_700_000_140,
+        )
+        .expect("restore should record");
+
+        let restored = chat
+            .shared_session_for_thread("thread-a")
+            .expect("restored shared session");
+        assert_eq!(restored.workspace_restore.startup_kind, ForgeWorkspaceStartupKind::Restored);
+        assert_eq!(
+            restored.workspace_restore.restore_pointer.as_deref(),
+            Some("restore-point-7")
+        );
+        assert_eq!(
+            restored.workspace_restore.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
+        assert_eq!(
+            restored.workspace_restore.snapshot_ref_status,
+            ForgeWorkspaceSnapshotRefStatus::Available
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded restore session");
+        assert_eq!(
+            reloaded_session.workspace_restore.startup_kind,
+            ForgeWorkspaceStartupKind::Restored
+        );
+        assert_eq!(
+            reloaded_session.workspace_restore.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
     }
 
     #[test]
@@ -21618,6 +22783,23 @@ mod tests {
             Some("follow up")
         );
         assert_eq!(chat.pending_assistant_message_ids.len(), pending_before);
+    }
+
+    #[test]
+    fn chat_state_allocates_assistant_slot_when_turn_starts_without_placeholder() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.submit_steer_prompt("queued follow up".to_string());
+
+        chat.mark_turn_started("turn-queued".to_string());
+
+        let assistant = chat
+            .messages
+            .iter()
+            .find(|message| message.role == AutopilotRole::Codex)
+            .expect("assistant slot should be created when the queued turn starts");
+        assert_eq!(assistant.status, AutopilotMessageStatus::Running);
+        assert_eq!(chat.active_assistant_message_id, Some(assistant.id));
     }
 
     #[test]

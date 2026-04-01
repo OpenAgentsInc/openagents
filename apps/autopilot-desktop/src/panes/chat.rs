@@ -11,11 +11,10 @@ use crate::app_state::{
     AutopilotChatState, AutopilotCompactionArtifact, AutopilotDiffArtifact, AutopilotMessage,
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
-    ChatHeaderMenuKind,
-    ChatPaneInputs, ChatTranscriptSelectionState, DirectMessageMessageProjection,
-    DirectMessageRoomProjection, ManagedChatChannelProjection, ManagedChatDeliveryState,
-    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
-    RenderState,
+    ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
+    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeSharedSession,
+    ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
+    ManagedChatMessageProjection, ManagedChatRelayState, PaneKind, RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -23,10 +22,9 @@ use crate::pane_renderer::split_text_for_display;
 use crate::pane_system::{
     ChatHeaderMoreMenuItem, chat_compact_button_bounds, chat_composer_height_for_value,
     chat_composer_input_bounds_with_height, chat_cycle_model_button_bounds,
-    chat_header_menu_row_bounds, chat_header_more_menu_items, chat_model_menu_bounds,
-    chat_help_toggle_button_bounds, chat_interrupt_button_bounds, chat_new_thread_button_bounds,
-    chat_more_menu_bounds,
-    chat_refresh_threads_button_bounds, chat_send_button_bounds,
+    chat_header_menu_row_bounds, chat_header_more_menu_items, chat_help_toggle_button_bounds,
+    chat_interrupt_button_bounds, chat_model_menu_bounds, chat_more_menu_bounds,
+    chat_new_thread_button_bounds, chat_refresh_threads_button_bounds, chat_send_button_bounds,
     chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
     chat_thread_action_fork_button_bounds, chat_thread_action_open_editor_button_bounds,
     chat_thread_action_reload_button_bounds, chat_thread_action_rename_button_bounds,
@@ -1123,6 +1121,14 @@ fn local_turn_status_summary(status: Option<&str>) -> Option<&'static str> {
         Some("completed") => Some("completed locally; not a labor verdict or settlement"),
         Some("failed") => Some("local execution failed"),
         Some("inProgress") => Some("local execution in progress"),
+        Some("queued") => Some("probe follow-up queued"),
+        Some("running") => Some("probe turn running"),
+        Some("paused") => Some("probe turn paused for approval"),
+        Some("running+queued") => Some("probe turn running with queued follow-ups"),
+        Some("paused+queued") => Some("probe turn paused with queued follow-ups"),
+        Some("cancelled") => Some("probe turn cancelled"),
+        Some("timed_out") => Some("probe turn timed out"),
+        Some("refused") => Some("probe tool execution was refused"),
         _ => None,
     }
 }
@@ -2692,6 +2698,127 @@ fn active_compaction_meta_line(artifact: &AutopilotCompactionArtifact) -> String
     parts.join("  •  ")
 }
 
+fn active_shared_session_meta_line(session: &ForgeSharedSession) -> String {
+    let mut parts = vec![format!(
+        "forge:{}",
+        compact_display_token(session.shared_session_id.as_str(), 18)
+    )];
+    parts.push(format!("owner:{}", session.control_owner.label()));
+    parts.push(format!(
+        "startup:{}",
+        session.workspace_restore.startup_kind.label()
+    ));
+    if let Some(project_name) = session.project_name.as_deref() {
+        parts.push(format!(
+            "project:{}",
+            compact_display_token(project_name, 18)
+        ));
+    }
+    if let Some(workspace_root) = session.workspace_root.as_deref() {
+        parts.push(format!("ws:{}", compact_display_token(workspace_root, 24)));
+    }
+    parts.push(format!("probe:{}", session.probe_session_ids.len()));
+    if let Some(updated) = format_thread_timestamp(session.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String {
+    let mut lines = vec![format!(
+        "- **control owner:** {}",
+        session.control_owner.display_label()
+    )];
+    if !session.probe_session_ids.is_empty() {
+        lines.push(format!(
+            "- **probe sessions:** {}",
+            session
+                .probe_session_ids
+                .iter()
+                .map(|session_id| format!("`{}`", compact_display_token(session_id, 18)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !session.participants.is_empty() {
+        lines.push(format!(
+            "- **participants:** {}",
+            session
+                .participants
+                .iter()
+                .map(|participant| participant.display_name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    lines.push(format!(
+        "- **workspace startup:** {}",
+        session.workspace_restore.startup_kind.display_label()
+    ));
+    if let Some(restore_pointer) = session.workspace_restore.restore_pointer.as_deref() {
+        lines.push(format!(
+            "- **restore pointer:** `{}`",
+            compact_display_token(restore_pointer, 36)
+        ));
+    }
+    if let Some(snapshot_ref) = session.workspace_restore.snapshot_ref.as_deref() {
+        lines.push(format!(
+            "- **snapshot ref:** `{}`",
+            compact_display_token(snapshot_ref, 36)
+        ));
+    } else {
+        lines.push(format!(
+            "- **snapshot ref:** _{}_",
+            session.workspace_restore.snapshot_ref_status.label()
+        ));
+    }
+    if let Some(detail) = session.workspace_restore.snapshot_ref_detail.as_deref() {
+        lines.push(format!("- **snapshot detail:** {}", detail));
+    }
+    if session.workspace_restore.base_repo.remote_url.is_some()
+        || session.workspace_restore.base_repo.git_branch.is_some()
+        || session.workspace_restore.base_repo.head_commit.is_some()
+    {
+        let mut base_repo_parts = Vec::new();
+        if let Some(remote_url) = session.workspace_restore.base_repo.remote_url.as_deref() {
+            base_repo_parts.push(compact_display_token(remote_url, 42));
+        }
+        if let Some(git_branch) = session.workspace_restore.base_repo.git_branch.as_deref() {
+            base_repo_parts.push(format!("branch:{git_branch}"));
+        }
+        if let Some(head_commit) = session.workspace_restore.base_repo.head_commit.as_deref() {
+            base_repo_parts.push(format!(
+                "head:{}",
+                compact_display_token(head_commit, 16)
+            ));
+        }
+        if !base_repo_parts.is_empty() {
+            lines.push(format!("- **base repo:** {}", base_repo_parts.join("  •  ")));
+        }
+    }
+    if let Some(handoff) = session.last_handoff.as_ref() {
+        lines.push(String::new());
+        lines.push(format!(
+            "**Last handoff:** {} -> {}",
+            handoff.from_owner.display_label(),
+            handoff.to_owner.display_label()
+        ));
+        lines.push(String::new());
+        lines.push(handoff.summary.clone());
+        lines.push(String::new());
+        lines.push(format!(
+            "_provenance: {} at {}_",
+            handoff.provenance,
+            format_thread_timestamp(handoff.recorded_at_epoch_ms as i64)
+                .unwrap_or_else(|| "unknown".to_string())
+        ));
+    } else {
+        lines.push(String::new());
+        lines.push("_No explicit handoff recorded yet._".to_string());
+    }
+    lines.join("\n")
+}
+
 fn active_terminal_meta_line(session: &AutopilotTerminalSession) -> String {
     let mut parts = vec![format!("status:{}", session.status.label())];
     if let Some(pid) = session.pid {
@@ -4214,9 +4341,8 @@ fn paint_chat_shell(
             let model_bounds = chat_cycle_model_button_bounds(content_bounds);
             let interrupt_bounds = chat_interrupt_button_bounds(content_bounds);
             let more_bounds = chat_compact_button_bounds(content_bounds);
-            let model_open =
-                autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::Model)
-                    && !autopilot_chat.models.is_empty();
+            let model_open = autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::Model)
+                && !autopilot_chat.models.is_empty();
             let more_open = autopilot_chat.header_menu_is_open(ChatHeaderMenuKind::More);
 
             paint_header_control_trigger(
@@ -4975,6 +5101,40 @@ pub fn paint(
             }
         }
         ChatBrowseMode::Autopilot => {
+            if let Some(shared_session) = autopilot_chat.active_shared_session() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[shared session]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    theme::accent::PRIMARY,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_shared_session_meta_line(shared_session),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let shared_session_markdown = active_shared_session_markdown_source(shared_session);
+                if !shared_session_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&shared_session_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(review_artifact) = autopilot_chat.active_review_artifact() {
                 paint.scene.draw_text(paint.text.layout_mono(
                     "[latest review]",
@@ -5314,9 +5474,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);
