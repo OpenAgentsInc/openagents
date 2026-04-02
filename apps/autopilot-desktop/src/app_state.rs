@@ -10063,6 +10063,35 @@ pub struct ForgeSharedSession {
     pub updated_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgeHostedSessionDirectoryEntry {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub sibling_probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub prepared_baseline_id: Option<String>,
+    pub prepared_baseline_status: Option<ForgeProbePreparedBaselineStatus>,
+    pub control_owner: ForgeSharedSessionControlOwner,
+    pub participants: Vec<ForgeSharedSessionParticipant>,
+    pub location_kind: ForgeProbeSessionLocationKind,
+    pub owner_label: Option<String>,
+    pub execution_host_label: Option<String>,
+    pub attach_target: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgeHostedSessionAttachTarget {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub workspace_label: String,
+    pub project_name: Option<String>,
+    pub attach_target: Option<String>,
+    pub reused_local_thread: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProbeTurnAttachmentKind {
     Mention,
@@ -11315,6 +11344,24 @@ fn normalize_probe_session_ids(mut session_ids: Vec<String>) -> Vec<String> {
     session_ids.sort();
     session_ids.dedup();
     session_ids
+}
+
+fn preferred_probe_session_id_for_shared_session(session: &ForgeSharedSession) -> Option<String> {
+    let mut session_ids = normalize_probe_session_ids(session.probe_session_ids.clone());
+    session_ids.pop()
+}
+
+fn is_hosted_forge_shared_session(session: &ForgeSharedSession) -> bool {
+    session.remote_session.location_kind == ForgeProbeSessionLocationKind::HostedWorkspace
+        || session.remote_session.owner_kind == Some(ForgeProbeSessionOwnerKind::HostedControlPlane)
+        || session.remote_session.execution_host_kind
+            == Some(ForgeProbeExecutionHostKind::HostedWorker)
+        || session
+            .remote_session
+            .attach_target
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || session.remote_session.hosted_receipts.is_some()
 }
 
 fn normalize_forge_knowledge_pack_route_issues(
@@ -14393,6 +14440,8 @@ impl AutopilotChatState {
         let active_thread_id = self.active_thread_id.clone();
         let mut project_threads = HashMap::<String, Vec<String>>::new();
         let mut git_state_by_project = HashMap::<String, (Option<String>, Option<bool>)>::new();
+        let mut preserved_git_state_by_project =
+            HashMap::<String, (Option<String>, Option<bool>)>::new();
 
         for (thread_id, metadata) in self.thread_metadata.iter_mut() {
             let workspace_root =
@@ -14403,6 +14452,15 @@ impl AutopilotChatState {
                 .as_deref()
                 .map(project_name_for_workspace_root);
             if let Some(project_id) = metadata.project_id.as_ref() {
+                let preserved = preserved_git_state_by_project
+                    .entry(project_id.clone())
+                    .or_insert((None, None));
+                if preserved.0.is_none() {
+                    preserved.0 = metadata.git_branch.clone();
+                }
+                if preserved.1.is_none() {
+                    preserved.1 = metadata.git_dirty;
+                }
                 project_threads
                     .entry(project_id.clone())
                     .or_default()
@@ -14416,7 +14474,17 @@ impl AutopilotChatState {
         for project_id in project_threads.keys() {
             let git_branch = git_branch_for_workspace_root(project_id);
             let git_dirty = git_dirty_for_workspace_root(project_id);
-            git_state_by_project.insert(project_id.clone(), (git_branch, git_dirty));
+            let (preserved_branch, preserved_dirty) = preserved_git_state_by_project
+                .get(project_id)
+                .cloned()
+                .unwrap_or((None, None));
+            git_state_by_project.insert(
+                project_id.clone(),
+                (
+                    git_branch.or(preserved_branch),
+                    git_dirty.or(preserved_dirty),
+                ),
+            );
         }
 
         for metadata in self.thread_metadata.values_mut() {
@@ -16034,6 +16102,244 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.shared_session_for_thread(thread_id))
+    }
+
+    pub fn hosted_shared_session_directory(&self) -> Vec<ForgeHostedSessionDirectoryEntry> {
+        let mut entries = self
+            .forge_shared_sessions
+            .values()
+            .filter(|session| !session.archived_in_shell)
+            .filter(|session| is_hosted_forge_shared_session(session))
+            .filter_map(|session| {
+                let probe_session_id = preferred_probe_session_id_for_shared_session(session)?;
+                let sibling_probe_session_ids = session
+                    .probe_session_ids
+                    .iter()
+                    .filter(|session_id| *session_id != &probe_session_id)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let git_branch = session
+                    .delivery_receipt_id
+                    .as_deref()
+                    .and_then(|receipt_id| self.forge_delivery_receipts.get(receipt_id))
+                    .map(|receipt| receipt.head_branch.clone())
+                    .or_else(|| session.workspace_restore.base_repo.git_branch.clone());
+                Some(ForgeHostedSessionDirectoryEntry {
+                    shared_session_id: session.shared_session_id.clone(),
+                    probe_session_id,
+                    sibling_probe_session_ids,
+                    workspace_root: session.workspace_root.clone(),
+                    project_name: session
+                        .project_name
+                        .clone()
+                        .or_else(|| session.shell_title.clone()),
+                    git_branch,
+                    prepared_baseline_id: session.remote_session.prepared_baseline_id.clone(),
+                    prepared_baseline_status: session.remote_session.prepared_baseline_status,
+                    control_owner: session.control_owner,
+                    participants: session.participants.clone(),
+                    location_kind: session.remote_session.location_kind,
+                    owner_label: session
+                        .remote_session
+                        .owner_label
+                        .clone()
+                        .or_else(|| session.remote_session.owner_id.clone()),
+                    execution_host_label: session
+                        .remote_session
+                        .execution_host_label
+                        .clone()
+                        .or_else(|| session.remote_session.execution_host_id.clone()),
+                    attach_target: session.remote_session.attach_target.clone(),
+                    updated_at_epoch_ms: session.updated_at_epoch_ms,
+                })
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by(|lhs, rhs| {
+            rhs.updated_at_epoch_ms
+                .cmp(&lhs.updated_at_epoch_ms)
+                .then_with(|| lhs.shared_session_id.cmp(&rhs.shared_session_id))
+        });
+        entries
+    }
+
+    pub fn prepare_hosted_probe_attach_by_shared_session_id(
+        &mut self,
+        shared_session_id: &str,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedSessionAttachTarget, String> {
+        let shared_session_id = shared_session_id.trim();
+        if shared_session_id.is_empty() {
+            return Err("Hosted shared session id cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| format!("No hosted shared session matched `{shared_session_id}`."))?;
+        if shared_session.archived_in_shell {
+            return Err(format!(
+                "Hosted shared session `{shared_session_id}` is archived in the shell."
+            ));
+        }
+        if !is_hosted_forge_shared_session(&shared_session) {
+            return Err(format!(
+                "Shared session `{shared_session_id}` is not recorded as a hosted Forge session."
+            ));
+        }
+        let probe_session_id = preferred_probe_session_id_for_shared_session(&shared_session)
+            .ok_or_else(|| {
+                format!(
+                    "Hosted shared session `{shared_session_id}` does not expose a Probe session id yet."
+                )
+            })?;
+        self.prepare_hosted_probe_attach_target(
+            shared_session,
+            probe_session_id.as_str(),
+            recorded_at_epoch_ms,
+        )
+    }
+
+    pub fn prepare_hosted_probe_attach_by_probe_session_id(
+        &mut self,
+        probe_session_id: &str,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedSessionAttachTarget, String> {
+        let probe_session_id = probe_session_id.trim();
+        if probe_session_id.is_empty() {
+            return Err("Hosted Probe session id cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .forge_shared_sessions
+            .values()
+            .find(|session| {
+                !session.archived_in_shell
+                    && is_hosted_forge_shared_session(session)
+                    && session
+                        .probe_session_ids
+                        .iter()
+                        .any(|session_id| session_id == probe_session_id)
+            })
+            .cloned()
+            .ok_or_else(|| format!("No hosted Forge session matched `{probe_session_id}`."))?;
+        self.prepare_hosted_probe_attach_target(
+            shared_session,
+            probe_session_id,
+            recorded_at_epoch_ms,
+        )
+    }
+
+    fn prepare_hosted_probe_attach_target(
+        &mut self,
+        shared_session: ForgeSharedSession,
+        probe_session_id: &str,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedSessionAttachTarget, String> {
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let reused_local_thread = self.thread_metadata.contains_key(probe_session_id);
+        let workspace_root = shared_session.workspace_root.clone();
+        let project_name = shared_session
+            .project_name
+            .clone()
+            .or_else(|| shared_session.shell_title.clone());
+        let git_branch = shared_session
+            .delivery_receipt_id
+            .as_deref()
+            .and_then(|receipt_id| self.forge_delivery_receipts.get(receipt_id))
+            .map(|receipt| receipt.head_branch.clone())
+            .or_else(|| {
+                shared_session
+                    .workspace_restore
+                    .base_repo
+                    .git_branch
+                    .clone()
+            })
+            .or_else(|| {
+                self.forge_delivery_receipts
+                    .values()
+                    .find(|receipt| receipt.shared_session_id == shared_session_id)
+                    .map(|receipt| receipt.head_branch.clone())
+            })
+            .or_else(|| {
+                self.forge_shared_sessions
+                    .get(&shared_session_id)
+                    .and_then(|session| session.workspace_restore.base_repo.git_branch.clone())
+            });
+        let preview = shared_session
+            .last_handoff
+            .as_ref()
+            .map(|handoff| handoff.summary.clone())
+            .or_else(|| {
+                shared_session
+                    .remote_session
+                    .operator_handoff_summary
+                    .clone()
+            })
+            .or_else(|| {
+                project_name
+                    .as_ref()
+                    .map(|label| format!("Hosted Forge session for {label}."))
+            });
+        let workspace_label = workspace_root
+            .clone()
+            .or_else(|| project_name.clone())
+            .or_else(|| shared_session.remote_session.attach_target.clone())
+            .unwrap_or_else(|| probe_session_id.to_string());
+        let next_updated_at_epoch_ms = recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+
+        let session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Hosted shared session `{shared_session_id}` disappeared before it could be attached."
+                )
+            })?;
+        session.probe_session_ids.push(probe_session_id.to_string());
+        session.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut session.probe_session_ids));
+        session.updated_at_epoch_ms = next_updated_at_epoch_ms;
+
+        self.ensure_thread(probe_session_id.to_string());
+        let metadata = self
+            .thread_metadata
+            .entry(probe_session_id.to_string())
+            .or_default();
+        if let Some(thread_name) = shared_session
+            .shell_title
+            .clone()
+            .or_else(|| project_name.clone())
+        {
+            metadata.thread_name = Some(thread_name);
+        }
+        if let Some(preview) = preview {
+            metadata.preview = Some(preview);
+        }
+        metadata.status = Some(compose_probe_thread_status(Some("idle"), false, true));
+        metadata.probe_runtime_status = Some("idle".to_string());
+        metadata.probe_archived = false;
+        metadata.loaded = false;
+        metadata.cwd = workspace_root.clone().or(metadata.cwd.clone());
+        metadata.workspace_root = workspace_root.clone().or(metadata.workspace_root.clone());
+        metadata.project_id = shared_session
+            .project_id
+            .clone()
+            .or(metadata.project_id.clone());
+        metadata.project_name = project_name.clone().or(metadata.project_name.clone());
+        metadata.git_branch = git_branch.or(metadata.git_branch.clone());
+        metadata.created_at = Some(shared_session.created_at_epoch_ms as i64);
+        metadata.updated_at = Some(next_updated_at_epoch_ms as i64);
+
+        self.rebuild_project_registry();
+        self.persist_codex_artifact_projection();
+
+        Ok(ForgeHostedSessionAttachTarget {
+            shared_session_id,
+            probe_session_id: probe_session_id.to_string(),
+            workspace_label,
+            project_name,
+            attach_target: shared_session.remote_session.attach_target.clone(),
+            reused_local_thread,
+        })
     }
 
     pub fn remember_pending_probe_session_start_mount_plan(
@@ -26947,8 +27253,9 @@ mod tests {
         ForgeProbeSessionOwnerKind, ForgePromotionLedger, ForgePromotionLedgerStatus,
         ForgePromotionRevision, ForgeSettlementClosurePath, ForgeSettlementReceipt,
         ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeSharedSessionControlOwner,
-        ForgeSharedSessionHandoff, ForgeSharedSessionParticipant, ForgeWorkspaceRestoreProvenance,
-        ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
+        ForgeSharedSessionHandoff, ForgeSharedSessionParticipant, ForgeWorkspaceBaseRepoRef,
+        ForgeWorkspaceRestoreProvenance, ForgeWorkspaceSnapshotRefStatus,
+        ForgeWorkspaceStartupKind,
     };
 
     use super::{
@@ -32184,6 +32491,278 @@ mod tests {
         let _ = std::fs::remove_file(desktop_a_projection);
         let _ = std::fs::remove_file(desktop_b_projection);
         let _ = std::fs::remove_file(shared_state_path);
+    }
+
+    #[test]
+    fn chat_state_lists_hosted_shared_sessions_for_internal_attach() {
+        let mut chat = AutopilotChatState::default();
+        chat.forge_shared_sessions.insert(
+            "local-session".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "local-session".to_string(),
+                probe_session_ids: vec!["probe-local".to_string()],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/local".to_string()),
+                project_id: Some("project-local".to_string()),
+                project_name: Some("local".to_string()),
+                shell_title: None,
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![
+                    ForgeSharedSessionParticipant {
+                        participant_id: "local-human".to_string(),
+                        kind: ForgeSharedSessionControlOwner::HumanLocal,
+                        display_name: "Local human".to_string(),
+                    },
+                    ForgeSharedSessionParticipant {
+                        participant_id: "local-probe-agent".to_string(),
+                        kind: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                        display_name: "Local Probe agent".to_string(),
+                    },
+                ],
+                last_handoff: None,
+                remote_session: ForgeProbeRemoteSessionProjection::default(),
+                workspace_restore: ForgeWorkspaceRestoreProvenance::default(),
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: None,
+                bounty_contract_id: None,
+                bounty_claim_id: None,
+                settlement_receipt_id: None,
+                hosted_coding_audit_bundle_id: None,
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: None,
+                delivery_receipt_id: None,
+                created_at_epoch_ms: 1_700_002_000,
+                updated_at_epoch_ms: 1_700_002_000,
+            },
+        );
+        chat.forge_shared_sessions.insert(
+            "forge-session-1".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec![
+                    "probe-session-1".to_string(),
+                    "probe-session-2".to_string(),
+                ],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/openagents".to_string()),
+                project_id: Some("project-openagents".to_string()),
+                project_name: Some("openagents".to_string()),
+                shell_title: Some("OpenAgents hosted session".to_string()),
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![
+                    ForgeSharedSessionParticipant {
+                        participant_id: "alice".to_string(),
+                        kind: ForgeSharedSessionControlOwner::HumanLocal,
+                        display_name: "Alice".to_string(),
+                    },
+                    ForgeSharedSessionParticipant {
+                        participant_id: "probe".to_string(),
+                        kind: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                        display_name: "Probe".to_string(),
+                    },
+                ],
+                last_handoff: None,
+                remote_session: ForgeProbeRemoteSessionProjection {
+                    location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                    owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
+                    owner_label: Some("Forge hosted worker".to_string()),
+                    attach_target: Some("probe-hosted-forge-1:7447".to_string()),
+                    execution_host_kind: Some(ForgeProbeExecutionHostKind::HostedWorker),
+                    execution_host_label: Some("probe-hosted-forge-1".to_string()),
+                    prepared_baseline_id: Some("baseline-42".to_string()),
+                    prepared_baseline_status: Some(ForgeProbePreparedBaselineStatus::Ready),
+                    updated_at_epoch_ms: 1_700_002_040,
+                    ..ForgeProbeRemoteSessionProjection::default()
+                },
+                workspace_restore: ForgeWorkspaceRestoreProvenance {
+                    base_repo: ForgeWorkspaceBaseRepoRef {
+                        git_branch: Some("feature/from-restore".to_string()),
+                        ..ForgeWorkspaceBaseRepoRef::default()
+                    },
+                    ..ForgeWorkspaceRestoreProvenance::default()
+                },
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: None,
+                bounty_contract_id: None,
+                bounty_claim_id: None,
+                settlement_receipt_id: None,
+                hosted_coding_audit_bundle_id: None,
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: None,
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                created_at_epoch_ms: 1_700_002_010,
+                updated_at_epoch_ms: 1_700_002_050,
+            },
+        );
+        chat.forge_delivery_receipts.insert(
+            "delivery-1".to_string(),
+            ForgeDeliveryReceipt {
+                delivery_receipt_id: "delivery-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                evidence_bundle_id: None,
+                probe_session_ids: vec![
+                    "probe-session-1".to_string(),
+                    "probe-session-2".to_string(),
+                ],
+                delegated_child_session_ids: Vec::new(),
+                status: ForgeDeliveryReceiptStatus::Opened,
+                base_branch: "main".to_string(),
+                base_commit: None,
+                head_branch: "alice/internal-mvp".to_string(),
+                head_commit: "def456".to_string(),
+                compare_url: None,
+                pr_url: None,
+                branch_watch: None,
+                compare_watch: None,
+                pull_request_watch: None,
+                ci_watch: None,
+                suggested_title: "Internal hosted attach".to_string(),
+                suggested_body: "Drive attach from shared state.".to_string(),
+                contributors: Vec::new(),
+                latest_review_decision: None,
+                merged_at_epoch_ms: None,
+                updated_at_epoch_ms: 1_700_002_060,
+            },
+        );
+
+        let sessions = chat.hosted_shared_session_directory();
+        assert_eq!(sessions.len(), 1);
+        let session = &sessions[0];
+        assert_eq!(session.shared_session_id, "forge-session-1");
+        assert_eq!(session.probe_session_id, "probe-session-2");
+        assert_eq!(
+            session.sibling_probe_session_ids,
+            vec!["probe-session-1".to_string()]
+        );
+        assert_eq!(session.project_name.as_deref(), Some("openagents"));
+        assert_eq!(session.workspace_root.as_deref(), Some("/tmp/openagents"));
+        assert_eq!(session.git_branch.as_deref(), Some("alice/internal-mvp"));
+        assert_eq!(session.prepared_baseline_id.as_deref(), Some("baseline-42"));
+        assert_eq!(
+            session.prepared_baseline_status,
+            Some(ForgeProbePreparedBaselineStatus::Ready)
+        );
+        assert_eq!(
+            session.control_owner,
+            ForgeSharedSessionControlOwner::HumanLocal
+        );
+        assert_eq!(
+            session.location_kind,
+            ForgeProbeSessionLocationKind::HostedWorkspace
+        );
+        assert_eq!(
+            session.attach_target.as_deref(),
+            Some("probe-hosted-forge-1:7447")
+        );
+    }
+
+    #[test]
+    fn chat_state_prepares_hosted_attach_without_parallel_shared_session() {
+        let mut chat = AutopilotChatState::default();
+        chat.forge_shared_sessions.insert(
+            "forge-session-1".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/openagents".to_string()),
+                project_id: Some("project-openagents".to_string()),
+                project_name: Some("openagents".to_string()),
+                shell_title: Some("OpenAgents hosted session".to_string()),
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![ForgeSharedSessionParticipant {
+                    participant_id: "alice".to_string(),
+                    kind: ForgeSharedSessionControlOwner::HumanLocal,
+                    display_name: "Alice".to_string(),
+                }],
+                last_handoff: Some(ForgeSharedSessionHandoff {
+                    from_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    to_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    summary: "Alice is taking over the hosted session.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_060,
+                }),
+                remote_session: ForgeProbeRemoteSessionProjection {
+                    location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                    owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
+                    owner_label: Some("Forge hosted worker".to_string()),
+                    attach_target: Some("probe-hosted-forge-1:7447".to_string()),
+                    execution_host_kind: Some(ForgeProbeExecutionHostKind::HostedWorker),
+                    execution_host_label: Some("probe-hosted-forge-1".to_string()),
+                    updated_at_epoch_ms: 1_700_002_070,
+                    ..ForgeProbeRemoteSessionProjection::default()
+                },
+                workspace_restore: ForgeWorkspaceRestoreProvenance {
+                    base_repo: ForgeWorkspaceBaseRepoRef {
+                        git_branch: Some("alice/internal-mvp".to_string()),
+                        ..ForgeWorkspaceBaseRepoRef::default()
+                    },
+                    ..ForgeWorkspaceRestoreProvenance::default()
+                },
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: None,
+                bounty_contract_id: None,
+                bounty_claim_id: None,
+                settlement_receipt_id: None,
+                hosted_coding_audit_bundle_id: None,
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: None,
+                delivery_receipt_id: None,
+                created_at_epoch_ms: 1_700_002_000,
+                updated_at_epoch_ms: 1_700_002_080,
+            },
+        );
+
+        let target = chat
+            .prepare_hosted_probe_attach_by_shared_session_id("forge-session-1", 1_700_002_090)
+            .expect("shared attach should prepare");
+        assert_eq!(target.shared_session_id, "forge-session-1");
+        assert_eq!(target.probe_session_id, "probe-session-1");
+        assert_eq!(target.workspace_label, "/tmp/openagents");
+        assert!(!target.reused_local_thread);
+
+        let metadata = chat
+            .thread_metadata
+            .get("probe-session-1")
+            .expect("local metadata for attached hosted session");
+        assert_eq!(
+            metadata.thread_name.as_deref(),
+            Some("OpenAgents hosted session")
+        );
+        assert_eq!(
+            metadata.preview.as_deref(),
+            Some("Alice is taking over the hosted session.")
+        );
+        assert_eq!(metadata.status.as_deref(), Some("attached"));
+        assert_eq!(metadata.probe_runtime_status.as_deref(), Some("idle"));
+        assert_eq!(metadata.workspace_root.as_deref(), Some("/tmp/openagents"));
+        assert_eq!(metadata.project_name.as_deref(), Some("openagents"));
+        assert_eq!(metadata.git_branch.as_deref(), Some("alice/internal-mvp"));
+        assert_eq!(chat.active_thread_id.as_deref(), Some("probe-session-1"));
+
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("probe-session-1", 1_700_002_100)
+            .expect("shared session should still resolve");
+        assert_eq!(shared_session_id, "forge-session-1");
+        assert_eq!(chat.forge_shared_sessions.len(), 1);
+
+        let second_target = chat
+            .prepare_hosted_probe_attach_by_probe_session_id("probe-session-1", 1_700_002_110)
+            .expect("probe attach should prepare");
+        assert_eq!(second_target.shared_session_id, "forge-session-1");
+        assert!(second_target.reused_local_thread);
     }
 
     #[test]

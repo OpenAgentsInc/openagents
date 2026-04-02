@@ -52,6 +52,13 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/settle status`
 - The desktop command surface now also exposes hosted coding closeout audit
   capture through:
+  - `/hosted sessions`
+  - lists the internal hosted Forge session directory from shared shell state
+  - `/hosted attach shared <shared-session-id>`
+  - binds the current desktop to the hosted shared session and loads its Probe
+    session
+  - `/hosted attach probe <probe-session-id>`
+  - attaches directly when the operator already has the hosted Probe session id
   - `/hosted preflight [path]`
   - `/hosted coding <environment-summary>`
   - `/hosted bookkeeping <environment-summary>`

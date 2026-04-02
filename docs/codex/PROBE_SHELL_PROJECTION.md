@@ -89,6 +89,10 @@ Current local-first rules:
   - the desktop reload path merges that shared document deterministically by
     object id and `updated_at_epoch_ms`, so a second operator desktop can load
     the same shared session state without copying local artifact files by hand
+  - the same shared document now also drives a hosted-session directory and
+    attach flow, so a teammate can discover an already-running hosted Forge
+    session and attach by shared-session id or Probe session id without first
+    owning a local transcript file
 - reducer-level interrupt and resume events also update control-owner posture so
   the shell does not lose lineage when control flips between the operator and
   the background agent
@@ -233,6 +237,9 @@ Current local-first behavior:
     cleanup when Probe reports them
   - linked evidence bundle and delivery receipt state
 - operators can extend the bundle through:
+  - `/hosted sessions`
+  - `/hosted attach shared <shared-session-id>`
+  - `/hosted attach probe <probe-session-id>`
   - `/hosted preflight [path]`
   - `/hosted coding <environment-summary>`
   - `/hosted bookkeeping <environment-summary>`

@@ -301,6 +301,13 @@ enum ChatForgeComposerIntent {
     HostedPreflight {
         path: Option<String>,
     },
+    HostedSessionDirectory,
+    HostedAttachSharedSession {
+        shared_session_id: String,
+    },
+    HostedAttachProbeSession {
+        probe_session_id: String,
+    },
     HostedAuditStatus,
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
@@ -3276,6 +3283,39 @@ fn attach_existing_probe_thread(
     reused_attached_session: bool,
     sibling_matches: &[String],
 ) -> bool {
+    let sibling_note = if sibling_matches.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Other live sessions still exist: {}.",
+            sibling_matches.join(", ")
+        )
+    };
+    let reuse_prefix = if reused_attached_session {
+        "Reattached the Probe session already attached for this workspace"
+    } else {
+        "Attached the existing Probe session for this workspace"
+    };
+    load_probe_session_after_attach(
+        state,
+        thread_id,
+        format!("{reuse_prefix}: {thread_id}.{sibling_note}"),
+        format!(
+            "probe session attach workspace={} thread_id={} reused_attached_session={} sibling_matches={}",
+            workspace_label,
+            thread_id,
+            reused_attached_session,
+            sibling_matches.join(",")
+        ),
+    )
+}
+
+fn load_probe_session_after_attach(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+    notice: String,
+    trace_message: String,
+) -> bool {
     let Some(target) = state.autopilot_chat.select_thread_by_id(thread_id) else {
         state.autopilot_chat.last_error = Some(format!(
             "Probe session `{thread_id}` is known locally but the desktop could not select it."
@@ -3294,32 +3334,84 @@ fn attach_existing_probe_thread(
         state.autopilot_chat.last_error = Some(error);
         return true;
     }
-    let reuse_prefix = if reused_attached_session {
-        "Reattached the Probe session already attached for this workspace"
-    } else {
-        "Attached the existing Probe session for this workspace"
-    };
-    let sibling_note = if sibling_matches.is_empty() {
-        String::new()
-    } else {
-        format!(
-            " Other live sessions still exist: {}.",
-            sibling_matches.join(", ")
-        )
-    };
-    state.autopilot_chat.set_copy_notice(
-        std::time::Instant::now(),
-        format!("{reuse_prefix}: {}.{}", target.thread_id, sibling_note),
-    );
+    state
+        .autopilot_chat
+        .set_copy_notice(std::time::Instant::now(), notice);
     state.autopilot_chat.last_error = None;
-    tracing::info!(
-        "probe session attach workspace={} thread_id={} reused_attached_session={} sibling_matches={}",
-        workspace_label,
-        target.thread_id,
-        reused_attached_session,
-        sibling_matches.join(",")
-    );
+    tracing::info!("{trace_message}");
     true
+}
+
+fn format_hosted_session_directory(state: &crate::app_state::RenderState) -> String {
+    let sessions = state.autopilot_chat.hosted_shared_session_directory();
+    if sessions.is_empty() {
+        return "No hosted Forge sessions are visible yet. Point the desktop at the shared Forge state path and start a hosted Probe session first.".to_string();
+    }
+    let mut lines = vec!["Hosted Forge sessions:".to_string()];
+    for session in sessions {
+        let mut details = Vec::new();
+        if let Some(project_name) = session.project_name.as_deref() {
+            details.push(format!("project:{project_name}"));
+        }
+        if let Some(workspace_root) = session.workspace_root.as_deref() {
+            details.push(format!("ws:{workspace_root}"));
+        }
+        if let Some(git_branch) = session.git_branch.as_deref() {
+            details.push(format!("branch:{git_branch}"));
+        }
+        if let Some(baseline_id) = session.prepared_baseline_id.as_deref() {
+            let baseline_status = session
+                .prepared_baseline_status
+                .map(|status| status.display_label())
+                .unwrap_or("unknown");
+            details.push(format!("baseline:{baseline_id} ({baseline_status})"));
+        }
+        details.push(format!(
+            "controller:{}",
+            session.control_owner.display_label()
+        ));
+        if !session.participants.is_empty() {
+            details.push(format!(
+                "participants:{}",
+                session
+                    .participants
+                    .iter()
+                    .map(|participant| participant.display_name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        details.push(format!(
+            "location:{}",
+            session.location_kind.display_label()
+        ));
+        if let Some(owner_label) = session.owner_label.as_deref() {
+            details.push(format!("owner:{owner_label}"));
+        }
+        if let Some(execution_host_label) = session.execution_host_label.as_deref() {
+            details.push(format!("host:{execution_host_label}"));
+        }
+        if let Some(attach_target) = session.attach_target.as_deref() {
+            details.push(format!("attach:{attach_target}"));
+        }
+        if !session.sibling_probe_session_ids.is_empty() {
+            details.push(format!(
+                "other_probe_sessions:{}",
+                session.sibling_probe_session_ids.join(", ")
+            ));
+        }
+        lines.push(format!(
+            "- `{}` -> `{}` ({})",
+            session.shared_session_id,
+            session.probe_session_id,
+            details.join(" | ")
+        ));
+    }
+    lines.push(
+        "Attach with `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`."
+            .to_string(),
+    );
+    lines.join("\n")
 }
 
 fn remember_chat_command_prompt(state: &mut crate::app_state::RenderState, prompt: &str) {
@@ -6424,10 +6516,44 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     if first_word == "/hosted" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
-                "Hosted audit commands: `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
+                "Hosted commands: `/hosted sessions`, `/hosted attach shared <shared-session-id>`, `/hosted attach probe <probe-session-id>`, `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
             );
         };
         return match subcommand {
+            "sessions" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/hosted sessions`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedSessionDirectory))
+            }
+            "attach" => {
+                let Some(attach_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`.".to_string(),
+                    );
+                };
+                let Some(target_id) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`.".to_string(),
+                    );
+                };
+                if words.len() != 4 {
+                    return Err(
+                        "Usage: `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`.".to_string(),
+                    );
+                }
+                match attach_kind {
+                    "shared" => Ok(Some(ChatForgeComposerIntent::HostedAttachSharedSession {
+                        shared_session_id: target_id,
+                    })),
+                    "probe" => Ok(Some(ChatForgeComposerIntent::HostedAttachProbeSession {
+                        probe_session_id: target_id,
+                    })),
+                    _ => Err(
+                        "Hosted attach target must be `shared` or `probe`.".to_string(),
+                    ),
+                }
+            }
             "preflight" => Ok(Some(ChatForgeComposerIntent::HostedPreflight {
                 path: (words.len() > 2).then(|| words[2..].join(" ")),
             })),
@@ -6496,7 +6622,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                 Ok(Some(ChatForgeComposerIntent::HostedAuditStatus))
             }
             _ => Err(
-                "Hosted audit commands: `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
+                "Hosted commands: `/hosted sessions`, `/hosted attach shared <shared-session-id>`, `/hosted attach probe <probe-session-id>`, `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
             ),
         };
     }
@@ -7714,6 +7840,95 @@ fn run_chat_forge_action(
     remember_chat_command_prompt(state, &prompt);
     clear_chat_command_prompt(state);
 
+    if matches!(
+        &intent,
+        ChatForgeComposerIntent::HostedSessionDirectory
+            | ChatForgeComposerIntent::HostedAttachSharedSession { .. }
+            | ChatForgeComposerIntent::HostedAttachProbeSession { .. }
+    ) {
+        return match intent {
+            ChatForgeComposerIntent::HostedSessionDirectory => append_chat_command_result(
+                state,
+                prompt,
+                format_hosted_session_directory(state),
+                false,
+            ),
+            ChatForgeComposerIntent::HostedAttachSharedSession { shared_session_id } => match state
+                .autopilot_chat
+                .prepare_hosted_probe_attach_by_shared_session_id(
+                    shared_session_id.as_str(),
+                    current_epoch_millis(),
+                ) {
+                Ok(target) => {
+                    let attach_detail = target
+                        .attach_target
+                        .as_deref()
+                        .map(|attach_target| format!(" via `{attach_target}`"))
+                        .unwrap_or_default();
+                    let reuse_prefix = if target.reused_local_thread {
+                        "Reattached hosted Forge session"
+                    } else {
+                        "Attached hosted Forge session"
+                    };
+                    load_probe_session_after_attach(
+                        state,
+                        target.probe_session_id.as_str(),
+                        format!(
+                            "{reuse_prefix}: {} (shared `{}`{})",
+                            target.probe_session_id, target.shared_session_id, attach_detail
+                        ),
+                        format!(
+                            "probe hosted attach shared_session_id={} probe_session_id={} workspace={} reused_local_thread={}",
+                            target.shared_session_id,
+                            target.probe_session_id,
+                            target.workspace_label,
+                            target.reused_local_thread
+                        ),
+                    )
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            },
+            ChatForgeComposerIntent::HostedAttachProbeSession { probe_session_id } => {
+                match state
+                    .autopilot_chat
+                    .prepare_hosted_probe_attach_by_probe_session_id(
+                        probe_session_id.as_str(),
+                        current_epoch_millis(),
+                    ) {
+                    Ok(target) => {
+                        let attach_detail = target
+                            .attach_target
+                            .as_deref()
+                            .map(|attach_target| format!(" via `{attach_target}`"))
+                            .unwrap_or_default();
+                        let reuse_prefix = if target.reused_local_thread {
+                            "Reattached hosted Probe session"
+                        } else {
+                            "Attached hosted Probe session"
+                        };
+                        load_probe_session_after_attach(
+                            state,
+                            target.probe_session_id.as_str(),
+                            format!(
+                                "{reuse_prefix}: {} (shared `{}`{})",
+                                target.probe_session_id, target.shared_session_id, attach_detail
+                            ),
+                            format!(
+                                "probe hosted attach probe_session_id={} shared_session_id={} workspace={} reused_local_thread={}",
+                                target.probe_session_id,
+                                target.shared_session_id,
+                                target.workspace_label,
+                                target.reused_local_thread
+                            ),
+                        )
+                    }
+                    Err(error) => append_chat_command_result(state, prompt, error, true),
+                }
+            }
+            _ => unreachable!(),
+        };
+    }
+
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
         return append_chat_command_result(
             state,
@@ -8843,6 +9058,11 @@ fn run_chat_forge_action(
             ),
             Err(error) => append_chat_command_result(state, prompt, error, true),
         },
+        ChatForgeComposerIntent::HostedSessionDirectory
+        | ChatForgeComposerIntent::HostedAttachSharedSession { .. }
+        | ChatForgeComposerIntent::HostedAttachProbeSession { .. } => {
+            unreachable!("hosted directory and attach intents return before probe-thread gating")
+        }
     }
 }
 
@@ -21152,6 +21372,22 @@ mod tests {
             Some(ChatForgeComposerIntent::PromoteStatus)
         );
         assert_eq!(
+            parse_chat_forge_intent("/hosted sessions").unwrap(),
+            Some(ChatForgeComposerIntent::HostedSessionDirectory)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted attach shared forge-session-1").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAttachSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted attach probe probe-session-1").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAttachProbeSession {
+                probe_session_id: "probe-session-1".to_string(),
+            })
+        );
+        assert_eq!(
             parse_chat_forge_intent("/hosted preflight").unwrap(),
             Some(ChatForgeComposerIntent::HostedPreflight { path: None })
         );
@@ -21331,6 +21567,7 @@ mod tests {
         assert!(parse_chat_forge_intent("/deliver").is_err());
         assert!(parse_chat_forge_intent("/settle").is_err());
         assert!(parse_chat_forge_intent("/hosted").is_err());
+        assert!(parse_chat_forge_intent("/hosted attach").is_err());
         assert!(parse_chat_forge_intent("/campaign").is_err());
         assert!(parse_chat_forge_intent("/campaign verify probe active").is_err());
         assert!(parse_chat_forge_intent("/promote").is_err());

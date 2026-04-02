@@ -38,6 +38,11 @@ then leave behind enough linked evidence to explain:
 - The internal team can now mirror those app-owned collaboration objects into
   a shared Forge state file by setting `OPENAGENTS_FORGE_SHARED_STATE_PATH` on
   each operator desktop to the same internal path.
+- Once multiple desktops point at that path, operators can list and attach to
+  the same hosted Forge session with:
+  - `/hosted sessions`
+  - `/hosted attach shared <shared-session-id>`
+  - `/hosted attach probe <probe-session-id>`
 - Scoped pack routing projects app-owned pack choices into typed Probe mounts.
 - Hosted Probe receipts for auth, checkout, worker ownership, cost, and cleanup
   can be projected into the shared session when Probe reports them.
@@ -80,6 +85,9 @@ then leave behind enough linked evidence to explain:
 - If multiple operator desktops need to see the same app-owned Forge objects,
   they all point `OPENAGENTS_FORGE_SHARED_STATE_PATH` at the same internal
   shared document path.
+- The second operator then uses `/hosted sessions` to find the live shared
+  session and `/hosted attach ...` to bind a local thread before the normal
+  Probe `LoadSession` path hydrates the transcript and runtime projection.
 - The operator has:
   - a local `gh` install with repo access
   - GCP access to the target project
