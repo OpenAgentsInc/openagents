@@ -156,8 +156,16 @@ through Codex against the wrong session type.
 Examples in the current slice:
 
 - thread reload is Probe-aware
-- review, compaction, rollback, rename, archive, and similar Codex-only actions
-  still need explicit Probe-aware or app-owned parity work
+- rename plus archive or unarchive now stay app-owned above the Forge shared
+  session and persist as shell overlays instead of pretending Probe already owns
+  those product semantics
+- review now produces an app-owned review snapshot from the current shared
+  session, evidence bundle, and delivery receipt state instead of refusing
+- compaction now records an app-owned shell checkpoint artifact instead of
+  pretending Probe already exposes a runtime-native compaction primitive
+- rollback still stays one explicit product-level refusal because the current
+  seam does not yet mutate a Probe workspace back to an earlier snapshot or
+  restore pointer
 - desktop mention and image attachments now go through an explicit app-owned
   forwarding manifest for Probe-backed turns
 - the forwarded manifest is visible both in shell activity state and in the

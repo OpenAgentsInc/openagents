@@ -20,6 +20,13 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/deliver pr [base-branch] [pr-url]`
   - `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`
   - `/deliver merge <reviewer-label> [summary]`
+- The header actions for Probe-backed threads now use app-owned parity where the
+  runtime seam is still narrower:
+  - rename and archive or unarchive persist as shared-session shell overlays
+  - review emits a shell-owned review snapshot from current evidence or delivery
+    truth
+  - compact records a shell checkpoint artifact
+  - rollback stays an explicit refusal until workspace restore mutation exists
 
 ## Current UI Semantics
 

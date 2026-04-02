@@ -8696,6 +8696,10 @@ pub struct ForgeSharedSession {
     pub workspace_root: Option<String>,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
+    #[serde(default)]
+    pub shell_title: Option<String>,
+    #[serde(default)]
+    pub archived_in_shell: bool,
     pub control_owner: ForgeSharedSessionControlOwner,
     pub participants: Vec<ForgeSharedSessionParticipant>,
     pub last_handoff: Option<ForgeSharedSessionHandoff>,
@@ -9618,6 +9622,11 @@ fn normalize_forge_shared_sessions(
         session.shared_session_id = session.shared_session_id.trim().to_string();
         session.probe_session_ids =
             normalize_probe_session_ids(std::mem::take(&mut session.probe_session_ids));
+        session.shell_title = session
+            .shell_title
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
         }
@@ -11042,6 +11051,17 @@ impl AutopilotChatState {
             .map(|session| session.shared_session_id.clone())
     }
 
+    pub fn probe_shared_session_shell_title(&self, thread_id: &str) -> Option<String> {
+        self.shared_session_for_thread(thread_id)
+            .and_then(|session| session.shell_title.clone())
+    }
+
+    pub fn probe_thread_archived_in_shell(&self, thread_id: &str) -> bool {
+        self.shared_session_for_thread(thread_id)
+            .map(|session| session.archived_in_shell)
+            .unwrap_or(false)
+    }
+
     fn next_shared_session_id(&mut self) -> String {
         let shared_session_id = format!("forge-session-{}", self.next_forge_shared_session_seq);
         self.next_forge_shared_session_seq = self.next_forge_shared_session_seq.saturating_add(1);
@@ -11639,6 +11659,66 @@ impl AutopilotChatState {
         Ok(delivery_receipt_id)
     }
 
+    pub fn record_probe_shell_title_for_thread(
+        &mut self,
+        thread_id: &str,
+        shell_title: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shell_title = shell_title.into().trim().to_string();
+        if shell_title.is_empty() {
+            return Err("Probe thread name cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before the shell title could be recorded."
+            ));
+        };
+        shared_session.shell_title = Some(shell_title.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        if let Some(metadata) = self.thread_metadata.get_mut(thread_id) {
+            metadata.thread_name = Some(shell_title);
+        }
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn record_probe_shell_archive_state_for_thread(
+        &mut self,
+        thread_id: &str,
+        archived_in_shell: bool,
+        attached: bool,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let runtime_status = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.probe_runtime_status.clone());
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before archive state could be recorded."
+            ));
+        };
+        shared_session.archived_in_shell = archived_in_shell;
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        self.set_probe_thread_projection_state(
+            thread_id,
+            runtime_status,
+            archived_in_shell,
+            attached,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
     pub fn ensure_probe_shared_session_for_thread(
         &mut self,
         thread_id: &str,
@@ -11704,6 +11784,8 @@ impl AutopilotChatState {
                     workspace_root,
                     project_id,
                     project_name: metadata.project_name,
+                    shell_title: None,
+                    archived_in_shell: false,
                     control_owner,
                     participants: default_forge_shared_session_participants(),
                     last_handoff: None,
@@ -13435,6 +13517,8 @@ impl AutopilotChatState {
             .collect();
         self.thread_metadata.clear();
         for entry in entries {
+            let shell_title = self.probe_shared_session_shell_title(entry.thread_id.as_str());
+            let archived_in_shell = self.probe_thread_archived_in_shell(entry.thread_id.as_str());
             let previous = previous_metadata
                 .get(&entry.thread_id)
                 .cloned()
@@ -13442,15 +13526,21 @@ impl AutopilotChatState {
             self.thread_metadata.insert(
                 entry.thread_id.clone(),
                 AutopilotThreadMetadata {
-                    thread_name: entry.thread_name,
+                    thread_name: shell_title
+                        .or(entry.thread_name)
+                        .or(previous.thread_name.clone()),
                     preview: if entry.preview.trim().is_empty() {
                         previous.preview.clone()
                     } else {
                         Some(entry.preview)
                     },
-                    status: entry.status,
+                    status: if archived_in_shell {
+                        Some("archived".to_string())
+                    } else {
+                        entry.status
+                    },
                     probe_runtime_status: previous.probe_runtime_status.clone(),
-                    probe_archived: previous.probe_archived,
+                    probe_archived: previous.probe_archived || archived_in_shell,
                     loaded: entry.loaded,
                     cwd: entry.cwd.or(previous.cwd.clone()),
                     path: entry.path.or(previous.path.clone()),
@@ -15103,15 +15193,20 @@ impl AutopilotChatState {
         archived: bool,
         attached: bool,
     ) {
+        let shell_archived = self.probe_thread_archived_in_shell(thread_id);
+        let shell_title = self.probe_shared_session_shell_title(thread_id);
         let metadata = self
             .thread_metadata
             .entry(thread_id.to_string())
             .or_default();
+        if shell_title.is_some() {
+            metadata.thread_name = shell_title;
+        }
         metadata.probe_runtime_status = runtime_status.clone();
-        metadata.probe_archived = archived;
+        metadata.probe_archived = archived || shell_archived;
         metadata.status = Some(compose_probe_thread_status(
             runtime_status.as_deref(),
-            archived,
+            metadata.probe_archived,
             attached,
         ));
         if let Some(shared_session_id) = self.shared_session_id_for_thread(thread_id) {
@@ -23937,6 +24032,59 @@ mod tests {
             reloaded_receipt.pr_url.as_deref(),
             Some("https://github.com/OpenAgentsInc/openagents/pull/42")
         );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_shell_title_and_archive_overrides() {
+        let repo = init_git_workspace("probe-shell-overrides");
+        let projection_path = unique_codex_artifact_projection_path("probe-shell-overrides");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let entries = vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }];
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(entries.clone());
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.record_probe_shell_title_for_thread("thread-a", "Renamed shell thread", 1_700_000_120)
+            .expect("shell title should record");
+        chat.record_probe_shell_archive_state_for_thread("thread-a", true, true, 1_700_000_130)
+            .expect("shell archive should record");
+
+        assert_eq!(
+            chat.thread_metadata["thread-a"].thread_name.as_deref(),
+            Some("Renamed shell thread")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-a"].status.as_deref(),
+            Some("archived")
+        );
+
+        let mut reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        reloaded.set_thread_entries(entries);
+        assert_eq!(
+            reloaded.thread_metadata["thread-a"].thread_name.as_deref(),
+            Some("Renamed shell thread")
+        );
+        assert_eq!(
+            reloaded.thread_metadata["thread-a"].status.as_deref(),
+            Some("archived")
+        );
+        assert!(reloaded.thread_metadata["thread-a"].probe_archived);
 
         let _ = std::fs::remove_file(projection_path);
         let _ = std::fs::remove_dir_all(repo);

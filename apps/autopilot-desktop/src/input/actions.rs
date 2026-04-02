@@ -7216,6 +7216,236 @@ fn probe_runtime_action_unavailable(
     true
 }
 
+fn probe_shell_artifact_source_turn_id(
+    chat: &crate::app_state::AutopilotChatState,
+    thread_id: &str,
+) -> String {
+    chat.active_diff_artifact()
+        .map(|artifact| artifact.source_turn_id.clone())
+        .or_else(|| {
+            chat.active_review_artifact()
+                .map(|artifact| artifact.source_turn_id.clone())
+        })
+        .or_else(|| {
+            chat.active_compaction_artifact()
+                .map(|artifact| artifact.source_turn_id.clone())
+        })
+        .unwrap_or_else(|| format!("probe-live:{thread_id}"))
+}
+
+fn build_probe_shell_review_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+    thread_id: &str,
+) -> (String, String) {
+    let source_turn_id = probe_shell_artifact_source_turn_id(chat, thread_id);
+    let mut lines = Vec::<String>::new();
+
+    if let Some(shared_session) = chat.active_shared_session() {
+        lines.push(format!(
+            "Probe shell review snapshot for shared session `{}`.",
+            shared_session.shared_session_id
+        ));
+        lines.push(format!(
+            "Control owner: {}.",
+            shared_session.control_owner.display_label()
+        ));
+    } else {
+        lines.push("Probe shell review snapshot for the active local session.".to_string());
+    }
+
+    if let Some(diff) = chat.active_diff_artifact() {
+        lines.push(format!(
+            "Diff snapshot: {} files changed (+{} / -{}) from `{}`.",
+            diff.files.len(),
+            diff.added_line_count,
+            diff.removed_line_count,
+            diff.source_turn_id
+        ));
+    } else {
+        lines.push("Diff snapshot: missing.".to_string());
+    }
+
+    if let Some(bundle) = chat.active_evidence_bundle() {
+        let (passed, failed, running) = bundle.verification_counts();
+        lines.push(format!(
+            "Evidence bundle `{}` is {}.",
+            bundle.evidence_bundle_id,
+            bundle.reviewer_status().display_label()
+        ));
+        if passed > 0 || failed > 0 || running > 0 {
+            lines.push(format!(
+                "Verification runs: passed={} failed={} running={}.",
+                passed, failed, running
+            ));
+        }
+        if let Some(review) = bundle.review_ref.as_ref() {
+            lines.push(format!(
+                "Latest evidence review: {} for {}.",
+                review.status, review.target
+            ));
+            if let Some(summary) = review.summary.as_deref() {
+                lines.push(format!("Evidence review summary: {summary}"));
+            }
+        }
+    } else {
+        lines.push("Evidence bundle: missing.".to_string());
+    }
+
+    if let Some(receipt) = chat.active_delivery_receipt() {
+        lines.push(format!(
+            "Delivery receipt `{}` is {}.",
+            receipt.delivery_receipt_id,
+            receipt.status.display_label()
+        ));
+        if let Some(review) = receipt.latest_review_decision.as_ref() {
+            lines.push(format!(
+                "Latest reviewer outcome: {} by `{}`.",
+                review.outcome.display_label(),
+                review.reviewer_label
+            ));
+            if let Some(summary) = review.summary.as_deref() {
+                lines.push(format!("Reviewer summary: {summary}"));
+            }
+        }
+        if let Some(pr_url) = receipt.pr_url.as_deref() {
+            lines.push(format!("PR: {pr_url}"));
+        }
+    } else {
+        lines.push("Delivery receipt: not prepared.".to_string());
+    }
+
+    lines.push(
+        "This is an app-owned review snapshot above the Probe session, not a runtime-native inline review."
+            .to_string(),
+    );
+    (source_turn_id, lines.join("\n"))
+}
+
+fn run_probe_shell_rename_thread_action(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) -> bool {
+    let name = state
+        .autopilot_chat
+        .suggested_thread_name(thread_id)
+        .unwrap_or_else(|| state.autopilot_chat.next_thread_name());
+    match state.autopilot_chat.record_probe_shell_title_for_thread(
+        thread_id,
+        name.clone(),
+        current_epoch_millis(),
+    ) {
+        Ok(_) => {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("probe shell rename: {name}"));
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+fn run_probe_shell_archive_thread_action(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+    archived_in_shell: bool,
+) -> bool {
+    let attached = state.probe_lane.active_session_id.as_deref() == Some(thread_id);
+    match state
+        .autopilot_chat
+        .record_probe_shell_archive_state_for_thread(
+            thread_id,
+            archived_in_shell,
+            attached,
+            current_epoch_millis(),
+        ) {
+        Ok(_) => {
+            let label = if archived_in_shell {
+                "probe shell archived thread"
+            } else {
+                "probe shell restored thread"
+            };
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(label.to_string());
+            state.autopilot_chat.last_error = None;
+        }
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+        }
+    }
+    true
+}
+
+fn run_probe_shell_review_action(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) -> bool {
+    let (source_turn_id, review_snapshot) =
+        build_probe_shell_review_snapshot(&state.autopilot_chat, thread_id);
+    let now_ms = current_epoch_millis();
+    state.autopilot_chat.begin_review_artifact(
+        thread_id,
+        source_turn_id.clone(),
+        thread_id,
+        "app_shell",
+        "probe_shared_session",
+        now_ms,
+    );
+    state.autopilot_chat.complete_review_artifact(
+        thread_id,
+        source_turn_id.clone(),
+        review_snapshot.as_str(),
+        now_ms,
+        false,
+    );
+    state
+        .autopilot_chat
+        .record_turn_timeline_event(format!("probe shell review snapshot: {source_turn_id}"));
+    state.autopilot_chat.last_error = None;
+    true
+}
+
+fn run_probe_shell_compact_thread_action(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) -> bool {
+    let source_turn_id = probe_shell_artifact_source_turn_id(&state.autopilot_chat, thread_id);
+    state.autopilot_chat.set_compaction_artifact(
+        thread_id,
+        source_turn_id.clone(),
+        current_epoch_millis(),
+        false,
+    );
+    state.autopilot_chat.record_turn_timeline_event(format!(
+        "probe shell compaction checkpoint: {source_turn_id}"
+    ));
+    state.autopilot_chat.last_error = None;
+    true
+}
+
+fn run_probe_shell_rollback_thread_action(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) -> bool {
+    let Some(shared_session) = state.autopilot_chat.shared_session_for_thread(thread_id) else {
+        state.autopilot_chat.last_error = Some(
+            "No Probe-backed shared session is available to describe rollback posture.".to_string(),
+        );
+        return true;
+    };
+    let restore = &shared_session.workspace_restore;
+    state.autopilot_chat.last_error = Some(match restore.restore_pointer.as_deref() {
+        Some(pointer) => format!(
+            "Rollback still is not wired to mutate a Probe workspace. Current shell restore pointer is `{pointer}`; use the restore workflow explicitly instead of expecting an in-place rollback."
+        ),
+        None => "Rollback still is not wired to mutate a Probe workspace. The current shell only tracks restore provenance above Probe, and this session does not yet have a restore pointer.".to_string(),
+    });
+    true
+}
+
 pub(super) fn run_chat_fork_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     let Some(thread_id) = active_thread_id(state) else {
         state.autopilot_chat.last_error = Some("No active thread to fork".to_string());
@@ -7252,7 +7482,7 @@ pub(super) fn run_chat_archive_thread_action(state: &mut crate::app_state::Rende
         return true;
     };
     if state.uses_probe_runtime() {
-        return probe_runtime_action_unavailable(state, "Thread archive");
+        return run_probe_shell_archive_thread_action(state, thread_id.as_str(), true);
     }
     if let Err(error) = state.queue_codex_command(
         crate::codex_lane::CodexLaneCommand::ThreadArchive(ThreadArchiveParams { thread_id }),
@@ -7268,7 +7498,7 @@ pub(super) fn run_chat_unarchive_thread_action(state: &mut crate::app_state::Ren
         return true;
     };
     if state.uses_probe_runtime() {
-        return probe_runtime_action_unavailable(state, "Thread unarchive");
+        return run_probe_shell_archive_thread_action(state, thread_id.as_str(), false);
     }
     if let Err(error) = state.queue_codex_command(
         crate::codex_lane::CodexLaneCommand::ThreadUnarchive(ThreadUnarchiveParams { thread_id }),
@@ -7284,7 +7514,7 @@ pub(super) fn run_chat_rename_thread_action(state: &mut crate::app_state::Render
         return true;
     };
     if state.uses_probe_runtime() {
-        return probe_runtime_action_unavailable(state, "Thread rename");
+        return run_probe_shell_rename_thread_action(state, thread_id.as_str());
     }
     let name = state
         .autopilot_chat
@@ -7411,7 +7641,7 @@ pub(super) fn run_chat_rollback_thread_action(state: &mut crate::app_state::Rend
         return true;
     };
     if state.uses_probe_runtime() {
-        return probe_runtime_action_unavailable(state, "Thread rollback");
+        return run_probe_shell_rollback_thread_action(state, thread_id.as_str());
     }
     let command = crate::codex_lane::CodexLaneCommand::ThreadRollback(ThreadRollbackParams {
         thread_id,
@@ -7471,7 +7701,7 @@ pub(super) fn run_chat_review_action(state: &mut crate::app_state::RenderState) 
         return true;
     };
     if state.uses_probe_runtime() {
-        return probe_runtime_action_unavailable(state, "Review");
+        return run_probe_shell_review_action(state, thread_id.as_str());
     }
     let command =
         crate::codex_lane::CodexLaneCommand::ReviewStart(codex_client::ReviewStartParams {
@@ -7491,7 +7721,7 @@ pub(super) fn run_chat_compact_thread_action(state: &mut crate::app_state::Rende
         return true;
     };
     if state.uses_probe_runtime() {
-        return probe_runtime_action_unavailable(state, "Compaction");
+        return run_probe_shell_compact_thread_action(state, thread_id.as_str());
     }
     let command =
         crate::codex_lane::CodexLaneCommand::ThreadCompactStart(ThreadCompactStartParams {
@@ -16641,8 +16871,9 @@ mod tests {
         build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
         build_managed_chat_moderation_event, build_managed_chat_outbound_message,
         build_managed_chat_reaction_event, build_mission_control_buy_mode_request_event,
-        build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
-        classify_provider_failure, decide_probe_workspace_attach_for_chat, default_pr_base_branch,
+        build_nip90_request_event_for_network_submission, build_probe_shell_review_snapshot,
+        chat_wallet_payment_status_summary, classify_provider_failure,
+        decide_probe_workspace_attach_for_chat, default_pr_base_branch,
         extract_chat_wallet_payload, extract_target_provider_pubkeys, git_common_worktree_root,
         git_current_branch, git_local_branch_exists, github_compare_url,
         is_taxonomy_failure_detail, loop_integrity_alert_specs,
@@ -18038,6 +18269,83 @@ mod tests {
                 sibling_matches: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn probe_shell_review_snapshot_summarizes_shared_session_state() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let workspace_root = workspace.path().display().to_string();
+        let transcript_path = workspace.path().join("thread-a.jsonl");
+        let mut chat = crate::app_state::AutopilotChatState::default();
+        chat.set_thread_entries(vec![crate::app_state::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(workspace_root),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Looks good overall.",
+            1_700_000_130,
+            false,
+        );
+        chat.record_probe_evidence_verification_for_thread(
+            "thread-a",
+            "cargo-test",
+            crate::app_state::ForgeEvidenceVerificationStatus::Passed,
+            Some("target/test.log".to_string()),
+            Some("12 tests passed".to_string()),
+            1_700_000_140,
+        )
+        .expect("verification evidence should record");
+        chat.record_probe_delivery_pr_for_thread(
+            "thread-a",
+            "main",
+            Some("abc123".to_string()),
+            "feature/probe-review",
+            "def456",
+            Some(
+                "https://github.com/OpenAgentsInc/openagents/compare/main...feature/probe-review?expand=1"
+                    .to_string(),
+            ),
+            Some("https://github.com/OpenAgentsInc/openagents/pull/99".to_string()),
+            "Probe shell review snapshot",
+            "## Summary\n- wire review snapshot",
+            1_700_000_150,
+        )
+        .expect("delivery receipt should record");
+        chat.record_probe_delivery_review_for_thread(
+            "thread-a",
+            crate::app_state::ForgeDeliveryReviewerOutcome::Approved,
+            "chris",
+            Some("ready to merge".to_string()),
+            1_700_000_160,
+        )
+        .expect("review outcome should record");
+
+        let (source_turn_id, summary) = build_probe_shell_review_snapshot(&chat, "thread-a");
+        assert_eq!(source_turn_id, "turn-diff-1");
+        assert!(summary.contains("shared session"));
+        assert!(summary.contains("Evidence bundle"));
+        assert!(summary.contains("review ready"));
+        assert!(summary.contains("Delivery receipt"));
+        assert!(summary.contains("approved by `chris`"));
+        assert!(summary.contains("app-owned review snapshot"));
     }
 
     #[test]
