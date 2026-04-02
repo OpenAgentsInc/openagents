@@ -27,7 +27,8 @@ use probe_protocol::runtime::{
     ToolOracleRecipe, ToolSetKind, TurnAuthor, TurnRequest, TurnResponse,
 };
 use probe_protocol::session::{
-    PendingToolApproval, SessionChildSummary, SessionId, SessionMetadata, ToolApprovalResolution,
+    PendingToolApproval, SessionBranchState, SessionChildSummary, SessionDeliveryState,
+    SessionId, SessionMetadata, ToolApprovalResolution,
 };
 
 const PROBE_LANE_POLL: Duration = Duration::from_millis(750);
@@ -240,6 +241,11 @@ pub enum ProbeLaneNotification {
     ChildSessionUpdated {
         session_id: String,
         child: SessionChildSummary,
+    },
+    WorkspaceStateUpdated {
+        session_id: String,
+        branch_state: Option<SessionBranchState>,
+        delivery_state: Option<SessionDeliveryState>,
     },
     RuntimeProgress {
         session_id: String,
@@ -1219,13 +1225,31 @@ fn handle_runtime_event_notification(
             ));
         }
         ServerEvent::DetachedSessionStream { record } => {
-            if let DetachedSessionEventPayload::ChildSessionUpdated { child } = record.payload {
-                let _ = update_tx.send(ProbeLaneUpdate::Notification(
-                    ProbeLaneNotification::ChildSessionUpdated {
-                        session_id: record.session_id.as_str().to_string(),
-                        child,
-                    },
-                ));
+            match record.payload {
+                DetachedSessionEventPayload::ChildSessionUpdated { child } => {
+                    let _ = update_tx.send(ProbeLaneUpdate::Notification(
+                        ProbeLaneNotification::ChildSessionUpdated {
+                            session_id: record.session_id.as_str().to_string(),
+                            child,
+                        },
+                    ));
+                }
+                DetachedSessionEventPayload::WorkspaceStateUpdated {
+                    branch_state,
+                    delivery_state,
+                } => {
+                    let _ = update_tx.send(ProbeLaneUpdate::Notification(
+                        ProbeLaneNotification::WorkspaceStateUpdated {
+                            session_id: record.session_id.as_str().to_string(),
+                            branch_state,
+                            delivery_state,
+                        },
+                    ));
+                }
+                DetachedSessionEventPayload::SummaryUpdated { .. }
+                | DetachedSessionEventPayload::RuntimeProgress { .. }
+                | DetachedSessionEventPayload::PendingApprovalsUpdated { .. }
+                | DetachedSessionEventPayload::Note { .. } => {}
             }
         }
     }

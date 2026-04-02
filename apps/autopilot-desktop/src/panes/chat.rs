@@ -13,7 +13,8 @@ use crate::app_state::{
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
     DirectMessageMessageProjection, DirectMessageRoomProjection,
-    ForgeDelegatedChildSessionCard, ForgeDeliveryReceipt, ForgeEvidenceBundle,
+    ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch, ForgeDeliveryReceipt,
+    ForgeEvidenceBundle,
     ForgeSharedSession, ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot,
     ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
     ManagedChatMessageProjection, ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef,
@@ -3350,11 +3351,62 @@ fn active_delivery_receipt_meta_line(receipt: &ForgeDeliveryReceipt) -> String {
         "head:{}",
         compact_display_token(receipt.head_branch.as_str(), 14)
     ));
+    if let Some(compare_watch) = receipt.compare_watch.as_ref() {
+        parts.push(format!("compare:{}", compare_watch.posture.label()));
+    }
+    if let Some(pr_watch) = receipt.pull_request_watch.as_ref() {
+        parts.push(format!("pr:{}", pr_watch.state.label()));
+    }
+    if let Some(ci_watch) = receipt.ci_watch.as_ref() {
+        parts.push(format!("ci:{}", ci_watch.status.label()));
+    }
     if let Some(review) = receipt.latest_review_decision.as_ref() {
         parts.push(format!("review:{}", review.outcome.label()));
     }
     if let Some(updated) = format_thread_timestamp(receipt.updated_at_epoch_ms as i64) {
         parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_delivery_ci_watch_summary(watch: &ForgeDeliveryCiWatch) -> String {
+    let mut pass = 0usize;
+    let mut fail = 0usize;
+    let mut pending = 0usize;
+    let mut cancel = 0usize;
+    let mut skipping = 0usize;
+    let mut unknown = 0usize;
+    for check in &watch.checks {
+        match check.status {
+            crate::app_state::ForgeDeliveryCiStatus::Pass => pass += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Fail => fail += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Pending => pending += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Cancel => cancel += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Skipping => skipping += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Unknown => unknown += 1,
+        }
+    }
+    let mut parts = Vec::new();
+    if pass > 0 {
+        parts.push(format!("pass={pass}"));
+    }
+    if fail > 0 {
+        parts.push(format!("fail={fail}"));
+    }
+    if pending > 0 {
+        parts.push(format!("pending={pending}"));
+    }
+    if cancel > 0 {
+        parts.push(format!("cancel={cancel}"));
+    }
+    if skipping > 0 {
+        parts.push(format!("skip={skipping}"));
+    }
+    if unknown > 0 {
+        parts.push(format!("unknown={unknown}"));
+    }
+    if parts.is_empty() {
+        parts.push(String::from("no checks"));
     }
     parts.join("  •  ")
 }
@@ -3384,19 +3436,121 @@ fn active_delivery_receipt_markdown_source(receipt: &ForgeDeliveryReceipt) -> St
         receipt.head_branch,
         compact_display_token(receipt.head_commit.as_str(), 16)
     ));
+    if let Some(branch_watch) = receipt.branch_watch.as_ref() {
+        let mut workspace_line = format!(
+            "- **workspace branch:** `{}`  •  `{}`",
+            compact_display_token(branch_watch.head_ref.as_str(), 20),
+            compact_display_token(branch_watch.head_commit.as_str(), 16)
+        );
+        if branch_watch.working_tree_dirty {
+            workspace_line.push_str("  •  dirty");
+        }
+        if branch_watch.detached_head {
+            workspace_line.push_str("  •  detached");
+        }
+        if let Some(upstream_ref) = branch_watch.upstream_ref.as_deref() {
+            workspace_line.push_str(&format!(
+                "  •  upstream `{}`",
+                compact_display_token(upstream_ref, 24)
+            ));
+        }
+        if let Some(ahead_by) = branch_watch.ahead_by {
+            workspace_line.push_str(&format!("  •  ahead {ahead_by}"));
+        }
+        if let Some(behind_by) = branch_watch.behind_by {
+            workspace_line.push_str(&format!("  •  behind {behind_by}"));
+        }
+        lines.push(workspace_line);
+    } else {
+        lines.push("- **workspace branch:** _not refreshed yet_".to_string());
+    }
+    if let Some(compare_watch) = receipt.compare_watch.as_ref() {
+        let mut compare_line = format!(
+            "- **compare posture:** {}",
+            compare_watch.posture.display_label()
+        );
+        if let Some(compare_ref) = compare_watch.compare_ref.as_deref() {
+            compare_line.push_str(&format!(
+                "  •  `{}`",
+                compact_display_token(compare_ref, 48)
+            ));
+        }
+        if let Some(remote_tracking_ref) = compare_watch.remote_tracking_ref.as_deref() {
+            compare_line.push_str(&format!(
+                "  •  upstream `{}`",
+                compact_display_token(remote_tracking_ref, 24)
+            ));
+        }
+        lines.push(compare_line);
+    } else {
+        lines.push("- **compare posture:** _not refreshed yet_".to_string());
+    }
     if let Some(compare_url) = receipt.compare_url.as_deref() {
         lines.push(format!(
             "- **compare URL:** `{}`",
             compact_display_token(compare_url, 72)
         ));
     }
-    if let Some(pr_url) = receipt.pr_url.as_deref() {
+    if let Some(pr_watch) = receipt.pull_request_watch.as_ref() {
+        let mut pr_line = format!(
+            "- **pull request:** {} #{}  •  `{}`",
+            pr_watch.state.display_label(),
+            pr_watch.number,
+            compact_display_token(pr_watch.url.as_str(), 72)
+        );
+        if pr_watch.is_draft {
+            pr_line.push_str("  •  draft");
+        }
+        lines.push(pr_line);
+        if !pr_watch.title.trim().is_empty() {
+            lines.push(format!(
+                "- **PR title:** {}",
+                compact_display_token(pr_watch.title.as_str(), 92)
+            ));
+        }
+        if let Some(review_decision) = pr_watch.review_decision.as_deref() {
+            lines.push(format!(
+                "- **PR review decision:** `{}`",
+                compact_display_token(review_decision, 24)
+            ));
+        }
+        if let Some(merge_state_status) = pr_watch.merge_state_status.as_deref() {
+            lines.push(format!(
+                "- **PR merge state:** `{}`",
+                compact_display_token(merge_state_status, 24)
+            ));
+        }
+    } else if let Some(pr_url) = receipt.pr_url.as_deref() {
         lines.push(format!(
             "- **pull request:** `{}`",
             compact_display_token(pr_url, 72)
         ));
+        lines.push("- **PR watch:** _not refreshed yet_".to_string());
     } else {
         lines.push("- **pull request:** _not opened yet_".to_string());
+    }
+    if let Some(ci_watch) = receipt.ci_watch.as_ref() {
+        lines.push(format!(
+            "- **CI watch:** {}  •  {}",
+            ci_watch.status.display_label(),
+            active_delivery_ci_watch_summary(ci_watch)
+        ));
+        for check in ci_watch.checks.iter().take(3) {
+            let mut check_line = format!(
+                "  - {}  •  {}",
+                compact_display_token(check.name.as_str(), 28),
+                check.status.display_label()
+            );
+            if let Some(workflow) = check.workflow.as_deref() {
+                check_line.push_str(&format!(
+                    "  •  {}",
+                    compact_display_token(workflow, 20)
+                ));
+            }
+            lines.push(check_line);
+        }
+    } else {
+        lines.push("- **CI watch:** _not refreshed yet_".to_string());
     }
     if !receipt.delegated_child_session_ids.is_empty() {
         lines.push(format!(

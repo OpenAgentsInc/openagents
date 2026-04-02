@@ -8809,6 +8809,170 @@ pub struct ForgeDeliveryReviewDecision {
     pub recorded_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeDeliveryComparePosture {
+    NeedsCommit,
+    LocalOnly,
+    NeedsPush,
+    Synced,
+    Diverged,
+}
+
+impl ForgeDeliveryComparePosture {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NeedsCommit => "needs_commit",
+            Self::LocalOnly => "local_only",
+            Self::NeedsPush => "needs_push",
+            Self::Synced => "synced",
+            Self::Diverged => "diverged",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::NeedsCommit => "needs commit",
+            Self::LocalOnly => "local only",
+            Self::NeedsPush => "needs push",
+            Self::Synced => "synced",
+            Self::Diverged => "diverged",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeDeliveryPullRequestState {
+    Open,
+    Closed,
+    Merged,
+    Unknown,
+}
+
+impl ForgeDeliveryPullRequestState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+            Self::Merged => "merged",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+            Self::Merged => "merged",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeDeliveryCiStatus {
+    Pass,
+    Fail,
+    Pending,
+    Skipping,
+    Cancel,
+    Unknown,
+}
+
+impl ForgeDeliveryCiStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Pending => "pending",
+            Self::Skipping => "skipping",
+            Self::Cancel => "cancel",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Pass => "passing",
+            Self::Fail => "failing",
+            Self::Pending => "pending",
+            Self::Skipping => "skipping",
+            Self::Cancel => "cancelled",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryBranchWatch {
+    pub repo_root: String,
+    pub head_ref: String,
+    pub head_commit: String,
+    pub detached_head: bool,
+    pub working_tree_dirty: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ahead_by: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub behind_by: Option<u64>,
+    pub refreshed_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryCompareWatch {
+    pub posture: ForgeDeliveryComparePosture,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_tracking_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare_ref: Option<String>,
+    pub refreshed_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryPullRequestWatch {
+    pub url: String,
+    pub number: u64,
+    pub state: ForgeDeliveryPullRequestState,
+    pub title: String,
+    pub base_ref: String,
+    pub head_ref: String,
+    pub is_draft: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mergeable: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_state_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_decision: Option<String>,
+    pub refreshed_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryCiCheckWatch {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<String>,
+    pub status: ForgeDeliveryCiStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDeliveryCiWatch {
+    pub status: ForgeDeliveryCiStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<ForgeDeliveryCiCheckWatch>,
+    pub refreshed_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeDeliveryReceipt {
     pub delivery_receipt_id: String,
@@ -8824,6 +8988,14 @@ pub struct ForgeDeliveryReceipt {
     pub head_commit: String,
     pub compare_url: Option<String>,
     pub pr_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_watch: Option<ForgeDeliveryBranchWatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare_watch: Option<ForgeDeliveryCompareWatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_request_watch: Option<ForgeDeliveryPullRequestWatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci_watch: Option<ForgeDeliveryCiWatch>,
     pub suggested_title: String,
     pub suggested_body: String,
     pub contributors: Vec<ForgeDeliveryContributor>,
@@ -9918,6 +10090,105 @@ fn normalize_forge_delegated_child_sessions(
         .collect()
 }
 
+fn normalize_forge_delivery_branch_watch(
+    mut watch: ForgeDeliveryBranchWatch,
+) -> Option<ForgeDeliveryBranchWatch> {
+    watch.repo_root = watch.repo_root.trim().to_string();
+    watch.head_ref = watch.head_ref.trim().to_string();
+    watch.head_commit = watch.head_commit.trim().to_string();
+    watch.upstream_ref = watch
+        .upstream_ref
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if watch.repo_root.is_empty() || watch.head_ref.is_empty() || watch.head_commit.is_empty() {
+        return None;
+    }
+    Some(watch)
+}
+
+fn normalize_forge_delivery_compare_watch(
+    mut watch: ForgeDeliveryCompareWatch,
+) -> Option<ForgeDeliveryCompareWatch> {
+    watch.branch_name = watch
+        .branch_name
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    watch.remote_tracking_ref = watch
+        .remote_tracking_ref
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    watch.compare_ref = watch
+        .compare_ref
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    Some(watch)
+}
+
+fn normalize_forge_delivery_pull_request_watch(
+    mut watch: ForgeDeliveryPullRequestWatch,
+) -> Option<ForgeDeliveryPullRequestWatch> {
+    watch.url = watch.url.trim().to_string();
+    watch.title = watch.title.trim().to_string();
+    watch.base_ref = watch.base_ref.trim().to_string();
+    watch.head_ref = watch.head_ref.trim().to_string();
+    watch.mergeable = watch
+        .mergeable
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    watch.merge_state_status = watch
+        .merge_state_status
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    watch.review_decision = watch
+        .review_decision
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if watch.url.is_empty() || watch.number == 0 || watch.base_ref.is_empty() || watch.head_ref.is_empty()
+    {
+        return None;
+    }
+    Some(watch)
+}
+
+fn normalize_forge_delivery_ci_watch(mut watch: ForgeDeliveryCiWatch) -> Option<ForgeDeliveryCiWatch> {
+    watch.checks = watch
+        .checks
+        .drain(..)
+        .filter_map(|mut check| {
+            check.name = check.name.trim().to_string();
+            check.workflow = check
+                .workflow
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            check.state = check
+                .state
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            check.description = check
+                .description
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            check.url = check
+                .url
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            (!check.name.is_empty()).then_some(check)
+        })
+        .collect();
+    Some(watch)
+}
+
 fn forge_shared_session_child_ids(shared_session: &ForgeSharedSession) -> Vec<String> {
     normalize_forge_delegated_child_session_ids(
         shared_session
@@ -10213,6 +10484,22 @@ fn normalize_forge_delivery_receipts(
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        receipt.branch_watch = receipt
+            .branch_watch
+            .take()
+            .and_then(normalize_forge_delivery_branch_watch);
+        receipt.compare_watch = receipt
+            .compare_watch
+            .take()
+            .and_then(normalize_forge_delivery_compare_watch);
+        receipt.pull_request_watch = receipt
+            .pull_request_watch
+            .take()
+            .and_then(normalize_forge_delivery_pull_request_watch);
+        receipt.ci_watch = receipt
+            .ci_watch
+            .take()
+            .and_then(normalize_forge_delivery_ci_watch);
         receipt.suggested_title = receipt.suggested_title.trim().to_string();
         receipt.suggested_body = receipt.suggested_body.trim().to_string();
         receipt.contributors = receipt
@@ -11499,6 +11786,10 @@ impl AutopilotChatState {
         self.forge_delivery_receipts.get(delivery_receipt_id)
     }
 
+    pub fn delivery_receipt_for_id(&self, delivery_receipt_id: &str) -> Option<&ForgeDeliveryReceipt> {
+        self.forge_delivery_receipts.get(delivery_receipt_id)
+    }
+
     pub fn active_delivery_receipt(&self) -> Option<&ForgeDeliveryReceipt> {
         self.active_thread_id
             .as_deref()
@@ -12176,6 +12467,10 @@ impl AutopilotChatState {
                 head_commit: "unknown".to_string(),
                 compare_url: None,
                 pr_url: None,
+                branch_watch: None,
+                compare_watch: None,
+                pull_request_watch: None,
+                ci_watch: None,
                 suggested_title: String::new(),
                 suggested_body: String::new(),
                 contributors: self.delivery_contributors_for_shared_session(
@@ -12324,6 +12619,99 @@ impl AutopilotChatState {
         Ok((delivery_receipt_id, evidence_bundle_id))
     }
 
+    pub fn sync_probe_delivery_runtime_watch_for_thread(
+        &mut self,
+        thread_id: &str,
+        branch_watch: Option<ForgeDeliveryBranchWatch>,
+        compare_watch: Option<ForgeDeliveryCompareWatch>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<Option<String>, String> {
+        let Some(shared_session) = self.shared_session_for_thread(thread_id).cloned() else {
+            return Ok(None);
+        };
+        let Some(delivery_receipt_id) = shared_session.delivery_receipt_id.clone() else {
+            return Ok(None);
+        };
+        let next_branch_watch = branch_watch.and_then(normalize_forge_delivery_branch_watch);
+        let next_compare_watch = compare_watch.and_then(normalize_forge_delivery_compare_watch);
+        let receipt = self
+            .forge_delivery_receipts
+            .get_mut(&delivery_receipt_id)
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before runtime watch state could be updated."
+                )
+            })?;
+        receipt.branch_watch = next_branch_watch;
+        receipt.compare_watch = next_compare_watch;
+        receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        let _ = receipt;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session.shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(Some(delivery_receipt_id))
+    }
+
+    pub fn record_probe_delivery_remote_watch_for_thread(
+        &mut self,
+        thread_id: &str,
+        pull_request_watch: Option<ForgeDeliveryPullRequestWatch>,
+        ci_watch: Option<ForgeDeliveryCiWatch>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let delivery_receipt_id = shared_session.delivery_receipt_id.clone().ok_or_else(|| {
+            "Prepare a delivery receipt first with `/deliver pr ...`.".to_string()
+        })?;
+        let next_pull_request_watch =
+            pull_request_watch.and_then(normalize_forge_delivery_pull_request_watch);
+        let next_ci_watch = ci_watch.and_then(normalize_forge_delivery_ci_watch);
+        let receipt = self
+            .forge_delivery_receipts
+            .get_mut(&delivery_receipt_id)
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before remote watch state could be updated."
+                )
+            })?;
+        if let Some(pull_request_watch) = next_pull_request_watch {
+            receipt.pr_url = Some(pull_request_watch.url.clone());
+            receipt.status = match pull_request_watch.state {
+                ForgeDeliveryPullRequestState::Merged => ForgeDeliveryReceiptStatus::Merged,
+                ForgeDeliveryPullRequestState::Open | ForgeDeliveryPullRequestState::Closed => {
+                    if receipt.status == ForgeDeliveryReceiptStatus::Merged {
+                        ForgeDeliveryReceiptStatus::Merged
+                    } else {
+                        ForgeDeliveryReceiptStatus::Opened
+                    }
+                }
+                ForgeDeliveryPullRequestState::Unknown => receipt.status,
+            };
+            if receipt.status == ForgeDeliveryReceiptStatus::Merged
+                && receipt.merged_at_epoch_ms.is_none()
+            {
+                receipt.merged_at_epoch_ms = Some(updated_at_epoch_ms);
+            }
+            receipt.pull_request_watch = Some(pull_request_watch);
+        }
+        if let Some(ci_watch) = next_ci_watch {
+            receipt.ci_watch = Some(ci_watch);
+        }
+        receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        let _ = receipt;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session.shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(delivery_receipt_id)
+    }
+
     pub fn record_probe_delivery_review_for_thread(
         &mut self,
         thread_id: &str,
@@ -12434,6 +12822,10 @@ impl AutopilotChatState {
             })?;
         receipt.status = ForgeDeliveryReceiptStatus::Merged;
         receipt.merged_at_epoch_ms = Some(updated_at_epoch_ms);
+        if let Some(watch) = receipt.pull_request_watch.as_mut() {
+            watch.state = ForgeDeliveryPullRequestState::Merged;
+            watch.refreshed_at_epoch_ms = updated_at_epoch_ms.max(watch.refreshed_at_epoch_ms);
+        }
         receipt.contributors = next_contributors;
         receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
         let _ = receipt;
@@ -19740,7 +20132,10 @@ mod tests {
     use crate::app_state::{
         ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
         ForgeDelegatedChildSessionStatus,
+        ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch, ForgeDeliveryCiStatus,
+        ForgeDeliveryCiWatch, ForgeDeliveryComparePosture, ForgeDeliveryCompareWatch,
         ForgeDeliveryContributorRole, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
+        ForgeDeliveryPullRequestState, ForgeDeliveryPullRequestWatch,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeSharedSessionControlOwner,
         ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
@@ -25131,6 +25526,150 @@ mod tests {
         assert_eq!(
             reloaded_receipt.delegated_child_session_ids,
             vec!["child-1".to_string()]
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_delivery_watch_state() {
+        let repo = init_git_workspace("delivery-watch-state");
+        let projection_path = unique_codex_artifact_projection_path("delivery-watch-state");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.record_probe_delivery_pr_for_thread(
+            "thread-a",
+            "main",
+            Some("abc123".to_string()),
+            "feature/probe-watch",
+            "def456",
+            Some(
+                "https://github.com/OpenAgentsInc/openagents/compare/main...feature/probe-watch?expand=1"
+                    .to_string(),
+            ),
+            Some("https://github.com/OpenAgentsInc/openagents/pull/88".to_string()),
+            "Probe delivery watch",
+            "## Summary\n- refresh delivery watch state",
+            1_700_000_120,
+        )
+        .expect("delivery receipt should record");
+        chat.sync_probe_delivery_runtime_watch_for_thread(
+            "thread-a",
+            Some(ForgeDeliveryBranchWatch {
+                repo_root: repo.display().to_string(),
+                head_ref: "feature/probe-watch".to_string(),
+                head_commit: "def456".to_string(),
+                detached_head: false,
+                working_tree_dirty: false,
+                upstream_ref: Some("origin/feature/probe-watch".to_string()),
+                ahead_by: Some(2),
+                behind_by: Some(0),
+                refreshed_at_epoch_ms: 1_700_000_130,
+            }),
+            Some(ForgeDeliveryCompareWatch {
+                posture: ForgeDeliveryComparePosture::NeedsPush,
+                branch_name: Some("feature/probe-watch".to_string()),
+                remote_tracking_ref: Some("origin/feature/probe-watch".to_string()),
+                compare_ref: Some("origin/feature/probe-watch...feature/probe-watch".to_string()),
+                refreshed_at_epoch_ms: 1_700_000_130,
+            }),
+            1_700_000_130,
+        )
+        .expect("runtime watch should sync");
+        chat.record_probe_delivery_remote_watch_for_thread(
+            "thread-a",
+            Some(ForgeDeliveryPullRequestWatch {
+                url: "https://github.com/OpenAgentsInc/openagents/pull/88".to_string(),
+                number: 88,
+                state: ForgeDeliveryPullRequestState::Open,
+                title: "Probe delivery watch".to_string(),
+                base_ref: "main".to_string(),
+                head_ref: "feature/probe-watch".to_string(),
+                is_draft: false,
+                mergeable: Some("MERGEABLE".to_string()),
+                merge_state_status: Some("CLEAN".to_string()),
+                review_decision: Some("APPROVED".to_string()),
+                refreshed_at_epoch_ms: 1_700_000_140,
+            }),
+            Some(ForgeDeliveryCiWatch {
+                status: ForgeDeliveryCiStatus::Pass,
+                checks: vec![ForgeDeliveryCiCheckWatch {
+                    name: "ci / cargo test".to_string(),
+                    workflow: Some("CI".to_string()),
+                    status: ForgeDeliveryCiStatus::Pass,
+                    state: Some("SUCCESS".to_string()),
+                    description: Some("12 tests passed".to_string()),
+                    url: Some("https://github.com/OpenAgentsInc/openagents/actions/runs/1".to_string()),
+                }],
+                refreshed_at_epoch_ms: 1_700_000_140,
+            }),
+            1_700_000_140,
+        )
+        .expect("remote watch should record");
+
+        let receipt = chat
+            .active_delivery_receipt()
+            .expect("active delivery receipt should exist");
+        assert_eq!(
+            receipt.branch_watch.as_ref().map(|watch| watch.head_ref.as_str()),
+            Some("feature/probe-watch")
+        );
+        assert_eq!(
+            receipt.compare_watch.as_ref().map(|watch| watch.posture),
+            Some(ForgeDeliveryComparePosture::NeedsPush)
+        );
+        assert_eq!(
+            receipt
+                .pull_request_watch
+                .as_ref()
+                .map(|watch| watch.state),
+            Some(ForgeDeliveryPullRequestState::Open)
+        );
+        assert_eq!(
+            receipt.ci_watch.as_ref().map(|watch| watch.status),
+            Some(ForgeDeliveryCiStatus::Pass)
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_receipt = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.delivery_receipt_id.as_deref())
+            .and_then(|receipt_id| reloaded.forge_delivery_receipts.get(receipt_id))
+            .expect("reloaded delivery receipt");
+        assert_eq!(
+            reloaded_receipt.branch_watch.as_ref().map(|watch| watch.head_ref.as_str()),
+            Some("feature/probe-watch")
+        );
+        assert_eq!(
+            reloaded_receipt
+                .pull_request_watch
+                .as_ref()
+                .map(|watch| watch.number),
+            Some(88)
+        );
+        assert_eq!(
+            reloaded_receipt
+                .ci_watch
+                .as_ref()
+                .map(|watch| watch.checks.len()),
+            Some(1)
         );
 
         let _ = std::fs::remove_file(projection_path);

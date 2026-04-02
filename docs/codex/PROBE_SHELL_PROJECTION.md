@@ -172,12 +172,27 @@ Current local-first behavior:
 - the receipt points back at the evidence bundle that justified the delivery
 - `/deliver pr [base-branch] [pr-url]` records branch, commit, compare URL,
   optional GitHub PR URL, and suggested title/body state
+- Probe session snapshots and detached workspace-state events now project the
+  live local branch head and delivery posture into that same receipt
+- the shell records app-owned branch and compare watch state above the receipt,
+  including current head, upstream, ahead or behind counts, dirty-worktree
+  posture, and Probe's delivery classification (`needs_commit`, `needs_push`,
+  `synced`, `diverged`, `local_only`)
+- `/deliver status` renders the current local branch, compare, PR, and CI watch
+  summary directly in the shell
+- `/deliver refresh` performs one bounded refresh pass:
+  - local branch and compare watch is recomputed from the current git workspace
+    using the same rules Probe uses for its delivery posture
+  - GitHub PR and CI watch is refreshed explicitly through `gh` when a PR URL
+    or head branch can be resolved
 - `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`
   records reviewer outcome explicitly
 - `/deliver merge <reviewer-label> [summary]` records merge closure explicitly
 - authorship mapping is stored as an explicit product object with separate local
   human and local Probe agent roles instead of leaving that inference to raw
   transcript history
+- GitHub-specific PR and CI details stay app-owned in the delivery receipt
+  instead of leaking browser-provider semantics into Probe runtime truth
 
 ## Artifact Ownership
 

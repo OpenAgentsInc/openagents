@@ -219,6 +219,8 @@ enum ChatForgeComposerIntent {
         base_branch: Option<String>,
         pr_url: Option<String>,
     },
+    DeliveryStatus,
+    DeliveryRefresh,
     DeliveryReview {
         outcome: crate::app_state::ForgeDeliveryReviewerOutcome,
         reviewer_label: String,
@@ -3797,6 +3799,538 @@ fn github_compare_url(remote_url: &str, base_branch: &str, head_branch: &str) ->
     ))
 }
 
+#[derive(serde::Deserialize)]
+struct GithubPullRequestView {
+    url: String,
+    number: u64,
+    state: String,
+    title: String,
+    #[serde(rename = "baseRefName")]
+    base_ref_name: String,
+    #[serde(rename = "headRefName")]
+    head_ref_name: String,
+    #[serde(rename = "isDraft")]
+    is_draft: bool,
+    #[serde(rename = "mergeable")]
+    mergeable: Option<String>,
+    #[serde(rename = "mergeStateStatus")]
+    merge_state_status: Option<String>,
+    #[serde(rename = "reviewDecision")]
+    review_decision: Option<String>,
+    #[serde(rename = "mergedAt")]
+    merged_at: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct GithubPullRequestCheck {
+    bucket: String,
+    name: String,
+    workflow: Option<String>,
+    state: Option<String>,
+    description: Option<String>,
+    link: Option<String>,
+}
+
+struct DeliveryGithubRefreshOutcome {
+    pull_request_watch: Option<crate::app_state::ForgeDeliveryPullRequestWatch>,
+    ci_watch: Option<crate::app_state::ForgeDeliveryCiWatch>,
+    notes: Vec<String>,
+}
+
+fn parse_git_ahead_behind(counts: &str) -> (Option<u64>, Option<u64>) {
+    let mut parts = counts.split_whitespace();
+    let ahead_by = parts.next().and_then(|value| value.parse::<u64>().ok());
+    let behind_by = parts.next().and_then(|value| value.parse::<u64>().ok());
+    (ahead_by, behind_by)
+}
+
+fn build_forge_delivery_runtime_watch_from_git(
+    workspace: &std::path::Path,
+    updated_at_epoch_ms: u64,
+) -> Result<
+    (
+        crate::app_state::ForgeDeliveryBranchWatch,
+        crate::app_state::ForgeDeliveryCompareWatch,
+    ),
+    String,
+> {
+    let repo_root = git_command_checked(workspace, &["rev-parse", "--show-toplevel"])?;
+    let head_commit = git_command_checked(workspace, &["rev-parse", "HEAD"])?;
+    let symbolic_head = git_command_optional(workspace, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let head_ref = symbolic_head.clone().unwrap_or_else(|| {
+        git_command_checked(workspace, &["rev-parse", "--short", "HEAD"])
+            .unwrap_or_else(|_| String::from("HEAD"))
+            .trim()
+            .to_string()
+    });
+    let detached_head = symbolic_head.is_none();
+    let working_tree_dirty = git_command_optional(workspace, &["status", "--porcelain"])
+        .is_some_and(|output| !output.trim().is_empty());
+    let upstream_ref = git_command_optional(
+        workspace,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty());
+    let (ahead_by, behind_by) = upstream_ref
+        .as_ref()
+        .and_then(|_| {
+            git_command_optional(workspace, &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+        })
+        .map(|counts| parse_git_ahead_behind(counts.as_str()))
+        .unwrap_or((None, None));
+    let posture = if working_tree_dirty {
+        crate::app_state::ForgeDeliveryComparePosture::NeedsCommit
+    } else if behind_by.unwrap_or(0) > 0 {
+        crate::app_state::ForgeDeliveryComparePosture::Diverged
+    } else if ahead_by.unwrap_or(0) > 0 {
+        crate::app_state::ForgeDeliveryComparePosture::NeedsPush
+    } else if upstream_ref.is_some() {
+        crate::app_state::ForgeDeliveryComparePosture::Synced
+    } else {
+        crate::app_state::ForgeDeliveryComparePosture::LocalOnly
+    };
+    let branch_name = (!detached_head).then(|| head_ref.clone());
+    let compare_ref = upstream_ref
+        .as_ref()
+        .and_then(|upstream_ref| branch_name.as_ref().map(|branch_name| format!("{upstream_ref}...{branch_name}")));
+    Ok((
+        crate::app_state::ForgeDeliveryBranchWatch {
+            repo_root: repo_root.trim().to_string(),
+            head_ref,
+            head_commit: head_commit.trim().to_string(),
+            detached_head,
+            working_tree_dirty,
+            upstream_ref: upstream_ref.clone(),
+            ahead_by,
+            behind_by,
+            refreshed_at_epoch_ms: updated_at_epoch_ms,
+        },
+        crate::app_state::ForgeDeliveryCompareWatch {
+            posture,
+            branch_name,
+            remote_tracking_ref: upstream_ref,
+            compare_ref,
+            refreshed_at_epoch_ms: updated_at_epoch_ms,
+        },
+    ))
+}
+
+fn run_gh_command(
+    workspace: &std::path::Path,
+    args: &[&str],
+) -> Result<std::process::Output, String> {
+    std::process::Command::new("gh")
+        .current_dir(workspace)
+        .args(args)
+        .output()
+        .map_err(|error| format!("Failed to launch gh in {}: {error}", workspace.display()))
+}
+
+fn gh_command_checked(workspace: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let output = run_gh_command(workspace, args)?;
+    let body = git_output_text(&output);
+    if output.status.success() {
+        return Ok(body);
+    }
+    let fallback = if body.is_empty() {
+        format!("gh exited with status {}", output.status)
+    } else {
+        body
+    };
+    Err(format!(
+        "`gh {}` failed in `{}`.\n\n```text\n{}\n```",
+        args.join(" "),
+        workspace.display(),
+        fallback
+    ))
+}
+
+fn parse_github_pull_request_watch(
+    payload: &str,
+    updated_at_epoch_ms: u64,
+) -> Result<crate::app_state::ForgeDeliveryPullRequestWatch, String> {
+    let payload = serde_json::from_str::<GithubPullRequestView>(payload)
+        .map_err(|error| format!("Failed to decode gh pr view JSON: {error}"))?;
+    let state = if payload.merged_at.is_some() {
+        crate::app_state::ForgeDeliveryPullRequestState::Merged
+    } else {
+        match payload.state.trim().to_ascii_uppercase().as_str() {
+            "OPEN" => crate::app_state::ForgeDeliveryPullRequestState::Open,
+            "CLOSED" => crate::app_state::ForgeDeliveryPullRequestState::Closed,
+            _ => crate::app_state::ForgeDeliveryPullRequestState::Unknown,
+        }
+    };
+    Ok(crate::app_state::ForgeDeliveryPullRequestWatch {
+        url: payload.url.trim().to_string(),
+        number: payload.number,
+        state,
+        title: payload.title.trim().to_string(),
+        base_ref: payload.base_ref_name.trim().to_string(),
+        head_ref: payload.head_ref_name.trim().to_string(),
+        is_draft: payload.is_draft,
+        mergeable: payload
+            .mergeable
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        merge_state_status: payload
+            .merge_state_status
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        review_decision: payload
+            .review_decision
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        refreshed_at_epoch_ms: updated_at_epoch_ms,
+    })
+}
+
+fn forge_delivery_ci_status_from_bucket(bucket: &str) -> crate::app_state::ForgeDeliveryCiStatus {
+    match bucket.trim().to_ascii_lowercase().as_str() {
+        "pass" => crate::app_state::ForgeDeliveryCiStatus::Pass,
+        "fail" => crate::app_state::ForgeDeliveryCiStatus::Fail,
+        "pending" => crate::app_state::ForgeDeliveryCiStatus::Pending,
+        "skipping" => crate::app_state::ForgeDeliveryCiStatus::Skipping,
+        "cancel" | "cancelled" => crate::app_state::ForgeDeliveryCiStatus::Cancel,
+        _ => crate::app_state::ForgeDeliveryCiStatus::Unknown,
+    }
+}
+
+fn parse_github_ci_watch(
+    payload: &str,
+    updated_at_epoch_ms: u64,
+) -> Result<Option<crate::app_state::ForgeDeliveryCiWatch>, String> {
+    let checks = serde_json::from_str::<Vec<GithubPullRequestCheck>>(payload)
+        .map_err(|error| format!("Failed to decode gh pr checks JSON: {error}"))?;
+    if checks.is_empty() {
+        return Ok(None);
+    }
+    let checks = checks
+        .into_iter()
+        .map(|check| crate::app_state::ForgeDeliveryCiCheckWatch {
+            name: check.name.trim().to_string(),
+            workflow: check
+                .workflow
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+            status: forge_delivery_ci_status_from_bucket(check.bucket.as_str()),
+            state: check
+                .state
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+            description: check
+                .description
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+            url: check
+                .link
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+        })
+        .collect::<Vec<_>>();
+    let overall = if checks
+        .iter()
+        .any(|check| check.status == crate::app_state::ForgeDeliveryCiStatus::Fail)
+    {
+        crate::app_state::ForgeDeliveryCiStatus::Fail
+    } else if checks
+        .iter()
+        .any(|check| check.status == crate::app_state::ForgeDeliveryCiStatus::Pending)
+    {
+        crate::app_state::ForgeDeliveryCiStatus::Pending
+    } else if checks
+        .iter()
+        .any(|check| check.status == crate::app_state::ForgeDeliveryCiStatus::Cancel)
+    {
+        crate::app_state::ForgeDeliveryCiStatus::Cancel
+    } else if checks
+        .iter()
+        .all(|check| check.status == crate::app_state::ForgeDeliveryCiStatus::Skipping)
+    {
+        crate::app_state::ForgeDeliveryCiStatus::Skipping
+    } else if checks
+        .iter()
+        .any(|check| check.status == crate::app_state::ForgeDeliveryCiStatus::Pass)
+    {
+        crate::app_state::ForgeDeliveryCiStatus::Pass
+    } else {
+        crate::app_state::ForgeDeliveryCiStatus::Unknown
+    };
+    Ok(Some(crate::app_state::ForgeDeliveryCiWatch {
+        status: overall,
+        checks,
+        refreshed_at_epoch_ms: updated_at_epoch_ms,
+    }))
+}
+
+fn github_refresh_target_for_receipt(receipt: &crate::app_state::ForgeDeliveryReceipt) -> Option<String> {
+    receipt
+        .pr_url
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            let branch = receipt.head_branch.trim();
+            (!branch.is_empty() && branch != "unknown").then(|| branch.to_string())
+        })
+}
+
+fn refresh_delivery_watches_from_github(
+    workspace: &std::path::Path,
+    receipt: &crate::app_state::ForgeDeliveryReceipt,
+    updated_at_epoch_ms: u64,
+) -> Result<DeliveryGithubRefreshOutcome, String> {
+    let Some(target) = github_refresh_target_for_receipt(receipt) else {
+        return Ok(DeliveryGithubRefreshOutcome {
+            pull_request_watch: None,
+            ci_watch: None,
+            notes: vec![String::from(
+                "GitHub watch refresh skipped: no PR URL or head branch is recorded yet.",
+            )],
+        });
+    };
+    let pr_payload = gh_command_checked(
+        workspace,
+        &[
+            "pr",
+            "view",
+            target.as_str(),
+            "--json",
+            "url,number,state,title,baseRefName,headRefName,isDraft,mergeable,mergeStateStatus,reviewDecision,mergedAt",
+        ],
+    )?;
+    let pull_request_watch = parse_github_pull_request_watch(pr_payload.as_str(), updated_at_epoch_ms)?;
+    let checks_output = run_gh_command(
+        workspace,
+        &[
+            "pr",
+            "checks",
+            pull_request_watch.url.as_str(),
+            "--json",
+            "bucket,name,workflow,state,description,link",
+        ],
+    )?;
+    let checks_body = git_output_text(&checks_output);
+    let ci_watch = if checks_output.status.success() || checks_output.status.code() == Some(8) {
+        parse_github_ci_watch(checks_body.as_str(), updated_at_epoch_ms)?
+    } else {
+        return Err(format!(
+            "`gh pr checks {}` failed in `{}`.\n\n```text\n{}\n```",
+            pull_request_watch.url,
+            workspace.display(),
+            if checks_body.is_empty() {
+                format!("gh exited with status {}", checks_output.status)
+            } else {
+                checks_body
+            }
+        ));
+    };
+    let mut notes = vec![format!(
+        "GitHub PR watch: {} #{} ({})",
+        pull_request_watch.state.display_label(),
+        pull_request_watch.number,
+        if pull_request_watch.is_draft {
+            "draft"
+        } else {
+            "ready"
+        }
+    )];
+    if let Some(ci_watch) = ci_watch.as_ref() {
+        notes.push(format!(
+            "GitHub CI watch: {} ({} checks).",
+            ci_watch.status.display_label(),
+            ci_watch.checks.len()
+        ));
+    } else {
+        notes.push(String::from("GitHub CI watch: no checks reported yet."));
+    }
+    Ok(DeliveryGithubRefreshOutcome {
+        pull_request_watch: Some(pull_request_watch),
+        ci_watch,
+        notes,
+    })
+}
+
+fn sync_delivery_watch_state_from_git(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+    workspace: &std::path::Path,
+    updated_at_epoch_ms: u64,
+) -> Result<Option<String>, String> {
+    let (branch_watch, compare_watch) =
+        build_forge_delivery_runtime_watch_from_git(workspace, updated_at_epoch_ms)?;
+    state.autopilot_chat.sync_probe_delivery_runtime_watch_for_thread(
+        thread_id,
+        Some(branch_watch),
+        Some(compare_watch),
+        updated_at_epoch_ms,
+    )
+}
+
+fn refresh_delivery_watch_state_from_github(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+    workspace: &std::path::Path,
+    updated_at_epoch_ms: u64,
+) -> Result<Vec<String>, String> {
+    let receipt = state
+        .autopilot_chat
+        .shared_session_for_thread(thread_id)
+        .and_then(|session| session.delivery_receipt_id.as_deref())
+        .and_then(|receipt_id| state.autopilot_chat.delivery_receipt_for_id(receipt_id))
+        .cloned()
+        .ok_or_else(|| "Prepare a delivery receipt first with `/deliver pr ...`.".to_string())?;
+    let outcome =
+        refresh_delivery_watches_from_github(workspace, &receipt, updated_at_epoch_ms)?;
+    state.autopilot_chat.record_probe_delivery_remote_watch_for_thread(
+        thread_id,
+        outcome.pull_request_watch,
+        outcome.ci_watch,
+        updated_at_epoch_ms,
+    )?;
+    Ok(outcome.notes)
+}
+
+fn delivery_ci_watch_summary(
+    watch: &crate::app_state::ForgeDeliveryCiWatch,
+) -> String {
+    let mut pass = 0usize;
+    let mut fail = 0usize;
+    let mut pending = 0usize;
+    let mut cancel = 0usize;
+    let mut skipping = 0usize;
+    let mut unknown = 0usize;
+    for check in &watch.checks {
+        match check.status {
+            crate::app_state::ForgeDeliveryCiStatus::Pass => pass += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Fail => fail += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Pending => pending += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Cancel => cancel += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Skipping => skipping += 1,
+            crate::app_state::ForgeDeliveryCiStatus::Unknown => unknown += 1,
+        }
+    }
+    let mut parts = Vec::new();
+    if pass > 0 {
+        parts.push(format!("pass={pass}"));
+    }
+    if fail > 0 {
+        parts.push(format!("fail={fail}"));
+    }
+    if pending > 0 {
+        parts.push(format!("pending={pending}"));
+    }
+    if cancel > 0 {
+        parts.push(format!("cancel={cancel}"));
+    }
+    if skipping > 0 {
+        parts.push(format!("skip={skipping}"));
+    }
+    if unknown > 0 {
+        parts.push(format!("unknown={unknown}"));
+    }
+    if parts.is_empty() {
+        parts.push(String::from("no checks"));
+    }
+    parts.join(" ")
+}
+
+fn build_probe_delivery_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let receipt = chat
+        .active_delivery_receipt()
+        .ok_or_else(|| "Prepare a delivery receipt first with `/deliver pr ...`.".to_string())?;
+    let mut lines = vec![format!(
+        "Delivery receipt `{}` is {}.",
+        receipt.delivery_receipt_id,
+        receipt.status.display_label()
+    )];
+    lines.push(format!(
+        "Prepared delivery: `{}` @ `{}` against `{}`.",
+        receipt.head_branch, receipt.head_commit, receipt.base_branch
+    ));
+    if let Some(branch_watch) = receipt.branch_watch.as_ref() {
+        let mut workspace_line = format!(
+            "Workspace branch: `{}` @ `{}`.",
+            branch_watch.head_ref, branch_watch.head_commit
+        );
+        if branch_watch.working_tree_dirty {
+            workspace_line.push_str(" Dirty worktree.");
+        }
+        if branch_watch.detached_head {
+            workspace_line.push_str(" Detached HEAD.");
+        }
+        if let Some(upstream_ref) = branch_watch.upstream_ref.as_deref() {
+            workspace_line.push_str(&format!(" Upstream: `{upstream_ref}`."));
+        }
+        if let Some(ahead_by) = branch_watch.ahead_by {
+            workspace_line.push_str(&format!(" Ahead: {ahead_by}."));
+        }
+        if let Some(behind_by) = branch_watch.behind_by {
+            workspace_line.push_str(&format!(" Behind: {behind_by}."));
+        }
+        lines.push(workspace_line);
+    } else {
+        lines.push(String::from("Workspace branch watch: not refreshed yet."));
+    }
+    if let Some(compare_watch) = receipt.compare_watch.as_ref() {
+        let mut compare_line = format!(
+            "Compare posture: {}.",
+            compare_watch.posture.display_label()
+        );
+        if let Some(compare_ref) = compare_watch.compare_ref.as_deref() {
+            compare_line.push_str(&format!(" Ref: `{compare_ref}`."));
+        }
+        lines.push(compare_line);
+    } else {
+        lines.push(String::from("Compare posture: not refreshed yet."));
+    }
+    if let Some(pr_watch) = receipt.pull_request_watch.as_ref() {
+        let mut pr_line = format!(
+            "PR watch: {} #{}.",
+            pr_watch.state.display_label(),
+            pr_watch.number
+        );
+        if pr_watch.is_draft {
+            pr_line.push_str(" Draft.");
+        }
+        if let Some(review_decision) = pr_watch.review_decision.as_deref() {
+            pr_line.push_str(&format!(" Review: `{review_decision}`."));
+        }
+        if let Some(merge_state_status) = pr_watch.merge_state_status.as_deref() {
+            pr_line.push_str(&format!(" Merge state: `{merge_state_status}`."));
+        }
+        lines.push(pr_line);
+    } else if let Some(pr_url) = receipt.pr_url.as_deref() {
+        lines.push(format!("PR URL recorded: {pr_url}"));
+        lines.push(String::from(
+            "PR watch: not refreshed yet; run `/deliver refresh` to query GitHub.",
+        ));
+    } else {
+        lines.push(String::from("PR watch: no PR URL recorded yet."));
+    }
+    if let Some(ci_watch) = receipt.ci_watch.as_ref() {
+        lines.push(format!(
+            "CI watch: {} ({})",
+            ci_watch.status.display_label(),
+            delivery_ci_watch_summary(ci_watch)
+        ));
+    } else {
+        lines.push(String::from(
+            "CI watch: not refreshed yet; run `/deliver refresh` after a PR exists.",
+        ));
+    }
+    Ok(lines.join("\n"))
+}
+
 fn append_text_block(response: &mut String, label: &str, body: &str) {
     let trimmed = body.trim();
     if trimmed.is_empty() {
@@ -4341,7 +4875,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     if first_word == "/deliver" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
-                "Delivery commands: `/deliver pr [base-branch] [pr-url]`, `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`, `/deliver merge <reviewer-label> [summary]`.".to_string(),
+                "Delivery commands: `/deliver pr [base-branch] [pr-url]`, `/deliver status`, `/deliver refresh`, `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`, `/deliver merge <reviewer-label> [summary]`.".to_string(),
             );
         };
         return match subcommand {
@@ -4361,6 +4895,18 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                     (None, Some(pr_url)) => (None, Some(pr_url)),
                 };
                 Ok(Some(ChatForgeComposerIntent::DeliveryPr { base_branch, pr_url }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/deliver status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::DeliveryStatus))
+            }
+            "refresh" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/deliver refresh`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::DeliveryRefresh))
             }
             "review" => {
                 let Some(outcome) = words.get(2).map(String::as_str) else {
@@ -4404,7 +4950,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                 }))
             }
             _ => Err(
-                "Delivery commands: `/deliver pr [base-branch] [pr-url]`, `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`, `/deliver merge <reviewer-label> [summary]`.".to_string(),
+                "Delivery commands: `/deliver pr [base-branch] [pr-url]`, `/deliver status`, `/deliver refresh`, `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`, `/deliver merge <reviewer-label> [summary]`.".to_string(),
             ),
         };
     }
@@ -5772,6 +6318,7 @@ fn run_chat_forge_action(
                     return append_chat_command_result(state, prompt, error, true);
                 }
             };
+            let updated_at_epoch_ms = current_epoch_millis();
             let head_branch = match git_current_branch(workspace.as_path()) {
                 Ok(branch) => branch,
                 Err(error) => {
@@ -5813,21 +6360,101 @@ fn run_chat_forge_action(
                 pr_url.clone(),
                 suggested_title.clone(),
                 suggested_body,
-                current_epoch_millis(),
+                updated_at_epoch_ms,
             ) {
-                Ok((delivery_receipt_id, evidence_bundle_id)) => append_chat_command_result(
-                    state,
-                    prompt,
-                    format!(
+                Ok((delivery_receipt_id, evidence_bundle_id)) => {
+                    let mut notes = Vec::new();
+                    match sync_delivery_watch_state_from_git(
+                        state,
+                        thread_id.as_str(),
+                        workspace.as_path(),
+                        updated_at_epoch_ms,
+                    ) {
+                        Ok(Some(_)) => {
+                            notes.push(String::from("Local delivery watch refreshed from git."));
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            notes.push(format!("Local delivery watch unavailable: {error}"));
+                        }
+                    }
+                    match refresh_delivery_watch_state_from_github(
+                        state,
+                        thread_id.as_str(),
+                        workspace.as_path(),
+                        updated_at_epoch_ms,
+                    ) {
+                        Ok(mut github_notes) => notes.append(&mut github_notes),
+                        Err(error) => {
+                            notes.push(format!("GitHub watch refresh unavailable: {error}"));
+                        }
+                    }
+                    let mut response = format!(
                         "Recorded delivery receipt `{delivery_receipt_id}` for evidence bundle `{evidence_bundle_id}`.\n\nbase: `{}`\nhead: `{}` @ `{}`\npr: {}\ncompare: {}",
                         base_branch,
                         head_branch,
                         head_commit,
                         pr_url.as_deref().unwrap_or("not opened yet"),
                         compare_url.as_deref().unwrap_or("unavailable")
-                    ),
-                    false,
-                ),
+                    );
+                    if let Ok(summary) = build_probe_delivery_status_snapshot(&state.autopilot_chat)
+                    {
+                        response.push_str("\n\n");
+                        response.push_str(summary.as_str());
+                    }
+                    if !notes.is_empty() {
+                        response.push_str("\n\n");
+                        response.push_str(notes.join("\n").as_str());
+                    }
+                    append_chat_command_result(state, prompt, response, false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::DeliveryStatus => {
+            match build_probe_delivery_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::DeliveryRefresh => {
+            let workspace = match chat_git_command_workspace(state) {
+                Ok(workspace) => workspace,
+                Err(error) => {
+                    return append_chat_command_result(state, prompt, error, true);
+                }
+            };
+            let updated_at_epoch_ms = current_epoch_millis();
+            let mut notes = Vec::new();
+            match sync_delivery_watch_state_from_git(
+                state,
+                thread_id.as_str(),
+                workspace.as_path(),
+                updated_at_epoch_ms,
+            ) {
+                Ok(Some(_)) => notes.push(String::from("Local delivery watch refreshed from git.")),
+                Ok(None) => {}
+                Err(error) => notes.push(format!("Local delivery watch unavailable: {error}")),
+            }
+            match refresh_delivery_watch_state_from_github(
+                state,
+                thread_id.as_str(),
+                workspace.as_path(),
+                updated_at_epoch_ms,
+            ) {
+                Ok(mut github_notes) => notes.append(&mut github_notes),
+                Err(error) => notes.push(format!("GitHub watch refresh unavailable: {error}")),
+            }
+            match build_probe_delivery_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => {
+                    let mut response = String::from("Refreshed delivery watch state.\n\n");
+                    response.push_str(summary.as_str());
+                    if !notes.is_empty() {
+                        response.push_str("\n\n");
+                        response.push_str(notes.join("\n").as_str());
+                    }
+                    append_chat_command_result(state, prompt, response, false)
+                }
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
         }
@@ -16878,6 +17505,7 @@ mod tests {
         git_current_branch, git_local_branch_exists, github_compare_url,
         is_taxonomy_failure_detail, loop_integrity_alert_specs,
         nip90_request_kind_for_request_type, note_active_job_waiting_for_payment_evidence,
+        parse_github_ci_watch, parse_github_pull_request_watch,
         parse_chat_apps_intent, parse_chat_forge_intent, parse_chat_git_intent,
         parse_chat_mcp_intent, parse_chat_remote_intent, parse_chat_request_intent,
         parse_chat_skills_intent, parse_chat_spacetime_intent, parse_chat_terminal_intent,
@@ -18101,6 +18729,14 @@ mod tests {
                 summary: Some("ready-to-merge".to_string()),
             })
         );
+        assert_eq!(
+            parse_chat_forge_intent("/deliver status").unwrap(),
+            Some(ChatForgeComposerIntent::DeliveryStatus)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/deliver refresh").unwrap(),
+            Some(ChatForgeComposerIntent::DeliveryRefresh)
+        );
         assert!(parse_chat_forge_intent("/handoff").is_err());
         assert!(parse_chat_forge_intent("/restore").is_err());
         assert!(parse_chat_forge_intent("/evidence").is_err());
@@ -18406,6 +19042,70 @@ mod tests {
                 "x"
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn github_pull_request_watch_parser_marks_merged_state() {
+        let watch = parse_github_pull_request_watch(
+            r#"{
+                "url":"https://github.com/OpenAgentsInc/openagents/pull/88",
+                "number":88,
+                "state":"CLOSED",
+                "title":"Probe delivery watch",
+                "baseRefName":"main",
+                "headRefName":"feature/probe-watch",
+                "isDraft":false,
+                "mergeable":"MERGEABLE",
+                "mergeStateStatus":"CLEAN",
+                "reviewDecision":"APPROVED",
+                "mergedAt":"2026-04-01T12:00:00Z"
+            }"#,
+            1_700_000_000,
+        )
+        .expect("pull request watch should parse");
+        assert_eq!(
+            watch.state,
+            crate::app_state::ForgeDeliveryPullRequestState::Merged
+        );
+        assert_eq!(watch.number, 88);
+        assert_eq!(watch.review_decision.as_deref(), Some("APPROVED"));
+    }
+
+    #[test]
+    fn github_ci_watch_parser_preserves_check_buckets() {
+        let watch = parse_github_ci_watch(
+            r#"[
+                {
+                    "bucket":"pass",
+                    "name":"ci / cargo test",
+                    "workflow":"CI",
+                    "state":"SUCCESS",
+                    "description":"12 tests passed",
+                    "link":"https://github.com/OpenAgentsInc/openagents/actions/runs/1"
+                },
+                {
+                    "bucket":"pending",
+                    "name":"ci / lint",
+                    "workflow":"CI",
+                    "state":"PENDING",
+                    "description":"waiting for runner",
+                    "link":"https://github.com/OpenAgentsInc/openagents/actions/runs/2"
+                }
+            ]"#,
+            1_700_000_010,
+        )
+        .expect("ci watch should parse")
+        .expect("ci watch should exist");
+        assert_eq!(watch.status, crate::app_state::ForgeDeliveryCiStatus::Pending);
+        assert_eq!(watch.checks.len(), 2);
+        assert_eq!(
+            watch.checks[0].status,
+            crate::app_state::ForgeDeliveryCiStatus::Pass
+        );
+        assert_eq!(
+            watch.checks[1].status,
+            crate::app_state::ForgeDeliveryCiStatus::Pending
         );
     }
 

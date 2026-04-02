@@ -1,6 +1,7 @@
 use crate::app_state::{
     AutopilotRole, AutopilotThreadListEntry, ForgeDelegatedChildDeliveryStatus,
-    ForgeDelegatedChildSessionCard, ForgeDelegatedChildSessionStatus, RenderState,
+    ForgeDelegatedChildSessionCard, ForgeDelegatedChildSessionStatus,
+    ForgeDeliveryBranchWatch, ForgeDeliveryComparePosture, ForgeDeliveryCompareWatch, RenderState,
 };
 use crate::probe_lane::{
     ProbeLaneCommandResponse, ProbeLaneLifecycle, ProbeLaneNotification, ProbeLaneSnapshot,
@@ -8,8 +9,8 @@ use crate::probe_lane::{
 };
 use probe_protocol::runtime::{QueuedTurnStatus, RuntimeProgressEvent};
 use probe_protocol::session::{
-    SessionChildStatus, SessionChildSummary, SessionDeliveryStatus, SessionMetadata, SessionState,
-    TranscriptEvent, TranscriptItemKind,
+    SessionBranchState, SessionChildStatus, SessionChildSummary, SessionDeliveryState,
+    SessionDeliveryStatus, SessionMetadata, SessionState, TranscriptEvent, TranscriptItemKind,
 };
 
 fn probe_live_turn_id(session_id: &str) -> String {
@@ -157,6 +158,30 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                     .collect(),
                 snapshot.session.updated_at_ms,
             );
+            let delivery_watch_updated_at_ms = probe_delivery_watch_updated_at_ms(
+                snapshot.branch_state.as_ref(),
+                snapshot.delivery_state.as_ref(),
+                snapshot.session.updated_at_ms,
+            );
+            let _ = state
+                .autopilot_chat
+                .sync_probe_delivery_runtime_watch_for_thread(
+                    thread_id.as_str(),
+                    snapshot
+                        .branch_state
+                        .as_ref()
+                        .map(|branch_state| {
+                            forge_delivery_branch_watch_from_probe(
+                                branch_state,
+                                delivery_watch_updated_at_ms,
+                            )
+                        }),
+                    snapshot
+                        .delivery_state
+                        .as_ref()
+                        .map(forge_delivery_compare_watch_from_probe),
+                    delivery_watch_updated_at_ms,
+                );
             if let Some(shell_title) = state
                 .autopilot_chat
                 .probe_shared_session_shell_title(thread_id.as_str())
@@ -201,6 +226,41 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                 child.title,
                 forge_child_status_from_probe(child.status).display_label()
             ));
+        }
+        ProbeLaneNotification::WorkspaceStateUpdated {
+            session_id,
+            branch_state,
+            delivery_state,
+        } => {
+            let delivery_watch_updated_at_ms = probe_delivery_watch_updated_at_ms(
+                branch_state.as_ref(),
+                delivery_state.as_ref(),
+                current_epoch_millis(),
+            );
+            let _ = state
+                .autopilot_chat
+                .sync_probe_delivery_runtime_watch_for_thread(
+                    session_id.as_str(),
+                    branch_state.as_ref().map(|branch_state| {
+                        forge_delivery_branch_watch_from_probe(
+                            branch_state,
+                            delivery_watch_updated_at_ms,
+                        )
+                    }),
+                    delivery_state
+                        .as_ref()
+                        .map(forge_delivery_compare_watch_from_probe),
+                    delivery_watch_updated_at_ms,
+                );
+            if let Some(compare_watch) = delivery_state
+                .as_ref()
+                .map(forge_delivery_compare_watch_from_probe)
+            {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "probe delivery watch: {}",
+                    compare_watch.posture.display_label()
+                ));
+            }
         }
         ProbeLaneNotification::RuntimeProgress { session_id, event } => {
             apply_runtime_progress(state, session_id.as_str(), event);
@@ -470,6 +530,52 @@ fn forge_child_delivery_status_from_probe(
         SessionDeliveryStatus::Synced => ForgeDelegatedChildDeliveryStatus::Synced,
         SessionDeliveryStatus::Diverged => ForgeDelegatedChildDeliveryStatus::Diverged,
     }
+}
+
+fn forge_delivery_branch_watch_from_probe(
+    branch_state: &SessionBranchState,
+    refreshed_at_epoch_ms: u64,
+) -> ForgeDeliveryBranchWatch {
+    ForgeDeliveryBranchWatch {
+        repo_root: branch_state.repo_root.display().to_string(),
+        head_ref: branch_state.head_ref.clone(),
+        head_commit: branch_state.head_commit.clone(),
+        detached_head: branch_state.detached_head,
+        working_tree_dirty: branch_state.working_tree_dirty,
+        upstream_ref: branch_state.upstream_ref.clone(),
+        ahead_by: branch_state.ahead_by,
+        behind_by: branch_state.behind_by,
+        refreshed_at_epoch_ms,
+    }
+}
+
+fn forge_delivery_compare_watch_from_probe(
+    delivery_state: &SessionDeliveryState,
+) -> ForgeDeliveryCompareWatch {
+    ForgeDeliveryCompareWatch {
+        posture: match delivery_state.status {
+            SessionDeliveryStatus::NeedsCommit => ForgeDeliveryComparePosture::NeedsCommit,
+            SessionDeliveryStatus::LocalOnly => ForgeDeliveryComparePosture::LocalOnly,
+            SessionDeliveryStatus::NeedsPush => ForgeDeliveryComparePosture::NeedsPush,
+            SessionDeliveryStatus::Synced => ForgeDeliveryComparePosture::Synced,
+            SessionDeliveryStatus::Diverged => ForgeDeliveryComparePosture::Diverged,
+        },
+        branch_name: delivery_state.branch_name.clone(),
+        remote_tracking_ref: delivery_state.remote_tracking_ref.clone(),
+        compare_ref: delivery_state.compare_ref.clone(),
+        refreshed_at_epoch_ms: delivery_state.updated_at_ms,
+    }
+}
+
+fn probe_delivery_watch_updated_at_ms(
+    branch_state: Option<&SessionBranchState>,
+    delivery_state: Option<&SessionDeliveryState>,
+    fallback: u64,
+) -> u64 {
+    delivery_state
+        .map(|state| state.updated_at_ms)
+        .or_else(|| branch_state.map(|_| fallback))
+        .unwrap_or(fallback)
 }
 
 fn forge_child_session_card_from_probe(child: &SessionChildSummary) -> ForgeDelegatedChildSessionCard {
