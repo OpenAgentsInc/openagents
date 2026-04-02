@@ -70,16 +70,18 @@ Current operator expectation for the first lane:
 
 ## Known Defects Filed From This Audit
 
-- hosted receipt truth is snapshot-only and does not expose restart or cleanup
-  history as a typed event stream
+- the defects originally filed from this audit are now closed
+- new follow-on work should come from the next hosted GCP run rather than
+  keeping this first audit artificially open forever
 
 ## Follow-On Issue Links
 
-- `probe#98` Emit hosted restart, cleanup, and operator-takeover history in
-  Probe receipts
+- historical follow-ons from this audit were `openagents#4105` and `probe#98`
+- both are now shipped
 
 ## Honest Conclusion
 
 Forge now has enough object and projection truth to run a hosted dogfood lane
 without pretending that the runtime or bookkeeping state lives somewhere else.
-The next remaining gap from this audit is typed hosted recovery history.
+The next honest gap is a second hosted run that either confirms the current
+shape or produces a new defect list.

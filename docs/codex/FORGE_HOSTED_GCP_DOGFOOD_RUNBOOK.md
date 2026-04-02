@@ -186,5 +186,6 @@ Before ending the dogfood run, verify the shell shows all of the following:
 
 ## First Follow-On Gaps
 
-- typed hosted recovery event history instead of snapshot-only receipts
-  - tracked in `probe#98`
+- no standing follow-on issue remains from the first hosted dogfood batch
+- the next honest backlog should come from the next hosted GCP run and its
+  recorded audit defects rather than from more speculative infrastructure docs
