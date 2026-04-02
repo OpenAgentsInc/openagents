@@ -104,6 +104,25 @@ Current local-first behavior:
 - when Probe cannot supply a snapshot ref, the shell says so directly instead of
   pretending a real snapshot registry already exists
 
+Autopilot now also persists two app-owned objects above that provenance:
+
+- one Forge workspace snapshot linked from the shared session
+- one Forge restore manifest linked from the shared session
+
+Current local-first rules:
+
+- both objects persist in the desktop artifact projection and survive restart
+- the workspace snapshot records shared-session id, Probe session ids,
+  workspace root, base repo identity, startup kind, restore pointer, optional
+  snapshot ref, and links back to the current evidence bundle or delivery
+  receipt when those exist
+- the restore manifest records the same restore inputs plus the linked
+  workspace snapshot id so later hosted or cross-device flows have a typed
+  restore object to consume
+- the shell renders both objects separately so the operator can see exactly
+  what restore state exists and whether the snapshot ref is still missing from
+  Probe
+
 ## Evidence Bundle Layer
 
 Autopilot now also keeps one app-owned evidence bundle above the shared session.

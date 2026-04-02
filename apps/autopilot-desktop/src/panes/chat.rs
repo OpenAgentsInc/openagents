@@ -13,9 +13,10 @@ use crate::app_state::{
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeDeliveryReceipt,
-    ForgeEvidenceBundle, ForgeSharedSession, ManagedChatChannelProjection,
-    ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
-    ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef, RenderState,
+    ForgeEvidenceBundle, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
+    ForgeWorkspaceSnapshot, ManagedChatChannelProjection, ManagedChatDeliveryState,
+    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
+    ProbeTurnAttachmentRef, RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -2801,6 +2802,18 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             compact_display_token(delivery_receipt_id, 24)
         ));
     }
+    if let Some(workspace_snapshot_id) = session.workspace_snapshot_id.as_deref() {
+        lines.push(format!(
+            "- **workspace snapshot:** `{}`",
+            compact_display_token(workspace_snapshot_id, 24)
+        ));
+    }
+    if let Some(restore_manifest_id) = session.restore_manifest_id.as_deref() {
+        lines.push(format!(
+            "- **restore manifest:** `{}`",
+            compact_display_token(restore_manifest_id, 24)
+        ));
+    }
     lines.push(format!(
         "- **workspace startup:** {}",
         session.workspace_restore.startup_kind.display_label()
@@ -2865,6 +2878,192 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
     } else {
         lines.push(String::new());
         lines.push("_No explicit handoff recorded yet._".to_string());
+    }
+    lines.join("\n")
+}
+
+fn format_workspace_base_repo_parts(
+    remote_url: Option<&str>,
+    git_branch: Option<&str>,
+    head_commit: Option<&str>,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(remote_url) = remote_url {
+        parts.push(compact_display_token(remote_url, 42));
+    }
+    if let Some(git_branch) = git_branch {
+        parts.push(format!("branch:{git_branch}"));
+    }
+    if let Some(head_commit) = head_commit {
+        parts.push(format!("head:{}", compact_display_token(head_commit, 16)));
+    }
+    (!parts.is_empty()).then(|| parts.join("  •  "))
+}
+
+fn active_workspace_snapshot_meta_line(snapshot: &ForgeWorkspaceSnapshot) -> String {
+    let mut parts = vec![format!(
+        "snapshot:{}",
+        compact_display_token(snapshot.workspace_snapshot_id.as_str(), 18)
+    )];
+    parts.push(format!("startup:{}", snapshot.startup_kind.label()));
+    parts.push(format!("probe:{}", snapshot.probe_session_ids.len()));
+    parts.push(format!("ref:{}", snapshot.snapshot_ref_status.label()));
+    if let Some(updated) = format_thread_timestamp(snapshot.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_workspace_snapshot_markdown_source(snapshot: &ForgeWorkspaceSnapshot) -> String {
+    let mut lines = vec![format!(
+        "- **shared session:** `{}`",
+        compact_display_token(snapshot.shared_session_id.as_str(), 24)
+    )];
+    lines.push(format!(
+        "- **workspace startup:** {}",
+        snapshot.startup_kind.display_label()
+    ));
+    lines.push(format!(
+        "- **probe sessions:** {}",
+        snapshot
+            .probe_session_ids
+            .iter()
+            .map(|session_id| format!("`{}`", compact_display_token(session_id, 18)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    if let Some(workspace_root) = snapshot.workspace_root.as_deref() {
+        lines.push(format!(
+            "- **workspace root:** `{}`",
+            compact_display_token(workspace_root, 48)
+        ));
+    }
+    if let Some(restore_pointer) = snapshot.restore_pointer.as_deref() {
+        lines.push(format!(
+            "- **restore pointer:** `{}`",
+            compact_display_token(restore_pointer, 36)
+        ));
+    }
+    if let Some(snapshot_ref) = snapshot.snapshot_ref.as_deref() {
+        lines.push(format!(
+            "- **snapshot ref:** `{}`",
+            compact_display_token(snapshot_ref, 36)
+        ));
+    } else {
+        lines.push(format!(
+            "- **snapshot ref:** _{}_",
+            snapshot.snapshot_ref_status.label()
+        ));
+    }
+    if let Some(detail) = snapshot.snapshot_ref_detail.as_deref() {
+        lines.push(format!("- **snapshot detail:** {}", detail));
+    }
+    if let Some(base_repo) = format_workspace_base_repo_parts(
+        snapshot.base_repo.remote_url.as_deref(),
+        snapshot.base_repo.git_branch.as_deref(),
+        snapshot.base_repo.head_commit.as_deref(),
+    ) {
+        lines.push(format!("- **base repo:** {}", base_repo));
+    }
+    if let Some(evidence_bundle_id) = snapshot.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = snapshot.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
+    }
+    lines.join("\n")
+}
+
+fn active_restore_manifest_meta_line(manifest: &ForgeWorkspaceRestoreManifest) -> String {
+    let mut parts = vec![format!(
+        "manifest:{}",
+        compact_display_token(manifest.restore_manifest_id.as_str(), 18)
+    )];
+    parts.push(format!("startup:{}", manifest.startup_kind.label()));
+    parts.push(format!("probe:{}", manifest.probe_session_ids.len()));
+    parts.push(format!("ref:{}", manifest.snapshot_ref_status.label()));
+    if let Some(updated) = format_thread_timestamp(manifest.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_restore_manifest_markdown_source(manifest: &ForgeWorkspaceRestoreManifest) -> String {
+    let mut lines = vec![format!(
+        "- **shared session:** `{}`",
+        compact_display_token(manifest.shared_session_id.as_str(), 24)
+    )];
+    if let Some(workspace_snapshot_id) = manifest.workspace_snapshot_id.as_deref() {
+        lines.push(format!(
+            "- **workspace snapshot:** `{}`",
+            compact_display_token(workspace_snapshot_id, 24)
+        ));
+    }
+    lines.push(format!(
+        "- **workspace startup:** {}",
+        manifest.startup_kind.display_label()
+    ));
+    lines.push(format!(
+        "- **probe sessions:** {}",
+        manifest
+            .probe_session_ids
+            .iter()
+            .map(|session_id| format!("`{}`", compact_display_token(session_id, 18)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    if let Some(workspace_root) = manifest.workspace_root.as_deref() {
+        lines.push(format!(
+            "- **workspace root:** `{}`",
+            compact_display_token(workspace_root, 48)
+        ));
+    }
+    if let Some(restore_pointer) = manifest.restore_pointer.as_deref() {
+        lines.push(format!(
+            "- **restore pointer:** `{}`",
+            compact_display_token(restore_pointer, 36)
+        ));
+    } else {
+        lines.push("- **restore pointer:** _missing_".to_string());
+    }
+    if let Some(snapshot_ref) = manifest.snapshot_ref.as_deref() {
+        lines.push(format!(
+            "- **snapshot ref:** `{}`",
+            compact_display_token(snapshot_ref, 36)
+        ));
+    } else {
+        lines.push(format!(
+            "- **snapshot ref:** _{}_",
+            manifest.snapshot_ref_status.label()
+        ));
+    }
+    if let Some(detail) = manifest.snapshot_ref_detail.as_deref() {
+        lines.push(format!("- **snapshot detail:** {}", detail));
+    }
+    if let Some(base_repo) = format_workspace_base_repo_parts(
+        manifest.base_repo.remote_url.as_deref(),
+        manifest.base_repo.git_branch.as_deref(),
+        manifest.base_repo.head_commit.as_deref(),
+    ) {
+        lines.push(format!("- **base repo:** {}", base_repo));
+    }
+    if let Some(evidence_bundle_id) = manifest.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = manifest.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
     }
     lines.join("\n")
 }
@@ -5396,6 +5595,92 @@ pub fn paint(
                 let shared_session_markdown = active_shared_session_markdown_source(shared_session);
                 if !shared_session_markdown.trim().is_empty() {
                     let markdown_document = markdown_parser.parse(&shared_session_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
+            if let Some(workspace_snapshot) = autopilot_chat.active_workspace_snapshot() {
+                let snapshot_color = match workspace_snapshot.snapshot_ref_status {
+                    crate::app_state::ForgeWorkspaceSnapshotRefStatus::Available => {
+                        theme::status::SUCCESS
+                    }
+                    crate::app_state::ForgeWorkspaceSnapshotRefStatus::MissingFromProbe => {
+                        theme::status::WARNING
+                    }
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[workspace snapshot]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    snapshot_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_workspace_snapshot_meta_line(workspace_snapshot),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let snapshot_markdown =
+                    active_workspace_snapshot_markdown_source(workspace_snapshot);
+                if !snapshot_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&snapshot_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
+            if let Some(restore_manifest) = autopilot_chat.active_restore_manifest() {
+                let manifest_color = match restore_manifest.snapshot_ref_status {
+                    crate::app_state::ForgeWorkspaceSnapshotRefStatus::Available => {
+                        theme::status::SUCCESS
+                    }
+                    crate::app_state::ForgeWorkspaceSnapshotRefStatus::MissingFromProbe => {
+                        theme::status::WARNING
+                    }
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[restore manifest]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    manifest_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_restore_manifest_meta_line(restore_manifest),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let manifest_markdown =
+                    active_restore_manifest_markdown_source(restore_manifest);
+                if !manifest_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&manifest_markdown);
                     let markdown_height = markdown_renderer
                         .render(
                             &markdown_document,

@@ -8377,6 +8377,41 @@ impl Default for ForgeWorkspaceRestoreProvenance {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeWorkspaceSnapshot {
+    pub workspace_snapshot_id: String,
+    pub shared_session_id: String,
+    pub probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub base_repo: ForgeWorkspaceBaseRepoRef,
+    pub startup_kind: ForgeWorkspaceStartupKind,
+    pub restore_pointer: Option<String>,
+    pub snapshot_ref: Option<String>,
+    pub snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus,
+    pub snapshot_ref_detail: Option<String>,
+    pub evidence_bundle_id: Option<String>,
+    pub delivery_receipt_id: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeWorkspaceRestoreManifest {
+    pub restore_manifest_id: String,
+    pub shared_session_id: String,
+    pub workspace_snapshot_id: Option<String>,
+    pub probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub base_repo: ForgeWorkspaceBaseRepoRef,
+    pub startup_kind: ForgeWorkspaceStartupKind,
+    pub restore_pointer: Option<String>,
+    pub snapshot_ref: Option<String>,
+    pub snapshot_ref_status: ForgeWorkspaceSnapshotRefStatus,
+    pub snapshot_ref_detail: Option<String>,
+    pub evidence_bundle_id: Option<String>,
+    pub delivery_receipt_id: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForgeEvidenceVerificationStatus {
@@ -8705,6 +8740,10 @@ pub struct ForgeSharedSession {
     pub last_handoff: Option<ForgeSharedSessionHandoff>,
     #[serde(default)]
     pub workspace_restore: ForgeWorkspaceRestoreProvenance,
+    #[serde(default)]
+    pub workspace_snapshot_id: Option<String>,
+    #[serde(default)]
+    pub restore_manifest_id: Option<String>,
     pub evidence_bundle_id: Option<String>,
     pub delivery_receipt_id: Option<String>,
     pub created_at_epoch_ms: u64,
@@ -9144,9 +9183,13 @@ pub struct AutopilotChatState {
     thread_review_artifacts: std::collections::HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: std::collections::HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
+    forge_workspace_snapshots: std::collections::HashMap<String, ForgeWorkspaceSnapshot>,
+    forge_restore_manifests: std::collections::HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_evidence_bundles: std::collections::HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: std::collections::HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
+    next_forge_workspace_snapshot_seq: u64,
+    next_forge_restore_manifest_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
@@ -9268,9 +9311,13 @@ impl Default for AutopilotChatState {
             thread_review_artifacts,
             thread_compaction_artifacts,
             forge_shared_sessions,
+            forge_workspace_snapshots,
+            forge_restore_manifests,
             forge_evidence_bundles,
             forge_delivery_receipts,
             next_forge_shared_session_seq,
+            next_forge_workspace_snapshot_seq,
+            next_forge_restore_manifest_seq,
             next_forge_evidence_bundle_seq,
             next_forge_delivery_receipt_seq,
             review_thread_source_map,
@@ -9281,9 +9328,13 @@ impl Default for AutopilotChatState {
                 projection.thread_review_artifacts,
                 projection.thread_compaction_artifacts,
                 projection.forge_shared_sessions,
+                projection.forge_workspace_snapshots,
+                projection.forge_restore_manifests,
                 projection.forge_evidence_bundles,
                 projection.forge_delivery_receipts,
                 projection.next_forge_shared_session_seq,
+                projection.next_forge_workspace_snapshot_seq,
+                projection.next_forge_restore_manifest_seq,
                 projection.next_forge_evidence_bundle_seq,
                 projection.next_forge_delivery_receipt_seq,
                 projection.review_thread_source_map,
@@ -9296,6 +9347,10 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+                1,
+                1,
                 1,
                 1,
                 1,
@@ -9324,9 +9379,13 @@ impl Default for AutopilotChatState {
             thread_review_artifacts,
             thread_compaction_artifacts,
             forge_shared_sessions,
+            forge_workspace_snapshots,
+            forge_restore_manifests,
             forge_evidence_bundles,
             forge_delivery_receipts,
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
+            next_forge_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
+            next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
             next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
             next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
             review_thread_source_map,
@@ -9430,11 +9489,19 @@ struct CodexArtifactProjectionDocumentV2 {
     #[serde(default)]
     shared_sessions: Vec<ForgeSharedSession>,
     #[serde(default)]
+    workspace_snapshots: Vec<ForgeWorkspaceSnapshot>,
+    #[serde(default)]
+    restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
+    #[serde(default)]
     evidence_bundles: Vec<ForgeEvidenceBundle>,
     #[serde(default)]
     delivery_receipts: Vec<ForgeDeliveryReceipt>,
     #[serde(default = "default_next_forge_shared_session_seq")]
     next_shared_session_seq: u64,
+    #[serde(default = "default_next_forge_workspace_snapshot_seq")]
+    next_workspace_snapshot_seq: u64,
+    #[serde(default = "default_next_forge_restore_manifest_seq")]
+    next_restore_manifest_seq: u64,
     #[serde(default = "default_next_forge_evidence_bundle_seq")]
     next_evidence_bundle_seq: u64,
     #[serde(default = "default_next_forge_delivery_receipt_seq")]
@@ -9446,15 +9513,27 @@ struct LoadedCodexArtifactProjection {
     thread_review_artifacts: HashMap<String, AutopilotReviewArtifact>,
     thread_compaction_artifacts: HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: HashMap<String, ForgeSharedSession>,
+    forge_workspace_snapshots: HashMap<String, ForgeWorkspaceSnapshot>,
+    forge_restore_manifests: HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
+    next_forge_workspace_snapshot_seq: u64,
+    next_forge_restore_manifest_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: HashMap<String, String>,
 }
 
 fn default_next_forge_shared_session_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_workspace_snapshot_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_restore_manifest_seq() -> u64 {
     1
 }
 
@@ -9627,6 +9706,16 @@ fn normalize_forge_shared_sessions(
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        session.workspace_snapshot_id = session
+            .workspace_snapshot_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        session.restore_manifest_id = session
+            .restore_manifest_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
         }
@@ -9645,6 +9734,141 @@ fn normalize_forge_shared_sessions(
     }
     sessions.retain(|session| !session.probe_session_ids.is_empty());
     sessions
+}
+
+fn normalize_forge_workspace_snapshots(
+    mut snapshots: Vec<ForgeWorkspaceSnapshot>,
+) -> Vec<ForgeWorkspaceSnapshot> {
+    snapshots.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.workspace_snapshot_id.cmp(&rhs.workspace_snapshot_id))
+    });
+    let mut seen_ids = HashSet::new();
+    snapshots.retain(|snapshot| {
+        let workspace_snapshot_id = snapshot.workspace_snapshot_id.trim();
+        !workspace_snapshot_id.is_empty() && seen_ids.insert(workspace_snapshot_id.to_string())
+    });
+    for snapshot in &mut snapshots {
+        snapshot.workspace_snapshot_id = snapshot.workspace_snapshot_id.trim().to_string();
+        snapshot.shared_session_id = snapshot.shared_session_id.trim().to_string();
+        snapshot.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut snapshot.probe_session_ids));
+        snapshot.workspace_root = snapshot
+            .workspace_root
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        snapshot.restore_pointer = snapshot
+            .restore_pointer
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        snapshot.snapshot_ref = snapshot
+            .snapshot_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        snapshot.snapshot_ref_detail = if snapshot.snapshot_ref.is_some() {
+            None
+        } else {
+            snapshot
+                .snapshot_ref_detail
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .or_else(|| Some(forge_probe_snapshot_ref_detail()))
+        };
+        if snapshot.snapshot_ref.is_some() {
+            snapshot.snapshot_ref_status = ForgeWorkspaceSnapshotRefStatus::Available;
+        } else {
+            snapshot.snapshot_ref_status = ForgeWorkspaceSnapshotRefStatus::MissingFromProbe;
+        }
+        snapshot.evidence_bundle_id = snapshot
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        snapshot.delivery_receipt_id = snapshot
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    snapshots.retain(|snapshot| {
+        !snapshot.shared_session_id.is_empty() && !snapshot.probe_session_ids.is_empty()
+    });
+    snapshots
+}
+
+fn normalize_forge_restore_manifests(
+    mut manifests: Vec<ForgeWorkspaceRestoreManifest>,
+) -> Vec<ForgeWorkspaceRestoreManifest> {
+    manifests.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.restore_manifest_id.cmp(&rhs.restore_manifest_id))
+    });
+    let mut seen_ids = HashSet::new();
+    manifests.retain(|manifest| {
+        let restore_manifest_id = manifest.restore_manifest_id.trim();
+        !restore_manifest_id.is_empty() && seen_ids.insert(restore_manifest_id.to_string())
+    });
+    for manifest in &mut manifests {
+        manifest.restore_manifest_id = manifest.restore_manifest_id.trim().to_string();
+        manifest.shared_session_id = manifest.shared_session_id.trim().to_string();
+        manifest.workspace_snapshot_id = manifest
+            .workspace_snapshot_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        manifest.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut manifest.probe_session_ids));
+        manifest.workspace_root = manifest
+            .workspace_root
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        manifest.restore_pointer = manifest
+            .restore_pointer
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        manifest.snapshot_ref = manifest
+            .snapshot_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        manifest.snapshot_ref_detail = if manifest.snapshot_ref.is_some() {
+            None
+        } else {
+            manifest
+                .snapshot_ref_detail
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .or_else(|| Some(forge_probe_snapshot_ref_detail()))
+        };
+        if manifest.snapshot_ref.is_some() {
+            manifest.snapshot_ref_status = ForgeWorkspaceSnapshotRefStatus::Available;
+        } else {
+            manifest.snapshot_ref_status = ForgeWorkspaceSnapshotRefStatus::MissingFromProbe;
+        }
+        manifest.evidence_bundle_id = manifest
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        manifest.delivery_receipt_id = manifest
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    manifests.retain(|manifest| {
+        !manifest.shared_session_id.is_empty() && !manifest.probe_session_ids.is_empty()
+    });
+    manifests
 }
 
 fn normalize_forge_evidence_bundles(
@@ -9833,9 +10057,13 @@ fn persist_codex_artifact_projection(
     review_artifacts: &HashMap<String, AutopilotReviewArtifact>,
     compaction_artifacts: &HashMap<String, AutopilotCompactionArtifact>,
     forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
+    forge_workspace_snapshots: &HashMap<String, ForgeWorkspaceSnapshot>,
+    forge_restore_manifests: &HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
+    next_forge_workspace_snapshot_seq: u64,
+    next_forge_restore_manifest_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
 ) -> Result<(), String> {
@@ -9861,6 +10089,12 @@ fn persist_codex_artifact_projection(
         shared_sessions: normalize_forge_shared_sessions(
             forge_shared_sessions.values().cloned().collect(),
         ),
+        workspace_snapshots: normalize_forge_workspace_snapshots(
+            forge_workspace_snapshots.values().cloned().collect(),
+        ),
+        restore_manifests: normalize_forge_restore_manifests(
+            forge_restore_manifests.values().cloned().collect(),
+        ),
         evidence_bundles: normalize_forge_evidence_bundles(
             forge_evidence_bundles.values().cloned().collect(),
         ),
@@ -9868,6 +10102,8 @@ fn persist_codex_artifact_projection(
             forge_delivery_receipts.values().cloned().collect(),
         ),
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
+        next_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
+        next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
         next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
         next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
     };
@@ -9890,9 +10126,13 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 thread_review_artifacts: HashMap::new(),
                 thread_compaction_artifacts: HashMap::new(),
                 forge_shared_sessions: HashMap::new(),
+                forge_workspace_snapshots: HashMap::new(),
+                forge_restore_manifests: HashMap::new(),
                 forge_evidence_bundles: HashMap::new(),
                 forge_delivery_receipts: HashMap::new(),
                 next_forge_shared_session_seq: 1,
+                next_forge_workspace_snapshot_seq: 1,
+                next_forge_restore_manifest_seq: 1,
                 next_forge_evidence_bundle_seq: 1,
                 next_forge_delivery_receipt_seq: 1,
                 review_thread_source_map: HashMap::new(),
@@ -9934,6 +10174,10 @@ fn load_codex_artifact_projection_v1(
         document.compaction_artifacts,
         Vec::new(),
         Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        1,
+        1,
         1,
         1,
         Vec::new(),
@@ -9957,8 +10201,12 @@ fn load_codex_artifact_projection_v2(
         document.review_artifacts,
         document.compaction_artifacts,
         document.shared_sessions,
+        document.workspace_snapshots,
+        document.restore_manifests,
         document.evidence_bundles,
         document.next_shared_session_seq,
+        document.next_workspace_snapshot_seq,
+        document.next_restore_manifest_seq,
         document.next_evidence_bundle_seq,
         document.delivery_receipts,
         document.next_delivery_receipt_seq,
@@ -9970,8 +10218,12 @@ fn build_loaded_codex_artifact_projection(
     review_artifacts: Vec<AutopilotReviewArtifact>,
     compaction_artifacts: Vec<AutopilotCompactionArtifact>,
     shared_sessions: Vec<ForgeSharedSession>,
+    workspace_snapshots: Vec<ForgeWorkspaceSnapshot>,
+    restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
     evidence_bundles: Vec<ForgeEvidenceBundle>,
     next_shared_session_seq: u64,
+    next_workspace_snapshot_seq: u64,
+    next_restore_manifest_seq: u64,
     next_evidence_bundle_seq: u64,
     delivery_receipts: Vec<ForgeDeliveryReceipt>,
     next_delivery_receipt_seq: u64,
@@ -10004,6 +10256,16 @@ fn build_loaded_codex_artifact_projection(
         forge_shared_sessions.insert(session.shared_session_id.clone(), session);
     }
 
+    let mut forge_workspace_snapshots = HashMap::<String, ForgeWorkspaceSnapshot>::new();
+    for snapshot in normalize_forge_workspace_snapshots(workspace_snapshots) {
+        forge_workspace_snapshots.insert(snapshot.workspace_snapshot_id.clone(), snapshot);
+    }
+
+    let mut forge_restore_manifests = HashMap::<String, ForgeWorkspaceRestoreManifest>::new();
+    for manifest in normalize_forge_restore_manifests(restore_manifests) {
+        forge_restore_manifests.insert(manifest.restore_manifest_id.clone(), manifest);
+    }
+
     let mut forge_evidence_bundles = HashMap::<String, ForgeEvidenceBundle>::new();
     for bundle in normalize_forge_evidence_bundles(evidence_bundles) {
         forge_evidence_bundles.insert(bundle.evidence_bundle_id.clone(), bundle);
@@ -10019,9 +10281,13 @@ fn build_loaded_codex_artifact_projection(
         thread_review_artifacts,
         thread_compaction_artifacts,
         forge_shared_sessions,
+        forge_workspace_snapshots,
+        forge_restore_manifests,
         forge_evidence_bundles,
         forge_delivery_receipts,
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
+        next_forge_workspace_snapshot_seq: next_workspace_snapshot_seq.max(1),
+        next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
         next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
         next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
         review_thread_source_map,
@@ -10402,9 +10668,15 @@ impl AutopilotChatState {
                 state.thread_review_artifacts = projection.thread_review_artifacts;
                 state.thread_compaction_artifacts = projection.thread_compaction_artifacts;
                 state.forge_shared_sessions = projection.forge_shared_sessions;
+                state.forge_workspace_snapshots = projection.forge_workspace_snapshots;
+                state.forge_restore_manifests = projection.forge_restore_manifests;
                 state.forge_evidence_bundles = projection.forge_evidence_bundles;
                 state.forge_delivery_receipts = projection.forge_delivery_receipts;
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
+                state.next_forge_workspace_snapshot_seq =
+                    projection.next_forge_workspace_snapshot_seq;
+                state.next_forge_restore_manifest_seq =
+                    projection.next_forge_restore_manifest_seq;
                 state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
                 state.next_forge_delivery_receipt_seq = projection.next_forge_delivery_receipt_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
@@ -10415,9 +10687,13 @@ impl AutopilotChatState {
                 state.thread_review_artifacts.clear();
                 state.thread_compaction_artifacts.clear();
                 state.forge_shared_sessions.clear();
+                state.forge_workspace_snapshots.clear();
+                state.forge_restore_manifests.clear();
                 state.forge_evidence_bundles.clear();
                 state.forge_delivery_receipts.clear();
                 state.next_forge_shared_session_seq = 1;
+                state.next_forge_workspace_snapshot_seq = 1;
+                state.next_forge_restore_manifest_seq = 1;
                 state.next_forge_evidence_bundle_seq = 1;
                 state.next_forge_delivery_receipt_seq = 1;
                 state.review_thread_source_map.clear();
@@ -11031,6 +11307,33 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.delivery_receipt_for_thread(thread_id))
     }
 
+    fn workspace_snapshot_for_thread(&self, thread_id: &str) -> Option<&ForgeWorkspaceSnapshot> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let workspace_snapshot_id = shared_session.workspace_snapshot_id.as_deref()?;
+        self.forge_workspace_snapshots.get(workspace_snapshot_id)
+    }
+
+    pub fn active_workspace_snapshot(&self) -> Option<&ForgeWorkspaceSnapshot> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.workspace_snapshot_for_thread(thread_id))
+    }
+
+    fn restore_manifest_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> Option<&ForgeWorkspaceRestoreManifest> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let restore_manifest_id = shared_session.restore_manifest_id.as_deref()?;
+        self.forge_restore_manifests.get(restore_manifest_id)
+    }
+
+    pub fn active_restore_manifest(&self) -> Option<&ForgeWorkspaceRestoreManifest> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.restore_manifest_for_thread(thread_id))
+    }
+
     pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
         self.forge_shared_sessions.values().find(|session| {
             session
@@ -11074,6 +11377,26 @@ impl AutopilotChatState {
         evidence_bundle_id
     }
 
+    fn next_workspace_snapshot_id(&mut self) -> String {
+        let workspace_snapshot_id = format!(
+            "forge-snapshot-{}",
+            self.next_forge_workspace_snapshot_seq
+        );
+        self.next_forge_workspace_snapshot_seq =
+            self.next_forge_workspace_snapshot_seq.saturating_add(1);
+        workspace_snapshot_id
+    }
+
+    fn next_restore_manifest_id(&mut self) -> String {
+        let restore_manifest_id = format!(
+            "forge-restore-{}",
+            self.next_forge_restore_manifest_seq
+        );
+        self.next_forge_restore_manifest_seq =
+            self.next_forge_restore_manifest_seq.saturating_add(1);
+        restore_manifest_id
+    }
+
     fn next_delivery_receipt_id(&mut self) -> String {
         let delivery_receipt_id =
             format!("forge-delivery-{}", self.next_forge_delivery_receipt_seq);
@@ -11109,6 +11432,214 @@ impl AutopilotChatState {
         if shared_session.participants.is_empty() {
             shared_session.participants = default_forge_shared_session_participants();
         }
+    }
+
+    fn ensure_probe_workspace_snapshot_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        if let Some(existing) = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .and_then(|session| session.workspace_snapshot_id.clone())
+            && self.forge_workspace_snapshots.contains_key(existing.as_str())
+        {
+            return Ok(existing);
+        }
+
+        let session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before a workspace snapshot could be created."
+                )
+            })?;
+        let workspace_snapshot_id = self.next_workspace_snapshot_id();
+        self.forge_workspace_snapshots.insert(
+            workspace_snapshot_id.clone(),
+            ForgeWorkspaceSnapshot {
+                workspace_snapshot_id: workspace_snapshot_id.clone(),
+                shared_session_id: shared_session_id.to_string(),
+                probe_session_ids: normalize_probe_session_ids(session.probe_session_ids),
+                workspace_root: session.workspace_root,
+                base_repo: session.workspace_restore.base_repo.clone(),
+                startup_kind: session.workspace_restore.startup_kind,
+                restore_pointer: session.workspace_restore.restore_pointer.clone(),
+                snapshot_ref: session.workspace_restore.snapshot_ref.clone(),
+                snapshot_ref_status: session.workspace_restore.snapshot_ref_status,
+                snapshot_ref_detail: session.workspace_restore.snapshot_ref_detail.clone(),
+                evidence_bundle_id: session.evidence_bundle_id.clone(),
+                delivery_receipt_id: session.delivery_receipt_id.clone(),
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the workspace snapshot link could be recorded."
+                )
+            })?;
+        shared_session.workspace_snapshot_id = Some(workspace_snapshot_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        Ok(workspace_snapshot_id)
+    }
+
+    fn sync_probe_workspace_snapshot_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let workspace_snapshot_id =
+            self.ensure_probe_workspace_snapshot_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the workspace snapshot could be refreshed."
+                )
+            })?;
+        let snapshot = self
+            .forge_workspace_snapshots
+            .get_mut(&workspace_snapshot_id)
+            .ok_or_else(|| {
+                format!(
+                    "Workspace snapshot `{workspace_snapshot_id}` disappeared before it could be refreshed."
+                )
+            })?;
+        snapshot.shared_session_id = shared_session_id.to_string();
+        snapshot.probe_session_ids = normalize_probe_session_ids(shared_session.probe_session_ids);
+        snapshot.workspace_root = shared_session.workspace_root;
+        snapshot.base_repo = shared_session.workspace_restore.base_repo.clone();
+        snapshot.startup_kind = shared_session.workspace_restore.startup_kind;
+        snapshot.restore_pointer = shared_session.workspace_restore.restore_pointer.clone();
+        snapshot.snapshot_ref = shared_session.workspace_restore.snapshot_ref.clone();
+        snapshot.snapshot_ref_status = shared_session.workspace_restore.snapshot_ref_status;
+        snapshot.snapshot_ref_detail = shared_session.workspace_restore.snapshot_ref_detail.clone();
+        snapshot.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+        snapshot.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        snapshot.updated_at_epoch_ms = updated_at_epoch_ms.max(snapshot.updated_at_epoch_ms);
+        Ok(workspace_snapshot_id)
+    }
+
+    fn ensure_probe_restore_manifest_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        if let Some(existing) = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .and_then(|session| session.restore_manifest_id.clone())
+            && self.forge_restore_manifests.contains_key(existing.as_str())
+        {
+            return Ok(existing);
+        }
+
+        let session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before a restore manifest could be created."
+                )
+            })?;
+        let restore_manifest_id = self.next_restore_manifest_id();
+        self.forge_restore_manifests.insert(
+            restore_manifest_id.clone(),
+            ForgeWorkspaceRestoreManifest {
+                restore_manifest_id: restore_manifest_id.clone(),
+                shared_session_id: shared_session_id.to_string(),
+                workspace_snapshot_id: session.workspace_snapshot_id.clone(),
+                probe_session_ids: normalize_probe_session_ids(session.probe_session_ids),
+                workspace_root: session.workspace_root,
+                base_repo: session.workspace_restore.base_repo.clone(),
+                startup_kind: session.workspace_restore.startup_kind,
+                restore_pointer: session.workspace_restore.restore_pointer.clone(),
+                snapshot_ref: session.workspace_restore.snapshot_ref.clone(),
+                snapshot_ref_status: session.workspace_restore.snapshot_ref_status,
+                snapshot_ref_detail: session.workspace_restore.snapshot_ref_detail.clone(),
+                evidence_bundle_id: session.evidence_bundle_id.clone(),
+                delivery_receipt_id: session.delivery_receipt_id.clone(),
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the restore manifest link could be recorded."
+                )
+            })?;
+        shared_session.restore_manifest_id = Some(restore_manifest_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        Ok(restore_manifest_id)
+    }
+
+    fn sync_probe_restore_manifest_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        workspace_snapshot_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let restore_manifest_id =
+            self.ensure_probe_restore_manifest_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the restore manifest could be refreshed."
+                )
+            })?;
+        let manifest = self
+            .forge_restore_manifests
+            .get_mut(&restore_manifest_id)
+            .ok_or_else(|| {
+                format!(
+                    "Restore manifest `{restore_manifest_id}` disappeared before it could be refreshed."
+                )
+            })?;
+        manifest.shared_session_id = shared_session_id.to_string();
+        manifest.workspace_snapshot_id = Some(workspace_snapshot_id.to_string());
+        manifest.probe_session_ids = normalize_probe_session_ids(shared_session.probe_session_ids);
+        manifest.workspace_root = shared_session.workspace_root;
+        manifest.base_repo = shared_session.workspace_restore.base_repo.clone();
+        manifest.startup_kind = shared_session.workspace_restore.startup_kind;
+        manifest.restore_pointer = shared_session.workspace_restore.restore_pointer.clone();
+        manifest.snapshot_ref = shared_session.workspace_restore.snapshot_ref.clone();
+        manifest.snapshot_ref_status = shared_session.workspace_restore.snapshot_ref_status;
+        manifest.snapshot_ref_detail = shared_session.workspace_restore.snapshot_ref_detail.clone();
+        manifest.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+        manifest.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        manifest.updated_at_epoch_ms = updated_at_epoch_ms.max(manifest.updated_at_epoch_ms);
+        Ok(restore_manifest_id)
+    }
+
+    fn sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let workspace_snapshot_id =
+            self.sync_probe_workspace_snapshot_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        let restore_manifest_id = self.sync_probe_restore_manifest_for_shared_session(
+            shared_session_id,
+            workspace_snapshot_id.as_str(),
+            updated_at_epoch_ms,
+        )?;
+        Ok((workspace_snapshot_id, restore_manifest_id))
     }
 
     fn latest_diff_artifact_for_probe_sessions(
@@ -11301,6 +11832,10 @@ impl AutopilotChatState {
             shared_session_id.as_str(),
             updated_at_epoch_ms,
         )?;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(evidence_bundle_id)
     }
@@ -11544,6 +12079,11 @@ impl AutopilotChatState {
         }
         receipt.contributors = next_contributors;
         receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        let _ = receipt;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok((delivery_receipt_id, evidence_bundle_id))
     }
@@ -11606,6 +12146,11 @@ impl AutopilotChatState {
         receipt.latest_review_decision = Some(next_review_decision);
         receipt.contributors = next_contributors;
         receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        let _ = receipt;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session.shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(delivery_receipt_id)
     }
@@ -11655,6 +12200,11 @@ impl AutopilotChatState {
         receipt.merged_at_epoch_ms = Some(updated_at_epoch_ms);
         receipt.contributors = next_contributors;
         receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        let _ = receipt;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session.shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(delivery_receipt_id)
     }
@@ -11737,6 +12287,10 @@ impl AutopilotChatState {
                 shared_session_id.as_str(),
                 updated_at_epoch_ms,
             );
+            let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+                shared_session_id.as_str(),
+                updated_at_epoch_ms,
+            );
             self.persist_codex_artifact_projection();
             return Some(shared_session_id);
         }
@@ -11798,6 +12352,8 @@ impl AutopilotChatState {
                         snapshot_ref_detail: Some(forge_probe_snapshot_ref_detail()),
                         updated_at_epoch_ms: created_at_epoch_ms,
                     },
+                    workspace_snapshot_id: None,
+                    restore_manifest_id: None,
                     evidence_bundle_id: None,
                     delivery_receipt_id: None,
                     created_at_epoch_ms,
@@ -11813,6 +12369,10 @@ impl AutopilotChatState {
             updated_at_epoch_ms,
         );
         let _ = self.sync_evidence_bundle_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
             shared_session_id.as_str(),
             updated_at_epoch_ms,
         );
@@ -11884,6 +12444,11 @@ impl AutopilotChatState {
             );
             shared_session.workspace_restore.updated_at_epoch_ms =
                 updated_at_epoch_ms.max(shared_session.workspace_restore.updated_at_epoch_ms);
+            let _ = shared_session;
+            let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+                shared_session_id.as_str(),
+                updated_at_epoch_ms,
+            );
             self.persist_codex_artifact_projection();
             return Ok(shared_session_id);
         }
@@ -11916,6 +12481,11 @@ impl AutopilotChatState {
             },
             updated_at_epoch_ms,
         };
+        let _ = shared_session;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(shared_session_id)
     }
@@ -13756,7 +14326,21 @@ impl AutopilotChatState {
             }
         }
         for shared_session_id in orphaned_shared_sessions {
-            self.forge_shared_sessions.remove(&shared_session_id);
+            if let Some(shared_session) = self.forge_shared_sessions.remove(&shared_session_id) {
+                if let Some(workspace_snapshot_id) = shared_session.workspace_snapshot_id.as_deref()
+                {
+                    self.forge_workspace_snapshots.remove(workspace_snapshot_id);
+                }
+                if let Some(restore_manifest_id) = shared_session.restore_manifest_id.as_deref() {
+                    self.forge_restore_manifests.remove(restore_manifest_id);
+                }
+                if let Some(evidence_bundle_id) = shared_session.evidence_bundle_id.as_deref() {
+                    self.forge_evidence_bundles.remove(evidence_bundle_id);
+                }
+                if let Some(delivery_receipt_id) = shared_session.delivery_receipt_id.as_deref() {
+                    self.forge_delivery_receipts.remove(delivery_receipt_id);
+                }
+            }
         }
         if self
             .last_submitted_turn_metadata
@@ -15146,9 +15730,13 @@ impl AutopilotChatState {
             &self.thread_review_artifacts,
             &self.thread_compaction_artifacts,
             &self.forge_shared_sessions,
+            &self.forge_workspace_snapshots,
+            &self.forge_restore_manifests,
             &self.forge_evidence_bundles,
             &self.forge_delivery_receipts,
             self.next_forge_shared_session_seq,
+            self.next_forge_workspace_snapshot_seq,
+            self.next_forge_restore_manifest_seq,
             self.next_forge_evidence_bundle_seq,
             self.next_forge_delivery_receipt_seq,
         ) {
@@ -23752,6 +24340,41 @@ mod tests {
             warm.workspace_restore.base_repo.head_commit.is_some(),
             "head commit should be captured"
         );
+        let warm_snapshot = chat
+            .active_workspace_snapshot()
+            .expect("active workspace snapshot");
+        assert_eq!(
+            warm.workspace_snapshot_id.as_deref(),
+            Some(warm_snapshot.workspace_snapshot_id.as_str())
+        );
+        assert_eq!(warm_snapshot.shared_session_id, warm.shared_session_id);
+        assert_eq!(
+            warm_snapshot.startup_kind,
+            ForgeWorkspaceStartupKind::WarmStart
+        );
+        assert_eq!(
+            warm_snapshot.restore_pointer.as_deref(),
+            Some("probe-session:thread-a")
+        );
+        assert_eq!(
+            warm_snapshot.snapshot_ref_status,
+            ForgeWorkspaceSnapshotRefStatus::MissingFromProbe
+        );
+        let warm_manifest = chat
+            .active_restore_manifest()
+            .expect("active restore manifest");
+        assert_eq!(
+            warm.restore_manifest_id.as_deref(),
+            Some(warm_manifest.restore_manifest_id.as_str())
+        );
+        assert_eq!(
+            warm_manifest.workspace_snapshot_id.as_deref(),
+            Some(warm_snapshot.workspace_snapshot_id.as_str())
+        );
+        assert_eq!(
+            warm_manifest.startup_kind,
+            ForgeWorkspaceStartupKind::WarmStart
+        );
 
         chat.mark_probe_workspace_restored_for_thread(
             "thread-a",
@@ -23780,6 +24403,36 @@ mod tests {
             restored.workspace_restore.snapshot_ref_status,
             ForgeWorkspaceSnapshotRefStatus::Available
         );
+        let restored_snapshot = chat
+            .active_workspace_snapshot()
+            .expect("restored workspace snapshot");
+        assert_eq!(
+            restored.workspace_snapshot_id.as_deref(),
+            Some(restored_snapshot.workspace_snapshot_id.as_str())
+        );
+        assert_eq!(
+            restored_snapshot.startup_kind,
+            ForgeWorkspaceStartupKind::Restored
+        );
+        assert_eq!(
+            restored_snapshot.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
+        let restored_manifest = chat
+            .active_restore_manifest()
+            .expect("restored manifest");
+        assert_eq!(
+            restored.restore_manifest_id.as_deref(),
+            Some(restored_manifest.restore_manifest_id.as_str())
+        );
+        assert_eq!(
+            restored_manifest.workspace_snapshot_id.as_deref(),
+            Some(restored_snapshot.workspace_snapshot_id.as_str())
+        );
+        assert_eq!(
+            restored_manifest.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
 
         let reloaded =
             AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
@@ -23792,6 +24445,32 @@ mod tests {
         );
         assert_eq!(
             reloaded_session.workspace_restore.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
+        let reloaded_snapshot = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.workspace_snapshot_id.as_deref())
+            .and_then(|snapshot_id| reloaded.forge_workspace_snapshots.get(snapshot_id))
+            .expect("reloaded workspace snapshot");
+        assert_eq!(
+            reloaded_snapshot.snapshot_ref.as_deref(),
+            Some("snapshot-ref-7")
+        );
+        assert_eq!(
+            reloaded_snapshot.snapshot_ref_status,
+            ForgeWorkspaceSnapshotRefStatus::Available
+        );
+        let reloaded_manifest = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.restore_manifest_id.as_deref())
+            .and_then(|manifest_id| reloaded.forge_restore_manifests.get(manifest_id))
+            .expect("reloaded restore manifest");
+        assert_eq!(
+            reloaded_manifest.workspace_snapshot_id.as_deref(),
+            Some(reloaded_snapshot.workspace_snapshot_id.as_str())
+        );
+        assert_eq!(
+            reloaded_manifest.snapshot_ref.as_deref(),
             Some("snapshot-ref-7")
         );
 
