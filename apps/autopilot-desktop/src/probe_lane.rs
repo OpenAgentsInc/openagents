@@ -28,7 +28,7 @@ use probe_protocol::runtime::{
 };
 use probe_protocol::session::{
     PendingToolApproval, SessionBranchState, SessionChildSummary, SessionDeliveryState, SessionId,
-    SessionMetadata, SessionWorkspaceState, ToolApprovalResolution,
+    SessionMetadata, SessionMountRef, SessionWorkspaceState, ToolApprovalResolution,
 };
 
 const PROBE_LANE_POLL: Duration = Duration::from_millis(750);
@@ -175,6 +175,7 @@ pub enum ProbeLaneCommand {
         cwd: PathBuf,
         profile: BackendProfile,
         system_prompt: Option<String>,
+        mounted_refs: Vec<SessionMountRef>,
     },
     RunTurn {
         session_id: SessionId,
@@ -613,7 +614,15 @@ fn handle_probe_command(
             cwd,
             profile,
             system_prompt,
-        } => match start_session_request(transport, &title, cwd, profile, system_prompt) {
+            mounted_refs,
+        } => match start_session_request(
+            transport,
+            &title,
+            cwd,
+            profile,
+            system_prompt,
+            mounted_refs,
+        ) {
             Ok((session_snapshot, control)) => {
                 let session_id = session_snapshot.session.id.as_str().to_string();
                 snapshot.active_session_id = Some(session_id.clone());
@@ -1433,6 +1442,7 @@ fn start_session_request(
     cwd: PathBuf,
     profile: BackendProfile,
     system_prompt: Option<String>,
+    mounted_refs: Vec<SessionMountRef>,
 ) -> Result<(SessionSnapshot, InspectSessionTurnsResponse), String> {
     let response = wait_for_runtime_response(
         transport.send_request(RuntimeRequest::StartSession(StartSessionRequest {
@@ -1442,6 +1452,7 @@ fn start_session_request(
             system_prompt,
             harness_profile: None,
             workspace_state: None,
+            mounted_refs,
         }))?,
         |_| {},
     )?;

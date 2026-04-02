@@ -187,6 +187,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                         .map(forge_delivery_compare_watch_from_probe),
                     delivery_watch_updated_at_ms,
                 );
+            let _ = state
+                .autopilot_chat
+                .sync_probe_knowledge_mount_projection_for_thread(
+                    thread_id.as_str(),
+                    snapshot.session.mounted_refs.as_slice(),
+                    snapshot.summary_artifacts.as_slice(),
+                    snapshot.session.updated_at_ms,
+                );
             if let Some(shell_title) = state
                 .autopilot_chat
                 .probe_shared_session_shell_title(thread_id.as_str())

@@ -301,11 +301,23 @@ Current local-first behavior:
   - `/pack retained [title]`
   - `/pack patch [title]`
   - `/pack status`
+  - `/pack route status`
+  - `/pack route auto <pack-id> [pack-id ...]`
+  - `/pack route off <pack-id> [pack-id ...]`
 - repo docs and runbook packs are authored from repo-scoped file paths inside
   the active workspace root instead of manual JSON edits
 - retained-summary and accepted-patch packs are imported as typed pointers to
   the current Probe artifact ids so later routing can mount real runtime-owned
   context instead of transcript prose
+- each pack now also carries an app-owned session-start routing policy:
+  - `auto`
+  - `excluded`
+- starting a new Probe session converts the routed pack set into typed Probe
+  `mounted_refs` instead of keeping routing hidden in prompt text
+- the shared-session shell now persists and renders the difference between:
+  - the pack ids OpenAgents routed
+  - the pack ids Probe reported as mounted
+  - explicit unsupported route cases
 - the shared-session shell now renders the active scoped pack catalog as a
   first-class card so later routing can use a real app-owned object set rather
   than one-off notes

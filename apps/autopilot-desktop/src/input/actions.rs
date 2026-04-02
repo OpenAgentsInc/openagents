@@ -205,6 +205,11 @@ enum ChatForgeComposerIntent {
         title: Option<String>,
     },
     PackStatus,
+    PackRouteSetPolicy {
+        knowledge_pack_ids: Vec<String>,
+        policy: crate::app_state::ForgeKnowledgePackSessionStartPolicy,
+    },
+    PackRouteStatus,
     CampaignOpen {
         title: String,
     },
@@ -4435,6 +4440,9 @@ fn build_probe_knowledge_pack_status_snapshot(
     if knowledge_packs.is_empty() {
         return Err("No knowledge packs are scoped to the current Forge session yet.".to_string());
     }
+    let active_mount_projection = chat
+        .active_shared_session()
+        .map(|session| &session.knowledge_mounts);
     let mut lines = vec![format!(
         "Knowledge packs scoped to the current Forge session: {}.",
         knowledge_packs.len()
@@ -4450,6 +4458,32 @@ fn build_probe_knowledge_pack_status_snapshot(
             "Scope: {}.",
             knowledge_pack.catalog_scope.kind.display_label()
         ));
+        lines.push(format!(
+            "Session-start route: {}.",
+            knowledge_pack.session_start_policy.display_label()
+        ));
+        if let Some(mount_projection) = active_mount_projection {
+            let mounted = mount_projection
+                .mounted_pack_ids
+                .iter()
+                .any(|pack_id| pack_id == &knowledge_pack.knowledge_pack_id);
+            let routed = mount_projection
+                .routed_pack_ids
+                .iter()
+                .any(|pack_id| pack_id == &knowledge_pack.knowledge_pack_id);
+            if mounted {
+                lines.push("Current Probe session: mounted.".to_string());
+            } else if routed {
+                lines.push("Current Probe session: routed but not mounted.".to_string());
+            }
+            if let Some(issue) = mount_projection
+                .unsupported_routes
+                .iter()
+                .find(|issue| issue.knowledge_pack_id == knowledge_pack.knowledge_pack_id)
+            {
+                lines.push(format!("Route issue: {}", issue.reason));
+            }
+        }
         if let Some(summary) = knowledge_pack.summary.as_deref() {
             lines.push(format!("Summary: {summary}"));
         }
@@ -4474,6 +4508,89 @@ fn build_probe_knowledge_pack_status_snapshot(
         lines.push(format!(
             "{} more pack(s) omitted.",
             knowledge_packs.len().saturating_sub(6)
+        ));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn build_probe_knowledge_pack_route_snapshot(
+    state: &crate::app_state::RenderState,
+) -> Result<String, String> {
+    let project = state.autopilot_chat.active_project();
+    let workspace_root = project
+        .map(|project| project.workspace_root.as_str())
+        .or_else(|| state.autopilot_chat.active_thread_workspace_root())
+        .or_else(|| state.autopilot_chat.active_thread_cwd());
+    let Some(workspace_root) = workspace_root else {
+        return Err(
+            "Open a project or workspace-backed thread before inspecting Probe pack routing."
+                .to_string(),
+        );
+    };
+    let plan = state.autopilot_chat.knowledge_mount_plan_for_scope(
+        project.map(|project| project.project_id.as_str()),
+        Some(workspace_root),
+    );
+    let scoped_packs = state.autopilot_chat.knowledge_packs_for_scope(
+        project.map(|project| project.project_id.as_str()),
+        Some(workspace_root),
+    );
+    let mut lines = vec![format!(
+        "Next Probe session for `{workspace_root}` would route {} pack(s) and reject {} unsupported pack(s).",
+        plan.routed_pack_ids.len(),
+        plan.unsupported_routes.len()
+    )];
+    if !plan.routed_pack_ids.is_empty() {
+        lines.push(format!(
+            "Routed packs: {}.",
+            plan.routed_pack_ids.join(", ")
+        ));
+    } else {
+        lines.push("Routed packs: none.".to_string());
+    }
+    if !plan.mounted_refs.is_empty() {
+        lines.push(format!(
+            "Probe mount refs: {}.",
+            plan.mounted_refs
+                .iter()
+                .map(|mount_ref| format!(
+                    "{}:{}",
+                    match mount_ref.kind {
+                        probe_protocol::session::SessionMountKind::KnowledgePack => "knowledge",
+                        probe_protocol::session::SessionMountKind::EvalPack => "eval",
+                        probe_protocol::session::SessionMountKind::Unsupported => "unsupported",
+                    },
+                    mount_ref.mount_id
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    for knowledge_pack in scoped_packs.iter().take(8) {
+        let routed = plan
+            .routed_pack_ids
+            .iter()
+            .any(|pack_id| pack_id == &knowledge_pack.knowledge_pack_id);
+        let unsupported_reason = plan
+            .unsupported_routes
+            .iter()
+            .find(|issue| issue.knowledge_pack_id == knowledge_pack.knowledge_pack_id)
+            .map(|issue| issue.reason.as_str());
+        let status = if let Some(reason) = unsupported_reason {
+            format!("unsupported ({reason})")
+        } else if routed {
+            "will mount".to_string()
+        } else {
+            format!(
+                "not mounted ({})",
+                knowledge_pack.session_start_policy.display_label()
+            )
+        };
+        lines.push(format!(
+            "`{}` {}  •  {}",
+            knowledge_pack.knowledge_pack_id,
+            knowledge_pack.kind.display_label(),
+            status
         ));
     }
     Ok(lines.join("\n"))
@@ -5283,7 +5400,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     if first_word == "/pack" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
-                "Pack commands: `/pack docs <title> <path> [path ...]`, `/pack runbook <title> <path> [path ...]`, `/pack retained [title]`, `/pack patch [title]`, `/pack status`.".to_string(),
+                "Pack commands: `/pack docs <title> <path> [path ...]`, `/pack runbook <title> <path> [path ...]`, `/pack retained [title]`, `/pack patch [title]`, `/pack status`, `/pack route status`, `/pack route auto <pack-id> [pack-id ...]`, `/pack route off <pack-id> [pack-id ...]`.".to_string(),
             );
         };
         return match subcommand {
@@ -5325,8 +5442,40 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                 }
                 Ok(Some(ChatForgeComposerIntent::PackStatus))
             }
+            "route" => {
+                let Some(route_subcommand) = words.get(2).map(String::as_str) else {
+                    return Err("Usage: `/pack route status`, `/pack route auto <pack-id> [pack-id ...]`, or `/pack route off <pack-id> [pack-id ...]`.".to_string());
+                };
+                match route_subcommand {
+                    "status" => {
+                        if words.len() != 3 {
+                            return Err("Usage: `/pack route status`.".to_string());
+                        }
+                        Ok(Some(ChatForgeComposerIntent::PackRouteStatus))
+                    }
+                    "auto" | "on" => {
+                        if words.len() < 4 {
+                            return Err("Usage: `/pack route auto <pack-id> [pack-id ...]`.".to_string());
+                        }
+                        Ok(Some(ChatForgeComposerIntent::PackRouteSetPolicy {
+                            knowledge_pack_ids: words[3..].to_vec(),
+                            policy: crate::app_state::ForgeKnowledgePackSessionStartPolicy::Auto,
+                        }))
+                    }
+                    "off" | "exclude" | "skip" => {
+                        if words.len() < 4 {
+                            return Err("Usage: `/pack route off <pack-id> [pack-id ...]`.".to_string());
+                        }
+                        Ok(Some(ChatForgeComposerIntent::PackRouteSetPolicy {
+                            knowledge_pack_ids: words[3..].to_vec(),
+                            policy: crate::app_state::ForgeKnowledgePackSessionStartPolicy::Excluded,
+                        }))
+                    }
+                    _ => Err("Usage: `/pack route status`, `/pack route auto <pack-id> [pack-id ...]`, or `/pack route off <pack-id> [pack-id ...]`.".to_string()),
+                }
+            }
             _ => Err(
-                "Pack commands: `/pack docs <title> <path> [path ...]`, `/pack runbook <title> <path> [path ...]`, `/pack retained [title]`, `/pack patch [title]`, `/pack status`.".to_string(),
+                "Pack commands: `/pack docs <title> <path> [path ...]`, `/pack runbook <title> <path> [path ...]`, `/pack retained [title]`, `/pack patch [title]`, `/pack status`, `/pack route status`, `/pack route auto <pack-id> [pack-id ...]`, `/pack route off <pack-id> [pack-id ...]`.".to_string(),
             ),
         };
     }
@@ -7152,6 +7301,40 @@ fn run_chat_forge_action(
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
         }
+        ChatForgeComposerIntent::PackRouteSetPolicy {
+            knowledge_pack_ids,
+            policy,
+        } => {
+            let updated_at_epoch_ms = current_epoch_millis();
+            for knowledge_pack_id in &knowledge_pack_ids {
+                if let Err(error) = state
+                    .autopilot_chat
+                    .set_knowledge_pack_session_start_policy(
+                        knowledge_pack_id,
+                        policy,
+                        updated_at_epoch_ms,
+                    )
+                {
+                    return append_chat_command_result(state, prompt, error, true);
+                }
+            }
+            let mut response = format!(
+                "Updated session-start routing to `{}` for {} pack(s).",
+                policy.display_label(),
+                knowledge_pack_ids.len()
+            );
+            if let Ok(summary) = build_probe_knowledge_pack_route_snapshot(state) {
+                response.push_str("\n\n");
+                response.push_str(summary.as_str());
+            }
+            append_chat_command_result(state, prompt, response, false)
+        }
+        ChatForgeComposerIntent::PackRouteStatus => {
+            match build_probe_knowledge_pack_route_snapshot(state) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
         ChatForgeComposerIntent::CampaignOpen { title } => match state
             .autopilot_chat
             .record_probe_campaign_for_thread(
@@ -8962,6 +9145,13 @@ pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderSta
         let workspace_label = workspace_root
             .clone()
             .unwrap_or_else(|| cwd.display().to_string());
+        let route_plan = state.autopilot_chat.knowledge_mount_plan_for_scope(
+            state
+                .autopilot_chat
+                .active_project()
+                .map(|project| project.project_id.as_str()),
+            Some(workspace_label.as_str()),
+        );
         match decide_probe_workspace_attach(state, workspace_label.as_str()) {
             ProbeWorkspaceAttachDecision::Attach {
                 thread_id,
@@ -8996,10 +9186,23 @@ pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderSta
             cwd,
             profile: probe_backend_profile_for_chat_session(state),
             system_prompt: None,
+            mounted_refs: route_plan.mounted_refs.clone(),
         };
         if let Err(error) = state.queue_probe_command(command) {
             state.autopilot_chat.last_error = Some(error);
         } else {
+            state
+                .autopilot_chat
+                .remember_pending_probe_session_start_mount_plan(
+                    workspace_label.as_str(),
+                    route_plan.clone(),
+                );
+            if !route_plan.unsupported_routes.is_empty() {
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "probe pack route warning: {} unsupported pack(s)",
+                    route_plan.unsupported_routes.len()
+                ));
+            }
             state.autopilot_chat.last_error = None;
         }
         return true;
@@ -20151,6 +20354,24 @@ mod tests {
         assert_eq!(
             parse_chat_forge_intent("/pack status").unwrap(),
             Some(ChatForgeComposerIntent::PackStatus)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/pack route status").unwrap(),
+            Some(ChatForgeComposerIntent::PackRouteStatus)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/pack route auto forge-pack-1 forge-pack-2").unwrap(),
+            Some(ChatForgeComposerIntent::PackRouteSetPolicy {
+                knowledge_pack_ids: vec!["forge-pack-1".to_string(), "forge-pack-2".to_string()],
+                policy: crate::app_state::ForgeKnowledgePackSessionStartPolicy::Auto,
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/pack route off forge-pack-3").unwrap(),
+            Some(ChatForgeComposerIntent::PackRouteSetPolicy {
+                knowledge_pack_ids: vec!["forge-pack-3".to_string()],
+                policy: crate::app_state::ForgeKnowledgePackSessionStartPolicy::Excluded,
+            })
         );
         assert_eq!(
             parse_chat_forge_intent("/campaign open Improve retained eval picks").unwrap(),

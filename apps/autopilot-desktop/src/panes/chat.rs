@@ -2759,6 +2759,12 @@ fn active_shared_session_meta_line(session: &ForgeSharedSession) -> String {
         parts.push(format!("ws:{}", compact_display_token(workspace_root, 24)));
     }
     parts.push(format!("probe:{}", session.probe_session_ids.len()));
+    if !session.knowledge_mounts.mounted_pack_ids.is_empty() {
+        parts.push(format!(
+            "mounted:{}",
+            session.knowledge_mounts.mounted_pack_ids.len()
+        ));
+    }
     if let Some(updated) = format_thread_timestamp(session.updated_at_epoch_ms as i64) {
         parts.push(format!("updated:{updated}"));
     }
@@ -2844,6 +2850,47 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
+    }
+    if !session.knowledge_mounts.routed_pack_ids.is_empty() {
+        lines.push(format!(
+            "- **session-start routed packs:** {}",
+            session
+                .knowledge_mounts
+                .routed_pack_ids
+                .iter()
+                .map(|pack_id| format!("`{}`", compact_display_token(pack_id, 24)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    } else {
+        lines.push("- **session-start routed packs:** _none_".to_string());
+    }
+    if !session.knowledge_mounts.mounted_pack_ids.is_empty() {
+        lines.push(format!(
+            "- **Probe mounted packs:** {}",
+            session
+                .knowledge_mounts
+                .mounted_pack_ids
+                .iter()
+                .map(|pack_id| format!("`{}`", compact_display_token(pack_id, 24)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    } else {
+        lines.push("- **Probe mounted packs:** _none reported yet_".to_string());
+    }
+    if !session.knowledge_mounts.unsupported_routes.is_empty() {
+        lines.push(format!(
+            "- **unsupported pack routes:** {}",
+            session.knowledge_mounts.unsupported_routes.len()
+        ));
+        for issue in session.knowledge_mounts.unsupported_routes.iter().take(4) {
+            lines.push(format!(
+                "  - `{}`  •  {}",
+                compact_display_token(issue.knowledge_pack_id.as_str(), 24),
+                compact_display_token(issue.reason.as_str(), 72)
+            ));
+        }
     }
     if !session.participants.is_empty() {
         lines.push(format!(
@@ -3045,6 +3092,10 @@ fn active_knowledge_packs_markdown_source(knowledge_packs: &[&ForgeKnowledgePack
             scope_label
         ));
         lines.push(format!("- title: {}", knowledge_pack.title));
+        lines.push(format!(
+            "- session-start route: {}",
+            knowledge_pack.session_start_policy.display_label()
+        ));
         if let Some(summary) = knowledge_pack.summary.as_deref() {
             lines.push(format!("- summary: {}", summary));
         }

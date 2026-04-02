@@ -22,6 +22,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/pack retained [title]`
   - `/pack patch [title]`
   - `/pack status`
+  - `/pack route status`
+  - `/pack route auto <pack-id> [pack-id ...]`
+  - `/pack route off <pack-id> [pack-id ...]`
 - The desktop command surface now also exposes campaign curation through:
   - `/campaign open <title>`
   - `/campaign goal <summary>`
@@ -66,6 +69,11 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - pack commands also stay app-owned: Probe does not become the hidden home for
   repo doc curation, runbook grouping, or shell-owned pack catalog policy above
   typed Probe and Psionic source refs
+- Probe-backed session start now routes the scoped pack catalog into typed
+  `mounted_refs` for the runtime, and the shared-session shell separately shows:
+  - the app-owned routed pack ids
+  - the pack ids Probe actually mounted
+  - explicit unsupported route cases instead of silently dropping them
 - campaign commands also stay app-owned: Probe is not the hidden home for
   retained-case selection, eval candidate curation, or promotion intent above
   the current shared session

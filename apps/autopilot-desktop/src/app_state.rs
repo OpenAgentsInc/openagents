@@ -15,9 +15,10 @@ use openagents_kernel_core::receipts::{
 };
 use probe_protocol::session::{
     SessionExecutionHostKind as ProbeSessionExecutionHostKind,
+    SessionMountKind as ProbeSessionMountKind, SessionMountProvenance, SessionMountRef,
     SessionPreparedBaselineStatus as ProbeSessionPreparedBaselineStatus, SessionRuntimeOwner,
-    SessionRuntimeOwnerKind, SessionWorkspaceBootMode as ProbeSessionWorkspaceBootMode,
-    SessionWorkspaceState,
+    SessionRuntimeOwnerKind, SessionSummaryArtifact, SessionSummaryArtifactRef,
+    SessionWorkspaceBootMode as ProbeSessionWorkspaceBootMode, SessionWorkspaceState,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -9638,6 +9639,30 @@ impl ForgeKnowledgePackKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeKnowledgePackSessionStartPolicy {
+    #[default]
+    Auto,
+    Excluded,
+}
+
+impl ForgeKnowledgePackSessionStartPolicy {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Excluded => "excluded",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Excluded => "excluded",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForgeKnowledgePackCatalogScopeKind {
@@ -9726,11 +9751,36 @@ pub struct ForgeKnowledgePack {
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    #[serde(default)]
+    pub session_start_policy: ForgeKnowledgePackSessionStartPolicy,
     pub catalog_scope: ForgeKnowledgePackCatalogScope,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_refs: Vec<ForgeKnowledgePackSourceRef>,
     pub provenance: String,
     pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeKnowledgePackRouteIssue {
+    pub knowledge_pack_id: String,
+    pub title: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeKnowledgeMountProjection {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routed_pack_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounted_pack_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounted_refs: Vec<SessionMountRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsupported_routes: Vec<ForgeKnowledgePackRouteIssue>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub summary_artifact_refs: Vec<SessionSummaryArtifactRef>,
+    #[serde(default)]
     pub updated_at_epoch_ms: u64,
 }
 
@@ -9754,6 +9804,8 @@ pub struct ForgeSharedSession {
     pub remote_session: ForgeProbeRemoteSessionProjection,
     #[serde(default)]
     pub workspace_restore: ForgeWorkspaceRestoreProvenance,
+    #[serde(default)]
+    pub knowledge_mounts: ForgeKnowledgeMountProjection,
     #[serde(default)]
     pub workspace_snapshot_id: Option<String>,
     #[serde(default)]
@@ -9812,6 +9864,18 @@ pub struct ProbeTurnAttachmentRef {
 pub struct ProbeTurnAttachmentForwarding {
     pub prompt_text: String,
     pub attachments: Vec<ProbeTurnAttachmentRef>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ForgeKnowledgeMountPlan {
+    pub routed_pack_ids: Vec<String>,
+    pub mounted_refs: Vec<SessionMountRef>,
+    pub unsupported_routes: Vec<ForgeKnowledgePackRouteIssue>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct PendingProbeSessionStartKnowledgeRoute {
+    plan: ForgeKnowledgeMountPlan,
 }
 
 impl ProbeTurnAttachmentForwarding {
@@ -10229,6 +10293,8 @@ pub struct AutopilotChatState {
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_probe_turn_attachment_forwarding:
         std::collections::HashMap<String, ProbeTurnAttachmentForwarding>,
+    pending_probe_session_start_knowledge_routes:
+        std::collections::HashMap<String, PendingProbeSessionStartKnowledgeRoute>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
     thread_submission_history: std::collections::HashMap<String, VecDeque<String>>,
@@ -10472,6 +10538,7 @@ impl Default for AutopilotChatState {
             next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
             review_thread_source_map,
             thread_probe_turn_attachment_forwarding: std::collections::HashMap::new(),
+            pending_probe_session_start_knowledge_routes: std::collections::HashMap::new(),
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
             thread_submission_history: std::collections::HashMap::new(),
@@ -10910,6 +10977,54 @@ fn normalize_probe_session_ids(mut session_ids: Vec<String>) -> Vec<String> {
     session_ids
 }
 
+fn normalize_forge_knowledge_pack_route_issues(
+    mut issues: Vec<ForgeKnowledgePackRouteIssue>,
+) -> Vec<ForgeKnowledgePackRouteIssue> {
+    issues.sort_by(|lhs, rhs| {
+        lhs.knowledge_pack_id
+            .cmp(&rhs.knowledge_pack_id)
+            .then_with(|| lhs.reason.cmp(&rhs.reason))
+    });
+    let mut seen_ids = HashSet::new();
+    issues.retain(|issue| {
+        let knowledge_pack_id = issue.knowledge_pack_id.trim();
+        !knowledge_pack_id.is_empty() && seen_ids.insert(knowledge_pack_id.to_string())
+    });
+    for issue in &mut issues {
+        issue.knowledge_pack_id = issue.knowledge_pack_id.trim().to_string();
+        issue.title = issue.title.trim().to_string();
+        issue.reason = issue.reason.trim().to_string();
+    }
+    issues.retain(|issue| !issue.title.is_empty() && !issue.reason.is_empty());
+    issues
+}
+
+fn normalize_forge_knowledge_mount_projection(
+    mut projection: ForgeKnowledgeMountProjection,
+) -> ForgeKnowledgeMountProjection {
+    projection.routed_pack_ids = normalize_forge_reference_list(projection.routed_pack_ids);
+    projection.mounted_pack_ids = normalize_forge_reference_list(projection.mounted_pack_ids);
+    projection.mounted_refs.sort_by(|lhs, rhs| {
+        lhs.mount_id
+            .cmp(&rhs.mount_id)
+            .then_with(|| lhs.resource_ref.cmp(&rhs.resource_ref))
+    });
+    projection
+        .mounted_refs
+        .dedup_by(|lhs, rhs| lhs.mount_id == rhs.mount_id && lhs.resource_ref == rhs.resource_ref);
+    projection.unsupported_routes =
+        normalize_forge_knowledge_pack_route_issues(projection.unsupported_routes);
+    projection.summary_artifact_refs.sort_by(|lhs, rhs| {
+        lhs.artifact_id
+            .cmp(&rhs.artifact_id)
+            .then_with(|| format!("{:?}", lhs.kind).cmp(&format!("{:?}", rhs.kind)))
+    });
+    projection
+        .summary_artifact_refs
+        .dedup_by(|lhs, rhs| lhs.artifact_id == rhs.artifact_id && lhs.kind == rhs.kind);
+    projection
+}
+
 fn normalize_forge_shared_sessions(
     mut sessions: Vec<ForgeSharedSession>,
 ) -> Vec<ForgeSharedSession> {
@@ -10967,6 +11082,9 @@ fn normalize_forge_shared_sessions(
             .filter(|value| !value.is_empty());
         session.remote_session = normalize_forge_probe_remote_session_projection(std::mem::take(
             &mut session.remote_session,
+        ));
+        session.knowledge_mounts = normalize_forge_knowledge_mount_projection(std::mem::take(
+            &mut session.knowledge_mounts,
         ));
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
@@ -11169,6 +11287,86 @@ fn normalize_forge_knowledge_packs(
             }
     });
     knowledge_packs
+}
+
+fn forge_knowledge_pack_mount_kind(
+    knowledge_pack: &ForgeKnowledgePack,
+) -> Result<ProbeSessionMountKind, String> {
+    let expected_source_kind = match knowledge_pack.kind {
+        ForgeKnowledgePackKind::RepoDocs | ForgeKnowledgePackKind::RepoRunbook => {
+            ForgeKnowledgePackSourceKind::RepoFile
+        }
+        ForgeKnowledgePackKind::RetainedSessionSummary => {
+            ForgeKnowledgePackSourceKind::ProbeRetainedSessionSummaryArtifact
+        }
+        ForgeKnowledgePackKind::AcceptedPatchSummary => {
+            ForgeKnowledgePackSourceKind::ProbeAcceptedPatchSummaryArtifact
+        }
+        ForgeKnowledgePackKind::BenchmarkReference => {
+            ForgeKnowledgePackSourceKind::PsionicBenchmarkManifest
+        }
+        ForgeKnowledgePackKind::JudgeReference => {
+            ForgeKnowledgePackSourceKind::PsionicJudgeManifest
+        }
+    };
+    if knowledge_pack.source_refs.is_empty() {
+        return Err("pack has no source refs".to_string());
+    }
+    if knowledge_pack
+        .source_refs
+        .iter()
+        .any(|source_ref| source_ref.source_kind != expected_source_kind)
+    {
+        return Err(format!(
+            "pack kind `{}` does not match its source refs",
+            knowledge_pack.kind.label()
+        ));
+    }
+    match knowledge_pack.kind {
+        ForgeKnowledgePackKind::BenchmarkReference | ForgeKnowledgePackKind::JudgeReference => {
+            Ok(ProbeSessionMountKind::EvalPack)
+        }
+        ForgeKnowledgePackKind::RepoDocs
+        | ForgeKnowledgePackKind::RepoRunbook
+        | ForgeKnowledgePackKind::RetainedSessionSummary
+        | ForgeKnowledgePackKind::AcceptedPatchSummary => Ok(ProbeSessionMountKind::KnowledgePack),
+    }
+}
+
+fn forge_knowledge_pack_resource_ref(
+    knowledge_pack: &ForgeKnowledgePack,
+    mount_kind: ProbeSessionMountKind,
+) -> String {
+    match mount_kind {
+        ProbeSessionMountKind::KnowledgePack => {
+            format!("forge.knowledge_pack:{}", knowledge_pack.knowledge_pack_id)
+        }
+        ProbeSessionMountKind::EvalPack => {
+            format!("forge.eval_pack:{}", knowledge_pack.knowledge_pack_id)
+        }
+        ProbeSessionMountKind::Unsupported => {
+            format!(
+                "forge.unsupported_pack:{}",
+                knowledge_pack.knowledge_pack_id
+            )
+        }
+    }
+}
+
+fn forge_knowledge_pack_content_digest(knowledge_pack: &ForgeKnowledgePack) -> String {
+    serde_json::to_string(knowledge_pack)
+        .ok()
+        .map(|json| sha256_prefixed_text(json.as_str()))
+        .unwrap_or_else(|| format!("sha256:{}", knowledge_pack.knowledge_pack_id))
+}
+
+fn forge_knowledge_pack_id_from_mount_ref(mount_ref: &SessionMountRef) -> Option<String> {
+    mount_ref
+        .resource_ref
+        .strip_prefix("forge.knowledge_pack:")
+        .or_else(|| mount_ref.resource_ref.strip_prefix("forge.eval_pack:"))
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn normalize_forge_bounty_credit_envelopes(
@@ -13902,6 +14100,121 @@ impl AutopilotChatState {
             .unwrap_or_default()
     }
 
+    fn knowledge_pack_matches_scope_identity(
+        knowledge_pack: &ForgeKnowledgePack,
+        project_id: Option<&str>,
+        workspace_root: Option<&str>,
+    ) -> bool {
+        let normalized_workspace = workspace_root.and_then(normalized_workspace_identity);
+        if normalized_workspace.is_none() {
+            return false;
+        }
+        let pack_workspace = knowledge_pack
+            .catalog_scope
+            .workspace_root
+            .as_deref()
+            .and_then(normalized_workspace_identity);
+        if pack_workspace != normalized_workspace {
+            return false;
+        }
+        match knowledge_pack.catalog_scope.kind {
+            ForgeKnowledgePackCatalogScopeKind::Project => {
+                knowledge_pack.catalog_scope.project_id.as_deref() == project_id
+            }
+            ForgeKnowledgePackCatalogScopeKind::Workspace => true,
+        }
+    }
+
+    pub fn knowledge_packs_for_scope(
+        &self,
+        project_id: Option<&str>,
+        workspace_root: Option<&str>,
+    ) -> Vec<&ForgeKnowledgePack> {
+        let mut knowledge_packs = self
+            .forge_knowledge_packs
+            .values()
+            .filter(|knowledge_pack| {
+                Self::knowledge_pack_matches_scope_identity(
+                    knowledge_pack,
+                    project_id,
+                    workspace_root,
+                )
+            })
+            .collect::<Vec<_>>();
+        knowledge_packs.sort_by(|lhs, rhs| {
+            rhs.updated_at_epoch_ms
+                .cmp(&lhs.updated_at_epoch_ms)
+                .then_with(|| lhs.knowledge_pack_id.cmp(&rhs.knowledge_pack_id))
+        });
+        knowledge_packs
+    }
+
+    pub fn knowledge_mount_plan_for_scope(
+        &self,
+        project_id: Option<&str>,
+        workspace_root: Option<&str>,
+    ) -> ForgeKnowledgeMountPlan {
+        let mut routed_pack_ids = Vec::new();
+        let mut mounted_refs = Vec::new();
+        let mut unsupported_routes = Vec::new();
+        for knowledge_pack in self.knowledge_packs_for_scope(project_id, workspace_root) {
+            if knowledge_pack.session_start_policy == ForgeKnowledgePackSessionStartPolicy::Excluded
+            {
+                continue;
+            }
+            match forge_knowledge_pack_mount_kind(knowledge_pack) {
+                Ok(mount_kind) => {
+                    routed_pack_ids.push(knowledge_pack.knowledge_pack_id.clone());
+                    mounted_refs.push(SessionMountRef {
+                        mount_id: knowledge_pack.knowledge_pack_id.clone(),
+                        kind: mount_kind,
+                        resource_ref: forge_knowledge_pack_resource_ref(knowledge_pack, mount_kind),
+                        label: Some(knowledge_pack.title.clone()),
+                        provenance: SessionMountProvenance {
+                            publisher: "openagents/autopilot".to_string(),
+                            source_ref: format!(
+                                "forge.knowledge_pack:{}",
+                                knowledge_pack.knowledge_pack_id
+                            ),
+                            version: None,
+                            content_digest: Some(forge_knowledge_pack_content_digest(
+                                knowledge_pack,
+                            )),
+                        },
+                    });
+                }
+                Err(reason) => unsupported_routes.push(ForgeKnowledgePackRouteIssue {
+                    knowledge_pack_id: knowledge_pack.knowledge_pack_id.clone(),
+                    title: knowledge_pack.title.clone(),
+                    reason,
+                }),
+            }
+        }
+        ForgeKnowledgeMountPlan {
+            routed_pack_ids: normalize_forge_reference_list(routed_pack_ids),
+            mounted_refs,
+            unsupported_routes: normalize_forge_knowledge_pack_route_issues(unsupported_routes),
+        }
+    }
+
+    pub fn set_knowledge_pack_session_start_policy(
+        &mut self,
+        knowledge_pack_id: &str,
+        policy: ForgeKnowledgePackSessionStartPolicy,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(), String> {
+        let Some(knowledge_pack) = self.forge_knowledge_packs.get_mut(knowledge_pack_id) else {
+            return Err(format!(
+                "Forge knowledge pack `{knowledge_pack_id}` was not found."
+            ));
+        };
+        knowledge_pack.session_start_policy = policy;
+        knowledge_pack.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(knowledge_pack.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(())
+    }
+
     fn next_knowledge_pack_id(&mut self) -> String {
         let knowledge_pack_id = format!("forge-pack-{}", self.next_forge_knowledge_pack_seq);
         self.next_forge_knowledge_pack_seq = self.next_forge_knowledge_pack_seq.saturating_add(1);
@@ -13959,6 +14272,7 @@ impl AutopilotChatState {
                 kind,
                 title,
                 summary,
+                session_start_policy: ForgeKnowledgePackSessionStartPolicy::Auto,
                 catalog_scope,
                 source_refs,
                 provenance,
@@ -14217,6 +14531,92 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.shared_session_for_thread(thread_id))
+    }
+
+    pub fn remember_pending_probe_session_start_mount_plan(
+        &mut self,
+        workspace_root: &str,
+        plan: ForgeKnowledgeMountPlan,
+    ) {
+        let Some(workspace_root) = normalized_workspace_identity(workspace_root) else {
+            return;
+        };
+        self.pending_probe_session_start_knowledge_routes.insert(
+            workspace_root.clone(),
+            PendingProbeSessionStartKnowledgeRoute { plan },
+        );
+    }
+
+    fn take_pending_probe_session_start_mount_plan(
+        &mut self,
+        workspace_root: Option<&str>,
+    ) -> Option<ForgeKnowledgeMountPlan> {
+        let workspace_root = workspace_root.and_then(normalized_workspace_identity)?;
+        self.pending_probe_session_start_knowledge_routes
+            .remove(&workspace_root)
+            .map(|pending| pending.plan)
+    }
+
+    pub fn sync_probe_knowledge_mount_projection_for_thread(
+        &mut self,
+        thread_id: &str,
+        mounted_refs: &[SessionMountRef],
+        summary_artifacts: &[SessionSummaryArtifact],
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let workspace_root = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.workspace_root.clone())
+            .or_else(|| {
+                self.forge_shared_sessions
+                    .get(&shared_session_id)
+                    .and_then(|session| session.workspace_root.clone())
+            });
+        let pending_plan =
+            self.take_pending_probe_session_start_mount_plan(workspace_root.as_deref());
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before Probe mount state could be recorded."
+            ));
+        };
+        let mounted_pack_ids = normalize_forge_reference_list(
+            mounted_refs
+                .iter()
+                .filter_map(forge_knowledge_pack_id_from_mount_ref)
+                .collect(),
+        );
+        let summary_artifact_refs = summary_artifacts
+            .iter()
+            .map(|artifact| artifact.artifact_ref().clone())
+            .collect::<Vec<_>>();
+        let projection = if let Some(plan) = pending_plan {
+            ForgeKnowledgeMountProjection {
+                routed_pack_ids: plan.routed_pack_ids,
+                mounted_pack_ids,
+                mounted_refs: mounted_refs.to_vec(),
+                unsupported_routes: plan.unsupported_routes,
+                summary_artifact_refs,
+                updated_at_epoch_ms,
+            }
+        } else {
+            ForgeKnowledgeMountProjection {
+                routed_pack_ids: mounted_pack_ids.clone(),
+                mounted_pack_ids,
+                mounted_refs: mounted_refs.to_vec(),
+                unsupported_routes: Vec::new(),
+                summary_artifact_refs,
+                updated_at_epoch_ms,
+            }
+        };
+        shared_session.knowledge_mounts = normalize_forge_knowledge_mount_projection(projection);
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
     }
 
     pub fn active_delegated_child_sessions(&self) -> Vec<&ForgeDelegatedChildSessionCard> {
@@ -17254,6 +17654,7 @@ impl AutopilotChatState {
                         snapshot_ref_detail: Some(forge_probe_snapshot_ref_detail()),
                         updated_at_epoch_ms: created_at_epoch_ms,
                     },
+                    knowledge_mounts: ForgeKnowledgeMountProjection::default(),
                     workspace_snapshot_id: None,
                     restore_manifest_id: None,
                     campaign_id: None,
@@ -30861,6 +31262,125 @@ mod tests {
         assert!(active_pack_ids.contains(&runbook_pack_id));
         assert!(active_pack_ids.contains(&retained_pack_id));
         assert!(active_pack_ids.contains(&patch_pack_id));
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_projects_probe_session_mounts_from_pack_routing() {
+        let repo = init_git_workspace("knowledge-pack-routing");
+        let projection_path = unique_codex_artifact_projection_path("knowledge-pack-routing");
+        let transcript_path = repo.join("thread-a.jsonl");
+        std::fs::write(repo.join("README.md"), "# Routing\n").expect("write readme");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+
+        let docs_pack_id = chat
+            .record_repo_file_knowledge_pack_for_thread(
+                "thread-a",
+                crate::app_state::ForgeKnowledgePackKind::RepoDocs,
+                "Core docs",
+                vec!["README.md".to_string()],
+                "operator.command:/pack docs",
+                1_700_000_120,
+            )
+            .expect("docs pack should record");
+        let retained_pack_id = chat
+            .record_probe_retained_summary_pack_for_thread(
+                "thread-a",
+                Some("Retained summary".to_string()),
+                "operator.command:/pack retained",
+                1_700_000_130,
+            )
+            .expect("retained pack should record");
+        chat.set_knowledge_pack_session_start_policy(
+            retained_pack_id.as_str(),
+            crate::app_state::ForgeKnowledgePackSessionStartPolicy::Excluded,
+            1_700_000_140,
+        )
+        .expect("retained pack route should update");
+        chat.record_forge_knowledge_pack_for_thread(
+            "thread-a",
+            crate::app_state::ForgeKnowledgePackKind::BenchmarkReference,
+            "Broken benchmark pack",
+            Some("This pack should surface as unsupported.".to_string()),
+            crate::app_state::ForgeKnowledgePackCatalogScopeKind::Workspace,
+            vec![crate::app_state::ForgeKnowledgePackSourceRef {
+                source_kind: crate::app_state::ForgeKnowledgePackSourceKind::RepoFile,
+                reference: "README.md".to_string(),
+                label: Some("README.md".to_string()),
+                shared_session_id: None,
+                probe_session_id: None,
+                workspace_root: Some(repo.display().to_string()),
+                recorded_at_epoch_ms: 1_700_000_150,
+            }],
+            "operator.command:/pack benchmark",
+            1_700_000_150,
+        )
+        .expect("broken benchmark pack should record");
+
+        let project_id = chat
+            .project_for_thread("thread-a")
+            .expect("project should exist")
+            .project_id
+            .clone();
+        let plan = chat.knowledge_mount_plan_for_scope(
+            Some(project_id.as_str()),
+            Some(repo.to_str().unwrap()),
+        );
+        assert_eq!(plan.routed_pack_ids, vec![docs_pack_id.clone()]);
+        assert_eq!(plan.mounted_refs.len(), 1);
+        assert_eq!(plan.mounted_refs[0].mount_id, docs_pack_id);
+        assert_eq!(plan.unsupported_routes.len(), 1);
+        assert_eq!(plan.unsupported_routes[0].title, "Broken benchmark pack");
+
+        chat.remember_pending_probe_session_start_mount_plan(repo.to_str().unwrap(), plan.clone());
+        chat.sync_probe_knowledge_mount_projection_for_thread(
+            "thread-a",
+            plan.mounted_refs.as_slice(),
+            &[],
+            1_700_000_160,
+        )
+        .expect("mount projection should sync");
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session should exist");
+        assert_eq!(
+            shared_session.knowledge_mounts.routed_pack_ids,
+            vec![docs_pack_id.clone()]
+        );
+        assert_eq!(
+            shared_session.knowledge_mounts.mounted_pack_ids,
+            vec![docs_pack_id]
+        );
+        assert_eq!(shared_session.knowledge_mounts.unsupported_routes.len(), 1);
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(reloaded_session.knowledge_mounts.mounted_pack_ids.len(), 1);
+        assert_eq!(
+            reloaded_session.knowledge_mounts.unsupported_routes[0].title,
+            "Broken benchmark pack"
+        );
 
         let _ = std::fs::remove_file(projection_path);
         let _ = std::fs::remove_dir_all(repo);
