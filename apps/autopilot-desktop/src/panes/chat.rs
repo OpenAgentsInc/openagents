@@ -4369,6 +4369,13 @@ fn active_hosted_audit_meta_line(bundle: &ForgeHostedAuditBundle) -> String {
         "receipts:{}",
         hosted_audit_receipt_count(bundle.hosted_receipts.as_ref())
     ));
+    if let Some(preflight) = bundle.preflight.as_ref() {
+        parts.push(format!("preflight:{}", preflight.disposition.label()));
+        let blocker_count = preflight.blocker_count();
+        if blocker_count > 0 {
+            parts.push(format!("blockers:{blocker_count}"));
+        }
+    }
     if defect_count > 0 {
         parts.push(format!("defects:{defect_count}"));
     }
@@ -4555,6 +4562,25 @@ fn active_hosted_audit_markdown_source(bundle: &ForgeHostedAuditBundle) -> Strin
         ));
         for reason in bundle.unsupported_route_reasons.iter().take(4) {
             lines.push(format!("  - {}", compact_display_token(reason, 88)));
+        }
+    }
+    if let Some(preflight) = bundle.preflight.as_ref() {
+        lines.push(format!(
+            "- **preflight:** {}  •  `{}`",
+            preflight.disposition.display_label(),
+            compact_display_token(preflight.preflight_id.as_str(), 24)
+        ));
+        lines.push(format!(
+            "  - checks:{}  •  blockers:{}  •  warnings:{}",
+            preflight.checks.len(),
+            preflight.blocker_count(),
+            preflight.warning_count()
+        ));
+        if let Some(report_path) = preflight.report_path.as_deref() {
+            lines.push(format!(
+                "  - report: `{}`",
+                compact_display_token(report_path, 64)
+            ));
         }
     }
     if let Some(evidence_status) = bundle.evidence_status {

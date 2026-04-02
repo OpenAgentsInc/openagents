@@ -52,6 +52,7 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/settle status`
 - The desktop command surface now also exposes hosted coding closeout audit
   capture through:
+  - `/hosted preflight [path]`
   - `/hosted coding <environment-summary>`
   - `/hosted bookkeeping <environment-summary>`
   - `/hosted note <coding|bookkeeping> <summary>`
@@ -96,8 +97,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
   closure posture
 - hosted audit commands also stay app-owned: Probe remains the source of
   hosted receipts, mounted refs, session ownership, and execution-host truth,
-  while the desktop groups that runtime truth into one reviewer-facing closeout
-  or bookkeeping audit bundle above the shared session
+  while the desktop runs the hosted preflight, persists the preflight report,
+  and groups that runtime truth into one reviewer-facing closeout or
+  bookkeeping audit bundle above the shared session
 - local branch and compare watch now refresh automatically from Probe session
   load and detached workspace-state events when a delivery receipt already
   exists
@@ -130,6 +132,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
   closeout or bookkeeping notes, recovery steps, defects, and linked Probe
   hosted receipts in the desktop shell rather than pretending we already have a
   separate hosted audit registry.
+- Hosted preflight checks are also local-first. They verify repo auth, GitHub
+  auth, GCP config, required env, worker baseline readiness, and routed-pack
+  warnings from the operator desktop before a hosted dogfood launch.
 - GitHub watch refresh depends on a working local `gh` installation plus repo
   access. If that is missing, the shell keeps the last recorded watch state and
   reports the refresh failure honestly.

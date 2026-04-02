@@ -298,6 +298,9 @@ enum ChatForgeComposerIntent {
         kind: crate::app_state::ForgeHostedAuditKind,
         path: Option<String>,
     },
+    HostedPreflight {
+        path: Option<String>,
+    },
     HostedAuditStatus,
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
@@ -4065,6 +4068,303 @@ fn gh_command_checked(workspace: &std::path::Path, args: &[&str]) -> Result<Stri
     ))
 }
 
+fn run_gcloud_command(args: &[&str]) -> Result<std::process::Output, String> {
+    std::process::Command::new("gcloud")
+        .args(args)
+        .output()
+        .map_err(|error| format!("Failed to launch gcloud: {error}"))
+}
+
+fn gcloud_command_checked(args: &[&str]) -> Result<String, String> {
+    let output = run_gcloud_command(args)?;
+    let body = git_output_text(&output);
+    if output.status.success() {
+        return Ok(body);
+    }
+    let fallback = if body.is_empty() {
+        format!("gcloud exited with status {}", output.status)
+    } else {
+        body
+    };
+    Err(format!(
+        "`gcloud {}` failed.\n\n```text\n{}\n```",
+        args.join(" "),
+        fallback
+    ))
+}
+
+fn env_var_optional_trimmed(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn hosted_preflight_check(
+    label: &str,
+    status: crate::app_state::ForgeHostedPreflightCheckStatus,
+    summary: impl Into<String>,
+    detail: Option<String>,
+) -> crate::app_state::ForgeHostedPreflightCheck {
+    crate::app_state::ForgeHostedPreflightCheck {
+        label: label.to_string(),
+        status,
+        summary: summary.into(),
+        detail,
+    }
+}
+
+fn normalize_command_value(value: Result<String, String>) -> Result<String, String> {
+    value
+        .map(|value| value.trim().to_string())
+        .and_then(|value| {
+            if value.is_empty() || value == "(unset)" {
+                Err("value is unset".to_string())
+            } else {
+                Ok(value)
+            }
+        })
+}
+
+fn build_probe_hosted_preflight_report(
+    chat: &crate::app_state::AutopilotChatState,
+    thread_id: &str,
+    recorded_at_epoch_ms: u64,
+) -> Result<crate::app_state::ForgeHostedPreflightReport, String> {
+    let shared_session = chat
+        .shared_session_for_thread(thread_id)
+        .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+    let workspace_root = shared_session.workspace_root.clone();
+    let workspace_path = workspace_root.as_deref().map(std::path::PathBuf::from);
+    let fallback_workspace =
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let command_workspace = workspace_path
+        .as_deref()
+        .unwrap_or(fallback_workspace.as_path());
+
+    let mut checks = Vec::new();
+    let mut repo_remote_url = None;
+    if let Some(workspace_path) = workspace_path.as_deref() {
+        match git_command_checked(workspace_path, &["remote", "get-url", "origin"]) {
+            Ok(remote_url) => {
+                repo_remote_url = Some(remote_url.trim().to_string());
+                match git_command_checked(
+                    workspace_path,
+                    &["ls-remote", "--exit-code", "origin", "HEAD"],
+                ) {
+                    Ok(_) => checks.push(hosted_preflight_check(
+                        "repo access",
+                        crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+                        format!(
+                            "Verified git remote access against `{}`.",
+                            repo_remote_url.as_deref().unwrap_or("origin")
+                        ),
+                        None,
+                    )),
+                    Err(error) => checks.push(hosted_preflight_check(
+                        "repo access",
+                        crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                        "Git remote access is not working for the active workspace.",
+                        Some(error),
+                    )),
+                }
+            }
+            Err(error) => checks.push(hosted_preflight_check(
+                "repo access",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                "The active workspace does not expose a usable `origin` remote.",
+                Some(error),
+            )),
+        }
+    } else {
+        checks.push(hosted_preflight_check(
+            "repo access",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "The active thread does not have a resolved workspace root.",
+            None,
+        ));
+    }
+
+    match gh_command_checked(command_workspace, &["auth", "status"]) {
+        Ok(_) => checks.push(hosted_preflight_check(
+            "github auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            "GitHub CLI auth is available for hosted delivery and review checks.",
+            None,
+        )),
+        Err(error) => checks.push(hosted_preflight_check(
+            "github auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "GitHub CLI auth is missing or unusable.",
+            Some(error),
+        )),
+    }
+
+    match normalize_command_value(gcloud_command_checked(&[
+        "auth",
+        "list",
+        "--filter=status:ACTIVE",
+        "--format=value(account)",
+    ])) {
+        Ok(account) => checks.push(hosted_preflight_check(
+            "gcp auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            format!("Active gcloud account: `{account}`."),
+            None,
+        )),
+        Err(error) => checks.push(hosted_preflight_check(
+            "gcp auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "gcloud does not have an active authenticated account.",
+            Some(error),
+        )),
+    }
+
+    let gcp_project = match normalize_command_value(gcloud_command_checked(&[
+        "config",
+        "get-value",
+        "project",
+    ])) {
+        Ok(project) => {
+            checks.push(hosted_preflight_check(
+                "gcp project",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+                format!("Target GCP project is `{project}`."),
+                None,
+            ));
+            Some(project)
+        }
+        Err(error) => {
+            checks.push(hosted_preflight_check(
+                "gcp project",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                "No GCP project is configured for the hosted lane.",
+                Some(error),
+            ));
+            None
+        }
+    };
+
+    let gcp_region = match normalize_command_value(gcloud_command_checked(&[
+        "config",
+        "get-value",
+        "compute/region",
+    ])) {
+        Ok(region) => {
+            checks.push(hosted_preflight_check(
+                "gcp region",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+                format!("Target GCP region is `{region}`."),
+                None,
+            ));
+            Some(region)
+        }
+        Err(error) => {
+            checks.push(hosted_preflight_check(
+                "gcp region",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                "No GCP region is configured for the hosted lane.",
+                Some(error),
+            ));
+            None
+        }
+    };
+
+    if env_var_optional_trimmed("OPENAGENTS_FORGE_HOSTED_REPO_SECRET").is_some() {
+        checks.push(hosted_preflight_check(
+            "repo secret",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            "Required hosted repo secret env is present.",
+            None,
+        ));
+    } else {
+        checks.push(hosted_preflight_check(
+            "repo secret",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "Set `OPENAGENTS_FORGE_HOSTED_REPO_SECRET` before launch.",
+            None,
+        ));
+    }
+
+    let worker_baseline = if shared_session.remote_session.prepared_baseline_status
+        == Some(crate::app_state::ForgeProbePreparedBaselineStatus::Ready)
+    {
+        shared_session.remote_session.prepared_baseline_id.clone()
+    } else {
+        None
+    }
+    .or_else(|| env_var_optional_trimmed("OPENAGENTS_FORGE_HOSTED_WORKER_BASELINE"));
+    match worker_baseline.as_deref() {
+        Some(baseline) => checks.push(hosted_preflight_check(
+            "worker baseline",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            format!("Hosted worker baseline is `{baseline}`."),
+            None,
+        )),
+        None => checks.push(hosted_preflight_check(
+            "worker baseline",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "Probe does not currently show a ready hosted baseline, and `OPENAGENTS_FORGE_HOSTED_WORKER_BASELINE` is unset.",
+            None,
+        )),
+    }
+
+    if shared_session
+        .knowledge_mounts
+        .unsupported_routes
+        .is_empty()
+    {
+        checks.push(hosted_preflight_check(
+            "pack routing",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            "All routed packs are currently mountable on the active session.",
+            None,
+        ));
+    } else {
+        let detail = Some(
+            shared_session
+                .knowledge_mounts
+                .unsupported_routes
+                .iter()
+                .take(4)
+                .map(|issue| format!("{}: {}", issue.title, issue.reason))
+                .collect::<Vec<_>>()
+                .join(" | "),
+        );
+        checks.push(hosted_preflight_check(
+            "pack routing",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Warning,
+            format!(
+                "{} routed pack(s) are still unsupported on the active session.",
+                shared_session.knowledge_mounts.unsupported_routes.len()
+            ),
+            detail,
+        ));
+    }
+
+    let disposition = if checks
+        .iter()
+        .any(|check| check.status == crate::app_state::ForgeHostedPreflightCheckStatus::Blocker)
+    {
+        crate::app_state::ForgeHostedPreflightDisposition::Blocked
+    } else {
+        crate::app_state::ForgeHostedPreflightDisposition::Ready
+    };
+
+    Ok(crate::app_state::ForgeHostedPreflightReport {
+        preflight_id: format!("forge-hosted-preflight-{recorded_at_epoch_ms}"),
+        disposition,
+        workspace_root,
+        repo_remote_url,
+        gcp_project,
+        gcp_region,
+        worker_baseline,
+        report_path: None,
+        checks,
+        recorded_at_epoch_ms,
+    })
+}
+
 fn parse_github_pull_request_watch(
     payload: &str,
     updated_at_epoch_ms: u64,
@@ -4887,13 +5187,46 @@ fn build_probe_hosted_audit_status_snapshot(
     if let Some(bundle) = chat.active_hosted_bookkeeping_audit_bundle() {
         bundles.push(bundle);
     }
-    if bundles.is_empty() {
+    let hosted_preflight = chat.active_hosted_preflight();
+    if bundles.is_empty() && hosted_preflight.is_none() {
         return Err(
-            "Record hosted audit state first with `/hosted coding <environment-summary>` or `/hosted bookkeeping <environment-summary>`."
+            "Record hosted preflight with `/hosted preflight [path]` or hosted audit state with `/hosted coding <environment-summary>` / `/hosted bookkeeping <environment-summary>` first."
                 .to_string(),
         );
     }
     let mut lines = Vec::new();
+    if let Some(preflight) = hosted_preflight {
+        lines.push(format!(
+            "Hosted preflight `{}` is {}.",
+            preflight.preflight_id,
+            preflight.disposition.display_label()
+        ));
+        lines.push(format!(
+            "Checks: {}. Blockers: {}. Warnings: {}.",
+            preflight.checks.len(),
+            preflight.blocker_count(),
+            preflight.warning_count()
+        ));
+        if let Some(workspace_root) = preflight.workspace_root.as_deref() {
+            lines.push(format!("Workspace: `{workspace_root}`."));
+        }
+        if let Some(gcp_project) = preflight.gcp_project.as_deref() {
+            let region = preflight.gcp_region.as_deref().unwrap_or("unknown-region");
+            lines.push(format!("Target GCP lane: `{gcp_project}` / `{region}`."));
+        }
+        if let Some(worker_baseline) = preflight.worker_baseline.as_deref() {
+            lines.push(format!("Worker baseline: `{worker_baseline}`."));
+        }
+        if let Some(report_path) = preflight.report_path.as_deref() {
+            lines.push(format!("Preflight report: `{report_path}`."));
+        }
+        if let Some(latest_blocker) = preflight.checks.iter().find(|check| {
+            check.status == crate::app_state::ForgeHostedPreflightCheckStatus::Blocker
+        }) {
+            lines.push(format!("Latest blocker: {}.", latest_blocker.summary));
+        }
+        lines.push(String::new());
+    }
     for bundle in bundles {
         lines.push(format!(
             "{} `{}` on {}.",
@@ -6091,10 +6424,13 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     if first_word == "/hosted" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
-                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
+                "Hosted audit commands: `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
             );
         };
         return match subcommand {
+            "preflight" => Ok(Some(ChatForgeComposerIntent::HostedPreflight {
+                path: (words.len() > 2).then(|| words[2..].join(" ")),
+            })),
             "coding" => {
                 if words.len() < 3 {
                     return Err("Usage: `/hosted coding <environment-summary>`.".to_string());
@@ -6160,7 +6496,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                 Ok(Some(ChatForgeComposerIntent::HostedAuditStatus))
             }
             _ => Err(
-                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
+                "Hosted audit commands: `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
             ),
         };
     }
@@ -8034,6 +8370,72 @@ fn run_chat_forge_action(
         ChatForgeComposerIntent::SettlementStatus => {
             match build_probe_settlement_status_snapshot(&state.autopilot_chat) {
                 Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::HostedPreflight { path } => {
+            let recorded_at_epoch_ms = current_epoch_millis();
+            let Some(_) = state
+                .autopilot_chat
+                .ensure_probe_shared_session_for_thread(thread_id.as_str(), recorded_at_epoch_ms)
+            else {
+                append_chat_command_result(
+                    state,
+                    prompt,
+                    format!("No Probe-backed thread is available for `{thread_id}`."),
+                    true,
+                );
+                return false;
+            };
+            match build_probe_hosted_preflight_report(
+                &state.autopilot_chat,
+                thread_id.as_str(),
+                recorded_at_epoch_ms,
+            ) {
+                Ok(report) => match state
+                    .autopilot_chat
+                    .export_probe_hosted_preflight_report_for_thread(
+                        thread_id.as_str(),
+                        report.clone(),
+                        path.as_deref(),
+                        recorded_at_epoch_ms,
+                    ) {
+                    Ok(export_path) => {
+                        let mut report = report;
+                        report.report_path = Some(export_path.display().to_string());
+                        let blocker_count = report.blocker_count();
+                        let warning_count = report.warning_count();
+                        match state
+                            .autopilot_chat
+                            .record_probe_hosted_preflight_for_thread(
+                                thread_id.as_str(),
+                                report.clone(),
+                                recorded_at_epoch_ms,
+                            ) {
+                            Ok(preflight_id) => {
+                                let mut response = format!(
+                                    "Recorded hosted preflight `{preflight_id}` as {} and exported it to `{}`.\n\nBlockers: {blocker_count}. Warnings: {warning_count}.",
+                                    report.disposition.display_label(),
+                                    export_path.display()
+                                );
+                                if blocker_count > 0 {
+                                    response.push_str(
+                                        "\nDo not start the hosted run until the blockers are cleared.",
+                                    );
+                                }
+                                if let Ok(status) =
+                                    build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                                {
+                                    response.push_str("\n\n");
+                                    response.push_str(status.as_str());
+                                }
+                                append_chat_command_result(state, prompt, response, false)
+                            }
+                            Err(error) => append_chat_command_result(state, prompt, error, true),
+                        }
+                    }
+                    Err(error) => append_chat_command_result(state, prompt, error, true),
+                },
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
         }
@@ -20748,6 +21150,16 @@ mod tests {
         assert_eq!(
             parse_chat_forge_intent("/promote status").unwrap(),
             Some(ChatForgeComposerIntent::PromoteStatus)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted preflight").unwrap(),
+            Some(ChatForgeComposerIntent::HostedPreflight { path: None })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted preflight target/hosted-preflight.json").unwrap(),
+            Some(ChatForgeComposerIntent::HostedPreflight {
+                path: Some("target/hosted-preflight.json".to_string()),
+            })
         );
         assert_eq!(
             parse_chat_forge_intent("/hosted coding gcp us-central1 dogfood run").unwrap(),

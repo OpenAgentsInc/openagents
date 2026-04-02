@@ -214,6 +214,7 @@ Current local-first behavior:
 - one hosted coding audit bundle and one hosted bookkeeping rehearsal bundle
   can be linked from the Forge shared session
 - the bundle snapshots:
+  - the latest hosted preflight report and exported preflight artifact path
   - environment summary
   - session location
   - Probe session ids
@@ -223,6 +224,7 @@ Current local-first behavior:
     cleanup when Probe reports them
   - linked evidence bundle and delivery receipt state
 - operators can extend the bundle through:
+  - `/hosted preflight [path]`
   - `/hosted coding <environment-summary>`
   - `/hosted bookkeeping <environment-summary>`
   - `/hosted note coding <summary>`
@@ -238,8 +240,9 @@ Current local-first behavior:
   session JSON
 - the operator can export the active hosted coding or bookkeeping bundle into a
   deterministic Markdown or JSON artifact with the concrete shared-session,
-  mounted-pack, hosted-receipt, evidence, delivery, campaign, promotion,
-  bounty, claim, and settlement ids and statuses for review or check-in
+  mounted-pack, hosted-receipt, preflight, evidence, delivery, campaign,
+  promotion, bounty, claim, and settlement ids and statuses for review or
+  check-in
 - bookkeeping rehearsal bundles also snapshot the linked campaign,
   promotion-ledger, bounty-contract, bounty-claim, and settlement-receipt ids
   and statuses so the operator can see which bookkeeping steps were actually

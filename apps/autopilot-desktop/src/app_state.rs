@@ -9462,6 +9462,101 @@ pub struct ForgeHostedAuditNote {
     pub recorded_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeHostedPreflightDisposition {
+    Ready,
+    Blocked,
+}
+
+impl ForgeHostedPreflightDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Blocked => "blocked",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeHostedPreflightCheckStatus {
+    Ok,
+    Warning,
+    Blocker,
+}
+
+impl ForgeHostedPreflightCheckStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Warning => "warning",
+            Self::Blocker => "blocker",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Warning => "warning",
+            Self::Blocker => "blocker",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedPreflightCheck {
+    pub label: String,
+    pub status: ForgeHostedPreflightCheckStatus,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedPreflightReport {
+    pub preflight_id: String,
+    pub disposition: ForgeHostedPreflightDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_remote_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gcp_project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gcp_region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_baseline: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<ForgeHostedPreflightCheck>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+impl ForgeHostedPreflightReport {
+    pub fn blocker_count(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|check| check.status == ForgeHostedPreflightCheckStatus::Blocker)
+            .count()
+    }
+
+    pub fn warning_count(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|check| check.status == ForgeHostedPreflightCheckStatus::Warning)
+            .count()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeHostedAuditBundle {
     pub audit_bundle_id: String,
@@ -9487,6 +9582,8 @@ pub struct ForgeHostedAuditBundle {
     pub unsupported_route_reasons: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hosted_receipts: Option<SessionHostedReceipts>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preflight: Option<ForgeHostedPreflightReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_bundle_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9520,6 +9617,7 @@ pub struct ForgeHostedAuditBundle {
 }
 
 const FORGE_HOSTED_AUDIT_EXPORT_SCHEMA_VERSION: u32 = 1;
+const FORGE_HOSTED_PREFLIGHT_EXPORT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeHostedAuditExportDocumentV1 {
@@ -9527,6 +9625,14 @@ pub struct ForgeHostedAuditExportDocumentV1 {
     pub thread_id: String,
     pub exported_at_epoch_ms: u64,
     pub bundle: ForgeHostedAuditBundle,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedPreflightExportDocumentV1 {
+    pub schema_version: u32,
+    pub thread_id: String,
+    pub exported_at_epoch_ms: u64,
+    pub report: ForgeHostedPreflightReport,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -9933,6 +10039,8 @@ pub struct ForgeSharedSession {
     pub workspace_restore: ForgeWorkspaceRestoreProvenance,
     #[serde(default)]
     pub knowledge_mounts: ForgeKnowledgeMountProjection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_preflight: Option<ForgeHostedPreflightReport>,
     #[serde(default)]
     pub workspace_snapshot_id: Option<String>,
     #[serde(default)]
@@ -11247,6 +11355,10 @@ fn normalize_forge_shared_sessions(
         session.knowledge_mounts = normalize_forge_knowledge_mount_projection(std::mem::take(
             &mut session.knowledge_mounts,
         ));
+        session.hosted_preflight = session
+            .hosted_preflight
+            .take()
+            .and_then(normalize_forge_hosted_preflight_report);
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
         }
@@ -11337,6 +11449,58 @@ fn normalize_forge_reference_list(mut refs: Vec<String>) -> Vec<String> {
     refs.sort();
     refs.dedup();
     refs
+}
+
+fn normalize_forge_hosted_preflight_report(
+    mut report: ForgeHostedPreflightReport,
+) -> Option<ForgeHostedPreflightReport> {
+    report.preflight_id = report.preflight_id.trim().to_string();
+    report.workspace_root = report
+        .workspace_root
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.repo_remote_url = report
+        .repo_remote_url
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.gcp_project = report
+        .gcp_project
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.gcp_region = report
+        .gcp_region
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.worker_baseline = report
+        .worker_baseline
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.report_path = report
+        .report_path
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.checks = report
+        .checks
+        .drain(..)
+        .filter_map(|mut check| {
+            check.label = check.label.trim().to_string();
+            check.summary = check.summary.trim().to_string();
+            check.detail = check
+                .detail
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            (!check.label.is_empty() && !check.summary.is_empty()).then_some(check)
+        })
+        .collect();
+    report.checks.sort_by(|lhs, rhs| lhs.label.cmp(&rhs.label));
+    (!report.preflight_id.is_empty() && !report.checks.is_empty()).then_some(report)
 }
 
 fn normalize_forge_knowledge_pack_source_refs(
@@ -12635,6 +12799,10 @@ fn normalize_forge_hosted_audit_bundles(
             .collect();
         bundle.unsupported_route_reasons.sort();
         bundle.unsupported_route_reasons.dedup();
+        bundle.preflight = bundle
+            .preflight
+            .take()
+            .and_then(normalize_forge_hosted_preflight_report);
         bundle.evidence_bundle_id = bundle
             .evidence_bundle_id
             .take()
@@ -14285,6 +14453,13 @@ impl AutopilotChatState {
         })
     }
 
+    pub fn active_hosted_preflight(&self) -> Option<&ForgeHostedPreflightReport> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.shared_session_for_thread(thread_id))
+            .and_then(|shared_session| shared_session.hosted_preflight.as_ref())
+    }
+
     fn hosted_audit_export_base_dir_for_thread(
         &self,
         thread_id: &str,
@@ -14372,6 +14547,76 @@ impl AutopilotChatState {
             exported_at_epoch_ms,
             bundle,
         })
+    }
+
+    fn hosted_preflight_export_base_dir_for_thread(
+        &self,
+        thread_id: &str,
+        report: &ForgeHostedPreflightReport,
+    ) -> PathBuf {
+        report
+            .workspace_root
+            .as_deref()
+            .map(PathBuf::from)
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.as_deref())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| {
+                self.artifact_projection_file_path
+                    .parent()
+                    .map(Path::to_path_buf)
+            })
+            .unwrap_or_else(std::env::temp_dir)
+    }
+
+    fn resolve_hosted_preflight_export_path_for_thread(
+        &self,
+        thread_id: &str,
+        report: &ForgeHostedPreflightReport,
+        output_path: Option<&str>,
+    ) -> PathBuf {
+        let base_dir = self.hosted_preflight_export_base_dir_for_thread(thread_id, report);
+        let Some(raw_output_path) = output_path.map(str::trim).filter(|value| !value.is_empty())
+        else {
+            return base_dir.join(format!("forge-hosted-preflight-{}.md", report.preflight_id));
+        };
+        let normalized = raw_output_path
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .or_else(|| {
+                raw_output_path
+                    .strip_prefix('\'')
+                    .and_then(|value| value.strip_suffix('\''))
+            })
+            .unwrap_or(raw_output_path);
+        if let Some(home_relative) = normalized.strip_prefix("~/")
+            && let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+        {
+            return home.join(home_relative);
+        }
+        let path = PathBuf::from(normalized);
+        if path.is_absolute() {
+            path
+        } else {
+            base_dir.join(path)
+        }
+    }
+
+    fn build_hosted_preflight_export_document_for_thread(
+        &self,
+        thread_id: &str,
+        report: ForgeHostedPreflightReport,
+        exported_at_epoch_ms: u64,
+    ) -> ForgeHostedPreflightExportDocumentV1 {
+        ForgeHostedPreflightExportDocumentV1 {
+            schema_version: FORGE_HOSTED_PREFLIGHT_EXPORT_SCHEMA_VERSION,
+            thread_id: thread_id.to_string(),
+            exported_at_epoch_ms,
+            report,
+        }
     }
 
     fn render_hosted_audit_export_markdown(
@@ -14568,7 +14813,84 @@ impl AutopilotChatState {
         } else {
             lines.push("- hosted_receipts: none".to_string());
         }
+        if let Some(preflight) = bundle.preflight.as_ref() {
+            lines.push(format!(
+                "- preflight: {} ({})",
+                preflight.disposition.label(),
+                preflight.preflight_id
+            ));
+            lines.push(format!(
+                "- preflight_blockers: {}",
+                preflight.blocker_count()
+            ));
+            lines.push(format!(
+                "- preflight_warnings: {}",
+                preflight.warning_count()
+            ));
+            if let Some(report_path) = preflight.report_path.as_deref() {
+                lines.push(format!("- preflight_report_path: `{report_path}`"));
+            }
+        } else {
+            lines.push("- preflight: none".to_string());
+        }
         lines.push(format!("- note_count: {}", bundle.notes.len()));
+        lines.push(String::new());
+        lines.push("## JSON".to_string());
+        lines.push("```json".to_string());
+        lines.push(payload);
+        lines.push("```".to_string());
+        Ok(lines.join("\n"))
+    }
+
+    fn render_hosted_preflight_export_markdown(
+        document: &ForgeHostedPreflightExportDocumentV1,
+    ) -> Result<String, String> {
+        let report = &document.report;
+        let payload = serde_json::to_string_pretty(document)
+            .map_err(|error| format!("Failed to encode hosted preflight export JSON: {error}"))?;
+        let mut lines = vec![
+            "# hosted preflight".to_string(),
+            String::new(),
+            format!("- schema_version: {}", document.schema_version),
+            format!("- thread_id: `{}`", document.thread_id),
+            format!("- preflight_id: `{}`", report.preflight_id),
+            format!("- exported_at_epoch_ms: {}", document.exported_at_epoch_ms),
+            format!("- disposition: {}", report.disposition.label()),
+            format!("- blocker_count: {}", report.blocker_count()),
+            format!("- warning_count: {}", report.warning_count()),
+            format!("- recorded_at_epoch_ms: {}", report.recorded_at_epoch_ms),
+        ];
+        if let Some(workspace_root) = report.workspace_root.as_deref() {
+            lines.push(format!("- workspace_root: `{workspace_root}`"));
+        }
+        if let Some(repo_remote_url) = report.repo_remote_url.as_deref() {
+            lines.push(format!("- repo_remote_url: `{repo_remote_url}`"));
+        }
+        if let Some(gcp_project) = report.gcp_project.as_deref() {
+            lines.push(format!("- gcp_project: `{gcp_project}`"));
+        }
+        if let Some(gcp_region) = report.gcp_region.as_deref() {
+            lines.push(format!("- gcp_region: `{gcp_region}`"));
+        }
+        if let Some(worker_baseline) = report.worker_baseline.as_deref() {
+            lines.push(format!("- worker_baseline: `{worker_baseline}`"));
+        }
+        if let Some(report_path) = report.report_path.as_deref() {
+            lines.push(format!("- report_path: `{report_path}`"));
+        }
+        lines.push(String::new());
+        lines.push("## Checks".to_string());
+        for check in &report.checks {
+            lines.push(format!(
+                "- {}: {}",
+                check.label,
+                check.status.display_label()
+            ));
+            lines.push(format!("  - {}", check.summary));
+            if let Some(detail) = check.detail.as_deref() {
+                lines.push(format!("  - {}", detail));
+            }
+        }
         lines.push(String::new());
         lines.push("## JSON".to_string());
         lines.push("```json".to_string());
@@ -14628,6 +14950,37 @@ impl AutopilotChatState {
                 .map_err(|error| format!("Failed to encode hosted audit export JSON: {error}"))?
         } else {
             Self::render_hosted_audit_export_markdown(&document)?
+        };
+        Self::persist_hosted_audit_export(export_path.as_path(), payload.as_str())?;
+        Ok(export_path)
+    }
+
+    pub fn export_probe_hosted_preflight_report_for_thread(
+        &self,
+        thread_id: &str,
+        report: ForgeHostedPreflightReport,
+        output_path: Option<&str>,
+        exported_at_epoch_ms: u64,
+    ) -> Result<PathBuf, String> {
+        let export_path =
+            self.resolve_hosted_preflight_export_path_for_thread(thread_id, &report, output_path);
+        let mut report = report;
+        report.report_path = Some(export_path.display().to_string());
+        let document = self.build_hosted_preflight_export_document_for_thread(
+            thread_id,
+            report,
+            exported_at_epoch_ms,
+        );
+        let payload = if export_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("json"))
+        {
+            serde_json::to_string_pretty(&document).map_err(|error| {
+                format!("Failed to encode hosted preflight export JSON: {error}")
+            })?
+        } else {
+            Self::render_hosted_preflight_export_markdown(&document)?
         };
         Self::persist_hosted_audit_export(export_path.as_path(), payload.as_str())?;
         Ok(export_path)
@@ -17763,6 +18116,7 @@ impl AutopilotChatState {
                 .map(|issue| issue.reason.clone())
                 .collect(),
             hosted_receipts: shared_session.remote_session.hosted_receipts.clone(),
+            preflight: shared_session.hosted_preflight.clone(),
             evidence_bundle_id: evidence_bundle.map(|bundle| bundle.evidence_bundle_id.clone()),
             evidence_status: evidence_bundle.map(ForgeEvidenceBundle::reviewer_status),
             delivery_receipt_id: delivery_receipt
@@ -17781,6 +18135,45 @@ impl AutopilotChatState {
             notes,
             created_at_epoch_ms,
             updated_at_epoch_ms,
+        }
+    }
+
+    fn refresh_hosted_audit_bundles_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        let Some(shared_session) = self.forge_shared_sessions.get(shared_session_id).cloned()
+        else {
+            return;
+        };
+        for kind in [
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditKind::BookkeepingRehearsal,
+        ] {
+            let Some(audit_bundle_id) =
+                Self::hosted_audit_bundle_id_for_kind(&shared_session, kind).map(str::to_string)
+            else {
+                continue;
+            };
+            let Some(existing_bundle) = self
+                .forge_hosted_audit_bundles
+                .get(&audit_bundle_id)
+                .cloned()
+            else {
+                continue;
+            };
+            let bundle = self.snapshot_hosted_audit_bundle(
+                &shared_session,
+                kind,
+                audit_bundle_id.clone(),
+                existing_bundle.environment_summary,
+                existing_bundle.notes,
+                existing_bundle.created_at_epoch_ms,
+                updated_at_epoch_ms.max(existing_bundle.updated_at_epoch_ms),
+            );
+            self.forge_hosted_audit_bundles
+                .insert(audit_bundle_id, bundle);
         }
     }
 
@@ -17846,6 +18239,42 @@ impl AutopilotChatState {
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         self.persist_codex_artifact_projection();
         Ok(audit_bundle_id)
+    }
+
+    pub fn record_probe_hosted_preflight_for_thread(
+        &mut self,
+        thread_id: &str,
+        report: ForgeHostedPreflightReport,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let preflight_id = report.preflight_id.trim().to_string();
+        if preflight_id.is_empty() {
+            return Err("Hosted preflight id cannot be empty.".to_string());
+        }
+        let mut report = report;
+        report.preflight_id = preflight_id.clone();
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before hosted preflight linkage could be recorded."
+                )
+            })?;
+        shared_session.hosted_preflight = Some(report);
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        self.refresh_hosted_audit_bundles_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(preflight_id)
     }
 
     pub fn record_probe_hosted_audit_note_for_thread(
@@ -18576,6 +19005,7 @@ impl AutopilotChatState {
                         updated_at_epoch_ms: created_at_epoch_ms,
                     },
                     knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                    hosted_preflight: None,
                     workspace_snapshot_id: None,
                     restore_manifest_id: None,
                     campaign_id: None,
@@ -25926,6 +26356,8 @@ mod tests {
         ForgeDeliveryPullRequestWatch, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeHostedAuditKind, ForgeHostedAuditNoteKind,
+        ForgeHostedPreflightCheck, ForgeHostedPreflightCheckStatus,
+        ForgeHostedPreflightDisposition, ForgeHostedPreflightReport,
         ForgeProbeOperatorHandoffState, ForgeProbePreparedBaselineStatus,
         ForgeProbeSessionLocationKind, ForgeProbeSessionOwnerKind, ForgePromotionLedgerStatus,
         ForgeSettlementClosurePath, ForgeSettlementReceiptStatus, ForgeSharedSessionControlOwner,
@@ -31808,6 +32240,145 @@ mod tests {
         assert_eq!(
             exported_json["bundle"]["hosted_receipts"]["history"][0]["kind"],
             "approval_paused_takeover_available"
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_hosted_preflight_and_refreshes_audit_bundle() {
+        let repo = init_git_workspace("hosted-preflight");
+        let projection_path = unique_codex_artifact_projection_path("hosted-preflight");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Hosted".to_string()),
+            preview: "hosted preflight".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        let audit_bundle_id = chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::CodingCloseout,
+                "GCP us-central1 hosted coding closeout",
+                1_700_000_120,
+            )
+            .expect("hosted audit should record");
+
+        let report = ForgeHostedPreflightReport {
+            preflight_id: "forge-hosted-preflight-1700000130".to_string(),
+            disposition: ForgeHostedPreflightDisposition::Blocked,
+            workspace_root: Some(repo.display().to_string()),
+            repo_remote_url: Some("https://github.com/OpenAgentsInc/openagents.git".to_string()),
+            gcp_project: Some("forge-dev".to_string()),
+            gcp_region: Some("us-central1".to_string()),
+            worker_baseline: Some("repo-main".to_string()),
+            report_path: None,
+            checks: vec![
+                ForgeHostedPreflightCheck {
+                    label: "repo access".to_string(),
+                    status: ForgeHostedPreflightCheckStatus::Ok,
+                    summary: "Verified `git ls-remote origin HEAD`.".to_string(),
+                    detail: None,
+                },
+                ForgeHostedPreflightCheck {
+                    label: "repo secret".to_string(),
+                    status: ForgeHostedPreflightCheckStatus::Blocker,
+                    summary: "Set `OPENAGENTS_FORGE_HOSTED_REPO_SECRET` before launch.".to_string(),
+                    detail: None,
+                },
+                ForgeHostedPreflightCheck {
+                    label: "pack routing".to_string(),
+                    status: ForgeHostedPreflightCheckStatus::Warning,
+                    summary: "One routed pack is still unsupported on this worker.".to_string(),
+                    detail: Some("pack:forge-pack-1".to_string()),
+                },
+            ],
+            recorded_at_epoch_ms: 1_700_000_130,
+        };
+        let export_path = repo.join("artifacts/hosted-preflight.md");
+        let exported_path = chat
+            .export_probe_hosted_preflight_report_for_thread(
+                "thread-a",
+                report.clone(),
+                Some(export_path.to_str().expect("utf8 export path")),
+                1_700_000_131,
+            )
+            .expect("hosted preflight export should persist");
+        assert_eq!(exported_path, export_path);
+        let exported = std::fs::read_to_string(exported_path.as_path())
+            .expect("hosted preflight export should read");
+        assert!(exported.contains("# hosted preflight"));
+        assert!(exported.contains("forge-hosted-preflight-1700000130"));
+        assert!(exported.contains("OPENAGENTS_FORGE_HOSTED_REPO_SECRET"));
+
+        let mut stored_report = report.clone();
+        stored_report.report_path = Some(exported_path.display().to_string());
+        chat.record_probe_hosted_preflight_for_thread("thread-a", stored_report, 1_700_000_132)
+            .expect("hosted preflight should record");
+
+        let active_preflight = chat
+            .active_hosted_preflight()
+            .expect("active hosted preflight should exist");
+        assert_eq!(
+            active_preflight.disposition,
+            ForgeHostedPreflightDisposition::Blocked
+        );
+        assert_eq!(active_preflight.blocker_count(), 1);
+        assert_eq!(active_preflight.warning_count(), 1);
+        let bundle = chat
+            .active_hosted_coding_audit_bundle()
+            .expect("active hosted coding audit bundle should exist");
+        assert_eq!(bundle.audit_bundle_id, audit_bundle_id);
+        assert_eq!(
+            bundle
+                .preflight
+                .as_ref()
+                .map(|preflight| preflight.preflight_id.as_str()),
+            Some("forge-hosted-preflight-1700000130")
+        );
+        assert_eq!(
+            bundle
+                .preflight
+                .as_ref()
+                .and_then(|preflight| preflight.report_path.as_deref()),
+            Some(exported_path.display().to_string().as_str())
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session
+                .hosted_preflight
+                .as_ref()
+                .map(|preflight| preflight.preflight_id.as_str()),
+            Some("forge-hosted-preflight-1700000130")
+        );
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.hosted_coding_audit_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_hosted_audit_bundles.get(bundle_id))
+            .expect("reloaded hosted coding audit bundle should exist");
+        assert_eq!(
+            reloaded_bundle
+                .preflight
+                .as_ref()
+                .map(|preflight| preflight.blocker_count()),
+            Some(1)
         );
 
         let _ = std::fs::remove_file(projection_path);

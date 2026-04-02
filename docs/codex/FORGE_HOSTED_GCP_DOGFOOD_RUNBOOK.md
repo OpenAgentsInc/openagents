@@ -38,6 +38,8 @@ then leave behind enough linked evidence to explain:
 - Scoped pack routing projects app-owned pack choices into typed Probe mounts.
 - Hosted Probe receipts for auth, checkout, worker ownership, cost, and cleanup
   can be projected into the shared session when Probe reports them.
+- Operators can run a hosted launch preflight and export the result with:
+  - `/hosted preflight [path]`
 - Operators can record one hosted coding audit bundle and one hosted
   bookkeeping audit bundle with:
   - `/hosted coding <environment-summary>`
@@ -50,8 +52,6 @@ then leave behind enough linked evidence to explain:
 
 ## What Is Still Manual
 
-- Verifying GCP project, region, worker baseline, repo secret, and GitHub auth
-  before the session starts.
 - Reading raw GCP logs when the shell cards are insufficient.
 - Recording operator recovery and defect notes through `/hosted ...` commands.
 
@@ -59,8 +59,6 @@ then leave behind enough linked evidence to explain:
 
 - Hosted receipt truth is still snapshot-oriented. Restart, orphan cleanup, and
   operator takeover drills are not yet exposed as a typed event history.
-- The shell does not yet run a hosted preflight that refuses obviously broken
-  launches before the operator starts the session.
 
 ## Preconditions
 
@@ -87,6 +85,8 @@ then leave behind enough linked evidence to explain:
    - `/pack route status`
 4. Confirm the run is intended for the hosted GCP lane and not the local daemon
    path.
+5. Run the hosted preflight and do not launch if it reports blockers:
+   - `/hosted preflight [path]`
 
 ## Step 2: Start The Hosted Coding Run
 
@@ -186,7 +186,5 @@ Before ending the dogfood run, verify the shell shows all of the following:
 
 ## First Follow-On Gaps
 
-- hosted preflight before session launch
-  - tracked in `openagents#4105`
 - typed hosted recovery event history instead of snapshot-only receipts
   - tracked in `probe#98`

@@ -41,6 +41,8 @@ the shell-local projection into a deterministic Markdown or JSON artifact.
 
 - the shared session now carries hosted session location plus mounted-pack truth
   without hiding that state inside transcript prose
+- the shell can now run and export a hosted preflight before launch, then link
+  that report back into the shared session and hosted audit bundle
 - hosted Probe receipts project auth, checkout, worker, cost, and cleanup
   ownership into the same shell the operator already uses for evidence and
   delivery
@@ -52,7 +54,6 @@ the shell-local projection into a deterministic Markdown or JSON artifact.
 
 ## Manual Steps Still Required
 
-- verify GCP project, worker baseline, and secrets before launch
 - inspect raw infra logs outside the shell when receipt cards are incomplete
 - record recovery and defect notes manually through `/hosted ...`
 
@@ -69,15 +70,11 @@ Current operator expectation for the first lane:
 
 ## Known Defects Filed From This Audit
 
-- the hosted lane still lacks a hard preflight for project, secret, and worker
-  readiness
 - hosted receipt truth is snapshot-only and does not expose restart or cleanup
   history as a typed event stream
 
 ## Follow-On Issue Links
 
-- `openagents#4105` Add hosted GCP preflight and hard launch blockers for Forge
-  dogfood sessions
 - `probe#98` Emit hosted restart, cleanup, and operator-takeover history in
   Probe receipts
 
@@ -85,5 +82,4 @@ Current operator expectation for the first lane:
 
 Forge now has enough object and projection truth to run a hosted dogfood lane
 without pretending that the runtime or bookkeeping state lives somewhere else.
-The next gap is operational hardening: preflight checks and typed hosted
-recovery history.
+The next remaining gap from this audit is typed hosted recovery history.
