@@ -1,0 +1,96 @@
+```python
+import os
+import json
+from github import Github
+
+# GitHub API credentials
+GITHUB_TOKEN = "your_github_token"
+GITHUB_REPO = "OpenAgentsInc/openagents"
+
+# Initialize GitHub API
+g = Github(GITHUB_TOKEN)
+
+# Get repository
+repo = g.get_repo(GITHUB_REPO)
+
+# Define pack types
+PACK_TYPES = {
+    "repo_docs": "Repo Docs",
+    "runbooks": "Runbooks",
+    "retained_summaries": "Retained Summaries",
+    "accepted_patch_summaries": "Accepted Patch Summaries"
+}
+
+# Define pack authoring and import flows
+def create_pack(pack_type, pack_data):
+    # Create pack metadata
+    pack_metadata = {
+        "name": pack_data["name"],
+        "description": pack_data["description"],
+        "source": pack_data["source"]
+    }
+
+    # Create pack file
+    pack_file = {
+        "metadata": pack_metadata,
+        "content": pack_data["content"]
+    }
+
+    # Save pack file to repository
+    pack_file_path = f"packs/{pack_type}/{pack_data['name']}.json"
+    repo.create_file(pack_file_path, "Create pack file", json.dumps(pack_file))
+
+def import_pack(pack_type, pack_file_path):
+    # Read pack file
+    pack_file = repo.get_contents(pack_file_path)
+
+    # Extract pack metadata and content
+    pack_metadata = json.loads(pack_file.content.decode("utf-8"))["metadata"]
+    pack_content = json.loads(pack_file.content.decode("utf-8"))["content"]
+
+    # Create pack in Forge pack catalog
+    pack_catalog = repo.get_contents("packs/catalog.json")
+    pack_catalog_data = json.loads(pack_catalog.content.decode("utf-8"))
+    pack_catalog_data["packs"].append({
+        "name": pack_metadata["name"],
+        "description": pack_metadata["description"],
+        "source": pack_metadata["source"]
+    })
+    repo.update_file("packs/catalog.json", "Update pack catalog", json.dumps(pack_catalog_data))
+
+# Define pack authoring and import flows for each pack type
+def create_repo_docs_pack(pack_data):
+    create_pack("repo_docs", pack_data)
+
+def create_runbooks_pack(pack_data):
+    create_pack("runbooks", pack_data)
+
+def create_retained_summaries_pack(pack_data):
+    create_pack("retained_summaries", pack_data)
+
+def create_accepted_patch_summaries_pack(pack_data):
+    create_pack("accepted_patch_summaries", pack_data)
+
+def import_repo_docs_pack(pack_file_path):
+    import_pack("repo_docs", pack_file_path)
+
+def import_runbooks_pack(pack_file_path):
+    import_pack("runbooks", pack_file_path)
+
+def import_retained_summaries_pack(pack_file_path):
+    import_pack("retained_summaries", pack_file_path)
+
+def import_accepted_patch_summaries_pack(pack_file_path):
+    import_pack("accepted_patch_summaries", pack_file_path)
+
+# Example usage
+pack_data = {
+    "name": "Example Pack",
+    "description": "This is an example pack",
+    "source": "https://github.com/OpenAgentsInc/openagents",
+    "content": "This is the pack content"
+}
+
+create_repo_docs_pack(pack_data)
+import_repo_docs_pack("packs/repo_docs/Example Pack.json")
+```
