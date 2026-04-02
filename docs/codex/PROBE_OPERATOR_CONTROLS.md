@@ -67,6 +67,11 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/hosted defect <coding|bookkeeping> <summary>`
   - `/hosted export <coding|bookkeeping> [path]`
   - `/hosted status`
+  - the same internal hosted-session directory and attach flow is now
+    available programmatically through:
+  - `autopilotctl forge hosted sessions`
+  - `autopilotctl forge hosted attach-shared <shared-session-id>`
+  - `autopilotctl forge hosted attach-probe <probe-session-id>`
 - Shared-session collaboration control now also runs through:
   - `/handoff status`
   - shows the current controller, local watch-vs-control posture, pending
@@ -84,6 +89,16 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/handoff human <summary>` and `/handoff agent <summary>`
   - keep the coarse explicit owner flip for cases where the operator wants to
     hand the next turn directly to the human lane or the Probe agent
+  - the same shared-session controller state is now available programmatically
+    through:
+  - `autopilotctl forge status [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff status [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff request <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff accept <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff take <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff note <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff human <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff agent <summary> [--thread-id <probe-session-id>]`
 - The header actions for Probe-backed threads now use app-owned parity where the
   runtime seam is still narrower:
   - rename and archive or unarchive persist as shared-session shell overlays

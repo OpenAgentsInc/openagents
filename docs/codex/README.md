@@ -49,7 +49,8 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
   follow-ups, interrupt, approval resolution, queued-turn cancel, Probe
   mounted-pack routing and projection, and evidence, knowledge-pack authoring,
   campaign, promotion, delivery, settlement, hosted preflight, hosted-audit
-  recording and export, delivery-watch refresh commands, and hosted session
+  recording and export, delivery-watch refresh commands, the new
+  `autopilotctl forge ...` programmatic control path, and hosted session
   discovery plus attach commands for internal shared-session collaboration.
 - [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
   - operator runbook for the boring GCP-hosted Forge lane, now updated with

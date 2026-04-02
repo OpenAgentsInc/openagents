@@ -19,10 +19,12 @@ use autopilot_desktop::desktop_control::{
     DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
     DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketResolveDeliveryArgs,
     DesktopControlDataMarketRevokeGrantArgs, DesktopControlEventBatch,
-    DesktopControlLocalRuntimeStatus, DesktopControlManifest,
+    DesktopControlForgeAttachPayload, DesktopControlForgeHostedSessionsPayload,
+    DesktopControlForgeStatusPayload, DesktopControlLocalRuntimeStatus, DesktopControlManifest,
     DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
     DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
-    DesktopControlTassadarStatus, DesktopControlTassadarView, control_manifest_path,
+    DesktopControlTassadarStatus, DesktopControlTassadarView, ForgeSharedSessionControlOwner,
+    control_manifest_path,
 };
 use autopilot_desktop::{
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
@@ -150,6 +152,10 @@ enum Command {
     Chat {
         #[command(subcommand)]
         command: ChatCommand,
+    },
+    Forge {
+        #[command(subcommand)]
+        command: ForgeCommand,
     },
     DataMarket {
         #[command(subcommand)]
@@ -626,6 +632,67 @@ enum ChatCommand {
         name: String,
         #[arg(long, default_value = "OpenAgents team test channel")]
         about: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ForgeCommand {
+    Status {
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Hosted {
+        #[command(subcommand)]
+        command: ForgeHostedCommand,
+    },
+    Handoff {
+        #[command(subcommand)]
+        command: ForgeHandoffCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ForgeHostedCommand {
+    Sessions,
+    AttachShared { shared_session_id: String },
+    AttachProbe { probe_session_id: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum ForgeHandoffCommand {
+    Status {
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Human {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Agent {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Request {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Accept {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Take {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Note {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
     },
 }
 
@@ -1261,6 +1328,83 @@ impl ChatCommand {
                     name: name.clone(),
                     about: about.clone(),
                 })
+            }
+        }
+    }
+}
+
+impl ForgeCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Status { thread_id } => Some(DesktopControlActionRequest::GetForgeStatus {
+                thread_id: thread_id.clone(),
+            }),
+            Self::Hosted { .. } | Self::Handoff { .. } => None,
+        }
+    }
+}
+
+impl ForgeHostedCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Sessions => DesktopControlActionRequest::ListForgeHostedSessions,
+            Self::AttachShared { shared_session_id } => {
+                DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+                    shared_session_id: shared_session_id.clone(),
+                }
+            }
+            Self::AttachProbe { probe_session_id } => {
+                DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+                    probe_session_id: probe_session_id.clone(),
+                }
+            }
+        }
+    }
+}
+
+impl ForgeHandoffCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status { thread_id } => DesktopControlActionRequest::GetForgeStatus {
+                thread_id: thread_id.clone(),
+            },
+            Self::Human { summary, thread_id } => {
+                DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                    thread_id: thread_id.clone(),
+                    next_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    summary: summary.clone(),
+                }
+            }
+            Self::Agent { summary, thread_id } => {
+                DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                    thread_id: thread_id.clone(),
+                    next_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    summary: summary.clone(),
+                }
+            }
+            Self::Request { summary, thread_id } => {
+                DesktopControlActionRequest::RequestForgeSharedSessionControl {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
+            }
+            Self::Accept { summary, thread_id } => {
+                DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
+            }
+            Self::Take { summary, thread_id } => {
+                DesktopControlActionRequest::TakeForgeSharedSessionControl {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
+            }
+            Self::Note { summary, thread_id } => {
+                DesktopControlActionRequest::RecordForgeSharedSessionNote {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
             }
         }
     }
@@ -2219,6 +2363,70 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, None)?;
             }
         },
+        Command::Forge { command } => match command {
+            ForgeCommand::Status { .. } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("forge status did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let payload = parse_forge_status_payload(response.payload.as_ref())?;
+                if json_output {
+                    print_json(&payload)?;
+                } else {
+                    print_forge_status_text(&payload);
+                }
+            }
+            ForgeCommand::Hosted { command } => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                match command {
+                    ForgeHostedCommand::Sessions => {
+                        let payload =
+                            parse_forge_hosted_sessions_payload(response.payload.as_ref())?;
+                        if json_output {
+                            print_json(&payload)?;
+                        } else {
+                            print_forge_hosted_sessions_text(&payload);
+                        }
+                    }
+                    ForgeHostedCommand::AttachShared { .. }
+                    | ForgeHostedCommand::AttachProbe { .. } => {
+                        let payload = parse_forge_attach_payload(response.payload.as_ref())?;
+                        if json_output {
+                            print_json(&json!({
+                                "message": response.message,
+                                "payload": payload,
+                            }))?;
+                        } else {
+                            println!("{}", response.message);
+                            print_forge_attach_text(&payload);
+                        }
+                    }
+                }
+            }
+            ForgeCommand::Handoff { command } => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                let payload = parse_forge_status_payload(response.payload.as_ref())?;
+                if json_output {
+                    let envelope = json!({
+                        "message": response.message,
+                        "payload": payload,
+                    });
+                    if matches!(command, ForgeHandoffCommand::Status { .. }) {
+                        print_json(&payload)?;
+                    } else {
+                        print_json(&envelope)?;
+                    }
+                } else {
+                    if !matches!(command, ForgeHandoffCommand::Status { .. }) {
+                        println!("{}", response.message);
+                    }
+                    print_forge_status_text(&payload);
+                }
+            }
+        },
         Command::DataMarket { command } => match &command {
             DataMarketCommand::SellerImportRequest {
                 event_id,
@@ -2939,6 +3147,26 @@ fn parse_tassadar_status(payload: Option<&Value>) -> Result<DesktopControlTassad
     let payload = payload.ok_or_else(|| anyhow!("missing Tassadar status payload"))?;
     serde_json::from_value::<DesktopControlTassadarStatus>(payload.clone())
         .context("decode Tassadar status payload")
+}
+
+fn parse_forge_status_payload(payload: Option<&Value>) -> Result<DesktopControlForgeStatusPayload> {
+    let payload = payload.ok_or_else(|| anyhow!("missing Forge status payload"))?;
+    serde_json::from_value::<DesktopControlForgeStatusPayload>(payload.clone())
+        .context("decode Forge status payload")
+}
+
+fn parse_forge_hosted_sessions_payload(
+    payload: Option<&Value>,
+) -> Result<DesktopControlForgeHostedSessionsPayload> {
+    let payload = payload.ok_or_else(|| anyhow!("missing hosted Forge sessions payload"))?;
+    serde_json::from_value::<DesktopControlForgeHostedSessionsPayload>(payload.clone())
+        .context("decode hosted Forge sessions payload")
+}
+
+fn parse_forge_attach_payload(payload: Option<&Value>) -> Result<DesktopControlForgeAttachPayload> {
+    let payload = payload.ok_or_else(|| anyhow!("missing hosted Forge attach payload"))?;
+    serde_json::from_value::<DesktopControlForgeAttachPayload>(payload.clone())
+        .context("decode hosted Forge attach payload")
 }
 
 fn parse_local_daily_window(date: &str) -> Result<(u64, u64)> {
@@ -7979,6 +8207,137 @@ fn print_nip28_messages_text(
     }
 }
 
+fn print_forge_status_text(payload: &DesktopControlForgeStatusPayload) {
+    println!("thread: `{}`", payload.thread_id);
+    println!("shared session: `{}`", payload.shared_session_id);
+    if let Some(project_name) = payload.project_name.as_deref() {
+        println!("project: {}", project_name);
+    }
+    if let Some(workspace_root) = payload.workspace_root.as_deref() {
+        println!("workspace: {}", workspace_root);
+    }
+    if !payload.probe_session_ids.is_empty() {
+        println!("probe sessions: {}", payload.probe_session_ids.join(", "));
+    }
+    println!(
+        "controller: {} ({})",
+        payload.controller_label, payload.control_owner
+    );
+    println!("local role: {}", payload.local_role_label);
+    println!("location: {}", payload.location_kind);
+    if let Some(host) = payload.execution_host_label.as_deref() {
+        println!("host: {}", host);
+    }
+    if let Some(attach_target) = payload.attach_target.as_deref() {
+        println!("attach target: {}", attach_target);
+    }
+    if let Some(evidence_bundle_id) = payload
+        .shared_session
+        .get("evidence_bundle_id")
+        .and_then(Value::as_str)
+    {
+        println!("evidence bundle: `{}`", evidence_bundle_id);
+    }
+    if let Some(delivery_receipt_id) = payload
+        .shared_session
+        .get("delivery_receipt_id")
+        .and_then(Value::as_str)
+    {
+        println!("delivery receipt: `{}`", delivery_receipt_id);
+    }
+    if let Some(preflight_id) = payload
+        .shared_session
+        .get("hosted_preflight")
+        .and_then(|preflight| preflight.get("preflight_id"))
+        .and_then(Value::as_str)
+    {
+        println!("hosted preflight: `{}`", preflight_id);
+    }
+    println!();
+    println!("{}", payload.status_text);
+}
+
+fn print_forge_hosted_sessions_text(payload: &DesktopControlForgeHostedSessionsPayload) {
+    if payload.sessions.is_empty() {
+        println!("No hosted Forge sessions are visible yet.");
+        return;
+    }
+    println!("Hosted Forge sessions:");
+    for session in &payload.sessions {
+        let mut details = Vec::new();
+        if let Some(project_name) = session.project_name.as_deref() {
+            details.push(format!("project:{project_name}"));
+        }
+        if let Some(workspace_root) = session.workspace_root.as_deref() {
+            details.push(format!("ws:{workspace_root}"));
+        }
+        if let Some(git_branch) = session.git_branch.as_deref() {
+            details.push(format!("branch:{git_branch}"));
+        }
+        if let Some(prepared_baseline_id) = session.prepared_baseline_id.as_deref() {
+            let status = session
+                .prepared_baseline_status
+                .as_deref()
+                .unwrap_or("unknown");
+            details.push(format!("baseline:{prepared_baseline_id} ({status})"));
+        }
+        details.push(format!("controller:{}", session.control_owner));
+        if !session.participants.is_empty() {
+            details.push(format!(
+                "participants:{}",
+                session
+                    .participants
+                    .iter()
+                    .map(|participant| participant.display_name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        details.push(format!("location:{}", session.location_kind));
+        if let Some(owner_label) = session.owner_label.as_deref() {
+            details.push(format!("owner:{owner_label}"));
+        }
+        if let Some(host) = session.execution_host_label.as_deref() {
+            details.push(format!("host:{host}"));
+        }
+        if let Some(attach_target) = session.attach_target.as_deref() {
+            details.push(format!("attach:{attach_target}"));
+        }
+        if !session.sibling_probe_session_ids.is_empty() {
+            details.push(format!(
+                "other_probe_sessions:{}",
+                session.sibling_probe_session_ids.join(", ")
+            ));
+        }
+        println!(
+            "- `{}` -> `{}` ({})",
+            session.shared_session_id,
+            session.probe_session_id,
+            details.join(" | ")
+        );
+    }
+    println!(
+        "Attach with `autopilotctl forge hosted attach-shared <shared-session-id>` or `autopilotctl forge hosted attach-probe <probe-session-id>`."
+    );
+}
+
+fn print_forge_attach_text(payload: &DesktopControlForgeAttachPayload) {
+    println!("shared session: `{}`", payload.shared_session_id);
+    println!("probe session: `{}`", payload.probe_session_id);
+    println!("workspace: {}", payload.workspace_label);
+    if let Some(project_name) = payload.project_name.as_deref() {
+        println!("project: {}", project_name);
+    }
+    if let Some(attach_target) = payload.attach_target.as_deref() {
+        println!("attach target: {}", attach_target);
+    }
+    println!("reused local thread: {}", payload.reused_local_thread);
+    if !payload.status_text.trim().is_empty() {
+        println!();
+        println!("{}", payload.status_text);
+    }
+}
+
 fn blocker_codes_label(codes: &[String]) -> String {
     if codes.is_empty() {
         "-".to_string()
@@ -8046,13 +8405,14 @@ mod tests {
     use super::{
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
-        DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, GptOssCommand,
-        LocalRuntimeCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand, ResearchCommand,
-        ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
-        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
-        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
-        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
-        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, ForgeCommand,
+        ForgeHandoffCommand, ForgeHostedCommand, GptOssCommand, LocalRuntimeCommand, ProofCommand,
+        ProviderCommand, RemoteTrainingCommand, ResearchCommand, ResolvedTarget, SandboxCommand,
+        SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
+        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
+        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
+        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
+        buy_mode_has_paid_request, buyer_procurement_status_lines,
         compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
         inventory_status_lines, materialize_data_market_delivery, nip90_sent_payments_report_lines,
         parse_giftwrapped_delivery_pointer, parse_local_daily_window,
@@ -8070,6 +8430,7 @@ mod tests {
         DesktopControlNip28MessageStatus, DesktopControlNip90SentPaymentsReport,
         DesktopControlSnapshot, DesktopControlTassadarReplayFamily,
         DesktopControlTassadarSourceMode, DesktopControlTassadarView,
+        ForgeSharedSessionControlOwner,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -8946,6 +9307,105 @@ mod tests {
         assert_eq!(ChatCommand::Groups.action_request(), None);
         assert_eq!(ChatCommand::Channels.action_request(), None);
         assert_eq!(ChatCommand::Tail { limit: 5 }.action_request(), None);
+        assert_eq!(
+            ForgeCommand::Status {
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::GetForgeStatus {
+                thread_id: Some("thread-1".to_string()),
+            })
+        );
+        assert_eq!(
+            ForgeHostedCommand::Sessions.action_request(),
+            DesktopControlActionRequest::ListForgeHostedSessions
+        );
+        assert_eq!(
+            ForgeHostedCommand::AttachShared {
+                shared_session_id: "forge-session-1".to_string(),
+            }
+            .action_request(),
+            DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+                shared_session_id: "forge-session-1".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHostedCommand::AttachProbe {
+                probe_session_id: "probe-session-1".to_string(),
+            }
+            .action_request(),
+            DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+                probe_session_id: "probe-session-1".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Human {
+                summary: "handoff to me".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                thread_id: Some("thread-1".to_string()),
+                next_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                summary: "handoff to me".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Agent {
+                summary: "handoff to agent".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                thread_id: Some("thread-1".to_string()),
+                next_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                summary: "handoff to agent".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Request {
+                summary: "take control".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RequestForgeSharedSessionControl {
+                thread_id: Some("thread-1".to_string()),
+                summary: "take control".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Accept {
+                summary: "accepted".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+                thread_id: Some("thread-1".to_string()),
+                summary: "accepted".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Take {
+                summary: "taking control".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::TakeForgeSharedSessionControl {
+                thread_id: Some("thread-1".to_string()),
+                summary: "taking control".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Note {
+                summary: "left a note".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RecordForgeSharedSessionNote {
+                thread_id: Some("thread-1".to_string()),
+                summary: "left a note".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -9426,6 +9886,14 @@ mod tests {
     fn cli_accepts_global_json_after_data_market_subcommand() {
         let cli =
             super::Cli::try_parse_from(["autopilotctl", "data-market", "seller-status", "--json"])
+                .expect("cli should accept trailing global json flag");
+        assert!(cli.json);
+    }
+
+    #[test]
+    fn cli_accepts_global_json_after_forge_subcommand() {
+        let cli =
+            super::Cli::try_parse_from(["autopilotctl", "forge", "hosted", "sessions", "--json"])
                 .expect("cli should accept trailing global json flag");
         assert!(cli.json);
     }

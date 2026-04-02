@@ -55,6 +55,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
 
+pub use crate::app_state::ForgeSharedSessionControlOwner;
 pub use crate::provider_inventory::{
     DesktopControlInventoryProductStatus, DesktopControlInventoryProjectionStatus,
     DesktopControlInventorySectionStatus, DesktopControlInventoryStatus,
@@ -65,7 +66,8 @@ use crate::app_state::{
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
     MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, PaneKind, PanePresentation,
     RenderState, SnapshotTimingSample, TassadarLabReplayFamily, TassadarLabSourceMode,
-    TassadarLabViewMode, mission_control_buy_mode_interval_label,
+    TassadarLabViewMode, forge_shared_session_controller_label,
+    forge_shared_session_local_role_label, mission_control_buy_mode_interval_label,
     mission_control_local_runtime_view_model,
 };
 use crate::apple_adapter_training_control::{
@@ -169,6 +171,81 @@ pub struct DesktopControlPaneCaptureArtifactStatus {
     pub height: u32,
     pub scale_factor: f32,
     pub capture_target: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeParticipantStatus {
+    pub participant_id: String,
+    pub display_name: String,
+    pub kind: String,
+    pub local: bool,
+    pub controller: bool,
+    pub pending_request: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeTimelineStatus {
+    pub kind: String,
+    pub actor: String,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeStatusPayload {
+    pub thread_id: String,
+    pub shared_session_id: String,
+    pub project_name: Option<String>,
+    pub workspace_root: Option<String>,
+    pub probe_session_ids: Vec<String>,
+    pub control_owner: String,
+    pub controller_label: String,
+    pub local_role_label: String,
+    pub location_kind: String,
+    pub execution_host_label: Option<String>,
+    pub attach_target: Option<String>,
+    pub pending_request_summary: Option<String>,
+    pub participants: Vec<DesktopControlForgeParticipantStatus>,
+    pub recent_collaboration: Vec<DesktopControlForgeTimelineStatus>,
+    pub shared_session: Value,
+    pub status_text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeHostedSessionStatus {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub sibling_probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub prepared_baseline_id: Option<String>,
+    pub prepared_baseline_status: Option<String>,
+    pub control_owner: String,
+    pub controller_label: Option<String>,
+    pub participants: Vec<DesktopControlForgeParticipantStatus>,
+    pub location_kind: String,
+    pub owner_label: Option<String>,
+    pub execution_host_label: Option<String>,
+    pub attach_target: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeHostedSessionsPayload {
+    pub sessions: Vec<DesktopControlForgeHostedSessionStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeAttachPayload {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub workspace_label: String,
+    pub project_name: Option<String>,
+    pub attach_target: Option<String>,
+    pub reused_local_thread: bool,
+    pub status_text: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1664,6 +1741,37 @@ pub enum DesktopControlActionRequest {
     StartBuyMode,
     StopBuyMode,
     GetActiveJob,
+    GetForgeStatus {
+        thread_id: Option<String>,
+    },
+    ListForgeHostedSessions,
+    AttachForgeHostedSessionBySharedSessionId {
+        shared_session_id: String,
+    },
+    AttachForgeHostedSessionByProbeSessionId {
+        probe_session_id: String,
+    },
+    RecordForgeSharedSessionHandoff {
+        thread_id: Option<String>,
+        next_owner: ForgeSharedSessionControlOwner,
+        summary: String,
+    },
+    RequestForgeSharedSessionControl {
+        thread_id: Option<String>,
+        summary: String,
+    },
+    AcceptForgeSharedSessionControlRequest {
+        thread_id: Option<String>,
+        summary: String,
+    },
+    TakeForgeSharedSessionControl {
+        thread_id: Option<String>,
+        summary: String,
+    },
+    RecordForgeSharedSessionNote {
+        thread_id: Option<String>,
+        summary: String,
+    },
     SelectNip28MainChannel,
     SelectNip28Group {
         group_id: String,
@@ -1794,6 +1902,15 @@ impl DesktopControlActionRequest {
             Self::StartBuyMode => "buy-mode-start",
             Self::StopBuyMode => "buy-mode-stop",
             Self::GetActiveJob => "active-job",
+            Self::GetForgeStatus { .. } => "forge-status",
+            Self::ListForgeHostedSessions => "forge-hosted-sessions",
+            Self::AttachForgeHostedSessionBySharedSessionId { .. } => "forge-hosted-attach-shared",
+            Self::AttachForgeHostedSessionByProbeSessionId { .. } => "forge-hosted-attach-probe",
+            Self::RecordForgeSharedSessionHandoff { .. } => "forge-handoff",
+            Self::RequestForgeSharedSessionControl { .. } => "forge-handoff-request",
+            Self::AcceptForgeSharedSessionControlRequest { .. } => "forge-handoff-accept",
+            Self::TakeForgeSharedSessionControl { .. } => "forge-handoff-take",
+            Self::RecordForgeSharedSessionNote { .. } => "forge-handoff-note",
             Self::SelectNip28MainChannel => "nip28-main",
             Self::SelectNip28Group { .. } => "nip28-select-group",
             Self::SelectNip28Channel { .. } => "nip28-select-channel",
@@ -2765,8 +2882,48 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::StartBuyMode
         | DesktopControlActionRequest::StopBuyMode
         | DesktopControlActionRequest::GetActiveJob
+        | DesktopControlActionRequest::ListForgeHostedSessions
         | DesktopControlActionRequest::SelectNip28MainChannel => {
             json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::GetForgeStatus { thread_id } => json!({
+            "command_label": action.label(),
+            "thread_id": thread_id,
+        }),
+        DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+            shared_session_id,
+        } => json!({
+            "command_label": action.label(),
+            "shared_session_id": shared_session_id,
+        }),
+        DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+            probe_session_id,
+        } => json!({
+            "command_label": action.label(),
+            "probe_session_id": probe_session_id,
+        }),
+        DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+            thread_id,
+            next_owner,
+            summary,
+        } => json!({
+            "command_label": action.label(),
+            "thread_id": thread_id,
+            "next_owner": next_owner.label(),
+            "summary_length": summary.trim().len(),
+        }),
+        DesktopControlActionRequest::RequestForgeSharedSessionControl { thread_id, summary }
+        | DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+            thread_id,
+            summary,
+        }
+        | DesktopControlActionRequest::TakeForgeSharedSessionControl { thread_id, summary }
+        | DesktopControlActionRequest::RecordForgeSharedSessionNote { thread_id, summary } => {
+            json!({
+                "command_label": action.label(),
+                "thread_id": thread_id,
+                "summary_length": summary.trim().len(),
+            })
         }
         DesktopControlActionRequest::LoadAppleFmAdapter {
             package_path,
@@ -4076,6 +4233,54 @@ fn apply_action_request(
         )
         .into(),
         DesktopControlActionRequest::GetActiveJob => active_job_payload_response(state),
+        DesktopControlActionRequest::GetForgeStatus { thread_id } => {
+            forge_status_payload_response(state, thread_id.as_deref()).into()
+        }
+        DesktopControlActionRequest::ListForgeHostedSessions => {
+            forge_hosted_sessions_payload_response(state).into()
+        }
+        DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+            shared_session_id,
+        } => attach_hosted_forge_shared_session_action(state, shared_session_id.as_str()).into(),
+        DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+            probe_session_id,
+        } => attach_hosted_forge_probe_session_action(state, probe_session_id.as_str()).into(),
+        DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+            thread_id,
+            next_owner,
+            summary,
+        } => record_forge_shared_session_handoff_action(
+            state,
+            thread_id.as_deref(),
+            *next_owner,
+            summary.as_str(),
+        )
+        .into(),
+        DesktopControlActionRequest::RequestForgeSharedSessionControl { thread_id, summary } => {
+            request_forge_shared_session_control_action(
+                state,
+                thread_id.as_deref(),
+                summary.as_str(),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+            thread_id,
+            summary,
+        } => accept_forge_shared_session_control_request_action(
+            state,
+            thread_id.as_deref(),
+            summary.as_str(),
+        )
+        .into(),
+        DesktopControlActionRequest::TakeForgeSharedSessionControl { thread_id, summary } => {
+            take_forge_shared_session_control_action(state, thread_id.as_deref(), summary.as_str())
+                .into()
+        }
+        DesktopControlActionRequest::RecordForgeSharedSessionNote { thread_id, summary } => {
+            record_forge_shared_session_note_action(state, thread_id.as_deref(), summary.as_str())
+                .into()
+        }
         DesktopControlActionRequest::SelectNip28MainChannel => {
             select_nip28_main_channel_action(state).into()
         }
@@ -5730,6 +5935,447 @@ fn active_job_payload_response(state: &RenderState) -> DesktopControlActionOutco
             DesktopControlActionResponse::ok_with_payload("Captured active job state", payload),
             snapshot,
         )
+    }
+}
+
+fn resolve_forge_thread_id(
+    state: &RenderState,
+    requested_thread_id: Option<&str>,
+) -> Result<String, String> {
+    if let Some(thread_id) = requested_thread_id {
+        let trimmed = thread_id.trim();
+        if trimmed.is_empty() {
+            return Err("Forge thread id cannot be empty.".to_string());
+        }
+        return Ok(trimmed.to_string());
+    }
+    state
+        .autopilot_chat
+        .active_thread_id
+        .clone()
+        .ok_or_else(|| {
+            "No Forge thread id was supplied and the desktop has no active thread.".to_string()
+        })
+}
+
+fn forge_participant_statuses(
+    shared_session: &crate::app_state::ForgeSharedSession,
+) -> Vec<DesktopControlForgeParticipantStatus> {
+    let local_participant_id = crate::app_state::current_forge_local_operator_participant_id();
+    shared_session
+        .participants
+        .iter()
+        .map(|participant| DesktopControlForgeParticipantStatus {
+            participant_id: participant.participant_id.clone(),
+            display_name: participant.display_name.clone(),
+            kind: participant.kind.label().to_string(),
+            local: participant.participant_id == local_participant_id,
+            controller: shared_session.controller_participant_id.as_deref()
+                == Some(participant.participant_id.as_str()),
+            pending_request: shared_session
+                .pending_handoff_request
+                .as_ref()
+                .is_some_and(|request| request.participant_id == participant.participant_id),
+        })
+        .collect()
+}
+
+fn forge_timeline_statuses(
+    shared_session: &crate::app_state::ForgeSharedSession,
+) -> Vec<DesktopControlForgeTimelineStatus> {
+    shared_session
+        .collaboration_timeline
+        .iter()
+        .take(8)
+        .map(|entry| DesktopControlForgeTimelineStatus {
+            kind: entry.kind.display_label().to_string(),
+            actor: entry
+                .display_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            summary: entry.summary.clone(),
+            provenance: entry.provenance.clone(),
+            recorded_at_epoch_ms: entry.recorded_at_epoch_ms,
+        })
+        .collect()
+}
+
+fn build_forge_status_payload(
+    state: &RenderState,
+    thread_id: &str,
+) -> Result<DesktopControlForgeStatusPayload, String> {
+    let shared_session = state
+        .autopilot_chat
+        .shared_session_for_thread(thread_id)
+        .cloned()
+        .ok_or_else(|| format!("No shared Forge session is available for `{thread_id}`."))?;
+    let controller_label = forge_shared_session_controller_label(&shared_session);
+    let local_role_label = forge_shared_session_local_role_label(&shared_session).to_string();
+    let status_text = state
+        .autopilot_chat
+        .shared_session_handoff_status_for_thread(thread_id)?;
+    let shared_session_value = serde_json::to_value(&shared_session)
+        .map_err(|error| format!("Failed to encode Forge shared-session payload: {error}"))?;
+    Ok(DesktopControlForgeStatusPayload {
+        thread_id: thread_id.to_string(),
+        shared_session_id: shared_session.shared_session_id.clone(),
+        project_name: shared_session
+            .project_name
+            .clone()
+            .or_else(|| shared_session.shell_title.clone()),
+        workspace_root: shared_session.workspace_root.clone(),
+        probe_session_ids: shared_session.probe_session_ids.clone(),
+        control_owner: shared_session.control_owner.label().to_string(),
+        controller_label,
+        local_role_label,
+        location_kind: shared_session
+            .remote_session
+            .location_kind
+            .label()
+            .to_string(),
+        execution_host_label: shared_session
+            .remote_session
+            .execution_host_label
+            .clone()
+            .or_else(|| shared_session.remote_session.execution_host_id.clone()),
+        attach_target: shared_session.remote_session.attach_target.clone(),
+        pending_request_summary: shared_session
+            .pending_handoff_request
+            .as_ref()
+            .map(|request| format!("{} — {}", request.display_name, request.summary)),
+        participants: forge_participant_statuses(&shared_session),
+        recent_collaboration: forge_timeline_statuses(&shared_session),
+        shared_session: shared_session_value,
+        status_text,
+    })
+}
+
+fn forge_status_payload_response(
+    state: &RenderState,
+    requested_thread_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match build_forge_status_payload(state, thread_id.as_str()) {
+        Ok(payload) => match serde_json::to_value(payload) {
+            Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                "Captured Forge shared-session status",
+                value,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Forge shared-session status: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn forge_hosted_sessions_payload_response(state: &RenderState) -> DesktopControlActionResponse {
+    let sessions = state
+        .autopilot_chat
+        .hosted_shared_session_directory()
+        .into_iter()
+        .map(|session| DesktopControlForgeHostedSessionStatus {
+            shared_session_id: session.shared_session_id,
+            probe_session_id: session.probe_session_id,
+            sibling_probe_session_ids: session.sibling_probe_session_ids,
+            workspace_root: session.workspace_root,
+            project_name: session.project_name,
+            git_branch: session.git_branch,
+            prepared_baseline_id: session.prepared_baseline_id,
+            prepared_baseline_status: session
+                .prepared_baseline_status
+                .map(|status| status.display_label().to_string()),
+            control_owner: session.control_owner.label().to_string(),
+            controller_label: session.controller_label,
+            participants: session
+                .participants
+                .into_iter()
+                .map(|participant| DesktopControlForgeParticipantStatus {
+                    participant_id: participant.participant_id,
+                    display_name: participant.display_name,
+                    kind: participant.kind.label().to_string(),
+                    local: false,
+                    controller: false,
+                    pending_request: false,
+                })
+                .collect(),
+            location_kind: session.location_kind.label().to_string(),
+            owner_label: session.owner_label,
+            execution_host_label: session.execution_host_label,
+            attach_target: session.attach_target,
+            updated_at_epoch_ms: session.updated_at_epoch_ms,
+        })
+        .collect::<Vec<_>>();
+    let message = if sessions.is_empty() {
+        "No hosted Forge sessions are visible yet"
+    } else {
+        "Captured hosted Forge session directory"
+    };
+    match serde_json::to_value(DesktopControlForgeHostedSessionsPayload { sessions }) {
+        Ok(value) => DesktopControlActionResponse::ok_with_payload(message, value),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode hosted Forge session directory: {error}"
+        )),
+    }
+}
+
+fn attach_hosted_forge_session_by_target(
+    state: &mut RenderState,
+    target: crate::app_state::ForgeHostedSessionAttachTarget,
+) -> DesktopControlActionResponse {
+    if !state.uses_probe_runtime() {
+        return DesktopControlActionResponse::error(
+            "Hosted Forge attach requires the Probe runtime lane.",
+        );
+    }
+    let Some(selected_thread) = state
+        .autopilot_chat
+        .select_thread_by_id(target.probe_session_id.as_str())
+    else {
+        return DesktopControlActionResponse::error(format!(
+            "Hosted Probe thread `{}` is known locally but the desktop could not select it.",
+            target.probe_session_id
+        ));
+    };
+    state
+        .autopilot_chat
+        .restore_session_preferences_from_thread(&selected_thread.thread_id);
+    let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
+        session_id: probe_protocol::session::SessionId::new(selected_thread.thread_id.clone()),
+    };
+    if let Err(error) = state.queue_probe_command(command) {
+        state.autopilot_chat.last_error = Some(error.clone());
+        return DesktopControlActionResponse::error(error);
+    }
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.set_copy_notice(
+        Instant::now(),
+        format!(
+            "Attached hosted Forge session `{}`.",
+            target.shared_session_id
+        ),
+    );
+    let status_text = match state
+        .autopilot_chat
+        .shared_session_handoff_status_for_thread(target.probe_session_id.as_str())
+    {
+        Ok(status) => status,
+        Err(error) => error,
+    };
+    match serde_json::to_value(DesktopControlForgeAttachPayload {
+        shared_session_id: target.shared_session_id.clone(),
+        probe_session_id: target.probe_session_id.clone(),
+        workspace_label: target.workspace_label.clone(),
+        project_name: target.project_name.clone(),
+        attach_target: target.attach_target.clone(),
+        reused_local_thread: target.reused_local_thread,
+        status_text,
+    }) {
+        Ok(value) => DesktopControlActionResponse::ok_with_payload(
+            format!(
+                "Attached hosted Forge session `{}` to Probe thread `{}`",
+                target.shared_session_id, target.probe_session_id
+            ),
+            value,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode hosted Forge attach payload: {error}"
+        )),
+    }
+}
+
+fn attach_hosted_forge_shared_session_action(
+    state: &mut RenderState,
+    shared_session_id: &str,
+) -> DesktopControlActionResponse {
+    match state
+        .autopilot_chat
+        .prepare_hosted_probe_attach_by_shared_session_id(shared_session_id, current_epoch_ms())
+    {
+        Ok(target) => attach_hosted_forge_session_by_target(state, target),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn attach_hosted_forge_probe_session_action(
+    state: &mut RenderState,
+    probe_session_id: &str,
+) -> DesktopControlActionResponse {
+    match state
+        .autopilot_chat
+        .prepare_hosted_probe_attach_by_probe_session_id(probe_session_id, current_epoch_ms())
+    {
+        Ok(target) => attach_hosted_forge_session_by_target(state, target),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn record_forge_shared_session_handoff_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    next_owner: ForgeSharedSessionControlOwner,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state
+        .autopilot_chat
+        .record_shared_session_handoff_for_thread(
+            thread_id.as_str(),
+            next_owner,
+            summary,
+            "autopilotctl forge handoff",
+            current_epoch_ms(),
+        ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!(
+                        "Recorded shared-session handoff `{shared_session_id}` to {}",
+                        next_owner.display_label()
+                    ),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after handoff: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn request_forge_shared_session_control_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state
+        .autopilot_chat
+        .request_shared_session_control_for_thread(
+            thread_id.as_str(),
+            summary,
+            "autopilotctl forge handoff request",
+            current_epoch_ms(),
+        ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Recorded controller request on shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after request: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn accept_forge_shared_session_control_request_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state
+        .autopilot_chat
+        .accept_shared_session_control_request_for_thread(
+            thread_id.as_str(),
+            summary,
+            "autopilotctl forge handoff accept",
+            current_epoch_ms(),
+        ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Accepted controller request on shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after acceptance: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn take_forge_shared_session_control_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state.autopilot_chat.take_shared_session_control_for_thread(
+        thread_id.as_str(),
+        summary,
+        "autopilotctl forge handoff take",
+        current_epoch_ms(),
+    ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Took controller lease for shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after take-control: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn record_forge_shared_session_note_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state.autopilot_chat.record_shared_session_note_for_thread(
+        thread_id.as_str(),
+        summary,
+        "autopilotctl forge handoff note",
+        current_epoch_ms(),
+    ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Recorded collaboration note on shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after note: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
     }
 }
 

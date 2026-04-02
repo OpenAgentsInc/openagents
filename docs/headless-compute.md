@@ -61,6 +61,9 @@ It can:
 - select the managed NIP-28 main channel
 - list NIP-28 groups, channels, and recent messages
 - send or retry NIP-28 chat messages
+- inspect and operate the current internal Forge shared-session lane through
+  `autopilotctl forge`, including hosted session discovery, hosted attach, and
+  controller handoff commands for the Probe-backed coding shell
 - start and stop Buy Mode against the same in-app state used by the GUI
 - pull a daily or explicit-window NIP-90 sent-payments report backed by the
   app-owned buyer payment-attempt ledger instead of raw relay rows
@@ -121,6 +124,11 @@ autopilotctl wait attnres-completed
 autopilotctl provider online
 autopilotctl chat status
 autopilotctl chat messages --tail 20
+autopilotctl forge status
+autopilotctl forge hosted sessions
+autopilotctl forge hosted attach-shared forge-session-1
+autopilotctl forge handoff request "taking over triage"
+autopilotctl forge handoff accept "accepted from desktop-b"
 autopilotctl buy-mode status
 autopilotctl nip90-payments daily --date 2026-03-14
 autopilotctl nip90-payments window --start 2026-03-14T05:00:00+00:00 --end 2026-03-15T05:00:00+00:00 --json
@@ -150,6 +158,29 @@ autopilotctl pane status contributor_beta --json
 autopilotctl pane close provider_control
 autopilotctl pane open provider_control
 ```
+
+`autopilotctl forge` is the first honest programmatic control surface for the
+current internal Forge MVP. It does not try to expose every future Forge object
+yet. It covers the shared coding-session seam that already exists in the app:
+
+- `autopilotctl forge status [--thread-id <probe-session-id>]`
+  - prints the current shared-session/controller state for the active or named
+    Probe thread
+- `autopilotctl forge hosted sessions`
+  - lists visible hosted Forge sessions from the shared shell state
+- `autopilotctl forge hosted attach-shared <shared-session-id>`
+- `autopilotctl forge hosted attach-probe <probe-session-id>`
+  - binds the current desktop to a hosted shared session and loads its Probe
+    session through the same attach flow the UI uses
+- `autopilotctl forge handoff status [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff request <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff accept <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff take <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff note <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff human <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff agent <summary> [--thread-id <probe-session-id>]`
+  - all of these operate on the same app-owned participant roster and
+    controller-lease truth the desktop shell already projects
 
 The AttnRes command group drives the same persisted Psionic-backed lab state the
 desktop pane uses. `autopilotctl attnres status` hydrates the current lab state
