@@ -3543,6 +3543,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_create_invoice_keyboard_input(state, logical_key)
         || handle_relay_connections_keyboard_input(state, logical_key)
         || handle_network_requests_keyboard_input(state, logical_key)
+        || handle_voice_playground_keyboard_input(state, logical_key)
         || handle_local_inference_keyboard_input(state, logical_key)
         || handle_apple_fm_workbench_keyboard_input(state, logical_key)
         || handle_settings_keyboard_input(state, logical_key)
@@ -4233,6 +4234,27 @@ fn handle_network_requests_keyboard_input(
         |s| {
             if network_requests_inputs_focused(s) {
                 return run_network_requests_action(s, NetworkRequestsPaneAction::RequestQuotes);
+            }
+            false
+        },
+    )
+}
+
+fn handle_voice_playground_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        voice_playground_inputs_focused,
+        dispatch_voice_playground_input_event,
+        |s| {
+            if voice_playground_inputs_focused(s) {
+                return run_voice_playground_action(
+                    s,
+                    crate::pane_system::VoicePlaygroundPaneAction::Speak,
+                );
             }
             false
         },

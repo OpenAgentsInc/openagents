@@ -54,6 +54,10 @@ pub(super) fn local_inference_inputs_focused(state: &crate::app_state::RenderSta
         || state.local_inference_inputs.top_p.is_focused()
 }
 
+pub(super) fn voice_playground_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.voice_playground_inputs.tts_text.is_focused()
+}
+
 pub(super) fn apple_fm_workbench_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.apple_fm_workbench_inputs.instructions.is_focused()
         || state.apple_fm_workbench_inputs.prompt.is_focused()
@@ -90,6 +94,7 @@ pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> b
         || pay_invoice_inputs_focused(state)
         || create_invoice_inputs_focused(state)
         || network_requests_inputs_focused(state)
+        || voice_playground_inputs_focused(state)
         || local_inference_inputs_focused(state)
         || apple_fm_workbench_inputs_focused(state)
         || settings_inputs_focused(state)
@@ -134,6 +139,7 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.network_requests_inputs.delivery_start_minutes.blur();
     state.network_requests_inputs.window_minutes.blur();
     state.network_requests_inputs.max_price_sats.blur();
+    state.voice_playground_inputs.tts_text.blur();
     state.local_inference_inputs.prompt.blur();
     state.local_inference_inputs.requested_model.blur();
     state.local_inference_inputs.max_tokens.blur();
