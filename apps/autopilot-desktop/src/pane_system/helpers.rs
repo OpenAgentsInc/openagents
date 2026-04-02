@@ -1,5 +1,55 @@
 use super::*;
 
+pub(super) fn pack_authoring_button_bounds(content_bounds: Bounds) -> Bounds {
+    let gap = 8.0;
+    let start_x = content_bounds.origin.x + 12.0;
+    let y = content_bounds.origin.y + 32.0;
+    let available_width = (content_bounds.size.width - 24.0).max(300.0);
+    let repo_docs_width = ((available_width * 0.33) - gap).clamp(100.0, 150.0);
+    let runbooks_width = (available_width - repo_docs_width * 2.0 - gap * 2.0).max(100.0);
+
+    let repo_docs_bounds = Bounds::new(start_x, y, repo_docs_width, 34.0);
+    let runbooks_bounds = Bounds::new(
+        repo_docs_bounds.origin.x + repo_docs_width + gap,
+        y,
+        repo_docs_width,
+        34.0,
+    );
+    let retained_summaries_bounds = Bounds::new(
+        runbooks_bounds.origin.x + repo_docs_width + gap,
+        y,
+        runbooks_width,
+        34.0,
+    );
+
+    repo_docs_bounds
+}
+
+pub(super) fn pack_import_button_bounds(content_bounds: Bounds) -> Bounds {
+    let gap = 8.0;
+    let start_x = content_bounds.origin.x + 12.0;
+    let y = content_bounds.origin.y + 32.0;
+    let available_width = (content_bounds.size.width - 24.0).max(300.0);
+    let accepted_patches_width = ((available_width * 0.33) - gap).clamp(100.0, 150.0);
+    let retained_summaries_width = (available_width - accepted_patches_width * 2.0 - gap * 2.0).max(100.0);
+
+    let accepted_patches_bounds = Bounds::new(start_x, y, accepted_patches_width, 34.0);
+    let retained_summaries_bounds = Bounds::new(
+        accepted_patches_bounds.origin.x + accepted_patches_width + gap,
+        y,
+        accepted_patches_width,
+        34.0,
+    );
+    let import_all_bounds = Bounds::new(
+        retained_summaries_bounds.origin.x + accepted_patches_width + gap,
+        y,
+        retained_summaries_width,
+        34.0,
+    );
+
+    accepted_patches_bounds
+}
+
 pub(super) fn chat_thread_action_grid_bounds(content_bounds: Bounds, index: usize) -> Bounds {
     let source = chat_thread_filter_source_button_bounds(content_bounds);
     let row = index / 2;
