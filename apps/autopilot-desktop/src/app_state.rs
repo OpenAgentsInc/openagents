@@ -13,6 +13,12 @@ use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
 };
+use probe_protocol::session::{
+    SessionExecutionHostKind as ProbeSessionExecutionHostKind,
+    SessionPreparedBaselineStatus as ProbeSessionPreparedBaselineStatus, SessionRuntimeOwner,
+    SessionRuntimeOwnerKind, SessionWorkspaceBootMode as ProbeSessionWorkspaceBootMode,
+    SessionWorkspaceState,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use wgpui::components::TextInput;
@@ -8301,6 +8307,157 @@ pub struct ForgeSharedSessionHandoff {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ForgeProbeSessionLocationKind {
+    #[default]
+    LocalWorkspace,
+    HostedWorkspace,
+}
+
+impl ForgeProbeSessionLocationKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::LocalWorkspace => "local_workspace",
+            Self::HostedWorkspace => "hosted_workspace",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::LocalWorkspace => "local workspace",
+            Self::HostedWorkspace => "hosted workspace",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeProbeSessionOwnerKind {
+    ForegroundChild,
+    LocalDaemon,
+    HostedControlPlane,
+}
+
+impl ForgeProbeSessionOwnerKind {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::ForegroundChild => "foreground child",
+            Self::LocalDaemon => "local daemon",
+            Self::HostedControlPlane => "hosted control plane",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeProbeWorkspaceBootMode {
+    Fresh,
+    PreparedBaseline,
+    SnapshotRestore,
+}
+
+impl ForgeProbeWorkspaceBootMode {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Fresh => "fresh start",
+            Self::PreparedBaseline => "prepared baseline",
+            Self::SnapshotRestore => "snapshot restore",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeProbePreparedBaselineStatus {
+    Ready,
+    Missing,
+    Stale,
+}
+
+impl ForgeProbePreparedBaselineStatus {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Missing => "missing",
+            Self::Stale => "stale",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeProbeExecutionHostKind {
+    LocalMachine,
+    HostedWorker,
+}
+
+impl ForgeProbeExecutionHostKind {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::LocalMachine => "local machine",
+            Self::HostedWorker => "hosted worker",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeProbeOperatorHandoffState {
+    #[default]
+    LocalOnly,
+    ProbeAgentActive,
+    HumanOperatorAttached,
+}
+
+impl ForgeProbeOperatorHandoffState {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::LocalOnly => "local only",
+            Self::ProbeAgentActive => "remote Probe agent active",
+            Self::HumanOperatorAttached => "human attached to remote session",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeProbeRemoteSessionProjection {
+    pub location_kind: ForgeProbeSessionLocationKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_kind: Option<ForgeProbeSessionOwnerKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_boot_mode: Option<ForgeProbeWorkspaceBootMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore_pointer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prepared_baseline_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prepared_baseline_status: Option<ForgeProbePreparedBaselineStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_host_kind: Option<ForgeProbeExecutionHostKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_host_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_host_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_provenance_note: Option<String>,
+    #[serde(default)]
+    pub operator_handoff_state: ForgeProbeOperatorHandoffState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_handoff_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_handoff_provenance: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ForgeWorkspaceStartupKind {
     #[default]
     ColdStart,
@@ -9020,6 +9177,8 @@ pub struct ForgeSharedSession {
     pub control_owner: ForgeSharedSessionControlOwner,
     pub participants: Vec<ForgeSharedSessionParticipant>,
     pub last_handoff: Option<ForgeSharedSessionHandoff>,
+    #[serde(default)]
+    pub remote_session: ForgeProbeRemoteSessionProjection,
     #[serde(default)]
     pub workspace_restore: ForgeWorkspaceRestoreProvenance,
     #[serde(default)]
@@ -10001,6 +10160,9 @@ fn normalize_forge_shared_sessions(
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        session.remote_session = normalize_forge_probe_remote_session_projection(std::mem::take(
+            &mut session.remote_session,
+        ));
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
         }
@@ -10019,6 +10181,67 @@ fn normalize_forge_shared_sessions(
     }
     sessions.retain(|session| !session.probe_session_ids.is_empty());
     sessions
+}
+
+fn normalize_forge_probe_remote_session_projection(
+    mut projection: ForgeProbeRemoteSessionProjection,
+) -> ForgeProbeRemoteSessionProjection {
+    projection.owner_id = projection
+        .owner_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.owner_label = projection
+        .owner_label
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.attach_target = projection
+        .attach_target
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.restore_pointer = projection
+        .restore_pointer
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.snapshot_ref = projection
+        .snapshot_ref
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.prepared_baseline_id = projection
+        .prepared_baseline_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.execution_host_id = projection
+        .execution_host_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.execution_host_label = projection
+        .execution_host_label
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.workspace_provenance_note = projection
+        .workspace_provenance_note
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.operator_handoff_summary = projection
+        .operator_handoff_summary
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection.operator_handoff_provenance = projection
+        .operator_handoff_provenance
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    projection
 }
 
 fn normalize_forge_delegated_child_session_ids(mut child_session_ids: Vec<String>) -> Vec<String> {
@@ -10150,14 +10373,19 @@ fn normalize_forge_delivery_pull_request_watch(
         .take()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
-    if watch.url.is_empty() || watch.number == 0 || watch.base_ref.is_empty() || watch.head_ref.is_empty()
+    if watch.url.is_empty()
+        || watch.number == 0
+        || watch.base_ref.is_empty()
+        || watch.head_ref.is_empty()
     {
         return None;
     }
     Some(watch)
 }
 
-fn normalize_forge_delivery_ci_watch(mut watch: ForgeDeliveryCiWatch) -> Option<ForgeDeliveryCiWatch> {
+fn normalize_forge_delivery_ci_watch(
+    mut watch: ForgeDeliveryCiWatch,
+) -> Option<ForgeDeliveryCiWatch> {
     watch.checks = watch
         .checks
         .drain(..)
@@ -10879,6 +11107,80 @@ fn forge_shared_session_owner_for_runtime_status(
     }
 }
 
+fn forge_workspace_startup_kind_from_probe_boot_mode(
+    boot_mode: Option<ProbeSessionWorkspaceBootMode>,
+) -> ForgeWorkspaceStartupKind {
+    match boot_mode.unwrap_or(ProbeSessionWorkspaceBootMode::Fresh) {
+        ProbeSessionWorkspaceBootMode::Fresh => ForgeWorkspaceStartupKind::ColdStart,
+        ProbeSessionWorkspaceBootMode::PreparedBaseline => ForgeWorkspaceStartupKind::WarmStart,
+        ProbeSessionWorkspaceBootMode::SnapshotRestore => ForgeWorkspaceStartupKind::Restored,
+    }
+}
+
+fn forge_probe_session_location_kind(
+    runtime_owner: Option<&SessionRuntimeOwner>,
+) -> ForgeProbeSessionLocationKind {
+    match runtime_owner.map(|owner| owner.kind) {
+        Some(SessionRuntimeOwnerKind::HostedControlPlane) => {
+            ForgeProbeSessionLocationKind::HostedWorkspace
+        }
+        Some(SessionRuntimeOwnerKind::ForegroundChild | SessionRuntimeOwnerKind::LocalDaemon)
+        | None => ForgeProbeSessionLocationKind::LocalWorkspace,
+    }
+}
+
+fn forge_probe_session_owner_kind(
+    runtime_owner: Option<&SessionRuntimeOwner>,
+) -> Option<ForgeProbeSessionOwnerKind> {
+    match runtime_owner?.kind {
+        SessionRuntimeOwnerKind::ForegroundChild => {
+            Some(ForgeProbeSessionOwnerKind::ForegroundChild)
+        }
+        SessionRuntimeOwnerKind::LocalDaemon => Some(ForgeProbeSessionOwnerKind::LocalDaemon),
+        SessionRuntimeOwnerKind::HostedControlPlane => {
+            Some(ForgeProbeSessionOwnerKind::HostedControlPlane)
+        }
+    }
+}
+
+fn forge_probe_execution_host_kind(
+    workspace_state: Option<&SessionWorkspaceState>,
+) -> Option<ForgeProbeExecutionHostKind> {
+    match workspace_state?.execution_host.as_ref()?.kind {
+        ProbeSessionExecutionHostKind::LocalMachine => {
+            Some(ForgeProbeExecutionHostKind::LocalMachine)
+        }
+        ProbeSessionExecutionHostKind::HostedWorker => {
+            Some(ForgeProbeExecutionHostKind::HostedWorker)
+        }
+    }
+}
+
+fn forge_probe_prepared_baseline_status(
+    workspace_state: Option<&SessionWorkspaceState>,
+) -> Option<ForgeProbePreparedBaselineStatus> {
+    match workspace_state?.baseline.as_ref()?.status {
+        ProbeSessionPreparedBaselineStatus::Ready => Some(ForgeProbePreparedBaselineStatus::Ready),
+        ProbeSessionPreparedBaselineStatus::Missing => {
+            Some(ForgeProbePreparedBaselineStatus::Missing)
+        }
+        ProbeSessionPreparedBaselineStatus::Stale => Some(ForgeProbePreparedBaselineStatus::Stale),
+    }
+}
+
+fn forge_probe_operator_handoff_state(
+    location_kind: ForgeProbeSessionLocationKind,
+    control_owner: ForgeSharedSessionControlOwner,
+) -> ForgeProbeOperatorHandoffState {
+    if location_kind == ForgeProbeSessionLocationKind::LocalWorkspace {
+        ForgeProbeOperatorHandoffState::LocalOnly
+    } else if control_owner == ForgeSharedSessionControlOwner::ProbeLocalAgent {
+        ForgeProbeOperatorHandoffState::ProbeAgentActive
+    } else {
+        ForgeProbeOperatorHandoffState::HumanOperatorAttached
+    }
+}
+
 fn workspace_root_for_thread_paths(cwd: Option<&str>, path: Option<&str>) -> Option<String> {
     let base = normalized_optional_path(cwd).or_else(|| {
         normalized_optional_path(path).and_then(|path| path.parent().map(Path::to_path_buf))
@@ -11160,8 +11462,7 @@ impl AutopilotChatState {
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
                 state.next_forge_workspace_snapshot_seq =
                     projection.next_forge_workspace_snapshot_seq;
-                state.next_forge_restore_manifest_seq =
-                    projection.next_forge_restore_manifest_seq;
+                state.next_forge_restore_manifest_seq = projection.next_forge_restore_manifest_seq;
                 state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
                 state.next_forge_delivery_receipt_seq = projection.next_forge_delivery_receipt_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
@@ -11786,7 +12087,10 @@ impl AutopilotChatState {
         self.forge_delivery_receipts.get(delivery_receipt_id)
     }
 
-    pub fn delivery_receipt_for_id(&self, delivery_receipt_id: &str) -> Option<&ForgeDeliveryReceipt> {
+    pub fn delivery_receipt_for_id(
+        &self,
+        delivery_receipt_id: &str,
+    ) -> Option<&ForgeDeliveryReceipt> {
         self.forge_delivery_receipts.get(delivery_receipt_id)
     }
 
@@ -11873,20 +12177,15 @@ impl AutopilotChatState {
     }
 
     fn next_workspace_snapshot_id(&mut self) -> String {
-        let workspace_snapshot_id = format!(
-            "forge-snapshot-{}",
-            self.next_forge_workspace_snapshot_seq
-        );
+        let workspace_snapshot_id =
+            format!("forge-snapshot-{}", self.next_forge_workspace_snapshot_seq);
         self.next_forge_workspace_snapshot_seq =
             self.next_forge_workspace_snapshot_seq.saturating_add(1);
         workspace_snapshot_id
     }
 
     fn next_restore_manifest_id(&mut self) -> String {
-        let restore_manifest_id = format!(
-            "forge-restore-{}",
-            self.next_forge_restore_manifest_seq
-        );
+        let restore_manifest_id = format!("forge-restore-{}", self.next_forge_restore_manifest_seq);
         self.next_forge_restore_manifest_seq =
             self.next_forge_restore_manifest_seq.saturating_add(1);
         restore_manifest_id
@@ -11938,7 +12237,9 @@ impl AutopilotChatState {
             .forge_shared_sessions
             .get(shared_session_id)
             .and_then(|session| session.workspace_snapshot_id.clone())
-            && self.forge_workspace_snapshots.contains_key(existing.as_str())
+            && self
+                .forge_workspace_snapshots
+                .contains_key(existing.as_str())
         {
             return Ok(existing);
         }
@@ -11990,8 +12291,10 @@ impl AutopilotChatState {
         shared_session_id: &str,
         updated_at_epoch_ms: u64,
     ) -> Result<String, String> {
-        let workspace_snapshot_id =
-            self.ensure_probe_workspace_snapshot_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        let workspace_snapshot_id = self.ensure_probe_workspace_snapshot_for_shared_session(
+            shared_session_id,
+            updated_at_epoch_ms,
+        )?;
         let shared_session = self
             .forge_shared_sessions
             .get(shared_session_id)
@@ -12087,8 +12390,10 @@ impl AutopilotChatState {
         workspace_snapshot_id: &str,
         updated_at_epoch_ms: u64,
     ) -> Result<String, String> {
-        let restore_manifest_id =
-            self.ensure_probe_restore_manifest_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        let restore_manifest_id = self.ensure_probe_restore_manifest_for_shared_session(
+            shared_session_id,
+            updated_at_epoch_ms,
+        )?;
         let shared_session = self
             .forge_shared_sessions
             .get(shared_session_id)
@@ -12127,8 +12432,10 @@ impl AutopilotChatState {
         shared_session_id: &str,
         updated_at_epoch_ms: u64,
     ) -> Result<(String, String), String> {
-        let workspace_snapshot_id =
-            self.sync_probe_workspace_snapshot_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        let workspace_snapshot_id = self.sync_probe_workspace_snapshot_for_shared_session(
+            shared_session_id,
+            updated_at_epoch_ms,
+        )?;
         let restore_manifest_id = self.sync_probe_restore_manifest_for_shared_session(
             shared_session_id,
             workspace_snapshot_id.as_str(),
@@ -12412,7 +12719,8 @@ impl AutopilotChatState {
                 )
             })?;
         let child_session_ids = forge_shared_session_child_ids(&shared_session);
-        let _ = self.sync_evidence_bundle_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        let _ =
+            self.sync_evidence_bundle_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
         if let Some(delivery_receipt_id) = shared_session.delivery_receipt_id.as_deref()
             && let Some(receipt) = self.forge_delivery_receipts.get_mut(delivery_receipt_id)
         {
@@ -12972,6 +13280,7 @@ impl AutopilotChatState {
                     control_owner,
                     participants: default_forge_shared_session_participants(),
                     last_handoff: None,
+                    remote_session: ForgeProbeRemoteSessionProjection::default(),
                     workspace_restore: ForgeWorkspaceRestoreProvenance {
                         startup_kind: ForgeWorkspaceStartupKind::ColdStart,
                         base_repo,
@@ -13032,7 +13341,10 @@ impl AutopilotChatState {
         shared_session.updated_at_epoch_ms =
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         let _ = shared_session;
-        self.sync_probe_child_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms)?;
+        self.sync_probe_child_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        )?;
         self.persist_codex_artifact_projection();
         Ok(shared_session_id)
     }
@@ -13055,9 +13367,8 @@ impl AutopilotChatState {
                     "Shared session `{shared_session_id}` disappeared before delegated child-session state could be updated."
                 )
             })?;
-        next_child_sessions.retain(|child| {
-            child.child_session_id != delegated_child_session.child_session_id
-        });
+        next_child_sessions
+            .retain(|child| child.child_session_id != delegated_child_session.child_session_id);
         next_child_sessions.push(delegated_child_session);
         self.sync_probe_child_sessions_for_thread(
             thread_id,
@@ -13097,6 +13408,164 @@ impl AutopilotChatState {
             provenance: provenance.into().trim().to_string(),
             recorded_at_epoch_ms,
         });
+        shared_session.remote_session.operator_handoff_state = forge_probe_operator_handoff_state(
+            shared_session.remote_session.location_kind,
+            shared_session.control_owner,
+        );
+        shared_session.remote_session.operator_handoff_summary = shared_session
+            .last_handoff
+            .as_ref()
+            .map(|handoff| handoff.summary.clone());
+        shared_session.remote_session.operator_handoff_provenance = shared_session
+            .last_handoff
+            .as_ref()
+            .map(|handoff| handoff.provenance.clone());
+        shared_session.remote_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.remote_session.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn sync_probe_remote_session_projection_for_thread(
+        &mut self,
+        thread_id: &str,
+        runtime_owner: Option<&SessionRuntimeOwner>,
+        workspace_state: Option<&SessionWorkspaceState>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let runtime_owner = runtime_owner.cloned();
+        let workspace_state = workspace_state.cloned();
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before remote session state could be recorded."
+            ));
+        };
+        let existing_remote = shared_session.remote_session.clone();
+        let mut location_kind = forge_probe_session_location_kind(runtime_owner.as_ref());
+        if runtime_owner.is_none() {
+            location_kind = existing_remote.location_kind;
+        }
+        if location_kind == ForgeProbeSessionLocationKind::LocalWorkspace
+            && forge_probe_execution_host_kind(workspace_state.as_ref())
+                == Some(ForgeProbeExecutionHostKind::HostedWorker)
+        {
+            location_kind = ForgeProbeSessionLocationKind::HostedWorkspace;
+        }
+        let control_owner = shared_session.control_owner;
+        if shared_session.workspace_restore.restore_pointer.is_none() {
+            shared_session.workspace_restore.restore_pointer =
+                Some(format!("probe-session:{thread_id}"));
+        }
+        if let Some(workspace_state) = workspace_state.as_ref() {
+            shared_session.workspace_restore.startup_kind =
+                forge_workspace_startup_kind_from_probe_boot_mode(Some(workspace_state.boot_mode));
+            shared_session.workspace_restore.snapshot_ref = workspace_state
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.snapshot_id.clone());
+            if shared_session.workspace_restore.snapshot_ref.is_some() {
+                shared_session.workspace_restore.snapshot_ref_status =
+                    ForgeWorkspaceSnapshotRefStatus::Available;
+                shared_session.workspace_restore.snapshot_ref_detail = None;
+            } else {
+                shared_session.workspace_restore.snapshot_ref_status =
+                    ForgeWorkspaceSnapshotRefStatus::MissingFromProbe;
+                shared_session.workspace_restore.snapshot_ref_detail = workspace_state
+                    .provenance_note
+                    .clone()
+                    .or_else(|| Some(forge_probe_snapshot_ref_detail()));
+            }
+        }
+        shared_session.remote_session = ForgeProbeRemoteSessionProjection {
+            location_kind,
+            owner_kind: forge_probe_session_owner_kind(runtime_owner.as_ref())
+                .or(existing_remote.owner_kind),
+            owner_id: runtime_owner
+                .as_ref()
+                .map(|owner| owner.owner_id.clone())
+                .or(existing_remote.owner_id),
+            owner_label: runtime_owner
+                .as_ref()
+                .and_then(|owner| owner.display_name.clone())
+                .or_else(|| runtime_owner.as_ref().map(|owner| owner.owner_id.clone()))
+                .or(existing_remote.owner_label),
+            attach_target: runtime_owner
+                .as_ref()
+                .and_then(|owner| owner.attach_target.clone())
+                .or(existing_remote.attach_target),
+            workspace_boot_mode: workspace_state
+                .as_ref()
+                .map(|state| match state.boot_mode {
+                    ProbeSessionWorkspaceBootMode::Fresh => ForgeProbeWorkspaceBootMode::Fresh,
+                    ProbeSessionWorkspaceBootMode::PreparedBaseline => {
+                        ForgeProbeWorkspaceBootMode::PreparedBaseline
+                    }
+                    ProbeSessionWorkspaceBootMode::SnapshotRestore => {
+                        ForgeProbeWorkspaceBootMode::SnapshotRestore
+                    }
+                })
+                .or(existing_remote.workspace_boot_mode),
+            restore_pointer: shared_session.workspace_restore.restore_pointer.clone(),
+            snapshot_ref: workspace_state
+                .as_ref()
+                .and_then(|state| state.snapshot.as_ref())
+                .map(|snapshot| snapshot.snapshot_id.clone())
+                .or(existing_remote.snapshot_ref),
+            prepared_baseline_id: workspace_state
+                .as_ref()
+                .and_then(|state| state.baseline.as_ref())
+                .map(|baseline| baseline.baseline_id.clone())
+                .or(existing_remote.prepared_baseline_id),
+            prepared_baseline_status: forge_probe_prepared_baseline_status(
+                workspace_state.as_ref(),
+            )
+            .or(existing_remote.prepared_baseline_status),
+            execution_host_kind: forge_probe_execution_host_kind(workspace_state.as_ref())
+                .or(existing_remote.execution_host_kind),
+            execution_host_id: workspace_state
+                .as_ref()
+                .and_then(|state| state.execution_host.as_ref())
+                .map(|host| host.host_id.clone())
+                .or(existing_remote.execution_host_id),
+            execution_host_label: workspace_state
+                .as_ref()
+                .and_then(|state| state.execution_host.as_ref())
+                .and_then(|host| host.display_name.clone())
+                .or_else(|| {
+                    workspace_state
+                        .as_ref()
+                        .and_then(|state| state.execution_host.as_ref())
+                        .map(|host| host.host_id.clone())
+                })
+                .or(existing_remote.execution_host_label),
+            workspace_provenance_note: workspace_state
+                .as_ref()
+                .and_then(|state| state.provenance_note.clone())
+                .or(existing_remote.workspace_provenance_note),
+            operator_handoff_state: forge_probe_operator_handoff_state(
+                location_kind,
+                control_owner,
+            ),
+            operator_handoff_summary: shared_session
+                .last_handoff
+                .as_ref()
+                .map(|handoff| handoff.summary.clone()),
+            operator_handoff_provenance: shared_session
+                .last_handoff
+                .as_ref()
+                .map(|handoff| handoff.provenance.clone()),
+            updated_at_epoch_ms,
+        };
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = shared_session;
+        let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(shared_session_id)
     }
@@ -20129,15 +20598,23 @@ impl RenderState {
 
 #[cfg(test)]
 mod tests {
+    use probe_protocol::session::{
+        SessionAttachTransport, SessionExecutionHost, SessionExecutionHostKind,
+        SessionPreparedBaselineRef, SessionPreparedBaselineStatus, SessionRuntimeOwner,
+        SessionRuntimeOwnerKind, SessionWorkspaceBootMode, SessionWorkspaceSnapshotRef,
+        SessionWorkspaceState,
+    };
+
     use crate::app_state::{
         ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
-        ForgeDelegatedChildSessionStatus,
-        ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch, ForgeDeliveryCiStatus,
-        ForgeDeliveryCiWatch, ForgeDeliveryComparePosture, ForgeDeliveryCompareWatch,
-        ForgeDeliveryContributorRole, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
-        ForgeDeliveryPullRequestState, ForgeDeliveryPullRequestWatch,
+        ForgeDelegatedChildSessionStatus, ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch,
+        ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
+        ForgeDeliveryCompareWatch, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
+        ForgeDeliveryPullRequestWatch, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
-        ForgeEvidenceVerificationStatus, ForgeSharedSessionControlOwner,
+        ForgeEvidenceVerificationStatus, ForgeProbeOperatorHandoffState,
+        ForgeProbePreparedBaselineStatus, ForgeProbeSessionLocationKind,
+        ForgeProbeSessionOwnerKind, ForgeSharedSessionControlOwner,
         ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
     };
 
@@ -25109,9 +25586,7 @@ mod tests {
             restored_snapshot.snapshot_ref.as_deref(),
             Some("snapshot-ref-7")
         );
-        let restored_manifest = chat
-            .active_restore_manifest()
-            .expect("restored manifest");
+        let restored_manifest = chat.active_restore_manifest().expect("restored manifest");
         assert_eq!(
             restored.restore_manifest_id.as_deref(),
             Some(restored_manifest.restore_manifest_id.as_str())
@@ -25163,6 +25638,154 @@ mod tests {
         assert_eq!(
             reloaded_manifest.snapshot_ref.as_deref(),
             Some("snapshot-ref-7")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_projects_hosted_probe_session_ownership_and_remote_handoff() {
+        let repo = init_git_workspace("hosted-probe-session");
+        let projection_path = unique_codex_artifact_projection_path("hosted-probe-session");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Hosted".to_string()),
+            preview: "hosted preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.sync_probe_remote_session_projection_for_thread(
+            "thread-a",
+            Some(&SessionRuntimeOwner {
+                kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                owner_id: "probe-hosted-control".to_string(),
+                attach_transport: SessionAttachTransport::TcpJsonl,
+                display_name: Some("Probe hosted control".to_string()),
+                attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+            }),
+            Some(&SessionWorkspaceState {
+                boot_mode: SessionWorkspaceBootMode::PreparedBaseline,
+                baseline: Some(SessionPreparedBaselineRef {
+                    baseline_id: "repo-main".to_string(),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    base_ref: Some("main".to_string()),
+                    status: SessionPreparedBaselineStatus::Ready,
+                }),
+                snapshot: Some(SessionWorkspaceSnapshotRef {
+                    snapshot_id: "snap-7".to_string(),
+                    restore_manifest_id: Some("restore-manifest-7".to_string()),
+                    source_baseline_id: Some("repo-main".to_string()),
+                }),
+                execution_host: Some(SessionExecutionHost {
+                    kind: SessionExecutionHostKind::HostedWorker,
+                    host_id: "gce-worker-17".to_string(),
+                    display_name: Some("gce-worker-17".to_string()),
+                    location: Some("us-central1".to_string()),
+                }),
+                provenance_note: Some("restored from prepared workspace snapshot".to_string()),
+            }),
+            1_700_000_130,
+        )
+        .expect("remote session projection should record");
+
+        let session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session");
+        assert_eq!(
+            session.remote_session.location_kind,
+            ForgeProbeSessionLocationKind::HostedWorkspace
+        );
+        assert_eq!(
+            session.remote_session.owner_kind,
+            Some(ForgeProbeSessionOwnerKind::HostedControlPlane)
+        );
+        assert_eq!(
+            session.remote_session.prepared_baseline_status,
+            Some(ForgeProbePreparedBaselineStatus::Ready)
+        );
+        assert_eq!(
+            session.remote_session.snapshot_ref.as_deref(),
+            Some("snap-7")
+        );
+        assert_eq!(
+            session.remote_session.operator_handoff_state,
+            ForgeProbeOperatorHandoffState::HumanOperatorAttached
+        );
+        assert_eq!(
+            session.workspace_restore.startup_kind,
+            ForgeWorkspaceStartupKind::WarmStart
+        );
+        assert_eq!(
+            session.workspace_restore.snapshot_ref.as_deref(),
+            Some("snap-7")
+        );
+        let snapshot = chat
+            .active_workspace_snapshot()
+            .expect("workspace snapshot should exist");
+        assert_eq!(snapshot.snapshot_ref.as_deref(), Some("snap-7"));
+        let manifest = chat
+            .active_restore_manifest()
+            .expect("restore manifest should exist");
+        assert_eq!(manifest.snapshot_ref.as_deref(), Some("snap-7"));
+
+        chat.record_shared_session_handoff_for_thread(
+            "thread-a",
+            ForgeSharedSessionControlOwner::ProbeLocalAgent,
+            "Remote agent resumed execution",
+            "operator.command:/handoff",
+            1_700_000_140,
+        )
+        .expect("handoff should record");
+
+        let handed_off = chat
+            .shared_session_for_thread("thread-a")
+            .expect("handoff shared session");
+        assert_eq!(
+            handed_off.remote_session.operator_handoff_state,
+            ForgeProbeOperatorHandoffState::ProbeAgentActive
+        );
+        assert_eq!(
+            handed_off
+                .remote_session
+                .operator_handoff_summary
+                .as_deref(),
+            Some("Remote agent resumed execution")
+        );
+        assert_eq!(
+            handed_off
+                .remote_session
+                .operator_handoff_provenance
+                .as_deref(),
+            Some("operator.command:/handoff")
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.remote_session.location_kind,
+            ForgeProbeSessionLocationKind::HostedWorkspace
+        );
+        assert_eq!(
+            reloaded_session.remote_session.execution_host_id.as_deref(),
+            Some("gce-worker-17")
+        );
+        assert_eq!(
+            reloaded_session.remote_session.operator_handoff_state,
+            ForgeProbeOperatorHandoffState::ProbeAgentActive
         );
 
         let _ = std::fs::remove_file(projection_path);
@@ -25459,7 +26082,9 @@ mod tests {
             .expect("shared session with child");
         assert_eq!(shared_session.delegated_child_sessions.len(), 1);
         assert_eq!(
-            shared_session.delegated_child_sessions[0].closure_branch_name.as_deref(),
+            shared_session.delegated_child_sessions[0]
+                .closure_branch_name
+                .as_deref(),
             Some("feature/parser-fix")
         );
 
@@ -25615,7 +26240,9 @@ mod tests {
                     status: ForgeDeliveryCiStatus::Pass,
                     state: Some("SUCCESS".to_string()),
                     description: Some("12 tests passed".to_string()),
-                    url: Some("https://github.com/OpenAgentsInc/openagents/actions/runs/1".to_string()),
+                    url: Some(
+                        "https://github.com/OpenAgentsInc/openagents/actions/runs/1".to_string(),
+                    ),
                 }],
                 refreshed_at_epoch_ms: 1_700_000_140,
             }),
@@ -25627,7 +26254,10 @@ mod tests {
             .active_delivery_receipt()
             .expect("active delivery receipt should exist");
         assert_eq!(
-            receipt.branch_watch.as_ref().map(|watch| watch.head_ref.as_str()),
+            receipt
+                .branch_watch
+                .as_ref()
+                .map(|watch| watch.head_ref.as_str()),
             Some("feature/probe-watch")
         );
         assert_eq!(
@@ -25635,10 +26265,7 @@ mod tests {
             Some(ForgeDeliveryComparePosture::NeedsPush)
         );
         assert_eq!(
-            receipt
-                .pull_request_watch
-                .as_ref()
-                .map(|watch| watch.state),
+            receipt.pull_request_watch.as_ref().map(|watch| watch.state),
             Some(ForgeDeliveryPullRequestState::Open)
         );
         assert_eq!(
@@ -25654,7 +26281,10 @@ mod tests {
             .and_then(|receipt_id| reloaded.forge_delivery_receipts.get(receipt_id))
             .expect("reloaded delivery receipt");
         assert_eq!(
-            reloaded_receipt.branch_watch.as_ref().map(|watch| watch.head_ref.as_str()),
+            reloaded_receipt
+                .branch_watch
+                .as_ref()
+                .map(|watch| watch.head_ref.as_str()),
             Some("feature/probe-watch")
         );
         assert_eq!(

@@ -216,10 +216,10 @@ psionic-runtime = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = 
 psionic-sandbox = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "902b4a74337c07a983c4e9fb69e110e4c544d2e0" }
 psionic-serve = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "902b4a74337c07a983c4e9fb69e110e4c544d2e0" }
 psionic-train = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "902b4a74337c07a983c4e9fb69e110e4c544d2e0" }
-probe-client = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3" }
-probe-core = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3" }
-probe-protocol = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3" }
-probe-server = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3" }
+probe-client = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "6c0118dc66dc93a92e073078a6a5c0f77fef843e" }
+probe-core = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "6c0118dc66dc93a92e073078a6a5c0f77fef843e" }
+probe-protocol = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "6c0118dc66dc93a92e073078a6a5c0f77fef843e" }
+probe-server = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "6c0118dc66dc93a92e073078a6a5c0f77fef843e" }
 
 [profile.dev]
 opt-level = 1

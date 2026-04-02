@@ -222,7 +222,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -233,7 +233,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2387,7 +2387,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2674,7 +2674,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4003,7 +4003,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -4338,7 +4338,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5353,7 +5353,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6504,7 +6504,7 @@ dependencies = [
 [[package]]
 name = "probe-client"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3#5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=6c0118dc66dc93a92e073078a6a5c0f77fef843e#6c0118dc66dc93a92e073078a6a5c0f77fef843e"
 dependencies = [
  "probe-core",
  "probe-protocol",
@@ -6514,7 +6514,7 @@ dependencies = [
 [[package]]
 name = "probe-core"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3#5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=6c0118dc66dc93a92e073078a6a5c0f77fef843e#6c0118dc66dc93a92e073078a6a5c0f77fef843e"
 dependencies = [
  "hex",
  "probe-openai-auth",
@@ -6532,7 +6532,7 @@ dependencies = [
 [[package]]
 name = "probe-openai-auth"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3#5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=6c0118dc66dc93a92e073078a6a5c0f77fef843e#6c0118dc66dc93a92e073078a6a5c0f77fef843e"
 dependencies = [
  "base64 0.22.1",
  "rand 0.8.5",
@@ -6545,7 +6545,7 @@ dependencies = [
 [[package]]
 name = "probe-protocol"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3#5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=6c0118dc66dc93a92e073078a6a5c0f77fef843e#6c0118dc66dc93a92e073078a6a5c0f77fef843e"
 dependencies = [
  "serde",
  "serde_json",
@@ -6554,7 +6554,7 @@ dependencies = [
 [[package]]
 name = "probe-provider-apple-fm"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3#5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=6c0118dc66dc93a92e073078a6a5c0f77fef843e#6c0118dc66dc93a92e073078a6a5c0f77fef843e"
 dependencies = [
  "probe-protocol",
  "psionic-apple-fm 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=73e5025a3da04673331141ed33fda91a69cfbc0a)",
@@ -6568,7 +6568,7 @@ dependencies = [
 [[package]]
 name = "probe-provider-openai"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3#5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=6c0118dc66dc93a92e073078a6a5c0f77fef843e#6c0118dc66dc93a92e073078a6a5c0f77fef843e"
 dependencies = [
  "probe-protocol",
  "reqwest",
@@ -6579,7 +6579,7 @@ dependencies = [
 [[package]]
 name = "probe-server"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3#5f27fb11a9b1c7b3afa958d41f8d2fcc6d5156f3"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=6c0118dc66dc93a92e073078a6a5c0f77fef843e#6c0118dc66dc93a92e073078a6a5c0f77fef843e"
 dependencies = [
  "probe-core",
  "probe-protocol",
@@ -7512,7 +7512,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.37",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -7549,9 +7549,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8285,7 +8285,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9096,7 +9096,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9631,7 +9631,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

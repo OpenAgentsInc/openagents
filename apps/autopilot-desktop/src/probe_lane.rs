@@ -17,9 +17,9 @@ use probe_core::tools::{ProbeToolChoice, ToolDeniedAction, ToolLoopConfig};
 use probe_protocol::backend::BackendProfile;
 use probe_protocol::default_local_daemon_socket_path;
 use probe_protocol::runtime::{
-    CancelQueuedTurnRequest, CancelQueuedTurnResponse, ClientMessage, EventEnvelope,
-    InitializeRequest, InspectSessionTurnsResponse, InterruptTurnRequest, InterruptTurnResponse,
-    QueueTurnResponse, QueuedTurnStatus, DetachedSessionEventPayload, RequestEnvelope,
+    CancelQueuedTurnRequest, CancelQueuedTurnResponse, ClientMessage, DetachedSessionEventPayload,
+    EventEnvelope, InitializeRequest, InspectSessionTurnsResponse, InterruptTurnRequest,
+    InterruptTurnResponse, QueueTurnResponse, QueuedTurnStatus, RequestEnvelope,
     ResolvePendingApprovalRequest, ResolvePendingApprovalResponse, ResponseBody, ResponseEnvelope,
     RuntimeProgressEvent, RuntimeRequest, RuntimeResponse, ServerEvent, ServerMessage,
     SessionLookupRequest, SessionSnapshot, StartSessionRequest, ToolApprovalRecipe, ToolChoice,
@@ -27,8 +27,8 @@ use probe_protocol::runtime::{
     ToolOracleRecipe, ToolSetKind, TurnAuthor, TurnRequest, TurnResponse,
 };
 use probe_protocol::session::{
-    PendingToolApproval, SessionBranchState, SessionChildSummary, SessionDeliveryState,
-    SessionId, SessionMetadata, ToolApprovalResolution,
+    PendingToolApproval, SessionBranchState, SessionChildSummary, SessionDeliveryState, SessionId,
+    SessionMetadata, SessionWorkspaceState, ToolApprovalResolution,
 };
 
 const PROBE_LANE_POLL: Duration = Duration::from_millis(750);
@@ -244,6 +244,7 @@ pub enum ProbeLaneNotification {
     },
     WorkspaceStateUpdated {
         session_id: String,
+        workspace_state: Option<SessionWorkspaceState>,
         branch_state: Option<SessionBranchState>,
         delivery_state: Option<SessionDeliveryState>,
     },
@@ -1224,34 +1225,34 @@ fn handle_runtime_event_notification(
                 },
             ));
         }
-        ServerEvent::DetachedSessionStream { record } => {
-            match record.payload {
-                DetachedSessionEventPayload::ChildSessionUpdated { child } => {
-                    let _ = update_tx.send(ProbeLaneUpdate::Notification(
-                        ProbeLaneNotification::ChildSessionUpdated {
-                            session_id: record.session_id.as_str().to_string(),
-                            child,
-                        },
-                    ));
-                }
-                DetachedSessionEventPayload::WorkspaceStateUpdated {
-                    branch_state,
-                    delivery_state,
-                } => {
-                    let _ = update_tx.send(ProbeLaneUpdate::Notification(
-                        ProbeLaneNotification::WorkspaceStateUpdated {
-                            session_id: record.session_id.as_str().to_string(),
-                            branch_state,
-                            delivery_state,
-                        },
-                    ));
-                }
-                DetachedSessionEventPayload::SummaryUpdated { .. }
-                | DetachedSessionEventPayload::RuntimeProgress { .. }
-                | DetachedSessionEventPayload::PendingApprovalsUpdated { .. }
-                | DetachedSessionEventPayload::Note { .. } => {}
+        ServerEvent::DetachedSessionStream { record } => match record.payload {
+            DetachedSessionEventPayload::ChildSessionUpdated { child } => {
+                let _ = update_tx.send(ProbeLaneUpdate::Notification(
+                    ProbeLaneNotification::ChildSessionUpdated {
+                        session_id: record.session_id.as_str().to_string(),
+                        child,
+                    },
+                ));
             }
-        }
+            DetachedSessionEventPayload::WorkspaceStateUpdated {
+                workspace_state,
+                branch_state,
+                delivery_state,
+            } => {
+                let _ = update_tx.send(ProbeLaneUpdate::Notification(
+                    ProbeLaneNotification::WorkspaceStateUpdated {
+                        session_id: record.session_id.as_str().to_string(),
+                        workspace_state,
+                        branch_state,
+                        delivery_state,
+                    },
+                ));
+            }
+            DetachedSessionEventPayload::SummaryUpdated { .. }
+            | DetachedSessionEventPayload::RuntimeProgress { .. }
+            | DetachedSessionEventPayload::PendingApprovalsUpdated { .. }
+            | DetachedSessionEventPayload::Note { .. } => {}
+        },
     }
 }
 
@@ -1440,6 +1441,7 @@ fn start_session_request(
             profile,
             system_prompt,
             harness_profile: None,
+            workspace_state: None,
         }))?,
         |_| {},
     )?;

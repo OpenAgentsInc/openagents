@@ -1,7 +1,7 @@
 use crate::app_state::{
     AutopilotRole, AutopilotThreadListEntry, ForgeDelegatedChildDeliveryStatus,
-    ForgeDelegatedChildSessionCard, ForgeDelegatedChildSessionStatus,
-    ForgeDeliveryBranchWatch, ForgeDeliveryComparePosture, ForgeDeliveryCompareWatch, RenderState,
+    ForgeDelegatedChildSessionCard, ForgeDelegatedChildSessionStatus, ForgeDeliveryBranchWatch,
+    ForgeDeliveryComparePosture, ForgeDeliveryCompareWatch, RenderState,
 };
 use crate::probe_lane::{
     ProbeLaneCommandResponse, ProbeLaneLifecycle, ProbeLaneNotification, ProbeLaneSnapshot,
@@ -149,6 +149,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                 thread_id.as_str(),
                 snapshot.session.updated_at_ms,
             );
+            let _ = state
+                .autopilot_chat
+                .sync_probe_remote_session_projection_for_thread(
+                    thread_id.as_str(),
+                    snapshot.session.runtime_owner.as_ref(),
+                    snapshot.session.workspace_state.as_ref(),
+                    snapshot.session.updated_at_ms,
+                );
             let _ = state.autopilot_chat.sync_probe_child_sessions_for_thread(
                 thread_id.as_str(),
                 snapshot
@@ -167,15 +175,12 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                 .autopilot_chat
                 .sync_probe_delivery_runtime_watch_for_thread(
                     thread_id.as_str(),
-                    snapshot
-                        .branch_state
-                        .as_ref()
-                        .map(|branch_state| {
-                            forge_delivery_branch_watch_from_probe(
-                                branch_state,
-                                delivery_watch_updated_at_ms,
-                            )
-                        }),
+                    snapshot.branch_state.as_ref().map(|branch_state| {
+                        forge_delivery_branch_watch_from_probe(
+                            branch_state,
+                            delivery_watch_updated_at_ms,
+                        )
+                    }),
                     snapshot
                         .delivery_state
                         .as_ref()
@@ -229,9 +234,18 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
         }
         ProbeLaneNotification::WorkspaceStateUpdated {
             session_id,
+            workspace_state,
             branch_state,
             delivery_state,
         } => {
+            let _ = state
+                .autopilot_chat
+                .sync_probe_remote_session_projection_for_thread(
+                    session_id.as_str(),
+                    None,
+                    workspace_state.as_ref(),
+                    current_epoch_millis(),
+                );
             let delivery_watch_updated_at_ms = probe_delivery_watch_updated_at_ms(
                 branch_state.as_ref(),
                 delivery_state.as_ref(),
@@ -578,7 +592,9 @@ fn probe_delivery_watch_updated_at_ms(
         .unwrap_or(fallback)
 }
 
-fn forge_child_session_card_from_probe(child: &SessionChildSummary) -> ForgeDelegatedChildSessionCard {
+fn forge_child_session_card_from_probe(
+    child: &SessionChildSummary,
+) -> ForgeDelegatedChildSessionCard {
     ForgeDelegatedChildSessionCard {
         child_session_id: child.session_id.as_str().to_string(),
         title: child.title.clone(),

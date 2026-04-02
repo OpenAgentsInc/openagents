@@ -12,13 +12,11 @@ use crate::app_state::{
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
-    DirectMessageMessageProjection, DirectMessageRoomProjection,
-    ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch, ForgeDeliveryReceipt,
-    ForgeEvidenceBundle,
-    ForgeSharedSession, ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot,
-    ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
-    ManagedChatMessageProjection, ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef,
-    RenderState,
+    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeDelegatedChildSessionCard,
+    ForgeDeliveryCiWatch, ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeSharedSession,
+    ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot, ManagedChatChannelProjection,
+    ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
+    ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef, RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -2770,6 +2768,70 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
         "- **control owner:** {}",
         session.control_owner.display_label()
     )];
+    lines.push(format!(
+        "- **session location:** {}",
+        session.remote_session.location_kind.display_label()
+    ));
+    if let Some(owner_kind) = session.remote_session.owner_kind {
+        let mut owner_parts = vec![owner_kind.display_label().to_string()];
+        if let Some(owner_label) = session.remote_session.owner_label.as_deref() {
+            owner_parts.push(compact_display_token(owner_label, 32));
+        }
+        if let Some(owner_id) = session.remote_session.owner_id.as_deref() {
+            owner_parts.push(format!("id:{}", compact_display_token(owner_id, 24)));
+        }
+        lines.push(format!(
+            "- **session owner:** {}",
+            owner_parts.join("  •  ")
+        ));
+    }
+    if let Some(attach_target) = session.remote_session.attach_target.as_deref() {
+        lines.push(format!(
+            "- **attach target:** `{}`",
+            compact_display_token(attach_target, 42)
+        ));
+    }
+    if let Some(execution_host_kind) = session.remote_session.execution_host_kind {
+        let mut host_parts = vec![execution_host_kind.display_label().to_string()];
+        if let Some(host_label) = session.remote_session.execution_host_label.as_deref() {
+            host_parts.push(compact_display_token(host_label, 32));
+        }
+        if let Some(host_id) = session.remote_session.execution_host_id.as_deref() {
+            host_parts.push(format!("id:{}", compact_display_token(host_id, 24)));
+        }
+        lines.push(format!(
+            "- **execution host:** {}",
+            host_parts.join("  •  ")
+        ));
+    }
+    if let Some(boot_mode) = session.remote_session.workspace_boot_mode {
+        lines.push(format!(
+            "- **workspace boot:** {}",
+            boot_mode.display_label()
+        ));
+    }
+    if let Some(baseline_id) = session.remote_session.prepared_baseline_id.as_deref() {
+        let baseline_status = session
+            .remote_session
+            .prepared_baseline_status
+            .map(|status| status.display_label())
+            .unwrap_or("unknown");
+        lines.push(format!(
+            "- **prepared baseline:** `{}` ({})",
+            compact_display_token(baseline_id, 32),
+            baseline_status
+        ));
+    }
+    lines.push(format!(
+        "- **operator handoff:** {}",
+        session
+            .remote_session
+            .operator_handoff_state
+            .display_label()
+    ));
+    if let Some(provenance_note) = session.remote_session.workspace_provenance_note.as_deref() {
+        lines.push(format!("- **workspace note:** {}", provenance_note));
+    }
     if !session.probe_session_ids.is_empty() {
         lines.push(format!(
             "- **probe sessions:** {}",
@@ -2994,16 +3056,10 @@ fn active_delegated_child_sessions_markdown_source(
                 closure_parts.push(format!("delivery:{}", delivery_status.display_label()));
             }
             if let Some(branch_name) = child.closure_branch_name.as_deref() {
-                closure_parts.push(format!(
-                    "branch:{}",
-                    compact_display_token(branch_name, 18)
-                ));
+                closure_parts.push(format!("branch:{}", compact_display_token(branch_name, 18)));
             }
             if let Some(head_commit) = child.closure_head_commit.as_deref() {
-                closure_parts.push(format!(
-                    "head:{}",
-                    compact_display_token(head_commit, 16)
-                ));
+                closure_parts.push(format!("head:{}", compact_display_token(head_commit, 16)));
             }
             if let Some(compare_ref) = child.closure_compare_ref.as_deref() {
                 closure_parts.push(format!(
@@ -3542,10 +3598,7 @@ fn active_delivery_receipt_markdown_source(receipt: &ForgeDeliveryReceipt) -> St
                 check.status.display_label()
             );
             if let Some(workflow) = check.workflow.as_deref() {
-                check_line.push_str(&format!(
-                    "  •  {}",
-                    compact_display_token(workflow, 20)
-                ));
+                check_line.push_str(&format!("  •  {}", compact_display_token(workflow, 20)));
             }
             lines.push(check_line);
         }
@@ -5957,8 +6010,7 @@ pub fn paint(
                             shared_session.delegated_child_sessions.as_slice(),
                         );
                     if !delegated_children_markdown.trim().is_empty() {
-                        let markdown_document =
-                            markdown_parser.parse(&delegated_children_markdown);
+                        let markdown_document = markdown_parser.parse(&delegated_children_markdown);
                         let markdown_height = markdown_renderer
                             .render(
                                 &markdown_document,
@@ -6042,8 +6094,7 @@ pub fn paint(
                 ));
                 y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
 
-                let manifest_markdown =
-                    active_restore_manifest_markdown_source(restore_manifest);
+                let manifest_markdown = active_restore_manifest_markdown_source(restore_manifest);
                 if !manifest_markdown.trim().is_empty() {
                     let markdown_document = markdown_parser.parse(&manifest_markdown);
                     let markdown_height = markdown_renderer

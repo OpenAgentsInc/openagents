@@ -83,6 +83,13 @@ Current local-first rules:
 - reducer-level interrupt and resume events also update control-owner posture so
   the shell does not lose lineage when control flips between the operator and
   the background agent
+- the shared session now also projects hosted Probe runtime ownership and
+  workspace provenance into one app-owned remote-session object:
+  - session location and owner kind
+  - owner id, display label, and attach target
+  - workspace boot mode, baseline id and status, and snapshot ref
+  - execution host kind and host identity
+  - operator handoff posture derived from the current control owner
 
 The first operator-facing control is the chat command:
 
@@ -112,6 +119,8 @@ Current local-first behavior:
 - `StartSession` marks the shared workspace as a `cold_start`
 - `LoadSession` marks the shared workspace as a `warm_start` and records a
   local restore pointer derived from the Probe session id
+- hosted `workspace_state` snapshots now override that local seed with Probe's
+  real boot mode, baseline, snapshot, and provenance note
 - operators can explicitly mark a session as `restored` with:
   - `/restore <restore-pointer>`
   - `/restore <restore-pointer> <snapshot-ref>`
@@ -237,9 +246,11 @@ The local operator loop is now shipped for the current Probe sidecar slice:
   child-session cards, reviewer evidence, delivery receipts, attachment
   forwarding, and delivery watch state
 
-The next honest follow-ons are outside this local parity batch:
+The next honest follow-ons are outside this hosted-projection slice:
 
-- richer hosted or shared-session collaboration above the same shell objects
-- remote worker or fleet orchestration rather than a single local sidecar
+- a real hosted control-plane transport and multi-worker routing story above
+  the same shared-session objects
+- push-driven remote session activity instead of desktop polling and bounded
+  refresh passes
 - a real tool-attachment contract for skill-like attachments instead of the
   current app-owned forwarding manifest
