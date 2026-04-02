@@ -16,6 +16,12 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/evidence log <label> <reference>`
   - `/evidence preview <label> <reference>`
   - `/evidence screenshot <label> <reference>`
+- The desktop command surface now also exposes first-party knowledge-pack authoring through:
+  - `/pack docs <title> <path> [path ...]`
+  - `/pack runbook <title> <path> [path ...]`
+  - `/pack retained [title]`
+  - `/pack patch [title]`
+  - `/pack status`
 - The desktop command surface now also exposes campaign curation through:
   - `/campaign open <title>`
   - `/campaign goal <summary>`
@@ -57,6 +63,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - evidence commands stay app-owned: Probe provides raw runtime truth, and the
   desktop groups that truth into one reviewer-facing evidence bundle per shared
   session
+- pack commands also stay app-owned: Probe does not become the hidden home for
+  repo doc curation, runbook grouping, or shell-owned pack catalog policy above
+  typed Probe and Psionic source refs
 - campaign commands also stay app-owned: Probe is not the hidden home for
   retained-case selection, eval candidate curation, or promotion intent above
   the current shared session
@@ -81,6 +90,10 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - Queue cancel is currently command-driven in the desktop shell. There is not yet a dedicated pane button for cancelling a specific queued Probe turn.
 - Evidence references are local-first. They can point at local files or capture
   current terminal excerpts, but they are not a hosted artifact registry.
+- Pack authoring is also local-first. Repo docs and runbooks must resolve
+  inside the current workspace root, and retained or accepted-patch packs are
+  typed pointers to the current Probe session artifacts rather than a hosted
+  pack store.
 - Campaign refs are also local-first. Psionic bundle or comparison refs are
   typed strings in the shell projection, not yet a hosted retained-case catalog.
 - Promotion ledgers are also local-first. They persist shadow, promoted, and

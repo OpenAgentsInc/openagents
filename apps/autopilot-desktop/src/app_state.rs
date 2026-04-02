@@ -13970,6 +13970,240 @@ impl AutopilotChatState {
         Ok(knowledge_pack_id)
     }
 
+    fn probe_session_display_name(&self, thread_id: &str) -> String {
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.thread_name.clone())
+            .or_else(|| {
+                self.shared_session_for_thread(thread_id)
+                    .and_then(|session| session.shell_title.clone())
+            })
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| thread_id.to_string())
+    }
+
+    fn resolve_repo_file_knowledge_pack_source_refs_for_thread(
+        &self,
+        thread_id: &str,
+        source_paths: &[String],
+        recorded_at_epoch_ms: u64,
+    ) -> Result<Vec<ForgeKnowledgePackSourceRef>, String> {
+        let workspace_root = self
+            .knowledge_pack_scope_for_thread(thread_id, ForgeKnowledgePackCatalogScopeKind::Project)?
+            .workspace_root
+            .ok_or_else(|| {
+                format!(
+                    "Thread `{thread_id}` does not have a workspace root, so Forge cannot resolve repo file packs yet."
+                )
+            })?;
+        let workspace_root_path = PathBuf::from(workspace_root.clone());
+        if !workspace_root_path.exists() {
+            return Err(format!(
+                "Workspace root does not exist for `{thread_id}`: {workspace_root}"
+            ));
+        }
+        let workspace_root_canonical =
+            std::fs::canonicalize(&workspace_root_path).unwrap_or(workspace_root_path.clone());
+        let workspace_root_display = workspace_root_canonical.display().to_string();
+        let mut source_refs = Vec::new();
+        for raw_source_path in source_paths {
+            let trimmed = raw_source_path.trim();
+            if trimmed.is_empty() {
+                return Err("Repo file pack source paths cannot be empty.".to_string());
+            }
+            let candidate = PathBuf::from(trimmed);
+            let candidate = if candidate.is_absolute() {
+                candidate
+            } else {
+                workspace_root_canonical.join(candidate)
+            };
+            let canonical = std::fs::canonicalize(&candidate).map_err(|error| {
+                format!("Repo file pack source `{trimmed}` is not available: {error}")
+            })?;
+            if canonical != workspace_root_canonical
+                && !canonical.starts_with(&workspace_root_canonical)
+            {
+                return Err(format!(
+                    "Repo file pack source `{trimmed}` is outside the current workspace root `{}`.",
+                    workspace_root_canonical.display()
+                ));
+            }
+            let relative = canonical
+                .strip_prefix(&workspace_root_canonical)
+                .unwrap_or(canonical.as_path());
+            let reference = if relative.as_os_str().is_empty() {
+                String::from(".")
+            } else {
+                relative.display().to_string()
+            };
+            source_refs.push(ForgeKnowledgePackSourceRef {
+                source_kind: ForgeKnowledgePackSourceKind::RepoFile,
+                reference: reference.clone(),
+                label: Some(reference),
+                shared_session_id: None,
+                probe_session_id: None,
+                workspace_root: Some(workspace_root_display.clone()),
+                recorded_at_epoch_ms,
+            });
+        }
+        Ok(source_refs)
+    }
+
+    pub fn record_repo_file_knowledge_pack_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeKnowledgePackKind,
+        title: impl Into<String>,
+        source_paths: Vec<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        if !matches!(
+            kind,
+            ForgeKnowledgePackKind::RepoDocs | ForgeKnowledgePackKind::RepoRunbook
+        ) {
+            return Err(
+                "Repo file knowledge-pack authoring only supports repo docs or repo runbooks."
+                    .to_string(),
+            );
+        }
+        let source_refs = self.resolve_repo_file_knowledge_pack_source_refs_for_thread(
+            thread_id,
+            source_paths.as_slice(),
+            updated_at_epoch_ms,
+        )?;
+        let summary = Some(match kind {
+            ForgeKnowledgePackKind::RepoDocs => {
+                format!("Repo docs pack from {} source path(s).", source_refs.len())
+            }
+            ForgeKnowledgePackKind::RepoRunbook => {
+                format!(
+                    "Repo runbook pack from {} source path(s).",
+                    source_refs.len()
+                )
+            }
+            _ => unreachable!(),
+        });
+        self.record_forge_knowledge_pack_for_thread(
+            thread_id,
+            kind,
+            title,
+            summary,
+            ForgeKnowledgePackCatalogScopeKind::Project,
+            source_refs,
+            provenance,
+            updated_at_epoch_ms,
+        )
+    }
+
+    pub fn record_probe_retained_summary_pack_for_thread(
+        &mut self,
+        thread_id: &str,
+        title: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let workspace_root = self
+            .knowledge_pack_scope_for_thread(
+                thread_id,
+                ForgeKnowledgePackCatalogScopeKind::Workspace,
+            )?
+            .workspace_root;
+        let session_display_name = self.probe_session_display_name(thread_id);
+        let pack_title = title
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("Retained summary: {session_display_name}"));
+        let summary = Some(format!(
+            "Retained session summary imported from Probe session `{session_display_name}`."
+        ));
+        let source_refs = vec![ForgeKnowledgePackSourceRef {
+            source_kind: ForgeKnowledgePackSourceKind::ProbeRetainedSessionSummaryArtifact,
+            reference: format!("probe.retained_session_summary:{thread_id}"),
+            label: Some(format!("{session_display_name} retained summary")),
+            shared_session_id: Some(shared_session_id),
+            probe_session_id: Some(thread_id.to_string()),
+            workspace_root,
+            recorded_at_epoch_ms: updated_at_epoch_ms,
+        }];
+        self.record_forge_knowledge_pack_for_thread(
+            thread_id,
+            ForgeKnowledgePackKind::RetainedSessionSummary,
+            pack_title,
+            summary,
+            ForgeKnowledgePackCatalogScopeKind::Workspace,
+            source_refs,
+            provenance,
+            updated_at_epoch_ms,
+        )
+    }
+
+    pub fn record_probe_accepted_patch_pack_for_thread(
+        &mut self,
+        thread_id: &str,
+        title: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before an accepted patch pack could be recorded."
+                )
+            })?;
+        let diff = self
+            .latest_diff_artifact_for_probe_sessions(&shared_session.probe_session_ids)
+            .ok_or_else(|| {
+                "No accepted patch summary is available for the current Forge shared session."
+                    .to_string()
+            })?;
+        let source_thread_id = diff.thread_id.clone();
+        let session_display_name = self.probe_session_display_name(source_thread_id.as_str());
+        let workspace_root = diff
+            .workspace_root
+            .clone()
+            .or_else(|| shared_session.workspace_root.clone());
+        let pack_title = title
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("Accepted patch: {session_display_name}"));
+        let summary = Some(format!(
+            "Accepted patch summary imported from Probe session `{session_display_name}` touching {} file(s); +{}/-{}.",
+            diff.files.len(),
+            diff.added_line_count,
+            diff.removed_line_count
+        ));
+        let source_refs = vec![ForgeKnowledgePackSourceRef {
+            source_kind: ForgeKnowledgePackSourceKind::ProbeAcceptedPatchSummaryArtifact,
+            reference: format!("probe.accepted_patch_summary:{source_thread_id}"),
+            label: Some(format!("{session_display_name} accepted patch summary")),
+            shared_session_id: Some(shared_session_id),
+            probe_session_id: Some(source_thread_id),
+            workspace_root,
+            recorded_at_epoch_ms: updated_at_epoch_ms,
+        }];
+        self.record_forge_knowledge_pack_for_thread(
+            thread_id,
+            ForgeKnowledgePackKind::AcceptedPatchSummary,
+            pack_title,
+            summary,
+            ForgeKnowledgePackCatalogScopeKind::Workspace,
+            source_refs,
+            provenance,
+            updated_at_epoch_ms,
+        )
+    }
+
     pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
         self.forge_shared_sessions.values().find(|session| {
             session
@@ -30466,6 +30700,170 @@ mod tests {
         let _ = std::fs::remove_file(projection_path);
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(other_repo);
+    }
+
+    #[test]
+    fn chat_state_records_pack_authoring_flows_for_repo_and_probe_artifacts() {
+        let repo = init_git_workspace("knowledge-pack-authoring");
+        let projection_path = unique_codex_artifact_projection_path("knowledge-pack-authoring");
+        let transcript_path = repo.join("thread-a.jsonl");
+        std::fs::write(repo.join("README.md"), "# Knowledge Pack Authoring\n")
+            .expect("write readme");
+        std::fs::create_dir_all(repo.join("docs/runbooks")).expect("create runbook dir");
+        std::fs::write(
+            repo.join("docs/runbooks/deploy.md"),
+            "# Deploy Runbook\n\n1. Ship the build.\n",
+        )
+        .expect("write runbook");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+
+        let docs_pack_id = chat
+            .record_repo_file_knowledge_pack_for_thread(
+                "thread-a",
+                crate::app_state::ForgeKnowledgePackKind::RepoDocs,
+                "Core repo docs",
+                vec![
+                    "README.md".to_string(),
+                    "docs/runbooks/deploy.md".to_string(),
+                ],
+                "operator.command:/pack docs",
+                1_700_000_130,
+            )
+            .expect("docs pack should record");
+        let runbook_pack_id = chat
+            .record_repo_file_knowledge_pack_for_thread(
+                "thread-a",
+                crate::app_state::ForgeKnowledgePackKind::RepoRunbook,
+                "Deploy runbook",
+                vec!["docs/runbooks/deploy.md".to_string()],
+                "operator.command:/pack runbook",
+                1_700_000_140,
+            )
+            .expect("runbook pack should record");
+        let retained_pack_id = chat
+            .record_probe_retained_summary_pack_for_thread(
+                "thread-a",
+                None,
+                "operator.command:/pack retained",
+                1_700_000_150,
+            )
+            .expect("retained summary pack should record");
+        let patch_pack_id = chat
+            .record_probe_accepted_patch_pack_for_thread(
+                "thread-a",
+                Some("Landing summary".to_string()),
+                "operator.command:/pack patch",
+                1_700_000_160,
+            )
+            .expect("patch summary pack should record");
+
+        let docs_pack = chat
+            .knowledge_pack_by_id(&docs_pack_id)
+            .expect("docs pack should exist");
+        assert_eq!(
+            docs_pack.kind,
+            crate::app_state::ForgeKnowledgePackKind::RepoDocs
+        );
+        assert_eq!(
+            docs_pack.catalog_scope.kind,
+            crate::app_state::ForgeKnowledgePackCatalogScopeKind::Project
+        );
+        assert_eq!(
+            docs_pack
+                .source_refs
+                .iter()
+                .map(|source_ref| source_ref.reference.as_str())
+                .collect::<Vec<_>>(),
+            vec!["README.md", "docs/runbooks/deploy.md"]
+        );
+
+        let runbook_pack = chat
+            .knowledge_pack_by_id(&runbook_pack_id)
+            .expect("runbook pack should exist");
+        assert_eq!(
+            runbook_pack.kind,
+            crate::app_state::ForgeKnowledgePackKind::RepoRunbook
+        );
+        assert_eq!(runbook_pack.source_refs.len(), 1);
+        assert_eq!(
+            runbook_pack.source_refs[0].reference,
+            "docs/runbooks/deploy.md"
+        );
+
+        let retained_pack = chat
+            .knowledge_pack_by_id(&retained_pack_id)
+            .expect("retained pack should exist");
+        assert_eq!(
+            retained_pack.kind,
+            crate::app_state::ForgeKnowledgePackKind::RetainedSessionSummary
+        );
+        assert_eq!(
+            retained_pack.source_refs[0].reference,
+            "probe.retained_session_summary:thread-a"
+        );
+        assert_eq!(
+            retained_pack.source_refs[0].shared_session_id.as_deref(),
+            Some(shared_session_id.as_str())
+        );
+
+        let patch_pack = chat
+            .knowledge_pack_by_id(&patch_pack_id)
+            .expect("patch pack should exist");
+        assert_eq!(
+            patch_pack.kind,
+            crate::app_state::ForgeKnowledgePackKind::AcceptedPatchSummary
+        );
+        assert_eq!(
+            patch_pack.source_refs[0].reference,
+            "probe.accepted_patch_summary:thread-a"
+        );
+        assert_eq!(
+            patch_pack.source_refs[0].shared_session_id.as_deref(),
+            Some(shared_session_id.as_str())
+        );
+        assert_eq!(patch_pack.title, "Landing summary");
+        assert!(
+            patch_pack
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("touching 1 file(s); +1/-1"))
+        );
+
+        let active_pack_ids = chat
+            .active_knowledge_packs()
+            .into_iter()
+            .map(|knowledge_pack| knowledge_pack.knowledge_pack_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(active_pack_ids.len(), 4);
+        assert!(active_pack_ids.contains(&docs_pack_id));
+        assert!(active_pack_ids.contains(&runbook_pack_id));
+        assert!(active_pack_ids.contains(&retained_pack_id));
+        assert!(active_pack_ids.contains(&patch_pack_id));
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
     }
 
     #[test]

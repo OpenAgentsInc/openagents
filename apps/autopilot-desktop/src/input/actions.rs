@@ -193,6 +193,18 @@ enum ChatRemoteComposerIntent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ChatForgeComposerIntent {
+    PackRepoFiles {
+        kind: crate::app_state::ForgeKnowledgePackKind,
+        title: String,
+        source_paths: Vec<String>,
+    },
+    PackRetainedSummary {
+        title: Option<String>,
+    },
+    PackAcceptedPatchSummary {
+        title: Option<String>,
+    },
+    PackStatus,
     CampaignOpen {
         title: String,
     },
@@ -4416,6 +4428,57 @@ fn build_probe_delivery_status_snapshot(
     Ok(lines.join("\n"))
 }
 
+fn build_probe_knowledge_pack_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let knowledge_packs = chat.active_knowledge_packs();
+    if knowledge_packs.is_empty() {
+        return Err("No knowledge packs are scoped to the current Forge session yet.".to_string());
+    }
+    let mut lines = vec![format!(
+        "Knowledge packs scoped to the current Forge session: {}.",
+        knowledge_packs.len()
+    )];
+    for knowledge_pack in knowledge_packs.iter().take(6) {
+        lines.push(format!(
+            "`{}` {}.",
+            knowledge_pack.knowledge_pack_id,
+            knowledge_pack.kind.display_label()
+        ));
+        lines.push(format!("Title: {}", knowledge_pack.title));
+        lines.push(format!(
+            "Scope: {}.",
+            knowledge_pack.catalog_scope.kind.display_label()
+        ));
+        if let Some(summary) = knowledge_pack.summary.as_deref() {
+            lines.push(format!("Summary: {summary}"));
+        }
+        let source_summary = knowledge_pack
+            .source_refs
+            .iter()
+            .take(3)
+            .map(|source_ref| {
+                let label = source_ref
+                    .label
+                    .as_deref()
+                    .unwrap_or(source_ref.reference.as_str());
+                format!("{}:{label}", source_ref.source_kind.label())
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        if !source_summary.is_empty() {
+            lines.push(format!("Sources: {source_summary}"));
+        }
+    }
+    if knowledge_packs.len() > 6 {
+        lines.push(format!(
+            "{} more pack(s) omitted.",
+            knowledge_packs.len().saturating_sub(6)
+        ));
+    }
+    Ok(lines.join("\n"))
+}
+
 fn build_probe_bounty_status_snapshot(
     chat: &crate::app_state::AutopilotChatState,
 ) -> Result<String, String> {
@@ -5205,6 +5268,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         return Ok(None);
     };
     if first_word != "/campaign"
+        && first_word != "/pack"
         && first_word != "/promote"
         && first_word != "/bounty"
         && first_word != "/settle"
@@ -5216,6 +5280,56 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
+    if first_word == "/pack" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Pack commands: `/pack docs <title> <path> [path ...]`, `/pack runbook <title> <path> [path ...]`, `/pack retained [title]`, `/pack patch [title]`, `/pack status`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "docs" => {
+                if words.len() < 4 {
+                    return Err("Usage: `/pack docs <title> <path> [path ...]`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::PackRepoFiles {
+                    kind: crate::app_state::ForgeKnowledgePackKind::RepoDocs,
+                    title: words[2].clone(),
+                    source_paths: words[3..].to_vec(),
+                }))
+            }
+            "runbook" | "runbooks" => {
+                if words.len() < 4 {
+                    return Err(
+                        "Usage: `/pack runbook <title> <path> [path ...]`.".to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::PackRepoFiles {
+                    kind: crate::app_state::ForgeKnowledgePackKind::RepoRunbook,
+                    title: words[2].clone(),
+                    source_paths: words[3..].to_vec(),
+                }))
+            }
+            "retained" | "retained_summary" | "summary" => {
+                Ok(Some(ChatForgeComposerIntent::PackRetainedSummary {
+                    title: (words.len() > 2).then(|| words[2..].join(" ")),
+                }))
+            }
+            "patch" | "accepted_patch" | "accepted-patch" => {
+                Ok(Some(ChatForgeComposerIntent::PackAcceptedPatchSummary {
+                    title: (words.len() > 2).then(|| words[2..].join(" ")),
+                }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/pack status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::PackStatus))
+            }
+            _ => Err(
+                "Pack commands: `/pack docs <title> <path> [path ...]`, `/pack runbook <title> <path> [path ...]`, `/pack retained [title]`, `/pack patch [title]`, `/pack status`.".to_string(),
+            ),
+        };
+    }
     if first_word == "/campaign" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
@@ -6915,6 +7029,129 @@ fn run_chat_forge_action(
     }
 
     match intent {
+        ChatForgeComposerIntent::PackRepoFiles {
+            kind,
+            title,
+            source_paths,
+        } => match state
+            .autopilot_chat
+            .record_repo_file_knowledge_pack_for_thread(
+                thread_id.as_str(),
+                kind,
+                title.clone(),
+                source_paths.clone(),
+                format!("operator.command:/pack {}", kind.label()),
+                current_epoch_millis(),
+            ) {
+            Ok(knowledge_pack_id) => {
+                let mut response = format!(
+                    "Recorded {} pack `{knowledge_pack_id}` from {} repo path(s).",
+                    kind.display_label(),
+                    source_paths.len()
+                );
+                response.push_str("\n\n");
+                response.push_str(title.as_str());
+                response.push_str("\n\nSources: ");
+                response.push_str(
+                    source_paths
+                        .iter()
+                        .map(|path| format!("`{path}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                        .as_str(),
+                );
+                if let Ok(status) =
+                    build_probe_knowledge_pack_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::PackRetainedSummary { title } => match state
+            .autopilot_chat
+            .record_probe_retained_summary_pack_for_thread(
+                thread_id.as_str(),
+                title.clone(),
+                "operator.command:/pack retained",
+                current_epoch_millis(),
+            ) {
+            Ok(knowledge_pack_id) => {
+                let mut response = if let Some(knowledge_pack) = state
+                    .autopilot_chat
+                    .knowledge_pack_by_id(&knowledge_pack_id)
+                {
+                    format!(
+                        "Recorded retained session summary pack `{knowledge_pack_id}` from `{}`.",
+                        knowledge_pack
+                            .source_refs
+                            .first()
+                            .map(|source_ref| source_ref.reference.as_str())
+                            .unwrap_or("probe.retained_session_summary")
+                    )
+                } else {
+                    format!("Recorded retained session summary pack `{knowledge_pack_id}`.")
+                };
+                if let Some(title) = title.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(title);
+                }
+                if let Ok(status) =
+                    build_probe_knowledge_pack_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::PackAcceptedPatchSummary { title } => match state
+            .autopilot_chat
+            .record_probe_accepted_patch_pack_for_thread(
+                thread_id.as_str(),
+                title.clone(),
+                "operator.command:/pack patch",
+                current_epoch_millis(),
+            ) {
+            Ok(knowledge_pack_id) => {
+                let mut response = if let Some(knowledge_pack) = state
+                    .autopilot_chat
+                    .knowledge_pack_by_id(&knowledge_pack_id)
+                {
+                    format!(
+                        "Recorded accepted patch summary pack `{knowledge_pack_id}` from `{}`.",
+                        knowledge_pack
+                            .source_refs
+                            .first()
+                            .map(|source_ref| source_ref.reference.as_str())
+                            .unwrap_or("probe.accepted_patch_summary")
+                    )
+                } else {
+                    format!("Recorded accepted patch summary pack `{knowledge_pack_id}`.")
+                };
+                if let Some(title) = title.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(title);
+                }
+                if let Ok(status) =
+                    build_probe_knowledge_pack_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::PackStatus => {
+            match build_probe_knowledge_pack_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
         ChatForgeComposerIntent::CampaignOpen { title } => match state
             .autopilot_chat
             .record_probe_campaign_for_thread(
@@ -19876,6 +20113,46 @@ mod tests {
     #[test]
     fn chat_handoff_commands_parse_human_and_agent_targets() {
         assert_eq!(
+            parse_chat_forge_intent(
+                "/pack docs \"Core repo docs\" README.md docs/runbooks/deploy.md"
+            )
+            .unwrap(),
+            Some(ChatForgeComposerIntent::PackRepoFiles {
+                kind: crate::app_state::ForgeKnowledgePackKind::RepoDocs,
+                title: "Core repo docs".to_string(),
+                source_paths: vec![
+                    "README.md".to_string(),
+                    "docs/runbooks/deploy.md".to_string()
+                ],
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/pack runbook \"Deploy runbook\" docs/runbooks/deploy.md")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::PackRepoFiles {
+                kind: crate::app_state::ForgeKnowledgePackKind::RepoRunbook,
+                title: "Deploy runbook".to_string(),
+                source_paths: vec!["docs/runbooks/deploy.md".to_string()],
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/pack retained Active summary for the current session")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::PackRetainedSummary {
+                title: Some("Active summary for the current session".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/pack patch Landing summary").unwrap(),
+            Some(ChatForgeComposerIntent::PackAcceptedPatchSummary {
+                title: Some("Landing summary".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/pack status").unwrap(),
+            Some(ChatForgeComposerIntent::PackStatus)
+        );
+        assert_eq!(
             parse_chat_forge_intent("/campaign open Improve retained eval picks").unwrap(),
             Some(ChatForgeComposerIntent::CampaignOpen {
                 title: "Improve retained eval picks".to_string(),
@@ -20039,6 +20316,9 @@ mod tests {
             Some(ChatForgeComposerIntent::SettlementStatus)
         );
         assert!(parse_chat_forge_intent("/handoff").is_err());
+        assert!(parse_chat_forge_intent("/pack").is_err());
+        assert!(parse_chat_forge_intent("/pack docs docs-only").is_err());
+        assert!(parse_chat_forge_intent("/pack status extra").is_err());
         assert!(parse_chat_forge_intent("/restore").is_err());
         assert!(parse_chat_forge_intent("/evidence").is_err());
         assert!(parse_chat_forge_intent("/deliver").is_err());

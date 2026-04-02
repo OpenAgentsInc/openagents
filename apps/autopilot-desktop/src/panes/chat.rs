@@ -7349,9 +7349,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/promote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/pack ...`, `/campaign ...`, `/promote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/promote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/pack ...`, `/campaign ...`, `/promote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);

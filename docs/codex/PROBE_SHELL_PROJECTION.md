@@ -295,6 +295,17 @@ Current local-first behavior:
   - Probe accepted patch summary artifact
   - Psionic benchmark manifest
   - Psionic judge manifest
+- the first operator-facing pack authoring loop is command-driven in the shell:
+  - `/pack docs <title> <path> [path ...]`
+  - `/pack runbook <title> <path> [path ...]`
+  - `/pack retained [title]`
+  - `/pack patch [title]`
+  - `/pack status`
+- repo docs and runbook packs are authored from repo-scoped file paths inside
+  the active workspace root instead of manual JSON edits
+- retained-summary and accepted-patch packs are imported as typed pointers to
+  the current Probe artifact ids so later routing can mount real runtime-owned
+  context instead of transcript prose
 - the shared-session shell now renders the active scoped pack catalog as a
   first-class card so later routing can use a real app-owned object set rather
   than one-off notes
