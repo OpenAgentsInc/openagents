@@ -36,13 +36,13 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     shared-session handoff, delegated child-session cards, workspace-restore
     provenance, hosted runtime ownership plus execution-host projection, and
     reviewer evidence bundle plus delivery-receipt state, active campaigns,
-    bounty contracts, claim lifecycle, settlement receipts, and participant
-    credit envelopes.
+    promotion ledgers, bounty contracts, claim lifecycle, settlement receipts,
+    and participant credit envelopes.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
     follow-ups, interrupt, approval resolution, queued-turn cancel, and
-    evidence, campaign, delivery, and settlement recording plus delivery-watch
-    refresh commands.
+    evidence, campaign, promotion, delivery, and settlement recording plus
+    delivery-watch refresh commands.
 - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
   - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
 - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)

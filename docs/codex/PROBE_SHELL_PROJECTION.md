@@ -240,8 +240,33 @@ Current local-first behavior:
   - `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`
   - `/campaign status`
 - the shell renders the active campaign as a first-class card between the
-  shared session and bounty layers so retained-case and eval-selection posture
-  is visible before promotion or settlement flows exist
+  shared session and promotion layers so retained-case and eval-selection
+  posture is visible before bounty or settlement closure
+
+## Promotion Ledger Layer
+
+Autopilot now also keeps one app-owned promotion ledger above the campaign so
+admitted improvements move through explicit shadow, promoted, and rolled-back
+states instead of transcript-only notes.
+
+Current local-first behavior:
+
+- one active promotion ledger is linked from the active campaign with a stable
+  `forge-promotion-*` id
+- each candidate admission becomes a typed revision with explicit source kind,
+  source reference, admitting actor, and provenance
+- promotion and rollback stay explicit lifecycle mutations instead of mutating
+  the campaign object in place
+- rollback records capture authority, reason, provenance, and an explicit
+  fallback promoted revision when one exists
+- operators can manage the current local promotion ledger with:
+  - `/promote shadow <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> <actor-label> [summary]`
+  - `/promote promote <actor-label> [summary]`
+  - `/promote rollback <actor-label> <reason>`
+  - `/promote status`
+- the shell renders the active promotion ledger as a first-class card between
+  the campaign and bounty layers so rollout posture is visible before payout or
+  settlement logic
 
 ## Bounty Contract Layer
 

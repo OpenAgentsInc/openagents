@@ -9508,6 +9508,97 @@ pub struct ForgeCampaign {
     pub evidence_bundle_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_ledger_id: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgePromotionLedgerStatus {
+    Draft,
+    Shadow,
+    Promoted,
+    RolledBack,
+}
+
+impl ForgePromotionLedgerStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Shadow => "shadow",
+            Self::Promoted => "promoted",
+            Self::RolledBack => "rolled_back",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Shadow => "shadow",
+            Self::Promoted => "promoted",
+            Self::RolledBack => "rolled back",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgePromotionRevision {
+    pub revision_id: String,
+    pub source_kind: ForgeCampaignArtifactKind,
+    pub source_reference: String,
+    pub admitted_by_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admitted_summary: Option<String>,
+    pub admitted_provenance: String,
+    pub admitted_at_epoch_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_by_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_provenance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_at_epoch_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rolled_back_at_epoch_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollback_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgePromotionRollbackRecord {
+    pub rollback_id: String,
+    pub revision_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollback_to_revision_id: Option<String>,
+    pub actor_label: String,
+    pub reason: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgePromotionLedger {
+    pub promotion_ledger_id: String,
+    pub campaign_id: String,
+    pub shared_session_id: String,
+    pub status: ForgePromotionLedgerStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_revision_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow_revision_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_revision_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revisions: Vec<ForgePromotionRevision>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rollback_history: Vec<ForgePromotionRollbackRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_receipt_id: Option<String>,
     pub created_at_epoch_ms: u64,
     pub updated_at_epoch_ms: u64,
 }
@@ -9986,6 +10077,7 @@ pub struct AutopilotChatState {
     forge_workspace_snapshots: std::collections::HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: std::collections::HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_campaigns: std::collections::HashMap<String, ForgeCampaign>,
+    forge_promotion_ledgers: std::collections::HashMap<String, ForgePromotionLedger>,
     forge_bounty_contracts: std::collections::HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: std::collections::HashMap<String, ForgeBountyClaim>,
     forge_settlement_receipts: std::collections::HashMap<String, ForgeSettlementReceipt>,
@@ -9995,6 +10087,7 @@ pub struct AutopilotChatState {
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
     next_forge_campaign_seq: u64,
+    next_forge_promotion_ledger_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
     next_forge_settlement_receipt_seq: u64,
@@ -10122,6 +10215,7 @@ impl Default for AutopilotChatState {
             forge_workspace_snapshots,
             forge_restore_manifests,
             forge_campaigns,
+            forge_promotion_ledgers,
             forge_bounty_contracts,
             forge_bounty_claims,
             forge_settlement_receipts,
@@ -10131,6 +10225,7 @@ impl Default for AutopilotChatState {
             next_forge_workspace_snapshot_seq,
             next_forge_restore_manifest_seq,
             next_forge_campaign_seq,
+            next_forge_promotion_ledger_seq,
             next_forge_bounty_contract_seq,
             next_forge_bounty_claim_seq,
             next_forge_settlement_receipt_seq,
@@ -10147,6 +10242,7 @@ impl Default for AutopilotChatState {
                 projection.forge_workspace_snapshots,
                 projection.forge_restore_manifests,
                 projection.forge_campaigns,
+                projection.forge_promotion_ledgers,
                 projection.forge_bounty_contracts,
                 projection.forge_bounty_claims,
                 projection.forge_settlement_receipts,
@@ -10156,6 +10252,7 @@ impl Default for AutopilotChatState {
                 projection.next_forge_workspace_snapshot_seq,
                 projection.next_forge_restore_manifest_seq,
                 projection.next_forge_campaign_seq,
+                projection.next_forge_promotion_ledger_seq,
                 projection.next_forge_bounty_contract_seq,
                 projection.next_forge_bounty_claim_seq,
                 projection.next_forge_settlement_receipt_seq,
@@ -10177,6 +10274,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 1,
                 1,
@@ -10214,6 +10313,7 @@ impl Default for AutopilotChatState {
             forge_workspace_snapshots,
             forge_restore_manifests,
             forge_campaigns,
+            forge_promotion_ledgers,
             forge_bounty_contracts,
             forge_bounty_claims,
             forge_settlement_receipts,
@@ -10223,6 +10323,7 @@ impl Default for AutopilotChatState {
             next_forge_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
             next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
             next_forge_campaign_seq: next_forge_campaign_seq.max(1),
+            next_forge_promotion_ledger_seq: next_forge_promotion_ledger_seq.max(1),
             next_forge_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
             next_forge_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
             next_forge_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
@@ -10335,6 +10436,8 @@ struct CodexArtifactProjectionDocumentV2 {
     #[serde(default)]
     campaigns: Vec<ForgeCampaign>,
     #[serde(default)]
+    promotion_ledgers: Vec<ForgePromotionLedger>,
+    #[serde(default)]
     bounty_contracts: Vec<ForgeBountyContract>,
     #[serde(default)]
     bounty_claims: Vec<ForgeBountyClaim>,
@@ -10352,6 +10455,8 @@ struct CodexArtifactProjectionDocumentV2 {
     next_restore_manifest_seq: u64,
     #[serde(default = "default_next_forge_campaign_seq")]
     next_campaign_seq: u64,
+    #[serde(default = "default_next_forge_promotion_ledger_seq")]
+    next_promotion_ledger_seq: u64,
     #[serde(default = "default_next_forge_bounty_contract_seq")]
     next_bounty_contract_seq: u64,
     #[serde(default = "default_next_forge_bounty_claim_seq")]
@@ -10372,6 +10477,7 @@ struct LoadedCodexArtifactProjection {
     forge_workspace_snapshots: HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_campaigns: HashMap<String, ForgeCampaign>,
+    forge_promotion_ledgers: HashMap<String, ForgePromotionLedger>,
     forge_bounty_contracts: HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: HashMap<String, ForgeBountyClaim>,
     forge_settlement_receipts: HashMap<String, ForgeSettlementReceipt>,
@@ -10381,6 +10487,7 @@ struct LoadedCodexArtifactProjection {
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
     next_forge_campaign_seq: u64,
+    next_forge_promotion_ledger_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
     next_forge_settlement_receipt_seq: u64,
@@ -10402,6 +10509,10 @@ fn default_next_forge_restore_manifest_seq() -> u64 {
 }
 
 fn default_next_forge_campaign_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_promotion_ledger_seq() -> u64 {
     1
 }
 
@@ -11454,11 +11565,200 @@ fn normalize_forge_campaigns(mut campaigns: Vec<ForgeCampaign>) -> Vec<ForgeCamp
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        campaign.promotion_ledger_id = campaign
+            .promotion_ledger_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         campaign.status = derive_forge_campaign_status(campaign);
     }
     campaigns
         .retain(|campaign| !campaign.shared_session_id.is_empty() && !campaign.title.is_empty());
     campaigns
+}
+
+fn normalize_forge_promotion_revisions(
+    mut revisions: Vec<ForgePromotionRevision>,
+) -> Vec<ForgePromotionRevision> {
+    revisions.sort_by(|lhs, rhs| {
+        lhs.admitted_at_epoch_ms
+            .cmp(&rhs.admitted_at_epoch_ms)
+            .then_with(|| lhs.revision_id.cmp(&rhs.revision_id))
+    });
+    let mut seen_ids = HashSet::new();
+    revisions.retain(|revision| {
+        let revision_id = revision.revision_id.trim();
+        !revision_id.is_empty() && seen_ids.insert(revision_id.to_string())
+    });
+    for revision in &mut revisions {
+        revision.revision_id = revision.revision_id.trim().to_string();
+        revision.source_reference = revision.source_reference.trim().to_string();
+        revision.admitted_by_label = revision.admitted_by_label.trim().to_string();
+        revision.admitted_summary = revision
+            .admitted_summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        revision.admitted_provenance = revision.admitted_provenance.trim().to_string();
+        revision.promoted_by_label = revision
+            .promoted_by_label
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        revision.promoted_summary = revision
+            .promoted_summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        revision.promoted_provenance = revision
+            .promoted_provenance
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        revision.rollback_reason = revision
+            .rollback_reason
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    revisions.retain(|revision| {
+        !revision.source_reference.is_empty()
+            && !revision.admitted_by_label.is_empty()
+            && !revision.admitted_provenance.is_empty()
+    });
+    revisions
+}
+
+fn normalize_forge_promotion_rollbacks(
+    mut rollbacks: Vec<ForgePromotionRollbackRecord>,
+) -> Vec<ForgePromotionRollbackRecord> {
+    rollbacks.sort_by(|lhs, rhs| {
+        lhs.recorded_at_epoch_ms
+            .cmp(&rhs.recorded_at_epoch_ms)
+            .then_with(|| lhs.rollback_id.cmp(&rhs.rollback_id))
+    });
+    let mut seen_ids = HashSet::new();
+    rollbacks.retain(|rollback| {
+        let rollback_id = rollback.rollback_id.trim();
+        !rollback_id.is_empty() && seen_ids.insert(rollback_id.to_string())
+    });
+    for rollback in &mut rollbacks {
+        rollback.rollback_id = rollback.rollback_id.trim().to_string();
+        rollback.revision_id = rollback.revision_id.trim().to_string();
+        rollback.rollback_to_revision_id = rollback
+            .rollback_to_revision_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        rollback.actor_label = rollback.actor_label.trim().to_string();
+        rollback.reason = rollback.reason.trim().to_string();
+        rollback.provenance = rollback.provenance.trim().to_string();
+    }
+    rollbacks.retain(|rollback| {
+        !rollback.revision_id.is_empty()
+            && !rollback.actor_label.is_empty()
+            && !rollback.reason.is_empty()
+            && !rollback.provenance.is_empty()
+    });
+    rollbacks
+}
+
+fn normalize_forge_promotion_ledgers(
+    mut ledgers: Vec<ForgePromotionLedger>,
+) -> Vec<ForgePromotionLedger> {
+    ledgers.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.promotion_ledger_id.cmp(&rhs.promotion_ledger_id))
+    });
+    let mut seen_ids = HashSet::new();
+    ledgers.retain(|ledger| {
+        let promotion_ledger_id = ledger.promotion_ledger_id.trim();
+        !promotion_ledger_id.is_empty() && seen_ids.insert(promotion_ledger_id.to_string())
+    });
+    for ledger in &mut ledgers {
+        ledger.promotion_ledger_id = ledger.promotion_ledger_id.trim().to_string();
+        ledger.campaign_id = ledger.campaign_id.trim().to_string();
+        ledger.shared_session_id = ledger.shared_session_id.trim().to_string();
+        ledger.active_revision_id = ledger
+            .active_revision_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        ledger.shadow_revision_id = ledger
+            .shadow_revision_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        ledger.promoted_revision_id = ledger
+            .promoted_revision_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        ledger.revisions =
+            normalize_forge_promotion_revisions(std::mem::take(&mut ledger.revisions));
+        let revision_ids = ledger
+            .revisions
+            .iter()
+            .map(|revision| revision.revision_id.as_str())
+            .collect::<HashSet<_>>();
+        if ledger
+            .active_revision_id
+            .as_deref()
+            .is_some_and(|value| !revision_ids.contains(value))
+        {
+            ledger.active_revision_id = None;
+        }
+        if ledger
+            .shadow_revision_id
+            .as_deref()
+            .is_some_and(|value| !revision_ids.contains(value))
+        {
+            ledger.shadow_revision_id = None;
+        }
+        if ledger
+            .promoted_revision_id
+            .as_deref()
+            .is_some_and(|value| !revision_ids.contains(value))
+        {
+            ledger.promoted_revision_id = None;
+        }
+        ledger.rollback_history =
+            normalize_forge_promotion_rollbacks(std::mem::take(&mut ledger.rollback_history))
+                .into_iter()
+                .filter_map(|mut rollback| {
+                    if !revision_ids.contains(rollback.revision_id.as_str()) {
+                        return None;
+                    }
+                    if rollback
+                        .rollback_to_revision_id
+                        .as_deref()
+                        .is_some_and(|value| !revision_ids.contains(value))
+                    {
+                        rollback.rollback_to_revision_id = None;
+                    }
+                    Some(rollback)
+                })
+                .collect();
+        ledger.evidence_bundle_id = ledger
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        ledger.delivery_receipt_id = ledger
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if ledger.revisions.is_empty() {
+            ledger.status = ForgePromotionLedgerStatus::Draft;
+            ledger.active_revision_id = None;
+            ledger.shadow_revision_id = None;
+            ledger.promoted_revision_id = None;
+        }
+    }
+    ledgers.retain(|ledger| !ledger.campaign_id.is_empty() && !ledger.shared_session_id.is_empty());
+    ledgers
 }
 
 fn normalize_forge_evidence_bundles(
@@ -11672,6 +11972,7 @@ fn persist_codex_artifact_projection(
     forge_workspace_snapshots: &HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: &HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_campaigns: &HashMap<String, ForgeCampaign>,
+    forge_promotion_ledgers: &HashMap<String, ForgePromotionLedger>,
     forge_bounty_contracts: &HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: &HashMap<String, ForgeBountyClaim>,
     forge_settlement_receipts: &HashMap<String, ForgeSettlementReceipt>,
@@ -11681,6 +11982,7 @@ fn persist_codex_artifact_projection(
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
     next_forge_campaign_seq: u64,
+    next_forge_promotion_ledger_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
     next_forge_settlement_receipt_seq: u64,
@@ -11716,6 +12018,9 @@ fn persist_codex_artifact_projection(
             forge_restore_manifests.values().cloned().collect(),
         ),
         campaigns: normalize_forge_campaigns(forge_campaigns.values().cloned().collect()),
+        promotion_ledgers: normalize_forge_promotion_ledgers(
+            forge_promotion_ledgers.values().cloned().collect(),
+        ),
         bounty_contracts: normalize_forge_bounty_contracts(
             forge_bounty_contracts.values().cloned().collect(),
         ),
@@ -11735,6 +12040,7 @@ fn persist_codex_artifact_projection(
         next_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
         next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
         next_campaign_seq: next_forge_campaign_seq.max(1),
+        next_promotion_ledger_seq: next_forge_promotion_ledger_seq.max(1),
         next_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
         next_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
         next_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
@@ -11763,6 +12069,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 forge_workspace_snapshots: HashMap::new(),
                 forge_restore_manifests: HashMap::new(),
                 forge_campaigns: HashMap::new(),
+                forge_promotion_ledgers: HashMap::new(),
                 forge_bounty_contracts: HashMap::new(),
                 forge_bounty_claims: HashMap::new(),
                 forge_settlement_receipts: HashMap::new(),
@@ -11772,6 +12079,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 next_forge_workspace_snapshot_seq: 1,
                 next_forge_restore_manifest_seq: 1,
                 next_forge_campaign_seq: 1,
+                next_forge_promotion_ledger_seq: 1,
                 next_forge_bounty_contract_seq: 1,
                 next_forge_bounty_claim_seq: 1,
                 next_forge_settlement_receipt_seq: 1,
@@ -11822,6 +12130,8 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        Vec::new(),
+        1,
         1,
         1,
         1,
@@ -11854,6 +12164,7 @@ fn load_codex_artifact_projection_v2(
         document.workspace_snapshots,
         document.restore_manifests,
         document.campaigns,
+        document.promotion_ledgers,
         document.bounty_contracts,
         document.bounty_claims,
         document.settlement_receipts,
@@ -11862,6 +12173,7 @@ fn load_codex_artifact_projection_v2(
         document.next_workspace_snapshot_seq,
         document.next_restore_manifest_seq,
         document.next_campaign_seq,
+        document.next_promotion_ledger_seq,
         document.next_bounty_contract_seq,
         document.next_bounty_claim_seq,
         document.next_settlement_receipt_seq,
@@ -11879,6 +12191,7 @@ fn build_loaded_codex_artifact_projection(
     workspace_snapshots: Vec<ForgeWorkspaceSnapshot>,
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
     campaigns: Vec<ForgeCampaign>,
+    promotion_ledgers: Vec<ForgePromotionLedger>,
     bounty_contracts: Vec<ForgeBountyContract>,
     bounty_claims: Vec<ForgeBountyClaim>,
     settlement_receipts: Vec<ForgeSettlementReceipt>,
@@ -11887,6 +12200,7 @@ fn build_loaded_codex_artifact_projection(
     next_workspace_snapshot_seq: u64,
     next_restore_manifest_seq: u64,
     next_campaign_seq: u64,
+    next_promotion_ledger_seq: u64,
     next_bounty_contract_seq: u64,
     next_bounty_claim_seq: u64,
     next_settlement_receipt_seq: u64,
@@ -11937,6 +12251,11 @@ fn build_loaded_codex_artifact_projection(
         forge_campaigns.insert(campaign.campaign_id.clone(), campaign);
     }
 
+    let mut forge_promotion_ledgers = HashMap::<String, ForgePromotionLedger>::new();
+    for ledger in normalize_forge_promotion_ledgers(promotion_ledgers) {
+        forge_promotion_ledgers.insert(ledger.promotion_ledger_id.clone(), ledger);
+    }
+
     let mut forge_bounty_contracts = HashMap::<String, ForgeBountyContract>::new();
     for contract in normalize_forge_bounty_contracts(bounty_contracts) {
         forge_bounty_contracts.insert(contract.bounty_contract_id.clone(), contract);
@@ -11970,6 +12289,7 @@ fn build_loaded_codex_artifact_projection(
         forge_workspace_snapshots,
         forge_restore_manifests,
         forge_campaigns,
+        forge_promotion_ledgers,
         forge_bounty_contracts,
         forge_bounty_claims,
         forge_settlement_receipts,
@@ -11979,6 +12299,7 @@ fn build_loaded_codex_artifact_projection(
         next_forge_workspace_snapshot_seq: next_workspace_snapshot_seq.max(1),
         next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
         next_forge_campaign_seq: next_campaign_seq.max(1),
+        next_forge_promotion_ledger_seq: next_promotion_ledger_seq.max(1),
         next_forge_bounty_contract_seq: next_bounty_contract_seq.max(1),
         next_forge_bounty_claim_seq: next_bounty_claim_seq.max(1),
         next_forge_settlement_receipt_seq: next_settlement_receipt_seq.max(1),
@@ -12443,6 +12764,7 @@ impl AutopilotChatState {
                 state.forge_workspace_snapshots = projection.forge_workspace_snapshots;
                 state.forge_restore_manifests = projection.forge_restore_manifests;
                 state.forge_campaigns = projection.forge_campaigns;
+                state.forge_promotion_ledgers = projection.forge_promotion_ledgers;
                 state.forge_bounty_contracts = projection.forge_bounty_contracts;
                 state.forge_bounty_claims = projection.forge_bounty_claims;
                 state.forge_settlement_receipts = projection.forge_settlement_receipts;
@@ -12453,6 +12775,7 @@ impl AutopilotChatState {
                     projection.next_forge_workspace_snapshot_seq;
                 state.next_forge_restore_manifest_seq = projection.next_forge_restore_manifest_seq;
                 state.next_forge_campaign_seq = projection.next_forge_campaign_seq;
+                state.next_forge_promotion_ledger_seq = projection.next_forge_promotion_ledger_seq;
                 state.next_forge_bounty_contract_seq = projection.next_forge_bounty_contract_seq;
                 state.next_forge_bounty_claim_seq = projection.next_forge_bounty_claim_seq;
                 state.next_forge_settlement_receipt_seq =
@@ -12470,6 +12793,7 @@ impl AutopilotChatState {
                 state.forge_workspace_snapshots.clear();
                 state.forge_restore_manifests.clear();
                 state.forge_campaigns.clear();
+                state.forge_promotion_ledgers.clear();
                 state.forge_bounty_contracts.clear();
                 state.forge_bounty_claims.clear();
                 state.forge_settlement_receipts.clear();
@@ -12479,6 +12803,7 @@ impl AutopilotChatState {
                 state.next_forge_workspace_snapshot_seq = 1;
                 state.next_forge_restore_manifest_seq = 1;
                 state.next_forge_campaign_seq = 1;
+                state.next_forge_promotion_ledger_seq = 1;
                 state.next_forge_bounty_contract_seq = 1;
                 state.next_forge_bounty_claim_seq = 1;
                 state.next_forge_settlement_receipt_seq = 1;
@@ -13184,6 +13509,26 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.campaign_for_thread(thread_id))
     }
 
+    fn promotion_ledger_for_campaign(&self, campaign_id: &str) -> Option<&ForgePromotionLedger> {
+        let promotion_ledger_id = self
+            .forge_campaigns
+            .get(campaign_id)?
+            .promotion_ledger_id
+            .as_deref()?;
+        self.forge_promotion_ledgers.get(promotion_ledger_id)
+    }
+
+    fn promotion_ledger_for_thread(&self, thread_id: &str) -> Option<&ForgePromotionLedger> {
+        let campaign = self.campaign_for_thread(thread_id)?;
+        self.promotion_ledger_for_campaign(campaign.campaign_id.as_str())
+    }
+
+    pub fn active_promotion_ledger(&self) -> Option<&ForgePromotionLedger> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.promotion_ledger_for_thread(thread_id))
+    }
+
     pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
         self.forge_shared_sessions.values().find(|session| {
             session
@@ -13252,6 +13597,14 @@ impl AutopilotChatState {
         let campaign_id = format!("forge-campaign-{}", self.next_forge_campaign_seq);
         self.next_forge_campaign_seq = self.next_forge_campaign_seq.saturating_add(1);
         campaign_id
+    }
+
+    fn next_promotion_ledger_id(&mut self) -> String {
+        let promotion_ledger_id =
+            format!("forge-promotion-{}", self.next_forge_promotion_ledger_seq);
+        self.next_forge_promotion_ledger_seq =
+            self.next_forge_promotion_ledger_seq.saturating_add(1);
+        promotion_ledger_id
     }
 
     fn next_bounty_contract_id(&mut self) -> String {
@@ -13610,7 +13963,99 @@ impl AutopilotChatState {
             campaign.status = derive_forge_campaign_status(campaign);
             campaign.updated_at_epoch_ms = updated_at_epoch_ms.max(campaign.updated_at_epoch_ms);
         }
+        if let Some(campaign_id) = shared_session.campaign_id.as_deref() {
+            let _ = self.sync_promotion_ledger_links_for_campaign(campaign_id, updated_at_epoch_ms);
+        }
         Ok(())
+    }
+
+    fn sync_promotion_ledger_links_for_campaign(
+        &mut self,
+        campaign_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(), String> {
+        let campaign = self
+            .forge_campaigns
+            .get(campaign_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Campaign `{campaign_id}` disappeared before promotion ledger linkage could be refreshed."
+                )
+            })?;
+        let Some(promotion_ledger_id) = campaign.promotion_ledger_id.as_deref() else {
+            return Ok(());
+        };
+        let ledger = self
+            .forge_promotion_ledgers
+            .get_mut(promotion_ledger_id)
+            .ok_or_else(|| {
+                format!(
+                    "Promotion ledger `{promotion_ledger_id}` disappeared before it could be refreshed."
+                )
+            })?;
+        ledger.campaign_id = campaign.campaign_id.clone();
+        ledger.shared_session_id = campaign.shared_session_id.clone();
+        ledger.evidence_bundle_id = campaign.evidence_bundle_id.clone();
+        ledger.delivery_receipt_id = campaign.delivery_receipt_id.clone();
+        ledger.updated_at_epoch_ms = updated_at_epoch_ms.max(ledger.updated_at_epoch_ms);
+        Ok(())
+    }
+
+    fn ensure_promotion_ledger_for_campaign(
+        &mut self,
+        campaign_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        if let Some(existing) = self
+            .forge_campaigns
+            .get(campaign_id)
+            .and_then(|campaign| campaign.promotion_ledger_id.clone())
+            && self.forge_promotion_ledgers.contains_key(existing.as_str())
+        {
+            let _ = self.sync_promotion_ledger_links_for_campaign(campaign_id, updated_at_epoch_ms);
+            return Ok(existing);
+        }
+
+        let campaign = self
+            .forge_campaigns
+            .get(campaign_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Campaign `{campaign_id}` disappeared before a promotion ledger could be created."
+                )
+            })?;
+        let promotion_ledger_id = self.next_promotion_ledger_id();
+        self.forge_promotion_ledgers.insert(
+            promotion_ledger_id.clone(),
+            ForgePromotionLedger {
+                promotion_ledger_id: promotion_ledger_id.clone(),
+                campaign_id: campaign.campaign_id.clone(),
+                shared_session_id: campaign.shared_session_id.clone(),
+                status: ForgePromotionLedgerStatus::Draft,
+                active_revision_id: None,
+                shadow_revision_id: None,
+                promoted_revision_id: None,
+                revisions: Vec::new(),
+                rollback_history: Vec::new(),
+                evidence_bundle_id: campaign.evidence_bundle_id.clone(),
+                delivery_receipt_id: campaign.delivery_receipt_id.clone(),
+                created_at_epoch_ms: updated_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        let campaign = self
+            .forge_campaigns
+            .get_mut(campaign_id)
+            .ok_or_else(|| {
+                format!(
+                    "Campaign `{campaign_id}` disappeared before the promotion ledger link could be recorded."
+                )
+            })?;
+        campaign.promotion_ledger_id = Some(promotion_ledger_id.clone());
+        campaign.updated_at_epoch_ms = updated_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        Ok(promotion_ledger_id)
     }
 
     pub fn record_probe_campaign_for_thread(
@@ -13660,6 +14105,7 @@ impl AutopilotChatState {
                     verification_refs: Vec::new(),
                     evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
                     delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
+                    promotion_ledger_id: None,
                     created_at_epoch_ms,
                     updated_at_epoch_ms,
                 });
@@ -13999,6 +14445,251 @@ impl AutopilotChatState {
         );
         self.persist_codex_artifact_projection();
         Ok((campaign_id, resolved_reference))
+    }
+
+    pub fn record_probe_promotion_shadow_for_thread(
+        &mut self,
+        thread_id: &str,
+        source_kind: ForgeCampaignArtifactKind,
+        source_reference: impl Into<String>,
+        actor_label: impl Into<String>,
+        summary: Option<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let actor_label = actor_label.into().trim().to_string();
+        if actor_label.is_empty() {
+            return Err("Promotion actor label cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        if provenance.is_empty() {
+            return Err("Promotion provenance cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before promotion state could be recorded."
+                )
+            })?;
+        let campaign_id = shared_session
+            .campaign_id
+            .clone()
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let promotion_ledger_id =
+            self.ensure_promotion_ledger_for_campaign(campaign_id.as_str(), recorded_at_epoch_ms)?;
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let next_revision_id = format!(
+            "{promotion_ledger_id}-rev-{}",
+            self.forge_promotion_ledgers
+                .get(&promotion_ledger_id)
+                .map_or(1usize, |ledger| ledger.revisions.len().saturating_add(1))
+        );
+        let resolved_source = self.resolve_campaign_artifact_ref_for_shared_session(
+            thread_id,
+            &shared_session,
+            next_revision_id.clone(),
+            source_kind,
+            source_reference,
+            summary.clone(),
+            recorded_at_epoch_ms,
+        )?;
+        let ledger = self
+            .forge_promotion_ledgers
+            .get_mut(&promotion_ledger_id)
+            .ok_or_else(|| {
+                format!(
+                    "Promotion ledger `{promotion_ledger_id}` disappeared before shadow state could be recorded."
+                )
+            })?;
+        let revision = ForgePromotionRevision {
+            revision_id: next_revision_id.clone(),
+            source_kind: resolved_source.kind,
+            source_reference: resolved_source.reference.clone(),
+            admitted_by_label: actor_label,
+            admitted_summary: summary,
+            admitted_provenance: provenance,
+            admitted_at_epoch_ms: recorded_at_epoch_ms,
+            promoted_by_label: None,
+            promoted_summary: None,
+            promoted_provenance: None,
+            promoted_at_epoch_ms: None,
+            rolled_back_at_epoch_ms: None,
+            rollback_reason: None,
+        };
+        ledger.revisions.push(revision);
+        ledger.revisions =
+            normalize_forge_promotion_revisions(std::mem::take(&mut ledger.revisions));
+        ledger.status = ForgePromotionLedgerStatus::Shadow;
+        ledger.active_revision_id = Some(next_revision_id.clone());
+        ledger.shadow_revision_id = Some(next_revision_id.clone());
+        ledger.updated_at_epoch_ms = recorded_at_epoch_ms.max(ledger.updated_at_epoch_ms);
+        let _ = self
+            .sync_promotion_ledger_links_for_campaign(campaign_id.as_str(), recorded_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok((promotion_ledger_id, next_revision_id))
+    }
+
+    pub fn record_probe_promotion_promote_for_thread(
+        &mut self,
+        thread_id: &str,
+        actor_label: impl Into<String>,
+        summary: Option<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let actor_label = actor_label.into().trim().to_string();
+        if actor_label.is_empty() {
+            return Err("Promotion actor label cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        if provenance.is_empty() {
+            return Err("Promotion provenance cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let campaign_id = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .and_then(|session| session.campaign_id.clone())
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let promotion_ledger_id =
+            self.ensure_promotion_ledger_for_campaign(campaign_id.as_str(), recorded_at_epoch_ms)?;
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let ledger = self
+            .forge_promotion_ledgers
+            .get_mut(&promotion_ledger_id)
+            .ok_or_else(|| {
+                format!(
+                    "Promotion ledger `{promotion_ledger_id}` disappeared before promotion state could be recorded."
+                )
+            })?;
+        let shadow_revision_id = ledger.shadow_revision_id.clone().ok_or_else(|| {
+            "Shadow a candidate first with `/promote shadow <kind> <reference> <actor-label> [summary]`.".to_string()
+        })?;
+        let revision = ledger
+            .revisions
+            .iter_mut()
+            .find(|revision| revision.revision_id == shadow_revision_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shadow revision `{shadow_revision_id}` disappeared before it could be promoted."
+                )
+            })?;
+        revision.promoted_by_label = Some(actor_label);
+        revision.promoted_summary = summary;
+        revision.promoted_provenance = Some(provenance);
+        revision.promoted_at_epoch_ms = Some(recorded_at_epoch_ms);
+        ledger.status = ForgePromotionLedgerStatus::Promoted;
+        ledger.active_revision_id = Some(shadow_revision_id.clone());
+        ledger.promoted_revision_id = Some(shadow_revision_id.clone());
+        ledger.shadow_revision_id = None;
+        ledger.updated_at_epoch_ms = recorded_at_epoch_ms.max(ledger.updated_at_epoch_ms);
+        let _ = self
+            .sync_promotion_ledger_links_for_campaign(campaign_id.as_str(), recorded_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok((promotion_ledger_id, shadow_revision_id))
+    }
+
+    pub fn record_probe_promotion_rollback_for_thread(
+        &mut self,
+        thread_id: &str,
+        actor_label: impl Into<String>,
+        reason: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let actor_label = actor_label.into().trim().to_string();
+        if actor_label.is_empty() {
+            return Err("Rollback actor label cannot be empty.".to_string());
+        }
+        let reason = reason.into().trim().to_string();
+        if reason.is_empty() {
+            return Err("Rollback reason cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        if provenance.is_empty() {
+            return Err("Rollback provenance cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let campaign_id = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .and_then(|session| session.campaign_id.clone())
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let promotion_ledger_id =
+            self.ensure_promotion_ledger_for_campaign(campaign_id.as_str(), recorded_at_epoch_ms)?;
+        let ledger = self
+            .forge_promotion_ledgers
+            .get_mut(&promotion_ledger_id)
+            .ok_or_else(|| {
+                format!(
+                    "Promotion ledger `{promotion_ledger_id}` disappeared before rollback state could be recorded."
+                )
+            })?;
+        let active_revision_id = ledger.active_revision_id.clone().ok_or_else(|| {
+            "Shadow or promote a revision first with `/promote shadow ...`.".to_string()
+        })?;
+        let fallback_revision_id = ledger
+            .revisions
+            .iter()
+            .filter(|revision| {
+                revision.revision_id != active_revision_id
+                    && revision.promoted_at_epoch_ms.is_some()
+            })
+            .max_by(|lhs, rhs| {
+                lhs.promoted_at_epoch_ms
+                    .cmp(&rhs.promoted_at_epoch_ms)
+                    .then_with(|| lhs.revision_id.cmp(&rhs.revision_id))
+            })
+            .map(|revision| revision.revision_id.clone());
+        let revision = ledger
+            .revisions
+            .iter_mut()
+            .find(|revision| revision.revision_id == active_revision_id)
+            .ok_or_else(|| {
+                format!(
+                    "Active revision `{active_revision_id}` disappeared before it could be rolled back."
+                )
+            })?;
+        revision.rolled_back_at_epoch_ms = Some(recorded_at_epoch_ms);
+        revision.rollback_reason = Some(reason.clone());
+        let rollback_id = format!(
+            "{promotion_ledger_id}-rollback-{}",
+            ledger.rollback_history.len().saturating_add(1)
+        );
+        ledger.rollback_history.push(ForgePromotionRollbackRecord {
+            rollback_id: rollback_id.clone(),
+            revision_id: active_revision_id.clone(),
+            rollback_to_revision_id: fallback_revision_id.clone(),
+            actor_label,
+            reason,
+            provenance,
+            recorded_at_epoch_ms,
+        });
+        ledger.rollback_history =
+            normalize_forge_promotion_rollbacks(std::mem::take(&mut ledger.rollback_history));
+        ledger.status = ForgePromotionLedgerStatus::RolledBack;
+        ledger.active_revision_id = fallback_revision_id.clone();
+        ledger.promoted_revision_id = fallback_revision_id;
+        ledger.shadow_revision_id = None;
+        ledger.updated_at_epoch_ms = recorded_at_epoch_ms.max(ledger.updated_at_epoch_ms);
+        let _ = self
+            .sync_promotion_ledger_links_for_campaign(campaign_id.as_str(), recorded_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok((promotion_ledger_id, rollback_id))
     }
 
     fn resolve_campaign_artifact_ref_for_shared_session(
@@ -19490,6 +20181,7 @@ impl AutopilotChatState {
             &self.forge_workspace_snapshots,
             &self.forge_restore_manifests,
             &self.forge_campaigns,
+            &self.forge_promotion_ledgers,
             &self.forge_bounty_contracts,
             &self.forge_bounty_claims,
             &self.forge_settlement_receipts,
@@ -19499,6 +20191,7 @@ impl AutopilotChatState {
             self.next_forge_workspace_snapshot_seq,
             self.next_forge_restore_manifest_seq,
             self.next_forge_campaign_seq,
+            self.next_forge_promotion_ledger_seq,
             self.next_forge_bounty_contract_seq,
             self.next_forge_bounty_claim_seq,
             self.next_forge_settlement_receipt_seq,
@@ -23225,8 +23918,9 @@ mod tests {
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeProbeOperatorHandoffState,
         ForgeProbePreparedBaselineStatus, ForgeProbeSessionLocationKind,
-        ForgeProbeSessionOwnerKind, ForgeSettlementClosurePath, ForgeSettlementReceiptStatus,
-        ForgeSharedSessionControlOwner, ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
+        ForgeProbeSessionOwnerKind, ForgePromotionLedgerStatus, ForgeSettlementClosurePath,
+        ForgeSettlementReceiptStatus, ForgeSharedSessionControlOwner,
+        ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
     };
 
     use super::{
@@ -29116,6 +29810,245 @@ mod tests {
                         == crate::app_state::ForgeCampaignArtifactKind::DeliveryReceipt
                         && artifact_ref.reference == delivery_receipt_id
                 })
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_promotion_ledger_and_rollback_history() {
+        let repo = init_git_workspace("promotion-ledger");
+        let projection_path = unique_codex_artifact_projection_path("promotion-ledger");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Looks good overall.",
+            1_700_000_130,
+            false,
+        );
+        let (evidence_bundle_id, _) = chat
+            .record_probe_evidence_verification_for_thread(
+                "thread-a",
+                "cargo-test",
+                ForgeEvidenceVerificationStatus::Passed,
+                Some("target/test.log".to_string()),
+                Some("12 tests passed".to_string()),
+                1_700_000_140,
+            )
+            .expect("verification evidence should record");
+        let (delivery_receipt_id, _) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("abc123".to_string()),
+                "feature/promotion-ledger",
+                "def456",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/promotion-ledger?expand=1"
+                        .to_string(),
+                ),
+                Some("https://github.com/OpenAgentsInc/openagents/pull/101".to_string()),
+                "Add promotion ledgers",
+                "## Summary\n- persist promotion rollout state",
+                1_700_000_150,
+            )
+            .expect("delivery receipt should record");
+        let campaign_id = chat
+            .record_probe_campaign_for_thread(
+                "thread-a",
+                "Promote retained improvements safely",
+                1_700_000_160,
+            )
+            .expect("campaign should record");
+        chat.record_probe_campaign_candidate_for_thread(
+            "thread-a",
+            crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+            "latest",
+            Some("accepted patch survived review".to_string()),
+            1_700_000_170,
+        )
+        .expect("accepted patch candidate should record");
+        chat.record_probe_campaign_candidate_for_thread(
+            "thread-a",
+            crate::app_state::ForgeCampaignArtifactKind::PsionicComparisonManifest,
+            "retained://compare-7",
+            Some("shadow compare manifest".to_string()),
+            1_700_000_175,
+        )
+        .expect("compare candidate should record");
+
+        let (promotion_ledger_id, first_revision_id) = chat
+            .record_probe_promotion_shadow_for_thread(
+                "thread-a",
+                crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+                "latest",
+                "chris",
+                Some("ready for shadow".to_string()),
+                "operator.command:/promote shadow",
+                1_700_000_180,
+            )
+            .expect("shadow revision should record");
+        let (promoted_ledger_id, promoted_revision_id) = chat
+            .record_probe_promotion_promote_for_thread(
+                "thread-a",
+                "chris",
+                Some("promote after shadow pass".to_string()),
+                "operator.command:/promote promote",
+                1_700_000_190,
+            )
+            .expect("promotion should record");
+        assert_eq!(promoted_ledger_id, promotion_ledger_id);
+        assert_eq!(promoted_revision_id, first_revision_id);
+        let (_, second_revision_id) = chat
+            .record_probe_promotion_shadow_for_thread(
+                "thread-a",
+                crate::app_state::ForgeCampaignArtifactKind::PsionicComparisonManifest,
+                "retained://compare-7",
+                "chris",
+                Some("shadow the new compare winner".to_string()),
+                "operator.command:/promote shadow",
+                1_700_000_200,
+            )
+            .expect("second shadow revision should record");
+        let (_, rollback_id) = chat
+            .record_probe_promotion_rollback_for_thread(
+                "thread-a",
+                "chris",
+                "revert due to regression",
+                "operator.command:/promote rollback",
+                1_700_000_210,
+            )
+            .expect("rollback should record");
+
+        let campaign = chat
+            .forge_campaigns
+            .get(&campaign_id)
+            .expect("campaign should exist");
+        assert_eq!(
+            campaign.promotion_ledger_id.as_deref(),
+            Some(promotion_ledger_id.as_str())
+        );
+
+        let ledger = chat
+            .active_promotion_ledger()
+            .expect("active promotion ledger should exist");
+        assert_eq!(ledger.promotion_ledger_id, promotion_ledger_id);
+        assert_eq!(ledger.campaign_id, campaign_id);
+        assert_eq!(
+            ledger.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(
+            ledger.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        assert_eq!(ledger.status, ForgePromotionLedgerStatus::RolledBack);
+        assert_eq!(ledger.revisions.len(), 2);
+        assert_eq!(ledger.rollback_history.len(), 1);
+        assert_eq!(
+            ledger.active_revision_id.as_deref(),
+            Some(first_revision_id.as_str())
+        );
+        assert_eq!(
+            ledger.promoted_revision_id.as_deref(),
+            Some(first_revision_id.as_str())
+        );
+        assert_eq!(ledger.shadow_revision_id, None);
+        let first_revision = ledger
+            .revisions
+            .iter()
+            .find(|revision| revision.revision_id == first_revision_id)
+            .expect("first revision should exist");
+        assert_eq!(first_revision.promoted_by_label.as_deref(), Some("chris"));
+        assert!(first_revision.promoted_at_epoch_ms.is_some());
+        let second_revision = ledger
+            .revisions
+            .iter()
+            .find(|revision| revision.revision_id == second_revision_id)
+            .expect("second revision should exist");
+        assert_eq!(
+            second_revision.source_reference,
+            "retained://compare-7".to_string()
+        );
+        assert_eq!(
+            second_revision.rollback_reason.as_deref(),
+            Some("revert due to regression")
+        );
+        assert_eq!(second_revision.rolled_back_at_epoch_ms, Some(1_700_000_210));
+        let rollback = ledger
+            .rollback_history
+            .iter()
+            .find(|rollback| rollback.rollback_id == rollback_id)
+            .expect("rollback record should exist");
+        assert_eq!(rollback.actor_label, "chris");
+        assert_eq!(rollback.reason, "revert due to regression");
+        assert_eq!(
+            rollback.rollback_to_revision_id.as_deref(),
+            Some(first_revision_id.as_str())
+        );
+        assert_eq!(
+            rollback.provenance,
+            "operator.command:/promote rollback".to_string()
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_campaign = reloaded
+            .forge_campaigns
+            .get(&campaign_id)
+            .expect("reloaded campaign should exist");
+        assert_eq!(
+            reloaded_campaign.promotion_ledger_id.as_deref(),
+            Some(promotion_ledger_id.as_str())
+        );
+        let reloaded_ledger = reloaded
+            .forge_promotion_ledgers
+            .get(&promotion_ledger_id)
+            .expect("reloaded promotion ledger should exist");
+        assert_eq!(
+            reloaded_ledger.status,
+            ForgePromotionLedgerStatus::RolledBack
+        );
+        assert_eq!(reloaded_ledger.revisions.len(), 2);
+        assert_eq!(reloaded_ledger.rollback_history.len(), 1);
+        assert_eq!(
+            reloaded_ledger.active_revision_id.as_deref(),
+            Some(first_revision_id.as_str())
+        );
+        assert_eq!(
+            reloaded_ledger.promoted_revision_id.as_deref(),
+            Some(first_revision_id.as_str())
+        );
+        assert_eq!(
+            reloaded_ledger
+                .rollback_history
+                .first()
+                .and_then(|rollback| rollback.rollback_to_revision_id.as_deref()),
+            Some(first_revision_id.as_str())
         );
 
         let _ = std::fs::remove_file(projection_path);

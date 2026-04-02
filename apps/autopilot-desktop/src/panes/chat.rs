@@ -14,7 +14,7 @@ use crate::app_state::{
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
     ForgeBountyContract, ForgeCampaign, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
-    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeSettlementReceipt,
+    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgePromotionLedger, ForgeSettlementReceipt,
     ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
     ForgeWorkspaceSnapshot, ManagedChatChannelProjection, ManagedChatDeliveryState,
     ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
@@ -3028,6 +3028,12 @@ fn active_campaign_markdown_source(campaign: &ForgeCampaign) -> String {
             compact_display_token(delivery_receipt_id, 24)
         ));
     }
+    if let Some(promotion_ledger_id) = campaign.promotion_ledger_id.as_deref() {
+        lines.push(format!(
+            "- **promotion ledger:** `{}`",
+            compact_display_token(promotion_ledger_id, 24)
+        ));
+    }
     if !campaign.candidate_refs.is_empty() {
         lines.push(format!(
             "- **candidate refs:** {}",
@@ -3085,6 +3091,115 @@ fn active_campaign_markdown_source(campaign: &ForgeCampaign) -> String {
         }
     } else {
         lines.push("- **verification refs:** _none recorded_".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_promotion_ledger_meta_line(ledger: &ForgePromotionLedger) -> String {
+    let mut parts = vec![format!(
+        "promotion:{}",
+        compact_display_token(ledger.promotion_ledger_id.as_str(), 18)
+    )];
+    parts.push(format!("status:{}", ledger.status.label()));
+    parts.push(format!("revisions:{}", ledger.revisions.len()));
+    parts.push(format!("rollbacks:{}", ledger.rollback_history.len()));
+    if let Some(updated) = format_thread_timestamp(ledger.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_promotion_ledger_markdown_source(ledger: &ForgePromotionLedger) -> String {
+    let mut lines = vec![format!("- **status:** {}", ledger.status.display_label())];
+    lines.push(format!(
+        "- **campaign:** `{}`",
+        compact_display_token(ledger.campaign_id.as_str(), 24)
+    ));
+    lines.push(format!(
+        "- **shared session:** `{}`",
+        compact_display_token(ledger.shared_session_id.as_str(), 24)
+    ));
+    if let Some(active_revision_id) = ledger.active_revision_id.as_deref() {
+        lines.push(format!(
+            "- **active revision:** `{}`",
+            compact_display_token(active_revision_id, 24)
+        ));
+    } else {
+        lines.push("- **active revision:** _none_".to_string());
+    }
+    if let Some(shadow_revision_id) = ledger.shadow_revision_id.as_deref() {
+        lines.push(format!(
+            "- **shadow revision:** `{}`",
+            compact_display_token(shadow_revision_id, 24)
+        ));
+    }
+    if let Some(promoted_revision_id) = ledger.promoted_revision_id.as_deref() {
+        lines.push(format!(
+            "- **promoted revision:** `{}`",
+            compact_display_token(promoted_revision_id, 24)
+        ));
+    }
+    if let Some(evidence_bundle_id) = ledger.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = ledger.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
+    }
+    if !ledger.revisions.is_empty() {
+        lines.push(format!("- **revisions:** {}", ledger.revisions.len()));
+        for revision in ledger.revisions.iter().rev().take(4) {
+            let mut line = format!(
+                "  - `{}`  •  {}  •  `{}`",
+                compact_display_token(revision.revision_id.as_str(), 18),
+                revision.source_kind.display_label(),
+                compact_display_token(revision.source_reference.as_str(), 44)
+            );
+            if let Some(summary) = revision.admitted_summary.as_deref() {
+                line.push_str(&format!("  •  {}", compact_display_token(summary, 44)));
+            }
+            if revision.promoted_at_epoch_ms.is_some() {
+                line.push_str("  •  promoted");
+            }
+            if revision.rolled_back_at_epoch_ms.is_some() {
+                line.push_str("  •  rolled back");
+            }
+            lines.push(line);
+        }
+    } else {
+        lines.push("- **revisions:** _none recorded_".to_string());
+    }
+    if !ledger.rollback_history.is_empty() {
+        lines.push(format!(
+            "- **rollback history:** {}",
+            ledger.rollback_history.len()
+        ));
+        for rollback in ledger.rollback_history.iter().rev().take(4) {
+            let mut line = format!(
+                "  - `{}`  •  revision `{}`  •  `{}`",
+                compact_display_token(rollback.rollback_id.as_str(), 18),
+                compact_display_token(rollback.revision_id.as_str(), 18),
+                compact_display_token(rollback.actor_label.as_str(), 24)
+            );
+            if let Some(rollback_to_revision_id) = rollback.rollback_to_revision_id.as_deref() {
+                line.push_str(&format!(
+                    "  •  to `{}`",
+                    compact_display_token(rollback_to_revision_id, 18)
+                ));
+            }
+            line.push_str(&format!(
+                "  •  {}",
+                compact_display_token(rollback.reason.as_str(), 44)
+            ));
+            lines.push(line);
+        }
+    } else {
+        lines.push("- **rollback history:** _none recorded_".to_string());
     }
     lines.join("\n")
 }
@@ -6432,6 +6547,50 @@ pub fn paint(
                 }
                 y += 10.0;
             }
+            if let Some(promotion_ledger) = autopilot_chat.active_promotion_ledger() {
+                let promotion_color = match promotion_ledger.status {
+                    crate::app_state::ForgePromotionLedgerStatus::Draft => theme::text::MUTED,
+                    crate::app_state::ForgePromotionLedgerStatus::Shadow => theme::status::WARNING,
+                    crate::app_state::ForgePromotionLedgerStatus::Promoted => {
+                        theme::status::SUCCESS
+                    }
+                    crate::app_state::ForgePromotionLedgerStatus::RolledBack => {
+                        theme::status::ERROR
+                    }
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[promotion ledger]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    promotion_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_promotion_ledger_meta_line(promotion_ledger),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let promotion_markdown = active_promotion_ledger_markdown_source(promotion_ledger);
+                if !promotion_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&promotion_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(bounty_contract) = autopilot_chat.active_bounty_contract() {
                 let bounty_color = match bounty_contract.lifecycle_status {
                     crate::app_state::ForgeBountyLifecycleStatus::Draft => theme::text::MUTED,
@@ -7069,9 +7228,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/promote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/promote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);

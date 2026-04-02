@@ -219,6 +219,21 @@ enum ChatForgeComposerIntent {
         summary: Option<String>,
     },
     CampaignStatus,
+    PromoteShadow {
+        kind: crate::app_state::ForgeCampaignArtifactKind,
+        reference: String,
+        actor_label: String,
+        summary: Option<String>,
+    },
+    PromotePromote {
+        actor_label: String,
+        summary: Option<String>,
+    },
+    PromoteRollback {
+        actor_label: String,
+        reason: String,
+    },
+    PromoteStatus,
     BountyOpen {
         objective_kind: crate::app_state::ForgeBountyObjectiveKind,
         title: String,
@@ -4501,6 +4516,46 @@ fn build_probe_campaign_status_snapshot(
     if let Some(delivery_receipt_id) = campaign.delivery_receipt_id.as_deref() {
         lines.push(format!("Delivery receipt: `{delivery_receipt_id}`."));
     }
+    if let Some(promotion_ledger_id) = campaign.promotion_ledger_id.as_deref() {
+        lines.push(format!("Promotion ledger: `{promotion_ledger_id}`."));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn build_probe_promotion_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let ledger = chat.active_promotion_ledger().ok_or_else(|| {
+        "Start a promotion ledger first with `/promote shadow <kind> <reference> <actor-label> [summary]`.".to_string()
+    })?;
+    let mut lines = vec![format!(
+        "Promotion ledger `{}` is {}.",
+        ledger.promotion_ledger_id,
+        ledger.status.display_label()
+    )];
+    lines.push(format!("Campaign: `{}`.", ledger.campaign_id));
+    lines.push(format!(
+        "Revisions: {}. Rollbacks: {}.",
+        ledger.revisions.len(),
+        ledger.rollback_history.len()
+    ));
+    if let Some(active_revision_id) = ledger.active_revision_id.as_deref() {
+        lines.push(format!("Active revision: `{active_revision_id}`."));
+    } else {
+        lines.push(String::from("Active revision: none."));
+    }
+    if let Some(shadow_revision_id) = ledger.shadow_revision_id.as_deref() {
+        lines.push(format!("Shadow revision: `{shadow_revision_id}`."));
+    }
+    if let Some(promoted_revision_id) = ledger.promoted_revision_id.as_deref() {
+        lines.push(format!("Promoted revision: `{promoted_revision_id}`."));
+    }
+    if let Some(evidence_bundle_id) = ledger.evidence_bundle_id.as_deref() {
+        lines.push(format!("Evidence bundle: `{evidence_bundle_id}`."));
+    }
+    if let Some(delivery_receipt_id) = ledger.delivery_receipt_id.as_deref() {
+        lines.push(format!("Delivery receipt: `{delivery_receipt_id}`."));
+    }
     Ok(lines.join("\n"))
 }
 
@@ -5150,6 +5205,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         return Ok(None);
     };
     if first_word != "/campaign"
+        && first_word != "/promote"
         && first_word != "/bounty"
         && first_word != "/settle"
         && first_word != "/handoff"
@@ -5280,6 +5336,76 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
             }
             _ => Err(
                 "Campaign commands: `/campaign open <title>`, `/campaign goal <summary>`, `/campaign scope <summary>`, `/campaign candidate <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign status`.".to_string(),
+            ),
+        };
+    }
+    if first_word == "/promote" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Promotion commands: `/promote shadow <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> <actor-label> [summary]`, `/promote promote <actor-label> [summary]`, `/promote rollback <actor-label> <reason>`, `/promote status`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "shadow" => {
+                let Some(raw_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/promote shadow <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> <actor-label> [summary]`.".to_string(),
+                    );
+                };
+                let Some(reference) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/promote shadow <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> <actor-label> [summary]`.".to_string(),
+                    );
+                };
+                let Some(actor_label) = words.get(4).cloned() else {
+                    return Err(
+                        "Usage: `/promote shadow <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> <actor-label> [summary]`.".to_string(),
+                    );
+                };
+                let kind = parse_campaign_artifact_kind(raw_kind).ok_or_else(|| {
+                    "Promotion kind must be one of `probe_summary`, `accepted_patch`, `evidence_bundle`, `psionic_eval`, or `psionic_compare`.".to_string()
+                })?;
+                if !campaign_candidate_kind_allowed(kind) {
+                    return Err(
+                        "Promotion kind must be one of `probe_summary`, `accepted_patch`, `evidence_bundle`, `psionic_eval`, or `psionic_compare`.".to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::PromoteShadow {
+                    kind,
+                    reference,
+                    actor_label,
+                    summary: (words.len() > 5).then(|| words[5..].join(" ")),
+                }))
+            }
+            "promote" => {
+                let Some(actor_label) = words.get(2).cloned() else {
+                    return Err("Usage: `/promote promote <actor-label> [summary]`.".to_string());
+                };
+                Ok(Some(ChatForgeComposerIntent::PromotePromote {
+                    actor_label,
+                    summary: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
+            "rollback" => {
+                let Some(actor_label) = words.get(2).cloned() else {
+                    return Err("Usage: `/promote rollback <actor-label> <reason>`.".to_string());
+                };
+                if words.len() < 4 {
+                    return Err("Usage: `/promote rollback <actor-label> <reason>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::PromoteRollback {
+                    actor_label,
+                    reason: words[3..].join(" "),
+                }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/promote status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::PromoteStatus))
+            }
+            _ => Err(
+                "Promotion commands: `/promote shadow <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> <actor-label> [summary]`, `/promote promote <actor-label> [summary]`, `/promote rollback <actor-label> <reason>`, `/promote status`.".to_string(),
             ),
         };
     }
@@ -6936,6 +7062,102 @@ fn run_chat_forge_action(
         },
         ChatForgeComposerIntent::CampaignStatus => {
             match build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::PromoteShadow {
+            kind,
+            reference,
+            actor_label,
+            summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_promotion_shadow_for_thread(
+                thread_id.as_str(),
+                kind,
+                reference.clone(),
+                actor_label.clone(),
+                summary.clone(),
+                "operator.command:/promote shadow",
+                current_epoch_millis(),
+            ) {
+            Ok((promotion_ledger_id, revision_id)) => {
+                let mut response = format!(
+                    "Shadowed {} candidate in `{promotion_ledger_id}` as `{revision_id}` by `{}`.",
+                    kind.display_label(),
+                    actor_label
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_promotion_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::PromotePromote {
+            actor_label,
+            summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_promotion_promote_for_thread(
+                thread_id.as_str(),
+                actor_label.clone(),
+                summary.clone(),
+                "operator.command:/promote promote",
+                current_epoch_millis(),
+            ) {
+            Ok((promotion_ledger_id, revision_id)) => {
+                let mut response = format!(
+                    "Promoted revision `{revision_id}` in `{promotion_ledger_id}` by `{}`.",
+                    actor_label
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_promotion_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::PromoteRollback {
+            actor_label,
+            reason,
+        } => match state
+            .autopilot_chat
+            .record_probe_promotion_rollback_for_thread(
+                thread_id.as_str(),
+                actor_label.clone(),
+                reason.clone(),
+                "operator.command:/promote rollback",
+                current_epoch_millis(),
+            ) {
+            Ok((promotion_ledger_id, rollback_id)) => {
+                let mut response = format!(
+                    "Rolled back `{promotion_ledger_id}` with record `{rollback_id}` by `{}`.",
+                    actor_label
+                );
+                response.push_str("\n\n");
+                response.push_str(reason.as_str());
+                if let Ok(status) = build_probe_promotion_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::PromoteStatus => {
+            match build_probe_promotion_status_snapshot(&state.autopilot_chat) {
                 Ok(summary) => append_chat_command_result(state, prompt, summary, false),
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
@@ -19694,6 +19916,33 @@ mod tests {
             Some(ChatForgeComposerIntent::CampaignStatus)
         );
         assert_eq!(
+            parse_chat_forge_intent("/promote shadow patch latest chris ready-for-shadow").unwrap(),
+            Some(ChatForgeComposerIntent::PromoteShadow {
+                kind: crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+                reference: "latest".to_string(),
+                actor_label: "chris".to_string(),
+                summary: Some("ready-for-shadow".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/promote promote chris promote-after-shadow").unwrap(),
+            Some(ChatForgeComposerIntent::PromotePromote {
+                actor_label: "chris".to_string(),
+                summary: Some("promote-after-shadow".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/promote rollback chris revert due to regression").unwrap(),
+            Some(ChatForgeComposerIntent::PromoteRollback {
+                actor_label: "chris".to_string(),
+                reason: "revert due to regression".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/promote status").unwrap(),
+            Some(ChatForgeComposerIntent::PromoteStatus)
+        );
+        assert_eq!(
             parse_chat_forge_intent("/handoff human reviewed the diff manually").unwrap(),
             Some(ChatForgeComposerIntent::Handoff {
                 owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
@@ -19796,6 +20045,8 @@ mod tests {
         assert!(parse_chat_forge_intent("/settle").is_err());
         assert!(parse_chat_forge_intent("/campaign").is_err());
         assert!(parse_chat_forge_intent("/campaign verify probe active").is_err());
+        assert!(parse_chat_forge_intent("/promote").is_err());
+        assert!(parse_chat_forge_intent("/promote shadow delivery active chris").is_err());
     }
 
     #[test]

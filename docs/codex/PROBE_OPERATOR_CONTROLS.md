@@ -24,6 +24,11 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`
   - `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`
   - `/campaign status`
+- The desktop command surface now also exposes promotion-ledger control through:
+  - `/promote shadow <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> <actor-label> [summary]`
+  - `/promote promote <actor-label> [summary]`
+  - `/promote rollback <actor-label> <reason>`
+  - `/promote status`
 - The desktop command surface now also exposes delivery tracking through:
   - `/deliver pr [base-branch] [pr-url]`
   - `/deliver status`
@@ -55,6 +60,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - campaign commands also stay app-owned: Probe is not the hidden home for
   retained-case selection, eval candidate curation, or promotion intent above
   the current shared session
+- promotion commands also stay app-owned: Probe does not become the hidden home
+  for rollout policy, rollback authority, or admitted-improvement bookkeeping
+  above the current shared session
 - delivery commands also stay app-owned: Probe does not become the hidden home
   for PR state, reviewer outcome, or authorship attribution
 - settlement commands also stay app-owned: Probe is not the hidden home for
@@ -74,8 +82,10 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - Evidence references are local-first. They can point at local files or capture
   current terminal excerpts, but they are not a hosted artifact registry.
 - Campaign refs are also local-first. Psionic bundle or comparison refs are
-  typed strings in the shell projection, not yet a hosted retained-case catalog
-  or promotion ledger.
+  typed strings in the shell projection, not yet a hosted retained-case catalog.
+- Promotion ledgers are also local-first. They persist shadow, promoted, and
+  rolled-back revisions in the desktop shell, not a hosted rollout router or
+  traffic-management control plane.
 - Delivery receipts are also local-first. The first cut tracks GitHub PR state
   and reviewer outcome above the local shell rather than inventing a hosted
   publication substrate.
