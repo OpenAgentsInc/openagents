@@ -16,6 +16,14 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/evidence log <label> <reference>`
   - `/evidence preview <label> <reference>`
   - `/evidence screenshot <label> <reference>`
+- The desktop command surface now also exposes campaign curation through:
+  - `/campaign open <title>`
+  - `/campaign goal <summary>`
+  - `/campaign scope <summary>`
+  - `/campaign candidate <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`
+  - `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`
+  - `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`
+  - `/campaign status`
 - The desktop command surface now also exposes delivery tracking through:
   - `/deliver pr [base-branch] [pr-url]`
   - `/deliver status`
@@ -44,6 +52,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - evidence commands stay app-owned: Probe provides raw runtime truth, and the
   desktop groups that truth into one reviewer-facing evidence bundle per shared
   session
+- campaign commands also stay app-owned: Probe is not the hidden home for
+  retained-case selection, eval candidate curation, or promotion intent above
+  the current shared session
 - delivery commands also stay app-owned: Probe does not become the hidden home
   for PR state, reviewer outcome, or authorship attribution
 - settlement commands also stay app-owned: Probe is not the hidden home for
@@ -62,6 +73,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - Queue cancel is currently command-driven in the desktop shell. There is not yet a dedicated pane button for cancelling a specific queued Probe turn.
 - Evidence references are local-first. They can point at local files or capture
   current terminal excerpts, but they are not a hosted artifact registry.
+- Campaign refs are also local-first. Psionic bundle or comparison refs are
+  typed strings in the shell projection, not yet a hosted retained-case catalog
+  or promotion ledger.
 - Delivery receipts are also local-first. The first cut tracks GitHub PR state
   and reviewer outcome above the local shell rather than inventing a hosted
   publication substrate.

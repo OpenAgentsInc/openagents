@@ -203,6 +203,46 @@ Current local-first behavior:
 - GitHub-specific PR and CI details stay app-owned in the delivery receipt
   instead of leaking browser-provider semantics into Probe runtime truth
 
+## Campaign Layer
+
+Autopilot now also keeps one app-owned Forge campaign above the shared session,
+evidence bundle, and delivery receipt.
+
+Current local-first behavior:
+
+- one active campaign is linked from the Forge shared session with a stable
+  `forge-campaign-*` id
+- the campaign keeps operator intent explicit instead of burying retained-case
+  selection in transcript prose:
+  - title
+  - goal summary
+  - scope summary
+  - candidate refs
+  - retained case selections
+  - verification refs
+- campaign refs are typed instead of freeform notes:
+  - `probe_summary`
+  - `accepted_patch_summary`
+  - `evidence_bundle`
+  - `delivery_receipt`
+  - `psionic_retained_eval_bundle`
+  - `psionic_comparison_manifest`
+- local-first convenience refs like `active`, `latest`, and `current` resolve
+  against the current shared session for accepted patches, evidence bundles,
+  and delivery receipts instead of forcing the operator to remember internal
+  ids
+- operators can manage the current local campaign with:
+  - `/campaign open <title>`
+  - `/campaign goal <summary>`
+  - `/campaign scope <summary>`
+  - `/campaign candidate <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`
+  - `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`
+  - `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`
+  - `/campaign status`
+- the shell renders the active campaign as a first-class card between the
+  shared session and bounty layers so retained-case and eval-selection posture
+  is visible before promotion or settlement flows exist
+
 ## Bounty Contract Layer
 
 Autopilot now also keeps one app-owned bounty contract and optional active claim
@@ -312,7 +352,7 @@ The local operator loop is now shipped for the current Probe sidecar slice:
   inside the app-owned shell above Probe runtime truth
 - shared sessions now carry workspace snapshot and restore provenance, delegated
   child-session cards, reviewer evidence, delivery receipts, attachment
-  forwarding, and delivery watch state
+  forwarding, delivery watch state, and active campaign state
 
 The next honest follow-ons are outside this hosted-projection slice:
 

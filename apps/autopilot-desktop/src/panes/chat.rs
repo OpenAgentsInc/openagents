@@ -13,7 +13,7 @@ use crate::app_state::{
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
-    ForgeBountyContract, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
+    ForgeBountyContract, ForgeCampaign, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
     ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeSettlementReceipt,
     ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
     ForgeWorkspaceSnapshot, ManagedChatChannelProjection, ManagedChatDeliveryState,
@@ -2862,6 +2862,12 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             compact_display_token(evidence_bundle_id, 24)
         ));
     }
+    if let Some(campaign_id) = session.campaign_id.as_deref() {
+        lines.push(format!(
+            "- **campaign:** `{}`",
+            compact_display_token(campaign_id, 24)
+        ));
+    }
     if let Some(bounty_contract_id) = session.bounty_contract_id.as_deref() {
         lines.push(format!(
             "- **bounty contract:** `{}`",
@@ -2968,6 +2974,117 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
     } else {
         lines.push(String::new());
         lines.push("_No explicit handoff recorded yet._".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_campaign_meta_line(campaign: &ForgeCampaign) -> String {
+    let mut parts = vec![format!(
+        "campaign:{}",
+        compact_display_token(campaign.campaign_id.as_str(), 18)
+    )];
+    parts.push(format!("status:{}", campaign.status.label()));
+    parts.push(format!("candidates:{}", campaign.candidate_refs.len()));
+    parts.push(format!("cases:{}", campaign.retained_case_selections.len()));
+    parts.push(format!("verify:{}", campaign.verification_refs.len()));
+    if let Some(updated) = format_thread_timestamp(campaign.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_campaign_markdown_source(campaign: &ForgeCampaign) -> String {
+    let mut lines = vec![format!("- **status:** {}", campaign.status.display_label())];
+    lines.push(format!(
+        "- **shared session:** `{}`",
+        compact_display_token(campaign.shared_session_id.as_str(), 24)
+    ));
+    lines.push(format!("- **title:** {}", campaign.title));
+    if let Some(goal_summary) = campaign.goal_summary.as_deref() {
+        lines.push(format!(
+            "- **goal:** {}",
+            compact_display_token(goal_summary, 96)
+        ));
+    } else {
+        lines.push("- **goal:** _not recorded_".to_string());
+    }
+    if let Some(scope_summary) = campaign.scope_summary.as_deref() {
+        lines.push(format!(
+            "- **scope:** {}",
+            compact_display_token(scope_summary, 96)
+        ));
+    } else {
+        lines.push("- **scope:** _not recorded_".to_string());
+    }
+    if let Some(evidence_bundle_id) = campaign.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = campaign.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
+    }
+    if !campaign.candidate_refs.is_empty() {
+        lines.push(format!(
+            "- **candidate refs:** {}",
+            campaign.candidate_refs.len()
+        ));
+        for artifact_ref in campaign.candidate_refs.iter().rev().take(4) {
+            let mut line = format!(
+                "  - {}  •  `{}`",
+                artifact_ref.kind.display_label(),
+                compact_display_token(artifact_ref.reference.as_str(), 52)
+            );
+            if let Some(summary) = artifact_ref.summary.as_deref() {
+                line.push_str(&format!("  •  {}", compact_display_token(summary, 52)));
+            }
+            lines.push(line);
+        }
+    } else {
+        lines.push("- **candidate refs:** _none recorded_".to_string());
+    }
+    if !campaign.retained_case_selections.is_empty() {
+        lines.push(format!(
+            "- **retained cases:** {}",
+            campaign.retained_case_selections.len()
+        ));
+        for selection in campaign.retained_case_selections.iter().rev().take(6) {
+            let mut line = format!(
+                "  - `{}`  •  {}  •  `{}`",
+                compact_display_token(selection.case_id.as_str(), 20),
+                selection.source_kind.display_label(),
+                compact_display_token(selection.source_reference.as_str(), 44)
+            );
+            if let Some(summary) = selection.summary.as_deref() {
+                line.push_str(&format!("  •  {}", compact_display_token(summary, 44)));
+            }
+            lines.push(line);
+        }
+    } else {
+        lines.push("- **retained cases:** _none recorded_".to_string());
+    }
+    if !campaign.verification_refs.is_empty() {
+        lines.push(format!(
+            "- **verification refs:** {}",
+            campaign.verification_refs.len()
+        ));
+        for artifact_ref in campaign.verification_refs.iter().rev().take(4) {
+            let mut line = format!(
+                "  - {}  •  `{}`",
+                artifact_ref.kind.display_label(),
+                compact_display_token(artifact_ref.reference.as_str(), 52)
+            );
+            if let Some(summary) = artifact_ref.summary.as_deref() {
+                line.push_str(&format!("  •  {}", compact_display_token(summary, 52)));
+            }
+            lines.push(line);
+        }
+    } else {
+        lines.push("- **verification refs:** _none recorded_".to_string());
     }
     lines.join("\n")
 }
@@ -3814,10 +3931,7 @@ fn active_settlement_receipt_meta_line(receipt: &ForgeSettlementReceipt) -> Stri
 }
 
 fn active_settlement_receipt_markdown_source(receipt: &ForgeSettlementReceipt) -> String {
-    let mut lines = vec![format!(
-        "- **status:** {}",
-        receipt.status.display_label()
-    )];
+    let mut lines = vec![format!("- **status:** {}", receipt.status.display_label())];
     lines.push(format!(
         "- **objective kind:** {}",
         receipt.objective_kind.display_label()
@@ -6280,6 +6394,44 @@ pub fn paint(
                     y += 10.0;
                 }
             }
+            if let Some(campaign) = autopilot_chat.active_campaign() {
+                let campaign_color = match campaign.status {
+                    crate::app_state::ForgeCampaignStatus::Draft => theme::text::MUTED,
+                    crate::app_state::ForgeCampaignStatus::Scoped => theme::accent::PRIMARY,
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[campaign]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    campaign_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_campaign_meta_line(campaign),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let campaign_markdown = active_campaign_markdown_source(campaign);
+                if !campaign_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&campaign_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(bounty_contract) = autopilot_chat.active_bounty_contract() {
                 let bounty_color = match bounty_contract.lifecycle_status {
                     crate::app_state::ForgeBountyLifecycleStatus::Draft => theme::text::MUTED,
@@ -6917,9 +7069,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/campaign ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);

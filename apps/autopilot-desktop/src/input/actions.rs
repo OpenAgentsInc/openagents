@@ -193,6 +193,32 @@ enum ChatRemoteComposerIntent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ChatForgeComposerIntent {
+    CampaignOpen {
+        title: String,
+    },
+    CampaignGoal {
+        summary: String,
+    },
+    CampaignScope {
+        summary: String,
+    },
+    CampaignCandidate {
+        kind: crate::app_state::ForgeCampaignArtifactKind,
+        reference: String,
+        summary: Option<String>,
+    },
+    CampaignCase {
+        case_id: String,
+        kind: crate::app_state::ForgeCampaignArtifactKind,
+        reference: String,
+        summary: Option<String>,
+    },
+    CampaignVerify {
+        kind: crate::app_state::ForgeCampaignArtifactKind,
+        reference: String,
+        summary: Option<String>,
+    },
+    CampaignStatus,
     BountyOpen {
         objective_kind: crate::app_state::ForgeBountyObjectiveKind,
         title: String,
@@ -4441,6 +4467,88 @@ fn build_probe_bounty_status_snapshot(
     Ok(lines.join("\n"))
 }
 
+fn build_probe_campaign_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let campaign = chat
+        .active_campaign()
+        .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+    let mut lines = vec![format!(
+        "Campaign `{}` is {}.",
+        campaign.campaign_id,
+        campaign.status.display_label()
+    )];
+    lines.push(format!("Title: {}", campaign.title));
+    if let Some(summary) = campaign.goal_summary.as_deref() {
+        lines.push(format!("Goal: {summary}"));
+    } else {
+        lines.push(String::from("Goal: not recorded yet."));
+    }
+    if let Some(summary) = campaign.scope_summary.as_deref() {
+        lines.push(format!("Scope: {summary}"));
+    } else {
+        lines.push(String::from("Scope: not recorded yet."));
+    }
+    lines.push(format!(
+        "Candidates: {}. Retained cases: {}. Verification refs: {}.",
+        campaign.candidate_refs.len(),
+        campaign.retained_case_selections.len(),
+        campaign.verification_refs.len()
+    ));
+    if let Some(evidence_bundle_id) = campaign.evidence_bundle_id.as_deref() {
+        lines.push(format!("Evidence bundle: `{evidence_bundle_id}`."));
+    }
+    if let Some(delivery_receipt_id) = campaign.delivery_receipt_id.as_deref() {
+        lines.push(format!("Delivery receipt: `{delivery_receipt_id}`."));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn parse_campaign_artifact_kind(raw: &str) -> Option<crate::app_state::ForgeCampaignArtifactKind> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "probe_summary" | "probe" | "session" => {
+            Some(crate::app_state::ForgeCampaignArtifactKind::ProbeSummary)
+        }
+        "accepted_patch" | "accepted_patch_summary" | "patch" => {
+            Some(crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary)
+        }
+        "evidence_bundle" | "evidence" => {
+            Some(crate::app_state::ForgeCampaignArtifactKind::EvidenceBundle)
+        }
+        "delivery_receipt" | "delivery" => {
+            Some(crate::app_state::ForgeCampaignArtifactKind::DeliveryReceipt)
+        }
+        "psionic_eval" | "eval" => {
+            Some(crate::app_state::ForgeCampaignArtifactKind::PsionicRetainedEvalBundle)
+        }
+        "psionic_compare" | "compare" => {
+            Some(crate::app_state::ForgeCampaignArtifactKind::PsionicComparisonManifest)
+        }
+        _ => None,
+    }
+}
+
+fn campaign_candidate_kind_allowed(kind: crate::app_state::ForgeCampaignArtifactKind) -> bool {
+    matches!(
+        kind,
+        crate::app_state::ForgeCampaignArtifactKind::ProbeSummary
+            | crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary
+            | crate::app_state::ForgeCampaignArtifactKind::EvidenceBundle
+            | crate::app_state::ForgeCampaignArtifactKind::PsionicRetainedEvalBundle
+            | crate::app_state::ForgeCampaignArtifactKind::PsionicComparisonManifest
+    )
+}
+
+fn campaign_verification_kind_allowed(kind: crate::app_state::ForgeCampaignArtifactKind) -> bool {
+    matches!(
+        kind,
+        crate::app_state::ForgeCampaignArtifactKind::EvidenceBundle
+            | crate::app_state::ForgeCampaignArtifactKind::DeliveryReceipt
+            | crate::app_state::ForgeCampaignArtifactKind::PsionicRetainedEvalBundle
+            | crate::app_state::ForgeCampaignArtifactKind::PsionicComparisonManifest
+    )
+}
+
 fn build_probe_settlement_status_snapshot(
     chat: &crate::app_state::AutopilotChatState,
 ) -> Result<String, String> {
@@ -4487,8 +4595,7 @@ fn build_probe_settlement_status_snapshot(
     }
     lines.push(format!(
         "Dispute window: {} -> {}.",
-        receipt.dispute_window_started_at_epoch_ms,
-        receipt.dispute_window_closes_at_epoch_ms
+        receipt.dispute_window_started_at_epoch_ms, receipt.dispute_window_closes_at_epoch_ms
     ));
     if let Some(disputed_by_label) = receipt.disputed_by_label.as_deref() {
         let mut dispute_line = format!("Disputed by `{disputed_by_label}`.");
@@ -5042,7 +5149,8 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if first_word != "/bounty"
+    if first_word != "/campaign"
+        && first_word != "/bounty"
         && first_word != "/settle"
         && first_word != "/handoff"
         && first_word != "/restore"
@@ -5052,6 +5160,129 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
+    if first_word == "/campaign" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Campaign commands: `/campaign open <title>`, `/campaign goal <summary>`, `/campaign scope <summary>`, `/campaign candidate <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign status`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "open" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/campaign open <title>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::CampaignOpen {
+                    title: words[2..].join(" "),
+                }))
+            }
+            "goal" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/campaign goal <summary>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::CampaignGoal {
+                    summary: words[2..].join(" "),
+                }))
+            }
+            "scope" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/campaign scope <summary>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::CampaignScope {
+                    summary: words[2..].join(" "),
+                }))
+            }
+            "candidate" => {
+                let Some(raw_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/campaign candidate <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`.".to_string(),
+                    );
+                };
+                let Some(reference) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/campaign candidate <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`.".to_string(),
+                    );
+                };
+                let kind = parse_campaign_artifact_kind(raw_kind).ok_or_else(|| {
+                    "Campaign candidate kind must be one of `probe_summary`, `accepted_patch`, `evidence_bundle`, `psionic_eval`, or `psionic_compare`.".to_string()
+                })?;
+                if !campaign_candidate_kind_allowed(kind) {
+                    return Err(
+                        "Campaign candidate kind must be one of `probe_summary`, `accepted_patch`, `evidence_bundle`, `psionic_eval`, or `psionic_compare`.".to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::CampaignCandidate {
+                    kind,
+                    reference,
+                    summary: (words.len() > 4).then(|| words[4..].join(" ")),
+                }))
+            }
+            "case" => {
+                let Some(case_id) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`.".to_string(),
+                    );
+                };
+                let Some(raw_kind) = words.get(3).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`.".to_string(),
+                    );
+                };
+                let Some(reference) = words.get(4).cloned() else {
+                    return Err(
+                        "Usage: `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`.".to_string(),
+                    );
+                };
+                let kind = parse_campaign_artifact_kind(raw_kind).ok_or_else(|| {
+                    "Campaign case kind must be one of `probe_summary`, `accepted_patch`, `evidence_bundle`, `psionic_eval`, or `psionic_compare`.".to_string()
+                })?;
+                if !campaign_candidate_kind_allowed(kind) {
+                    return Err(
+                        "Campaign case kind must be one of `probe_summary`, `accepted_patch`, `evidence_bundle`, `psionic_eval`, or `psionic_compare`.".to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::CampaignCase {
+                    case_id,
+                    kind,
+                    reference,
+                    summary: (words.len() > 5).then(|| words[5..].join(" ")),
+                }))
+            }
+            "verify" => {
+                let Some(raw_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`.".to_string(),
+                    );
+                };
+                let Some(reference) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`.".to_string(),
+                    );
+                };
+                let kind = parse_campaign_artifact_kind(raw_kind).ok_or_else(|| {
+                    "Campaign verification kind must be one of `evidence_bundle`, `delivery_receipt`, `psionic_eval`, or `psionic_compare`.".to_string()
+                })?;
+                if !campaign_verification_kind_allowed(kind) {
+                    return Err(
+                        "Campaign verification kind must be one of `evidence_bundle`, `delivery_receipt`, `psionic_eval`, or `psionic_compare`.".to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::CampaignVerify {
+                    kind,
+                    reference,
+                    summary: (words.len() > 4).then(|| words[4..].join(" ")),
+                }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/campaign status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::CampaignStatus))
+            }
+            _ => Err(
+                "Campaign commands: `/campaign open <title>`, `/campaign goal <summary>`, `/campaign scope <summary>`, `/campaign candidate <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign case <case-id> <probe_summary|accepted_patch|evidence_bundle|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign verify <evidence_bundle|delivery_receipt|psionic_eval|psionic_compare> <reference> [summary]`, `/campaign status`.".to_string(),
+            ),
+        };
+    }
     if first_word == "/bounty" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
@@ -6558,6 +6789,157 @@ fn run_chat_forge_action(
     }
 
     match intent {
+        ChatForgeComposerIntent::CampaignOpen { title } => match state
+            .autopilot_chat
+            .record_probe_campaign_for_thread(
+                thread_id.as_str(),
+                title.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(campaign_id) => {
+                let mut response = format!("Opened campaign `{campaign_id}`.\n\n{title}");
+                if let Ok(summary) = build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(summary.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::CampaignGoal { summary } => match state
+            .autopilot_chat
+            .record_probe_campaign_goal_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(campaign_id) => {
+                let mut response =
+                    format!("Recorded campaign goal on `{campaign_id}`.\n\n{summary}");
+                if let Ok(status) = build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::CampaignScope { summary } => match state
+            .autopilot_chat
+            .record_probe_campaign_scope_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(campaign_id) => {
+                let mut response =
+                    format!("Recorded campaign scope on `{campaign_id}`.\n\n{summary}");
+                if let Ok(status) = build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::CampaignCandidate {
+            kind,
+            reference,
+            summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_campaign_candidate_for_thread(
+                thread_id.as_str(),
+                kind,
+                reference.clone(),
+                summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok((campaign_id, resolved_reference)) => {
+                let mut response = format!(
+                    "Recorded {} candidate on `{campaign_id}` -> `{resolved_reference}`.",
+                    kind.display_label()
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::CampaignCase {
+            case_id,
+            kind,
+            reference,
+            summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_campaign_case_selection_for_thread(
+                thread_id.as_str(),
+                case_id.clone(),
+                kind,
+                reference.clone(),
+                summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok((campaign_id, case_selection_id)) => {
+                let mut response = format!(
+                    "Recorded retained case `{case_id}` on `{campaign_id}` as `{case_selection_id}` from {}.",
+                    kind.display_label()
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::CampaignVerify {
+            kind,
+            reference,
+            summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_campaign_verification_ref_for_thread(
+                thread_id.as_str(),
+                kind,
+                reference.clone(),
+                summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok((campaign_id, resolved_reference)) => {
+                let mut response = format!(
+                    "Recorded {} verification ref on `{campaign_id}` -> `{resolved_reference}`.",
+                    kind.display_label()
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::CampaignStatus => {
+            match build_probe_campaign_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
         ChatForgeComposerIntent::BountyOpen {
             objective_kind,
             title,
@@ -6672,13 +7054,15 @@ fn run_chat_forge_action(
         ChatForgeComposerIntent::SettlementMerge {
             reviewer_label,
             summary,
-        } => match state.autopilot_chat.record_probe_settlement_merge_for_thread(
-            thread_id.as_str(),
-            reviewer_label.clone(),
-            summary.clone(),
-            "operator.command:/settle merge",
-            current_epoch_millis(),
-        ) {
+        } => match state
+            .autopilot_chat
+            .record_probe_settlement_merge_for_thread(
+                thread_id.as_str(),
+                reviewer_label.clone(),
+                summary.clone(),
+                "operator.command:/settle merge",
+                current_epoch_millis(),
+            ) {
             Ok(settlement_receipt_id) => {
                 let mut response = format!(
                     "Recorded settlement receipt `{settlement_receipt_id}` from accepted merge closure by `{}`.",
@@ -6700,14 +7084,16 @@ fn run_chat_forge_action(
             evaluator_label,
             reference,
             summary,
-        } => match state.autopilot_chat.record_probe_settlement_metric_for_thread(
-            thread_id.as_str(),
-            evaluator_label.clone(),
-            reference.clone(),
-            summary.clone(),
-            "operator.command:/settle metric",
-            current_epoch_millis(),
-        ) {
+        } => match state
+            .autopilot_chat
+            .record_probe_settlement_metric_for_thread(
+                thread_id.as_str(),
+                evaluator_label.clone(),
+                reference.clone(),
+                summary.clone(),
+                "operator.command:/settle metric",
+                current_epoch_millis(),
+            ) {
             Ok(settlement_receipt_id) => {
                 let mut response = format!(
                     "Recorded settlement receipt `{settlement_receipt_id}` from admitted metric closure by `{}` against `{}`.",
@@ -6728,13 +7114,15 @@ fn run_chat_forge_action(
         ChatForgeComposerIntent::SettlementDispute {
             actor_label,
             summary,
-        } => match state.autopilot_chat.record_probe_settlement_dispute_for_thread(
-            thread_id.as_str(),
-            actor_label.clone(),
-            summary.clone(),
-            "operator.command:/settle dispute",
-            current_epoch_millis(),
-        ) {
+        } => match state
+            .autopilot_chat
+            .record_probe_settlement_dispute_for_thread(
+                thread_id.as_str(),
+                actor_label.clone(),
+                summary.clone(),
+                "operator.command:/settle dispute",
+                current_epoch_millis(),
+            ) {
             Ok(settlement_receipt_id) => {
                 let mut response = format!(
                     "Marked settlement receipt `{settlement_receipt_id}` disputed by `{}`.",
@@ -6753,12 +7141,14 @@ fn run_chat_forge_action(
             Err(error) => append_chat_command_result(state, prompt, error, true),
         },
         ChatForgeComposerIntent::SettlementCancel { reason } => {
-            match state.autopilot_chat.record_probe_settlement_cancel_for_thread(
-                thread_id.as_str(),
-                reason.clone(),
-                "operator.command:/settle cancel",
-                current_epoch_millis(),
-            ) {
+            match state
+                .autopilot_chat
+                .record_probe_settlement_cancel_for_thread(
+                    thread_id.as_str(),
+                    reason.clone(),
+                    "operator.command:/settle cancel",
+                    current_epoch_millis(),
+                ) {
                 Ok(settlement_receipt_id) => {
                     let mut response =
                         format!("Canceled settlement receipt `{settlement_receipt_id}`.");
@@ -19264,6 +19654,46 @@ mod tests {
     #[test]
     fn chat_handoff_commands_parse_human_and_agent_targets() {
         assert_eq!(
+            parse_chat_forge_intent("/campaign open Improve retained eval picks").unwrap(),
+            Some(ChatForgeComposerIntent::CampaignOpen {
+                title: "Improve retained eval picks".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/campaign candidate patch latest parser fix looks stable")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::CampaignCandidate {
+                kind: crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+                reference: "latest".to_string(),
+                summary: Some("parser fix looks stable".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent(
+                "/campaign case login-flow evidence active retains the current reviewer bundle"
+            )
+            .unwrap(),
+            Some(ChatForgeComposerIntent::CampaignCase {
+                case_id: "login-flow".to_string(),
+                kind: crate::app_state::ForgeCampaignArtifactKind::EvidenceBundle,
+                reference: "active".to_string(),
+                summary: Some("retains the current reviewer bundle".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/campaign verify delivery active reviewer accepted merge")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::CampaignVerify {
+                kind: crate::app_state::ForgeCampaignArtifactKind::DeliveryReceipt,
+                reference: "active".to_string(),
+                summary: Some("reviewer accepted merge".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/campaign status").unwrap(),
+            Some(ChatForgeComposerIntent::CampaignStatus)
+        );
+        assert_eq!(
             parse_chat_forge_intent("/handoff human reviewed the diff manually").unwrap(),
             Some(ChatForgeComposerIntent::Handoff {
                 owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
@@ -19364,6 +19794,8 @@ mod tests {
         assert!(parse_chat_forge_intent("/evidence").is_err());
         assert!(parse_chat_forge_intent("/deliver").is_err());
         assert!(parse_chat_forge_intent("/settle").is_err());
+        assert!(parse_chat_forge_intent("/campaign").is_err());
+        assert!(parse_chat_forge_intent("/campaign verify probe active").is_err());
     }
 
     #[test]

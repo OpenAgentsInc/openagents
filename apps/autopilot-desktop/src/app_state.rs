@@ -9401,6 +9401,117 @@ pub struct ForgeSettlementReceipt {
     pub updated_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeCampaignStatus {
+    Draft,
+    Scoped,
+}
+
+impl ForgeCampaignStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Scoped => "scoped",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Scoped => "scoped",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeCampaignArtifactKind {
+    ProbeSummary,
+    AcceptedPatchSummary,
+    EvidenceBundle,
+    DeliveryReceipt,
+    PsionicRetainedEvalBundle,
+    PsionicComparisonManifest,
+}
+
+impl ForgeCampaignArtifactKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ProbeSummary => "probe_summary",
+            Self::AcceptedPatchSummary => "accepted_patch_summary",
+            Self::EvidenceBundle => "evidence_bundle",
+            Self::DeliveryReceipt => "delivery_receipt",
+            Self::PsionicRetainedEvalBundle => "psionic_retained_eval_bundle",
+            Self::PsionicComparisonManifest => "psionic_comparison_manifest",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::ProbeSummary => "Probe summary",
+            Self::AcceptedPatchSummary => "accepted patch summary",
+            Self::EvidenceBundle => "evidence bundle",
+            Self::DeliveryReceipt => "delivery receipt",
+            Self::PsionicRetainedEvalBundle => "Psionic retained eval bundle",
+            Self::PsionicComparisonManifest => "Psionic comparison manifest",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeCampaignArtifactRef {
+    pub artifact_ref_id: String,
+    pub kind: ForgeCampaignArtifactKind,
+    pub reference: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_source_turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_delivery_receipt_id: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeCampaignRetainedCaseSelection {
+    pub case_selection_id: String,
+    pub case_id: String,
+    pub source_kind: ForgeCampaignArtifactKind,
+    pub source_reference: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeCampaign {
+    pub campaign_id: String,
+    pub shared_session_id: String,
+    pub status: ForgeCampaignStatus,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_refs: Vec<ForgeCampaignArtifactRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retained_case_selections: Vec<ForgeCampaignRetainedCaseSelection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verification_refs: Vec<ForgeCampaignArtifactRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_receipt_id: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSession {
     pub shared_session_id: String,
@@ -9425,6 +9536,8 @@ pub struct ForgeSharedSession {
     pub workspace_snapshot_id: Option<String>,
     #[serde(default)]
     pub restore_manifest_id: Option<String>,
+    #[serde(default)]
+    pub campaign_id: Option<String>,
     #[serde(default)]
     pub bounty_contract_id: Option<String>,
     #[serde(default)]
@@ -9872,6 +9985,7 @@ pub struct AutopilotChatState {
     forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: std::collections::HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: std::collections::HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_campaigns: std::collections::HashMap<String, ForgeCampaign>,
     forge_bounty_contracts: std::collections::HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: std::collections::HashMap<String, ForgeBountyClaim>,
     forge_settlement_receipts: std::collections::HashMap<String, ForgeSettlementReceipt>,
@@ -9880,6 +9994,7 @@ pub struct AutopilotChatState {
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_campaign_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
     next_forge_settlement_receipt_seq: u64,
@@ -10006,6 +10121,7 @@ impl Default for AutopilotChatState {
             forge_shared_sessions,
             forge_workspace_snapshots,
             forge_restore_manifests,
+            forge_campaigns,
             forge_bounty_contracts,
             forge_bounty_claims,
             forge_settlement_receipts,
@@ -10014,6 +10130,7 @@ impl Default for AutopilotChatState {
             next_forge_shared_session_seq,
             next_forge_workspace_snapshot_seq,
             next_forge_restore_manifest_seq,
+            next_forge_campaign_seq,
             next_forge_bounty_contract_seq,
             next_forge_bounty_claim_seq,
             next_forge_settlement_receipt_seq,
@@ -10029,6 +10146,7 @@ impl Default for AutopilotChatState {
                 projection.forge_shared_sessions,
                 projection.forge_workspace_snapshots,
                 projection.forge_restore_manifests,
+                projection.forge_campaigns,
                 projection.forge_bounty_contracts,
                 projection.forge_bounty_claims,
                 projection.forge_settlement_receipts,
@@ -10037,6 +10155,7 @@ impl Default for AutopilotChatState {
                 projection.next_forge_shared_session_seq,
                 projection.next_forge_workspace_snapshot_seq,
                 projection.next_forge_restore_manifest_seq,
+                projection.next_forge_campaign_seq,
                 projection.next_forge_bounty_contract_seq,
                 projection.next_forge_bounty_claim_seq,
                 projection.next_forge_settlement_receipt_seq,
@@ -10057,6 +10176,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 1,
                 1,
@@ -10092,6 +10213,7 @@ impl Default for AutopilotChatState {
             forge_shared_sessions,
             forge_workspace_snapshots,
             forge_restore_manifests,
+            forge_campaigns,
             forge_bounty_contracts,
             forge_bounty_claims,
             forge_settlement_receipts,
@@ -10100,6 +10222,7 @@ impl Default for AutopilotChatState {
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             next_forge_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
             next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
+            next_forge_campaign_seq: next_forge_campaign_seq.max(1),
             next_forge_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
             next_forge_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
             next_forge_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
@@ -10210,6 +10333,8 @@ struct CodexArtifactProjectionDocumentV2 {
     #[serde(default)]
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
     #[serde(default)]
+    campaigns: Vec<ForgeCampaign>,
+    #[serde(default)]
     bounty_contracts: Vec<ForgeBountyContract>,
     #[serde(default)]
     bounty_claims: Vec<ForgeBountyClaim>,
@@ -10225,6 +10350,8 @@ struct CodexArtifactProjectionDocumentV2 {
     next_workspace_snapshot_seq: u64,
     #[serde(default = "default_next_forge_restore_manifest_seq")]
     next_restore_manifest_seq: u64,
+    #[serde(default = "default_next_forge_campaign_seq")]
+    next_campaign_seq: u64,
     #[serde(default = "default_next_forge_bounty_contract_seq")]
     next_bounty_contract_seq: u64,
     #[serde(default = "default_next_forge_bounty_claim_seq")]
@@ -10244,6 +10371,7 @@ struct LoadedCodexArtifactProjection {
     forge_shared_sessions: HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_campaigns: HashMap<String, ForgeCampaign>,
     forge_bounty_contracts: HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: HashMap<String, ForgeBountyClaim>,
     forge_settlement_receipts: HashMap<String, ForgeSettlementReceipt>,
@@ -10252,6 +10380,7 @@ struct LoadedCodexArtifactProjection {
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_campaign_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
     next_forge_settlement_receipt_seq: u64,
@@ -10269,6 +10398,10 @@ fn default_next_forge_workspace_snapshot_seq() -> u64 {
 }
 
 fn default_next_forge_restore_manifest_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_campaign_seq() -> u64 {
     1
 }
 
@@ -10547,6 +10680,11 @@ fn normalize_forge_shared_sessions(
             .filter(|value| !value.is_empty());
         session.restore_manifest_id = session
             .restore_manifest_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        session.campaign_id = session
+            .campaign_id
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
@@ -11186,6 +11324,143 @@ fn normalize_forge_restore_manifests(
     manifests
 }
 
+fn normalize_forge_campaign_artifact_refs(
+    mut refs: Vec<ForgeCampaignArtifactRef>,
+) -> Vec<ForgeCampaignArtifactRef> {
+    refs.sort_by(|lhs, rhs| {
+        lhs.recorded_at_epoch_ms
+            .cmp(&rhs.recorded_at_epoch_ms)
+            .then_with(|| lhs.artifact_ref_id.cmp(&rhs.artifact_ref_id))
+    });
+    let mut seen_ids = HashSet::new();
+    refs.retain(|artifact_ref| {
+        let artifact_ref_id = artifact_ref.artifact_ref_id.trim();
+        !artifact_ref_id.is_empty() && seen_ids.insert(artifact_ref_id.to_string())
+    });
+    for artifact_ref in &mut refs {
+        artifact_ref.artifact_ref_id = artifact_ref.artifact_ref_id.trim().to_string();
+        artifact_ref.reference = artifact_ref.reference.trim().to_string();
+        artifact_ref.summary = artifact_ref
+            .summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        artifact_ref.linked_thread_id = artifact_ref
+            .linked_thread_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        artifact_ref.linked_source_turn_id = artifact_ref
+            .linked_source_turn_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        artifact_ref.linked_evidence_bundle_id = artifact_ref
+            .linked_evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        artifact_ref.linked_delivery_receipt_id = artifact_ref
+            .linked_delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    refs.retain(|artifact_ref| !artifact_ref.reference.is_empty());
+    refs
+}
+
+fn normalize_forge_campaign_case_selections(
+    mut selections: Vec<ForgeCampaignRetainedCaseSelection>,
+) -> Vec<ForgeCampaignRetainedCaseSelection> {
+    selections.sort_by(|lhs, rhs| {
+        lhs.recorded_at_epoch_ms
+            .cmp(&rhs.recorded_at_epoch_ms)
+            .then_with(|| lhs.case_selection_id.cmp(&rhs.case_selection_id))
+    });
+    let mut seen_ids = HashSet::new();
+    selections.retain(|selection| {
+        let case_selection_id = selection.case_selection_id.trim();
+        !case_selection_id.is_empty() && seen_ids.insert(case_selection_id.to_string())
+    });
+    for selection in &mut selections {
+        selection.case_selection_id = selection.case_selection_id.trim().to_string();
+        selection.case_id = selection.case_id.trim().to_string();
+        selection.source_reference = selection.source_reference.trim().to_string();
+        selection.summary = selection
+            .summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    selections.retain(|selection| {
+        !selection.case_id.is_empty() && !selection.source_reference.is_empty()
+    });
+    selections
+}
+
+fn derive_forge_campaign_status(campaign: &ForgeCampaign) -> ForgeCampaignStatus {
+    if campaign.goal_summary.is_some()
+        || campaign.scope_summary.is_some()
+        || !campaign.candidate_refs.is_empty()
+        || !campaign.retained_case_selections.is_empty()
+        || !campaign.verification_refs.is_empty()
+    {
+        ForgeCampaignStatus::Scoped
+    } else {
+        ForgeCampaignStatus::Draft
+    }
+}
+
+fn normalize_forge_campaigns(mut campaigns: Vec<ForgeCampaign>) -> Vec<ForgeCampaign> {
+    campaigns.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.campaign_id.cmp(&rhs.campaign_id))
+    });
+    let mut seen_ids = HashSet::new();
+    campaigns.retain(|campaign| {
+        let campaign_id = campaign.campaign_id.trim();
+        !campaign_id.is_empty() && seen_ids.insert(campaign_id.to_string())
+    });
+    for campaign in &mut campaigns {
+        campaign.campaign_id = campaign.campaign_id.trim().to_string();
+        campaign.shared_session_id = campaign.shared_session_id.trim().to_string();
+        campaign.title = campaign.title.trim().to_string();
+        campaign.goal_summary = campaign
+            .goal_summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        campaign.scope_summary = campaign
+            .scope_summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        campaign.candidate_refs =
+            normalize_forge_campaign_artifact_refs(std::mem::take(&mut campaign.candidate_refs));
+        campaign.retained_case_selections = normalize_forge_campaign_case_selections(
+            std::mem::take(&mut campaign.retained_case_selections),
+        );
+        campaign.verification_refs =
+            normalize_forge_campaign_artifact_refs(std::mem::take(&mut campaign.verification_refs));
+        campaign.evidence_bundle_id = campaign
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        campaign.delivery_receipt_id = campaign
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        campaign.status = derive_forge_campaign_status(campaign);
+    }
+    campaigns
+        .retain(|campaign| !campaign.shared_session_id.is_empty() && !campaign.title.is_empty());
+    campaigns
+}
+
 fn normalize_forge_evidence_bundles(
     mut bundles: Vec<ForgeEvidenceBundle>,
 ) -> Vec<ForgeEvidenceBundle> {
@@ -11396,6 +11671,7 @@ fn persist_codex_artifact_projection(
     forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: &HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: &HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_campaigns: &HashMap<String, ForgeCampaign>,
     forge_bounty_contracts: &HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: &HashMap<String, ForgeBountyClaim>,
     forge_settlement_receipts: &HashMap<String, ForgeSettlementReceipt>,
@@ -11404,6 +11680,7 @@ fn persist_codex_artifact_projection(
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_campaign_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
     next_forge_settlement_receipt_seq: u64,
@@ -11438,6 +11715,7 @@ fn persist_codex_artifact_projection(
         restore_manifests: normalize_forge_restore_manifests(
             forge_restore_manifests.values().cloned().collect(),
         ),
+        campaigns: normalize_forge_campaigns(forge_campaigns.values().cloned().collect()),
         bounty_contracts: normalize_forge_bounty_contracts(
             forge_bounty_contracts.values().cloned().collect(),
         ),
@@ -11456,6 +11734,7 @@ fn persist_codex_artifact_projection(
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
         next_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
         next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
+        next_campaign_seq: next_forge_campaign_seq.max(1),
         next_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
         next_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
         next_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
@@ -11483,6 +11762,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 forge_shared_sessions: HashMap::new(),
                 forge_workspace_snapshots: HashMap::new(),
                 forge_restore_manifests: HashMap::new(),
+                forge_campaigns: HashMap::new(),
                 forge_bounty_contracts: HashMap::new(),
                 forge_bounty_claims: HashMap::new(),
                 forge_settlement_receipts: HashMap::new(),
@@ -11491,6 +11771,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 next_forge_shared_session_seq: 1,
                 next_forge_workspace_snapshot_seq: 1,
                 next_forge_restore_manifest_seq: 1,
+                next_forge_campaign_seq: 1,
                 next_forge_bounty_contract_seq: 1,
                 next_forge_bounty_claim_seq: 1,
                 next_forge_settlement_receipt_seq: 1,
@@ -11540,6 +11821,8 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        Vec::new(),
+        1,
         1,
         1,
         1,
@@ -11570,6 +11853,7 @@ fn load_codex_artifact_projection_v2(
         document.shared_sessions,
         document.workspace_snapshots,
         document.restore_manifests,
+        document.campaigns,
         document.bounty_contracts,
         document.bounty_claims,
         document.settlement_receipts,
@@ -11577,6 +11861,7 @@ fn load_codex_artifact_projection_v2(
         document.next_shared_session_seq,
         document.next_workspace_snapshot_seq,
         document.next_restore_manifest_seq,
+        document.next_campaign_seq,
         document.next_bounty_contract_seq,
         document.next_bounty_claim_seq,
         document.next_settlement_receipt_seq,
@@ -11593,6 +11878,7 @@ fn build_loaded_codex_artifact_projection(
     shared_sessions: Vec<ForgeSharedSession>,
     workspace_snapshots: Vec<ForgeWorkspaceSnapshot>,
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
+    campaigns: Vec<ForgeCampaign>,
     bounty_contracts: Vec<ForgeBountyContract>,
     bounty_claims: Vec<ForgeBountyClaim>,
     settlement_receipts: Vec<ForgeSettlementReceipt>,
@@ -11600,6 +11886,7 @@ fn build_loaded_codex_artifact_projection(
     next_shared_session_seq: u64,
     next_workspace_snapshot_seq: u64,
     next_restore_manifest_seq: u64,
+    next_campaign_seq: u64,
     next_bounty_contract_seq: u64,
     next_bounty_claim_seq: u64,
     next_settlement_receipt_seq: u64,
@@ -11645,6 +11932,11 @@ fn build_loaded_codex_artifact_projection(
         forge_restore_manifests.insert(manifest.restore_manifest_id.clone(), manifest);
     }
 
+    let mut forge_campaigns = HashMap::<String, ForgeCampaign>::new();
+    for campaign in normalize_forge_campaigns(campaigns) {
+        forge_campaigns.insert(campaign.campaign_id.clone(), campaign);
+    }
+
     let mut forge_bounty_contracts = HashMap::<String, ForgeBountyContract>::new();
     for contract in normalize_forge_bounty_contracts(bounty_contracts) {
         forge_bounty_contracts.insert(contract.bounty_contract_id.clone(), contract);
@@ -11677,6 +11969,7 @@ fn build_loaded_codex_artifact_projection(
         forge_shared_sessions,
         forge_workspace_snapshots,
         forge_restore_manifests,
+        forge_campaigns,
         forge_bounty_contracts,
         forge_bounty_claims,
         forge_settlement_receipts,
@@ -11685,6 +11978,7 @@ fn build_loaded_codex_artifact_projection(
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
         next_forge_workspace_snapshot_seq: next_workspace_snapshot_seq.max(1),
         next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
+        next_forge_campaign_seq: next_campaign_seq.max(1),
         next_forge_bounty_contract_seq: next_bounty_contract_seq.max(1),
         next_forge_bounty_claim_seq: next_bounty_claim_seq.max(1),
         next_forge_settlement_receipt_seq: next_settlement_receipt_seq.max(1),
@@ -12148,6 +12442,7 @@ impl AutopilotChatState {
                 state.forge_shared_sessions = projection.forge_shared_sessions;
                 state.forge_workspace_snapshots = projection.forge_workspace_snapshots;
                 state.forge_restore_manifests = projection.forge_restore_manifests;
+                state.forge_campaigns = projection.forge_campaigns;
                 state.forge_bounty_contracts = projection.forge_bounty_contracts;
                 state.forge_bounty_claims = projection.forge_bounty_claims;
                 state.forge_settlement_receipts = projection.forge_settlement_receipts;
@@ -12157,6 +12452,7 @@ impl AutopilotChatState {
                 state.next_forge_workspace_snapshot_seq =
                     projection.next_forge_workspace_snapshot_seq;
                 state.next_forge_restore_manifest_seq = projection.next_forge_restore_manifest_seq;
+                state.next_forge_campaign_seq = projection.next_forge_campaign_seq;
                 state.next_forge_bounty_contract_seq = projection.next_forge_bounty_contract_seq;
                 state.next_forge_bounty_claim_seq = projection.next_forge_bounty_claim_seq;
                 state.next_forge_settlement_receipt_seq =
@@ -12173,6 +12469,7 @@ impl AutopilotChatState {
                 state.forge_shared_sessions.clear();
                 state.forge_workspace_snapshots.clear();
                 state.forge_restore_manifests.clear();
+                state.forge_campaigns.clear();
                 state.forge_bounty_contracts.clear();
                 state.forge_bounty_claims.clear();
                 state.forge_settlement_receipts.clear();
@@ -12181,6 +12478,7 @@ impl AutopilotChatState {
                 state.next_forge_shared_session_seq = 1;
                 state.next_forge_workspace_snapshot_seq = 1;
                 state.next_forge_restore_manifest_seq = 1;
+                state.next_forge_campaign_seq = 1;
                 state.next_forge_bounty_contract_seq = 1;
                 state.next_forge_bounty_claim_seq = 1;
                 state.next_forge_settlement_receipt_seq = 1;
@@ -12874,6 +13172,18 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.restore_manifest_for_thread(thread_id))
     }
 
+    fn campaign_for_thread(&self, thread_id: &str) -> Option<&ForgeCampaign> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let campaign_id = shared_session.campaign_id.as_deref()?;
+        self.forge_campaigns.get(campaign_id)
+    }
+
+    pub fn active_campaign(&self) -> Option<&ForgeCampaign> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.campaign_for_thread(thread_id))
+    }
+
     pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
         self.forge_shared_sessions.values().find(|session| {
             session
@@ -12938,6 +13248,12 @@ impl AutopilotChatState {
         restore_manifest_id
     }
 
+    fn next_campaign_id(&mut self) -> String {
+        let campaign_id = format!("forge-campaign-{}", self.next_forge_campaign_seq);
+        self.next_forge_campaign_seq = self.next_forge_campaign_seq.saturating_add(1);
+        campaign_id
+    }
+
     fn next_bounty_contract_id(&mut self) -> String {
         let bounty_contract_id = format!("forge-bounty-{}", self.next_forge_bounty_contract_seq);
         self.next_forge_bounty_contract_seq = self.next_forge_bounty_contract_seq.saturating_add(1);
@@ -12951,8 +13267,10 @@ impl AutopilotChatState {
     }
 
     fn next_settlement_receipt_id(&mut self) -> String {
-        let settlement_receipt_id =
-            format!("forge-settlement-{}", self.next_forge_settlement_receipt_seq);
+        let settlement_receipt_id = format!(
+            "forge-settlement-{}",
+            self.next_forge_settlement_receipt_seq
+        );
         self.next_forge_settlement_receipt_seq =
             self.next_forge_settlement_receipt_seq.saturating_add(1);
         settlement_receipt_id
@@ -13269,6 +13587,507 @@ impl AutopilotChatState {
         Some(lines.join("\n"))
     }
 
+    fn sync_campaign_links_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(), String> {
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before campaign linkage could be refreshed."
+                )
+            })?;
+        if let Some(campaign_id) = shared_session.campaign_id.as_deref()
+            && let Some(campaign) = self.forge_campaigns.get_mut(campaign_id)
+        {
+            campaign.shared_session_id = shared_session.shared_session_id.clone();
+            campaign.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+            campaign.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+            campaign.status = derive_forge_campaign_status(campaign);
+            campaign.updated_at_epoch_ms = updated_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        }
+        Ok(())
+    }
+
+    pub fn record_probe_campaign_for_thread(
+        &mut self,
+        thread_id: &str,
+        title: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let title = title.into().trim().to_string();
+        if title.is_empty() {
+            return Err("Campaign title cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before campaign state could be recorded."
+                )
+            })?;
+        let campaign_id = shared_session
+            .campaign_id
+            .clone()
+            .filter(|campaign_id| self.forge_campaigns.contains_key(campaign_id))
+            .unwrap_or_else(|| self.next_campaign_id());
+        let created_at_epoch_ms = self
+            .forge_campaigns
+            .get(&campaign_id)
+            .map_or(updated_at_epoch_ms, |campaign| campaign.created_at_epoch_ms);
+        let mut campaign =
+            self.forge_campaigns
+                .get(&campaign_id)
+                .cloned()
+                .unwrap_or(ForgeCampaign {
+                    campaign_id: campaign_id.clone(),
+                    shared_session_id: shared_session_id.clone(),
+                    status: ForgeCampaignStatus::Draft,
+                    title: title.clone(),
+                    goal_summary: None,
+                    scope_summary: None,
+                    candidate_refs: Vec::new(),
+                    retained_case_selections: Vec::new(),
+                    verification_refs: Vec::new(),
+                    evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
+                    delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
+                    created_at_epoch_ms,
+                    updated_at_epoch_ms,
+                });
+        campaign.shared_session_id = shared_session_id.clone();
+        campaign.title = title;
+        campaign.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+        campaign.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        campaign.status = derive_forge_campaign_status(&campaign);
+        campaign.updated_at_epoch_ms = updated_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        self.forge_campaigns.insert(campaign_id.clone(), campaign);
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the campaign link could be recorded."
+                )
+            })?;
+        shared_session.campaign_id = Some(campaign_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(campaign_id)
+    }
+
+    pub fn record_probe_campaign_goal_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Campaign goal cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let campaign_id = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .and_then(|session| session.campaign_id.clone())
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let campaign = self.forge_campaigns.get_mut(&campaign_id).ok_or_else(|| {
+            format!("Campaign `{campaign_id}` disappeared before goal state could be recorded.")
+        })?;
+        campaign.goal_summary = Some(summary);
+        campaign.status = derive_forge_campaign_status(campaign);
+        campaign.updated_at_epoch_ms = updated_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(campaign_id)
+    }
+
+    pub fn record_probe_campaign_scope_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Campaign scope cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let campaign_id = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .and_then(|session| session.campaign_id.clone())
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let campaign = self.forge_campaigns.get_mut(&campaign_id).ok_or_else(|| {
+            format!("Campaign `{campaign_id}` disappeared before scope state could be recorded.")
+        })?;
+        campaign.scope_summary = Some(summary);
+        campaign.status = derive_forge_campaign_status(campaign);
+        campaign.updated_at_epoch_ms = updated_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(campaign_id)
+    }
+
+    pub fn record_probe_campaign_candidate_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeCampaignArtifactKind,
+        reference: impl Into<String>,
+        summary: Option<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before campaign state could be recorded."
+                )
+            })?;
+        let campaign_id = shared_session
+            .campaign_id
+            .clone()
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provisional_ref_id = format!(
+            "{campaign_id}-candidate-{}",
+            self.forge_campaigns
+                .get(&campaign_id)
+                .map_or(1usize, |campaign| campaign
+                    .candidate_refs
+                    .len()
+                    .saturating_add(1))
+        );
+        let mut artifact_ref = self.resolve_campaign_artifact_ref_for_shared_session(
+            thread_id,
+            &shared_session,
+            provisional_ref_id,
+            kind,
+            reference,
+            summary,
+            recorded_at_epoch_ms,
+        )?;
+        let campaign = self.forge_campaigns.get_mut(&campaign_id).ok_or_else(|| {
+            format!(
+                "Campaign `{campaign_id}` disappeared before candidate state could be recorded."
+            )
+        })?;
+        if let Some(existing) = campaign.candidate_refs.iter_mut().find(|existing| {
+            existing.kind == artifact_ref.kind && existing.reference == artifact_ref.reference
+        }) {
+            artifact_ref.artifact_ref_id = existing.artifact_ref_id.clone();
+            *existing = artifact_ref.clone();
+        } else {
+            campaign.candidate_refs.push(artifact_ref.clone());
+        }
+        campaign.candidate_refs =
+            normalize_forge_campaign_artifact_refs(std::mem::take(&mut campaign.candidate_refs));
+        campaign.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+        campaign.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        campaign.status = derive_forge_campaign_status(campaign);
+        campaign.updated_at_epoch_ms = recorded_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        let resolved_reference = artifact_ref.reference.clone();
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session_id.as_str(),
+            recorded_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok((campaign_id, resolved_reference))
+    }
+
+    pub fn record_probe_campaign_case_selection_for_thread(
+        &mut self,
+        thread_id: &str,
+        case_id: impl Into<String>,
+        source_kind: ForgeCampaignArtifactKind,
+        source_reference: impl Into<String>,
+        summary: Option<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let case_id = case_id.into().trim().to_string();
+        if case_id.is_empty() {
+            return Err("Campaign case id cannot be empty.".to_string());
+        }
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before campaign state could be recorded."
+                )
+            })?;
+        let campaign_id = shared_session
+            .campaign_id
+            .clone()
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let resolved_source = self.resolve_campaign_artifact_ref_for_shared_session(
+            thread_id,
+            &shared_session,
+            format!("{campaign_id}-case-preview"),
+            source_kind,
+            source_reference,
+            summary.clone(),
+            recorded_at_epoch_ms,
+        )?;
+        let selection_id = if let Some(existing) =
+            self.forge_campaigns.get(&campaign_id).and_then(|campaign| {
+                campaign.retained_case_selections.iter().find(|selection| {
+                    selection.case_id == case_id
+                        && selection.source_kind == resolved_source.kind
+                        && selection.source_reference == resolved_source.reference
+                })
+            }) {
+            existing.case_selection_id.clone()
+        } else {
+            format!(
+                "{campaign_id}-case-{}",
+                self.forge_campaigns
+                    .get(&campaign_id)
+                    .map_or(1usize, |campaign| {
+                        campaign.retained_case_selections.len().saturating_add(1)
+                    })
+            )
+        };
+        let next_selection = ForgeCampaignRetainedCaseSelection {
+            case_selection_id: selection_id.clone(),
+            case_id,
+            source_kind: resolved_source.kind,
+            source_reference: resolved_source.reference,
+            summary,
+            recorded_at_epoch_ms,
+        };
+        let campaign = self.forge_campaigns.get_mut(&campaign_id).ok_or_else(|| {
+            format!(
+                "Campaign `{campaign_id}` disappeared before retained-case state could be recorded."
+            )
+        })?;
+        if let Some(existing) = campaign
+            .retained_case_selections
+            .iter_mut()
+            .find(|selection| {
+                selection.case_id == next_selection.case_id
+                    && selection.source_kind == next_selection.source_kind
+                    && selection.source_reference == next_selection.source_reference
+            })
+        {
+            *existing = next_selection.clone();
+        } else {
+            campaign
+                .retained_case_selections
+                .push(next_selection.clone());
+        }
+        campaign.retained_case_selections = normalize_forge_campaign_case_selections(
+            std::mem::take(&mut campaign.retained_case_selections),
+        );
+        campaign.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+        campaign.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        campaign.status = derive_forge_campaign_status(campaign);
+        campaign.updated_at_epoch_ms = recorded_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session_id.as_str(),
+            recorded_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok((campaign_id, selection_id))
+    }
+
+    pub fn record_probe_campaign_verification_ref_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeCampaignArtifactKind,
+        reference: impl Into<String>,
+        summary: Option<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before campaign state could be recorded."
+                )
+            })?;
+        let campaign_id = shared_session
+            .campaign_id
+            .clone()
+            .ok_or_else(|| "Open a campaign first with `/campaign open <title>`.".to_string())?;
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provisional_ref_id = format!(
+            "{campaign_id}-verify-{}",
+            self.forge_campaigns
+                .get(&campaign_id)
+                .map_or(1usize, |campaign| {
+                    campaign.verification_refs.len().saturating_add(1)
+                })
+        );
+        let mut artifact_ref = self.resolve_campaign_artifact_ref_for_shared_session(
+            thread_id,
+            &shared_session,
+            provisional_ref_id,
+            kind,
+            reference,
+            summary,
+            recorded_at_epoch_ms,
+        )?;
+        let campaign = self.forge_campaigns.get_mut(&campaign_id).ok_or_else(|| {
+            format!(
+                "Campaign `{campaign_id}` disappeared before verification state could be recorded."
+            )
+        })?;
+        if let Some(existing) = campaign.verification_refs.iter_mut().find(|existing| {
+            existing.kind == artifact_ref.kind && existing.reference == artifact_ref.reference
+        }) {
+            artifact_ref.artifact_ref_id = existing.artifact_ref_id.clone();
+            *existing = artifact_ref.clone();
+        } else {
+            campaign.verification_refs.push(artifact_ref.clone());
+        }
+        campaign.verification_refs =
+            normalize_forge_campaign_artifact_refs(std::mem::take(&mut campaign.verification_refs));
+        campaign.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+        campaign.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        campaign.status = derive_forge_campaign_status(campaign);
+        campaign.updated_at_epoch_ms = recorded_at_epoch_ms.max(campaign.updated_at_epoch_ms);
+        let resolved_reference = artifact_ref.reference.clone();
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session_id.as_str(),
+            recorded_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok((campaign_id, resolved_reference))
+    }
+
+    fn resolve_campaign_artifact_ref_for_shared_session(
+        &self,
+        thread_id: &str,
+        shared_session: &ForgeSharedSession,
+        artifact_ref_id: String,
+        kind: ForgeCampaignArtifactKind,
+        reference: impl Into<String>,
+        summary: Option<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<ForgeCampaignArtifactRef, String> {
+        let requested_reference = reference.into().trim().to_string();
+        if requested_reference.is_empty() {
+            return Err("Campaign reference cannot be empty.".to_string());
+        }
+        let mut artifact_ref = ForgeCampaignArtifactRef {
+            artifact_ref_id,
+            kind,
+            reference: requested_reference.clone(),
+            summary,
+            linked_thread_id: None,
+            linked_source_turn_id: None,
+            linked_evidence_bundle_id: None,
+            linked_delivery_receipt_id: None,
+            recorded_at_epoch_ms,
+        };
+        match kind {
+            ForgeCampaignArtifactKind::ProbeSummary => {
+                if matches!(
+                    requested_reference.as_str(),
+                    "active" | "session" | "current"
+                ) {
+                    artifact_ref.reference =
+                        format!("shared_session:{}", shared_session.shared_session_id);
+                    artifact_ref.linked_thread_id = Some(thread_id.to_string());
+                }
+            }
+            ForgeCampaignArtifactKind::AcceptedPatchSummary => {
+                if matches!(
+                    requested_reference.as_str(),
+                    "active" | "latest" | "current"
+                ) {
+                    let diff = self
+                        .latest_diff_artifact_for_probe_sessions(&shared_session.probe_session_ids)
+                        .ok_or_else(|| {
+                            "No retained patch summary is available for the active shared session."
+                                .to_string()
+                        })?;
+                    artifact_ref.reference =
+                        format!("diff:{}:{}", diff.thread_id, diff.source_turn_id);
+                    artifact_ref.linked_thread_id = Some(diff.thread_id);
+                    artifact_ref.linked_source_turn_id = Some(diff.source_turn_id);
+                }
+            }
+            ForgeCampaignArtifactKind::EvidenceBundle => {
+                if matches!(
+                    requested_reference.as_str(),
+                    "active" | "latest" | "current"
+                ) {
+                    let evidence_bundle_id =
+                        shared_session.evidence_bundle_id.clone().ok_or_else(|| {
+                            "No active evidence bundle is linked to this shared session."
+                                .to_string()
+                        })?;
+                    artifact_ref.reference = evidence_bundle_id.clone();
+                    artifact_ref.linked_evidence_bundle_id = Some(evidence_bundle_id);
+                }
+            }
+            ForgeCampaignArtifactKind::DeliveryReceipt => {
+                if matches!(
+                    requested_reference.as_str(),
+                    "active" | "latest" | "current"
+                ) {
+                    let delivery_receipt_id =
+                        shared_session.delivery_receipt_id.clone().ok_or_else(|| {
+                            "No active delivery receipt is linked to this shared session."
+                                .to_string()
+                        })?;
+                    artifact_ref.reference = delivery_receipt_id.clone();
+                    artifact_ref.linked_delivery_receipt_id = Some(delivery_receipt_id);
+                }
+            }
+            ForgeCampaignArtifactKind::PsionicRetainedEvalBundle
+            | ForgeCampaignArtifactKind::PsionicComparisonManifest => {}
+        }
+        Ok(artifact_ref)
+    }
+
     fn ensure_probe_evidence_bundle_for_shared_session(
         &mut self,
         shared_session_id: &str,
@@ -13392,6 +14211,7 @@ impl AutopilotChatState {
             );
         let _ = bundle;
         let _ = self.sync_bounty_links_for_shared_session(shared_session_id, updated_at_epoch_ms);
+        let _ = self.sync_campaign_links_for_shared_session(shared_session_id, updated_at_epoch_ms);
         Ok(evidence_bundle_id)
     }
 
@@ -13458,7 +14278,8 @@ impl AutopilotChatState {
             claim.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
             claim.updated_at_epoch_ms = updated_at_epoch_ms.max(claim.updated_at_epoch_ms);
         }
-        let _ = self.sync_settlement_links_for_shared_session(shared_session_id, updated_at_epoch_ms);
+        let _ =
+            self.sync_settlement_links_for_shared_session(shared_session_id, updated_at_epoch_ms);
         Ok(())
     }
 
@@ -13477,7 +14298,9 @@ impl AutopilotChatState {
                 )
             })?;
         if let Some(settlement_receipt_id) = shared_session.settlement_receipt_id.as_deref()
-            && let Some(receipt) = self.forge_settlement_receipts.get_mut(settlement_receipt_id)
+            && let Some(receipt) = self
+                .forge_settlement_receipts
+                .get_mut(settlement_receipt_id)
         {
             receipt.shared_session_id = shared_session_id.to_string();
             receipt.bounty_contract_id = shared_session
@@ -13925,7 +14748,9 @@ impl AutopilotChatState {
             .delivery_receipt_id
             .clone()
             .or(contract.delivery_receipt_id.clone())
-            .ok_or_else(|| "Prepare a delivery receipt first with `/deliver pr ...`.".to_string())?;
+            .ok_or_else(|| {
+                "Prepare a delivery receipt first with `/deliver pr ...`.".to_string()
+            })?;
         let delivery_receipt = self
             .forge_delivery_receipts
             .get(&delivery_receipt_id)
@@ -13941,7 +14766,8 @@ impl AutopilotChatState {
                     .to_string(),
             );
         }
-        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+        let settlement_receipt_id = if let Some(existing_id) =
+            shared_session.settlement_receipt_id.clone()
             && self
                 .forge_settlement_receipts
                 .contains_key(existing_id.as_str())
@@ -13966,11 +14792,11 @@ impl AutopilotChatState {
             .map_or_else(
                 || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
                 |receipt| {
-                    receipt
-                        .dispute_window_closes_at_epoch_ms
-                        .max(forge_settlement_dispute_window_closes_at(
+                    receipt.dispute_window_closes_at_epoch_ms.max(
+                        forge_settlement_dispute_window_closes_at(
                             dispute_window_started_at_epoch_ms,
-                        ))
+                        ),
+                    )
                 },
             );
         let mut reviewer_ref = delivery_receipt.latest_review_decision.clone().unwrap_or(
@@ -14027,8 +14853,10 @@ impl AutopilotChatState {
         shared_session.updated_at_epoch_ms =
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         let _ = shared_session;
-        let _ = self
-            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        let _ = self.sync_settlement_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(settlement_receipt_id)
     }
@@ -14082,7 +14910,8 @@ impl AutopilotChatState {
                     .to_string(),
             );
         }
-        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+        let settlement_receipt_id = if let Some(existing_id) =
+            shared_session.settlement_receipt_id.clone()
             && self
                 .forge_settlement_receipts
                 .contains_key(existing_id.as_str())
@@ -14107,11 +14936,11 @@ impl AutopilotChatState {
             .map_or_else(
                 || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
                 |receipt| {
-                    receipt
-                        .dispute_window_closes_at_epoch_ms
-                        .max(forge_settlement_dispute_window_closes_at(
+                    receipt.dispute_window_closes_at_epoch_ms.max(
+                        forge_settlement_dispute_window_closes_at(
                             dispute_window_started_at_epoch_ms,
-                        ))
+                        ),
+                    )
                 },
             );
         self.forge_settlement_receipts.insert(
@@ -14162,8 +14991,10 @@ impl AutopilotChatState {
         shared_session.updated_at_epoch_ms =
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         let _ = shared_session;
-        let _ = self
-            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        let _ = self.sync_settlement_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(settlement_receipt_id)
     }
@@ -14200,7 +15031,8 @@ impl AutopilotChatState {
                     "Bounty contract `{bounty_contract_id}` disappeared before settlement could be recorded."
                 )
             })?;
-        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+        let settlement_receipt_id = if let Some(existing_id) =
+            shared_session.settlement_receipt_id.clone()
             && self
                 .forge_settlement_receipts
                 .contains_key(existing_id.as_str())
@@ -14209,14 +15041,18 @@ impl AutopilotChatState {
         } else {
             self.next_settlement_receipt_id()
         };
-        let existing_receipt = self.forge_settlement_receipts.get(&settlement_receipt_id).cloned();
+        let existing_receipt = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .cloned();
         let created_at_epoch_ms = existing_receipt
             .as_ref()
             .map_or(updated_at_epoch_ms, |receipt| receipt.created_at_epoch_ms);
-        let dispute_window_started_at_epoch_ms = existing_receipt.as_ref().map_or(
-            updated_at_epoch_ms,
-            |receipt| receipt.dispute_window_started_at_epoch_ms,
-        );
+        let dispute_window_started_at_epoch_ms = existing_receipt
+            .as_ref()
+            .map_or(updated_at_epoch_ms, |receipt| {
+                receipt.dispute_window_started_at_epoch_ms
+            });
         let dispute_window_closes_at_epoch_ms = existing_receipt.as_ref().map_or_else(
             || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
             |receipt| receipt.dispute_window_closes_at_epoch_ms,
@@ -14232,11 +15068,15 @@ impl AutopilotChatState {
                     .clone()
                     .or(contract.active_claim_id.clone()),
                 objective_kind: contract.objective_kind,
-                closure_path: existing_receipt.as_ref().and_then(|receipt| receipt.closure_path),
+                closure_path: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.closure_path),
                 status: ForgeSettlementReceiptStatus::Disputed,
                 evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
                 delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
-                reviewer_ref: existing_receipt.as_ref().and_then(|receipt| receipt.reviewer_ref.clone()),
+                reviewer_ref: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.reviewer_ref.clone()),
                 evaluator_ref: existing_receipt
                     .as_ref()
                     .and_then(|receipt| receipt.evaluator_ref.clone()),
@@ -14269,8 +15109,10 @@ impl AutopilotChatState {
         shared_session.updated_at_epoch_ms =
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         let _ = shared_session;
-        let _ = self
-            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        let _ = self.sync_settlement_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(settlement_receipt_id)
     }
@@ -14303,7 +15145,8 @@ impl AutopilotChatState {
                     "Bounty contract `{bounty_contract_id}` disappeared before settlement could be recorded."
                 )
             })?;
-        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+        let settlement_receipt_id = if let Some(existing_id) =
+            shared_session.settlement_receipt_id.clone()
             && self
                 .forge_settlement_receipts
                 .contains_key(existing_id.as_str())
@@ -14312,14 +15155,18 @@ impl AutopilotChatState {
         } else {
             self.next_settlement_receipt_id()
         };
-        let existing_receipt = self.forge_settlement_receipts.get(&settlement_receipt_id).cloned();
+        let existing_receipt = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .cloned();
         let created_at_epoch_ms = existing_receipt
             .as_ref()
             .map_or(updated_at_epoch_ms, |receipt| receipt.created_at_epoch_ms);
-        let dispute_window_started_at_epoch_ms = existing_receipt.as_ref().map_or(
-            updated_at_epoch_ms,
-            |receipt| receipt.dispute_window_started_at_epoch_ms,
-        );
+        let dispute_window_started_at_epoch_ms = existing_receipt
+            .as_ref()
+            .map_or(updated_at_epoch_ms, |receipt| {
+                receipt.dispute_window_started_at_epoch_ms
+            });
         let dispute_window_closes_at_epoch_ms = existing_receipt.as_ref().map_or_else(
             || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
             |receipt| receipt.dispute_window_closes_at_epoch_ms,
@@ -14335,11 +15182,15 @@ impl AutopilotChatState {
                     .clone()
                     .or(contract.active_claim_id.clone()),
                 objective_kind: contract.objective_kind,
-                closure_path: existing_receipt.as_ref().and_then(|receipt| receipt.closure_path),
+                closure_path: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.closure_path),
                 status: ForgeSettlementReceiptStatus::Canceled,
                 evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
                 delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
-                reviewer_ref: existing_receipt.as_ref().and_then(|receipt| receipt.reviewer_ref.clone()),
+                reviewer_ref: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.reviewer_ref.clone()),
                 evaluator_ref: existing_receipt
                     .as_ref()
                     .and_then(|receipt| receipt.evaluator_ref.clone()),
@@ -14371,8 +15222,10 @@ impl AutopilotChatState {
         shared_session.updated_at_epoch_ms =
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         let _ = shared_session;
-        let _ = self
-            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        let _ = self.sync_settlement_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(settlement_receipt_id)
     }
@@ -14656,6 +15509,10 @@ impl AutopilotChatState {
             shared_session_id.as_str(),
             updated_at_epoch_ms,
         );
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok((delivery_receipt_id, evidence_bundle_id))
     }
@@ -14749,6 +15606,10 @@ impl AutopilotChatState {
             shared_session.shared_session_id.as_str(),
             updated_at_epoch_ms,
         );
+        let _ = self.sync_campaign_links_for_shared_session(
+            shared_session.shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
         self.persist_codex_artifact_projection();
         Ok(delivery_receipt_id)
     }
@@ -14813,6 +15674,10 @@ impl AutopilotChatState {
         receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
         let _ = receipt;
         let _ = self.sync_probe_workspace_snapshot_and_restore_manifest_for_shared_session(
+            shared_session.shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        let _ = self.sync_campaign_links_for_shared_session(
             shared_session.shared_session_id.as_str(),
             updated_at_epoch_ms,
         );
@@ -15025,6 +15890,7 @@ impl AutopilotChatState {
                     },
                     workspace_snapshot_id: None,
                     restore_manifest_id: None,
+                    campaign_id: None,
                     bounty_contract_id: None,
                     bounty_claim_id: None,
                     settlement_receipt_id: None,
@@ -18623,6 +19489,7 @@ impl AutopilotChatState {
             &self.forge_shared_sessions,
             &self.forge_workspace_snapshots,
             &self.forge_restore_manifests,
+            &self.forge_campaigns,
             &self.forge_bounty_contracts,
             &self.forge_bounty_claims,
             &self.forge_settlement_receipts,
@@ -18631,6 +19498,7 @@ impl AutopilotChatState {
             self.next_forge_shared_session_seq,
             self.next_forge_workspace_snapshot_seq,
             self.next_forge_restore_manifest_seq,
+            self.next_forge_campaign_seq,
             self.next_forge_bounty_contract_seq,
             self.next_forge_bounty_claim_seq,
             self.next_forge_settlement_receipt_seq,
@@ -22354,12 +23222,11 @@ mod tests {
         ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
         ForgeDeliveryCompareWatch, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
         ForgeDeliveryPullRequestWatch, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
-        ForgeSettlementClosurePath, ForgeSettlementReceiptStatus,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeProbeOperatorHandoffState,
         ForgeProbePreparedBaselineStatus, ForgeProbeSessionLocationKind,
-        ForgeProbeSessionOwnerKind, ForgeSharedSessionControlOwner,
-        ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
+        ForgeProbeSessionOwnerKind, ForgeSettlementClosurePath, ForgeSettlementReceiptStatus,
+        ForgeSharedSessionControlOwner, ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
     };
 
     use super::{
@@ -28025,6 +28892,237 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_persists_probe_campaign_scope_and_retained_refs() {
+        let repo = init_git_workspace("campaign-scope");
+        let projection_path = unique_codex_artifact_projection_path("campaign-scope");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Looks good overall.",
+            1_700_000_130,
+            false,
+        );
+        let (evidence_bundle_id, _) = chat
+            .record_probe_evidence_verification_for_thread(
+                "thread-a",
+                "cargo-test",
+                ForgeEvidenceVerificationStatus::Passed,
+                Some("target/test.log".to_string()),
+                Some("12 tests passed".to_string()),
+                1_700_000_140,
+            )
+            .expect("verification evidence should record");
+        let (delivery_receipt_id, _) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("abc123".to_string()),
+                "feature/probe-campaign",
+                "def456",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/probe-campaign?expand=1"
+                        .to_string(),
+                ),
+                Some("https://github.com/OpenAgentsInc/openagents/pull/99".to_string()),
+                "Improve campaign projection",
+                "## Summary\n- persist campaign state",
+                1_700_000_150,
+            )
+            .expect("delivery receipt should record");
+
+        let campaign_id = chat
+            .record_probe_campaign_for_thread(
+                "thread-a",
+                "Improve retained eval picks",
+                1_700_000_160,
+            )
+            .expect("campaign should record");
+        chat.record_probe_campaign_goal_for_thread(
+            "thread-a",
+            "Retain only candidate changes that survive real reviewer and eval evidence.",
+            1_700_000_170,
+        )
+        .expect("campaign goal should record");
+        chat.record_probe_campaign_scope_for_thread(
+            "thread-a",
+            "Track accepted patches, retained cases, and verification references above the shared session.",
+            1_700_000_180,
+        )
+        .expect("campaign scope should record");
+        let (recorded_campaign_id, accepted_patch_ref) = chat
+            .record_probe_campaign_candidate_for_thread(
+                "thread-a",
+                crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+                "latest",
+                Some("parser fix candidate survived review".to_string()),
+                1_700_000_190,
+            )
+            .expect("accepted patch candidate should record");
+        assert_eq!(recorded_campaign_id, campaign_id);
+        assert_eq!(accepted_patch_ref, "diff:thread-a:turn-diff-1");
+        let (_, psionic_eval_ref) = chat
+            .record_probe_campaign_candidate_for_thread(
+                "thread-a",
+                crate::app_state::ForgeCampaignArtifactKind::PsionicRetainedEvalBundle,
+                "retained://eval-run-42",
+                Some("retained eval bundle beat the baseline".to_string()),
+                1_700_000_200,
+            )
+            .expect("psionic eval candidate should record");
+        assert_eq!(psionic_eval_ref, "retained://eval-run-42");
+        let (_, case_selection_id) = chat
+            .record_probe_campaign_case_selection_for_thread(
+                "thread-a",
+                "login-flow",
+                crate::app_state::ForgeCampaignArtifactKind::EvidenceBundle,
+                "active",
+                Some("retain the active reviewer evidence bundle".to_string()),
+                1_700_000_210,
+            )
+            .expect("campaign case selection should record");
+        assert!(case_selection_id.starts_with(&format!("{campaign_id}-case-")));
+        let (_, verification_ref) = chat
+            .record_probe_campaign_verification_ref_for_thread(
+                "thread-a",
+                crate::app_state::ForgeCampaignArtifactKind::DeliveryReceipt,
+                "active",
+                Some("accepted merge is the delivery closure gate".to_string()),
+                1_700_000_220,
+            )
+            .expect("campaign verification ref should record");
+        assert_eq!(verification_ref, delivery_receipt_id);
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session should exist");
+        assert_eq!(
+            shared_session.campaign_id.as_deref(),
+            Some(campaign_id.as_str())
+        );
+        let campaign = chat
+            .active_campaign()
+            .expect("active campaign should exist");
+        assert_eq!(campaign.campaign_id, campaign_id);
+        assert_eq!(
+            campaign.status,
+            crate::app_state::ForgeCampaignStatus::Scoped
+        );
+        assert_eq!(campaign.title, "Improve retained eval picks");
+        assert_eq!(
+            campaign.goal_summary.as_deref(),
+            Some("Retain only candidate changes that survive real reviewer and eval evidence.")
+        );
+        assert_eq!(
+            campaign.scope_summary.as_deref(),
+            Some(
+                "Track accepted patches, retained cases, and verification references above the shared session."
+            )
+        );
+        assert_eq!(
+            campaign.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(
+            campaign.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        assert!(campaign.candidate_refs.iter().any(|artifact_ref| {
+            artifact_ref.kind == crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary
+                && artifact_ref.reference == "diff:thread-a:turn-diff-1"
+        }));
+        assert!(campaign.candidate_refs.iter().any(|artifact_ref| {
+            artifact_ref.kind
+                == crate::app_state::ForgeCampaignArtifactKind::PsionicRetainedEvalBundle
+                && artifact_ref.reference == "retained://eval-run-42"
+        }));
+        assert!(campaign.retained_case_selections.iter().any(|selection| {
+            selection.case_id == "login-flow"
+                && selection.source_kind
+                    == crate::app_state::ForgeCampaignArtifactKind::EvidenceBundle
+                && selection.source_reference == evidence_bundle_id
+        }));
+        assert!(campaign.verification_refs.iter().any(|artifact_ref| {
+            artifact_ref.kind == crate::app_state::ForgeCampaignArtifactKind::DeliveryReceipt
+                && artifact_ref.reference == delivery_receipt_id
+        }));
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.campaign_id.as_deref(),
+            Some(campaign_id.as_str())
+        );
+        let reloaded_campaign = reloaded
+            .forge_campaigns
+            .get(&campaign_id)
+            .expect("reloaded campaign should exist");
+        assert_eq!(
+            reloaded_campaign.status,
+            crate::app_state::ForgeCampaignStatus::Scoped
+        );
+        assert_eq!(
+            reloaded_campaign.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(
+            reloaded_campaign.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        assert!(reloaded_campaign.candidate_refs.iter().any(|artifact_ref| {
+            artifact_ref.kind == crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary
+                && artifact_ref.reference == "diff:thread-a:turn-diff-1"
+        }));
+        assert!(
+            reloaded_campaign
+                .retained_case_selections
+                .iter()
+                .any(|selection| {
+                    selection.case_id == "login-flow"
+                        && selection.source_reference == evidence_bundle_id
+                })
+        );
+        assert!(
+            reloaded_campaign
+                .verification_refs
+                .iter()
+                .any(|artifact_ref| {
+                    artifact_ref.kind
+                        == crate::app_state::ForgeCampaignArtifactKind::DeliveryReceipt
+                        && artifact_ref.reference == delivery_receipt_id
+                })
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
     fn chat_state_persists_probe_merge_settlement_receipt_and_reuses_id() {
         let repo = init_git_workspace("settlement-merge");
         let projection_path = unique_codex_artifact_projection_path("settlement-merge");
@@ -28208,7 +29306,10 @@ mod tests {
             reloaded_receipt.closure_path,
             Some(ForgeSettlementClosurePath::AcceptedMerge)
         );
-        assert_eq!(reloaded_receipt.status, ForgeSettlementReceiptStatus::Recorded);
+        assert_eq!(
+            reloaded_receipt.status,
+            ForgeSettlementReceiptStatus::Recorded
+        );
         assert_eq!(
             reloaded_receipt.delivery_receipt_id.as_deref(),
             Some(delivery_receipt_id.as_str())
@@ -28286,7 +29387,10 @@ mod tests {
         let disputed_receipt = chat
             .active_settlement_receipt()
             .expect("disputed settlement receipt should exist");
-        assert_eq!(disputed_receipt.status, ForgeSettlementReceiptStatus::Disputed);
+        assert_eq!(
+            disputed_receipt.status,
+            ForgeSettlementReceiptStatus::Disputed
+        );
         assert_eq!(
             disputed_receipt.disputed_by_label.as_deref(),
             Some("reviewer")
@@ -28313,15 +29417,12 @@ mod tests {
             Some(ForgeSettlementClosurePath::AdmittedMetricWin)
         );
         assert_eq!(
-            receipt
-                .evaluator_ref
-                .as_ref()
-                .map(|reference| {
-                    (
-                        reference.evaluator_label.as_str(),
-                        reference.reference.as_str(),
-                    )
-                }),
+            receipt.evaluator_ref.as_ref().map(|reference| {
+                (
+                    reference.evaluator_label.as_str(),
+                    reference.reference.as_str(),
+                )
+            }),
             Some(("retained-eval", "retained://eval-run-42"))
         );
         assert_eq!(
@@ -28336,7 +29437,10 @@ mod tests {
             .and_then(|session| session.settlement_receipt_id.as_deref())
             .and_then(|receipt_id| reloaded.forge_settlement_receipts.get(receipt_id))
             .expect("reloaded settlement receipt");
-        assert_eq!(reloaded_receipt.status, ForgeSettlementReceiptStatus::Canceled);
+        assert_eq!(
+            reloaded_receipt.status,
+            ForgeSettlementReceiptStatus::Canceled
+        );
         assert_eq!(
             reloaded_receipt.cancel_reason.as_deref(),
             Some("superseded by a newer retained run")
