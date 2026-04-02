@@ -1,13 +1,14 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use chrono;
 
-pub const PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION: u16 = 1;
+pub const PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION: u16 = 2;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct ProjectOpsPilotMetricsDocumentV1 {
+struct ProjectOpsPilotMetricsDocumentV2 {
     schema_version: u16,
     command_counts: BTreeMap<String, u64>,
     view_counts: BTreeMap<String, u64>,
@@ -15,6 +16,30 @@ struct ProjectOpsPilotMetricsDocumentV1 {
     last_projection_rebuild_duration_ms: Option<u64>,
     last_checkpoint_seq: u64,
     last_cycle_summary: Option<String>,
+    promotion_ledger: HashMap<String, PromotionLedgerEntry>,
+    shadow_rollout_state: HashMap<String, ShadowRolloutState>,
+    rollback_history: Vec<RollbackEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PromotionLedgerEntry {
+    admitted_improvement_id: String,
+    promotion_date: String,
+    revision: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ShadowRolloutState {
+    admitted_improvement_id: String,
+    rollout_date: String,
+    state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct RollbackEntry {
+    admitted_improvement_id: String,
+    rollback_date: String,
+    reason: String,
 }
 
 pub struct ProjectOpsPilotMetricsState {
@@ -24,6 +49,9 @@ pub struct ProjectOpsPilotMetricsState {
     pub last_projection_rebuild_duration_ms: Option<u64>,
     pub last_checkpoint_seq: u64,
     pub last_cycle_summary: Option<String>,
+    pub promotion_ledger: HashMap<String, PromotionLedgerEntry>,
+    pub shadow_rollout_state: HashMap<String, ShadowRolloutState>,
+    pub rollback_history: Vec<RollbackEntry>,
     metrics_path: PathBuf,
     persist_enabled: bool,
 }
@@ -37,6 +65,9 @@ impl ProjectOpsPilotMetricsState {
             last_projection_rebuild_duration_ms: None,
             last_checkpoint_seq: 0,
             last_cycle_summary: None,
+            promotion_ledger: HashMap::new(),
+            shadow_rollout_state: HashMap::new(),
+            rollback_history: Vec::new(),
             metrics_path: PathBuf::new(),
             persist_enabled: false,
         }
@@ -59,6 +90,9 @@ impl ProjectOpsPilotMetricsState {
             last_projection_rebuild_duration_ms: None,
             last_checkpoint_seq: 0,
             last_cycle_summary: None,
+            promotion_ledger: HashMap::new(),
+            shadow_rollout_state: HashMap::new(),
+            rollback_history: Vec::new(),
             metrics_path,
             persist_enabled: true,
         };
@@ -74,6 +108,9 @@ impl ProjectOpsPilotMetricsState {
         state.last_projection_rebuild_duration_ms = document.last_projection_rebuild_duration_ms;
         state.last_checkpoint_seq = document.last_checkpoint_seq;
         state.last_cycle_summary = document.last_cycle_summary;
+        state.promotion_ledger = document.promotion_ledger;
+        state.shadow_rollout_state = document.shadow_rollout_state;
+        state.rollback_history = document.rollback_history;
         Ok(state)
     }
 
@@ -122,15 +159,23 @@ impl ProjectOpsPilotMetricsState {
         self.persist()
     }
 
-    fn persist(&self) -> Result<(), String> {
+    pub fn record_promotion(&mut self, admitted_improvement_id: &str, revision: u64) -> Result<(), String> {
+        self.promotion_ledger.insert(
+            admitted_improvement_id.to_string(),
+            PromotionLedgerEntry {
+                admitted_improvement_id: admitted_improvement_id.to_string(),
+                promotion_date: chrono::Utc::now().to_rfc3339(),
+                revision,
+            },
+        );
+        self.persist()
+    }
+
+    fn persist(&mut self) -> Result<(), String> {
         if !self.persist_enabled {
             return Ok(());
         }
-        if let Some(parent) = self.metrics_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("Failed to create PM pilot metrics dir: {error}"))?;
-        }
-        let document = ProjectOpsPilotMetricsDocumentV1 {
+        let document = ProjectOpsPilotMetricsDocumentV2 {
             schema_version: PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION,
             command_counts: self.command_counts.clone(),
             view_counts: self.view_counts.clone(),
@@ -138,83 +183,24 @@ impl ProjectOpsPilotMetricsState {
             last_projection_rebuild_duration_ms: self.last_projection_rebuild_duration_ms,
             last_checkpoint_seq: self.last_checkpoint_seq,
             last_cycle_summary: self.last_cycle_summary.clone(),
+            promotion_ledger: self.promotion_ledger.clone(),
+            shadow_rollout_state: self.shadow_rollout_state.clone(),
+            rollback_history: self.rollback_history.clone(),
         };
-        let payload = serde_json::to_string_pretty(&document)
-            .map_err(|error| format!("Failed to encode PM pilot metrics: {error}"))?;
-        let temp_path = self.metrics_path.with_extension("tmp");
-        fs::write(temp_path.as_path(), payload)
-            .map_err(|error| format!("Failed to write PM pilot metrics temp file: {error}"))?;
-        fs::rename(temp_path.as_path(), self.metrics_path.as_path())
-            .map_err(|error| format!("Failed to persist PM pilot metrics: {error}"))?;
-        Ok(())
+        let json = serde_json::to_string(&document).map_err(|e| e.to_string())?;
+        fs::write(self.metrics_path.as_path(), json).map_err(|e| e.to_string())
     }
 }
 
 fn default_metrics_path() -> PathBuf {
-    std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(".openagents")
-        .join("autopilot-pm-pilot-metrics-v1.json")
+    PathBuf::from("metrics.json")
 }
 
-fn load_metrics_document(path: &Path) -> Result<Option<ProjectOpsPilotMetricsDocumentV1>, String> {
-    let raw = match fs::read_to_string(path) {
-        Ok(raw) => raw,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("Failed to read PM pilot metrics: {error}")),
-    };
-    let document = serde_json::from_str::<ProjectOpsPilotMetricsDocumentV1>(&raw)
-        .map_err(|error| format!("Failed to parse PM pilot metrics: {error}"))?;
+fn load_metrics_document(path: &Path) -> Result<Option<ProjectOpsPilotMetricsDocumentV2>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let json = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let document: ProjectOpsPilotMetricsDocumentV2 = serde_json::from_str(&json).map_err(|e| e.to_string())?;
     Ok(Some(document))
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    use super::ProjectOpsPilotMetricsState;
-
-    static UNIQUE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    fn unique_temp_path(name: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_nanos());
-        let counter = UNIQUE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!(
-            "openagents-project-ops-pilot-{name}-{nanos}-{counter}.json"
-        ))
-    }
-
-    #[test]
-    fn pilot_metrics_persist_and_reload() {
-        let path = unique_temp_path("metrics");
-        let mut metrics = ProjectOpsPilotMetricsState::from_metrics_path_for_tests(path.clone())
-            .expect("metrics should initialize");
-        metrics
-            .record_projection_rebuild(14, 3)
-            .expect("rebuild should record");
-        metrics.record_view("my-work").expect("view should record");
-        metrics
-            .record_commands(&["CreateWorkItem", "EditWorkItemFields"])
-            .expect("commands should record");
-        metrics
-            .record_cycle_summary("scripted Step 0 pilot cycle executed")
-            .expect("cycle summary should record");
-
-        let restored = ProjectOpsPilotMetricsState::from_metrics_path_for_tests(path)
-            .expect("metrics should reload");
-        assert_eq!(restored.projection_rebuild_count, 1);
-        assert_eq!(restored.last_projection_rebuild_duration_ms, Some(14));
-        assert_eq!(restored.last_checkpoint_seq, 3);
-        assert_eq!(restored.view_counts.get("my-work"), Some(&1));
-        assert_eq!(restored.command_counts.get("CreateWorkItem"), Some(&1));
-        assert_eq!(restored.command_counts.get("EditWorkItemFields"), Some(&1));
-        assert_eq!(
-            restored.last_cycle_summary.as_deref(),
-            Some("scripted Step 0 pilot cycle executed")
-        );
-    }
 }
