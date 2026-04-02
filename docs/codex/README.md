@@ -35,7 +35,8 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     into Autopilot thread, transcript, workspace, artifact, attach-resume, and
     shared-session handoff, delegated child-session cards, workspace-restore
     provenance, hosted runtime ownership plus execution-host projection, and
-    reviewer evidence bundle plus delivery-receipt state.
+    reviewer evidence bundle plus delivery-receipt state, bounty contracts,
+    claim lifecycle, and participant credit envelopes.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
     follow-ups, interrupt, approval resolution, queued-turn cancel, and

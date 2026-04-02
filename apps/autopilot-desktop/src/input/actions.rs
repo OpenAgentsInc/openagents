@@ -193,6 +193,23 @@ enum ChatRemoteComposerIntent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ChatForgeComposerIntent {
+    BountyOpen {
+        objective_kind: crate::app_state::ForgeBountyObjectiveKind,
+        title: String,
+    },
+    BountyCredit {
+        participant_label: String,
+        credit_basis_points: u16,
+    },
+    BountyClaim {
+        claimant_label: String,
+        summary: Option<String>,
+    },
+    BountyAdvance {
+        next_status: crate::app_state::ForgeBountyLifecycleStatus,
+        summary: Option<String>,
+    },
+    BountyStatus,
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
         summary: String,
@@ -3856,9 +3873,10 @@ fn build_forge_delivery_runtime_watch_from_git(
 > {
     let repo_root = git_command_checked(workspace, &["rev-parse", "--show-toplevel"])?;
     let head_commit = git_command_checked(workspace, &["rev-parse", "HEAD"])?;
-    let symbolic_head = git_command_optional(workspace, &["symbolic-ref", "--quiet", "--short", "HEAD"])
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
+    let symbolic_head =
+        git_command_optional(workspace, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
     let head_ref = symbolic_head.clone().unwrap_or_else(|| {
         git_command_checked(workspace, &["rev-parse", "--short", "HEAD"])
             .unwrap_or_else(|_| String::from("HEAD"))
@@ -3882,7 +3900,10 @@ fn build_forge_delivery_runtime_watch_from_git(
     let (ahead_by, behind_by) = upstream_ref
         .as_ref()
         .and_then(|_| {
-            git_command_optional(workspace, &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+            git_command_optional(
+                workspace,
+                &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+            )
         })
         .map(|counts| parse_git_ahead_behind(counts.as_str()))
         .unwrap_or((None, None));
@@ -3898,9 +3919,11 @@ fn build_forge_delivery_runtime_watch_from_git(
         crate::app_state::ForgeDeliveryComparePosture::LocalOnly
     };
     let branch_name = (!detached_head).then(|| head_ref.clone());
-    let compare_ref = upstream_ref
-        .as_ref()
-        .and_then(|upstream_ref| branch_name.as_ref().map(|branch_name| format!("{upstream_ref}...{branch_name}")));
+    let compare_ref = upstream_ref.as_ref().and_then(|upstream_ref| {
+        branch_name
+            .as_ref()
+            .map(|branch_name| format!("{upstream_ref}...{branch_name}"))
+    });
     Ok((
         crate::app_state::ForgeDeliveryBranchWatch {
             repo_root: repo_root.trim().to_string(),
@@ -4070,7 +4093,9 @@ fn parse_github_ci_watch(
     }))
 }
 
-fn github_refresh_target_for_receipt(receipt: &crate::app_state::ForgeDeliveryReceipt) -> Option<String> {
+fn github_refresh_target_for_receipt(
+    receipt: &crate::app_state::ForgeDeliveryReceipt,
+) -> Option<String> {
     receipt
         .pr_url
         .as_ref()
@@ -4106,7 +4131,8 @@ fn refresh_delivery_watches_from_github(
             "url,number,state,title,baseRefName,headRefName,isDraft,mergeable,mergeStateStatus,reviewDecision,mergedAt",
         ],
     )?;
-    let pull_request_watch = parse_github_pull_request_watch(pr_payload.as_str(), updated_at_epoch_ms)?;
+    let pull_request_watch =
+        parse_github_pull_request_watch(pr_payload.as_str(), updated_at_epoch_ms)?;
     let checks_output = run_gh_command(
         workspace,
         &[
@@ -4166,12 +4192,14 @@ fn sync_delivery_watch_state_from_git(
 ) -> Result<Option<String>, String> {
     let (branch_watch, compare_watch) =
         build_forge_delivery_runtime_watch_from_git(workspace, updated_at_epoch_ms)?;
-    state.autopilot_chat.sync_probe_delivery_runtime_watch_for_thread(
-        thread_id,
-        Some(branch_watch),
-        Some(compare_watch),
-        updated_at_epoch_ms,
-    )
+    state
+        .autopilot_chat
+        .sync_probe_delivery_runtime_watch_for_thread(
+            thread_id,
+            Some(branch_watch),
+            Some(compare_watch),
+            updated_at_epoch_ms,
+        )
 }
 
 fn refresh_delivery_watch_state_from_github(
@@ -4187,20 +4215,19 @@ fn refresh_delivery_watch_state_from_github(
         .and_then(|receipt_id| state.autopilot_chat.delivery_receipt_for_id(receipt_id))
         .cloned()
         .ok_or_else(|| "Prepare a delivery receipt first with `/deliver pr ...`.".to_string())?;
-    let outcome =
-        refresh_delivery_watches_from_github(workspace, &receipt, updated_at_epoch_ms)?;
-    state.autopilot_chat.record_probe_delivery_remote_watch_for_thread(
-        thread_id,
-        outcome.pull_request_watch,
-        outcome.ci_watch,
-        updated_at_epoch_ms,
-    )?;
+    let outcome = refresh_delivery_watches_from_github(workspace, &receipt, updated_at_epoch_ms)?;
+    state
+        .autopilot_chat
+        .record_probe_delivery_remote_watch_for_thread(
+            thread_id,
+            outcome.pull_request_watch,
+            outcome.ci_watch,
+            updated_at_epoch_ms,
+        )?;
     Ok(outcome.notes)
 }
 
-fn delivery_ci_watch_summary(
-    watch: &crate::app_state::ForgeDeliveryCiWatch,
-) -> String {
+fn delivery_ci_watch_summary(watch: &crate::app_state::ForgeDeliveryCiWatch) -> String {
     let mut pass = 0usize;
     let mut fail = 0usize;
     let mut pending = 0usize;
@@ -4326,6 +4353,72 @@ fn build_probe_delivery_status_snapshot(
     } else {
         lines.push(String::from(
             "CI watch: not refreshed yet; run `/deliver refresh` after a PR exists.",
+        ));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn build_probe_bounty_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let contract = chat.active_bounty_contract().ok_or_else(|| {
+        "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+    })?;
+    let mut lines = vec![format!(
+        "Bounty `{}` is {} for {}.",
+        contract.bounty_contract_id,
+        contract.lifecycle_status.display_label(),
+        contract.objective_kind.display_label()
+    )];
+    lines.push(format!("Title: {}", contract.title));
+    if let Some(summary) = contract.objective_summary.as_deref() {
+        lines.push(format!("Objective: {summary}"));
+    }
+    if let Some(claim) = chat.active_bounty_claim() {
+        lines.push(format!(
+            "Active claim `{}` is {} by `{}`.",
+            claim.bounty_claim_id,
+            claim.lifecycle_status.display_label(),
+            claim.claimant_label
+        ));
+        if let Some(summary) = claim.summary.as_deref() {
+            lines.push(format!("Claim summary: {summary}"));
+        }
+    } else {
+        lines.push(String::from("Active claim: none."));
+    }
+    if !contract.participant_credit_envelopes.is_empty() {
+        let credit_summary = contract
+            .participant_credit_envelopes
+            .iter()
+            .map(|envelope| {
+                format!(
+                    "{}={}bp ({})",
+                    envelope.display_name,
+                    envelope.credit_basis_points.unwrap_or(0),
+                    envelope.role.display_label()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!("Credit envelopes: {credit_summary}"));
+    }
+    if let Some(evidence_bundle_id) = contract.evidence_bundle_id.as_deref() {
+        lines.push(format!("Evidence bundle: `{evidence_bundle_id}`."));
+    }
+    if let Some(delivery_receipt_id) = contract.delivery_receipt_id.as_deref() {
+        lines.push(format!("Delivery receipt: `{delivery_receipt_id}`."));
+    }
+    if !contract.knowledge_pack_refs.is_empty() {
+        lines.push(format!(
+            "Knowledge packs: {}.",
+            contract.knowledge_pack_refs.join(", ")
+        ));
+    }
+    if !contract.eval_pack_refs.is_empty() {
+        lines.push(format!(
+            "Eval packs: {}.",
+            contract.eval_pack_refs.join(", ")
         ));
     }
     Ok(lines.join("\n"))
@@ -4864,7 +4957,8 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if first_word != "/handoff"
+    if first_word != "/bounty"
+        && first_word != "/handoff"
         && first_word != "/restore"
         && first_word != "/evidence"
         && first_word != "/deliver"
@@ -4872,6 +4966,125 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
+    if first_word == "/bounty" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Bounty commands: `/bounty open <merge|metric> <title>`, `/bounty credit <participant-label> <basis-points>`, `/bounty claim <claimant-label> [summary]`, `/bounty advance <admitted|completed|canceled|disputed> [summary]`, `/bounty status`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "open" => {
+                let Some(objective_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/bounty open <merge|metric> <title>`.".to_string(),
+                    );
+                };
+                if words.len() < 4 {
+                    return Err(
+                        "Usage: `/bounty open <merge|metric> <title>`.".to_string(),
+                    );
+                }
+                let objective_kind = match objective_kind {
+                    "merge" | "accepted_merge" | "accepted-merge" => {
+                        crate::app_state::ForgeBountyObjectiveKind::AcceptedMerge
+                    }
+                    "metric" | "admitted_metric_win" | "admitted-metric-win" => {
+                        crate::app_state::ForgeBountyObjectiveKind::AdmittedMetricWin
+                    }
+                    _ => {
+                        return Err(
+                            "Bounty objective kind must be `merge` or `metric`.".to_string(),
+                        );
+                    }
+                };
+                Ok(Some(ChatForgeComposerIntent::BountyOpen {
+                    objective_kind,
+                    title: words[3..].join(" "),
+                }))
+            }
+            "credit" => {
+                let Some(participant_label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/bounty credit <participant-label> <basis-points>`.".to_string(),
+                    );
+                };
+                let Some(credit_basis_points) = words.get(3) else {
+                    return Err(
+                        "Usage: `/bounty credit <participant-label> <basis-points>`.".to_string(),
+                    );
+                };
+                if words.len() != 4 {
+                    return Err(
+                        "Usage: `/bounty credit <participant-label> <basis-points>`.".to_string(),
+                    );
+                }
+                let credit_basis_points = credit_basis_points.parse::<u16>().map_err(|_| {
+                    "Bounty credit basis points must be an integer between 0 and 10000."
+                        .to_string()
+                })?;
+                if credit_basis_points > 10_000 {
+                    return Err(
+                        "Bounty credit basis points must be an integer between 0 and 10000."
+                            .to_string(),
+                    );
+                }
+                Ok(Some(ChatForgeComposerIntent::BountyCredit {
+                    participant_label,
+                    credit_basis_points,
+                }))
+            }
+            "claim" => {
+                let Some(claimant_label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/bounty claim <claimant-label> [summary]`.".to_string(),
+                    );
+                };
+                Ok(Some(ChatForgeComposerIntent::BountyClaim {
+                    claimant_label,
+                    summary: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
+            "advance" => {
+                let Some(next_status) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/bounty advance <admitted|completed|canceled|disputed> [summary]`."
+                            .to_string(),
+                    );
+                };
+                let next_status = match next_status {
+                    "admitted" | "admit" => crate::app_state::ForgeBountyLifecycleStatus::Admitted,
+                    "completed" | "complete" => {
+                        crate::app_state::ForgeBountyLifecycleStatus::Completed
+                    }
+                    "canceled" | "cancelled" | "cancel" => {
+                        crate::app_state::ForgeBountyLifecycleStatus::Canceled
+                    }
+                    "disputed" | "dispute" => {
+                        crate::app_state::ForgeBountyLifecycleStatus::Disputed
+                    }
+                    _ => {
+                        return Err(
+                            "Bounty lifecycle advance must be `admitted`, `completed`, `canceled`, or `disputed`."
+                                .to_string(),
+                        );
+                    }
+                };
+                Ok(Some(ChatForgeComposerIntent::BountyAdvance {
+                    next_status,
+                    summary: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/bounty status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::BountyStatus))
+            }
+            _ => Err(
+                "Bounty commands: `/bounty open <merge|metric> <title>`, `/bounty credit <participant-label> <basis-points>`, `/bounty claim <claimant-label> [summary]`, `/bounty advance <admitted|completed|canceled|disputed> [summary]`, `/bounty status`.".to_string(),
+            ),
+        };
+    }
     if first_word == "/deliver" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
@@ -6192,6 +6405,117 @@ fn run_chat_forge_action(
     }
 
     match intent {
+        ChatForgeComposerIntent::BountyOpen {
+            objective_kind,
+            title,
+        } => match state
+            .autopilot_chat
+            .record_probe_bounty_contract_for_thread(
+                thread_id.as_str(),
+                objective_kind,
+                title.clone(),
+                None,
+                "operator.command:/bounty open",
+                current_epoch_millis(),
+            ) {
+            Ok(bounty_contract_id) => {
+                let summary = build_probe_bounty_status_snapshot(&state.autopilot_chat)
+                    .unwrap_or_else(|_| String::new());
+                let mut response = format!(
+                    "Recorded bounty contract `{bounty_contract_id}` for {}.\n\n{}",
+                    objective_kind.display_label(),
+                    title
+                );
+                if !summary.is_empty() {
+                    response.push_str("\n\n");
+                    response.push_str(summary.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::BountyCredit {
+            participant_label,
+            credit_basis_points,
+        } => match state.autopilot_chat.record_probe_bounty_credit_for_thread(
+            thread_id.as_str(),
+            participant_label.clone(),
+            credit_basis_points,
+            current_epoch_millis(),
+        ) {
+            Ok((bounty_contract_id, display_name)) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded bounty credit envelope on `{bounty_contract_id}`: `{display_name}` -> {} basis points.",
+                    credit_basis_points
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::BountyClaim {
+            claimant_label,
+            summary,
+        } => match state.autopilot_chat.record_probe_bounty_claim_for_thread(
+            thread_id.as_str(),
+            claimant_label.clone(),
+            summary.clone(),
+            "operator.command:/bounty claim",
+            current_epoch_millis(),
+        ) {
+            Ok((bounty_contract_id, bounty_claim_id)) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Recorded bounty claim `{bounty_claim_id}` on `{bounty_contract_id}` for `{}`.{}",
+                    claimant_label,
+                    summary
+                        .as_deref()
+                        .map(|value| format!("\n\n{value}"))
+                        .unwrap_or_default()
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::BountyAdvance {
+            next_status,
+            summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_bounty_lifecycle_for_thread(
+                thread_id.as_str(),
+                next_status,
+                summary.clone(),
+                "operator.command:/bounty advance",
+                current_epoch_millis(),
+            ) {
+            Ok((bounty_contract_id, bounty_claim_id)) => append_chat_command_result(
+                state,
+                prompt,
+                format!(
+                    "Advanced bounty `{bounty_contract_id}` to {}.{}{}",
+                    next_status.display_label(),
+                    bounty_claim_id
+                        .as_deref()
+                        .map(|value| format!("\n\nActive claim: `{value}`."))
+                        .unwrap_or_default(),
+                    summary
+                        .as_deref()
+                        .map(|value| format!("\n\n{value}"))
+                        .unwrap_or_default()
+                ),
+                false,
+            ),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::BountyStatus => {
+            match build_probe_bounty_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
         ChatForgeComposerIntent::Handoff { owner, summary } => match state
             .autopilot_chat
             .record_shared_session_handoff_for_thread(
@@ -17505,14 +17829,14 @@ mod tests {
         git_current_branch, git_local_branch_exists, github_compare_url,
         is_taxonomy_failure_detail, loop_integrity_alert_specs,
         nip90_request_kind_for_request_type, note_active_job_waiting_for_payment_evidence,
-        parse_github_ci_watch, parse_github_pull_request_watch,
         parse_chat_apps_intent, parse_chat_forge_intent, parse_chat_git_intent,
         parse_chat_mcp_intent, parse_chat_remote_intent, parse_chat_request_intent,
         parse_chat_skills_intent, parse_chat_spacetime_intent, parse_chat_terminal_intent,
         parse_chat_wallet_intent, parse_direct_message_creation_intent,
-        parse_direct_message_room_intent, parse_managed_chat_composer_intent,
-        parse_managed_chat_mention_prefix, parse_shell_like_words,
-        resolve_apple_fm_workbench_session_id, resolve_wallet_blink_env_from_secure_values,
+        parse_direct_message_room_intent, parse_github_ci_watch, parse_github_pull_request_watch,
+        parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
+        parse_shell_like_words, resolve_apple_fm_workbench_session_id,
+        resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces,
         stable_sats_period_convert_totals_from_receipts,
@@ -18744,6 +19068,45 @@ mod tests {
     }
 
     #[test]
+    fn chat_bounty_commands_parse_contract_claim_and_status() {
+        assert_eq!(
+            parse_chat_forge_intent("/bounty open merge Land the parser fix").unwrap(),
+            Some(ChatForgeComposerIntent::BountyOpen {
+                objective_kind: crate::app_state::ForgeBountyObjectiveKind::AcceptedMerge,
+                title: "Land the parser fix".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/bounty credit human 2500").unwrap(),
+            Some(ChatForgeComposerIntent::BountyCredit {
+                participant_label: "human".to_string(),
+                credit_basis_points: 2_500,
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/bounty claim agent implemented the fix").unwrap(),
+            Some(ChatForgeComposerIntent::BountyClaim {
+                claimant_label: "agent".to_string(),
+                summary: Some("implemented the fix".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/bounty advance admitted merged after review").unwrap(),
+            Some(ChatForgeComposerIntent::BountyAdvance {
+                next_status: crate::app_state::ForgeBountyLifecycleStatus::Admitted,
+                summary: Some("merged after review".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/bounty status").unwrap(),
+            Some(ChatForgeComposerIntent::BountyStatus)
+        );
+        assert!(parse_chat_forge_intent("/bounty").is_err());
+        assert!(parse_chat_forge_intent("/bounty credit human").is_err());
+        assert!(parse_chat_forge_intent("/bounty advance").is_err());
+    }
+
+    #[test]
     fn chat_skills_commands_parse_local_and_remote_workflows() {
         assert_eq!(
             parse_chat_skills_intent("/skills").unwrap(),
@@ -19097,7 +19460,10 @@ mod tests {
         )
         .expect("ci watch should parse")
         .expect("ci watch should exist");
-        assert_eq!(watch.status, crate::app_state::ForgeDeliveryCiStatus::Pending);
+        assert_eq!(
+            watch.status,
+            crate::app_state::ForgeDeliveryCiStatus::Pending
+        );
         assert_eq!(watch.checks.len(), 2);
         assert_eq!(
             watch.checks[0].status,

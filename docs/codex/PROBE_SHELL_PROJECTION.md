@@ -203,6 +203,42 @@ Current local-first behavior:
 - GitHub-specific PR and CI details stay app-owned in the delivery receipt
   instead of leaking browser-provider semantics into Probe runtime truth
 
+## Bounty Contract Layer
+
+Autopilot now also keeps one app-owned bounty contract and optional active claim
+above the shared session, evidence bundle, and delivery receipt.
+
+Current local-first behavior:
+
+- one bounty contract is linked from the Forge shared session with a stable
+  `forge-bounty-*` id
+- the active claim is tracked separately with its own stable `forge-claim-*` id
+- objective kind is explicit instead of freeform:
+  - `accepted_merge`
+  - `admitted_metric_win`
+- the shell persists claim lifecycle state directly:
+  - `draft`
+  - `claimed`
+  - `admitted`
+  - `completed`
+  - `canceled`
+  - `disputed`
+- participant credit envelopes are stored separately from claim ownership so
+  operator credit, implementation credit, reviewer credit, and later evaluator
+  credit do not get collapsed into one winner-take-all note
+- bounty contracts link back to the current evidence bundle, delivery receipt,
+  and reserved knowledge-pack or eval-pack refs so later payout or dispute
+  logic can reason from typed objects instead of transcript fragments
+- operators can manage the current local contract with:
+  - `/bounty open <merge|metric> <title>`
+  - `/bounty credit <participant-label> <basis-points>`
+  - `/bounty claim <claimant-label> [summary]`
+  - `/bounty advance <admitted|completed|canceled|disputed> [summary]`
+  - `/bounty status`
+- the shell renders the active bounty contract and active claim as first-class
+  cards above the workspace snapshot layer so settlement posture is visible
+  before funds movement exists
+
 ## Artifact Ownership
 
 Plan, diff, review, and compaction presentation stays app-owned.

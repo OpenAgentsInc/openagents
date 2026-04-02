@@ -9161,6 +9161,150 @@ pub struct ForgeDeliveryReceipt {
     pub updated_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeBountyObjectiveKind {
+    AcceptedMerge,
+    AdmittedMetricWin,
+}
+
+impl ForgeBountyObjectiveKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AcceptedMerge => "accepted_merge",
+            Self::AdmittedMetricWin => "admitted_metric_win",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::AcceptedMerge => "accepted merge",
+            Self::AdmittedMetricWin => "admitted metric win",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeBountyLifecycleStatus {
+    Draft,
+    Claimed,
+    Admitted,
+    Completed,
+    Canceled,
+    Disputed,
+}
+
+impl ForgeBountyLifecycleStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Claimed => "claimed",
+            Self::Admitted => "admitted",
+            Self::Completed => "completed",
+            Self::Canceled => "canceled",
+            Self::Disputed => "disputed",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Claimed => "claimed",
+            Self::Admitted => "admitted",
+            Self::Completed => "completed",
+            Self::Canceled => "canceled",
+            Self::Disputed => "disputed",
+        }
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Canceled | Self::Disputed)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeBountyCreditRole {
+    Operator,
+    Implementation,
+    Reviewer,
+    Evaluator,
+    Other,
+}
+
+impl ForgeBountyCreditRole {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Operator => "operator",
+            Self::Implementation => "implementation",
+            Self::Reviewer => "reviewer",
+            Self::Evaluator => "evaluator",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeBountyParticipantCreditEnvelope {
+    pub participant_id: String,
+    pub display_name: String,
+    pub role: ForgeBountyCreditRole,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credit_basis_points: Option<u16>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeBountyClaim {
+    pub bounty_claim_id: String,
+    pub bounty_contract_id: String,
+    pub shared_session_id: String,
+    pub claimant_id: String,
+    pub claimant_label: String,
+    pub lifecycle_status: ForgeBountyLifecycleStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub knowledge_pack_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eval_pack_refs: Vec<String>,
+    pub provenance: String,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeBountyContract {
+    pub bounty_contract_id: String,
+    pub shared_session_id: String,
+    pub objective_kind: ForgeBountyObjectiveKind,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objective_summary: Option<String>,
+    pub lifecycle_status: ForgeBountyLifecycleStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_claim_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claim_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub knowledge_pack_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eval_pack_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub participant_credit_envelopes: Vec<ForgeBountyParticipantCreditEnvelope>,
+    pub provenance: String,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSession {
     pub shared_session_id: String,
@@ -9185,6 +9329,10 @@ pub struct ForgeSharedSession {
     pub workspace_snapshot_id: Option<String>,
     #[serde(default)]
     pub restore_manifest_id: Option<String>,
+    #[serde(default)]
+    pub bounty_contract_id: Option<String>,
+    #[serde(default)]
+    pub bounty_claim_id: Option<String>,
     pub evidence_bundle_id: Option<String>,
     pub delivery_receipt_id: Option<String>,
     pub created_at_epoch_ms: u64,
@@ -9626,11 +9774,15 @@ pub struct AutopilotChatState {
     forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: std::collections::HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: std::collections::HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_bounty_contracts: std::collections::HashMap<String, ForgeBountyContract>,
+    forge_bounty_claims: std::collections::HashMap<String, ForgeBountyClaim>,
     forge_evidence_bundles: std::collections::HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: std::collections::HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_bounty_contract_seq: u64,
+    next_forge_bounty_claim_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
@@ -9754,11 +9906,15 @@ impl Default for AutopilotChatState {
             forge_shared_sessions,
             forge_workspace_snapshots,
             forge_restore_manifests,
+            forge_bounty_contracts,
+            forge_bounty_claims,
             forge_evidence_bundles,
             forge_delivery_receipts,
             next_forge_shared_session_seq,
             next_forge_workspace_snapshot_seq,
             next_forge_restore_manifest_seq,
+            next_forge_bounty_contract_seq,
+            next_forge_bounty_claim_seq,
             next_forge_evidence_bundle_seq,
             next_forge_delivery_receipt_seq,
             review_thread_source_map,
@@ -9771,11 +9927,15 @@ impl Default for AutopilotChatState {
                 projection.forge_shared_sessions,
                 projection.forge_workspace_snapshots,
                 projection.forge_restore_manifests,
+                projection.forge_bounty_contracts,
+                projection.forge_bounty_claims,
                 projection.forge_evidence_bundles,
                 projection.forge_delivery_receipts,
                 projection.next_forge_shared_session_seq,
                 projection.next_forge_workspace_snapshot_seq,
                 projection.next_forge_restore_manifest_seq,
+                projection.next_forge_bounty_contract_seq,
+                projection.next_forge_bounty_claim_seq,
                 projection.next_forge_evidence_bundle_seq,
                 projection.next_forge_delivery_receipt_seq,
                 projection.review_thread_source_map,
@@ -9790,6 +9950,10 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
+                1,
+                1,
                 1,
                 1,
                 1,
@@ -9822,11 +9986,15 @@ impl Default for AutopilotChatState {
             forge_shared_sessions,
             forge_workspace_snapshots,
             forge_restore_manifests,
+            forge_bounty_contracts,
+            forge_bounty_claims,
             forge_evidence_bundles,
             forge_delivery_receipts,
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             next_forge_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
             next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
+            next_forge_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
+            next_forge_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
             next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
             next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
             review_thread_source_map,
@@ -9934,6 +10102,10 @@ struct CodexArtifactProjectionDocumentV2 {
     #[serde(default)]
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
     #[serde(default)]
+    bounty_contracts: Vec<ForgeBountyContract>,
+    #[serde(default)]
+    bounty_claims: Vec<ForgeBountyClaim>,
+    #[serde(default)]
     evidence_bundles: Vec<ForgeEvidenceBundle>,
     #[serde(default)]
     delivery_receipts: Vec<ForgeDeliveryReceipt>,
@@ -9943,6 +10115,10 @@ struct CodexArtifactProjectionDocumentV2 {
     next_workspace_snapshot_seq: u64,
     #[serde(default = "default_next_forge_restore_manifest_seq")]
     next_restore_manifest_seq: u64,
+    #[serde(default = "default_next_forge_bounty_contract_seq")]
+    next_bounty_contract_seq: u64,
+    #[serde(default = "default_next_forge_bounty_claim_seq")]
+    next_bounty_claim_seq: u64,
     #[serde(default = "default_next_forge_evidence_bundle_seq")]
     next_evidence_bundle_seq: u64,
     #[serde(default = "default_next_forge_delivery_receipt_seq")]
@@ -9956,11 +10132,15 @@ struct LoadedCodexArtifactProjection {
     forge_shared_sessions: HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_bounty_contracts: HashMap<String, ForgeBountyContract>,
+    forge_bounty_claims: HashMap<String, ForgeBountyClaim>,
     forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_bounty_contract_seq: u64,
+    next_forge_bounty_claim_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: HashMap<String, String>,
@@ -9975,6 +10155,14 @@ fn default_next_forge_workspace_snapshot_seq() -> u64 {
 }
 
 fn default_next_forge_restore_manifest_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_bounty_contract_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_bounty_claim_seq() -> u64 {
     1
 }
 
@@ -10114,6 +10302,90 @@ fn default_forge_shared_session_participants() -> Vec<ForgeSharedSessionParticip
     ]
 }
 
+fn default_bounty_credit_role_for_participant(
+    kind: ForgeSharedSessionControlOwner,
+) -> ForgeBountyCreditRole {
+    match kind {
+        ForgeSharedSessionControlOwner::HumanLocal => ForgeBountyCreditRole::Operator,
+        ForgeSharedSessionControlOwner::ProbeLocalAgent => ForgeBountyCreditRole::Implementation,
+    }
+}
+
+fn default_bounty_credit_envelopes_for_shared_session(
+    session: &ForgeSharedSession,
+) -> Vec<ForgeBountyParticipantCreditEnvelope> {
+    session
+        .participants
+        .iter()
+        .map(|participant| ForgeBountyParticipantCreditEnvelope {
+            participant_id: participant.participant_id.clone(),
+            display_name: participant.display_name.clone(),
+            role: default_bounty_credit_role_for_participant(participant.kind),
+            credit_basis_points: None,
+        })
+        .collect()
+}
+
+fn forge_reference_slug(value: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_dash = false;
+    for ch in value.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !previous_dash {
+            slug.push('-');
+            previous_dash = true;
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
+fn normalize_forge_lookup_key(value: &str) -> String {
+    forge_reference_slug(value)
+}
+
+fn resolve_forge_bounty_participant(
+    session: &ForgeSharedSession,
+    participant_query: &str,
+) -> (String, String, ForgeBountyCreditRole) {
+    let query = normalize_forge_lookup_key(participant_query);
+    if let Some(participant) = session.participants.iter().find(|participant| {
+        normalize_forge_lookup_key(participant.participant_id.as_str()) == query
+            || normalize_forge_lookup_key(participant.display_name.as_str()) == query
+            || (query == "human" && participant.kind == ForgeSharedSessionControlOwner::HumanLocal)
+            || (query == "agent"
+                && participant.kind == ForgeSharedSessionControlOwner::ProbeLocalAgent)
+            || (query == "operator"
+                && participant.kind == ForgeSharedSessionControlOwner::HumanLocal)
+            || (query == "probe"
+                && participant.kind == ForgeSharedSessionControlOwner::ProbeLocalAgent)
+    }) {
+        return (
+            participant.participant_id.clone(),
+            participant.display_name.clone(),
+            default_bounty_credit_role_for_participant(participant.kind),
+        );
+    }
+    let display_name = participant_query.trim().to_string();
+    let slug = forge_reference_slug(display_name.as_str());
+    let participant_id = if slug.is_empty() {
+        format!("external-{}", session.participants.len() + 1)
+    } else {
+        format!("external-{slug}")
+    };
+    let fallback_display_name = if display_name.is_empty() {
+        participant_id.clone()
+    } else {
+        display_name
+    };
+    (
+        participant_id,
+        fallback_display_name,
+        ForgeBountyCreditRole::Other,
+    )
+}
+
 fn normalize_probe_session_ids(mut session_ids: Vec<String>) -> Vec<String> {
     session_ids = session_ids
         .into_iter()
@@ -10157,6 +10429,16 @@ fn normalize_forge_shared_sessions(
             .filter(|value| !value.is_empty());
         session.restore_manifest_id = session
             .restore_manifest_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        session.bounty_contract_id = session
+            .bounty_contract_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        session.bounty_claim_id = session
+            .bounty_claim_id
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
@@ -10242,6 +10524,138 @@ fn normalize_forge_probe_remote_session_projection(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     projection
+}
+
+fn normalize_forge_reference_list(mut refs: Vec<String>) -> Vec<String> {
+    refs = refs
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect();
+    refs.sort();
+    refs.dedup();
+    refs
+}
+
+fn normalize_forge_bounty_credit_envelopes(
+    mut envelopes: Vec<ForgeBountyParticipantCreditEnvelope>,
+) -> Vec<ForgeBountyParticipantCreditEnvelope> {
+    envelopes.sort_by(|lhs, rhs| lhs.participant_id.cmp(&rhs.participant_id));
+    let mut seen_ids = HashSet::new();
+    envelopes.retain(|envelope| {
+        let participant_id = envelope.participant_id.trim();
+        !participant_id.is_empty() && seen_ids.insert(participant_id.to_string())
+    });
+    for envelope in &mut envelopes {
+        envelope.participant_id = envelope.participant_id.trim().to_string();
+        envelope.display_name = envelope.display_name.trim().to_string();
+        if envelope.display_name.is_empty() {
+            envelope.display_name = envelope.participant_id.clone();
+        }
+    }
+    envelopes
+}
+
+fn normalize_forge_bounty_contracts(
+    mut contracts: Vec<ForgeBountyContract>,
+) -> Vec<ForgeBountyContract> {
+    contracts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.bounty_contract_id.cmp(&rhs.bounty_contract_id))
+    });
+    let mut seen_ids = HashSet::new();
+    contracts.retain(|contract| {
+        let bounty_contract_id = contract.bounty_contract_id.trim();
+        !bounty_contract_id.is_empty() && seen_ids.insert(bounty_contract_id.to_string())
+    });
+    for contract in &mut contracts {
+        contract.bounty_contract_id = contract.bounty_contract_id.trim().to_string();
+        contract.shared_session_id = contract.shared_session_id.trim().to_string();
+        contract.title = contract.title.trim().to_string();
+        contract.objective_summary = contract
+            .objective_summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        contract.active_claim_id = contract
+            .active_claim_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        contract.claim_ids =
+            normalize_forge_reference_list(std::mem::take(&mut contract.claim_ids));
+        contract.evidence_bundle_id = contract
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        contract.delivery_receipt_id = contract
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        contract.knowledge_pack_refs =
+            normalize_forge_reference_list(std::mem::take(&mut contract.knowledge_pack_refs));
+        contract.eval_pack_refs =
+            normalize_forge_reference_list(std::mem::take(&mut contract.eval_pack_refs));
+        contract.participant_credit_envelopes = normalize_forge_bounty_credit_envelopes(
+            std::mem::take(&mut contract.participant_credit_envelopes),
+        );
+        contract.provenance = contract.provenance.trim().to_string();
+    }
+    contracts
+        .into_iter()
+        .filter(|contract| !contract.shared_session_id.is_empty() && !contract.title.is_empty())
+        .collect()
+}
+
+fn normalize_forge_bounty_claims(mut claims: Vec<ForgeBountyClaim>) -> Vec<ForgeBountyClaim> {
+    claims.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.bounty_claim_id.cmp(&rhs.bounty_claim_id))
+    });
+    let mut seen_ids = HashSet::new();
+    claims.retain(|claim| {
+        let bounty_claim_id = claim.bounty_claim_id.trim();
+        !bounty_claim_id.is_empty() && seen_ids.insert(bounty_claim_id.to_string())
+    });
+    for claim in &mut claims {
+        claim.bounty_claim_id = claim.bounty_claim_id.trim().to_string();
+        claim.bounty_contract_id = claim.bounty_contract_id.trim().to_string();
+        claim.shared_session_id = claim.shared_session_id.trim().to_string();
+        claim.claimant_id = claim.claimant_id.trim().to_string();
+        claim.claimant_label = claim.claimant_label.trim().to_string();
+        claim.summary = claim
+            .summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        claim.evidence_bundle_id = claim
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        claim.delivery_receipt_id = claim
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        claim.knowledge_pack_refs =
+            normalize_forge_reference_list(std::mem::take(&mut claim.knowledge_pack_refs));
+        claim.eval_pack_refs =
+            normalize_forge_reference_list(std::mem::take(&mut claim.eval_pack_refs));
+        claim.provenance = claim.provenance.trim().to_string();
+    }
+    claims
+        .into_iter()
+        .filter(|claim| {
+            !claim.bounty_contract_id.is_empty()
+                && !claim.shared_session_id.is_empty()
+                && !claim.claimant_label.is_empty()
+        })
+        .collect()
 }
 
 fn normalize_forge_delegated_child_session_ids(mut child_session_ids: Vec<String>) -> Vec<String> {
@@ -10772,11 +11186,15 @@ fn persist_codex_artifact_projection(
     forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: &HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: &HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_bounty_contracts: &HashMap<String, ForgeBountyContract>,
+    forge_bounty_claims: &HashMap<String, ForgeBountyClaim>,
     forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_bounty_contract_seq: u64,
+    next_forge_bounty_claim_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
 ) -> Result<(), String> {
@@ -10808,6 +11226,12 @@ fn persist_codex_artifact_projection(
         restore_manifests: normalize_forge_restore_manifests(
             forge_restore_manifests.values().cloned().collect(),
         ),
+        bounty_contracts: normalize_forge_bounty_contracts(
+            forge_bounty_contracts.values().cloned().collect(),
+        ),
+        bounty_claims: normalize_forge_bounty_claims(
+            forge_bounty_claims.values().cloned().collect(),
+        ),
         evidence_bundles: normalize_forge_evidence_bundles(
             forge_evidence_bundles.values().cloned().collect(),
         ),
@@ -10817,6 +11241,8 @@ fn persist_codex_artifact_projection(
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
         next_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
         next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
+        next_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
+        next_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
         next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
         next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
     };
@@ -10841,11 +11267,15 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 forge_shared_sessions: HashMap::new(),
                 forge_workspace_snapshots: HashMap::new(),
                 forge_restore_manifests: HashMap::new(),
+                forge_bounty_contracts: HashMap::new(),
+                forge_bounty_claims: HashMap::new(),
                 forge_evidence_bundles: HashMap::new(),
                 forge_delivery_receipts: HashMap::new(),
                 next_forge_shared_session_seq: 1,
                 next_forge_workspace_snapshot_seq: 1,
                 next_forge_restore_manifest_seq: 1,
+                next_forge_bounty_contract_seq: 1,
+                next_forge_bounty_claim_seq: 1,
                 next_forge_evidence_bundle_seq: 1,
                 next_forge_delivery_receipt_seq: 1,
                 review_thread_source_map: HashMap::new(),
@@ -10889,6 +11319,10 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        1,
+        1,
         1,
         1,
         1,
@@ -10916,7 +11350,11 @@ fn load_codex_artifact_projection_v2(
         document.shared_sessions,
         document.workspace_snapshots,
         document.restore_manifests,
+        document.bounty_contracts,
+        document.bounty_claims,
         document.evidence_bundles,
+        document.next_bounty_contract_seq,
+        document.next_bounty_claim_seq,
         document.next_shared_session_seq,
         document.next_workspace_snapshot_seq,
         document.next_restore_manifest_seq,
@@ -10933,7 +11371,11 @@ fn build_loaded_codex_artifact_projection(
     shared_sessions: Vec<ForgeSharedSession>,
     workspace_snapshots: Vec<ForgeWorkspaceSnapshot>,
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
+    bounty_contracts: Vec<ForgeBountyContract>,
+    bounty_claims: Vec<ForgeBountyClaim>,
     evidence_bundles: Vec<ForgeEvidenceBundle>,
+    next_bounty_contract_seq: u64,
+    next_bounty_claim_seq: u64,
     next_shared_session_seq: u64,
     next_workspace_snapshot_seq: u64,
     next_restore_manifest_seq: u64,
@@ -10979,6 +11421,16 @@ fn build_loaded_codex_artifact_projection(
         forge_restore_manifests.insert(manifest.restore_manifest_id.clone(), manifest);
     }
 
+    let mut forge_bounty_contracts = HashMap::<String, ForgeBountyContract>::new();
+    for contract in normalize_forge_bounty_contracts(bounty_contracts) {
+        forge_bounty_contracts.insert(contract.bounty_contract_id.clone(), contract);
+    }
+
+    let mut forge_bounty_claims = HashMap::<String, ForgeBountyClaim>::new();
+    for claim in normalize_forge_bounty_claims(bounty_claims) {
+        forge_bounty_claims.insert(claim.bounty_claim_id.clone(), claim);
+    }
+
     let mut forge_evidence_bundles = HashMap::<String, ForgeEvidenceBundle>::new();
     for bundle in normalize_forge_evidence_bundles(evidence_bundles) {
         forge_evidence_bundles.insert(bundle.evidence_bundle_id.clone(), bundle);
@@ -10996,11 +11448,15 @@ fn build_loaded_codex_artifact_projection(
         forge_shared_sessions,
         forge_workspace_snapshots,
         forge_restore_manifests,
+        forge_bounty_contracts,
+        forge_bounty_claims,
         forge_evidence_bundles,
         forge_delivery_receipts,
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
         next_forge_workspace_snapshot_seq: next_workspace_snapshot_seq.max(1),
         next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
+        next_forge_bounty_contract_seq: next_bounty_contract_seq.max(1),
+        next_forge_bounty_claim_seq: next_bounty_claim_seq.max(1),
         next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
         next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
         review_thread_source_map,
@@ -11457,12 +11913,16 @@ impl AutopilotChatState {
                 state.forge_shared_sessions = projection.forge_shared_sessions;
                 state.forge_workspace_snapshots = projection.forge_workspace_snapshots;
                 state.forge_restore_manifests = projection.forge_restore_manifests;
+                state.forge_bounty_contracts = projection.forge_bounty_contracts;
+                state.forge_bounty_claims = projection.forge_bounty_claims;
                 state.forge_evidence_bundles = projection.forge_evidence_bundles;
                 state.forge_delivery_receipts = projection.forge_delivery_receipts;
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
                 state.next_forge_workspace_snapshot_seq =
                     projection.next_forge_workspace_snapshot_seq;
                 state.next_forge_restore_manifest_seq = projection.next_forge_restore_manifest_seq;
+                state.next_forge_bounty_contract_seq = projection.next_forge_bounty_contract_seq;
+                state.next_forge_bounty_claim_seq = projection.next_forge_bounty_claim_seq;
                 state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
                 state.next_forge_delivery_receipt_seq = projection.next_forge_delivery_receipt_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
@@ -11475,11 +11935,15 @@ impl AutopilotChatState {
                 state.forge_shared_sessions.clear();
                 state.forge_workspace_snapshots.clear();
                 state.forge_restore_manifests.clear();
+                state.forge_bounty_contracts.clear();
+                state.forge_bounty_claims.clear();
                 state.forge_evidence_bundles.clear();
                 state.forge_delivery_receipts.clear();
                 state.next_forge_shared_session_seq = 1;
                 state.next_forge_workspace_snapshot_seq = 1;
                 state.next_forge_restore_manifest_seq = 1;
+                state.next_forge_bounty_contract_seq = 1;
+                state.next_forge_bounty_claim_seq = 1;
                 state.next_forge_evidence_bundle_seq = 1;
                 state.next_forge_delivery_receipt_seq = 1;
                 state.review_thread_source_map.clear();
@@ -12100,6 +12564,30 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.delivery_receipt_for_thread(thread_id))
     }
 
+    fn bounty_contract_for_thread(&self, thread_id: &str) -> Option<&ForgeBountyContract> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let bounty_contract_id = shared_session.bounty_contract_id.as_deref()?;
+        self.forge_bounty_contracts.get(bounty_contract_id)
+    }
+
+    pub fn active_bounty_contract(&self) -> Option<&ForgeBountyContract> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.bounty_contract_for_thread(thread_id))
+    }
+
+    fn bounty_claim_for_thread(&self, thread_id: &str) -> Option<&ForgeBountyClaim> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let bounty_claim_id = shared_session.bounty_claim_id.as_deref()?;
+        self.forge_bounty_claims.get(bounty_claim_id)
+    }
+
+    pub fn active_bounty_claim(&self) -> Option<&ForgeBountyClaim> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.bounty_claim_for_thread(thread_id))
+    }
+
     fn workspace_snapshot_for_thread(&self, thread_id: &str) -> Option<&ForgeWorkspaceSnapshot> {
         let shared_session = self.shared_session_for_thread(thread_id)?;
         let workspace_snapshot_id = shared_session.workspace_snapshot_id.as_deref()?;
@@ -12189,6 +12677,18 @@ impl AutopilotChatState {
         self.next_forge_restore_manifest_seq =
             self.next_forge_restore_manifest_seq.saturating_add(1);
         restore_manifest_id
+    }
+
+    fn next_bounty_contract_id(&mut self) -> String {
+        let bounty_contract_id = format!("forge-bounty-{}", self.next_forge_bounty_contract_seq);
+        self.next_forge_bounty_contract_seq = self.next_forge_bounty_contract_seq.saturating_add(1);
+        bounty_contract_id
+    }
+
+    fn next_bounty_claim_id(&mut self) -> String {
+        let bounty_claim_id = format!("forge-claim-{}", self.next_forge_bounty_claim_seq);
+        self.next_forge_bounty_claim_seq = self.next_forge_bounty_claim_seq.saturating_add(1);
+        bounty_claim_id
     }
 
     fn next_delivery_receipt_id(&mut self) -> String {
@@ -12623,6 +13123,8 @@ impl AutopilotChatState {
                     .as_ref()
                     .map_or(0, |artifact| artifact.updated_at_epoch_ms),
             );
+        let _ = bundle;
+        let _ = self.sync_bounty_links_for_shared_session(shared_session_id, updated_at_epoch_ms);
         Ok(evidence_bundle_id)
     }
 
@@ -12644,6 +13146,425 @@ impl AutopilotChatState {
         );
         self.persist_codex_artifact_projection();
         Ok(evidence_bundle_id)
+    }
+
+    fn sync_bounty_links_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(), String> {
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before bounty linkage could be refreshed."
+                )
+            })?;
+        if let Some(bounty_contract_id) = shared_session.bounty_contract_id.as_deref()
+            && let Some(contract) = self.forge_bounty_contracts.get_mut(bounty_contract_id)
+        {
+            for envelope in default_bounty_credit_envelopes_for_shared_session(&shared_session) {
+                if !contract
+                    .participant_credit_envelopes
+                    .iter()
+                    .any(|existing| existing.participant_id == envelope.participant_id)
+                {
+                    contract.participant_credit_envelopes.push(envelope);
+                }
+            }
+            contract.participant_credit_envelopes = normalize_forge_bounty_credit_envelopes(
+                std::mem::take(&mut contract.participant_credit_envelopes),
+            );
+            contract.shared_session_id = shared_session_id.to_string();
+            contract.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+            contract.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+            contract.updated_at_epoch_ms = updated_at_epoch_ms.max(contract.updated_at_epoch_ms);
+        }
+        if let Some(bounty_claim_id) = shared_session.bounty_claim_id.as_deref()
+            && let Some(claim) = self.forge_bounty_claims.get_mut(bounty_claim_id)
+        {
+            claim.shared_session_id = shared_session_id.to_string();
+            claim.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+            claim.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+            claim.updated_at_epoch_ms = updated_at_epoch_ms.max(claim.updated_at_epoch_ms);
+        }
+        Ok(())
+    }
+
+    pub fn record_probe_bounty_contract_for_thread(
+        &mut self,
+        thread_id: &str,
+        objective_kind: ForgeBountyObjectiveKind,
+        title: impl Into<String>,
+        objective_summary: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let title = title.into().trim().to_string();
+        if title.is_empty() {
+            return Err("Bounty title cannot be empty.".to_string());
+        }
+        let objective_summary = objective_summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let evidence_bundle_id = self
+            .sync_evidence_bundle_for_shared_session(
+                shared_session_id.as_str(),
+                updated_at_epoch_ms,
+            )
+            .ok();
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before bounty state could be recorded."
+                )
+            })?;
+        let bounty_contract_id = if let Some(existing_id) =
+            shared_session.bounty_contract_id.clone()
+            && self
+                .forge_bounty_contracts
+                .contains_key(existing_id.as_str())
+        {
+            existing_id
+        } else {
+            self.next_bounty_contract_id()
+        };
+        let participant_credit_envelopes = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .map(|contract| {
+                let mut envelopes = contract.participant_credit_envelopes.clone();
+                for envelope in default_bounty_credit_envelopes_for_shared_session(&shared_session)
+                {
+                    if !envelopes
+                        .iter()
+                        .any(|existing| existing.participant_id == envelope.participant_id)
+                    {
+                        envelopes.push(envelope);
+                    }
+                }
+                normalize_forge_bounty_credit_envelopes(envelopes)
+            })
+            .unwrap_or_else(|| default_bounty_credit_envelopes_for_shared_session(&shared_session));
+        let active_claim_id = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .and_then(|contract| contract.active_claim_id.clone())
+            .or(shared_session.bounty_claim_id.clone());
+        let claim_ids = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .map(|contract| contract.claim_ids.clone())
+            .unwrap_or_default();
+        let created_at_epoch_ms = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .map_or(updated_at_epoch_ms, |contract| contract.created_at_epoch_ms);
+        let lifecycle_status = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .map_or(ForgeBountyLifecycleStatus::Draft, |contract| {
+                contract.lifecycle_status
+            });
+        self.forge_bounty_contracts.insert(
+            bounty_contract_id.clone(),
+            ForgeBountyContract {
+                bounty_contract_id: bounty_contract_id.clone(),
+                shared_session_id: shared_session_id.clone(),
+                objective_kind,
+                title,
+                objective_summary,
+                lifecycle_status,
+                active_claim_id,
+                claim_ids,
+                evidence_bundle_id: evidence_bundle_id
+                    .or(shared_session.evidence_bundle_id.clone()),
+                delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
+                knowledge_pack_refs: self
+                    .forge_bounty_contracts
+                    .get(&bounty_contract_id)
+                    .map(|contract| contract.knowledge_pack_refs.clone())
+                    .unwrap_or_default(),
+                eval_pack_refs: self
+                    .forge_bounty_contracts
+                    .get(&bounty_contract_id)
+                    .map(|contract| contract.eval_pack_refs.clone())
+                    .unwrap_or_default(),
+                participant_credit_envelopes,
+                provenance,
+                created_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the bounty link could be recorded."
+                )
+            })?;
+        shared_session.bounty_contract_id = Some(bounty_contract_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = self
+            .sync_bounty_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(bounty_contract_id)
+    }
+
+    pub fn record_probe_bounty_credit_for_thread(
+        &mut self,
+        thread_id: &str,
+        participant_query: impl Into<String>,
+        credit_basis_points: u16,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let participant_query = participant_query.into();
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let bounty_contract_id = shared_session.bounty_contract_id.clone().ok_or_else(|| {
+            "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+        })?;
+        let (participant_id, display_name, role) =
+            resolve_forge_bounty_participant(&shared_session, participant_query.as_str());
+        let mut participant_credit_envelopes = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .map(|contract| contract.participant_credit_envelopes.clone())
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before credit attribution could be recorded."
+                )
+            })?;
+        if let Some(existing) = participant_credit_envelopes
+            .iter_mut()
+            .find(|envelope| envelope.participant_id == participant_id)
+        {
+            existing.display_name = display_name.clone();
+            existing.role = role;
+            existing.credit_basis_points = Some(credit_basis_points);
+        } else {
+            participant_credit_envelopes.push(ForgeBountyParticipantCreditEnvelope {
+                participant_id: participant_id.clone(),
+                display_name: display_name.clone(),
+                role,
+                credit_basis_points: Some(credit_basis_points),
+            });
+        }
+        participant_credit_envelopes =
+            normalize_forge_bounty_credit_envelopes(participant_credit_envelopes);
+        let total_basis_points: u32 = participant_credit_envelopes
+            .iter()
+            .filter_map(|envelope| envelope.credit_basis_points.map(u32::from))
+            .sum();
+        if total_basis_points > 10_000 {
+            return Err(format!(
+                "Credit envelopes exceed 10000 basis points after updating `{display_name}`."
+            ));
+        }
+        let contract = self
+            .forge_bounty_contracts
+            .get_mut(&bounty_contract_id)
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before credit attribution could be recorded."
+                )
+            })?;
+        contract.participant_credit_envelopes = participant_credit_envelopes;
+        contract.updated_at_epoch_ms = updated_at_epoch_ms.max(contract.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok((bounty_contract_id, display_name))
+    }
+
+    pub fn record_probe_bounty_claim_for_thread(
+        &mut self,
+        thread_id: &str,
+        claimant_label: impl Into<String>,
+        summary: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(String, String), String> {
+        let claimant_label = claimant_label.into().trim().to_string();
+        if claimant_label.is_empty() {
+            return Err("Bounty claimant label cannot be empty.".to_string());
+        }
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let evidence_bundle_id = self
+            .sync_evidence_bundle_for_shared_session(
+                shared_session_id.as_str(),
+                updated_at_epoch_ms,
+            )
+            .ok();
+        let shared_session = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before bounty claim state could be recorded."
+                )
+            })?;
+        let bounty_contract_id = shared_session.bounty_contract_id.clone().ok_or_else(|| {
+            "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+        })?;
+        let (claimant_id, claimant_display_name, _) =
+            resolve_forge_bounty_participant(&shared_session, claimant_label.as_str());
+        let existing_claim_id = shared_session.bounty_claim_id.clone();
+        let reuse_existing = existing_claim_id
+            .as_deref()
+            .and_then(|claim_id| self.forge_bounty_claims.get(claim_id))
+            .is_some_and(|claim| !claim.lifecycle_status.is_terminal());
+        let bounty_claim_id = if reuse_existing {
+            existing_claim_id.unwrap_or_default()
+        } else {
+            self.next_bounty_claim_id()
+        };
+        let created_at_epoch_ms = self
+            .forge_bounty_claims
+            .get(&bounty_claim_id)
+            .map_or(updated_at_epoch_ms, |claim| claim.created_at_epoch_ms);
+        let resolved_evidence_bundle_id = evidence_bundle_id
+            .clone()
+            .or(shared_session.evidence_bundle_id.clone());
+        self.forge_bounty_claims.insert(
+            bounty_claim_id.clone(),
+            ForgeBountyClaim {
+                bounty_claim_id: bounty_claim_id.clone(),
+                bounty_contract_id: bounty_contract_id.clone(),
+                shared_session_id: shared_session_id.clone(),
+                claimant_id,
+                claimant_label: claimant_display_name,
+                lifecycle_status: ForgeBountyLifecycleStatus::Claimed,
+                summary,
+                evidence_bundle_id: resolved_evidence_bundle_id.clone(),
+                delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
+                knowledge_pack_refs: self
+                    .forge_bounty_claims
+                    .get(&bounty_claim_id)
+                    .map(|claim| claim.knowledge_pack_refs.clone())
+                    .unwrap_or_default(),
+                eval_pack_refs: self
+                    .forge_bounty_claims
+                    .get(&bounty_claim_id)
+                    .map(|claim| claim.eval_pack_refs.clone())
+                    .unwrap_or_default(),
+                provenance,
+                created_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        let contract = self
+            .forge_bounty_contracts
+            .get_mut(&bounty_contract_id)
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before claim ownership could be recorded."
+                )
+            })?;
+        contract.lifecycle_status = ForgeBountyLifecycleStatus::Claimed;
+        contract.active_claim_id = Some(bounty_claim_id.clone());
+        contract.claim_ids.push(bounty_claim_id.clone());
+        contract.claim_ids =
+            normalize_forge_reference_list(std::mem::take(&mut contract.claim_ids));
+        contract.evidence_bundle_id = resolved_evidence_bundle_id;
+        contract.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        contract.updated_at_epoch_ms = updated_at_epoch_ms.max(contract.updated_at_epoch_ms);
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before the bounty claim link could be recorded."
+                )
+            })?;
+        shared_session.bounty_claim_id = Some(bounty_claim_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = self
+            .sync_bounty_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok((bounty_contract_id, bounty_claim_id))
+    }
+
+    pub fn record_probe_bounty_lifecycle_for_thread(
+        &mut self,
+        thread_id: &str,
+        next_status: ForgeBountyLifecycleStatus,
+        summary: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(String, Option<String>), String> {
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance = provenance.into().trim().to_string();
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let bounty_contract_id = shared_session.bounty_contract_id.clone().ok_or_else(|| {
+            "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+        })?;
+        let active_claim_id = shared_session.bounty_claim_id.clone();
+        if active_claim_id.is_none()
+            && !matches!(
+                next_status,
+                ForgeBountyLifecycleStatus::Canceled | ForgeBountyLifecycleStatus::Disputed
+            )
+        {
+            return Err(
+                "Claim the bounty first with `/bounty claim <claimant> [summary]`.".to_string(),
+            );
+        }
+        if let Some(bounty_claim_id) = active_claim_id.as_deref()
+            && let Some(claim) = self.forge_bounty_claims.get_mut(bounty_claim_id)
+        {
+            claim.lifecycle_status = next_status;
+            if summary.is_some() {
+                claim.summary = summary.clone();
+            }
+            claim.provenance = provenance.clone();
+            claim.updated_at_epoch_ms = updated_at_epoch_ms.max(claim.updated_at_epoch_ms);
+            claim.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+            claim.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        }
+        let contract = self
+            .forge_bounty_contracts
+            .get_mut(&bounty_contract_id)
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before lifecycle state could be updated."
+                )
+            })?;
+        contract.lifecycle_status = next_status;
+        contract.provenance = provenance;
+        contract.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+        contract.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+        contract.updated_at_epoch_ms = updated_at_epoch_ms.max(contract.updated_at_epoch_ms);
+        let _ = self.sync_bounty_links_for_shared_session(
+            shared_session.shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok((bounty_contract_id, active_claim_id))
     }
 
     fn delivery_contributors_for_shared_session(
@@ -12803,6 +13724,8 @@ impl AutopilotChatState {
         shared_session.delivery_receipt_id = Some(delivery_receipt_id.clone());
         shared_session.updated_at_epoch_ms =
             updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = shared_session;
+        let _ = self.sync_bounty_links_for_shared_session(shared_session_id, updated_at_epoch_ms);
         Ok(delivery_receipt_id)
     }
 
@@ -13292,6 +14215,8 @@ impl AutopilotChatState {
                     },
                     workspace_snapshot_id: None,
                     restore_manifest_id: None,
+                    bounty_contract_id: None,
+                    bounty_claim_id: None,
                     evidence_bundle_id: None,
                     delivery_receipt_id: None,
                     created_at_epoch_ms,
@@ -16887,11 +17812,15 @@ impl AutopilotChatState {
             &self.forge_shared_sessions,
             &self.forge_workspace_snapshots,
             &self.forge_restore_manifests,
+            &self.forge_bounty_contracts,
+            &self.forge_bounty_claims,
             &self.forge_evidence_bundles,
             &self.forge_delivery_receipts,
             self.next_forge_shared_session_seq,
             self.next_forge_workspace_snapshot_seq,
             self.next_forge_restore_manifest_seq,
+            self.next_forge_bounty_contract_seq,
+            self.next_forge_bounty_claim_seq,
             self.next_forge_evidence_bundle_seq,
             self.next_forge_delivery_receipt_seq,
         ) {
@@ -20606,6 +21535,7 @@ mod tests {
     };
 
     use crate::app_state::{
+        ForgeBountyCreditRole, ForgeBountyLifecycleStatus, ForgeBountyObjectiveKind,
         ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
         ForgeDelegatedChildSessionStatus, ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch,
         ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
@@ -26024,6 +26954,256 @@ mod tests {
         assert_eq!(
             reloaded_receipt.pr_url.as_deref(),
             Some("https://github.com/OpenAgentsInc/openagents/pull/42")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_bounty_contracts_and_claims() {
+        let repo = init_git_workspace("bounty-contract");
+        let projection_path = unique_codex_artifact_projection_path("bounty-contract");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Looks good overall.",
+            1_700_000_130,
+            false,
+        );
+        chat.record_probe_evidence_verification_for_thread(
+            "thread-a",
+            "cargo-test",
+            ForgeEvidenceVerificationStatus::Passed,
+            Some("target/test.log".to_string()),
+            Some("12 tests passed".to_string()),
+            1_700_000_140,
+        )
+        .expect("verification evidence should record");
+        let (delivery_receipt_id, evidence_bundle_id) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("abc123".to_string()),
+                "feature/probe-bounty",
+                "def456",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/probe-bounty?expand=1"
+                        .to_string(),
+                ),
+                Some("https://github.com/OpenAgentsInc/openagents/pull/55".to_string()),
+                "Add Forge bounty contract shell",
+                "## Summary\n- persist bounty state",
+                1_700_000_150,
+            )
+            .expect("delivery receipt should record");
+        chat.record_probe_delivery_review_for_thread(
+            "thread-a",
+            ForgeDeliveryReviewerOutcome::Approved,
+            "chris",
+            Some("ready to merge".to_string()),
+            1_700_000_160,
+        )
+        .expect("review outcome should record");
+        chat.record_probe_delivery_merge_for_thread(
+            "thread-a",
+            "chris",
+            Some("merged after reviewer approval".to_string()),
+            1_700_000_170,
+        )
+        .expect("merge should record");
+
+        let bounty_contract_id = chat
+            .record_probe_bounty_contract_for_thread(
+                "thread-a",
+                ForgeBountyObjectiveKind::AcceptedMerge,
+                "Land the Probe bounty contract shell",
+                Some("Settle from the merged delivery receipt, not transcript vibes.".to_string()),
+                "operator.command:/bounty open",
+                1_700_000_180,
+            )
+            .expect("bounty contract should record");
+        chat.record_probe_bounty_credit_for_thread("thread-a", "human", 2_500, 1_700_000_190)
+            .expect("operator credit should record");
+        chat.record_probe_bounty_credit_for_thread("thread-a", "agent", 7_500, 1_700_000_200)
+            .expect("agent credit should record");
+        let (recorded_contract_id, bounty_claim_id) = chat
+            .record_probe_bounty_claim_for_thread(
+                "thread-a",
+                "agent",
+                Some(
+                    "Implemented the shared bounty shell and wired the receipt links.".to_string(),
+                ),
+                "operator.command:/bounty claim",
+                1_700_000_210,
+            )
+            .expect("bounty claim should record");
+        assert_eq!(recorded_contract_id, bounty_contract_id);
+        let (completed_contract_id, active_claim_id) = chat
+            .record_probe_bounty_lifecycle_for_thread(
+                "thread-a",
+                ForgeBountyLifecycleStatus::Admitted,
+                Some("Accepted merge admitted as the bounty objective.".to_string()),
+                "operator.command:/bounty advance",
+                1_700_000_220,
+            )
+            .expect("bounty admission should record");
+        assert_eq!(completed_contract_id, bounty_contract_id);
+        assert_eq!(active_claim_id.as_deref(), Some(bounty_claim_id.as_str()));
+        let (completed_contract_id, active_claim_id) = chat
+            .record_probe_bounty_lifecycle_for_thread(
+                "thread-a",
+                ForgeBountyLifecycleStatus::Completed,
+                Some("Merged and settled for payout preparation.".to_string()),
+                "operator.command:/bounty advance",
+                1_700_000_230,
+            )
+            .expect("bounty completion should record");
+        assert_eq!(completed_contract_id, bounty_contract_id);
+        assert_eq!(active_claim_id.as_deref(), Some(bounty_claim_id.as_str()));
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session should exist");
+        assert_eq!(
+            shared_session.bounty_contract_id.as_deref(),
+            Some(bounty_contract_id.as_str())
+        );
+        assert_eq!(
+            shared_session.bounty_claim_id.as_deref(),
+            Some(bounty_claim_id.as_str())
+        );
+
+        let contract = chat
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .expect("bounty contract should persist");
+        assert_eq!(
+            contract.lifecycle_status,
+            ForgeBountyLifecycleStatus::Completed
+        );
+        assert_eq!(
+            contract.active_claim_id.as_deref(),
+            Some(bounty_claim_id.as_str())
+        );
+        assert_eq!(
+            contract.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        assert_eq!(
+            contract.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(
+            contract.objective_kind,
+            ForgeBountyObjectiveKind::AcceptedMerge
+        );
+        let credit_by_participant = contract
+            .participant_credit_envelopes
+            .iter()
+            .map(|envelope| {
+                (
+                    envelope.participant_id.as_str(),
+                    (
+                        envelope.display_name.as_str(),
+                        envelope.role,
+                        envelope.credit_basis_points,
+                    ),
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(
+            credit_by_participant.get("local-human"),
+            Some(&("Local human", ForgeBountyCreditRole::Operator, Some(2_500)))
+        );
+        assert_eq!(
+            credit_by_participant.get("local-probe-agent"),
+            Some(&(
+                "Local Probe agent",
+                ForgeBountyCreditRole::Implementation,
+                Some(7_500)
+            ))
+        );
+
+        let claim = chat
+            .forge_bounty_claims
+            .get(&bounty_claim_id)
+            .expect("bounty claim should persist");
+        assert_eq!(
+            claim.lifecycle_status,
+            ForgeBountyLifecycleStatus::Completed
+        );
+        assert_eq!(claim.claimant_id, "local-probe-agent");
+        assert_eq!(claim.claimant_label, "Local Probe agent");
+        assert_eq!(
+            claim.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        assert_eq!(
+            claim.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(claim.provenance, "operator.command:/bounty advance");
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.bounty_contract_id.as_deref(),
+            Some(bounty_contract_id.as_str())
+        );
+        assert_eq!(
+            reloaded_session.bounty_claim_id.as_deref(),
+            Some(bounty_claim_id.as_str())
+        );
+        let reloaded_contract = reloaded
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .expect("reloaded bounty contract");
+        assert_eq!(
+            reloaded_contract.lifecycle_status,
+            ForgeBountyLifecycleStatus::Completed
+        );
+        assert_eq!(
+            reloaded_contract.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        let reloaded_claim = reloaded
+            .forge_bounty_claims
+            .get(&bounty_claim_id)
+            .expect("reloaded bounty claim");
+        assert_eq!(
+            reloaded_claim.lifecycle_status,
+            ForgeBountyLifecycleStatus::Completed
+        );
+        assert_eq!(
+            reloaded_claim.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
         );
 
         let _ = std::fs::remove_file(projection_path);

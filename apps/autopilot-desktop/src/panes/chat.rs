@@ -12,11 +12,12 @@ use crate::app_state::{
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
-    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeDelegatedChildSessionCard,
-    ForgeDeliveryCiWatch, ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeSharedSession,
-    ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot, ManagedChatChannelProjection,
-    ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
-    ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef, RenderState,
+    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
+    ForgeBountyContract, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
+    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
+    ForgeWorkspaceSnapshot, ManagedChatChannelProjection, ManagedChatDeliveryState,
+    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
+    ProbeTurnAttachmentRef, RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -2860,6 +2861,18 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             compact_display_token(evidence_bundle_id, 24)
         ));
     }
+    if let Some(bounty_contract_id) = session.bounty_contract_id.as_deref() {
+        lines.push(format!(
+            "- **bounty contract:** `{}`",
+            compact_display_token(bounty_contract_id, 24)
+        ));
+    }
+    if let Some(bounty_claim_id) = session.bounty_claim_id.as_deref() {
+        lines.push(format!(
+            "- **bounty claim:** `{}`",
+            compact_display_token(bounty_claim_id, 24)
+        ));
+    }
     if let Some(delivery_receipt_id) = session.delivery_receipt_id.as_deref() {
         lines.push(format!(
             "- **delivery receipt:** `{}`",
@@ -3654,6 +3667,120 @@ fn active_delivery_receipt_markdown_source(receipt: &ForgeDeliveryReceipt) -> St
             lines.push(line);
         }
     }
+    lines.join("\n")
+}
+
+fn active_bounty_contract_meta_line(contract: &ForgeBountyContract) -> String {
+    let mut parts = vec![format!(
+        "bounty:{}",
+        compact_display_token(contract.bounty_contract_id.as_str(), 18)
+    )];
+    parts.push(format!("status:{}", contract.lifecycle_status.label()));
+    parts.push(format!("objective:{}", contract.objective_kind.label()));
+    parts.push(format!("claims:{}", contract.claim_ids.len()));
+    if let Some(updated) = format_thread_timestamp(contract.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_bounty_contract_markdown_source(contract: &ForgeBountyContract) -> String {
+    let mut lines = vec![format!(
+        "- **status:** {}",
+        contract.lifecycle_status.display_label()
+    )];
+    lines.push(format!(
+        "- **objective kind:** {}",
+        contract.objective_kind.display_label()
+    ));
+    lines.push(format!("- **title:** {}", contract.title));
+    if let Some(summary) = contract.objective_summary.as_deref() {
+        lines.push(format!("- **objective summary:** {}", summary));
+    }
+    lines.push(format!(
+        "- **shared session:** `{}`",
+        compact_display_token(contract.shared_session_id.as_str(), 24)
+    ));
+    if let Some(active_claim_id) = contract.active_claim_id.as_deref() {
+        lines.push(format!(
+            "- **active claim:** `{}`",
+            compact_display_token(active_claim_id, 24)
+        ));
+    } else {
+        lines.push("- **active claim:** _none_".to_string());
+    }
+    if let Some(evidence_bundle_id) = contract.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = contract.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
+    }
+    if !contract.participant_credit_envelopes.is_empty() {
+        lines.push("- **credit envelopes:**".to_string());
+        for envelope in &contract.participant_credit_envelopes {
+            lines.push(format!(
+                "  - `{}`  •  {}  •  {} bp",
+                compact_display_token(envelope.display_name.as_str(), 28),
+                envelope.role.display_label(),
+                envelope.credit_basis_points.unwrap_or(0)
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+fn active_bounty_claim_meta_line(claim: &ForgeBountyClaim) -> String {
+    let mut parts = vec![format!(
+        "claim:{}",
+        compact_display_token(claim.bounty_claim_id.as_str(), 18)
+    )];
+    parts.push(format!("status:{}", claim.lifecycle_status.label()));
+    parts.push(format!(
+        "claimant:{}",
+        compact_display_token(claim.claimant_label.as_str(), 18)
+    ));
+    if let Some(updated) = format_thread_timestamp(claim.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_bounty_claim_markdown_source(claim: &ForgeBountyClaim) -> String {
+    let mut lines = vec![format!(
+        "- **status:** {}",
+        claim.lifecycle_status.display_label()
+    )];
+    lines.push(format!("- **claimant:** {}", claim.claimant_label));
+    lines.push(format!(
+        "- **contract:** `{}`",
+        compact_display_token(claim.bounty_contract_id.as_str(), 24)
+    ));
+    lines.push(format!(
+        "- **shared session:** `{}`",
+        compact_display_token(claim.shared_session_id.as_str(), 24)
+    ));
+    if let Some(summary) = claim.summary.as_deref() {
+        lines.push(format!("- **summary:** {}", summary));
+    }
+    if let Some(evidence_bundle_id) = claim.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = claim.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
+    }
+    lines.push(format!("- **provenance:** `{}`", claim.provenance));
     lines.join("\n")
 }
 
@@ -6026,6 +6153,98 @@ pub fn paint(
                     y += 10.0;
                 }
             }
+            if let Some(bounty_contract) = autopilot_chat.active_bounty_contract() {
+                let bounty_color = match bounty_contract.lifecycle_status {
+                    crate::app_state::ForgeBountyLifecycleStatus::Draft => theme::text::MUTED,
+                    crate::app_state::ForgeBountyLifecycleStatus::Claimed => theme::accent::PRIMARY,
+                    crate::app_state::ForgeBountyLifecycleStatus::Admitted => {
+                        theme::status::WARNING
+                    }
+                    crate::app_state::ForgeBountyLifecycleStatus::Completed => {
+                        theme::status::SUCCESS
+                    }
+                    crate::app_state::ForgeBountyLifecycleStatus::Canceled => theme::text::MUTED,
+                    crate::app_state::ForgeBountyLifecycleStatus::Disputed => theme::status::ERROR,
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[bounty contract]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    bounty_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_bounty_contract_meta_line(bounty_contract),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let bounty_markdown = active_bounty_contract_markdown_source(bounty_contract);
+                if !bounty_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&bounty_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
+            if let Some(bounty_claim) = autopilot_chat.active_bounty_claim() {
+                let claim_color = match bounty_claim.lifecycle_status {
+                    crate::app_state::ForgeBountyLifecycleStatus::Draft => theme::text::MUTED,
+                    crate::app_state::ForgeBountyLifecycleStatus::Claimed => theme::accent::PRIMARY,
+                    crate::app_state::ForgeBountyLifecycleStatus::Admitted => {
+                        theme::status::WARNING
+                    }
+                    crate::app_state::ForgeBountyLifecycleStatus::Completed => {
+                        theme::status::SUCCESS
+                    }
+                    crate::app_state::ForgeBountyLifecycleStatus::Canceled => theme::text::MUTED,
+                    crate::app_state::ForgeBountyLifecycleStatus::Disputed => theme::status::ERROR,
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[bounty claim]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    claim_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_bounty_claim_meta_line(bounty_claim),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let claim_markdown = active_bounty_claim_markdown_source(bounty_claim);
+                if !claim_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&claim_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(workspace_snapshot) = autopilot_chat.active_workspace_snapshot() {
                 let snapshot_color = match workspace_snapshot.snapshot_ref_status {
                     crate::app_state::ForgeWorkspaceSnapshotRefStatus::Available => {
@@ -6531,9 +6750,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);
