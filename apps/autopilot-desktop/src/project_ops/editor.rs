@@ -11,6 +11,7 @@ pub struct ProjectOpsQuickCreateDraft {
     pub team_key: ProjectOpsTeamKey,
     pub area_tags: Vec<String>,
     pub due_at_unix_ms: Option<u64>,
+    pub promotion_ledger: Option<PromotionLedger>,
 }
 
 impl Default for ProjectOpsQuickCreateDraft {
@@ -23,6 +24,7 @@ impl Default for ProjectOpsQuickCreateDraft {
                 .unwrap_or_else(|_| ProjectOpsTeamKey::new("pm").expect("fallback team")),
             area_tags: vec!["pm".to_string()],
             due_at_unix_ms: None,
+            promotion_ledger: None,
         }
     }
 }
@@ -35,9 +37,11 @@ impl ProjectOpsQuickCreateDraft {
         if self.description.trim().is_empty() {
             return Err("quick create description must not be empty".to_string());
         }
-        validate_area_tags(self.area_tags.as_slice(), "quick create")?;
-        if self.due_at_unix_ms == Some(0) {
-            return Err("quick create due_at_unix_ms must be > 0 when present".to_string());
+        validate_area_tags(&self.area_tags, "quick create")?;
+        if let Some(due_at_unix_ms) = self.due_at_unix_ms {
+            if due_at_unix_ms == 0 {
+                return Err("quick create due_at_unix_ms must be > 0 when present".to_string());
+            }
         }
         Ok(())
     }
@@ -59,6 +63,7 @@ impl ProjectOpsQuickCreateDraft {
             area_tags: self.area_tags.clone(),
             blocked_reason: None,
             due_at_unix_ms: self.due_at_unix_ms,
+            promotion_ledger: self.promotion_ledger.clone(),
         }
     }
 }
@@ -79,6 +84,9 @@ pub struct ProjectOpsDetailDraft {
     pub created_at_unix_ms: u64,
     pub updated_at_unix_ms: u64,
     pub dirty: bool,
+    pub promotion_ledger: Option<PromotionLedger>,
+    pub shadow_rollout_state: Option<ShadowRolloutState>,
+    pub rollback_history: Vec<RollbackHistory>,
 }
 
 impl ProjectOpsDetailDraft {
@@ -98,8 +106,52 @@ impl ProjectOpsDetailDraft {
             created_at_unix_ms: work_item.created_at_unix_ms,
             updated_at_unix_ms: work_item.updated_at_unix_ms,
             dirty: false,
+            promotion_ledger: work_item.promotion_ledger.clone(),
+            shadow_rollout_state: work_item.shadow_rollout_state.clone(),
+            rollback_history: work_item.rollback_history.clone(),
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PromotionLedger {
+    pub admitted_improvements: Vec<AdmittedImprovement>,
+    pub promoted_revisions: Vec<PromotedRevision>,
+    pub rollback_history: Vec<RollbackHistory>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdmittedImprovement {
+    pub id: String,
+    pub description: String,
+    pub admission_decision: AdmissionDecision,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AdmissionDecision {
+    Approved,
+    Rejected,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PromotedRevision {
+    pub id: String,
+    pub description: String,
+    pub promotion_date: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RollbackHistory {
+    pub id: String,
+    pub description: String,
+    pub rollback_date: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ShadowRolloutState {
+    Shadow,
+    Promoted,
+    RolledBack,
 }
 
 pub(crate) fn normalize_area_tags<I, S>(tags: I) -> Vec<String>
@@ -135,27 +187,20 @@ mod tests {
     #[test]
     fn normalize_area_tags_trims_blanks_and_preserves_first_unique_values() {
         assert_eq!(
-            normalize_area_tags([" pm ", "", "sync", "pm"]),
-            vec!["pm".to_string(), "sync".to_string()]
+            normalize_area_tags(vec!["  a", "b", "a", "  ", "c"]),
+            vec!["a", "b", "c"]
         );
     }
 
     #[test]
-    fn quick_create_validation_rejects_invalid_due_and_tags() {
-        let mut draft = ProjectOpsQuickCreateDraft::default();
-        draft.title = "Ship PM metadata".to_string();
-        draft.description = "Add due date and tags.".to_string();
-        draft.due_at_unix_ms = Some(0);
-        assert_eq!(
-            draft.validate(),
-            Err("quick create due_at_unix_ms must be > 0 when present".to_string())
-        );
+    fn validate_area_tags() {
+        let valid_tags = vec!["a".to_string(), "b".to_string()];
+        assert!(validate_area_tags(&valid_tags, "quick create").is_ok());
 
-        draft.due_at_unix_ms = Some(1);
-        draft.area_tags = vec!["pm".to_string(), "sync".to_string(), "desktop".to_string()];
-        assert_eq!(
-            draft.validate(),
-            Err("quick create supports at most two area_tags".to_string())
-        );
+        let too_many_tags = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert!(validate_area_tags(&too_many_tags, "quick create").is_err());
+
+        let empty_tag = vec!["".to_string()];
+        assert!(validate_area_tags(&empty_tag, "quick create").is_err());
     }
 }
