@@ -229,8 +229,17 @@ Examples in the current slice:
 This projection layer is enough to make one local Probe-backed coding thread
 real inside Autopilot.
 
-It is not yet the full local operator loop. The next slice wires:
+The local operator loop is now shipped for the current Probe sidecar slice:
 
-- queued follow-ups while a turn is still running
-- approval roundtrips back through Probe
-- queued-turn cancel and active-turn interrupt
+- queued follow-ups, approval roundtrips, queue cancel, and interrupt stay
+  inside the app-owned shell above Probe runtime truth
+- shared sessions now carry workspace snapshot and restore provenance, delegated
+  child-session cards, reviewer evidence, delivery receipts, attachment
+  forwarding, and delivery watch state
+
+The next honest follow-ons are outside this local parity batch:
+
+- richer hosted or shared-session collaboration above the same shell objects
+- remote worker or fleet orchestration rather than a single local sidecar
+- a real tool-attachment contract for skill-like attachments instead of the
+  current app-owned forwarding manifest
