@@ -210,6 +210,23 @@ enum ChatForgeComposerIntent {
         summary: Option<String>,
     },
     BountyStatus,
+    SettlementMerge {
+        reviewer_label: String,
+        summary: Option<String>,
+    },
+    SettlementMetric {
+        evaluator_label: String,
+        reference: String,
+        summary: Option<String>,
+    },
+    SettlementDispute {
+        actor_label: String,
+        summary: Option<String>,
+    },
+    SettlementCancel {
+        reason: String,
+    },
+    SettlementStatus,
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
         summary: String,
@@ -4424,6 +4441,74 @@ fn build_probe_bounty_status_snapshot(
     Ok(lines.join("\n"))
 }
 
+fn build_probe_settlement_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let receipt = chat.active_settlement_receipt().ok_or_else(|| {
+        "Record settlement first with `/settle merge ...` or `/settle metric ...`.".to_string()
+    })?;
+    let mut lines = vec![format!(
+        "Settlement receipt `{}` is {}.",
+        receipt.settlement_receipt_id,
+        receipt.status.display_label()
+    )];
+    lines.push(format!(
+        "Objective: {}.",
+        receipt.objective_kind.display_label()
+    ));
+    if let Some(closure_path) = receipt.closure_path {
+        lines.push(format!("Closure path: {}.", closure_path.display_label()));
+    } else {
+        lines.push(String::from("Closure path: not recorded yet."));
+    }
+    if let Some(reviewer_ref) = receipt.reviewer_ref.as_ref() {
+        let mut review_line = format!(
+            "Reviewer closure: {} by `{}`.",
+            reviewer_ref.outcome.display_label(),
+            reviewer_ref.reviewer_label
+        );
+        if let Some(summary) = reviewer_ref.summary.as_deref() {
+            review_line.push_str(&format!(" {summary}"));
+        }
+        lines.push(review_line);
+    }
+    if let Some(evaluator_ref) = receipt.evaluator_ref.as_ref() {
+        let mut metric_line = format!(
+            "Metric closure: `{}` via `{}`.",
+            evaluator_ref.evaluator_label, evaluator_ref.reference
+        );
+        if let Some(summary) = evaluator_ref.summary.as_deref() {
+            metric_line.push_str(&format!(" {summary}"));
+        }
+        lines.push(metric_line);
+    }
+    if let Some(outcome_summary) = receipt.outcome_summary.as_deref() {
+        lines.push(format!("Outcome summary: {outcome_summary}"));
+    }
+    lines.push(format!(
+        "Dispute window: {} -> {}.",
+        receipt.dispute_window_started_at_epoch_ms,
+        receipt.dispute_window_closes_at_epoch_ms
+    ));
+    if let Some(disputed_by_label) = receipt.disputed_by_label.as_deref() {
+        let mut dispute_line = format!("Disputed by `{disputed_by_label}`.");
+        if let Some(summary) = receipt.dispute_summary.as_deref() {
+            dispute_line.push_str(&format!(" {summary}"));
+        }
+        lines.push(dispute_line);
+    }
+    if let Some(cancel_reason) = receipt.cancel_reason.as_deref() {
+        lines.push(format!("Cancel reason: {cancel_reason}"));
+    }
+    if let Some(evidence_bundle_id) = receipt.evidence_bundle_id.as_deref() {
+        lines.push(format!("Evidence bundle: `{evidence_bundle_id}`."));
+    }
+    if let Some(delivery_receipt_id) = receipt.delivery_receipt_id.as_deref() {
+        lines.push(format!("Delivery receipt: `{delivery_receipt_id}`."));
+    }
+    Ok(lines.join("\n"))
+}
+
 fn append_text_block(response: &mut String, label: &str, body: &str) {
     let trimmed = body.trim();
     if trimmed.is_empty() {
@@ -4958,6 +5043,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         return Ok(None);
     };
     if first_word != "/bounty"
+        && first_word != "/settle"
         && first_word != "/handoff"
         && first_word != "/restore"
         && first_word != "/evidence"
@@ -5164,6 +5250,73 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
             }
             _ => Err(
                 "Delivery commands: `/deliver pr [base-branch] [pr-url]`, `/deliver status`, `/deliver refresh`, `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`, `/deliver merge <reviewer-label> [summary]`.".to_string(),
+            ),
+        };
+    }
+    if first_word == "/settle" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Settlement commands: `/settle merge <reviewer-label> [summary]`, `/settle metric <evaluator-label> <reference> [summary]`, `/settle dispute <actor-label> [summary]`, `/settle cancel <reason>`, `/settle status`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "merge" => {
+                let Some(reviewer_label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/settle merge <reviewer-label> [summary]`.".to_string(),
+                    );
+                };
+                Ok(Some(ChatForgeComposerIntent::SettlementMerge {
+                    reviewer_label,
+                    summary: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
+            "metric" => {
+                let Some(evaluator_label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/settle metric <evaluator-label> <reference> [summary]`."
+                            .to_string(),
+                    );
+                };
+                let Some(reference) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/settle metric <evaluator-label> <reference> [summary]`."
+                            .to_string(),
+                    );
+                };
+                Ok(Some(ChatForgeComposerIntent::SettlementMetric {
+                    evaluator_label,
+                    reference,
+                    summary: (words.len() > 4).then(|| words[4..].join(" ")),
+                }))
+            }
+            "dispute" => {
+                let Some(actor_label) = words.get(2).cloned() else {
+                    return Err(
+                        "Usage: `/settle dispute <actor-label> [summary]`.".to_string(),
+                    );
+                };
+                Ok(Some(ChatForgeComposerIntent::SettlementDispute {
+                    actor_label,
+                    summary: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
+            "cancel" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/settle cancel <reason>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::SettlementCancel {
+                    reason: words[2..].join(" "),
+                }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/settle status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::SettlementStatus))
+            }
+            _ => Err(
+                "Settlement commands: `/settle merge <reviewer-label> [summary]`, `/settle metric <evaluator-label> <reference> [summary]`, `/settle dispute <actor-label> [summary]`, `/settle cancel <reason>`, `/settle status`.".to_string(),
             ),
         };
     }
@@ -6385,7 +6538,7 @@ fn run_chat_forge_action(
         return append_chat_command_result(
             state,
             prompt,
-            "No active Probe-backed thread is selected for shared-session handoff.".to_string(),
+            "No active Probe-backed thread is selected for Forge shell control.".to_string(),
             true,
         );
     };
@@ -6399,7 +6552,7 @@ fn run_chat_forge_action(
         return append_chat_command_result(
             state,
             prompt,
-            "Shared-session handoff is only available for Probe-backed threads.".to_string(),
+            "Forge shell controls are only available for Probe-backed threads.".to_string(),
             true,
         );
     }
@@ -6512,6 +6665,118 @@ fn run_chat_forge_action(
         },
         ChatForgeComposerIntent::BountyStatus => {
             match build_probe_bounty_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::SettlementMerge {
+            reviewer_label,
+            summary,
+        } => match state.autopilot_chat.record_probe_settlement_merge_for_thread(
+            thread_id.as_str(),
+            reviewer_label.clone(),
+            summary.clone(),
+            "operator.command:/settle merge",
+            current_epoch_millis(),
+        ) {
+            Ok(settlement_receipt_id) => {
+                let mut response = format!(
+                    "Recorded settlement receipt `{settlement_receipt_id}` from accepted merge closure by `{}`.",
+                    reviewer_label
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_settlement_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::SettlementMetric {
+            evaluator_label,
+            reference,
+            summary,
+        } => match state.autopilot_chat.record_probe_settlement_metric_for_thread(
+            thread_id.as_str(),
+            evaluator_label.clone(),
+            reference.clone(),
+            summary.clone(),
+            "operator.command:/settle metric",
+            current_epoch_millis(),
+        ) {
+            Ok(settlement_receipt_id) => {
+                let mut response = format!(
+                    "Recorded settlement receipt `{settlement_receipt_id}` from admitted metric closure by `{}` against `{}`.",
+                    evaluator_label, reference
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_settlement_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::SettlementDispute {
+            actor_label,
+            summary,
+        } => match state.autopilot_chat.record_probe_settlement_dispute_for_thread(
+            thread_id.as_str(),
+            actor_label.clone(),
+            summary.clone(),
+            "operator.command:/settle dispute",
+            current_epoch_millis(),
+        ) {
+            Ok(settlement_receipt_id) => {
+                let mut response = format!(
+                    "Marked settlement receipt `{settlement_receipt_id}` disputed by `{}`.",
+                    actor_label
+                );
+                if let Some(summary) = summary.as_deref() {
+                    response.push_str("\n\n");
+                    response.push_str(summary);
+                }
+                if let Ok(status) = build_probe_settlement_status_snapshot(&state.autopilot_chat) {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::SettlementCancel { reason } => {
+            match state.autopilot_chat.record_probe_settlement_cancel_for_thread(
+                thread_id.as_str(),
+                reason.clone(),
+                "operator.command:/settle cancel",
+                current_epoch_millis(),
+            ) {
+                Ok(settlement_receipt_id) => {
+                    let mut response =
+                        format!("Canceled settlement receipt `{settlement_receipt_id}`.");
+                    response.push_str("\n\n");
+                    response.push_str(reason.as_str());
+                    if let Ok(status) =
+                        build_probe_settlement_status_snapshot(&state.autopilot_chat)
+                    {
+                        response.push_str("\n\n");
+                        response.push_str(status.as_str());
+                    }
+                    append_chat_command_result(state, prompt, response, false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::SettlementStatus => {
+            match build_probe_settlement_status_snapshot(&state.autopilot_chat) {
                 Ok(summary) => append_chat_command_result(state, prompt, summary, false),
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
@@ -19061,10 +19326,44 @@ mod tests {
             parse_chat_forge_intent("/deliver refresh").unwrap(),
             Some(ChatForgeComposerIntent::DeliveryRefresh)
         );
+        assert_eq!(
+            parse_chat_forge_intent("/settle merge chris accepted-after-review").unwrap(),
+            Some(ChatForgeComposerIntent::SettlementMerge {
+                reviewer_label: "chris".to_string(),
+                summary: Some("accepted-after-review".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/settle metric eval-run retained://run-42 beat-baseline")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::SettlementMetric {
+                evaluator_label: "eval-run".to_string(),
+                reference: "retained://run-42".to_string(),
+                summary: Some("beat-baseline".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/settle dispute reviewer needs-second-pass").unwrap(),
+            Some(ChatForgeComposerIntent::SettlementDispute {
+                actor_label: "reviewer".to_string(),
+                summary: Some("needs-second-pass".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/settle cancel superseded by a newer run").unwrap(),
+            Some(ChatForgeComposerIntent::SettlementCancel {
+                reason: "superseded by a newer run".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/settle status").unwrap(),
+            Some(ChatForgeComposerIntent::SettlementStatus)
+        );
         assert!(parse_chat_forge_intent("/handoff").is_err());
         assert!(parse_chat_forge_intent("/restore").is_err());
         assert!(parse_chat_forge_intent("/evidence").is_err());
         assert!(parse_chat_forge_intent("/deliver").is_err());
+        assert!(parse_chat_forge_intent("/settle").is_err());
     }
 
     #[test]

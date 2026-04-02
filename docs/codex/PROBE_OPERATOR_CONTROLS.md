@@ -22,6 +22,12 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/deliver refresh`
   - `/deliver review <commented|approved|changes_requested> <reviewer-label> [summary]`
   - `/deliver merge <reviewer-label> [summary]`
+- The desktop command surface now also exposes settlement tracking through:
+  - `/settle merge <reviewer-label> [summary]`
+  - `/settle metric <evaluator-label> <reference> [summary]`
+  - `/settle dispute <actor-label> [summary]`
+  - `/settle cancel <reason>`
+  - `/settle status`
 - The header actions for Probe-backed threads now use app-owned parity where the
   runtime seam is still narrower:
   - rename and archive or unarchive persist as shared-session shell overlays
@@ -40,6 +46,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
   session
 - delivery commands also stay app-owned: Probe does not become the hidden home
   for PR state, reviewer outcome, or authorship attribution
+- settlement commands also stay app-owned: Probe is not the hidden home for
+  dispute windows, settlement cancel reasons, evaluator references, or payout
+  closure posture
 - local branch and compare watch now refresh automatically from Probe session
   load and detached workspace-state events when a delivery receipt already
   exists
@@ -56,6 +65,9 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - Delivery receipts are also local-first. The first cut tracks GitHub PR state
   and reviewer outcome above the local shell rather than inventing a hosted
   publication substrate.
+- Settlement receipts are also local-first. They close the current shared
+  session truth for review or retained-metric purposes, but they are not yet a
+  money-movement system or a hosted claims database.
 - GitHub watch refresh depends on a working local `gh` installation plus repo
   access. If that is missing, the shell keeps the last recorded watch state and
   reports the refresh failure honestly.

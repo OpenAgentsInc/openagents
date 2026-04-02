@@ -14,7 +14,8 @@ use crate::app_state::{
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
     ForgeBountyContract, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
-    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
+    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeSettlementReceipt,
+    ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
     ForgeWorkspaceSnapshot, ManagedChatChannelProjection, ManagedChatDeliveryState,
     ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
     ProbeTurnAttachmentRef, RenderState,
@@ -2879,6 +2880,12 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             compact_display_token(delivery_receipt_id, 24)
         ));
     }
+    if let Some(settlement_receipt_id) = session.settlement_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **settlement receipt:** `{}`",
+            compact_display_token(settlement_receipt_id, 24)
+        ));
+    }
     if !session.delegated_child_sessions.is_empty() {
         lines.push(format!(
             "- **delegated child sessions:** {}",
@@ -3721,6 +3728,12 @@ fn active_bounty_contract_markdown_source(contract: &ForgeBountyContract) -> Str
             compact_display_token(delivery_receipt_id, 24)
         ));
     }
+    if let Some(settlement_receipt_id) = contract.settlement_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **settlement receipt:** `{}`",
+            compact_display_token(settlement_receipt_id, 24)
+        ));
+    }
     if !contract.participant_credit_envelopes.is_empty() {
         lines.push("- **credit envelopes:**".to_string());
         for envelope in &contract.participant_credit_envelopes {
@@ -3781,6 +3794,120 @@ fn active_bounty_claim_markdown_source(claim: &ForgeBountyClaim) -> String {
         ));
     }
     lines.push(format!("- **provenance:** `{}`", claim.provenance));
+    lines.join("\n")
+}
+
+fn active_settlement_receipt_meta_line(receipt: &ForgeSettlementReceipt) -> String {
+    let mut parts = vec![format!(
+        "settlement:{}",
+        compact_display_token(receipt.settlement_receipt_id.as_str(), 18)
+    )];
+    parts.push(format!("status:{}", receipt.status.label()));
+    parts.push(format!("objective:{}", receipt.objective_kind.label()));
+    if let Some(closure_path) = receipt.closure_path {
+        parts.push(format!("closure:{}", closure_path.label()));
+    }
+    if let Some(updated) = format_thread_timestamp(receipt.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_settlement_receipt_markdown_source(receipt: &ForgeSettlementReceipt) -> String {
+    let mut lines = vec![format!(
+        "- **status:** {}",
+        receipt.status.display_label()
+    )];
+    lines.push(format!(
+        "- **objective kind:** {}",
+        receipt.objective_kind.display_label()
+    ));
+    lines.push(format!(
+        "- **shared session:** `{}`",
+        compact_display_token(receipt.shared_session_id.as_str(), 24)
+    ));
+    lines.push(format!(
+        "- **bounty contract:** `{}`",
+        compact_display_token(receipt.bounty_contract_id.as_str(), 24)
+    ));
+    if let Some(bounty_claim_id) = receipt.bounty_claim_id.as_deref() {
+        lines.push(format!(
+            "- **bounty claim:** `{}`",
+            compact_display_token(bounty_claim_id, 24)
+        ));
+    }
+    if let Some(closure_path) = receipt.closure_path {
+        lines.push(format!(
+            "- **closure path:** {}",
+            closure_path.display_label()
+        ));
+    } else {
+        lines.push("- **closure path:** _not recorded_".to_string());
+    }
+    if let Some(reviewer_ref) = receipt.reviewer_ref.as_ref() {
+        let mut line = format!(
+            "- **reviewer closure:** {} by `{}`",
+            reviewer_ref.outcome.display_label(),
+            compact_display_token(reviewer_ref.reviewer_label.as_str(), 24)
+        );
+        if let Some(summary) = reviewer_ref.summary.as_deref() {
+            line.push_str(&format!("  •  {}", compact_display_token(summary, 80)));
+        }
+        lines.push(line);
+    }
+    if let Some(evaluator_ref) = receipt.evaluator_ref.as_ref() {
+        let mut line = format!(
+            "- **metric closure:** `{}`  •  `{}`",
+            compact_display_token(evaluator_ref.evaluator_label.as_str(), 24),
+            compact_display_token(evaluator_ref.reference.as_str(), 48)
+        );
+        if let Some(summary) = evaluator_ref.summary.as_deref() {
+            line.push_str(&format!("  •  {}", compact_display_token(summary, 72)));
+        }
+        lines.push(line);
+    }
+    if let Some(outcome_summary) = receipt.outcome_summary.as_deref() {
+        lines.push(format!(
+            "- **outcome summary:** {}",
+            compact_display_token(outcome_summary, 92)
+        ));
+    }
+    lines.push(format!(
+        "- **dispute window:** {}  ->  {}",
+        format_thread_timestamp(receipt.dispute_window_started_at_epoch_ms as i64)
+            .unwrap_or_else(|| receipt.dispute_window_started_at_epoch_ms.to_string()),
+        format_thread_timestamp(receipt.dispute_window_closes_at_epoch_ms as i64)
+            .unwrap_or_else(|| receipt.dispute_window_closes_at_epoch_ms.to_string())
+    ));
+    if let Some(disputed_by_label) = receipt.disputed_by_label.as_deref() {
+        let mut line = format!(
+            "- **disputed by:** `{}`",
+            compact_display_token(disputed_by_label, 24)
+        );
+        if let Some(summary) = receipt.dispute_summary.as_deref() {
+            line.push_str(&format!("  •  {}", compact_display_token(summary, 80)));
+        }
+        lines.push(line);
+    }
+    if let Some(cancel_reason) = receipt.cancel_reason.as_deref() {
+        lines.push(format!(
+            "- **cancel reason:** {}",
+            compact_display_token(cancel_reason, 92)
+        ));
+    }
+    if let Some(evidence_bundle_id) = receipt.evidence_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **evidence bundle:** `{}`",
+            compact_display_token(evidence_bundle_id, 24)
+        ));
+    }
+    if let Some(delivery_receipt_id) = receipt.delivery_receipt_id.as_deref() {
+        lines.push(format!(
+            "- **delivery receipt:** `{}`",
+            compact_display_token(delivery_receipt_id, 24)
+        ));
+    }
+    lines.push(format!("- **provenance:** `{}`", receipt.provenance));
     lines.join("\n")
 }
 
@@ -6411,6 +6538,46 @@ pub fn paint(
                 }
                 y += 10.0;
             }
+            if let Some(settlement_receipt) = autopilot_chat.active_settlement_receipt() {
+                let settlement_color = match settlement_receipt.status {
+                    ForgeSettlementReceiptStatus::Recorded => theme::status::SUCCESS,
+                    ForgeSettlementReceiptStatus::Canceled => theme::text::MUTED,
+                    ForgeSettlementReceiptStatus::Disputed => theme::status::ERROR,
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[settlement receipt]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    settlement_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_settlement_receipt_meta_line(settlement_receipt),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let settlement_markdown =
+                    active_settlement_receipt_markdown_source(settlement_receipt);
+                if !settlement_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&settlement_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
             if let Some(review_artifact) = autopilot_chat.active_review_artifact() {
                 paint.scene.draw_text(paint.text.layout_mono(
                     "[latest review]",
@@ -6750,9 +6917,9 @@ pub fn paint(
 
         if autopilot_chat.show_autopilot_help_hint {
             let hint = if autopilot_chat.active_turn_id.is_some() {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
             } else {
-                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/bounty ...`, `/settle ...`, `/handoff ...`, `/restore ...`, `/evidence ...`, `/deliver ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
             };
             let hint_chunk_len =
                 ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);

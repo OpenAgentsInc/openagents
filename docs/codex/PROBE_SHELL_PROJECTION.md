@@ -239,6 +239,38 @@ Current local-first behavior:
   cards above the workspace snapshot layer so settlement posture is visible
   before funds movement exists
 
+## Settlement Receipt Layer
+
+Autopilot now also keeps one app-owned settlement receipt above the shared
+session, bounty contract, evidence bundle, and delivery receipt.
+
+Current local-first behavior:
+
+- one settlement receipt is linked from the Forge shared session with a stable
+  `forge-settlement-*` id
+- the receipt keeps closure posture explicit instead of inferring payout
+  readiness from transcript fragments:
+  - `accepted_merge`
+  - `admitted_metric_win`
+- the receipt also keeps operator-visible settlement state explicit:
+  - `recorded`
+  - `disputed`
+  - `canceled`
+- merge-backed settlement reuses the current merged delivery receipt and latest
+  reviewer outcome instead of asking the shell to reconstruct acceptance later
+- metric-backed settlement stores an explicit evaluator label plus reference so
+  retained eval or benchmark closure can stay typed
+- operators can manage the current local settlement with:
+  - `/settle merge <reviewer-label> [summary]`
+  - `/settle metric <evaluator-label> <reference> [summary]`
+  - `/settle dispute <actor-label> [summary]`
+  - `/settle cancel <reason>`
+  - `/settle status`
+- dispute-window timing, cancel reason, reviewer closure, evaluator closure,
+  and payout-facing evidence or delivery links all live on that typed receipt
+- the shell renders the active settlement receipt as a first-class card so the
+  current closeout posture is visible without reading raw command history
+
 ## Artifact Ownership
 
 Plan, diff, review, and compaction presentation stays app-owned.

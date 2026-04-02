@@ -9288,6 +9288,8 @@ pub struct ForgeBountyContract {
     pub lifecycle_status: ForgeBountyLifecycleStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_claim_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_receipt_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub claim_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9300,6 +9302,100 @@ pub struct ForgeBountyContract {
     pub eval_pack_refs: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub participant_credit_envelopes: Vec<ForgeBountyParticipantCreditEnvelope>,
+    pub provenance: String,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeSettlementClosurePath {
+    AcceptedMerge,
+    AdmittedMetricWin,
+}
+
+impl ForgeSettlementClosurePath {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AcceptedMerge => "accepted_merge",
+            Self::AdmittedMetricWin => "admitted_metric_win",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::AcceptedMerge => "accepted merge",
+            Self::AdmittedMetricWin => "admitted metric win",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeSettlementReceiptStatus {
+    Recorded,
+    Canceled,
+    Disputed,
+}
+
+impl ForgeSettlementReceiptStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Recorded => "recorded",
+            Self::Canceled => "canceled",
+            Self::Disputed => "disputed",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Recorded => "recorded",
+            Self::Canceled => "canceled",
+            Self::Disputed => "disputed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSettlementEvaluatorRef {
+    pub evaluator_label: String,
+    pub reference: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSettlementReceipt {
+    pub settlement_receipt_id: String,
+    pub shared_session_id: String,
+    pub bounty_contract_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty_claim_id: Option<String>,
+    pub objective_kind: ForgeBountyObjectiveKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_path: Option<ForgeSettlementClosurePath>,
+    pub status: ForgeSettlementReceiptStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewer_ref: Option<ForgeDeliveryReviewDecision>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evaluator_ref: Option<ForgeSettlementEvaluatorRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_summary: Option<String>,
+    pub dispute_window_started_at_epoch_ms: u64,
+    pub dispute_window_closes_at_epoch_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disputed_by_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispute_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disputed_at_epoch_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_reason: Option<String>,
     pub provenance: String,
     pub created_at_epoch_ms: u64,
     pub updated_at_epoch_ms: u64,
@@ -9333,6 +9429,8 @@ pub struct ForgeSharedSession {
     pub bounty_contract_id: Option<String>,
     #[serde(default)]
     pub bounty_claim_id: Option<String>,
+    #[serde(default)]
+    pub settlement_receipt_id: Option<String>,
     pub evidence_bundle_id: Option<String>,
     pub delivery_receipt_id: Option<String>,
     pub created_at_epoch_ms: u64,
@@ -9776,6 +9874,7 @@ pub struct AutopilotChatState {
     forge_restore_manifests: std::collections::HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_bounty_contracts: std::collections::HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: std::collections::HashMap<String, ForgeBountyClaim>,
+    forge_settlement_receipts: std::collections::HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: std::collections::HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: std::collections::HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
@@ -9783,6 +9882,7 @@ pub struct AutopilotChatState {
     next_forge_restore_manifest_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
+    next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
@@ -9908,6 +10008,7 @@ impl Default for AutopilotChatState {
             forge_restore_manifests,
             forge_bounty_contracts,
             forge_bounty_claims,
+            forge_settlement_receipts,
             forge_evidence_bundles,
             forge_delivery_receipts,
             next_forge_shared_session_seq,
@@ -9915,6 +10016,7 @@ impl Default for AutopilotChatState {
             next_forge_restore_manifest_seq,
             next_forge_bounty_contract_seq,
             next_forge_bounty_claim_seq,
+            next_forge_settlement_receipt_seq,
             next_forge_evidence_bundle_seq,
             next_forge_delivery_receipt_seq,
             review_thread_source_map,
@@ -9929,6 +10031,7 @@ impl Default for AutopilotChatState {
                 projection.forge_restore_manifests,
                 projection.forge_bounty_contracts,
                 projection.forge_bounty_claims,
+                projection.forge_settlement_receipts,
                 projection.forge_evidence_bundles,
                 projection.forge_delivery_receipts,
                 projection.next_forge_shared_session_seq,
@@ -9936,6 +10039,7 @@ impl Default for AutopilotChatState {
                 projection.next_forge_restore_manifest_seq,
                 projection.next_forge_bounty_contract_seq,
                 projection.next_forge_bounty_claim_seq,
+                projection.next_forge_settlement_receipt_seq,
                 projection.next_forge_evidence_bundle_seq,
                 projection.next_forge_delivery_receipt_seq,
                 projection.review_thread_source_map,
@@ -9952,6 +10056,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 1,
                 1,
@@ -9988,6 +10094,7 @@ impl Default for AutopilotChatState {
             forge_restore_manifests,
             forge_bounty_contracts,
             forge_bounty_claims,
+            forge_settlement_receipts,
             forge_evidence_bundles,
             forge_delivery_receipts,
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
@@ -9995,6 +10102,7 @@ impl Default for AutopilotChatState {
             next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
             next_forge_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
             next_forge_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
+            next_forge_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
             next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
             next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
             review_thread_source_map,
@@ -10106,6 +10214,8 @@ struct CodexArtifactProjectionDocumentV2 {
     #[serde(default)]
     bounty_claims: Vec<ForgeBountyClaim>,
     #[serde(default)]
+    settlement_receipts: Vec<ForgeSettlementReceipt>,
+    #[serde(default)]
     evidence_bundles: Vec<ForgeEvidenceBundle>,
     #[serde(default)]
     delivery_receipts: Vec<ForgeDeliveryReceipt>,
@@ -10119,6 +10229,8 @@ struct CodexArtifactProjectionDocumentV2 {
     next_bounty_contract_seq: u64,
     #[serde(default = "default_next_forge_bounty_claim_seq")]
     next_bounty_claim_seq: u64,
+    #[serde(default = "default_next_forge_settlement_receipt_seq")]
+    next_settlement_receipt_seq: u64,
     #[serde(default = "default_next_forge_evidence_bundle_seq")]
     next_evidence_bundle_seq: u64,
     #[serde(default = "default_next_forge_delivery_receipt_seq")]
@@ -10134,6 +10246,7 @@ struct LoadedCodexArtifactProjection {
     forge_restore_manifests: HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_bounty_contracts: HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: HashMap<String, ForgeBountyClaim>,
+    forge_settlement_receipts: HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
@@ -10141,6 +10254,7 @@ struct LoadedCodexArtifactProjection {
     next_forge_restore_manifest_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
+    next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: HashMap<String, String>,
@@ -10163,6 +10277,10 @@ fn default_next_forge_bounty_contract_seq() -> u64 {
 }
 
 fn default_next_forge_bounty_claim_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_settlement_receipt_seq() -> u64 {
     1
 }
 
@@ -10442,6 +10560,11 @@ fn normalize_forge_shared_sessions(
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        session.settlement_receipt_id = session
+            .settlement_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         session.remote_session = normalize_forge_probe_remote_session_projection(std::mem::take(
             &mut session.remote_session,
         ));
@@ -10578,6 +10701,11 @@ fn normalize_forge_bounty_contracts(
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        contract.settlement_receipt_id = contract
+            .settlement_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         contract.active_claim_id = contract
             .active_claim_id
             .take()
@@ -10654,6 +10782,88 @@ fn normalize_forge_bounty_claims(mut claims: Vec<ForgeBountyClaim>) -> Vec<Forge
             !claim.bounty_contract_id.is_empty()
                 && !claim.shared_session_id.is_empty()
                 && !claim.claimant_label.is_empty()
+        })
+        .collect()
+}
+
+fn normalize_forge_settlement_receipts(
+    mut receipts: Vec<ForgeSettlementReceipt>,
+) -> Vec<ForgeSettlementReceipt> {
+    receipts.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.settlement_receipt_id.cmp(&rhs.settlement_receipt_id))
+    });
+    let mut seen_ids = HashSet::new();
+    receipts.retain(|receipt| {
+        let settlement_receipt_id = receipt.settlement_receipt_id.trim();
+        !settlement_receipt_id.is_empty() && seen_ids.insert(settlement_receipt_id.to_string())
+    });
+    for receipt in &mut receipts {
+        receipt.settlement_receipt_id = receipt.settlement_receipt_id.trim().to_string();
+        receipt.shared_session_id = receipt.shared_session_id.trim().to_string();
+        receipt.bounty_contract_id = receipt.bounty_contract_id.trim().to_string();
+        receipt.bounty_claim_id = receipt
+            .bounty_claim_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.evidence_bundle_id = receipt
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.delivery_receipt_id = receipt
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if let Some(review) = receipt.reviewer_ref.as_mut() {
+            review.reviewer_label = review.reviewer_label.trim().to_string();
+            review.summary = review
+                .summary
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+        if let Some(evaluator) = receipt.evaluator_ref.as_mut() {
+            evaluator.evaluator_label = evaluator.evaluator_label.trim().to_string();
+            evaluator.reference = evaluator.reference.trim().to_string();
+            evaluator.summary = evaluator
+                .summary
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+        receipt.outcome_summary = receipt
+            .outcome_summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.disputed_by_label = receipt
+            .disputed_by_label
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.dispute_summary = receipt
+            .dispute_summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.cancel_reason = receipt
+            .cancel_reason
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        receipt.provenance = receipt.provenance.trim().to_string();
+    }
+    receipts
+        .into_iter()
+        .filter(|receipt| {
+            !receipt.shared_session_id.is_empty()
+                && !receipt.bounty_contract_id.is_empty()
+                && receipt.dispute_window_closes_at_epoch_ms
+                    >= receipt.dispute_window_started_at_epoch_ms
         })
         .collect()
 }
@@ -11188,6 +11398,7 @@ fn persist_codex_artifact_projection(
     forge_restore_manifests: &HashMap<String, ForgeWorkspaceRestoreManifest>,
     forge_bounty_contracts: &HashMap<String, ForgeBountyContract>,
     forge_bounty_claims: &HashMap<String, ForgeBountyClaim>,
+    forge_settlement_receipts: &HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
     next_forge_shared_session_seq: u64,
@@ -11195,6 +11406,7 @@ fn persist_codex_artifact_projection(
     next_forge_restore_manifest_seq: u64,
     next_forge_bounty_contract_seq: u64,
     next_forge_bounty_claim_seq: u64,
+    next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
 ) -> Result<(), String> {
@@ -11232,6 +11444,9 @@ fn persist_codex_artifact_projection(
         bounty_claims: normalize_forge_bounty_claims(
             forge_bounty_claims.values().cloned().collect(),
         ),
+        settlement_receipts: normalize_forge_settlement_receipts(
+            forge_settlement_receipts.values().cloned().collect(),
+        ),
         evidence_bundles: normalize_forge_evidence_bundles(
             forge_evidence_bundles.values().cloned().collect(),
         ),
@@ -11243,6 +11458,7 @@ fn persist_codex_artifact_projection(
         next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
         next_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
         next_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
+        next_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
         next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
         next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
     };
@@ -11269,6 +11485,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 forge_restore_manifests: HashMap::new(),
                 forge_bounty_contracts: HashMap::new(),
                 forge_bounty_claims: HashMap::new(),
+                forge_settlement_receipts: HashMap::new(),
                 forge_evidence_bundles: HashMap::new(),
                 forge_delivery_receipts: HashMap::new(),
                 next_forge_shared_session_seq: 1,
@@ -11276,6 +11493,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 next_forge_restore_manifest_seq: 1,
                 next_forge_bounty_contract_seq: 1,
                 next_forge_bounty_claim_seq: 1,
+                next_forge_settlement_receipt_seq: 1,
                 next_forge_evidence_bundle_seq: 1,
                 next_forge_delivery_receipt_seq: 1,
                 review_thread_source_map: HashMap::new(),
@@ -11321,6 +11539,8 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        Vec::new(),
+        1,
         1,
         1,
         1,
@@ -11352,12 +11572,14 @@ fn load_codex_artifact_projection_v2(
         document.restore_manifests,
         document.bounty_contracts,
         document.bounty_claims,
+        document.settlement_receipts,
         document.evidence_bundles,
-        document.next_bounty_contract_seq,
-        document.next_bounty_claim_seq,
         document.next_shared_session_seq,
         document.next_workspace_snapshot_seq,
         document.next_restore_manifest_seq,
+        document.next_bounty_contract_seq,
+        document.next_bounty_claim_seq,
+        document.next_settlement_receipt_seq,
         document.next_evidence_bundle_seq,
         document.delivery_receipts,
         document.next_delivery_receipt_seq,
@@ -11373,12 +11595,14 @@ fn build_loaded_codex_artifact_projection(
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
     bounty_contracts: Vec<ForgeBountyContract>,
     bounty_claims: Vec<ForgeBountyClaim>,
+    settlement_receipts: Vec<ForgeSettlementReceipt>,
     evidence_bundles: Vec<ForgeEvidenceBundle>,
-    next_bounty_contract_seq: u64,
-    next_bounty_claim_seq: u64,
     next_shared_session_seq: u64,
     next_workspace_snapshot_seq: u64,
     next_restore_manifest_seq: u64,
+    next_bounty_contract_seq: u64,
+    next_bounty_claim_seq: u64,
+    next_settlement_receipt_seq: u64,
     next_evidence_bundle_seq: u64,
     delivery_receipts: Vec<ForgeDeliveryReceipt>,
     next_delivery_receipt_seq: u64,
@@ -11431,6 +11655,11 @@ fn build_loaded_codex_artifact_projection(
         forge_bounty_claims.insert(claim.bounty_claim_id.clone(), claim);
     }
 
+    let mut forge_settlement_receipts = HashMap::<String, ForgeSettlementReceipt>::new();
+    for receipt in normalize_forge_settlement_receipts(settlement_receipts) {
+        forge_settlement_receipts.insert(receipt.settlement_receipt_id.clone(), receipt);
+    }
+
     let mut forge_evidence_bundles = HashMap::<String, ForgeEvidenceBundle>::new();
     for bundle in normalize_forge_evidence_bundles(evidence_bundles) {
         forge_evidence_bundles.insert(bundle.evidence_bundle_id.clone(), bundle);
@@ -11450,6 +11679,7 @@ fn build_loaded_codex_artifact_projection(
         forge_restore_manifests,
         forge_bounty_contracts,
         forge_bounty_claims,
+        forge_settlement_receipts,
         forge_evidence_bundles,
         forge_delivery_receipts,
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
@@ -11457,6 +11687,7 @@ fn build_loaded_codex_artifact_projection(
         next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
         next_forge_bounty_contract_seq: next_bounty_contract_seq.max(1),
         next_forge_bounty_claim_seq: next_bounty_claim_seq.max(1),
+        next_forge_settlement_receipt_seq: next_settlement_receipt_seq.max(1),
         next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
         next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
         review_thread_source_map,
@@ -11710,6 +11941,10 @@ fn current_epoch_millis_for_state() -> u64 {
         .unwrap_or(0)
 }
 
+fn forge_settlement_dispute_window_closes_at(recorded_at_epoch_ms: u64) -> u64 {
+    recorded_at_epoch_ms.saturating_add(72_u64 * 60 * 60 * 1000)
+}
+
 fn forge_probe_snapshot_ref_detail() -> String {
     "Current Probe seam does not expose snapshot refs yet.".to_string()
 }
@@ -11915,6 +12150,7 @@ impl AutopilotChatState {
                 state.forge_restore_manifests = projection.forge_restore_manifests;
                 state.forge_bounty_contracts = projection.forge_bounty_contracts;
                 state.forge_bounty_claims = projection.forge_bounty_claims;
+                state.forge_settlement_receipts = projection.forge_settlement_receipts;
                 state.forge_evidence_bundles = projection.forge_evidence_bundles;
                 state.forge_delivery_receipts = projection.forge_delivery_receipts;
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
@@ -11923,6 +12159,8 @@ impl AutopilotChatState {
                 state.next_forge_restore_manifest_seq = projection.next_forge_restore_manifest_seq;
                 state.next_forge_bounty_contract_seq = projection.next_forge_bounty_contract_seq;
                 state.next_forge_bounty_claim_seq = projection.next_forge_bounty_claim_seq;
+                state.next_forge_settlement_receipt_seq =
+                    projection.next_forge_settlement_receipt_seq;
                 state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
                 state.next_forge_delivery_receipt_seq = projection.next_forge_delivery_receipt_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
@@ -11937,6 +12175,7 @@ impl AutopilotChatState {
                 state.forge_restore_manifests.clear();
                 state.forge_bounty_contracts.clear();
                 state.forge_bounty_claims.clear();
+                state.forge_settlement_receipts.clear();
                 state.forge_evidence_bundles.clear();
                 state.forge_delivery_receipts.clear();
                 state.next_forge_shared_session_seq = 1;
@@ -11944,6 +12183,7 @@ impl AutopilotChatState {
                 state.next_forge_restore_manifest_seq = 1;
                 state.next_forge_bounty_contract_seq = 1;
                 state.next_forge_bounty_claim_seq = 1;
+                state.next_forge_settlement_receipt_seq = 1;
                 state.next_forge_evidence_bundle_seq = 1;
                 state.next_forge_delivery_receipt_seq = 1;
                 state.review_thread_source_map.clear();
@@ -12588,6 +12828,25 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.bounty_claim_for_thread(thread_id))
     }
 
+    fn settlement_receipt_for_thread(&self, thread_id: &str) -> Option<&ForgeSettlementReceipt> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let settlement_receipt_id = shared_session.settlement_receipt_id.as_deref()?;
+        self.forge_settlement_receipts.get(settlement_receipt_id)
+    }
+
+    pub fn settlement_receipt_for_id(
+        &self,
+        settlement_receipt_id: &str,
+    ) -> Option<&ForgeSettlementReceipt> {
+        self.forge_settlement_receipts.get(settlement_receipt_id)
+    }
+
+    pub fn active_settlement_receipt(&self) -> Option<&ForgeSettlementReceipt> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.settlement_receipt_for_thread(thread_id))
+    }
+
     fn workspace_snapshot_for_thread(&self, thread_id: &str) -> Option<&ForgeWorkspaceSnapshot> {
         let shared_session = self.shared_session_for_thread(thread_id)?;
         let workspace_snapshot_id = shared_session.workspace_snapshot_id.as_deref()?;
@@ -12689,6 +12948,14 @@ impl AutopilotChatState {
         let bounty_claim_id = format!("forge-claim-{}", self.next_forge_bounty_claim_seq);
         self.next_forge_bounty_claim_seq = self.next_forge_bounty_claim_seq.saturating_add(1);
         bounty_claim_id
+    }
+
+    fn next_settlement_receipt_id(&mut self) -> String {
+        let settlement_receipt_id =
+            format!("forge-settlement-{}", self.next_forge_settlement_receipt_seq);
+        self.next_forge_settlement_receipt_seq =
+            self.next_forge_settlement_receipt_seq.saturating_add(1);
+        settlement_receipt_id
     }
 
     fn next_delivery_receipt_id(&mut self) -> String {
@@ -13178,6 +13445,7 @@ impl AutopilotChatState {
                 std::mem::take(&mut contract.participant_credit_envelopes),
             );
             contract.shared_session_id = shared_session_id.to_string();
+            contract.settlement_receipt_id = shared_session.settlement_receipt_id.clone();
             contract.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
             contract.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
             contract.updated_at_epoch_ms = updated_at_epoch_ms.max(contract.updated_at_epoch_ms);
@@ -13189,6 +13457,43 @@ impl AutopilotChatState {
             claim.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
             claim.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
             claim.updated_at_epoch_ms = updated_at_epoch_ms.max(claim.updated_at_epoch_ms);
+        }
+        let _ = self.sync_settlement_links_for_shared_session(shared_session_id, updated_at_epoch_ms);
+        Ok(())
+    }
+
+    fn sync_settlement_links_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(), String> {
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before settlement linkage could be refreshed."
+                )
+            })?;
+        if let Some(settlement_receipt_id) = shared_session.settlement_receipt_id.as_deref()
+            && let Some(receipt) = self.forge_settlement_receipts.get_mut(settlement_receipt_id)
+        {
+            receipt.shared_session_id = shared_session_id.to_string();
+            receipt.bounty_contract_id = shared_session
+                .bounty_contract_id
+                .clone()
+                .unwrap_or_else(|| receipt.bounty_contract_id.clone());
+            receipt.bounty_claim_id = shared_session.bounty_claim_id.clone();
+            receipt.evidence_bundle_id = shared_session.evidence_bundle_id.clone();
+            receipt.delivery_receipt_id = shared_session.delivery_receipt_id.clone();
+            receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        }
+        if let Some(bounty_contract_id) = shared_session.bounty_contract_id.as_deref()
+            && let Some(contract) = self.forge_bounty_contracts.get_mut(bounty_contract_id)
+        {
+            contract.settlement_receipt_id = shared_session.settlement_receipt_id.clone();
+            contract.updated_at_epoch_ms = updated_at_epoch_ms.max(contract.updated_at_epoch_ms);
         }
         Ok(())
     }
@@ -13285,6 +13590,11 @@ impl AutopilotChatState {
                 objective_summary,
                 lifecycle_status,
                 active_claim_id,
+                settlement_receipt_id: self
+                    .forge_bounty_contracts
+                    .get(&bounty_contract_id)
+                    .and_then(|contract| contract.settlement_receipt_id.clone())
+                    .or(shared_session.settlement_receipt_id.clone()),
                 claim_ids,
                 evidence_bundle_id: evidence_bundle_id
                     .or(shared_session.evidence_bundle_id.clone()),
@@ -13565,6 +13875,506 @@ impl AutopilotChatState {
         );
         self.persist_codex_artifact_projection();
         Ok((bounty_contract_id, active_claim_id))
+    }
+
+    pub fn record_probe_settlement_merge_for_thread(
+        &mut self,
+        thread_id: &str,
+        reviewer_label: impl Into<String>,
+        summary: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let reviewer_label = reviewer_label.into().trim().to_string();
+        if reviewer_label.is_empty() {
+            return Err("Settlement reviewer label cannot be empty.".to_string());
+        }
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance = provenance.into().trim().to_string();
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let bounty_contract_id = shared_session.bounty_contract_id.clone().ok_or_else(|| {
+            "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+        })?;
+        let contract = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before settlement could be recorded."
+                )
+            })?;
+        if contract.objective_kind != ForgeBountyObjectiveKind::AcceptedMerge {
+            return Err("Use `/settle metric ...` for admitted metric bounties.".to_string());
+        }
+        if !matches!(
+            contract.lifecycle_status,
+            ForgeBountyLifecycleStatus::Admitted | ForgeBountyLifecycleStatus::Completed
+        ) {
+            return Err(
+                "Advance the bounty to `admitted` or `completed` before recording settlement."
+                    .to_string(),
+            );
+        }
+        let delivery_receipt_id = shared_session
+            .delivery_receipt_id
+            .clone()
+            .or(contract.delivery_receipt_id.clone())
+            .ok_or_else(|| "Prepare a delivery receipt first with `/deliver pr ...`.".to_string())?;
+        let delivery_receipt = self
+            .forge_delivery_receipts
+            .get(&delivery_receipt_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Delivery receipt `{delivery_receipt_id}` disappeared before settlement could be recorded."
+                )
+            })?;
+        if delivery_receipt.status != ForgeDeliveryReceiptStatus::Merged {
+            return Err(
+                "Mark the delivery merged first with `/deliver merge <reviewer-label> [summary]`."
+                    .to_string(),
+            );
+        }
+        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+            && self
+                .forge_settlement_receipts
+                .contains_key(existing_id.as_str())
+        {
+            existing_id
+        } else {
+            self.next_settlement_receipt_id()
+        };
+        let created_at_epoch_ms = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .map_or(updated_at_epoch_ms, |receipt| receipt.created_at_epoch_ms);
+        let dispute_window_started_at_epoch_ms = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .map_or(updated_at_epoch_ms, |receipt| {
+                receipt.dispute_window_started_at_epoch_ms
+            });
+        let dispute_window_closes_at_epoch_ms = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .map_or_else(
+                || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
+                |receipt| {
+                    receipt
+                        .dispute_window_closes_at_epoch_ms
+                        .max(forge_settlement_dispute_window_closes_at(
+                            dispute_window_started_at_epoch_ms,
+                        ))
+                },
+            );
+        let mut reviewer_ref = delivery_receipt.latest_review_decision.clone().unwrap_or(
+            ForgeDeliveryReviewDecision {
+                reviewer_label,
+                outcome: ForgeDeliveryReviewerOutcome::Approved,
+                summary: summary.clone(),
+                recorded_at_epoch_ms: updated_at_epoch_ms,
+            },
+        );
+        if reviewer_ref.summary.is_none() && summary.is_some() {
+            reviewer_ref.summary = summary.clone();
+        }
+        self.forge_settlement_receipts.insert(
+            settlement_receipt_id.clone(),
+            ForgeSettlementReceipt {
+                settlement_receipt_id: settlement_receipt_id.clone(),
+                shared_session_id: shared_session.shared_session_id.clone(),
+                bounty_contract_id: bounty_contract_id.clone(),
+                bounty_claim_id: shared_session
+                    .bounty_claim_id
+                    .clone()
+                    .or(contract.active_claim_id.clone()),
+                objective_kind: contract.objective_kind,
+                closure_path: Some(ForgeSettlementClosurePath::AcceptedMerge),
+                status: ForgeSettlementReceiptStatus::Recorded,
+                evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
+                delivery_receipt_id: Some(delivery_receipt_id.clone()),
+                reviewer_ref: Some(reviewer_ref),
+                evaluator_ref: None,
+                outcome_summary: summary,
+                dispute_window_started_at_epoch_ms,
+                dispute_window_closes_at_epoch_ms,
+                disputed_by_label: None,
+                dispute_summary: None,
+                disputed_at_epoch_ms: None,
+                cancel_reason: None,
+                provenance,
+                created_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{}` disappeared before settlement linkage could be recorded.",
+                    shared_session_id
+                )
+            })?;
+        shared_session.settlement_receipt_id = Some(settlement_receipt_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = shared_session;
+        let _ = self
+            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(settlement_receipt_id)
+    }
+
+    pub fn record_probe_settlement_metric_for_thread(
+        &mut self,
+        thread_id: &str,
+        evaluator_label: impl Into<String>,
+        reference: impl Into<String>,
+        summary: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let evaluator_label = evaluator_label.into().trim().to_string();
+        if evaluator_label.is_empty() {
+            return Err("Settlement evaluator label cannot be empty.".to_string());
+        }
+        let reference = reference.into().trim().to_string();
+        if reference.is_empty() {
+            return Err("Settlement metric reference cannot be empty.".to_string());
+        }
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance = provenance.into().trim().to_string();
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let bounty_contract_id = shared_session.bounty_contract_id.clone().ok_or_else(|| {
+            "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+        })?;
+        let contract = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before settlement could be recorded."
+                )
+            })?;
+        if contract.objective_kind != ForgeBountyObjectiveKind::AdmittedMetricWin {
+            return Err("Use `/settle merge ...` for accepted-merge bounties.".to_string());
+        }
+        if !matches!(
+            contract.lifecycle_status,
+            ForgeBountyLifecycleStatus::Admitted | ForgeBountyLifecycleStatus::Completed
+        ) {
+            return Err(
+                "Advance the bounty to `admitted` or `completed` before recording settlement."
+                    .to_string(),
+            );
+        }
+        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+            && self
+                .forge_settlement_receipts
+                .contains_key(existing_id.as_str())
+        {
+            existing_id
+        } else {
+            self.next_settlement_receipt_id()
+        };
+        let created_at_epoch_ms = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .map_or(updated_at_epoch_ms, |receipt| receipt.created_at_epoch_ms);
+        let dispute_window_started_at_epoch_ms = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .map_or(updated_at_epoch_ms, |receipt| {
+                receipt.dispute_window_started_at_epoch_ms
+            });
+        let dispute_window_closes_at_epoch_ms = self
+            .forge_settlement_receipts
+            .get(&settlement_receipt_id)
+            .map_or_else(
+                || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
+                |receipt| {
+                    receipt
+                        .dispute_window_closes_at_epoch_ms
+                        .max(forge_settlement_dispute_window_closes_at(
+                            dispute_window_started_at_epoch_ms,
+                        ))
+                },
+            );
+        self.forge_settlement_receipts.insert(
+            settlement_receipt_id.clone(),
+            ForgeSettlementReceipt {
+                settlement_receipt_id: settlement_receipt_id.clone(),
+                shared_session_id: shared_session.shared_session_id.clone(),
+                bounty_contract_id: bounty_contract_id.clone(),
+                bounty_claim_id: shared_session
+                    .bounty_claim_id
+                    .clone()
+                    .or(contract.active_claim_id.clone()),
+                objective_kind: contract.objective_kind,
+                closure_path: Some(ForgeSettlementClosurePath::AdmittedMetricWin),
+                status: ForgeSettlementReceiptStatus::Recorded,
+                evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
+                delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
+                reviewer_ref: None,
+                evaluator_ref: Some(ForgeSettlementEvaluatorRef {
+                    evaluator_label,
+                    reference,
+                    summary: summary.clone(),
+                    recorded_at_epoch_ms: updated_at_epoch_ms,
+                }),
+                outcome_summary: summary,
+                dispute_window_started_at_epoch_ms,
+                dispute_window_closes_at_epoch_ms,
+                disputed_by_label: None,
+                dispute_summary: None,
+                disputed_at_epoch_ms: None,
+                cancel_reason: None,
+                provenance,
+                created_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{}` disappeared before settlement linkage could be recorded.",
+                    shared_session_id
+                )
+            })?;
+        shared_session.settlement_receipt_id = Some(settlement_receipt_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = shared_session;
+        let _ = self
+            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(settlement_receipt_id)
+    }
+
+    pub fn record_probe_settlement_dispute_for_thread(
+        &mut self,
+        thread_id: &str,
+        actor_label: impl Into<String>,
+        summary: Option<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let actor_label = actor_label.into().trim().to_string();
+        if actor_label.is_empty() {
+            return Err("Settlement dispute label cannot be empty.".to_string());
+        }
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance = provenance.into().trim().to_string();
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let bounty_contract_id = shared_session.bounty_contract_id.clone().ok_or_else(|| {
+            "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+        })?;
+        let contract = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before settlement could be recorded."
+                )
+            })?;
+        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+            && self
+                .forge_settlement_receipts
+                .contains_key(existing_id.as_str())
+        {
+            existing_id
+        } else {
+            self.next_settlement_receipt_id()
+        };
+        let existing_receipt = self.forge_settlement_receipts.get(&settlement_receipt_id).cloned();
+        let created_at_epoch_ms = existing_receipt
+            .as_ref()
+            .map_or(updated_at_epoch_ms, |receipt| receipt.created_at_epoch_ms);
+        let dispute_window_started_at_epoch_ms = existing_receipt.as_ref().map_or(
+            updated_at_epoch_ms,
+            |receipt| receipt.dispute_window_started_at_epoch_ms,
+        );
+        let dispute_window_closes_at_epoch_ms = existing_receipt.as_ref().map_or_else(
+            || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
+            |receipt| receipt.dispute_window_closes_at_epoch_ms,
+        );
+        self.forge_settlement_receipts.insert(
+            settlement_receipt_id.clone(),
+            ForgeSettlementReceipt {
+                settlement_receipt_id: settlement_receipt_id.clone(),
+                shared_session_id: shared_session.shared_session_id.clone(),
+                bounty_contract_id: bounty_contract_id.clone(),
+                bounty_claim_id: shared_session
+                    .bounty_claim_id
+                    .clone()
+                    .or(contract.active_claim_id.clone()),
+                objective_kind: contract.objective_kind,
+                closure_path: existing_receipt.as_ref().and_then(|receipt| receipt.closure_path),
+                status: ForgeSettlementReceiptStatus::Disputed,
+                evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
+                delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
+                reviewer_ref: existing_receipt.as_ref().and_then(|receipt| receipt.reviewer_ref.clone()),
+                evaluator_ref: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.evaluator_ref.clone()),
+                outcome_summary: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.outcome_summary.clone())
+                    .or(summary.clone()),
+                dispute_window_started_at_epoch_ms,
+                dispute_window_closes_at_epoch_ms,
+                disputed_by_label: Some(actor_label),
+                dispute_summary: summary,
+                disputed_at_epoch_ms: Some(updated_at_epoch_ms),
+                cancel_reason: None,
+                provenance,
+                created_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{}` disappeared before settlement linkage could be recorded.",
+                    shared_session_id
+                )
+            })?;
+        shared_session.settlement_receipt_id = Some(settlement_receipt_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = shared_session;
+        let _ = self
+            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(settlement_receipt_id)
+    }
+
+    pub fn record_probe_settlement_cancel_for_thread(
+        &mut self,
+        thread_id: &str,
+        reason: impl Into<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let reason = reason.into().trim().to_string();
+        if reason.is_empty() {
+            return Err("Settlement cancel reason cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let bounty_contract_id = shared_session.bounty_contract_id.clone().ok_or_else(|| {
+            "Open a bounty first with `/bounty open <merge|metric> <title>`.".to_string()
+        })?;
+        let contract = self
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Bounty contract `{bounty_contract_id}` disappeared before settlement could be recorded."
+                )
+            })?;
+        let settlement_receipt_id = if let Some(existing_id) = shared_session.settlement_receipt_id.clone()
+            && self
+                .forge_settlement_receipts
+                .contains_key(existing_id.as_str())
+        {
+            existing_id
+        } else {
+            self.next_settlement_receipt_id()
+        };
+        let existing_receipt = self.forge_settlement_receipts.get(&settlement_receipt_id).cloned();
+        let created_at_epoch_ms = existing_receipt
+            .as_ref()
+            .map_or(updated_at_epoch_ms, |receipt| receipt.created_at_epoch_ms);
+        let dispute_window_started_at_epoch_ms = existing_receipt.as_ref().map_or(
+            updated_at_epoch_ms,
+            |receipt| receipt.dispute_window_started_at_epoch_ms,
+        );
+        let dispute_window_closes_at_epoch_ms = existing_receipt.as_ref().map_or_else(
+            || forge_settlement_dispute_window_closes_at(updated_at_epoch_ms),
+            |receipt| receipt.dispute_window_closes_at_epoch_ms,
+        );
+        self.forge_settlement_receipts.insert(
+            settlement_receipt_id.clone(),
+            ForgeSettlementReceipt {
+                settlement_receipt_id: settlement_receipt_id.clone(),
+                shared_session_id: shared_session.shared_session_id.clone(),
+                bounty_contract_id: bounty_contract_id.clone(),
+                bounty_claim_id: shared_session
+                    .bounty_claim_id
+                    .clone()
+                    .or(contract.active_claim_id.clone()),
+                objective_kind: contract.objective_kind,
+                closure_path: existing_receipt.as_ref().and_then(|receipt| receipt.closure_path),
+                status: ForgeSettlementReceiptStatus::Canceled,
+                evidence_bundle_id: shared_session.evidence_bundle_id.clone(),
+                delivery_receipt_id: shared_session.delivery_receipt_id.clone(),
+                reviewer_ref: existing_receipt.as_ref().and_then(|receipt| receipt.reviewer_ref.clone()),
+                evaluator_ref: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.evaluator_ref.clone()),
+                outcome_summary: existing_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.outcome_summary.clone()),
+                dispute_window_started_at_epoch_ms,
+                dispute_window_closes_at_epoch_ms,
+                disputed_by_label: None,
+                dispute_summary: None,
+                disputed_at_epoch_ms: None,
+                cancel_reason: Some(reason),
+                provenance,
+                created_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{}` disappeared before settlement linkage could be recorded.",
+                    shared_session_id
+                )
+            })?;
+        shared_session.settlement_receipt_id = Some(settlement_receipt_id.clone());
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = shared_session;
+        let _ = self
+            .sync_settlement_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(settlement_receipt_id)
     }
 
     fn delivery_contributors_for_shared_session(
@@ -14217,6 +15027,7 @@ impl AutopilotChatState {
                     restore_manifest_id: None,
                     bounty_contract_id: None,
                     bounty_claim_id: None,
+                    settlement_receipt_id: None,
                     evidence_bundle_id: None,
                     delivery_receipt_id: None,
                     created_at_epoch_ms,
@@ -17814,6 +18625,7 @@ impl AutopilotChatState {
             &self.forge_restore_manifests,
             &self.forge_bounty_contracts,
             &self.forge_bounty_claims,
+            &self.forge_settlement_receipts,
             &self.forge_evidence_bundles,
             &self.forge_delivery_receipts,
             self.next_forge_shared_session_seq,
@@ -17821,6 +18633,7 @@ impl AutopilotChatState {
             self.next_forge_restore_manifest_seq,
             self.next_forge_bounty_contract_seq,
             self.next_forge_bounty_claim_seq,
+            self.next_forge_settlement_receipt_seq,
             self.next_forge_evidence_bundle_seq,
             self.next_forge_delivery_receipt_seq,
         ) {
@@ -21541,6 +22354,7 @@ mod tests {
         ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
         ForgeDeliveryCompareWatch, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
         ForgeDeliveryPullRequestWatch, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
+        ForgeSettlementClosurePath, ForgeSettlementReceiptStatus,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeProbeOperatorHandoffState,
         ForgeProbePreparedBaselineStatus, ForgeProbeSessionLocationKind,
@@ -27204,6 +28018,335 @@ mod tests {
         assert_eq!(
             reloaded_claim.delivery_receipt_id.as_deref(),
             Some(delivery_receipt_id.as_str())
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_merge_settlement_receipt_and_reuses_id() {
+        let repo = init_git_workspace("settlement-merge");
+        let projection_path = unique_codex_artifact_projection_path("settlement-merge");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"new\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Looks good overall.",
+            1_700_000_130,
+            false,
+        );
+        chat.record_probe_evidence_verification_for_thread(
+            "thread-a",
+            "cargo-test",
+            ForgeEvidenceVerificationStatus::Passed,
+            Some("target/test.log".to_string()),
+            Some("12 tests passed".to_string()),
+            1_700_000_140,
+        )
+        .expect("verification evidence should record");
+        let (delivery_receipt_id, evidence_bundle_id) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("abc123".to_string()),
+                "feature/settlement-merge",
+                "def456",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/settlement-merge?expand=1"
+                        .to_string(),
+                ),
+                Some("https://github.com/OpenAgentsInc/openagents/pull/91".to_string()),
+                "Add settlement receipts",
+                "## Summary\n- persist settlement receipts",
+                1_700_000_150,
+            )
+            .expect("delivery receipt should record");
+        chat.record_probe_delivery_review_for_thread(
+            "thread-a",
+            ForgeDeliveryReviewerOutcome::Approved,
+            "chris",
+            Some("ready to merge".to_string()),
+            1_700_000_160,
+        )
+        .expect("review outcome should record");
+        chat.record_probe_delivery_merge_for_thread(
+            "thread-a",
+            "chris",
+            Some("merged after reviewer approval".to_string()),
+            1_700_000_170,
+        )
+        .expect("merge should record");
+        let bounty_contract_id = chat
+            .record_probe_bounty_contract_for_thread(
+                "thread-a",
+                ForgeBountyObjectiveKind::AcceptedMerge,
+                "Settle the merged delivery",
+                Some("Typed settlement receipt should close the merged bounty.".to_string()),
+                "operator.command:/bounty open",
+                1_700_000_180,
+            )
+            .expect("bounty contract should record");
+        let (_, bounty_claim_id) = chat
+            .record_probe_bounty_claim_for_thread(
+                "thread-a",
+                "agent",
+                Some("Implemented the settlement shell.".to_string()),
+                "operator.command:/bounty claim",
+                1_700_000_190,
+            )
+            .expect("bounty claim should record");
+        chat.record_probe_bounty_lifecycle_for_thread(
+            "thread-a",
+            ForgeBountyLifecycleStatus::Completed,
+            Some("Merged and ready for settlement.".to_string()),
+            "operator.command:/bounty advance",
+            1_700_000_200,
+        )
+        .expect("bounty completion should record");
+
+        let settlement_receipt_id = chat
+            .record_probe_settlement_merge_for_thread(
+                "thread-a",
+                "chris",
+                Some("accepted and ready for payout".to_string()),
+                "operator.command:/settle merge",
+                1_700_000_210,
+            )
+            .expect("settlement should record");
+        let second_id = chat
+            .record_probe_settlement_merge_for_thread(
+                "thread-a",
+                "chris",
+                Some("same receipt should update".to_string()),
+                "operator.command:/settle merge",
+                1_700_000_220,
+            )
+            .expect("settlement should reuse id");
+        assert_eq!(settlement_receipt_id, second_id);
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session should exist");
+        assert_eq!(
+            shared_session.settlement_receipt_id.as_deref(),
+            Some(settlement_receipt_id.as_str())
+        );
+
+        let contract = chat
+            .forge_bounty_contracts
+            .get(&bounty_contract_id)
+            .expect("bounty contract should persist");
+        assert_eq!(
+            contract.settlement_receipt_id.as_deref(),
+            Some(settlement_receipt_id.as_str())
+        );
+
+        let receipt = chat
+            .active_settlement_receipt()
+            .expect("settlement receipt should exist");
+        assert_eq!(receipt.settlement_receipt_id, settlement_receipt_id);
+        assert_eq!(receipt.status, ForgeSettlementReceiptStatus::Recorded);
+        assert_eq!(
+            receipt.closure_path,
+            Some(ForgeSettlementClosurePath::AcceptedMerge)
+        );
+        assert_eq!(
+            receipt.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        assert_eq!(
+            receipt.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(
+            receipt.bounty_claim_id.as_deref(),
+            Some(bounty_claim_id.as_str())
+        );
+        assert_eq!(
+            receipt
+                .reviewer_ref
+                .as_ref()
+                .map(|review| (review.reviewer_label.as_str(), review.outcome)),
+            Some(("chris", ForgeDeliveryReviewerOutcome::Approved))
+        );
+        assert_eq!(
+            receipt.outcome_summary.as_deref(),
+            Some("same receipt should update")
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_receipt = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.settlement_receipt_id.as_deref())
+            .and_then(|receipt_id| reloaded.forge_settlement_receipts.get(receipt_id))
+            .expect("reloaded settlement receipt");
+        assert_eq!(
+            reloaded_receipt.closure_path,
+            Some(ForgeSettlementClosurePath::AcceptedMerge)
+        );
+        assert_eq!(reloaded_receipt.status, ForgeSettlementReceiptStatus::Recorded);
+        assert_eq!(
+            reloaded_receipt.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_metric_settlement_dispute_and_cancel() {
+        let repo = init_git_workspace("settlement-metric");
+        let projection_path = unique_codex_artifact_projection_path("settlement-metric");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.record_probe_bounty_contract_for_thread(
+            "thread-a",
+            ForgeBountyObjectiveKind::AdmittedMetricWin,
+            "Beat the retained eval baseline",
+            Some("Settlement should close on admitted retained metrics.".to_string()),
+            "operator.command:/bounty open",
+            1_700_000_120,
+        )
+        .expect("metric bounty should record");
+        chat.record_probe_bounty_claim_for_thread(
+            "thread-a",
+            "agent",
+            Some("Improved the eval target.".to_string()),
+            "operator.command:/bounty claim",
+            1_700_000_130,
+        )
+        .expect("bounty claim should record");
+        chat.record_probe_bounty_lifecycle_for_thread(
+            "thread-a",
+            ForgeBountyLifecycleStatus::Admitted,
+            Some("Retained eval admitted above the baseline.".to_string()),
+            "operator.command:/bounty advance",
+            1_700_000_140,
+        )
+        .expect("bounty admission should record");
+
+        let settlement_receipt_id = chat
+            .record_probe_settlement_metric_for_thread(
+                "thread-a",
+                "retained-eval",
+                "retained://eval-run-42",
+                Some("candidate beat baseline on the retained suite".to_string()),
+                "operator.command:/settle metric",
+                1_700_000_150,
+            )
+            .expect("metric settlement should record");
+        chat.record_probe_settlement_dispute_for_thread(
+            "thread-a",
+            "reviewer",
+            Some("need a second retained comparison".to_string()),
+            "operator.command:/settle dispute",
+            1_700_000_160,
+        )
+        .expect("settlement dispute should record");
+        let disputed_receipt = chat
+            .active_settlement_receipt()
+            .expect("disputed settlement receipt should exist");
+        assert_eq!(disputed_receipt.status, ForgeSettlementReceiptStatus::Disputed);
+        assert_eq!(
+            disputed_receipt.disputed_by_label.as_deref(),
+            Some("reviewer")
+        );
+        assert_eq!(
+            disputed_receipt.dispute_summary.as_deref(),
+            Some("need a second retained comparison")
+        );
+        chat.record_probe_settlement_cancel_for_thread(
+            "thread-a",
+            "superseded by a newer retained run",
+            "operator.command:/settle cancel",
+            1_700_000_170,
+        )
+        .expect("settlement cancel should record");
+
+        let receipt = chat
+            .active_settlement_receipt()
+            .expect("settlement receipt should exist");
+        assert_eq!(receipt.settlement_receipt_id, settlement_receipt_id);
+        assert_eq!(receipt.status, ForgeSettlementReceiptStatus::Canceled);
+        assert_eq!(
+            receipt.closure_path,
+            Some(ForgeSettlementClosurePath::AdmittedMetricWin)
+        );
+        assert_eq!(
+            receipt
+                .evaluator_ref
+                .as_ref()
+                .map(|reference| {
+                    (
+                        reference.evaluator_label.as_str(),
+                        reference.reference.as_str(),
+                    )
+                }),
+            Some(("retained-eval", "retained://eval-run-42"))
+        );
+        assert_eq!(
+            receipt.cancel_reason.as_deref(),
+            Some("superseded by a newer retained run")
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_receipt = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.settlement_receipt_id.as_deref())
+            .and_then(|receipt_id| reloaded.forge_settlement_receipts.get(receipt_id))
+            .expect("reloaded settlement receipt");
+        assert_eq!(reloaded_receipt.status, ForgeSettlementReceiptStatus::Canceled);
+        assert_eq!(
+            reloaded_receipt.cancel_reason.as_deref(),
+            Some("superseded by a newer retained run")
+        );
+        assert_eq!(
+            reloaded_receipt
+                .evaluator_ref
+                .as_ref()
+                .map(|reference| reference.reference.as_str()),
+            Some("retained://eval-run-42")
         );
 
         let _ = std::fs::remove_file(projection_path);
