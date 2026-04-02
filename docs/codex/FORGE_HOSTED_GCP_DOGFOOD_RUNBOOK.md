@@ -35,6 +35,9 @@ then leave behind enough linked evidence to explain:
 - Probe-backed shared sessions, evidence bundles, delivery receipts, campaign
   objects, promotion ledgers, bounty contracts, bounty claims, and settlement
   receipts all persist in the Autopilot shell.
+- The internal team can now mirror those app-owned collaboration objects into
+  a shared Forge state file by setting `OPENAGENTS_FORGE_SHARED_STATE_PATH` on
+  each operator desktop to the same internal path.
 - Scoped pack routing projects app-owned pack choices into typed Probe mounts.
 - Hosted Probe receipts for auth, checkout, worker ownership, cost, and cleanup
   can be projected into the shared session when Probe reports them.
@@ -74,6 +77,9 @@ then leave behind enough linked evidence to explain:
   - `d0f011642` for hosted coding closeout bundles
   - `cde7213c4` for hosted bookkeeping rehearsal bundles
 - Probe hosted receipts are available to the desktop lane.
+- If multiple operator desktops need to see the same app-owned Forge objects,
+  they all point `OPENAGENTS_FORGE_SHARED_STATE_PATH` at the same internal
+  shared document path.
 - The operator has:
   - a local `gh` install with repo access
   - GCP access to the target project

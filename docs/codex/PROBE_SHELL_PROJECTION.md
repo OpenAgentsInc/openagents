@@ -80,6 +80,15 @@ Current local-first rules:
 - the current control owner is stored separately from raw Probe runtime status
 - explicit handoffs persist summary, provenance, and timestamp in the desktop
   artifact projection
+- the collaboration layer is no longer only local:
+  - app-owned shared-session, evidence, delivery, bounty, settlement,
+    campaign, promotion, and hosted-audit objects can now also persist in a
+    separate shared Forge state document
+  - the boring internal configuration point is
+    `OPENAGENTS_FORGE_SHARED_STATE_PATH`
+  - the desktop reload path merges that shared document deterministically by
+    object id and `updated_at_epoch_ms`, so a second operator desktop can load
+    the same shared session state without copying local artifact files by hand
 - reducer-level interrupt and resume events also update control-owner posture so
   the shell does not lose lineage when control flips between the operator and
   the background agent

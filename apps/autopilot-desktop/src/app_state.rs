@@ -10607,6 +10607,7 @@ pub struct AutopilotChatState {
     autopilot_peer_roster_cache: RefCell<Option<AutopilotPeerRosterCacheEntry>>,
     buy_mode_target_selection_cache: RefCell<Option<AutopilotBuyModeTargetSelectionCacheEntry>>,
     artifact_projection_file_path: PathBuf,
+    forge_shared_state_file_path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -10647,6 +10648,7 @@ struct AutopilotBuyModeTargetSelectionCacheEntry {
 impl Default for AutopilotChatState {
     fn default() -> Self {
         let artifact_projection_file_path = codex_artifact_projection_file_path();
+        let forge_shared_state_file_path = forge_shared_state_file_path();
         let (
             thread_diff_artifacts,
             thread_review_artifacts,
@@ -10741,7 +10743,7 @@ impl Default for AutopilotChatState {
                 Some(error),
             ),
         };
-        Self {
+        let mut state = Self {
             connection_status: "ready".to_string(),
             // "auto" means "let app-server pick the current default model".
             models: vec!["auto".to_string()],
@@ -10859,7 +10861,12 @@ impl Default for AutopilotChatState {
             autopilot_peer_roster_cache: RefCell::new(None),
             buy_mode_target_selection_cache: RefCell::new(None),
             artifact_projection_file_path,
+            forge_shared_state_file_path,
+        };
+        if let Err(error) = state.refresh_forge_shared_state_from_backing_store() {
+            state.push_projection_load_error(error);
         }
+        state
     }
 }
 
@@ -10867,6 +10874,8 @@ const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 2;
 const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v2";
 const CODEX_ARTIFACT_PROJECTION_STREAM_ID_V1: &str = "stream.codex_artifacts.v1";
 const CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD: usize = 8;
+const FORGE_SHARED_STATE_SCHEMA_VERSION: u16 = 1;
+const FORGE_SHARED_STATE_STREAM_ID: &str = "stream.forge_shared_state.v1";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CodexArtifactProjectionDocumentV1 {
@@ -10934,6 +10943,48 @@ struct CodexArtifactProjectionDocumentV2 {
     next_hosted_audit_bundle_seq: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct ForgeSharedStateDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    #[serde(default)]
+    shared_sessions: Vec<ForgeSharedSession>,
+    #[serde(default)]
+    campaigns: Vec<ForgeCampaign>,
+    #[serde(default)]
+    promotion_ledgers: Vec<ForgePromotionLedger>,
+    #[serde(default)]
+    bounty_contracts: Vec<ForgeBountyContract>,
+    #[serde(default)]
+    bounty_claims: Vec<ForgeBountyClaim>,
+    #[serde(default)]
+    settlement_receipts: Vec<ForgeSettlementReceipt>,
+    #[serde(default)]
+    evidence_bundles: Vec<ForgeEvidenceBundle>,
+    #[serde(default)]
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    #[serde(default)]
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
+    #[serde(default = "default_next_forge_shared_session_seq")]
+    next_shared_session_seq: u64,
+    #[serde(default = "default_next_forge_campaign_seq")]
+    next_campaign_seq: u64,
+    #[serde(default = "default_next_forge_promotion_ledger_seq")]
+    next_promotion_ledger_seq: u64,
+    #[serde(default = "default_next_forge_bounty_contract_seq")]
+    next_bounty_contract_seq: u64,
+    #[serde(default = "default_next_forge_bounty_claim_seq")]
+    next_bounty_claim_seq: u64,
+    #[serde(default = "default_next_forge_settlement_receipt_seq")]
+    next_settlement_receipt_seq: u64,
+    #[serde(default = "default_next_forge_evidence_bundle_seq")]
+    next_evidence_bundle_seq: u64,
+    #[serde(default = "default_next_forge_delivery_receipt_seq")]
+    next_delivery_receipt_seq: u64,
+    #[serde(default = "default_next_forge_hosted_audit_bundle_seq")]
+    next_hosted_audit_bundle_seq: u64,
+}
+
 struct LoadedCodexArtifactProjection {
     thread_diff_artifacts: HashMap<String, Vec<AutopilotDiffArtifact>>,
     thread_review_artifacts: HashMap<String, AutopilotReviewArtifact>,
@@ -10963,6 +11014,28 @@ struct LoadedCodexArtifactProjection {
     next_forge_delivery_receipt_seq: u64,
     next_forge_hosted_audit_bundle_seq: u64,
     review_thread_source_map: HashMap<String, String>,
+}
+
+#[derive(Default)]
+struct LoadedForgeSharedState {
+    forge_shared_sessions: HashMap<String, ForgeSharedSession>,
+    forge_campaigns: HashMap<String, ForgeCampaign>,
+    forge_promotion_ledgers: HashMap<String, ForgePromotionLedger>,
+    forge_bounty_contracts: HashMap<String, ForgeBountyContract>,
+    forge_bounty_claims: HashMap<String, ForgeBountyClaim>,
+    forge_settlement_receipts: HashMap<String, ForgeSettlementReceipt>,
+    forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
+    forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: HashMap<String, ForgeHostedAuditBundle>,
+    next_forge_shared_session_seq: u64,
+    next_forge_campaign_seq: u64,
+    next_forge_promotion_ledger_seq: u64,
+    next_forge_bounty_contract_seq: u64,
+    next_forge_bounty_claim_seq: u64,
+    next_forge_settlement_receipt_seq: u64,
+    next_forge_evidence_bundle_seq: u64,
+    next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
 }
 
 fn default_next_forge_shared_session_seq() -> u64 {
@@ -11038,6 +11111,14 @@ fn codex_artifact_projection_file_path() -> PathBuf {
             .join(".openagents")
             .join("autopilot-codex-artifacts-v1.json")
     }
+}
+
+fn forge_shared_state_file_path() -> Option<PathBuf> {
+    std::env::var("OPENAGENTS_FORGE_SHARED_STATE_PATH")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 fn review_artifact_thread_keys(source_thread_id: &str, review_thread_id: &str) -> Vec<String> {
@@ -13251,6 +13332,256 @@ fn build_loaded_codex_artifact_projection(
     }
 }
 
+fn persist_forge_shared_state(
+    path: &Path,
+    forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
+    forge_campaigns: &HashMap<String, ForgeCampaign>,
+    forge_promotion_ledgers: &HashMap<String, ForgePromotionLedger>,
+    forge_bounty_contracts: &HashMap<String, ForgeBountyContract>,
+    forge_bounty_claims: &HashMap<String, ForgeBountyClaim>,
+    forge_settlement_receipts: &HashMap<String, ForgeSettlementReceipt>,
+    forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
+    forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: &HashMap<String, ForgeHostedAuditBundle>,
+    next_forge_shared_session_seq: u64,
+    next_forge_campaign_seq: u64,
+    next_forge_promotion_ledger_seq: u64,
+    next_forge_bounty_contract_seq: u64,
+    next_forge_bounty_claim_seq: u64,
+    next_forge_settlement_receipt_seq: u64,
+    next_forge_evidence_bundle_seq: u64,
+    next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create Forge shared state dir: {error}"))?;
+    }
+    let document = ForgeSharedStateDocumentV1 {
+        schema_version: FORGE_SHARED_STATE_SCHEMA_VERSION,
+        stream_id: FORGE_SHARED_STATE_STREAM_ID.to_string(),
+        shared_sessions: normalize_forge_shared_sessions(
+            forge_shared_sessions.values().cloned().collect(),
+        ),
+        campaigns: normalize_forge_campaigns(forge_campaigns.values().cloned().collect()),
+        promotion_ledgers: normalize_forge_promotion_ledgers(
+            forge_promotion_ledgers.values().cloned().collect(),
+        ),
+        bounty_contracts: normalize_forge_bounty_contracts(
+            forge_bounty_contracts.values().cloned().collect(),
+        ),
+        bounty_claims: normalize_forge_bounty_claims(
+            forge_bounty_claims.values().cloned().collect(),
+        ),
+        settlement_receipts: normalize_forge_settlement_receipts(
+            forge_settlement_receipts.values().cloned().collect(),
+        ),
+        evidence_bundles: normalize_forge_evidence_bundles(
+            forge_evidence_bundles.values().cloned().collect(),
+        ),
+        delivery_receipts: normalize_forge_delivery_receipts(
+            forge_delivery_receipts.values().cloned().collect(),
+        ),
+        hosted_audit_bundles: normalize_forge_hosted_audit_bundles(
+            forge_hosted_audit_bundles.values().cloned().collect(),
+        ),
+        next_shared_session_seq: next_forge_shared_session_seq.max(1),
+        next_campaign_seq: next_forge_campaign_seq.max(1),
+        next_promotion_ledger_seq: next_forge_promotion_ledger_seq.max(1),
+        next_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
+        next_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
+        next_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
+        next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
+        next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
+        next_hosted_audit_bundle_seq: next_forge_hosted_audit_bundle_seq.max(1),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode Forge shared state: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write Forge shared state temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist Forge shared state: {error}"))?;
+    Ok(())
+}
+
+fn load_forge_shared_state(path: &Path) -> Result<LoadedForgeSharedState, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LoadedForgeSharedState {
+                next_forge_shared_session_seq: 1,
+                next_forge_campaign_seq: 1,
+                next_forge_promotion_ledger_seq: 1,
+                next_forge_bounty_contract_seq: 1,
+                next_forge_bounty_claim_seq: 1,
+                next_forge_settlement_receipt_seq: 1,
+                next_forge_evidence_bundle_seq: 1,
+                next_forge_delivery_receipt_seq: 1,
+                next_forge_hosted_audit_bundle_seq: 1,
+                ..LoadedForgeSharedState::default()
+            });
+        }
+        Err(error) => return Err(format!("Failed to read Forge shared state: {error}")),
+    };
+    let document = serde_json::from_str::<serde_json::Value>(&raw)
+        .map_err(|error| format!("Failed to parse Forge shared state: {error}"))?;
+    let schema_version = document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "Missing Forge shared state schema version".to_string())?
+        as u16;
+    match schema_version {
+        FORGE_SHARED_STATE_SCHEMA_VERSION => load_forge_shared_state_v1(document),
+        other => Err(format!(
+            "Unsupported Forge shared state schema version: {other}"
+        )),
+    }
+}
+
+fn load_forge_shared_state_v1(value: serde_json::Value) -> Result<LoadedForgeSharedState, String> {
+    let document = serde_json::from_value::<ForgeSharedStateDocumentV1>(value)
+        .map_err(|error| format!("Failed to decode Forge shared state: {error}"))?;
+    if document.stream_id != FORGE_SHARED_STATE_STREAM_ID {
+        return Err(format!(
+            "Unsupported Forge shared state stream id: {}",
+            document.stream_id
+        ));
+    }
+    Ok(build_loaded_forge_shared_state(
+        document.shared_sessions,
+        document.campaigns,
+        document.promotion_ledgers,
+        document.bounty_contracts,
+        document.bounty_claims,
+        document.settlement_receipts,
+        document.evidence_bundles,
+        document.delivery_receipts,
+        document.hosted_audit_bundles,
+        document.next_shared_session_seq,
+        document.next_campaign_seq,
+        document.next_promotion_ledger_seq,
+        document.next_bounty_contract_seq,
+        document.next_bounty_claim_seq,
+        document.next_settlement_receipt_seq,
+        document.next_evidence_bundle_seq,
+        document.next_delivery_receipt_seq,
+        document.next_hosted_audit_bundle_seq,
+    ))
+}
+
+fn build_loaded_forge_shared_state(
+    shared_sessions: Vec<ForgeSharedSession>,
+    campaigns: Vec<ForgeCampaign>,
+    promotion_ledgers: Vec<ForgePromotionLedger>,
+    bounty_contracts: Vec<ForgeBountyContract>,
+    bounty_claims: Vec<ForgeBountyClaim>,
+    settlement_receipts: Vec<ForgeSettlementReceipt>,
+    evidence_bundles: Vec<ForgeEvidenceBundle>,
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
+    next_shared_session_seq: u64,
+    next_campaign_seq: u64,
+    next_promotion_ledger_seq: u64,
+    next_bounty_contract_seq: u64,
+    next_bounty_claim_seq: u64,
+    next_settlement_receipt_seq: u64,
+    next_evidence_bundle_seq: u64,
+    next_delivery_receipt_seq: u64,
+    next_hosted_audit_bundle_seq: u64,
+) -> LoadedForgeSharedState {
+    let mut forge_shared_sessions = HashMap::<String, ForgeSharedSession>::new();
+    for session in normalize_forge_shared_sessions(shared_sessions) {
+        forge_shared_sessions.insert(session.shared_session_id.clone(), session);
+    }
+    let mut forge_campaigns = HashMap::<String, ForgeCampaign>::new();
+    for campaign in normalize_forge_campaigns(campaigns) {
+        forge_campaigns.insert(campaign.campaign_id.clone(), campaign);
+    }
+    let mut forge_promotion_ledgers = HashMap::<String, ForgePromotionLedger>::new();
+    for ledger in normalize_forge_promotion_ledgers(promotion_ledgers) {
+        forge_promotion_ledgers.insert(ledger.promotion_ledger_id.clone(), ledger);
+    }
+    let mut forge_bounty_contracts = HashMap::<String, ForgeBountyContract>::new();
+    for contract in normalize_forge_bounty_contracts(bounty_contracts) {
+        forge_bounty_contracts.insert(contract.bounty_contract_id.clone(), contract);
+    }
+    let mut forge_bounty_claims = HashMap::<String, ForgeBountyClaim>::new();
+    for claim in normalize_forge_bounty_claims(bounty_claims) {
+        forge_bounty_claims.insert(claim.bounty_claim_id.clone(), claim);
+    }
+    let mut forge_settlement_receipts = HashMap::<String, ForgeSettlementReceipt>::new();
+    for receipt in normalize_forge_settlement_receipts(settlement_receipts) {
+        forge_settlement_receipts.insert(receipt.settlement_receipt_id.clone(), receipt);
+    }
+    let mut forge_evidence_bundles = HashMap::<String, ForgeEvidenceBundle>::new();
+    for bundle in normalize_forge_evidence_bundles(evidence_bundles) {
+        forge_evidence_bundles.insert(bundle.evidence_bundle_id.clone(), bundle);
+    }
+    let mut forge_delivery_receipts = HashMap::<String, ForgeDeliveryReceipt>::new();
+    for receipt in normalize_forge_delivery_receipts(delivery_receipts) {
+        forge_delivery_receipts.insert(receipt.delivery_receipt_id.clone(), receipt);
+    }
+    let mut forge_hosted_audit_bundles = HashMap::<String, ForgeHostedAuditBundle>::new();
+    for bundle in normalize_forge_hosted_audit_bundles(hosted_audit_bundles) {
+        forge_hosted_audit_bundles.insert(bundle.audit_bundle_id.clone(), bundle);
+    }
+    LoadedForgeSharedState {
+        forge_shared_sessions,
+        forge_campaigns,
+        forge_promotion_ledgers,
+        forge_bounty_contracts,
+        forge_bounty_claims,
+        forge_settlement_receipts,
+        forge_evidence_bundles,
+        forge_delivery_receipts,
+        forge_hosted_audit_bundles,
+        next_forge_shared_session_seq: next_shared_session_seq.max(1),
+        next_forge_campaign_seq: next_campaign_seq.max(1),
+        next_forge_promotion_ledger_seq: next_promotion_ledger_seq.max(1),
+        next_forge_bounty_contract_seq: next_bounty_contract_seq.max(1),
+        next_forge_bounty_claim_seq: next_bounty_claim_seq.max(1),
+        next_forge_settlement_receipt_seq: next_settlement_receipt_seq.max(1),
+        next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
+        next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
+        next_forge_hosted_audit_bundle_seq: next_hosted_audit_bundle_seq.max(1),
+    }
+}
+
+fn merge_versioned_maps<T, F>(
+    mut current: HashMap<String, T>,
+    incoming: HashMap<String, T>,
+    updated_at: F,
+) -> HashMap<String, T>
+where
+    T: Clone + Serialize,
+    F: Fn(&T) -> u64 + Copy,
+{
+    for (key, candidate) in incoming {
+        match current.get(&key) {
+            Some(existing) if !incoming_version_wins(existing, &candidate, updated_at) => {}
+            _ => {
+                current.insert(key, candidate);
+            }
+        }
+    }
+    current
+}
+
+fn incoming_version_wins<T, F>(current: &T, incoming: &T, updated_at: F) -> bool
+where
+    T: Serialize,
+    F: Fn(&T) -> u64,
+{
+    let current_updated_at = updated_at(current);
+    let incoming_updated_at = updated_at(incoming);
+    if incoming_updated_at != current_updated_at {
+        return incoming_updated_at > current_updated_at;
+    }
+    serde_json::to_string(incoming).unwrap_or_default()
+        > serde_json::to_string(current).unwrap_or_default()
+}
+
 fn parse_diff_file_artifacts(raw_diff: &str) -> Vec<AutopilotDiffFileArtifact> {
     let mut files = Vec::<AutopilotDiffFileArtifact>::new();
     let mut current_file_index = None;
@@ -13693,9 +14024,19 @@ impl SidebarState {
 }
 
 impl AutopilotChatState {
-    pub(crate) fn from_artifact_projection_path(
-        artifact_projection_file_path: PathBuf,
-    ) -> Self {
+    fn push_projection_load_error(&mut self, error: impl Into<String>) {
+        let error = error.into();
+        match self.last_error.as_mut() {
+            Some(existing) if !existing.is_empty() => {
+                existing.push('\n');
+                existing.push_str(error.as_str());
+            }
+            Some(existing) => *existing = error,
+            None => self.last_error = Some(error),
+        }
+    }
+
+    pub(crate) fn from_artifact_projection_path(artifact_projection_file_path: PathBuf) -> Self {
         let mut state = Self::default();
         state.artifact_projection_file_path = artifact_projection_file_path.clone();
         match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -13765,6 +14106,9 @@ impl AutopilotChatState {
                 state.last_error = Some(error);
             }
         }
+        if let Err(error) = state.refresh_forge_shared_state_from_backing_store() {
+            state.push_projection_load_error(error);
+        }
         state
     }
 
@@ -13795,6 +14139,126 @@ impl AutopilotChatState {
         artifact_projection_file_path: PathBuf,
     ) -> Self {
         Self::from_artifact_projection_path(artifact_projection_file_path)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_projection_paths_for_tests(
+        artifact_projection_file_path: PathBuf,
+        forge_shared_state_file_path: Option<PathBuf>,
+    ) -> Self {
+        let mut state = Self::from_artifact_projection_path(artifact_projection_file_path);
+        state.forge_shared_state_file_path = forge_shared_state_file_path;
+        if let Err(error) = state.refresh_forge_shared_state_from_backing_store() {
+            state.push_projection_load_error(error);
+        }
+        state
+    }
+
+    fn refresh_forge_shared_state_from_backing_store(&mut self) -> Result<(), String> {
+        let Some(path) = self.forge_shared_state_file_path.clone() else {
+            return Ok(());
+        };
+        let shared = load_forge_shared_state(path.as_path())?;
+        self.apply_loaded_forge_shared_state(shared);
+        Ok(())
+    }
+
+    fn apply_loaded_forge_shared_state(&mut self, shared: LoadedForgeSharedState) {
+        self.forge_shared_sessions = merge_versioned_maps(
+            std::mem::take(&mut self.forge_shared_sessions),
+            shared.forge_shared_sessions,
+            |session| session.updated_at_epoch_ms,
+        );
+        self.forge_campaigns = merge_versioned_maps(
+            std::mem::take(&mut self.forge_campaigns),
+            shared.forge_campaigns,
+            |campaign| campaign.updated_at_epoch_ms,
+        );
+        self.forge_promotion_ledgers = merge_versioned_maps(
+            std::mem::take(&mut self.forge_promotion_ledgers),
+            shared.forge_promotion_ledgers,
+            |ledger| ledger.updated_at_epoch_ms,
+        );
+        self.forge_bounty_contracts = merge_versioned_maps(
+            std::mem::take(&mut self.forge_bounty_contracts),
+            shared.forge_bounty_contracts,
+            |contract| contract.updated_at_epoch_ms,
+        );
+        self.forge_bounty_claims = merge_versioned_maps(
+            std::mem::take(&mut self.forge_bounty_claims),
+            shared.forge_bounty_claims,
+            |claim| claim.updated_at_epoch_ms,
+        );
+        self.forge_settlement_receipts = merge_versioned_maps(
+            std::mem::take(&mut self.forge_settlement_receipts),
+            shared.forge_settlement_receipts,
+            |receipt| receipt.updated_at_epoch_ms,
+        );
+        self.forge_evidence_bundles = merge_versioned_maps(
+            std::mem::take(&mut self.forge_evidence_bundles),
+            shared.forge_evidence_bundles,
+            |bundle| bundle.updated_at_epoch_ms,
+        );
+        self.forge_delivery_receipts = merge_versioned_maps(
+            std::mem::take(&mut self.forge_delivery_receipts),
+            shared.forge_delivery_receipts,
+            |receipt| receipt.updated_at_epoch_ms,
+        );
+        self.forge_hosted_audit_bundles = merge_versioned_maps(
+            std::mem::take(&mut self.forge_hosted_audit_bundles),
+            shared.forge_hosted_audit_bundles,
+            |bundle| bundle.updated_at_epoch_ms,
+        );
+        self.next_forge_shared_session_seq = self
+            .next_forge_shared_session_seq
+            .max(shared.next_forge_shared_session_seq);
+        self.next_forge_campaign_seq = self
+            .next_forge_campaign_seq
+            .max(shared.next_forge_campaign_seq);
+        self.next_forge_promotion_ledger_seq = self
+            .next_forge_promotion_ledger_seq
+            .max(shared.next_forge_promotion_ledger_seq);
+        self.next_forge_bounty_contract_seq = self
+            .next_forge_bounty_contract_seq
+            .max(shared.next_forge_bounty_contract_seq);
+        self.next_forge_bounty_claim_seq = self
+            .next_forge_bounty_claim_seq
+            .max(shared.next_forge_bounty_claim_seq);
+        self.next_forge_settlement_receipt_seq = self
+            .next_forge_settlement_receipt_seq
+            .max(shared.next_forge_settlement_receipt_seq);
+        self.next_forge_evidence_bundle_seq = self
+            .next_forge_evidence_bundle_seq
+            .max(shared.next_forge_evidence_bundle_seq);
+        self.next_forge_delivery_receipt_seq = self
+            .next_forge_delivery_receipt_seq
+            .max(shared.next_forge_delivery_receipt_seq);
+        self.next_forge_hosted_audit_bundle_seq = self
+            .next_forge_hosted_audit_bundle_seq
+            .max(shared.next_forge_hosted_audit_bundle_seq);
+    }
+
+    fn build_loaded_forge_shared_state(&self) -> LoadedForgeSharedState {
+        LoadedForgeSharedState {
+            forge_shared_sessions: self.forge_shared_sessions.clone(),
+            forge_campaigns: self.forge_campaigns.clone(),
+            forge_promotion_ledgers: self.forge_promotion_ledgers.clone(),
+            forge_bounty_contracts: self.forge_bounty_contracts.clone(),
+            forge_bounty_claims: self.forge_bounty_claims.clone(),
+            forge_settlement_receipts: self.forge_settlement_receipts.clone(),
+            forge_evidence_bundles: self.forge_evidence_bundles.clone(),
+            forge_delivery_receipts: self.forge_delivery_receipts.clone(),
+            forge_hosted_audit_bundles: self.forge_hosted_audit_bundles.clone(),
+            next_forge_shared_session_seq: self.next_forge_shared_session_seq.max(1),
+            next_forge_campaign_seq: self.next_forge_campaign_seq.max(1),
+            next_forge_promotion_ledger_seq: self.next_forge_promotion_ledger_seq.max(1),
+            next_forge_bounty_contract_seq: self.next_forge_bounty_contract_seq.max(1),
+            next_forge_bounty_claim_seq: self.next_forge_bounty_claim_seq.max(1),
+            next_forge_settlement_receipt_seq: self.next_forge_settlement_receipt_seq.max(1),
+            next_forge_evidence_bundle_seq: self.next_forge_evidence_bundle_seq.max(1),
+            next_forge_delivery_receipt_seq: self.next_forge_delivery_receipt_seq.max(1),
+            next_forge_hosted_audit_bundle_seq: self.next_forge_hosted_audit_bundle_seq.max(1),
+        }
     }
 
     pub fn scroll_transcript_by(&mut self, delta: f32, max_scroll: f32) {
@@ -22644,6 +23108,114 @@ impl AutopilotChatState {
         ) {
             tracing::warn!("failed to persist codex artifacts: {error}");
         }
+        let Some(path) = self.forge_shared_state_file_path.clone() else {
+            return;
+        };
+        let merged = match load_forge_shared_state(path.as_path()) {
+            Ok(existing) => {
+                let mut merged = self.build_loaded_forge_shared_state();
+                merged.forge_shared_sessions = merge_versioned_maps(
+                    existing.forge_shared_sessions,
+                    merged.forge_shared_sessions,
+                    |session| session.updated_at_epoch_ms,
+                );
+                merged.forge_campaigns = merge_versioned_maps(
+                    existing.forge_campaigns,
+                    merged.forge_campaigns,
+                    |campaign| campaign.updated_at_epoch_ms,
+                );
+                merged.forge_promotion_ledgers = merge_versioned_maps(
+                    existing.forge_promotion_ledgers,
+                    merged.forge_promotion_ledgers,
+                    |ledger| ledger.updated_at_epoch_ms,
+                );
+                merged.forge_bounty_contracts = merge_versioned_maps(
+                    existing.forge_bounty_contracts,
+                    merged.forge_bounty_contracts,
+                    |contract| contract.updated_at_epoch_ms,
+                );
+                merged.forge_bounty_claims = merge_versioned_maps(
+                    existing.forge_bounty_claims,
+                    merged.forge_bounty_claims,
+                    |claim| claim.updated_at_epoch_ms,
+                );
+                merged.forge_settlement_receipts = merge_versioned_maps(
+                    existing.forge_settlement_receipts,
+                    merged.forge_settlement_receipts,
+                    |receipt| receipt.updated_at_epoch_ms,
+                );
+                merged.forge_evidence_bundles = merge_versioned_maps(
+                    existing.forge_evidence_bundles,
+                    merged.forge_evidence_bundles,
+                    |bundle| bundle.updated_at_epoch_ms,
+                );
+                merged.forge_delivery_receipts = merge_versioned_maps(
+                    existing.forge_delivery_receipts,
+                    merged.forge_delivery_receipts,
+                    |receipt| receipt.updated_at_epoch_ms,
+                );
+                merged.forge_hosted_audit_bundles = merge_versioned_maps(
+                    existing.forge_hosted_audit_bundles,
+                    merged.forge_hosted_audit_bundles,
+                    |bundle| bundle.updated_at_epoch_ms,
+                );
+                merged.next_forge_shared_session_seq = merged
+                    .next_forge_shared_session_seq
+                    .max(existing.next_forge_shared_session_seq);
+                merged.next_forge_campaign_seq = merged
+                    .next_forge_campaign_seq
+                    .max(existing.next_forge_campaign_seq);
+                merged.next_forge_promotion_ledger_seq = merged
+                    .next_forge_promotion_ledger_seq
+                    .max(existing.next_forge_promotion_ledger_seq);
+                merged.next_forge_bounty_contract_seq = merged
+                    .next_forge_bounty_contract_seq
+                    .max(existing.next_forge_bounty_contract_seq);
+                merged.next_forge_bounty_claim_seq = merged
+                    .next_forge_bounty_claim_seq
+                    .max(existing.next_forge_bounty_claim_seq);
+                merged.next_forge_settlement_receipt_seq = merged
+                    .next_forge_settlement_receipt_seq
+                    .max(existing.next_forge_settlement_receipt_seq);
+                merged.next_forge_evidence_bundle_seq = merged
+                    .next_forge_evidence_bundle_seq
+                    .max(existing.next_forge_evidence_bundle_seq);
+                merged.next_forge_delivery_receipt_seq = merged
+                    .next_forge_delivery_receipt_seq
+                    .max(existing.next_forge_delivery_receipt_seq);
+                merged.next_forge_hosted_audit_bundle_seq = merged
+                    .next_forge_hosted_audit_bundle_seq
+                    .max(existing.next_forge_hosted_audit_bundle_seq);
+                merged
+            }
+            Err(error) => {
+                tracing::warn!("failed to load Forge shared state before persist: {error}");
+                return;
+            }
+        };
+        if let Err(error) = persist_forge_shared_state(
+            path.as_path(),
+            &merged.forge_shared_sessions,
+            &merged.forge_campaigns,
+            &merged.forge_promotion_ledgers,
+            &merged.forge_bounty_contracts,
+            &merged.forge_bounty_claims,
+            &merged.forge_settlement_receipts,
+            &merged.forge_evidence_bundles,
+            &merged.forge_delivery_receipts,
+            &merged.forge_hosted_audit_bundles,
+            merged.next_forge_shared_session_seq,
+            merged.next_forge_campaign_seq,
+            merged.next_forge_promotion_ledger_seq,
+            merged.next_forge_bounty_contract_seq,
+            merged.next_forge_bounty_claim_seq,
+            merged.next_forge_settlement_receipt_seq,
+            merged.next_forge_evidence_bundle_seq,
+            merged.next_forge_delivery_receipt_seq,
+            merged.next_forge_hosted_audit_bundle_seq,
+        ) {
+            tracing::warn!("failed to persist Forge shared state: {error}");
+        }
     }
 
     pub fn set_turn_diff(&mut self, diff: Option<String>) {
@@ -23167,7 +23739,6 @@ impl PaneLoadState {
             Self::Error => "error",
         }
     }
-
 }
 
 pub trait PaneStatusAccess {
@@ -26357,19 +26928,26 @@ mod tests {
     };
 
     use crate::app_state::{
-        ForgeBountyCreditRole, ForgeBountyLifecycleStatus, ForgeBountyObjectiveKind,
+        ForgeBountyClaim, ForgeBountyContract, ForgeBountyCreditRole, ForgeBountyLifecycleStatus,
+        ForgeBountyObjectiveKind, ForgeBountyParticipantCreditEnvelope, ForgeCampaign,
+        ForgeCampaignArtifactKind, ForgeCampaignArtifactRef, ForgeCampaignStatus,
         ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
         ForgeDelegatedChildSessionStatus, ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch,
         ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
-        ForgeDeliveryCompareWatch, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
-        ForgeDeliveryPullRequestWatch, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
-        ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
-        ForgeEvidenceVerificationStatus, ForgeHostedAuditKind, ForgeHostedAuditNoteKind,
-        ForgeHostedPreflightCheck, ForgeHostedPreflightCheckStatus,
-        ForgeHostedPreflightDisposition, ForgeHostedPreflightReport,
+        ForgeDeliveryCompareWatch, ForgeDeliveryContributor, ForgeDeliveryContributorRole,
+        ForgeDeliveryPullRequestState, ForgeDeliveryPullRequestWatch, ForgeDeliveryReceipt,
+        ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome, ForgeEvidenceBundle,
+        ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifact, ForgeEvidenceProductArtifactKind,
+        ForgeEvidenceVerificationStatus, ForgeHostedAuditBundle, ForgeHostedAuditKind,
+        ForgeHostedAuditNote, ForgeHostedAuditNoteKind, ForgeHostedPreflightCheck,
+        ForgeHostedPreflightCheckStatus, ForgeHostedPreflightDisposition,
+        ForgeHostedPreflightReport, ForgeKnowledgeMountProjection, ForgeProbeExecutionHostKind,
         ForgeProbeOperatorHandoffState, ForgeProbePreparedBaselineStatus,
-        ForgeProbeSessionLocationKind, ForgeProbeSessionOwnerKind, ForgePromotionLedgerStatus,
-        ForgeSettlementClosurePath, ForgeSettlementReceiptStatus, ForgeSharedSessionControlOwner,
+        ForgeProbeRemoteSessionProjection, ForgeProbeSessionLocationKind,
+        ForgeProbeSessionOwnerKind, ForgePromotionLedger, ForgePromotionLedgerStatus,
+        ForgePromotionRevision, ForgeSettlementClosurePath, ForgeSettlementReceipt,
+        ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeSharedSessionControlOwner,
+        ForgeSharedSessionHandoff, ForgeSharedSessionParticipant, ForgeWorkspaceRestoreProvenance,
         ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
     };
 
@@ -31197,6 +31775,415 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
+    fn chat_state_reloads_shared_forge_collaboration_state_across_desktops() {
+        let desktop_a_projection = unique_codex_artifact_projection_path("forge-shared-desktop-a");
+        let desktop_b_projection = unique_codex_artifact_projection_path("forge-shared-desktop-b");
+        let shared_state_path = unique_codex_artifact_projection_path("forge-shared-state");
+
+        let mut desktop_a = AutopilotChatState::from_projection_paths_for_tests(
+            desktop_a_projection.clone(),
+            Some(shared_state_path.clone()),
+        );
+        desktop_a.forge_shared_sessions.insert(
+            "forge-session-1".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/openagents".to_string()),
+                project_id: Some("project-openagents".to_string()),
+                project_name: Some("openagents".to_string()),
+                shell_title: Some("OpenAgents shared fix".to_string()),
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![ForgeSharedSessionParticipant {
+                    participant_id: "alice".to_string(),
+                    kind: ForgeSharedSessionControlOwner::HumanLocal,
+                    display_name: "Alice".to_string(),
+                }],
+                last_handoff: Some(ForgeSharedSessionHandoff {
+                    from_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    to_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    summary: "Continue implementation while Bob reviews.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_000,
+                }),
+                remote_session: ForgeProbeRemoteSessionProjection {
+                    location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                    owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
+                    owner_id: Some("forge-hosted".to_string()),
+                    owner_label: Some("Forge hosted worker".to_string()),
+                    attach_target: Some("probe-hosted-forge-1:7447".to_string()),
+                    execution_host_kind: Some(ForgeProbeExecutionHostKind::HostedWorker),
+                    execution_host_id: Some("probe-hosted-forge-1".to_string()),
+                    execution_host_label: Some("probe-hosted-forge-1".to_string()),
+                    operator_handoff_state: ForgeProbeOperatorHandoffState::HumanOperatorAttached,
+                    operator_handoff_summary: Some("Alice is driving the next turn.".to_string()),
+                    operator_handoff_provenance: Some("probe.hosted.receipt".to_string()),
+                    updated_at_epoch_ms: 1_700_002_040,
+                    ..ForgeProbeRemoteSessionProjection::default()
+                },
+                workspace_restore: ForgeWorkspaceRestoreProvenance::default(),
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: Some("campaign-1".to_string()),
+                bounty_contract_id: Some("contract-1".to_string()),
+                bounty_claim_id: Some("claim-1".to_string()),
+                settlement_receipt_id: Some("settlement-1".to_string()),
+                hosted_coding_audit_bundle_id: Some("audit-1".to_string()),
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                created_at_epoch_ms: 1_700_002_000,
+                updated_at_epoch_ms: 1_700_002_050,
+            },
+        );
+        desktop_a.forge_evidence_bundles.insert(
+            "evidence-1".to_string(),
+            ForgeEvidenceBundle {
+                evidence_bundle_id: "evidence-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_session_ids: Vec::new(),
+                diff_ref: None,
+                review_ref: None,
+                verification_runs: Vec::new(),
+                log_refs: Vec::new(),
+                product_artifacts: vec![ForgeEvidenceProductArtifact {
+                    kind: ForgeEvidenceProductArtifactKind::Other,
+                    label: "accepted patch summary".to_string(),
+                    reference: "probe://summary/accepted-1".to_string(),
+                    summary: Some("Accepted patch summary for hosted fix".to_string()),
+                    recorded_at_epoch_ms: 1_700_002_060,
+                }],
+                updated_at_epoch_ms: 1_700_002_060,
+            },
+        );
+        desktop_a.forge_delivery_receipts.insert(
+            "delivery-1".to_string(),
+            ForgeDeliveryReceipt {
+                delivery_receipt_id: "delivery-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_session_ids: Vec::new(),
+                status: ForgeDeliveryReceiptStatus::Opened,
+                base_branch: "main".to_string(),
+                base_commit: Some("abc123".to_string()),
+                head_branch: "alice/internal-mvp".to_string(),
+                head_commit: "def456".to_string(),
+                compare_url: Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...alice/internal-mvp"
+                        .to_string(),
+                ),
+                pr_url: Some("https://github.com/OpenAgentsInc/openagents/pull/4111".to_string()),
+                branch_watch: None,
+                compare_watch: None,
+                pull_request_watch: None,
+                ci_watch: None,
+                suggested_title: "Internal Forge shared session MVP".to_string(),
+                suggested_body: "Implements the shared state seam.".to_string(),
+                contributors: vec![ForgeDeliveryContributor {
+                    participant_id: "alice".to_string(),
+                    display_name: "Alice".to_string(),
+                    kind: ForgeSharedSessionControlOwner::HumanLocal,
+                    role: ForgeDeliveryContributorRole::Operator,
+                    summary: Some("Opened the PR and attached the hosted audit.".to_string()),
+                }],
+                latest_review_decision: None,
+                merged_at_epoch_ms: None,
+                updated_at_epoch_ms: 1_700_002_070,
+            },
+        );
+        desktop_a.forge_bounty_contracts.insert(
+            "contract-1".to_string(),
+            ForgeBountyContract {
+                bounty_contract_id: "contract-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                objective_kind: ForgeBountyObjectiveKind::AcceptedMerge,
+                title: "Ship internal shared-session MVP".to_string(),
+                objective_summary: Some(
+                    "Get shared hosted sessions working for the team.".to_string(),
+                ),
+                lifecycle_status: ForgeBountyLifecycleStatus::Claimed,
+                active_claim_id: Some("claim-1".to_string()),
+                settlement_receipt_id: Some("settlement-1".to_string()),
+                claim_ids: vec!["claim-1".to_string()],
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                knowledge_pack_refs: Vec::new(),
+                eval_pack_refs: Vec::new(),
+                participant_credit_envelopes: vec![ForgeBountyParticipantCreditEnvelope {
+                    participant_id: "alice".to_string(),
+                    display_name: "Alice".to_string(),
+                    role: ForgeBountyCreditRole::Implementation,
+                    credit_basis_points: Some(10_000),
+                }],
+                provenance: "operator.command:/bounty claim".to_string(),
+                created_at_epoch_ms: 1_700_002_080,
+                updated_at_epoch_ms: 1_700_002_080,
+            },
+        );
+        desktop_a.forge_bounty_claims.insert(
+            "claim-1".to_string(),
+            ForgeBountyClaim {
+                bounty_claim_id: "claim-1".to_string(),
+                bounty_contract_id: "contract-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                claimant_id: "alice".to_string(),
+                claimant_label: "Alice".to_string(),
+                lifecycle_status: ForgeBountyLifecycleStatus::Claimed,
+                summary: Some("Alice is driving the implementation.".to_string()),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                knowledge_pack_refs: Vec::new(),
+                eval_pack_refs: Vec::new(),
+                provenance: "operator.command:/bounty claim".to_string(),
+                created_at_epoch_ms: 1_700_002_090,
+                updated_at_epoch_ms: 1_700_002_090,
+            },
+        );
+        desktop_a.forge_settlement_receipts.insert(
+            "settlement-1".to_string(),
+            ForgeSettlementReceipt {
+                settlement_receipt_id: "settlement-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                bounty_contract_id: "contract-1".to_string(),
+                bounty_claim_id: Some("claim-1".to_string()),
+                objective_kind: ForgeBountyObjectiveKind::AcceptedMerge,
+                closure_path: Some(ForgeSettlementClosurePath::AcceptedMerge),
+                status: ForgeSettlementReceiptStatus::Recorded,
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                reviewer_ref: None,
+                evaluator_ref: None,
+                outcome_summary: Some(
+                    "Merge accepted for the internal shared-session MVP.".to_string(),
+                ),
+                dispute_window_started_at_epoch_ms: 1_700_002_100,
+                dispute_window_closes_at_epoch_ms: 1_700_088_500,
+                disputed_by_label: None,
+                dispute_summary: None,
+                disputed_at_epoch_ms: None,
+                cancel_reason: None,
+                provenance: "operator.command:/settle merge".to_string(),
+                created_at_epoch_ms: 1_700_002_100,
+                updated_at_epoch_ms: 1_700_002_100,
+            },
+        );
+        desktop_a.forge_campaigns.insert(
+            "campaign-1".to_string(),
+            ForgeCampaign {
+                campaign_id: "campaign-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                status: ForgeCampaignStatus::Scoped,
+                title: "Internal shared-session dogfood".to_string(),
+                goal_summary: Some("Prove attach and handoff across desktops.".to_string()),
+                scope_summary: Some("Only internal hosted Forge sessions.".to_string()),
+                candidate_refs: vec![ForgeCampaignArtifactRef {
+                    artifact_ref_id: "candidate-1".to_string(),
+                    kind: ForgeCampaignArtifactKind::ProbeSummary,
+                    reference: "probe://summary/retained-1".to_string(),
+                    summary: Some("Retained session summary".to_string()),
+                    linked_thread_id: Some("thread-a".to_string()),
+                    linked_source_turn_id: Some("turn-1".to_string()),
+                    linked_evidence_bundle_id: Some("evidence-1".to_string()),
+                    linked_delivery_receipt_id: Some("delivery-1".to_string()),
+                    recorded_at_epoch_ms: 1_700_002_110,
+                }],
+                retained_case_selections: Vec::new(),
+                verification_refs: Vec::new(),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                promotion_ledger_id: Some("ledger-1".to_string()),
+                created_at_epoch_ms: 1_700_002_110,
+                updated_at_epoch_ms: 1_700_002_110,
+            },
+        );
+        desktop_a.forge_promotion_ledgers.insert(
+            "ledger-1".to_string(),
+            ForgePromotionLedger {
+                promotion_ledger_id: "ledger-1".to_string(),
+                campaign_id: "campaign-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                status: ForgePromotionLedgerStatus::Shadow,
+                active_revision_id: Some("rev-1".to_string()),
+                shadow_revision_id: Some("rev-1".to_string()),
+                promoted_revision_id: None,
+                revisions: vec![ForgePromotionRevision {
+                    revision_id: "rev-1".to_string(),
+                    source_kind: ForgeCampaignArtifactKind::ProbeSummary,
+                    source_reference: "probe://summary/retained-1".to_string(),
+                    admitted_by_label: "Alice".to_string(),
+                    admitted_summary: Some(
+                        "Shadow the internal shared-session workflow.".to_string(),
+                    ),
+                    admitted_provenance: "operator.command:/promote shadow".to_string(),
+                    admitted_at_epoch_ms: 1_700_002_120,
+                    promoted_by_label: None,
+                    promoted_summary: None,
+                    promoted_provenance: None,
+                    promoted_at_epoch_ms: None,
+                    rolled_back_at_epoch_ms: None,
+                    rollback_reason: None,
+                }],
+                rollback_history: Vec::new(),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                created_at_epoch_ms: 1_700_002_120,
+                updated_at_epoch_ms: 1_700_002_120,
+            },
+        );
+        desktop_a.forge_hosted_audit_bundles.insert(
+            "audit-1".to_string(),
+            ForgeHostedAuditBundle {
+                audit_bundle_id: "audit-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                kind: ForgeHostedAuditKind::CodingCloseout,
+                environment_summary: "GCP hosted internal session".to_string(),
+                session_location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                workspace_root: Some("/tmp/openagents".to_string()),
+                repo_remote_url: Some(
+                    "https://github.com/OpenAgentsInc/openagents.git".to_string(),
+                ),
+                repo_git_branch: Some("alice/internal-mvp".to_string()),
+                repo_head_commit: Some("def456".to_string()),
+                routed_pack_ids: vec!["pack-1".to_string()],
+                mounted_pack_ids: vec!["pack-1".to_string()],
+                unsupported_route_reasons: Vec::new(),
+                hosted_receipts: None,
+                preflight: None,
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                evidence_status: Some(ForgeEvidenceBundleStatus::Partial),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                delivery_status: Some(ForgeDeliveryReceiptStatus::Opened),
+                campaign_id: Some("campaign-1".to_string()),
+                campaign_status: Some(ForgeCampaignStatus::Scoped),
+                promotion_ledger_id: Some("ledger-1".to_string()),
+                promotion_status: Some(ForgePromotionLedgerStatus::Shadow),
+                bounty_contract_id: Some("contract-1".to_string()),
+                bounty_status: Some(ForgeBountyLifecycleStatus::Claimed),
+                bounty_claim_id: Some("claim-1".to_string()),
+                settlement_receipt_id: Some("settlement-1".to_string()),
+                settlement_status: Some(ForgeSettlementReceiptStatus::Recorded),
+                notes: vec![ForgeHostedAuditNote {
+                    kind: ForgeHostedAuditNoteKind::OperatorNote,
+                    body: "Internal attach and handoff rehearsal succeeded.".to_string(),
+                    provenance: "operator.note".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_130,
+                }],
+                created_at_epoch_ms: 1_700_002_130,
+                updated_at_epoch_ms: 1_700_002_130,
+            },
+        );
+        desktop_a.next_forge_shared_session_seq = 2;
+        desktop_a.next_forge_campaign_seq = 2;
+        desktop_a.next_forge_promotion_ledger_seq = 2;
+        desktop_a.next_forge_bounty_contract_seq = 2;
+        desktop_a.next_forge_bounty_claim_seq = 2;
+        desktop_a.next_forge_settlement_receipt_seq = 2;
+        desktop_a.next_forge_evidence_bundle_seq = 2;
+        desktop_a.next_forge_delivery_receipt_seq = 2;
+        desktop_a.next_forge_hosted_audit_bundle_seq = 2;
+        desktop_a.persist_codex_artifact_projection();
+
+        let desktop_b = AutopilotChatState::from_projection_paths_for_tests(
+            desktop_b_projection.clone(),
+            Some(shared_state_path.clone()),
+        );
+        let reloaded_session = desktop_b
+            .forge_shared_sessions
+            .get("forge-session-1")
+            .expect("reloaded shared session");
+        assert_eq!(reloaded_session.project_name.as_deref(), Some("openagents"));
+        assert_eq!(
+            reloaded_session
+                .last_handoff
+                .as_ref()
+                .map(|handoff| handoff.summary.as_str()),
+            Some("Continue implementation while Bob reviews.")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_evidence_bundles
+                .get("evidence-1")
+                .expect("reloaded evidence bundle")
+                .product_artifacts
+                .len(),
+            1
+        );
+        assert_eq!(
+            desktop_b
+                .forge_delivery_receipts
+                .get("delivery-1")
+                .expect("reloaded delivery receipt")
+                .pr_url
+                .as_deref(),
+            Some("https://github.com/OpenAgentsInc/openagents/pull/4111")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_bounty_contracts
+                .get("contract-1")
+                .expect("reloaded bounty contract")
+                .active_claim_id
+                .as_deref(),
+            Some("claim-1")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_bounty_claims
+                .get("claim-1")
+                .expect("reloaded bounty claim")
+                .claimant_label,
+            "Alice"
+        );
+        assert_eq!(
+            desktop_b
+                .forge_settlement_receipts
+                .get("settlement-1")
+                .expect("reloaded settlement receipt")
+                .status,
+            ForgeSettlementReceiptStatus::Recorded
+        );
+        assert_eq!(
+            desktop_b
+                .forge_campaigns
+                .get("campaign-1")
+                .expect("reloaded campaign")
+                .promotion_ledger_id
+                .as_deref(),
+            Some("ledger-1")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_promotion_ledgers
+                .get("ledger-1")
+                .expect("reloaded promotion ledger")
+                .status,
+            ForgePromotionLedgerStatus::Shadow
+        );
+        assert_eq!(
+            desktop_b
+                .forge_hosted_audit_bundles
+                .get("audit-1")
+                .expect("reloaded hosted audit bundle")
+                .notes
+                .len(),
+            1
+        );
+        assert_eq!(desktop_b.next_forge_shared_session_seq, 2);
+        assert_eq!(desktop_b.next_forge_delivery_receipt_seq, 2);
+
+        let _ = std::fs::remove_file(desktop_a_projection);
+        let _ = std::fs::remove_file(desktop_b_projection);
+        let _ = std::fs::remove_file(shared_state_path);
     }
 
     #[test]
