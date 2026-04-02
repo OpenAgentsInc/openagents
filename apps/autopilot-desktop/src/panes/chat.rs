@@ -14,11 +14,11 @@ use crate::app_state::{
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
     ForgeBountyContract, ForgeCampaign, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
-    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgePromotionLedger, ForgeSettlementReceipt,
-    ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
-    ForgeWorkspaceSnapshot, ManagedChatChannelProjection, ManagedChatDeliveryState,
-    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
-    ProbeTurnAttachmentRef, RenderState,
+    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeKnowledgePack, ForgePromotionLedger,
+    ForgeSettlementReceipt, ForgeSettlementReceiptStatus, ForgeSharedSession,
+    ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot, ManagedChatChannelProjection,
+    ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
+    ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef, RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -2974,6 +2974,90 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
     } else {
         lines.push(String::new());
         lines.push("_No explicit handoff recorded yet._".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_knowledge_packs_meta_line(knowledge_packs: &[&ForgeKnowledgePack]) -> String {
+    let mut parts = vec![format!("count:{}", knowledge_packs.len())];
+    let mut kinds = knowledge_packs
+        .iter()
+        .map(|knowledge_pack| knowledge_pack.kind.label().to_string())
+        .collect::<Vec<_>>();
+    kinds.sort();
+    kinds.dedup();
+    if !kinds.is_empty() {
+        parts.push(format!("kinds:{}", kinds.join(",")));
+    }
+    if let Some(updated) = knowledge_packs
+        .iter()
+        .map(|knowledge_pack| knowledge_pack.updated_at_epoch_ms)
+        .max()
+        .and_then(|updated| format_thread_timestamp(updated as i64))
+    {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_knowledge_packs_markdown_source(knowledge_packs: &[&ForgeKnowledgePack]) -> String {
+    let mut lines = Vec::new();
+    for knowledge_pack in knowledge_packs.iter().take(8) {
+        let scope = &knowledge_pack.catalog_scope;
+        let scope_label = match scope.kind {
+            crate::app_state::ForgeKnowledgePackCatalogScopeKind::Project => scope
+                .project_name
+                .as_deref()
+                .or(scope.project_id.as_deref())
+                .unwrap_or("project")
+                .to_string(),
+            crate::app_state::ForgeKnowledgePackCatalogScopeKind::Workspace => scope
+                .workspace_root
+                .as_deref()
+                .map(|value| compact_display_token(value, 32))
+                .unwrap_or_else(|| "workspace".to_string()),
+        };
+        let source_preview = knowledge_pack
+            .source_refs
+            .iter()
+            .take(2)
+            .map(|source_ref| {
+                let label = source_ref
+                    .label
+                    .as_deref()
+                    .unwrap_or(source_ref.reference.as_str());
+                format!(
+                    "{}:{}",
+                    source_ref.source_kind.label(),
+                    compact_display_token(label, 24)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "- **{}** `{}`",
+            knowledge_pack.kind.display_label(),
+            compact_display_token(knowledge_pack.knowledge_pack_id.as_str(), 24)
+        ));
+        lines.push(format!(
+            "- scope: {} {}",
+            scope.kind.display_label(),
+            scope_label
+        ));
+        lines.push(format!("- title: {}", knowledge_pack.title));
+        if let Some(summary) = knowledge_pack.summary.as_deref() {
+            lines.push(format!("- summary: {}", summary));
+        }
+        if !source_preview.is_empty() {
+            lines.push(format!("- sources: {}", source_preview));
+        }
+        lines.push(format!("- provenance: {}", knowledge_pack.provenance));
+    }
+    if knowledge_packs.len() > 8 {
+        lines.push(format!(
+            "- _{} additional pack(s) omitted_",
+            knowledge_packs.len().saturating_sub(8)
+        ));
     }
     lines.join("\n")
 }
@@ -6468,6 +6552,43 @@ pub fn paint(
                     y += markdown_height;
                 }
                 y += 10.0;
+
+                let active_knowledge_packs = autopilot_chat.active_knowledge_packs();
+                if !active_knowledge_packs.is_empty() {
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        "[knowledge packs]",
+                        Point::new(transcript_scroll_clip.origin.x, y),
+                        10.0,
+                        theme::accent::PRIMARY,
+                    ));
+                    y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &active_knowledge_packs_meta_line(active_knowledge_packs.as_slice()),
+                        Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                        9.0,
+                        theme::text::MUTED,
+                    ));
+                    y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                    let knowledge_packs_markdown =
+                        active_knowledge_packs_markdown_source(active_knowledge_packs.as_slice());
+                    if !knowledge_packs_markdown.trim().is_empty() {
+                        let markdown_document = markdown_parser.parse(&knowledge_packs_markdown);
+                        let markdown_height = markdown_renderer
+                            .render(
+                                &markdown_document,
+                                Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                                markdown_width,
+                                paint.text,
+                                paint.scene,
+                            )
+                            .height
+                            .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                        y += markdown_height;
+                    }
+                    y += 10.0;
+                }
 
                 if !shared_session.delegated_child_sessions.is_empty() {
                     paint.scene.draw_text(paint.text.layout_mono(

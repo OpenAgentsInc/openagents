@@ -268,6 +268,37 @@ Current local-first behavior:
   the campaign and bounty layers so rollout posture is visible before payout or
   settlement logic
 
+## Knowledge-Pack Catalog Layer
+
+Autopilot now also keeps an app-owned Forge knowledge-pack catalog above shared
+sessions and project/workspace identity.
+
+Current local-first behavior:
+
+- knowledge packs persist in the same desktop artifact projection file as the
+  rest of the Forge shell state
+- each pack gets a stable `forge-pack-*` id, explicit kind, explicit scope, and
+  explicit source references instead of hidden transcript text
+- the first supported pack kinds are:
+  - repo docs
+  - repo runbooks
+  - retained session summaries
+  - accepted patch summaries
+  - benchmark references
+  - judge references
+- pack scope is explicit:
+  - `project`
+  - `workspace`
+- source references are explicit and typed instead of being inferred later:
+  - repo file
+  - Probe retained session summary artifact
+  - Probe accepted patch summary artifact
+  - Psionic benchmark manifest
+  - Psionic judge manifest
+- the shared-session shell now renders the active scoped pack catalog as a
+  first-class card so later routing can use a real app-owned object set rather
+  than one-off notes
+
 ## Bounty Contract Layer
 
 Autopilot now also keeps one app-owned bounty contract and optional active claim

@@ -9603,6 +9603,137 @@ pub struct ForgePromotionLedger {
     pub updated_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeKnowledgePackKind {
+    RepoDocs,
+    RepoRunbook,
+    RetainedSessionSummary,
+    AcceptedPatchSummary,
+    BenchmarkReference,
+    JudgeReference,
+}
+
+impl ForgeKnowledgePackKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::RepoDocs => "repo_docs",
+            Self::RepoRunbook => "repo_runbook",
+            Self::RetainedSessionSummary => "retained_session_summary",
+            Self::AcceptedPatchSummary => "accepted_patch_summary",
+            Self::BenchmarkReference => "benchmark_reference",
+            Self::JudgeReference => "judge_reference",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::RepoDocs => "repo docs",
+            Self::RepoRunbook => "repo runbook",
+            Self::RetainedSessionSummary => "retained session summary",
+            Self::AcceptedPatchSummary => "accepted patch summary",
+            Self::BenchmarkReference => "benchmark reference",
+            Self::JudgeReference => "judge reference",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeKnowledgePackCatalogScopeKind {
+    Project,
+    Workspace,
+}
+
+impl ForgeKnowledgePackCatalogScopeKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Workspace => "workspace",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Workspace => "workspace",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeKnowledgePackCatalogScope {
+    pub kind: ForgeKnowledgePackCatalogScopeKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeKnowledgePackSourceKind {
+    RepoFile,
+    ProbeRetainedSessionSummaryArtifact,
+    ProbeAcceptedPatchSummaryArtifact,
+    PsionicBenchmarkManifest,
+    PsionicJudgeManifest,
+}
+
+impl ForgeKnowledgePackSourceKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::RepoFile => "repo_file",
+            Self::ProbeRetainedSessionSummaryArtifact => "probe_retained_session_summary_artifact",
+            Self::ProbeAcceptedPatchSummaryArtifact => "probe_accepted_patch_summary_artifact",
+            Self::PsionicBenchmarkManifest => "psionic_benchmark_manifest",
+            Self::PsionicJudgeManifest => "psionic_judge_manifest",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::RepoFile => "repo file",
+            Self::ProbeRetainedSessionSummaryArtifact => "Probe retained session summary",
+            Self::ProbeAcceptedPatchSummaryArtifact => "Probe accepted patch summary",
+            Self::PsionicBenchmarkManifest => "Psionic benchmark manifest",
+            Self::PsionicJudgeManifest => "Psionic judge manifest",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeKnowledgePackSourceRef {
+    pub source_kind: ForgeKnowledgePackSourceKind,
+    pub reference: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeKnowledgePack {
+    pub knowledge_pack_id: String,
+    pub kind: ForgeKnowledgePackKind,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub catalog_scope: ForgeKnowledgePackCatalogScope,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_refs: Vec<ForgeKnowledgePackSourceRef>,
+    pub provenance: String,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSession {
     pub shared_session_id: String,
@@ -10076,6 +10207,7 @@ pub struct AutopilotChatState {
     forge_shared_sessions: std::collections::HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: std::collections::HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: std::collections::HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_knowledge_packs: std::collections::HashMap<String, ForgeKnowledgePack>,
     forge_campaigns: std::collections::HashMap<String, ForgeCampaign>,
     forge_promotion_ledgers: std::collections::HashMap<String, ForgePromotionLedger>,
     forge_bounty_contracts: std::collections::HashMap<String, ForgeBountyContract>,
@@ -10086,6 +10218,7 @@ pub struct AutopilotChatState {
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_knowledge_pack_seq: u64,
     next_forge_campaign_seq: u64,
     next_forge_promotion_ledger_seq: u64,
     next_forge_bounty_contract_seq: u64,
@@ -10214,6 +10347,7 @@ impl Default for AutopilotChatState {
             forge_shared_sessions,
             forge_workspace_snapshots,
             forge_restore_manifests,
+            forge_knowledge_packs,
             forge_campaigns,
             forge_promotion_ledgers,
             forge_bounty_contracts,
@@ -10224,6 +10358,7 @@ impl Default for AutopilotChatState {
             next_forge_shared_session_seq,
             next_forge_workspace_snapshot_seq,
             next_forge_restore_manifest_seq,
+            next_forge_knowledge_pack_seq,
             next_forge_campaign_seq,
             next_forge_promotion_ledger_seq,
             next_forge_bounty_contract_seq,
@@ -10241,6 +10376,7 @@ impl Default for AutopilotChatState {
                 projection.forge_shared_sessions,
                 projection.forge_workspace_snapshots,
                 projection.forge_restore_manifests,
+                projection.forge_knowledge_packs,
                 projection.forge_campaigns,
                 projection.forge_promotion_ledgers,
                 projection.forge_bounty_contracts,
@@ -10251,6 +10387,7 @@ impl Default for AutopilotChatState {
                 projection.next_forge_shared_session_seq,
                 projection.next_forge_workspace_snapshot_seq,
                 projection.next_forge_restore_manifest_seq,
+                projection.next_forge_knowledge_pack_seq,
                 projection.next_forge_campaign_seq,
                 projection.next_forge_promotion_ledger_seq,
                 projection.next_forge_bounty_contract_seq,
@@ -10275,6 +10412,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 1,
                 1,
@@ -10312,6 +10451,7 @@ impl Default for AutopilotChatState {
             forge_shared_sessions,
             forge_workspace_snapshots,
             forge_restore_manifests,
+            forge_knowledge_packs,
             forge_campaigns,
             forge_promotion_ledgers,
             forge_bounty_contracts,
@@ -10322,6 +10462,7 @@ impl Default for AutopilotChatState {
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             next_forge_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
             next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
+            next_forge_knowledge_pack_seq: next_forge_knowledge_pack_seq.max(1),
             next_forge_campaign_seq: next_forge_campaign_seq.max(1),
             next_forge_promotion_ledger_seq: next_forge_promotion_ledger_seq.max(1),
             next_forge_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
@@ -10434,6 +10575,8 @@ struct CodexArtifactProjectionDocumentV2 {
     #[serde(default)]
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
     #[serde(default)]
+    knowledge_packs: Vec<ForgeKnowledgePack>,
+    #[serde(default)]
     campaigns: Vec<ForgeCampaign>,
     #[serde(default)]
     promotion_ledgers: Vec<ForgePromotionLedger>,
@@ -10453,6 +10596,8 @@ struct CodexArtifactProjectionDocumentV2 {
     next_workspace_snapshot_seq: u64,
     #[serde(default = "default_next_forge_restore_manifest_seq")]
     next_restore_manifest_seq: u64,
+    #[serde(default = "default_next_forge_knowledge_pack_seq")]
+    next_knowledge_pack_seq: u64,
     #[serde(default = "default_next_forge_campaign_seq")]
     next_campaign_seq: u64,
     #[serde(default = "default_next_forge_promotion_ledger_seq")]
@@ -10476,6 +10621,7 @@ struct LoadedCodexArtifactProjection {
     forge_shared_sessions: HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_knowledge_packs: HashMap<String, ForgeKnowledgePack>,
     forge_campaigns: HashMap<String, ForgeCampaign>,
     forge_promotion_ledgers: HashMap<String, ForgePromotionLedger>,
     forge_bounty_contracts: HashMap<String, ForgeBountyContract>,
@@ -10486,6 +10632,7 @@ struct LoadedCodexArtifactProjection {
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_knowledge_pack_seq: u64,
     next_forge_campaign_seq: u64,
     next_forge_promotion_ledger_seq: u64,
     next_forge_bounty_contract_seq: u64,
@@ -10505,6 +10652,10 @@ fn default_next_forge_workspace_snapshot_seq() -> u64 {
 }
 
 fn default_next_forge_restore_manifest_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_knowledge_pack_seq() -> u64 {
     1
 }
 
@@ -10907,6 +11058,117 @@ fn normalize_forge_reference_list(mut refs: Vec<String>) -> Vec<String> {
     refs.sort();
     refs.dedup();
     refs
+}
+
+fn normalize_forge_knowledge_pack_source_refs(
+    mut source_refs: Vec<ForgeKnowledgePackSourceRef>,
+) -> Vec<ForgeKnowledgePackSourceRef> {
+    source_refs.sort_by(|lhs, rhs| {
+        lhs.source_kind
+            .label()
+            .cmp(rhs.source_kind.label())
+            .then_with(|| lhs.reference.cmp(&rhs.reference))
+            .then_with(|| lhs.label.cmp(&rhs.label))
+    });
+    let mut seen = HashSet::new();
+    source_refs.retain(|source_ref| {
+        let lookup_key = format!(
+            "{}:{}",
+            source_ref.source_kind.label(),
+            source_ref.reference.trim()
+        );
+        !source_ref.reference.trim().is_empty() && seen.insert(lookup_key)
+    });
+    for source_ref in &mut source_refs {
+        source_ref.reference = source_ref.reference.trim().to_string();
+        source_ref.label = source_ref
+            .label
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        source_ref.shared_session_id = source_ref
+            .shared_session_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        source_ref.probe_session_id = source_ref
+            .probe_session_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        source_ref.workspace_root = source_ref
+            .workspace_root
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    source_refs
+}
+
+fn normalize_forge_knowledge_pack_catalog_scope(
+    mut scope: ForgeKnowledgePackCatalogScope,
+) -> ForgeKnowledgePackCatalogScope {
+    scope.project_id = scope
+        .project_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    scope.project_name = scope
+        .project_name
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    scope.workspace_root = scope
+        .workspace_root
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    scope
+}
+
+fn normalize_forge_knowledge_packs(
+    mut knowledge_packs: Vec<ForgeKnowledgePack>,
+) -> Vec<ForgeKnowledgePack> {
+    knowledge_packs.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.knowledge_pack_id.cmp(&rhs.knowledge_pack_id))
+    });
+    let mut seen_ids = HashSet::new();
+    knowledge_packs.retain(|knowledge_pack| {
+        let knowledge_pack_id = knowledge_pack.knowledge_pack_id.trim();
+        !knowledge_pack_id.is_empty() && seen_ids.insert(knowledge_pack_id.to_string())
+    });
+    for knowledge_pack in &mut knowledge_packs {
+        knowledge_pack.knowledge_pack_id = knowledge_pack.knowledge_pack_id.trim().to_string();
+        knowledge_pack.title = knowledge_pack.title.trim().to_string();
+        knowledge_pack.summary = knowledge_pack
+            .summary
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        knowledge_pack.catalog_scope =
+            normalize_forge_knowledge_pack_catalog_scope(knowledge_pack.catalog_scope.clone());
+        knowledge_pack.source_refs = normalize_forge_knowledge_pack_source_refs(std::mem::take(
+            &mut knowledge_pack.source_refs,
+        ));
+        knowledge_pack.provenance = knowledge_pack.provenance.trim().to_string();
+    }
+    knowledge_packs.retain(|knowledge_pack| {
+        !knowledge_pack.title.is_empty()
+            && !knowledge_pack.provenance.is_empty()
+            && !knowledge_pack.source_refs.is_empty()
+            && match knowledge_pack.catalog_scope.kind {
+                ForgeKnowledgePackCatalogScopeKind::Project => {
+                    knowledge_pack.catalog_scope.project_id.is_some()
+                        && knowledge_pack.catalog_scope.workspace_root.is_some()
+                }
+                ForgeKnowledgePackCatalogScopeKind::Workspace => {
+                    knowledge_pack.catalog_scope.workspace_root.is_some()
+                }
+            }
+    });
+    knowledge_packs
 }
 
 fn normalize_forge_bounty_credit_envelopes(
@@ -11971,6 +12233,7 @@ fn persist_codex_artifact_projection(
     forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
     forge_workspace_snapshots: &HashMap<String, ForgeWorkspaceSnapshot>,
     forge_restore_manifests: &HashMap<String, ForgeWorkspaceRestoreManifest>,
+    forge_knowledge_packs: &HashMap<String, ForgeKnowledgePack>,
     forge_campaigns: &HashMap<String, ForgeCampaign>,
     forge_promotion_ledgers: &HashMap<String, ForgePromotionLedger>,
     forge_bounty_contracts: &HashMap<String, ForgeBountyContract>,
@@ -11981,6 +12244,7 @@ fn persist_codex_artifact_projection(
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
+    next_forge_knowledge_pack_seq: u64,
     next_forge_campaign_seq: u64,
     next_forge_promotion_ledger_seq: u64,
     next_forge_bounty_contract_seq: u64,
@@ -12017,6 +12281,9 @@ fn persist_codex_artifact_projection(
         restore_manifests: normalize_forge_restore_manifests(
             forge_restore_manifests.values().cloned().collect(),
         ),
+        knowledge_packs: normalize_forge_knowledge_packs(
+            forge_knowledge_packs.values().cloned().collect(),
+        ),
         campaigns: normalize_forge_campaigns(forge_campaigns.values().cloned().collect()),
         promotion_ledgers: normalize_forge_promotion_ledgers(
             forge_promotion_ledgers.values().cloned().collect(),
@@ -12039,6 +12306,7 @@ fn persist_codex_artifact_projection(
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
         next_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
         next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
+        next_knowledge_pack_seq: next_forge_knowledge_pack_seq.max(1),
         next_campaign_seq: next_forge_campaign_seq.max(1),
         next_promotion_ledger_seq: next_forge_promotion_ledger_seq.max(1),
         next_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
@@ -12068,6 +12336,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 forge_shared_sessions: HashMap::new(),
                 forge_workspace_snapshots: HashMap::new(),
                 forge_restore_manifests: HashMap::new(),
+                forge_knowledge_packs: HashMap::new(),
                 forge_campaigns: HashMap::new(),
                 forge_promotion_ledgers: HashMap::new(),
                 forge_bounty_contracts: HashMap::new(),
@@ -12078,6 +12347,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 next_forge_shared_session_seq: 1,
                 next_forge_workspace_snapshot_seq: 1,
                 next_forge_restore_manifest_seq: 1,
+                next_forge_knowledge_pack_seq: 1,
                 next_forge_campaign_seq: 1,
                 next_forge_promotion_ledger_seq: 1,
                 next_forge_bounty_contract_seq: 1,
@@ -12131,6 +12401,8 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        Vec::new(),
+        1,
         1,
         1,
         1,
@@ -12163,6 +12435,7 @@ fn load_codex_artifact_projection_v2(
         document.shared_sessions,
         document.workspace_snapshots,
         document.restore_manifests,
+        document.knowledge_packs,
         document.campaigns,
         document.promotion_ledgers,
         document.bounty_contracts,
@@ -12172,6 +12445,7 @@ fn load_codex_artifact_projection_v2(
         document.next_shared_session_seq,
         document.next_workspace_snapshot_seq,
         document.next_restore_manifest_seq,
+        document.next_knowledge_pack_seq,
         document.next_campaign_seq,
         document.next_promotion_ledger_seq,
         document.next_bounty_contract_seq,
@@ -12190,6 +12464,7 @@ fn build_loaded_codex_artifact_projection(
     shared_sessions: Vec<ForgeSharedSession>,
     workspace_snapshots: Vec<ForgeWorkspaceSnapshot>,
     restore_manifests: Vec<ForgeWorkspaceRestoreManifest>,
+    knowledge_packs: Vec<ForgeKnowledgePack>,
     campaigns: Vec<ForgeCampaign>,
     promotion_ledgers: Vec<ForgePromotionLedger>,
     bounty_contracts: Vec<ForgeBountyContract>,
@@ -12199,6 +12474,7 @@ fn build_loaded_codex_artifact_projection(
     next_shared_session_seq: u64,
     next_workspace_snapshot_seq: u64,
     next_restore_manifest_seq: u64,
+    next_knowledge_pack_seq: u64,
     next_campaign_seq: u64,
     next_promotion_ledger_seq: u64,
     next_bounty_contract_seq: u64,
@@ -12246,6 +12522,11 @@ fn build_loaded_codex_artifact_projection(
         forge_restore_manifests.insert(manifest.restore_manifest_id.clone(), manifest);
     }
 
+    let mut forge_knowledge_packs = HashMap::<String, ForgeKnowledgePack>::new();
+    for knowledge_pack in normalize_forge_knowledge_packs(knowledge_packs) {
+        forge_knowledge_packs.insert(knowledge_pack.knowledge_pack_id.clone(), knowledge_pack);
+    }
+
     let mut forge_campaigns = HashMap::<String, ForgeCampaign>::new();
     for campaign in normalize_forge_campaigns(campaigns) {
         forge_campaigns.insert(campaign.campaign_id.clone(), campaign);
@@ -12288,6 +12569,7 @@ fn build_loaded_codex_artifact_projection(
         forge_shared_sessions,
         forge_workspace_snapshots,
         forge_restore_manifests,
+        forge_knowledge_packs,
         forge_campaigns,
         forge_promotion_ledgers,
         forge_bounty_contracts,
@@ -12298,6 +12580,7 @@ fn build_loaded_codex_artifact_projection(
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
         next_forge_workspace_snapshot_seq: next_workspace_snapshot_seq.max(1),
         next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
+        next_forge_knowledge_pack_seq: next_knowledge_pack_seq.max(1),
         next_forge_campaign_seq: next_campaign_seq.max(1),
         next_forge_promotion_ledger_seq: next_promotion_ledger_seq.max(1),
         next_forge_bounty_contract_seq: next_bounty_contract_seq.max(1),
@@ -12763,6 +13046,7 @@ impl AutopilotChatState {
                 state.forge_shared_sessions = projection.forge_shared_sessions;
                 state.forge_workspace_snapshots = projection.forge_workspace_snapshots;
                 state.forge_restore_manifests = projection.forge_restore_manifests;
+                state.forge_knowledge_packs = projection.forge_knowledge_packs;
                 state.forge_campaigns = projection.forge_campaigns;
                 state.forge_promotion_ledgers = projection.forge_promotion_ledgers;
                 state.forge_bounty_contracts = projection.forge_bounty_contracts;
@@ -12774,6 +13058,7 @@ impl AutopilotChatState {
                 state.next_forge_workspace_snapshot_seq =
                     projection.next_forge_workspace_snapshot_seq;
                 state.next_forge_restore_manifest_seq = projection.next_forge_restore_manifest_seq;
+                state.next_forge_knowledge_pack_seq = projection.next_forge_knowledge_pack_seq;
                 state.next_forge_campaign_seq = projection.next_forge_campaign_seq;
                 state.next_forge_promotion_ledger_seq = projection.next_forge_promotion_ledger_seq;
                 state.next_forge_bounty_contract_seq = projection.next_forge_bounty_contract_seq;
@@ -12792,6 +13077,7 @@ impl AutopilotChatState {
                 state.forge_shared_sessions.clear();
                 state.forge_workspace_snapshots.clear();
                 state.forge_restore_manifests.clear();
+                state.forge_knowledge_packs.clear();
                 state.forge_campaigns.clear();
                 state.forge_promotion_ledgers.clear();
                 state.forge_bounty_contracts.clear();
@@ -12802,6 +13088,7 @@ impl AutopilotChatState {
                 state.next_forge_shared_session_seq = 1;
                 state.next_forge_workspace_snapshot_seq = 1;
                 state.next_forge_restore_manifest_seq = 1;
+                state.next_forge_knowledge_pack_seq = 1;
                 state.next_forge_campaign_seq = 1;
                 state.next_forge_promotion_ledger_seq = 1;
                 state.next_forge_bounty_contract_seq = 1;
@@ -13527,6 +13814,160 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.promotion_ledger_for_thread(thread_id))
+    }
+
+    pub fn knowledge_pack_by_id(&self, knowledge_pack_id: &str) -> Option<&ForgeKnowledgePack> {
+        self.forge_knowledge_packs.get(knowledge_pack_id)
+    }
+
+    fn knowledge_pack_scope_for_thread(
+        &self,
+        thread_id: &str,
+        scope_kind: ForgeKnowledgePackCatalogScopeKind,
+    ) -> Result<ForgeKnowledgePackCatalogScope, String> {
+        let metadata = self.thread_metadata.get(thread_id);
+        let shared_session = self.shared_session_for_thread(thread_id);
+        let workspace_root = metadata
+            .and_then(|value| value.workspace_root.clone())
+            .or_else(|| {
+                metadata.and_then(|value| {
+                    workspace_root_for_thread_paths(value.cwd.as_deref(), value.path.as_deref())
+                })
+            })
+            .or_else(|| shared_session.and_then(|session| session.workspace_root.clone()))
+            .ok_or_else(|| {
+                format!(
+                    "Thread `{thread_id}` does not have a workspace root, so Forge cannot scope a knowledge pack yet."
+                )
+            })?;
+        let project_id = metadata
+            .and_then(|value| value.project_id.clone())
+            .or_else(|| shared_session.and_then(|session| session.project_id.clone()));
+        let project_name = metadata
+            .and_then(|value| value.project_name.clone())
+            .or_else(|| shared_session.and_then(|session| session.project_name.clone()))
+            .or_else(|| project_id.as_deref().map(project_name_for_workspace_root));
+        if scope_kind == ForgeKnowledgePackCatalogScopeKind::Project && project_id.is_none() {
+            return Err(format!(
+                "Thread `{thread_id}` does not have a project identity, so Forge cannot create a project-scoped knowledge pack."
+            ));
+        }
+        Ok(ForgeKnowledgePackCatalogScope {
+            kind: scope_kind,
+            project_id,
+            project_name,
+            workspace_root: Some(workspace_root),
+        })
+    }
+
+    fn knowledge_pack_matches_thread(
+        &self,
+        thread_id: &str,
+        knowledge_pack: &ForgeKnowledgePack,
+    ) -> bool {
+        let Ok(scope) =
+            self.knowledge_pack_scope_for_thread(thread_id, knowledge_pack.catalog_scope.kind)
+        else {
+            return false;
+        };
+        if knowledge_pack.catalog_scope.workspace_root != scope.workspace_root {
+            return false;
+        }
+        match knowledge_pack.catalog_scope.kind {
+            ForgeKnowledgePackCatalogScopeKind::Project => {
+                knowledge_pack.catalog_scope.project_id == scope.project_id
+            }
+            ForgeKnowledgePackCatalogScopeKind::Workspace => true,
+        }
+    }
+
+    pub fn knowledge_packs_for_thread(&self, thread_id: &str) -> Vec<&ForgeKnowledgePack> {
+        let mut knowledge_packs = self
+            .forge_knowledge_packs
+            .values()
+            .filter(|knowledge_pack| self.knowledge_pack_matches_thread(thread_id, knowledge_pack))
+            .collect::<Vec<_>>();
+        knowledge_packs.sort_by(|lhs, rhs| {
+            rhs.updated_at_epoch_ms
+                .cmp(&lhs.updated_at_epoch_ms)
+                .then_with(|| lhs.knowledge_pack_id.cmp(&rhs.knowledge_pack_id))
+        });
+        knowledge_packs
+    }
+
+    pub fn active_knowledge_packs(&self) -> Vec<&ForgeKnowledgePack> {
+        self.active_thread_id
+            .as_deref()
+            .map(|thread_id| self.knowledge_packs_for_thread(thread_id))
+            .unwrap_or_default()
+    }
+
+    fn next_knowledge_pack_id(&mut self) -> String {
+        let knowledge_pack_id = format!("forge-pack-{}", self.next_forge_knowledge_pack_seq);
+        self.next_forge_knowledge_pack_seq = self.next_forge_knowledge_pack_seq.saturating_add(1);
+        knowledge_pack_id
+    }
+
+    pub fn record_forge_knowledge_pack_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeKnowledgePackKind,
+        title: impl Into<String>,
+        summary: Option<String>,
+        scope_kind: ForgeKnowledgePackCatalogScopeKind,
+        source_refs: Vec<ForgeKnowledgePackSourceRef>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let title = title.into().trim().to_string();
+        if title.is_empty() {
+            return Err("Forge knowledge-pack title cannot be empty.".to_string());
+        }
+        let summary = summary
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance = provenance.into().trim().to_string();
+        if provenance.is_empty() {
+            return Err("Forge knowledge-pack provenance cannot be empty.".to_string());
+        }
+        let catalog_scope = self.knowledge_pack_scope_for_thread(thread_id, scope_kind)?;
+        let source_refs = normalize_forge_knowledge_pack_source_refs(source_refs);
+        if source_refs.is_empty() {
+            return Err("Forge knowledge-pack source refs cannot be empty.".to_string());
+        }
+
+        let existing = self
+            .forge_knowledge_packs
+            .values()
+            .find(|knowledge_pack| {
+                knowledge_pack.kind == kind
+                    && knowledge_pack.catalog_scope == catalog_scope
+                    && knowledge_pack.source_refs == source_refs
+            })
+            .map(|knowledge_pack| {
+                (
+                    knowledge_pack.knowledge_pack_id.clone(),
+                    knowledge_pack.created_at_epoch_ms,
+                )
+            });
+        let (knowledge_pack_id, created_at_epoch_ms) =
+            existing.unwrap_or_else(|| (self.next_knowledge_pack_id(), updated_at_epoch_ms));
+        self.forge_knowledge_packs.insert(
+            knowledge_pack_id.clone(),
+            ForgeKnowledgePack {
+                knowledge_pack_id: knowledge_pack_id.clone(),
+                kind,
+                title,
+                summary,
+                catalog_scope,
+                source_refs,
+                provenance,
+                created_at_epoch_ms,
+                updated_at_epoch_ms,
+            },
+        );
+        self.persist_codex_artifact_projection();
+        Ok(knowledge_pack_id)
     }
 
     pub fn shared_session_for_thread(&self, thread_id: &str) -> Option<&ForgeSharedSession> {
@@ -20180,6 +20621,7 @@ impl AutopilotChatState {
             &self.forge_shared_sessions,
             &self.forge_workspace_snapshots,
             &self.forge_restore_manifests,
+            &self.forge_knowledge_packs,
             &self.forge_campaigns,
             &self.forge_promotion_ledgers,
             &self.forge_bounty_contracts,
@@ -20190,6 +20632,7 @@ impl AutopilotChatState {
             self.next_forge_shared_session_seq,
             self.next_forge_workspace_snapshot_seq,
             self.next_forge_restore_manifest_seq,
+            self.next_forge_knowledge_pack_seq,
             self.next_forge_campaign_seq,
             self.next_forge_promotion_ledger_seq,
             self.next_forge_bounty_contract_seq,
@@ -29814,6 +30257,215 @@ mod tests {
 
         let _ = std::fs::remove_file(projection_path);
         let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_forge_knowledge_pack_catalog_and_scope() {
+        let repo = init_git_workspace("knowledge-pack-catalog");
+        let other_repo = init_git_workspace("knowledge-pack-catalog-other");
+        let projection_path = unique_codex_artifact_projection_path("knowledge-pack-catalog");
+        let transcript_a_path = repo.join("thread-a.jsonl");
+        let transcript_b_path = repo.join("thread-b.jsonl");
+        let transcript_c_path = other_repo.join("thread-c.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(repo.display().to_string()),
+                path: Some(transcript_a_path.display().to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: Some("Beta".to_string()),
+                preview: "second preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(repo.display().to_string()),
+                path: Some(transcript_b_path.display().to_string()),
+                created_at: 1_700_000_010,
+                updated_at: 1_700_000_110,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-c".to_string(),
+                thread_name: Some("Gamma".to_string()),
+                preview: "third preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(other_repo.display().to_string()),
+                path: Some(transcript_c_path.display().to_string()),
+                created_at: 1_700_000_020,
+                updated_at: 1_700_000_120,
+            },
+        ]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("thread-a", 1_700_000_130)
+            .expect("shared session should exist");
+
+        let docs_pack_id = chat
+            .record_forge_knowledge_pack_for_thread(
+                "thread-a",
+                crate::app_state::ForgeKnowledgePackKind::RepoDocs,
+                "Core repo docs",
+                Some("Key repo docs and overview pages for the active workspace.".to_string()),
+                crate::app_state::ForgeKnowledgePackCatalogScopeKind::Project,
+                vec![
+                    crate::app_state::ForgeKnowledgePackSourceRef {
+                        source_kind: crate::app_state::ForgeKnowledgePackSourceKind::RepoFile,
+                        reference: repo.join("README.md").display().to_string(),
+                        label: Some("README.md".to_string()),
+                        shared_session_id: None,
+                        probe_session_id: None,
+                        workspace_root: Some(repo.display().to_string()),
+                        recorded_at_epoch_ms: 1_700_000_140,
+                    },
+                    crate::app_state::ForgeKnowledgePackSourceRef {
+                        source_kind: crate::app_state::ForgeKnowledgePackSourceKind::RepoFile,
+                        reference: repo.join("docs/RUNBOOK.md").display().to_string(),
+                        label: Some("docs/RUNBOOK.md".to_string()),
+                        shared_session_id: None,
+                        probe_session_id: None,
+                        workspace_root: Some(repo.display().to_string()),
+                        recorded_at_epoch_ms: 1_700_000_140,
+                    },
+                ],
+                "operator.command:/pack docs",
+                1_700_000_140,
+            )
+            .expect("docs pack should record");
+        let summary_pack_id = chat
+            .record_forge_knowledge_pack_for_thread(
+                "thread-a",
+                crate::app_state::ForgeKnowledgePackKind::RetainedSessionSummary,
+                "Retained session summary",
+                Some("Current retained summary from the Probe-backed session.".to_string()),
+                crate::app_state::ForgeKnowledgePackCatalogScopeKind::Workspace,
+                vec![crate::app_state::ForgeKnowledgePackSourceRef {
+                    source_kind: crate::app_state::ForgeKnowledgePackSourceKind::ProbeRetainedSessionSummaryArtifact,
+                    reference: "probe://thread-a/retained-session-summary".to_string(),
+                    label: Some("thread-a retained summary".to_string()),
+                    shared_session_id: Some(shared_session_id.clone()),
+                    probe_session_id: Some("thread-a".to_string()),
+                    workspace_root: Some(repo.display().to_string()),
+                    recorded_at_epoch_ms: 1_700_000_150,
+                }],
+                "operator.command:/pack summary",
+                1_700_000_150,
+            )
+            .expect("summary pack should record");
+
+        assert!(docs_pack_id.starts_with("forge-pack-"));
+        assert!(summary_pack_id.starts_with("forge-pack-"));
+        assert_ne!(docs_pack_id, summary_pack_id);
+
+        chat.active_thread_id = Some("thread-b".to_string());
+        let active_pack_ids = chat
+            .active_knowledge_packs()
+            .into_iter()
+            .map(|knowledge_pack| knowledge_pack.knowledge_pack_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(active_pack_ids.len(), 2);
+        assert!(active_pack_ids.contains(&docs_pack_id));
+        assert!(active_pack_ids.contains(&summary_pack_id));
+        assert!(chat.knowledge_packs_for_thread("thread-c").is_empty());
+
+        let docs_pack = chat
+            .knowledge_pack_by_id(&docs_pack_id)
+            .expect("docs pack should exist");
+        assert_eq!(
+            docs_pack.kind,
+            crate::app_state::ForgeKnowledgePackKind::RepoDocs
+        );
+        assert_eq!(
+            docs_pack.catalog_scope.kind,
+            crate::app_state::ForgeKnowledgePackCatalogScopeKind::Project
+        );
+        assert_eq!(docs_pack.source_refs.len(), 2);
+        let summary_pack = chat
+            .knowledge_pack_by_id(&summary_pack_id)
+            .expect("summary pack should exist");
+        assert_eq!(
+            summary_pack.kind,
+            crate::app_state::ForgeKnowledgePackKind::RetainedSessionSummary
+        );
+        assert_eq!(
+            summary_pack.catalog_scope.kind,
+            crate::app_state::ForgeKnowledgePackCatalogScopeKind::Workspace
+        );
+        assert_eq!(
+            summary_pack
+                .source_refs
+                .first()
+                .and_then(|source_ref| source_ref.shared_session_id.as_deref()),
+            Some(shared_session_id.as_str())
+        );
+
+        let mut reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        reloaded.set_thread_entries(vec![
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-a".to_string(),
+                thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(repo.display().to_string()),
+                path: Some(transcript_a_path.display().to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-b".to_string(),
+                thread_name: Some("Beta".to_string()),
+                preview: "second preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(repo.display().to_string()),
+                path: Some(transcript_b_path.display().to_string()),
+                created_at: 1_700_000_010,
+                updated_at: 1_700_000_110,
+            },
+            super::AutopilotThreadListEntry {
+                thread_id: "thread-c".to_string(),
+                thread_name: Some("Gamma".to_string()),
+                preview: "third preview".to_string(),
+                status: Some("idle".to_string()),
+                loaded: true,
+                cwd: Some(other_repo.display().to_string()),
+                path: Some(transcript_c_path.display().to_string()),
+                created_at: 1_700_000_020,
+                updated_at: 1_700_000_120,
+            },
+        ]);
+        assert_eq!(reloaded.knowledge_packs_for_thread("thread-b").len(), 2);
+        assert!(reloaded.knowledge_packs_for_thread("thread-c").is_empty());
+        let reloaded_docs_pack = reloaded
+            .knowledge_pack_by_id(&docs_pack_id)
+            .expect("reloaded docs pack should exist");
+        assert_eq!(reloaded_docs_pack.source_refs.len(), 2);
+        let reloaded_summary_pack = reloaded
+            .knowledge_pack_by_id(&summary_pack_id)
+            .expect("reloaded summary pack should exist");
+        assert_eq!(
+            reloaded_summary_pack
+                .source_refs
+                .first()
+                .map(|source_ref| source_ref.source_kind),
+            Some(
+                crate::app_state::ForgeKnowledgePackSourceKind::ProbeRetainedSessionSummaryArtifact
+            )
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(other_repo);
     }
 
     #[test]
