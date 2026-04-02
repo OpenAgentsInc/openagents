@@ -157,9 +157,14 @@ Examples in the current slice:
 
 - thread reload is Probe-aware
 - review, compaction, rollback, rename, archive, and similar Codex-only actions
-  refuse honestly for Probe-backed sessions
-- desktop mention and image attachments are also refused honestly for Probe
-  turns until that forwarding contract exists
+  still need explicit Probe-aware or app-owned parity work
+- desktop mention and image attachments now go through an explicit app-owned
+  forwarding manifest for Probe-backed turns
+- the forwarded manifest is visible both in shell activity state and in the
+  Probe transcript because the same rendered manifest is what the runtime
+  receives
+- shell-selected skill attachments still stay app-owned for Probe turns until a
+  real tool-attachment contract exists
 
 ## What Still Follows
 

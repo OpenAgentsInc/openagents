@@ -15,7 +15,7 @@ use crate::app_state::{
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeDeliveryReceipt,
     ForgeEvidenceBundle, ForgeSharedSession, ManagedChatChannelProjection,
     ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
-    ManagedChatRelayState, PaneKind, RenderState,
+    ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef, RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -1134,6 +1134,28 @@ fn local_turn_status_summary(status: Option<&str>) -> Option<&'static str> {
     }
 }
 
+fn probe_turn_attachment_activity_line(attachment: &ProbeTurnAttachmentRef) -> String {
+    let label = compact_display_token(attachment.label.trim(), 20);
+    let target = compact_display_token(attachment.target.trim(), 48);
+    match attachment.kind {
+        crate::app_state::ProbeTurnAttachmentKind::Mention => {
+            format!("probe mention: {label} -> {target}")
+        }
+        _ if attachment.label.trim().is_empty()
+            || attachment
+                .label
+                .trim()
+                .eq_ignore_ascii_case(attachment.target.trim()) =>
+        {
+            format!("probe {}: {target}", attachment.kind.display_label())
+        }
+        _ => format!(
+            "probe {}: {label} -> {target}",
+            attachment.kind.display_label()
+        ),
+    }
+}
+
 fn labor_binding_status_lines(binding: &CodexLaborBinding) -> Vec<String> {
     let mut lines = vec![
         format!("work unit: {}", binding.work_unit_id),
@@ -1215,6 +1237,21 @@ fn chat_tool_activity_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> 
             "pending auth refresh: {}",
             autopilot_chat.pending_auth_refresh.len()
         ));
+    }
+    if let Some(forwarding) = autopilot_chat.active_probe_turn_attachment_forwarding() {
+        let mut parts = Vec::new();
+        if forwarding.mention_count() > 0 {
+            parts.push(format!("mentions:{}", forwarding.mention_count()));
+        }
+        if forwarding.image_count() > 0 {
+            parts.push(format!("images:{}", forwarding.image_count()));
+        }
+        if !parts.is_empty() {
+            pending_lines.push(format!("probe attachments: {}", parts.join("  •  ")));
+        }
+        for attachment in forwarding.attachments.iter().take(3) {
+            pending_lines.push(probe_turn_attachment_activity_line(attachment));
+        }
     }
 
     let mut timeline = autopilot_chat
@@ -6685,6 +6722,48 @@ mod tests {
                 .any(|line| line.contains("type=commandExecution"))
         );
         assert!(!lines.iter().any(|line| line.contains("reasoning delta")));
+    }
+
+    #[test]
+    fn tool_activity_lines_include_probe_attachment_forwarding_manifest() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("probe-thread".to_string());
+        chat.set_probe_turn_attachment_forwarding(
+            "probe-thread",
+            Some(crate::app_state::ProbeTurnAttachmentForwarding {
+                prompt_text: "Review the forwarded attachments.".to_string(),
+                attachments: vec![
+                    crate::app_state::ProbeTurnAttachmentRef {
+                        kind: crate::app_state::ProbeTurnAttachmentKind::Mention,
+                        label: "Repo".to_string(),
+                        target: "app://repo".to_string(),
+                    },
+                    crate::app_state::ProbeTurnAttachmentRef {
+                        kind: crate::app_state::ProbeTurnAttachmentKind::LocalImage,
+                        label: "diagram.png".to_string(),
+                        target: "/tmp/diagram.png".to_string(),
+                    },
+                ],
+            }),
+        );
+
+        let lines = chat_tool_activity_lines(&chat);
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "probe attachments: mentions:1  •  images:1")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("probe mention: Repo -> app://repo"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("probe local image: diagram.png -> /tmp/diagram.png"))
+        );
     }
 
     #[test]

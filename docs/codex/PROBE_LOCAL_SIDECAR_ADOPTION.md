@@ -52,6 +52,9 @@ The desktop-side worker:
 - auto-starts the daemon when the socket is missing
 - falls back to a spawned stdio `probe-server` only when the daemon path cannot
   satisfy the first consumer flow
+- keeps desktop-owned mention and image attachment forwarding explicit by
+  rendering a manifest into the Probe prompt instead of pretending the Probe
+  protocol already carries structured desktop attachments
 
 The desktop binary now exposes the same hidden internal helper entrypoints that
 `probe-client` expects:

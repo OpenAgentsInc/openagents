@@ -44,8 +44,7 @@ use crate::app_state::{
 };
 use crate::apple_fm_bridge::AppleFmBridgeCommand;
 use crate::hotbar::{
-    HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
-    hotbar_bounds,
+    HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot, hotbar_bounds,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
@@ -60,34 +59,33 @@ use crate::pane_system::{
     PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
     RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, TassadarLabPaneAction, XtrainExplorerPaneAction,
-    cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_active_job_scroll_event,
-    dispatch_activity_feed_detail_scroll_event, dispatch_apple_adapter_training_input_event,
-    dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
-    dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
-    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_data_buyer_scroll_event,
-    dispatch_data_market_scroll_event, dispatch_data_seller_input_event,
-    dispatch_data_seller_scroll_event, dispatch_earnings_scoreboard_scroll_event,
-    dispatch_job_history_input_event, dispatch_local_inference_input_event,
-    dispatch_log_stream_scroll_event, dispatch_mission_control_input_event,
-    dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
-    dispatch_nostr_identity_scroll_event, dispatch_pay_invoice_input_event,
-    dispatch_provider_control_scroll_event, dispatch_provider_status_scroll_event,
-    dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, dispatch_spark_wallet_scroll_event,
-    dispatch_sync_health_scroll_event, dispatch_tailnet_status_scroll_event,
-    dispatch_voice_playground_input_event, dispatch_wallet_scroll_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count,
-    tick_mission_control_docked_panel_animation, topmost_pane_hit_action_in_order,
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    dispatch_active_job_scroll_event, dispatch_activity_feed_detail_scroll_event,
+    dispatch_apple_adapter_training_input_event, dispatch_apple_fm_workbench_input_event,
+    dispatch_apple_fm_workbench_log_scroll_event, dispatch_buy_mode_payments_scroll_event,
+    dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
+    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
+    dispatch_data_buyer_scroll_event, dispatch_data_market_scroll_event,
+    dispatch_data_seller_input_event, dispatch_data_seller_scroll_event,
+    dispatch_earnings_scoreboard_scroll_event, dispatch_job_history_input_event,
+    dispatch_local_inference_input_event, dispatch_log_stream_scroll_event,
+    dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
+    dispatch_network_requests_input_event, dispatch_nostr_identity_scroll_event,
+    dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
+    dispatch_provider_status_scroll_event, dispatch_relay_connections_input_event,
+    dispatch_rive_preview_input_event, dispatch_settings_input_event, dispatch_spark_input_event,
+    dispatch_spark_wallet_scroll_event, dispatch_sync_health_scroll_event,
+    dispatch_tailnet_status_scroll_event, dispatch_voice_playground_input_event,
+    dispatch_wallet_scroll_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, tick_mission_control_docked_panel_animation,
+    topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
 use crate::render::{
-    COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION, command_registry, logical_size,
-    pane_fullscreen_active, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
-    wallet_balance_sats_label_bounds,
-    hotbar_drag_handle_bounds_for_state,
+    COMMAND_PALETTE_PANE_FILTER_CYCLE_ACTION, command_registry,
+    hotbar_drag_handle_bounds_for_state, logical_size, pane_fullscreen_active, render_frame,
+    sidebar_go_online_button_bounds, sidebar_handle_bounds, wallet_balance_sats_label_bounds,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLifecycleCommand,
@@ -3415,10 +3413,7 @@ fn handle_hotbar_drag_mouse_down(
     true
 }
 
-fn handle_hotbar_drag_mouse_move(
-    state: &mut crate::app_state::RenderState,
-    point: Point,
-) -> bool {
+fn handle_hotbar_drag_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
     if !state.hotbar_drag_state.is_pressed {
         return false;
     }
@@ -4756,10 +4751,11 @@ mod tests {
         format_provider_blockers_for_display, goal_labor_linkage_from_binding,
         is_chat_terminal_shortcut, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
         parse_chat_turn_prompt, parse_positive_amount_str, provider_blocker_detail,
-        resolve_turn_skill_by_name, resolve_turn_skill_by_path, rive_preview_cadence_active,
-        should_mirror_provider_preflight_error, should_open_command_palette,
-        should_request_desktop_redraw, tassadar_lab_keyboard_action, terminal_goal_labor_linkage,
-        validate_lightning_payment_request, xtrain_explorer_keyboard_action,
+        render_probe_turn_prompt, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
+        rive_preview_cadence_active, should_mirror_provider_preflight_error,
+        should_open_command_palette, should_request_desktop_redraw, tassadar_lab_keyboard_action,
+        terminal_goal_labor_linkage, validate_lightning_payment_request,
+        xtrain_explorer_keyboard_action,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{
@@ -5603,6 +5599,60 @@ mod tests {
             &input[3],
             UserInput::Skill { name, .. } if name == "blink"
         ));
+    }
+
+    #[test]
+    fn render_probe_turn_prompt_embeds_forwarded_attachment_manifest() {
+        let cwd = tempfile::tempdir().expect("temp dir");
+        let image_path = cwd.path().join("diagram.png");
+        std::fs::write(&image_path, b"png").expect("image fixture");
+        let (parsed, last_error) = parse_chat_turn_prompt(
+            format!(
+                "/mention app://repo | Repo\n/image {}\nReview the attachment.",
+                image_path.display()
+            ),
+            cwd.path().to_str(),
+        );
+        assert!(last_error.is_none());
+
+        let (prompt, forwarding) =
+            render_probe_turn_prompt(&parsed).expect("Probe prompt should render");
+
+        assert!(prompt.contains("Review the attachment."));
+        assert!(prompt.contains("[Autopilot forwarded attachments to Probe]"));
+        assert!(prompt.contains("mentions:"));
+        assert!(prompt.contains("- Repo -> app://repo"));
+        assert!(prompt.contains("images:"));
+        assert!(prompt.contains("- diagram.png ->"));
+        let forwarding = forwarding.expect("forwarding manifest");
+        assert_eq!(forwarding.mention_count(), 1);
+        assert_eq!(forwarding.image_count(), 1);
+        assert_eq!(forwarding.prompt_text, "Review the attachment.");
+    }
+
+    #[test]
+    fn render_probe_turn_prompt_supports_attachment_only_submission() {
+        let cwd = tempfile::tempdir().expect("temp dir");
+        let source_path = cwd.path().join("src").join("main.rs");
+        std::fs::create_dir_all(source_path.parent().expect("src parent")).expect("src dir");
+        std::fs::write(&source_path, "fn main() {}").expect("source fixture");
+        let (parsed, last_error) = parse_chat_turn_prompt(
+            "/mention src/main.rs | Main File".to_string(),
+            cwd.path().to_str(),
+        );
+        assert!(last_error.is_none());
+
+        let (prompt, forwarding) =
+            render_probe_turn_prompt(&parsed).expect("Probe prompt should render");
+
+        assert!(prompt.contains("Inspect the forwarded attachments and continue from them."));
+        let forwarding = forwarding.expect("forwarding manifest");
+        assert_eq!(
+            forwarding.prompt_text,
+            "Inspect the forwarded attachments and continue from them."
+        );
+        assert_eq!(forwarding.mention_count(), 1);
+        assert_eq!(forwarding.image_count(), 0);
     }
 
     #[test]

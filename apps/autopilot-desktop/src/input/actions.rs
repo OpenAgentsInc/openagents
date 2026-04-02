@@ -610,17 +610,30 @@ fn run_probe_chat_submit_action(
     prompt_chars: usize,
     selected_skill_names: Vec<String>,
 ) -> bool {
-    if !parsed_prompt.mention_attachments.is_empty() || !parsed_prompt.image_attachments.is_empty()
-    {
-        state.autopilot_chat.last_error = Some(
-            "Probe-backed turns do not yet support desktop mention or image attachments."
-                .to_string(),
-        );
-        return true;
+    let (probe_prompt, probe_forwarding) = match render_probe_turn_prompt(&parsed_prompt) {
+        Ok(value) => value,
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    };
+    let display_prompt = probe_prompt.clone();
+
+    if !selected_skill_names.is_empty() {
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "probe runtime kept {} shell-selected skill attachment(s) app-owned; tool attachment forwarding is not wired yet",
+            selected_skill_names.len()
+        ));
+    }
+    if let Some(forwarding) = probe_forwarding.as_ref() {
+        state.autopilot_chat.record_turn_timeline_event(format!(
+            "probe attachment forwarding: mentions={} images={}",
+            forwarding.mention_count(),
+            forwarding.image_count()
+        ));
     }
 
-    let prompt_text = parsed_prompt.prompt_text.trim().to_string();
-    if prompt_text.is_empty() {
+    if display_prompt.trim().is_empty() {
         state.autopilot_chat.last_error = Some("Prompt cannot be empty".to_string());
         return true;
     }
@@ -632,13 +645,6 @@ fn run_probe_chat_submit_action(
         .remember_submission_draft(&thread_id, prompt.clone());
     state.chat_inputs.composer.set_value(String::new());
     state.autopilot_chat.record_composer_draft(String::new());
-
-    if !selected_skill_names.is_empty() {
-        state.autopilot_chat.record_turn_timeline_event(format!(
-            "probe runtime kept {} shell-selected skill attachment(s) app-owned; tool attachment forwarding is not wired yet",
-            selected_skill_names.len()
-        ));
-    }
 
     let session_id = probe_protocol::session::SessionId::new(thread_id.clone());
     let profile = probe_backend_profile_for_chat_session(state);
@@ -652,13 +658,16 @@ fn run_probe_chat_submit_action(
         );
         let command = crate::probe_lane::ProbeLaneCommand::QueueTurn {
             session_id,
-            prompt: prompt_text,
+            prompt: probe_prompt,
             profile,
             tool_loop: Some(tool_loop),
         };
         match state.queue_probe_command(command) {
             Ok(_) => {
-                state.autopilot_chat.submit_steer_prompt(prompt.clone());
+                state.autopilot_chat.submit_steer_prompt(display_prompt);
+                state
+                    .autopilot_chat
+                    .set_probe_turn_attachment_forwarding(&thread_id, probe_forwarding);
                 state
                     .autopilot_chat
                     .set_turn_status(Some(String::from("running+queued")));
@@ -675,13 +684,19 @@ fn run_probe_chat_submit_action(
             Err(error) => {
                 state.chat_inputs.composer.set_value(prompt.clone());
                 state.autopilot_chat.record_composer_draft(prompt);
+                state
+                    .autopilot_chat
+                    .set_probe_turn_attachment_forwarding(&thread_id, None);
                 state.autopilot_chat.last_error = Some(error);
             }
         }
         return true;
     }
 
-    state.autopilot_chat.submit_prompt(prompt.clone());
+    state
+        .autopilot_chat
+        .set_probe_turn_attachment_forwarding(&thread_id, probe_forwarding.clone());
+    state.autopilot_chat.submit_prompt(display_prompt);
     tracing::info!(
         "probe turn/continue request thread_id={} model={} chars={}",
         thread_id,
@@ -690,7 +705,7 @@ fn run_probe_chat_submit_action(
     );
     let command = crate::probe_lane::ProbeLaneCommand::RunTurn {
         session_id,
-        prompt: prompt_text,
+        prompt: probe_prompt,
         profile,
         tool_loop: Some(tool_loop),
         submission_mode: crate::probe_lane::ProbeLaneTurnSubmissionMode::Continue,
@@ -702,6 +717,9 @@ fn run_probe_chat_submit_action(
         Err(error) => {
             state.chat_inputs.composer.set_value(prompt.clone());
             state.autopilot_chat.record_composer_draft(prompt);
+            state
+                .autopilot_chat
+                .set_probe_turn_attachment_forwarding(&thread_id, None);
             state
                 .autopilot_chat
                 .mark_pending_turn_dispatch_failed(error);
@@ -2754,6 +2772,128 @@ pub(super) struct TurnMentionAttachment {
 pub(super) enum TurnImageAttachment {
     Remote { url: String },
     Local { path: std::path::PathBuf },
+}
+
+fn default_probe_turn_prompt_text() -> String {
+    "Inspect the forwarded attachments and continue from them.".to_string()
+}
+
+fn probe_turn_attachment_label_from_path(path: &std::path::Path) -> String {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "image".to_string())
+}
+
+fn build_probe_turn_attachment_forwarding(
+    parsed_prompt: &ParsedChatTurnPrompt,
+) -> Option<crate::app_state::ProbeTurnAttachmentForwarding> {
+    let mut attachments = Vec::new();
+    for mention in &parsed_prompt.mention_attachments {
+        attachments.push(crate::app_state::ProbeTurnAttachmentRef {
+            kind: crate::app_state::ProbeTurnAttachmentKind::Mention,
+            label: mention.name.clone(),
+            target: mention.path.clone(),
+        });
+    }
+    for image in &parsed_prompt.image_attachments {
+        match image {
+            TurnImageAttachment::Remote { url } => {
+                attachments.push(crate::app_state::ProbeTurnAttachmentRef {
+                    kind: crate::app_state::ProbeTurnAttachmentKind::RemoteImage,
+                    label: "remote image".to_string(),
+                    target: url.clone(),
+                });
+            }
+            TurnImageAttachment::Local { path } => {
+                attachments.push(crate::app_state::ProbeTurnAttachmentRef {
+                    kind: crate::app_state::ProbeTurnAttachmentKind::LocalImage,
+                    label: probe_turn_attachment_label_from_path(path),
+                    target: path.display().to_string(),
+                });
+            }
+        }
+    }
+    (!attachments.is_empty()).then(|| crate::app_state::ProbeTurnAttachmentForwarding {
+        prompt_text: parsed_prompt.prompt_text.trim().to_string(),
+        attachments,
+    })
+}
+
+fn render_probe_turn_attachment_manifest_line(
+    attachment: &crate::app_state::ProbeTurnAttachmentRef,
+) -> String {
+    let label = attachment.label.trim();
+    let target = attachment.target.trim();
+    match attachment.kind {
+        crate::app_state::ProbeTurnAttachmentKind::Mention => {
+            format!("- {} -> {}", label, target)
+        }
+        _ if label.is_empty() || label.eq_ignore_ascii_case(target) => {
+            format!("- {}", target)
+        }
+        _ => format!("- {} -> {}", label, target),
+    }
+}
+
+pub(super) fn render_probe_turn_prompt(
+    parsed_prompt: &ParsedChatTurnPrompt,
+) -> Result<
+    (
+        String,
+        Option<crate::app_state::ProbeTurnAttachmentForwarding>,
+    ),
+    String,
+> {
+    let prompt_text = parsed_prompt.prompt_text.trim().to_string();
+    let mut forwarding = build_probe_turn_attachment_forwarding(parsed_prompt);
+    let rendered_prompt_text = if !prompt_text.is_empty() {
+        prompt_text
+    } else if forwarding.is_some() {
+        default_probe_turn_prompt_text()
+    } else {
+        return Err("Prompt cannot be empty".to_string());
+    };
+
+    if let Some(forwarding) = forwarding.as_mut() {
+        forwarding.prompt_text = rendered_prompt_text.clone();
+        let mut lines = vec![rendered_prompt_text.clone(), String::new()];
+        lines.push("[Autopilot forwarded attachments to Probe]".to_string());
+        let mentions = forwarding
+            .attachments
+            .iter()
+            .filter(|attachment| {
+                attachment.kind == crate::app_state::ProbeTurnAttachmentKind::Mention
+            })
+            .collect::<Vec<_>>();
+        if !mentions.is_empty() {
+            lines.push("mentions:".to_string());
+            for attachment in mentions {
+                lines.push(render_probe_turn_attachment_manifest_line(attachment));
+            }
+        }
+        let images = forwarding
+            .attachments
+            .iter()
+            .filter(|attachment| attachment.kind.is_image())
+            .collect::<Vec<_>>();
+        if !images.is_empty() {
+            lines.push("images:".to_string());
+            for attachment in images {
+                lines.push(render_probe_turn_attachment_manifest_line(attachment));
+            }
+        }
+        lines.push(
+            "Treat these attachment references as part of the request. Inspect local paths yourself when needed."
+                .to_string(),
+        );
+        lines.push("[/Autopilot forwarded attachments to Probe]".to_string());
+        return Ok((lines.join("\n"), Some(forwarding.clone())));
+    }
+
+    Ok((rendered_prompt_text, None))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

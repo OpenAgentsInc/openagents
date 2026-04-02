@@ -8707,6 +8707,68 @@ pub struct ForgeSharedSession {
     pub updated_at_epoch_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProbeTurnAttachmentKind {
+    Mention,
+    LocalImage,
+    RemoteImage,
+}
+
+impl ProbeTurnAttachmentKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Mention => "mention",
+            Self::LocalImage => "local_image",
+            Self::RemoteImage => "remote_image",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Mention => "mention",
+            Self::LocalImage => "local image",
+            Self::RemoteImage => "remote image",
+        }
+    }
+
+    pub const fn is_image(self) -> bool {
+        matches!(self, Self::LocalImage | Self::RemoteImage)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProbeTurnAttachmentRef {
+    pub kind: ProbeTurnAttachmentKind,
+    pub label: String,
+    pub target: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProbeTurnAttachmentForwarding {
+    pub prompt_text: String,
+    pub attachments: Vec<ProbeTurnAttachmentRef>,
+}
+
+impl ProbeTurnAttachmentForwarding {
+    pub fn is_empty(&self) -> bool {
+        self.attachments.is_empty()
+    }
+
+    pub fn mention_count(&self) -> usize {
+        self.attachments
+            .iter()
+            .filter(|attachment| attachment.kind == ProbeTurnAttachmentKind::Mention)
+            .count()
+    }
+
+    pub fn image_count(&self) -> usize {
+        self.attachments
+            .iter()
+            .filter(|attachment| attachment.kind.is_image())
+            .count()
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AutopilotProjectDefaults {
     pub model: Option<String>,
@@ -9084,6 +9146,8 @@ pub struct AutopilotChatState {
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
+    thread_probe_turn_attachment_forwarding:
+        std::collections::HashMap<String, ProbeTurnAttachmentForwarding>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
     thread_submission_history: std::collections::HashMap<String, VecDeque<String>>,
@@ -9262,6 +9326,7 @@ impl Default for AutopilotChatState {
             next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
             next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
             review_thread_source_map,
+            thread_probe_turn_attachment_forwarding: std::collections::HashMap::new(),
             thread_composer_drafts: std::collections::HashMap::new(),
             detached_composer_draft: String::new(),
             thread_submission_history: std::collections::HashMap::new(),
@@ -10887,6 +10952,31 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.thread_plan_artifacts.get(thread_id))
+    }
+
+    pub fn set_probe_turn_attachment_forwarding(
+        &mut self,
+        thread_id: &str,
+        forwarding: Option<ProbeTurnAttachmentForwarding>,
+    ) {
+        match forwarding.filter(|forwarding| !forwarding.is_empty()) {
+            Some(forwarding) => {
+                self.thread_probe_turn_attachment_forwarding
+                    .insert(thread_id.to_string(), forwarding);
+            }
+            None => {
+                self.thread_probe_turn_attachment_forwarding
+                    .remove(thread_id);
+            }
+        }
+    }
+
+    pub fn active_probe_turn_attachment_forwarding(
+        &self,
+    ) -> Option<&ProbeTurnAttachmentForwarding> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.thread_probe_turn_attachment_forwarding.get(thread_id))
     }
 
     pub fn active_diff_artifact(&self) -> Option<&AutopilotDiffArtifact> {
@@ -13556,6 +13646,8 @@ impl AutopilotChatState {
         self.review_thread_source_map.remove(thread_id);
         self.review_thread_source_map
             .retain(|_, source_thread_id| source_thread_id != thread_id);
+        self.thread_probe_turn_attachment_forwarding
+            .remove(thread_id);
         self.thread_composer_drafts.remove(thread_id);
         self.thread_submission_history.remove(thread_id);
         self.pending_turn_metadata
