@@ -19,15 +19,15 @@ use probe_protocol::default_local_daemon_socket_path;
 use probe_protocol::runtime::{
     CancelQueuedTurnRequest, CancelQueuedTurnResponse, ClientMessage, EventEnvelope,
     InitializeRequest, InspectSessionTurnsResponse, InterruptTurnRequest, InterruptTurnResponse,
-    QueueTurnResponse, QueuedTurnStatus, RequestEnvelope, ResolvePendingApprovalRequest,
-    ResolvePendingApprovalResponse, ResponseBody, ResponseEnvelope, RuntimeProgressEvent,
-    RuntimeRequest, RuntimeResponse, ServerEvent, ServerMessage, SessionLookupRequest,
-    SessionSnapshot, StartSessionRequest, ToolApprovalRecipe, ToolChoice,
+    QueueTurnResponse, QueuedTurnStatus, DetachedSessionEventPayload, RequestEnvelope,
+    ResolvePendingApprovalRequest, ResolvePendingApprovalResponse, ResponseBody, ResponseEnvelope,
+    RuntimeProgressEvent, RuntimeRequest, RuntimeResponse, ServerEvent, ServerMessage,
+    SessionLookupRequest, SessionSnapshot, StartSessionRequest, ToolApprovalRecipe, ToolChoice,
     ToolDeniedAction as ProtocolDeniedAction, ToolLongContextRecipe, ToolLoopRecipe,
     ToolOracleRecipe, ToolSetKind, TurnAuthor, TurnRequest, TurnResponse,
 };
 use probe_protocol::session::{
-    PendingToolApproval, SessionId, SessionMetadata, ToolApprovalResolution,
+    PendingToolApproval, SessionChildSummary, SessionId, SessionMetadata, ToolApprovalResolution,
 };
 
 const PROBE_LANE_POLL: Duration = Duration::from_millis(750);
@@ -236,6 +236,10 @@ pub enum ProbeLaneNotification {
     SessionLoaded {
         snapshot: SessionSnapshot,
         control: InspectSessionTurnsResponse,
+    },
+    ChildSessionUpdated {
+        session_id: String,
+        child: SessionChildSummary,
     },
     RuntimeProgress {
         session_id: String,
@@ -1214,7 +1218,16 @@ fn handle_runtime_event_notification(
                 },
             ));
         }
-        ServerEvent::DetachedSessionStream { .. } => {}
+        ServerEvent::DetachedSessionStream { record } => {
+            if let DetachedSessionEventPayload::ChildSessionUpdated { child } = record.payload {
+                let _ = update_tx.send(ProbeLaneUpdate::Notification(
+                    ProbeLaneNotification::ChildSessionUpdated {
+                        session_id: record.session_id.as_str().to_string(),
+                        child,
+                    },
+                ));
+            }
+        }
     }
 }
 

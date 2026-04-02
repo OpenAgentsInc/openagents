@@ -12,11 +12,12 @@ use crate::app_state::{
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
-    DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeDeliveryReceipt,
-    ForgeEvidenceBundle, ForgeSharedSession, ForgeWorkspaceRestoreManifest,
-    ForgeWorkspaceSnapshot, ManagedChatChannelProjection, ManagedChatDeliveryState,
-    ManagedChatGroupProjection, ManagedChatMessageProjection, ManagedChatRelayState, PaneKind,
-    ProbeTurnAttachmentRef, RenderState,
+    DirectMessageMessageProjection, DirectMessageRoomProjection,
+    ForgeDelegatedChildSessionCard, ForgeDeliveryReceipt, ForgeEvidenceBundle,
+    ForgeSharedSession, ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot,
+    ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
+    ManagedChatMessageProjection, ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef,
+    RenderState,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -2802,6 +2803,12 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             compact_display_token(delivery_receipt_id, 24)
         ));
     }
+    if !session.delegated_child_sessions.is_empty() {
+        lines.push(format!(
+            "- **delegated child sessions:** {}",
+            session.delegated_child_sessions.len()
+        ));
+    }
     if let Some(workspace_snapshot_id) = session.workspace_snapshot_id.as_deref() {
         lines.push(format!(
             "- **workspace snapshot:** `{}`",
@@ -2878,6 +2885,141 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
     } else {
         lines.push(String::new());
         lines.push("_No explicit handoff recorded yet._".to_string());
+    }
+    lines.join("\n")
+}
+
+fn active_delegated_child_sessions_meta_line(
+    delegated_child_sessions: &[ForgeDelegatedChildSessionCard],
+) -> String {
+    let active_count = delegated_child_sessions
+        .iter()
+        .filter(|child| {
+            matches!(
+                child.status,
+                crate::app_state::ForgeDelegatedChildSessionStatus::Running
+                    | crate::app_state::ForgeDelegatedChildSessionStatus::Queued
+                    | crate::app_state::ForgeDelegatedChildSessionStatus::ApprovalPaused
+            )
+        })
+        .count();
+    let terminal_count = delegated_child_sessions
+        .iter()
+        .filter(|child| {
+            matches!(
+                child.status,
+                crate::app_state::ForgeDelegatedChildSessionStatus::Completed
+                    | crate::app_state::ForgeDelegatedChildSessionStatus::Failed
+                    | crate::app_state::ForgeDelegatedChildSessionStatus::Cancelled
+                    | crate::app_state::ForgeDelegatedChildSessionStatus::TimedOut
+            )
+        })
+        .count();
+    let mut parts = vec![format!("children:{}", delegated_child_sessions.len())];
+    parts.push(format!("active:{active_count}"));
+    parts.push(format!("terminal:{terminal_count}"));
+    if let Some(updated) = delegated_child_sessions
+        .iter()
+        .map(|child| child.updated_at_epoch_ms)
+        .max()
+        .and_then(|updated| format_thread_timestamp(updated as i64))
+    {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_delegated_child_sessions_markdown_source(
+    delegated_child_sessions: &[ForgeDelegatedChildSessionCard],
+) -> String {
+    let mut lines = Vec::new();
+    for child in delegated_child_sessions.iter().take(6) {
+        let mut headline = format!(
+            "- **{}**  •  `{}`  •  {}",
+            compact_display_token(child.title.as_str(), 44),
+            compact_display_token(child.child_session_id.as_str(), 18),
+            child.status.display_label()
+        );
+        if child.archived_in_probe {
+            headline.push_str("  •  archived");
+        }
+        lines.push(headline);
+        if let Some(purpose) = child.purpose.as_deref() {
+            lines.push(format!(
+                "  - purpose: {}",
+                compact_display_token(purpose, 88)
+            ));
+        }
+        if let Some(initiator_display_name) = child.initiator_display_name.as_deref() {
+            lines.push(format!(
+                "  - initiator: {}",
+                compact_display_token(initiator_display_name, 44)
+            ));
+        } else if let Some(initiator_client_name) = child.initiator_client_name.as_deref() {
+            lines.push(format!(
+                "  - initiator: {}",
+                compact_display_token(initiator_client_name, 44)
+            ));
+        }
+        lines.push(format!(
+            "  - cwd: `{}`",
+            compact_display_token(&child.cwd.display().to_string(), 56)
+        ));
+        if child.parent_turn_id.is_some() || child.parent_turn_index.is_some() {
+            let mut parent_parts = Vec::new();
+            if let Some(parent_turn_id) = child.parent_turn_id.as_deref() {
+                parent_parts.push(format!(
+                    "turn:{}",
+                    compact_display_token(parent_turn_id, 18)
+                ));
+            }
+            if let Some(parent_turn_index) = child.parent_turn_index {
+                parent_parts.push(format!("index:{parent_turn_index}"));
+            }
+            if !parent_parts.is_empty() {
+                lines.push(format!("  - parent link: {}", parent_parts.join("  •  ")));
+            }
+        }
+        if child.closure_status.is_some()
+            || child.closure_delivery_status.is_some()
+            || child.closure_branch_name.is_some()
+            || child.closure_compare_ref.is_some()
+        {
+            let mut closure_parts = Vec::new();
+            if let Some(closure_status) = child.closure_status {
+                closure_parts.push(closure_status.display_label().to_string());
+            }
+            if let Some(delivery_status) = child.closure_delivery_status {
+                closure_parts.push(format!("delivery:{}", delivery_status.display_label()));
+            }
+            if let Some(branch_name) = child.closure_branch_name.as_deref() {
+                closure_parts.push(format!(
+                    "branch:{}",
+                    compact_display_token(branch_name, 18)
+                ));
+            }
+            if let Some(head_commit) = child.closure_head_commit.as_deref() {
+                closure_parts.push(format!(
+                    "head:{}",
+                    compact_display_token(head_commit, 16)
+                ));
+            }
+            if let Some(compare_ref) = child.closure_compare_ref.as_deref() {
+                closure_parts.push(format!(
+                    "compare:{}",
+                    compact_display_token(compare_ref, 28)
+                ));
+            }
+            if !closure_parts.is_empty() {
+                lines.push(format!("  - closure: {}", closure_parts.join("  •  ")));
+            }
+        }
+    }
+    if delegated_child_sessions.len() > 6 {
+        lines.push(format!(
+            "- _{} additional delegated child sessions omitted_",
+            delegated_child_sessions.len() - 6
+        ));
     }
     lines.join("\n")
 }
@@ -3135,6 +3277,20 @@ fn active_evidence_bundle_markdown_source(bundle: &ForgeEvidenceBundle) -> Strin
         "- **verification:** passed {}  •  failed {}  •  running {}",
         passed, failed, running
     ));
+    if !bundle.delegated_child_session_ids.is_empty() {
+        lines.push(format!(
+            "- **delegated child sessions:** {}",
+            bundle.delegated_child_session_ids.len()
+        ));
+        for child_session_id in bundle.delegated_child_session_ids.iter().take(3) {
+            lines.push(format!(
+                "  - `{}`",
+                compact_display_token(child_session_id, 24)
+            ));
+        }
+    } else {
+        lines.push("- **delegated child sessions:** _none linked_".to_string());
+    }
     for run in bundle.verification_runs.iter().take(3) {
         let mut line = format!(
             "  - `{}`: {}",
@@ -3241,6 +3397,20 @@ fn active_delivery_receipt_markdown_source(receipt: &ForgeDeliveryReceipt) -> St
         ));
     } else {
         lines.push("- **pull request:** _not opened yet_".to_string());
+    }
+    if !receipt.delegated_child_session_ids.is_empty() {
+        lines.push(format!(
+            "- **delegated child sessions:** {}",
+            receipt.delegated_child_session_ids.len()
+        ));
+        for child_session_id in receipt.delegated_child_session_ids.iter().take(3) {
+            lines.push(format!(
+                "  - `{}`",
+                compact_display_token(child_session_id, 24)
+            ));
+        }
+    } else {
+        lines.push("- **delegated child sessions:** _none linked_".to_string());
     }
     if !receipt.suggested_title.trim().is_empty() {
         lines.push(format!(
@@ -5608,6 +5778,47 @@ pub fn paint(
                     y += markdown_height;
                 }
                 y += 10.0;
+
+                if !shared_session.delegated_child_sessions.is_empty() {
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        "[delegated child sessions]",
+                        Point::new(transcript_scroll_clip.origin.x, y),
+                        10.0,
+                        theme::accent::PRIMARY,
+                    ));
+                    y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &active_delegated_child_sessions_meta_line(
+                            shared_session.delegated_child_sessions.as_slice(),
+                        ),
+                        Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                        9.0,
+                        theme::text::MUTED,
+                    ));
+                    y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                    let delegated_children_markdown =
+                        active_delegated_child_sessions_markdown_source(
+                            shared_session.delegated_child_sessions.as_slice(),
+                        );
+                    if !delegated_children_markdown.trim().is_empty() {
+                        let markdown_document =
+                            markdown_parser.parse(&delegated_children_markdown);
+                        let markdown_height = markdown_renderer
+                            .render(
+                                &markdown_document,
+                                Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                                markdown_width,
+                                paint.text,
+                                paint.scene,
+                            )
+                            .height
+                            .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                        y += markdown_height;
+                    }
+                    y += 10.0;
+                }
             }
             if let Some(workspace_snapshot) = autopilot_chat.active_workspace_snapshot() {
                 let snapshot_color = match workspace_snapshot.snapshot_ref_status {

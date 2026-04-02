@@ -8414,6 +8414,110 @@ pub struct ForgeWorkspaceRestoreManifest {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ForgeDelegatedChildSessionStatus {
+    Idle,
+    Running,
+    Queued,
+    ApprovalPaused,
+    Completed,
+    Failed,
+    Cancelled,
+    TimedOut,
+}
+
+impl ForgeDelegatedChildSessionStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Running => "running",
+            Self::Queued => "queued",
+            Self::ApprovalPaused => "approval_paused",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::TimedOut => "timed_out",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Running => "running",
+            Self::Queued => "queued",
+            Self::ApprovalPaused => "awaiting approval",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::TimedOut => "timed out",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeDelegatedChildDeliveryStatus {
+    NeedsCommit,
+    LocalOnly,
+    NeedsPush,
+    Synced,
+    Diverged,
+}
+
+impl ForgeDelegatedChildDeliveryStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NeedsCommit => "needs_commit",
+            Self::LocalOnly => "local_only",
+            Self::NeedsPush => "needs_push",
+            Self::Synced => "synced",
+            Self::Diverged => "diverged",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::NeedsCommit => "needs commit",
+            Self::LocalOnly => "local only",
+            Self::NeedsPush => "needs push",
+            Self::Synced => "synced",
+            Self::Diverged => "diverged",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeDelegatedChildSessionCard {
+    pub child_session_id: String,
+    pub title: String,
+    pub cwd: PathBuf,
+    pub archived_in_probe: bool,
+    pub status: ForgeDelegatedChildSessionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initiator_display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initiator_client_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_turn_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_status: Option<ForgeDelegatedChildSessionStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_delivery_status: Option<ForgeDelegatedChildDeliveryStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_branch_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_head_commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_compare_ref: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ForgeEvidenceVerificationStatus {
     Running,
     Passed,
@@ -8547,6 +8651,8 @@ pub struct ForgeEvidenceBundle {
     pub evidence_bundle_id: String,
     pub shared_session_id: String,
     pub probe_session_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delegated_child_session_ids: Vec<String>,
     pub diff_ref: Option<ForgeEvidenceDiffRef>,
     pub review_ref: Option<ForgeEvidenceReviewRef>,
     pub verification_runs: Vec<ForgeEvidenceVerificationRun>,
@@ -8709,6 +8815,8 @@ pub struct ForgeDeliveryReceipt {
     pub shared_session_id: String,
     pub evidence_bundle_id: Option<String>,
     pub probe_session_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delegated_child_session_ids: Vec<String>,
     pub status: ForgeDeliveryReceiptStatus,
     pub base_branch: String,
     pub base_commit: Option<String>,
@@ -8728,6 +8836,8 @@ pub struct ForgeDeliveryReceipt {
 pub struct ForgeSharedSession {
     pub shared_session_id: String,
     pub probe_session_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delegated_child_sessions: Vec<ForgeDelegatedChildSessionCard>,
     pub workspace_root: Option<String>,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
@@ -9701,6 +9811,9 @@ fn normalize_forge_shared_sessions(
         session.shared_session_id = session.shared_session_id.trim().to_string();
         session.probe_session_ids =
             normalize_probe_session_ids(std::mem::take(&mut session.probe_session_ids));
+        session.delegated_child_sessions = normalize_forge_delegated_child_sessions(
+            std::mem::take(&mut session.delegated_child_sessions),
+        );
         session.shell_title = session
             .shell_title
             .take()
@@ -9734,6 +9847,85 @@ fn normalize_forge_shared_sessions(
     }
     sessions.retain(|session| !session.probe_session_ids.is_empty());
     sessions
+}
+
+fn normalize_forge_delegated_child_session_ids(mut child_session_ids: Vec<String>) -> Vec<String> {
+    child_session_ids = child_session_ids
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect();
+    child_session_ids.sort();
+    child_session_ids.dedup();
+    child_session_ids
+}
+
+fn normalize_forge_delegated_child_sessions(
+    mut child_sessions: Vec<ForgeDelegatedChildSessionCard>,
+) -> Vec<ForgeDelegatedChildSessionCard> {
+    child_sessions.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.child_session_id.cmp(&rhs.child_session_id))
+    });
+    let mut seen_ids = HashSet::new();
+    child_sessions.retain(|child| {
+        let child_session_id = child.child_session_id.trim();
+        !child_session_id.is_empty() && seen_ids.insert(child_session_id.to_string())
+    });
+    for child in &mut child_sessions {
+        child.child_session_id = child.child_session_id.trim().to_string();
+        child.title = child.title.trim().to_string();
+        child.initiator_display_name = child
+            .initiator_display_name
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        child.initiator_client_name = child
+            .initiator_client_name
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        child.purpose = child
+            .purpose
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        child.parent_turn_id = child
+            .parent_turn_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        child.closure_branch_name = child
+            .closure_branch_name
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        child.closure_head_commit = child
+            .closure_head_commit
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        child.closure_compare_ref = child
+            .closure_compare_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+    child_sessions
+        .into_iter()
+        .filter(|child| !child.title.is_empty())
+        .collect()
+}
+
+fn forge_shared_session_child_ids(shared_session: &ForgeSharedSession) -> Vec<String> {
+    normalize_forge_delegated_child_session_ids(
+        shared_session
+            .delegated_child_sessions
+            .iter()
+            .map(|child| child.child_session_id.clone())
+            .collect(),
+    )
 }
 
 fn normalize_forge_workspace_snapshots(
@@ -9889,6 +10081,9 @@ fn normalize_forge_evidence_bundles(
         bundle.shared_session_id = bundle.shared_session_id.trim().to_string();
         bundle.probe_session_ids =
             normalize_probe_session_ids(std::mem::take(&mut bundle.probe_session_ids));
+        bundle.delegated_child_session_ids = normalize_forge_delegated_child_session_ids(
+            std::mem::take(&mut bundle.delegated_child_session_ids),
+        );
 
         bundle.verification_runs = bundle
             .verification_runs
@@ -9992,6 +10187,9 @@ fn normalize_forge_delivery_receipts(
         receipt.shared_session_id = receipt.shared_session_id.trim().to_string();
         receipt.probe_session_ids =
             normalize_probe_session_ids(std::mem::take(&mut receipt.probe_session_ids));
+        receipt.delegated_child_session_ids = normalize_forge_delegated_child_session_ids(
+            std::mem::take(&mut receipt.delegated_child_session_ids),
+        );
         receipt.evidence_bundle_id = receipt
             .evidence_bundle_id
             .take()
@@ -11349,6 +11547,12 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.shared_session_for_thread(thread_id))
     }
 
+    pub fn active_delegated_child_sessions(&self) -> Vec<&ForgeDelegatedChildSessionCard> {
+        self.active_shared_session()
+            .map(|session| session.delegated_child_sessions.iter().collect())
+            .unwrap_or_default()
+    }
+
     fn shared_session_id_for_thread(&self, thread_id: &str) -> Option<String> {
         self.shared_session_for_thread(thread_id)
             .map(|session| session.shared_session_id.clone())
@@ -11723,6 +11927,7 @@ impl AutopilotChatState {
                     "Shared session `{shared_session_id}` disappeared before an evidence bundle could be created."
                 )
             })?;
+        let child_session_ids = forge_shared_session_child_ids(&session);
         let evidence_bundle_id = self.next_evidence_bundle_id();
         self.forge_evidence_bundles.insert(
             evidence_bundle_id.clone(),
@@ -11730,6 +11935,7 @@ impl AutopilotChatState {
                 evidence_bundle_id: evidence_bundle_id.clone(),
                 shared_session_id: shared_session_id.to_string(),
                 probe_session_ids: normalize_probe_session_ids(session.probe_session_ids),
+                delegated_child_session_ids: child_session_ids,
                 diff_ref: None,
                 review_ref: None,
                 verification_runs: Vec::new(),
@@ -11774,6 +11980,7 @@ impl AutopilotChatState {
             self.latest_diff_artifact_for_probe_sessions(&shared_session.probe_session_ids);
         let latest_review =
             self.latest_review_artifact_for_probe_sessions(&shared_session.probe_session_ids);
+        let child_session_ids = forge_shared_session_child_ids(&shared_session);
         let bundle = self
             .forge_evidence_bundles
             .get_mut(&evidence_bundle_id)
@@ -11784,6 +11991,7 @@ impl AutopilotChatState {
             })?;
         bundle.shared_session_id = shared_session_id.to_string();
         bundle.probe_session_ids = normalize_probe_session_ids(shared_session.probe_session_ids);
+        bundle.delegated_child_session_ids = child_session_ids;
         bundle.diff_ref = latest_diff.as_ref().map(|artifact| ForgeEvidenceDiffRef {
             thread_id: artifact.thread_id.clone(),
             source_turn_id: artifact.source_turn_id.clone(),
@@ -11898,6 +12106,31 @@ impl AutopilotChatState {
         contributors
     }
 
+    fn sync_probe_child_links_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) -> Result<(), String> {
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before child-session linkage could be refreshed."
+                )
+            })?;
+        let child_session_ids = forge_shared_session_child_ids(&shared_session);
+        let _ = self.sync_evidence_bundle_for_shared_session(shared_session_id, updated_at_epoch_ms)?;
+        if let Some(delivery_receipt_id) = shared_session.delivery_receipt_id.as_deref()
+            && let Some(receipt) = self.forge_delivery_receipts.get_mut(delivery_receipt_id)
+        {
+            receipt.delegated_child_session_ids = child_session_ids;
+            receipt.updated_at_epoch_ms = updated_at_epoch_ms.max(receipt.updated_at_epoch_ms);
+        }
+        Ok(())
+    }
+
     fn ensure_probe_delivery_receipt_for_shared_session(
         &mut self,
         shared_session_id: &str,
@@ -11935,6 +12168,7 @@ impl AutopilotChatState {
                 probe_session_ids: normalize_probe_session_ids(
                     shared_session.probe_session_ids.clone(),
                 ),
+                delegated_child_session_ids: forge_shared_session_child_ids(&shared_session),
                 status: ForgeDeliveryReceiptStatus::Prepared,
                 base_branch: "main".to_string(),
                 base_commit: None,
@@ -12031,6 +12265,7 @@ impl AutopilotChatState {
         };
         let next_probe_session_ids =
             normalize_probe_session_ids(shared_session.probe_session_ids.clone());
+        let next_child_session_ids = forge_shared_session_child_ids(&shared_session);
         let next_base_branch = base_branch.into().trim().to_string();
         let next_base_commit = base_commit
             .map(|value| value.trim().to_string())
@@ -12064,6 +12299,7 @@ impl AutopilotChatState {
         receipt.shared_session_id = shared_session_id.clone();
         receipt.evidence_bundle_id = Some(evidence_bundle_id.clone());
         receipt.probe_session_ids = next_probe_session_ids;
+        receipt.delegated_child_session_ids = next_child_session_ids;
         receipt.status = final_status;
         receipt.base_branch = next_base_branch;
         receipt.base_commit = next_base_commit;
@@ -12335,6 +12571,7 @@ impl AutopilotChatState {
                 ForgeSharedSession {
                     shared_session_id: shared_session_id.clone(),
                     probe_session_ids: vec![thread_id.to_string()],
+                    delegated_child_sessions: Vec::new(),
                     workspace_root,
                     project_id,
                     project_name: metadata.project_name,
@@ -12378,6 +12615,63 @@ impl AutopilotChatState {
         );
         self.persist_codex_artifact_projection();
         Some(shared_session_id)
+    }
+
+    pub fn sync_probe_child_sessions_for_thread(
+        &mut self,
+        thread_id: &str,
+        delegated_child_sessions: Vec<ForgeDelegatedChildSessionCard>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let normalized_child_sessions =
+            normalize_forge_delegated_child_sessions(delegated_child_sessions);
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before delegated child sessions could be synced."
+                )
+            })?;
+        shared_session.delegated_child_sessions = normalized_child_sessions;
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        let _ = shared_session;
+        self.sync_probe_child_links_for_shared_session(shared_session_id.as_str(), updated_at_epoch_ms)?;
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn record_probe_child_session_update_for_thread(
+        &mut self,
+        thread_id: &str,
+        delegated_child_session: ForgeDelegatedChildSessionCard,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, updated_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let mut next_child_sessions = self
+            .forge_shared_sessions
+            .get(&shared_session_id)
+            .map(|session| session.delegated_child_sessions.clone())
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before delegated child-session state could be updated."
+                )
+            })?;
+        next_child_sessions.retain(|child| {
+            child.child_session_id != delegated_child_session.child_session_id
+        });
+        next_child_sessions.push(delegated_child_session);
+        self.sync_probe_child_sessions_for_thread(
+            thread_id,
+            next_child_sessions,
+            updated_at_epoch_ms,
+        )
     }
 
     pub fn record_shared_session_handoff_for_thread(
@@ -19444,6 +19738,8 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use crate::app_state::{
+        ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
+        ForgeDelegatedChildSessionStatus,
         ForgeDeliveryContributorRole, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeSharedSessionControlOwner,
@@ -24710,6 +25006,131 @@ mod tests {
         assert_eq!(
             reloaded_receipt.pr_url.as_deref(),
             Some("https://github.com/OpenAgentsInc/openagents/pull/42")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_delegated_child_sessions() {
+        let repo = init_git_workspace("delegated-child-sessions");
+        let projection_path = unique_codex_artifact_projection_path("delegated-child-sessions");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+
+        chat.sync_probe_child_sessions_for_thread(
+            "thread-a",
+            vec![ForgeDelegatedChildSessionCard {
+                child_session_id: "child-1".to_string(),
+                title: "Fix parser edge case".to_string(),
+                cwd: repo.join("subtasks/parser"),
+                archived_in_probe: false,
+                status: ForgeDelegatedChildSessionStatus::Completed,
+                initiator_display_name: Some("Autopilot".to_string()),
+                initiator_client_name: Some("openagents-autopilot-desktop".to_string()),
+                purpose: Some("Investigate the parser error and land the narrow fix.".to_string()),
+                parent_turn_id: Some("parent-turn-7".to_string()),
+                parent_turn_index: Some(7),
+                closure_status: Some(ForgeDelegatedChildSessionStatus::Completed),
+                closure_delivery_status: Some(ForgeDelegatedChildDeliveryStatus::NeedsPush),
+                closure_branch_name: Some("feature/parser-fix".to_string()),
+                closure_head_commit: Some("abc123def456".to_string()),
+                closure_compare_ref: Some("origin/main...feature/parser-fix".to_string()),
+                created_at_epoch_ms: 1_700_000_120,
+                updated_at_epoch_ms: 1_700_000_130,
+            }],
+            1_700_000_130,
+        )
+        .expect("delegated child sessions should sync");
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session with child");
+        assert_eq!(shared_session.delegated_child_sessions.len(), 1);
+        assert_eq!(
+            shared_session.delegated_child_sessions[0].closure_branch_name.as_deref(),
+            Some("feature/parser-fix")
+        );
+
+        let evidence_bundle = chat
+            .active_evidence_bundle()
+            .expect("evidence bundle should exist");
+        assert_eq!(
+            evidence_bundle.delegated_child_session_ids,
+            vec!["child-1".to_string()]
+        );
+
+        let (delivery_receipt_id, _) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("base123".to_string()),
+                "feature/probe-child-session",
+                "head456",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/probe-child-session?expand=1"
+                        .to_string(),
+                ),
+                None,
+                "Ship child session linkage",
+                "## Summary\n- link delegated child sessions",
+                1_700_000_140,
+            )
+            .expect("delivery receipt should record");
+        let receipt = chat
+            .active_delivery_receipt()
+            .expect("delivery receipt should exist");
+        assert_eq!(receipt.delivery_receipt_id, delivery_receipt_id);
+        assert_eq!(
+            receipt.delegated_child_session_ids,
+            vec!["child-1".to_string()]
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(reloaded_session.delegated_child_sessions.len(), 1);
+        assert_eq!(
+            reloaded_session.delegated_child_sessions[0]
+                .closure_delivery_status
+                .as_ref(),
+            Some(&ForgeDelegatedChildDeliveryStatus::NeedsPush)
+        );
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.evidence_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_evidence_bundles.get(bundle_id))
+            .expect("reloaded evidence bundle");
+        assert_eq!(
+            reloaded_bundle.delegated_child_session_ids,
+            vec!["child-1".to_string()]
+        );
+        let reloaded_receipt = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.delivery_receipt_id.as_deref())
+            .and_then(|receipt_id| reloaded.forge_delivery_receipts.get(receipt_id))
+            .expect("reloaded delivery receipt");
+        assert_eq!(
+            reloaded_receipt.delegated_child_session_ids,
+            vec!["child-1".to_string()]
         );
 
         let _ = std::fs::remove_file(projection_path);

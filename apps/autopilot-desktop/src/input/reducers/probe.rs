@@ -1,10 +1,16 @@
-use crate::app_state::{AutopilotRole, AutopilotThreadListEntry, RenderState};
+use crate::app_state::{
+    AutopilotRole, AutopilotThreadListEntry, ForgeDelegatedChildDeliveryStatus,
+    ForgeDelegatedChildSessionCard, ForgeDelegatedChildSessionStatus, RenderState,
+};
 use crate::probe_lane::{
     ProbeLaneCommandResponse, ProbeLaneLifecycle, ProbeLaneNotification, ProbeLaneSnapshot,
     ProbeListedSession,
 };
 use probe_protocol::runtime::{QueuedTurnStatus, RuntimeProgressEvent};
-use probe_protocol::session::{SessionMetadata, TranscriptEvent, TranscriptItemKind};
+use probe_protocol::session::{
+    SessionChildStatus, SessionChildSummary, SessionDeliveryStatus, SessionMetadata, SessionState,
+    TranscriptEvent, TranscriptItemKind,
+};
 
 fn probe_live_turn_id(session_id: &str) -> String {
     format!("probe-live:{session_id}")
@@ -142,6 +148,15 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                 thread_id.as_str(),
                 snapshot.session.updated_at_ms,
             );
+            let _ = state.autopilot_chat.sync_probe_child_sessions_for_thread(
+                thread_id.as_str(),
+                snapshot
+                    .child_sessions
+                    .iter()
+                    .map(forge_child_session_card_from_probe)
+                    .collect(),
+                snapshot.session.updated_at_ms,
+            );
             if let Some(shell_title) = state
                 .autopilot_chat
                 .probe_shared_session_shell_title(thread_id.as_str())
@@ -172,6 +187,20 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                     .set_connection_status(state.probe_lane.lifecycle.label().to_string());
                 state.autopilot_chat.last_error = None;
             }
+        }
+        ProbeLaneNotification::ChildSessionUpdated { session_id, child } => {
+            let _ = state
+                .autopilot_chat
+                .record_probe_child_session_update_for_thread(
+                    session_id.as_str(),
+                    forge_child_session_card_from_probe(child),
+                    current_epoch_millis(),
+                );
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "probe delegated child: {} {}",
+                child.title,
+                forge_child_status_from_probe(child.status).display_label()
+            ));
         }
         ProbeLaneNotification::RuntimeProgress { session_id, event } => {
             apply_runtime_progress(state, session_id.as_str(), event);
@@ -416,6 +445,75 @@ fn probe_session_preview(
         .map(|item| item.text.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| Some(session.cwd.display().to_string()))
+}
+
+fn forge_child_status_from_probe(status: SessionChildStatus) -> ForgeDelegatedChildSessionStatus {
+    match status {
+        SessionChildStatus::Idle => ForgeDelegatedChildSessionStatus::Idle,
+        SessionChildStatus::Running => ForgeDelegatedChildSessionStatus::Running,
+        SessionChildStatus::Queued => ForgeDelegatedChildSessionStatus::Queued,
+        SessionChildStatus::ApprovalPaused => ForgeDelegatedChildSessionStatus::ApprovalPaused,
+        SessionChildStatus::Completed => ForgeDelegatedChildSessionStatus::Completed,
+        SessionChildStatus::Failed => ForgeDelegatedChildSessionStatus::Failed,
+        SessionChildStatus::Cancelled => ForgeDelegatedChildSessionStatus::Cancelled,
+        SessionChildStatus::TimedOut => ForgeDelegatedChildSessionStatus::TimedOut,
+    }
+}
+
+fn forge_child_delivery_status_from_probe(
+    status: SessionDeliveryStatus,
+) -> ForgeDelegatedChildDeliveryStatus {
+    match status {
+        SessionDeliveryStatus::NeedsCommit => ForgeDelegatedChildDeliveryStatus::NeedsCommit,
+        SessionDeliveryStatus::LocalOnly => ForgeDelegatedChildDeliveryStatus::LocalOnly,
+        SessionDeliveryStatus::NeedsPush => ForgeDelegatedChildDeliveryStatus::NeedsPush,
+        SessionDeliveryStatus::Synced => ForgeDelegatedChildDeliveryStatus::Synced,
+        SessionDeliveryStatus::Diverged => ForgeDelegatedChildDeliveryStatus::Diverged,
+    }
+}
+
+fn forge_child_session_card_from_probe(child: &SessionChildSummary) -> ForgeDelegatedChildSessionCard {
+    ForgeDelegatedChildSessionCard {
+        child_session_id: child.session_id.as_str().to_string(),
+        title: child.title.clone(),
+        cwd: child.cwd.clone(),
+        archived_in_probe: child.state == SessionState::Archived,
+        status: forge_child_status_from_probe(child.status),
+        initiator_display_name: child
+            .initiator
+            .as_ref()
+            .and_then(|initiator| initiator.display_name.clone()),
+        initiator_client_name: child
+            .initiator
+            .as_ref()
+            .map(|initiator| initiator.client_name.clone()),
+        purpose: child.purpose.clone(),
+        parent_turn_id: child.parent_turn_id.clone(),
+        parent_turn_index: child.parent_turn_index,
+        closure_status: child
+            .closure
+            .as_ref()
+            .map(|closure| forge_child_status_from_probe(closure.status)),
+        closure_delivery_status: child.closure.as_ref().and_then(|closure| {
+            closure
+                .delivery_status
+                .map(forge_child_delivery_status_from_probe)
+        }),
+        closure_branch_name: child
+            .closure
+            .as_ref()
+            .and_then(|closure| closure.branch_name.clone()),
+        closure_head_commit: child
+            .closure
+            .as_ref()
+            .and_then(|closure| closure.head_commit.clone()),
+        closure_compare_ref: child
+            .closure
+            .as_ref()
+            .and_then(|closure| closure.compare_ref.clone()),
+        created_at_epoch_ms: child.created_at_ms,
+        updated_at_epoch_ms: child.updated_at_ms,
+    }
 }
 
 fn probe_control_status_label(

@@ -73,6 +73,8 @@ Current local-first rules:
 
 - the Forge shared session id is distinct from the Probe `session_id`
 - one shared session can point at one or more Probe sessions over time
+- the shared session can now also persist delegated child-session cards derived
+  from Probe child-session summaries
 - the shared session records the local human and the local Probe agent as
   explicit participants
 - the current control owner is stored separately from raw Probe runtime status
@@ -86,6 +88,20 @@ The first operator-facing control is the chat command:
 
 - `/handoff human <summary>`
 - `/handoff agent <summary>`
+
+When Probe exposes delegated child sessions, Autopilot now projects them as
+app-owned cards inside the shared session instead of leaving them buried in the
+parent transcript.
+
+Current local-first behavior:
+
+- delegated child cards persist title, cwd, parent-turn linkage, initiator,
+  purpose, runtime status, and any terminal closure summary Probe exposes
+- the shell renders those child sessions as a first-class section above the
+  evidence and delivery layers
+- child-session ids are mirrored into the parent evidence bundle and delivery
+  receipt so reviewer-facing surfaces can link delegated work back to the same
+  shared session story
 
 ## Workspace Restore Provenance
 
