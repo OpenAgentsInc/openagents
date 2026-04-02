@@ -9,12 +9,14 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 3. [`PROBE_LOCAL_SIDECAR_ADOPTION.md`](./PROBE_LOCAL_SIDECAR_ADOPTION.md)
 4. [`PROBE_SHELL_PROJECTION.md`](./PROBE_SHELL_PROJECTION.md)
 5. [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
-6. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](./CAD_CHAT_BUILD_IMPLEMENTATION.md)
-7. [`CODEX_PANE_CAD_TOOLING.md`](./CODEX_PANE_CAD_TOOLING.md)
-8. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](./CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
-9. [`CAD_PHASE2_DEMO_RUNBOOK.md`](./CAD_PHASE2_DEMO_RUNBOOK.md)
-10. [`EXEC.md`](./EXEC.md)
-11. [`REMOTE.md`](./REMOTE.md)
+6. [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
+7. [`FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md`](./FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md)
+8. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](./CAD_CHAT_BUILD_IMPLEMENTATION.md)
+9. [`CODEX_PANE_CAD_TOOLING.md`](./CODEX_PANE_CAD_TOOLING.md)
+10. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](./CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+11. [`CAD_PHASE2_DEMO_RUNBOOK.md`](./CAD_PHASE2_DEMO_RUNBOOK.md)
+12. [`EXEC.md`](./EXEC.md)
+13. [`REMOTE.md`](./REMOTE.md)
 
 ## Documents
 
@@ -41,10 +43,18 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     participant credit envelopes.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
-    follow-ups, interrupt, approval resolution, queued-turn cancel, Probe
-    mounted-pack routing and projection, and evidence, knowledge-pack authoring,
-    campaign, promotion, delivery, settlement, and hosted-audit recording plus
-    delivery-watch refresh commands.
+  follow-ups, interrupt, approval resolution, queued-turn cancel, Probe
+  mounted-pack routing and projection, and evidence, knowledge-pack authoring,
+  campaign, promotion, delivery, settlement, and hosted-audit recording plus
+  delivery-watch refresh commands.
+- [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
+  - first-pass operator runbook for the boring GCP-hosted Forge lane,
+    including what is automated now, what stays manual, and which recovery
+    drills must be exercised before we call hosted dogfood honest.
+- [`FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md`](./FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md)
+  - the first checked-in hosted closeout bundle covering coding closeout,
+    bookkeeping rehearsal, operator limits, and the follow-on defects created
+    from the audit.
 - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
   - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
 - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
