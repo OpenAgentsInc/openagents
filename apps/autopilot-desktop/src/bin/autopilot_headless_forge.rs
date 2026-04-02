@@ -1,0 +1,50 @@
+#![allow(
+    clippy::print_stdout,
+    reason = "headless runtime intentionally prints operator-facing startup information."
+)]
+
+use std::path::PathBuf;
+
+use anyhow::Result;
+use autopilot_desktop::desktop_control::{
+    DESKTOP_CONTROL_BIND_ENV, DESKTOP_CONTROL_MANIFEST_ENV, control_manifest_path,
+};
+use autopilot_desktop::{DesktopAppOptions, run_desktop_app_with_options};
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(name = "autopilot-headless-forge")]
+#[command(about = "No-window Forge desktop-control host")]
+struct Cli {
+    #[arg(long)]
+    manifest_path: Option<PathBuf>,
+    #[arg(long)]
+    bind: Option<String>,
+    #[arg(long, default_value_t = false)]
+    enable_codex: bool,
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    if let Some(manifest_path) = cli.manifest_path.as_ref() {
+        // SAFETY: this process sets the override before any worker threads start.
+        unsafe {
+            std::env::set_var(DESKTOP_CONTROL_MANIFEST_ENV, manifest_path);
+        }
+    }
+    if let Some(bind) = cli.bind.as_ref() {
+        // SAFETY: this process sets the override before any worker threads start.
+        unsafe {
+            std::env::set_var(DESKTOP_CONTROL_BIND_ENV, bind);
+        }
+    }
+    let manifest_path = control_manifest_path();
+    println!(
+        "starting autopilot-headless-forge; manifest will be written to {}",
+        manifest_path.display()
+    );
+    run_desktop_app_with_options(DesktopAppOptions {
+        window_visible: false,
+        disable_codex: !cli.enable_codex,
+    })
+}

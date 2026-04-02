@@ -55,7 +55,8 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
   discovery plus attach commands for internal shared-session collaboration.
 - [`AUTOPILOTCTL_FORGE_CLI.md`](./AUTOPILOTCTL_FORGE_CLI.md)
   - the narrow user-facing and agent-facing command reference for scripting the
-    current internal Forge shared-session lane through `autopilotctl`.
+    current internal Forge shared-session lane through `autopilotctl`,
+    including the standalone no-window Forge host and autostart behavior.
 - [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
   - operator runbook for the boring GCP-hosted Forge lane, now updated with
   the first successful live run, the repo-owned hosted harness entrypoint,

@@ -88,6 +88,10 @@ Default to:
   - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
 - The narrow user/agent-facing guide for the current internal Forge CLI lives
   in `docs/codex/AUTOPILOTCTL_FORGE_CLI.md`.
+- Forge also has a no-window host at
+  `apps/autopilot-desktop/src/bin/autopilot_headless_forge.rs`, and
+  `autopilotctl forge ...` will autostart that host when the resolved
+  desktop-control target is missing or stale.
 - Full operator/testing docs for `autopilotctl`, headless compute, packaged
   app roundtrips, and log artifacts live in `docs/headless-compute.md`.
 - The current release-cut/product-scope truth, including the seller-first role

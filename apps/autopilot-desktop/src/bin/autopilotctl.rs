@@ -6,6 +6,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -48,6 +49,9 @@ const DEFAULT_WAIT_TIMEOUT_MS: u64 = 20_000;
 const DEFAULT_TRAINING_WATCH_POLL_MS: u64 = 1_000;
 const DEFAULT_TRAINING_WATCH_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
 const DEFAULT_APPLE_FM_BASE_URL: &str = "http://127.0.0.1:11435";
+const FORGE_AUTOSTART_TIMEOUT_MS: u64 = 20_000;
+const FORGE_AUTOSTART_POLL_MS: u64 = 250;
+const FORGE_HEADLESS_LOG_FILENAME: &str = "forge-headless.log";
 
 #[derive(Parser, Debug)]
 #[command(name = "autopilotctl")]
@@ -1755,7 +1759,7 @@ struct LogEnvelope {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let json_output = cli.json;
-    let target = resolve_target(&cli)?;
+    let target = resolve_target_for_command(&cli)?;
     let client = DesktopControlClient::new(target)?;
     match cli.command {
         Command::Status => {
@@ -2636,8 +2640,12 @@ fn main() -> Result<()> {
 
 impl DesktopControlClient {
     fn new(target: ResolvedTarget) -> Result<Self> {
+        Self::new_with_timeout(target, Duration::from_secs(30))
+    }
+
+    fn new_with_timeout(target: ResolvedTarget, timeout: Duration) -> Result<Self> {
         let http = Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(timeout)
             .build()
             .context("build autopilotctl HTTP client")?;
         Ok(Self { http, target })
@@ -3065,6 +3073,14 @@ fn buy_mode_has_failed_request(status: &DesktopControlBuyModeStatus) -> bool {
         || status.recent_requests.iter().any(request_has_failed)
 }
 
+fn resolve_target_for_command(cli: &Cli) -> Result<ResolvedTarget> {
+    if matches!(&cli.command, Command::Forge { .. }) {
+        resolve_forge_target(cli)
+    } else {
+        resolve_target(cli)
+    }
+}
+
 fn resolve_target(cli: &Cli) -> Result<ResolvedTarget> {
     match (cli.base_url.as_ref(), cli.auth_token.as_ref()) {
         (Some(base_url), Some(auth_token)) => Ok(ResolvedTarget {
@@ -3087,16 +3103,35 @@ fn resolve_target(cli: &Cli) -> Result<ResolvedTarget> {
         ),
         (None, None) => {
             let manifest_path = cli.manifest.clone().unwrap_or_else(control_manifest_path);
-            let manifest = load_manifest_from_path(manifest_path.as_path())?;
-            Ok(ResolvedTarget {
-                base_url: manifest.base_url.trim().trim_end_matches('/').to_string(),
-                auth_token: manifest.auth_token,
-                manifest_path: Some(manifest_path),
-                identity_path: manifest.identity_path.map(PathBuf::from),
-                latest_session_log_path: Some(PathBuf::from(manifest.latest_session_log_path)),
-            })
+            resolve_target_from_manifest_path(manifest_path.as_path())
         }
     }
+}
+
+fn resolve_forge_target(cli: &Cli) -> Result<ResolvedTarget> {
+    if cli.base_url.is_some() || cli.auth_token.is_some() {
+        return resolve_target(cli);
+    }
+
+    let manifest_path = cli.manifest.clone().unwrap_or_else(control_manifest_path);
+    if let Ok(target) = resolve_target_from_manifest_path(manifest_path.as_path()) {
+        if desktop_control_target_reachable(&target) {
+            return Ok(target);
+        }
+    }
+
+    start_headless_forge_runtime(manifest_path.as_path())
+}
+
+fn resolve_target_from_manifest_path(path: &Path) -> Result<ResolvedTarget> {
+    let manifest = load_manifest_from_path(path)?;
+    Ok(ResolvedTarget {
+        base_url: manifest.base_url.trim().trim_end_matches('/').to_string(),
+        auth_token: manifest.auth_token,
+        manifest_path: Some(path.to_path_buf()),
+        identity_path: manifest.identity_path.map(PathBuf::from),
+        latest_session_log_path: Some(PathBuf::from(manifest.latest_session_log_path)),
+    })
 }
 
 fn load_manifest_from_path(path: &Path) -> Result<DesktopControlManifest> {
@@ -3104,6 +3139,116 @@ fn load_manifest_from_path(path: &Path) -> Result<DesktopControlManifest> {
         .with_context(|| format!("read desktop control manifest {}", path.display()))?;
     serde_json::from_str::<DesktopControlManifest>(raw.as_str())
         .with_context(|| format!("decode desktop control manifest {}", path.display()))
+}
+
+fn desktop_control_target_reachable(target: &ResolvedTarget) -> bool {
+    let Ok(client) = DesktopControlClient::new_with_timeout(target.clone(), Duration::from_secs(2))
+    else {
+        return false;
+    };
+    client.snapshot().is_ok()
+}
+
+fn start_headless_forge_runtime(manifest_path: &Path) -> Result<ResolvedTarget> {
+    let log_path = forge_headless_log_path(manifest_path);
+    let stdout = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path.as_path())
+        .with_context(|| format!("open Forge headless log {}", log_path.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .with_context(|| format!("clone Forge headless log handle {}", log_path.display()))?;
+
+    let mut command = headless_forge_process_command(manifest_path)?;
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+    command
+        .spawn()
+        .with_context(|| "spawn autopilot_headless_forge process")?;
+
+    wait_for_headless_forge_runtime(manifest_path, log_path.as_path())
+}
+
+fn headless_forge_process_command(manifest_path: &Path) -> Result<ProcessCommand> {
+    if let Some(binary_path) = headless_forge_binary_path() {
+        let mut command = ProcessCommand::new(binary_path);
+        command.arg("--manifest-path").arg(manifest_path);
+        return Ok(command);
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| anyhow!("resolve openagents workspace root for Forge headless autostart"))?;
+    let mut command = ProcessCommand::new("cargo");
+    command
+        .current_dir(workspace_root)
+        .arg("run")
+        .arg("-p")
+        .arg("autopilot-desktop")
+        .arg("--bin")
+        .arg("autopilot_headless_forge")
+        .arg("--")
+        .arg("--manifest-path")
+        .arg(manifest_path);
+    Ok(command)
+}
+
+fn headless_forge_binary_path() -> Option<PathBuf> {
+    let current_exe = std::env::current_exe().ok()?;
+    let sibling = current_exe.with_file_name("autopilot_headless_forge");
+    sibling.is_file().then_some(sibling)
+}
+
+fn forge_headless_log_path(manifest_path: &Path) -> PathBuf {
+    let parent = manifest_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    parent.join(FORGE_HEADLESS_LOG_FILENAME)
+}
+
+fn wait_for_headless_forge_runtime(
+    manifest_path: &Path,
+    log_path: &Path,
+) -> Result<ResolvedTarget> {
+    let started = Instant::now();
+    let timeout = Duration::from_millis(FORGE_AUTOSTART_TIMEOUT_MS);
+    loop {
+        if let Ok(target) = resolve_target_from_manifest_path(manifest_path) {
+            if desktop_control_target_reachable(&target) {
+                return Ok(target);
+            }
+        }
+        if started.elapsed() >= timeout {
+            let tail = read_log_tail(log_path, 40).unwrap_or_default();
+            bail!(
+                "Timed out starting standalone Forge host from {}. Inspect {}.{}",
+                manifest_path.display(),
+                log_path.display(),
+                if tail.is_empty() {
+                    String::new()
+                } else {
+                    format!("\nRecent log lines:\n{}", tail.join("\n"))
+                }
+            );
+        }
+        std::thread::sleep(Duration::from_millis(FORGE_AUTOSTART_POLL_MS));
+    }
+}
+
+fn read_log_tail(path: &Path, limit: usize) -> Result<Vec<String>> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("read Forge headless log {}", path.display()))?;
+    let mut lines = raw.lines().map(str::to_string).collect::<Vec<_>>();
+    if lines.len() > limit {
+        lines = lines.split_off(lines.len().saturating_sub(limit));
+    }
+    Ok(lines)
 }
 
 fn ensure_action_success(response: &DesktopControlActionResponse) -> Result<()> {
@@ -8427,10 +8572,10 @@ mod tests {
         DesktopControlDataMarketIssueDeliveryArgs, DesktopControlDataMarketPrepareDeliveryArgs,
         DesktopControlDataMarketPublishArgs, DesktopControlDataMarketRequestPaymentArgs,
         DesktopControlDataMarketResolveDeliveryArgs, DesktopControlDataMarketRevokeGrantArgs,
-        DesktopControlNip28MessageStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlSnapshot, DesktopControlTassadarReplayFamily,
-        DesktopControlTassadarSourceMode, DesktopControlTassadarView,
-        ForgeSharedSessionControlOwner,
+        DesktopControlManifest, DesktopControlNip28MessageStatus,
+        DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
+        DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
+        DesktopControlTassadarView, ForgeSharedSessionControlOwner,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -9896,6 +10041,59 @@ mod tests {
             super::Cli::try_parse_from(["autopilotctl", "forge", "hosted", "sessions", "--json"])
                 .expect("cli should accept trailing global json flag");
         assert!(cli.json);
+    }
+
+    #[test]
+    fn resolve_target_from_manifest_path_preserves_manifest_fields() {
+        let manifest = DesktopControlManifest {
+            schema_version: 1,
+            generated_at_epoch_ms: 1_775_000_000_000,
+            pid: 42,
+            listen_addr: "127.0.0.1:50505".to_string(),
+            base_url: "http://127.0.0.1:50505".to_string(),
+            auth_token: "fixture-token".to_string(),
+            identity_path: Some("/tmp/identity.mnemonic".to_string()),
+            latest_session_log_path: "/tmp/latest.jsonl".to_string(),
+        };
+        let manifest_file = NamedTempFile::new().expect("manifest temp file");
+        std::fs::write(
+            manifest_file.path(),
+            serde_json::to_vec(&manifest).expect("encode manifest"),
+        )
+        .expect("write manifest");
+
+        let target =
+            super::resolve_target_from_manifest_path(manifest_file.path()).expect("resolve target");
+        assert_eq!(target.base_url, "http://127.0.0.1:50505");
+        assert_eq!(target.auth_token, "fixture-token");
+        assert_eq!(
+            target.identity_path,
+            Some(PathBuf::from("/tmp/identity.mnemonic"))
+        );
+        assert_eq!(
+            target.latest_session_log_path,
+            Some(PathBuf::from("/tmp/latest.jsonl"))
+        );
+        assert_eq!(target.manifest_path.as_deref(), Some(manifest_file.path()));
+    }
+
+    #[test]
+    fn read_log_tail_returns_recent_lines() {
+        let log_file = NamedTempFile::new().expect("log temp file");
+        let payload = (0..10)
+            .map(|index| format!("line-{index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(log_file.path(), payload).expect("write log payload");
+        let lines = super::read_log_tail(log_file.path(), 3).expect("read log tail");
+        assert_eq!(
+            lines,
+            vec![
+                "line-7".to_string(),
+                "line-8".to_string(),
+                "line-9".to_string()
+            ]
+        );
     }
 
     #[test]

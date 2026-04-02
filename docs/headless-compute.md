@@ -63,7 +63,9 @@ It can:
 - send or retry NIP-28 chat messages
 - inspect and operate the current internal Forge shared-session lane through
   `autopilotctl forge`, including hosted session discovery, hosted attach, and
-  controller handoff commands for the Probe-backed coding shell
+  controller handoff commands for the Probe-backed coding shell, with
+  no-window Forge-host autostart when no live desktop-control target is
+  reachable
 - start and stop Buy Mode against the same in-app state used by the GUI
 - pull a daily or explicit-window NIP-90 sent-payments report backed by the
   app-owned buyer payment-attempt ledger instead of raw relay rows
@@ -165,6 +167,29 @@ yet. It covers the shared coding-session seam that already exists in the app:
 
 For a narrow user-facing and agent-facing reference focused only on that Forge
 CLI, use [`docs/codex/AUTOPILOTCTL_FORGE_CLI.md`](./codex/AUTOPILOTCTL_FORGE_CLI.md).
+
+The repo now also ships a no-window Forge host:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilot_headless_forge -- \
+  --manifest-path /tmp/openagents-forge-desktop-control.json
+```
+
+`autopilotctl forge ...` will autostart that host shape automatically when:
+
+- you did not pass an explicit `--base-url` and `--auth-token`
+- the resolved manifest is missing or stale
+- no desktop-control target is reachable at the recorded endpoint
+
+If you want the hidden host isolated from a normal desktop session, pass an
+explicit `--manifest` path to `autopilotctl` or start
+`autopilot_headless_forge` manually with `--manifest-path`.
+
+The repo-owned smoke script for that path is:
+
+```bash
+scripts/autopilot/headless-forge-smoke.sh
+```
 
 - `autopilotctl forge status [--thread-id <probe-session-id>]`
   - prints the current shared-session/controller state for the active or named

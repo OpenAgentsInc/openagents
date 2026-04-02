@@ -19,9 +19,15 @@ It does not try to expose every future Forge object. Evidence, delivery,
 campaign, bounty, and settlement flows still live primarily in the desktop
 shell.
 
+It is also standalone for the current Forge lane. If no running
+desktop-control target is reachable and you did not pass `--base-url` plus
+`--auth-token`, `autopilotctl forge ...` will autostart a no-window Forge host
+and then run the requested command against it.
+
 ## Requirements
 
-- a running `autopilot-desktop` instance with desktop control enabled
+- a running `autopilot-desktop` instance with desktop control enabled, or a
+  no-window Forge host
 - a valid `autopilotctl` manifest or the default manifest path
 - the Probe-backed Forge lane enabled in the desktop app
 - shared hosted session state already visible to the app
@@ -30,6 +36,16 @@ If those conditions are not true, `autopilotctl forge ...` will fail honestly
 instead of inventing hidden state.
 
 ## Quick Start
+
+Standalone discovery from a terminal:
+
+```bash
+autopilotctl forge hosted sessions --json
+```
+
+That command tries the resolved desktop-control manifest first. If the target
+is missing or stale, it starts the hidden Forge host and waits for the control
+endpoint to become reachable.
 
 List visible hosted Forge sessions:
 
@@ -60,6 +76,44 @@ Accept an outstanding request on the current session:
 ```bash
 autopilotctl forge handoff accept "accepted from desktop-b"
 ```
+
+## Standalone Host
+
+The no-window runtime is:
+
+```bash
+autopilot_headless_forge
+```
+
+Manual startup is still supported when you want explicit lifecycle control:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilot_headless_forge -- \
+  --manifest-path /tmp/openagents-forge-desktop-control.json
+```
+
+Then point `autopilotctl` at it:
+
+```bash
+autopilotctl --manifest /tmp/openagents-forge-desktop-control.json forge hosted sessions
+```
+
+The hidden Forge host disables Codex by default. Use `--enable-codex` only if
+you intentionally want the no-window runtime to keep the Codex lane alive too.
+
+The repo-owned smoke entrypoint is:
+
+```bash
+scripts/autopilot/headless-forge-smoke.sh
+```
+
+That script verifies:
+
+- `autopilotctl forge hosted sessions --json` autostarts the hidden Forge host
+- the no-window host writes the requested manifest
+- the command returns valid structured JSON
+- Forge commands fail honestly with a typed no-thread reason when no shared
+  session is active yet
 
 ## Command Reference
 
