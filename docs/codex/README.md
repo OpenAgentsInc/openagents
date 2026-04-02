@@ -39,18 +39,20 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     provenance, hosted runtime ownership plus execution-host projection, and
     reviewer evidence bundle plus delivery-receipt state, active campaigns,
     promotion ledgers, scoped knowledge-pack catalogs, bounty contracts, claim
-    lifecycle, settlement receipts, hosted audit bundles, and
+    lifecycle, settlement receipts, hosted audit bundles, hosted audit export,
+    and
     participant credit envelopes.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
   follow-ups, interrupt, approval resolution, queued-turn cancel, Probe
   mounted-pack routing and projection, and evidence, knowledge-pack authoring,
-  campaign, promotion, delivery, settlement, and hosted-audit recording plus
-  delivery-watch refresh commands.
+  campaign, promotion, delivery, settlement, hosted-audit recording and export,
+  plus delivery-watch refresh commands.
 - [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
   - first-pass operator runbook for the boring GCP-hosted Forge lane,
-    including what is automated now, what stays manual, and which recovery
-    drills must be exercised before we call hosted dogfood honest.
+    including what is automated now, what stays manual, which export path is
+    available today, and which recovery drills must be exercised before we call
+    hosted dogfood honest.
 - [`FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md`](./FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md)
   - the first checked-in hosted closeout bundle covering coding closeout,
     bookkeeping rehearsal, operator limits, and the follow-on defects created

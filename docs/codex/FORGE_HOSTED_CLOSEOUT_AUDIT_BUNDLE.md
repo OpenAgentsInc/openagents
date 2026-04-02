@@ -4,8 +4,8 @@ Date: `2026-04-02`
 
 This is the first checked-in closeout bundle for the hosted Forge dogfood lane.
 It is intentionally honest about the current state: the app can now persist the
-right operator objects, but the concrete hosted run ids still live in the
-shell-local projection unless the operator copies them out manually.
+right operator objects, and the hosted audit bundle can now be exported from
+the shell-local projection into a deterministic Markdown or JSON artifact.
 
 ## Source Commits
 
@@ -55,8 +55,6 @@ shell-local projection unless the operator copies them out manually.
 - verify GCP project, worker baseline, and secrets before launch
 - inspect raw infra logs outside the shell when receipt cards are incomplete
 - record recovery and defect notes manually through `/hosted ...`
-- copy concrete bundle and session ids out of the local shell when a durable
-  checked-in audit needs them
 
 ## Recovery And Cleanup Notes
 
@@ -71,7 +69,6 @@ Current operator expectation for the first lane:
 
 ## Known Defects Filed From This Audit
 
-- automated export of hosted closeout bundles does not exist yet
 - the hosted lane still lacks a hard preflight for project, secret, and worker
   readiness
 - hosted receipt truth is snapshot-only and does not expose restart or cleanup
@@ -79,8 +76,6 @@ Current operator expectation for the first lane:
 
 ## Follow-On Issue Links
 
-- `openagents#4104` Export hosted closeout audit bundles from shell-local Forge
-  state
 - `openagents#4105` Add hosted GCP preflight and hard launch blockers for Forge
   dogfood sessions
 - `probe#98` Emit hosted restart, cleanup, and operator-takeover history in
@@ -90,5 +85,5 @@ Current operator expectation for the first lane:
 
 Forge now has enough object and projection truth to run a hosted dogfood lane
 without pretending that the runtime or bookkeeping state lives somewhere else.
-The next gap is operational hardening: automatic audit export, preflight
-checks, and typed hosted recovery history.
+The next gap is operational hardening: preflight checks and typed hosted
+recovery history.

@@ -45,6 +45,7 @@ then leave behind enough linked evidence to explain:
   - `/hosted note <coding|bookkeeping> <summary>`
   - `/hosted recovery <coding|bookkeeping> <summary>`
   - `/hosted defect <coding|bookkeeping> <summary>`
+  - `/hosted export <coding|bookkeeping> [path]`
   - `/hosted status`
 
 ## What Is Still Manual
@@ -53,13 +54,9 @@ then leave behind enough linked evidence to explain:
   before the session starts.
 - Reading raw GCP logs when the shell cards are insufficient.
 - Recording operator recovery and defect notes through `/hosted ...` commands.
-- Copying concrete shared-session and artifact ids into a checked-in audit
-  document when a permanent bundle is needed outside the local shell.
 
 ## What Remains Unsafe
 
-- There is not yet an automatic export of the hosted audit bundle from the
-  shell-local store into a durable Markdown or JSON closeout artifact.
 - Hosted receipt truth is still snapshot-oriented. Restart, orphan cleanup, and
   operator takeover drills are not yet exposed as a typed event history.
 - The shell does not yet run a hosted preflight that refuses obviously broken
@@ -96,7 +93,9 @@ then leave behind enough linked evidence to explain:
 1. Start the hosted Probe session.
 2. Immediately record the hosted coding bundle:
    - `/hosted coding gcp us-central1 <purpose>`
-3. Confirm the shared-session card shows:
+3. Export the coding bundle when you need a durable closeout artifact:
+   - `/hosted export coding [path]`
+4. Confirm the shared-session card shows:
    - remote session ownership
    - workspace identity
    - routed pack ids
@@ -125,6 +124,7 @@ When the operator has to recover from a hosted failure, log it immediately:
 
 - `/hosted recovery coding <summary>`
 - `/hosted defect coding <summary>`
+- `/hosted export coding [path]`
 
 ## Step 4: Run The Bookkeeping Rehearsal
 
@@ -153,6 +153,7 @@ same shared session:
   - `/hosted note bookkeeping <summary>`
   - `/hosted recovery bookkeeping <summary>`
   - `/hosted defect bookkeeping <summary>`
+  - `/hosted export bookkeeping [path]`
 
 ## Step 5: Recovery Drills
 
@@ -185,8 +186,6 @@ Before ending the dogfood run, verify the shell shows all of the following:
 
 ## First Follow-On Gaps
 
-- automatic audit export from shell-local state
-  - tracked in `openagents#4104`
 - hosted preflight before session launch
   - tracked in `openagents#4105`
 - typed hosted recovery event history instead of snapshot-only receipts

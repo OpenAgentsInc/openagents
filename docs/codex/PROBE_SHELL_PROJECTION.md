@@ -231,10 +231,15 @@ Current local-first behavior:
   - `/hosted note bookkeeping <summary>`
   - `/hosted recovery bookkeeping <summary>`
   - `/hosted defect bookkeeping <summary>`
+  - `/hosted export <coding|bookkeeping> [path]`
   - `/hosted status`
 - the shell renders the audit as a first-class card so the operator can review
   hosted closeout truth without spelunking the raw transcript or detached Probe
   session JSON
+- the operator can export the active hosted coding or bookkeeping bundle into a
+  deterministic Markdown or JSON artifact with the concrete shared-session,
+  mounted-pack, hosted-receipt, evidence, delivery, campaign, promotion,
+  bounty, claim, and settlement ids and statuses for review or check-in
 - bookkeeping rehearsal bundles also snapshot the linked campaign,
   promotion-ledger, bounty-contract, bounty-claim, and settlement-receipt ids
   and statuses so the operator can see which bookkeeping steps were actually

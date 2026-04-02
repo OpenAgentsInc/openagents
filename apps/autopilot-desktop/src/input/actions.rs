@@ -294,6 +294,10 @@ enum ChatForgeComposerIntent {
         note_kind: crate::app_state::ForgeHostedAuditNoteKind,
         body: String,
     },
+    HostedAuditExport {
+        kind: crate::app_state::ForgeHostedAuditKind,
+        path: Option<String>,
+    },
     HostedAuditStatus,
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
@@ -6087,7 +6091,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     if first_word == "/hosted" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
-                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
+                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
             );
         };
         return match subcommand {
@@ -6135,6 +6139,20 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                     body: words[3..].join(" "),
                 }))
             }
+            "export" => {
+                let Some(raw_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/hosted export <coding|bookkeeping> [path]`.".to_string(),
+                    );
+                };
+                let kind = parse_hosted_audit_kind(raw_kind).ok_or_else(|| {
+                    "Hosted audit kind must be `coding` or `bookkeeping`.".to_string()
+                })?;
+                Ok(Some(ChatForgeComposerIntent::HostedAuditExport {
+                    kind,
+                    path: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
             "status" => {
                 if words.len() != 2 {
                     return Err("Usage: `/hosted status`.".to_string());
@@ -6142,7 +6160,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                 Ok(Some(ChatForgeComposerIntent::HostedAuditStatus))
             }
             _ => Err(
-                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
+                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
             ),
         };
     }
@@ -8065,6 +8083,29 @@ fn run_chat_forge_action(
                     note_kind.display_label(),
                     kind.display_label(),
                     body
+                );
+                if let Ok(status) = build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HostedAuditExport { kind, path } => match state
+            .autopilot_chat
+            .export_probe_hosted_audit_bundle_for_thread(
+                thread_id.as_str(),
+                kind,
+                path.as_deref(),
+                current_epoch_millis(),
+            ) {
+            Ok(export_path) => {
+                let mut response = format!(
+                    "Exported {} to `{}`.",
+                    kind.display_label(),
+                    export_path.display()
                 );
                 if let Ok(status) = build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
                 {
@@ -20752,6 +20793,21 @@ mod tests {
                 kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
                 note_kind: crate::app_state::ForgeHostedAuditNoteKind::Defect,
                 body: "delivery watch needed manual refresh".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted export coding").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditExport {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                path: None,
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted export bookkeeping target/hosted-bookkeeping.json")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditExport {
+                kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
+                path: Some("target/hosted-bookkeeping.json".to_string()),
             })
         );
         assert_eq!(

@@ -9519,6 +9519,16 @@ pub struct ForgeHostedAuditBundle {
     pub updated_at_epoch_ms: u64,
 }
 
+const FORGE_HOSTED_AUDIT_EXPORT_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedAuditExportDocumentV1 {
+    pub schema_version: u32,
+    pub thread_id: String,
+    pub exported_at_epoch_ms: u64,
+    pub bundle: ForgeHostedAuditBundle,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForgeCampaignStatus {
@@ -14273,6 +14283,354 @@ impl AutopilotChatState {
                 ForgeHostedAuditKind::BookkeepingRehearsal,
             )
         })
+    }
+
+    fn hosted_audit_export_base_dir_for_thread(
+        &self,
+        thread_id: &str,
+        bundle: &ForgeHostedAuditBundle,
+    ) -> PathBuf {
+        bundle
+            .workspace_root
+            .as_deref()
+            .map(PathBuf::from)
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.as_deref())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| {
+                self.artifact_projection_file_path
+                    .parent()
+                    .map(Path::to_path_buf)
+            })
+            .unwrap_or_else(std::env::temp_dir)
+    }
+
+    fn resolve_hosted_audit_export_path_for_thread(
+        &self,
+        thread_id: &str,
+        bundle: &ForgeHostedAuditBundle,
+        output_path: Option<&str>,
+    ) -> PathBuf {
+        let base_dir = self.hosted_audit_export_base_dir_for_thread(thread_id, bundle);
+        let Some(raw_output_path) = output_path.map(str::trim).filter(|value| !value.is_empty())
+        else {
+            return base_dir.join(format!(
+                "forge-hosted-{}-{}.md",
+                bundle.kind.label(),
+                bundle.audit_bundle_id
+            ));
+        };
+        let normalized = raw_output_path
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .or_else(|| {
+                raw_output_path
+                    .strip_prefix('\'')
+                    .and_then(|value| value.strip_suffix('\''))
+            })
+            .unwrap_or(raw_output_path);
+        if let Some(home_relative) = normalized.strip_prefix("~/")
+            && let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+        {
+            return home.join(home_relative);
+        }
+        let path = PathBuf::from(normalized);
+        if path.is_absolute() {
+            path
+        } else {
+            base_dir.join(path)
+        }
+    }
+
+    fn build_hosted_audit_export_document_for_thread(
+        &self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        exported_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedAuditExportDocumentV1, String> {
+        let bundle = self
+            .hosted_audit_bundle_for_thread(thread_id, kind)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Record {} first with `/hosted {}`.",
+                    kind.display_label(),
+                    match kind {
+                        ForgeHostedAuditKind::CodingCloseout => "coding <environment-summary>",
+                        ForgeHostedAuditKind::BookkeepingRehearsal => {
+                            "bookkeeping <environment-summary>"
+                        }
+                    }
+                )
+            })?;
+        Ok(ForgeHostedAuditExportDocumentV1 {
+            schema_version: FORGE_HOSTED_AUDIT_EXPORT_SCHEMA_VERSION,
+            thread_id: thread_id.to_string(),
+            exported_at_epoch_ms,
+            bundle,
+        })
+    }
+
+    fn render_hosted_audit_export_markdown(
+        document: &ForgeHostedAuditExportDocumentV1,
+    ) -> Result<String, String> {
+        let bundle = &document.bundle;
+        let payload = serde_json::to_string_pretty(document)
+            .map_err(|error| format!("Failed to encode hosted audit export JSON: {error}"))?;
+        let mut lines = vec![
+            format!("# {}", bundle.kind.display_label()),
+            String::new(),
+            format!("- schema_version: {}", document.schema_version),
+            format!("- thread_id: `{}`", document.thread_id),
+            format!("- audit_bundle_id: `{}`", bundle.audit_bundle_id),
+            format!("- shared_session_id: `{}`", bundle.shared_session_id),
+            format!("- exported_at_epoch_ms: {}", document.exported_at_epoch_ms),
+            format!(
+                "- session_location_kind: {}",
+                bundle.session_location_kind.label()
+            ),
+            format!("- environment_summary: {}", bundle.environment_summary),
+            format!("- created_at_epoch_ms: {}", bundle.created_at_epoch_ms),
+            format!("- updated_at_epoch_ms: {}", bundle.updated_at_epoch_ms),
+        ];
+        if let Some(workspace_root) = bundle.workspace_root.as_deref() {
+            lines.push(format!("- workspace_root: `{workspace_root}`"));
+        }
+        if let Some(repo_remote_url) = bundle.repo_remote_url.as_deref() {
+            lines.push(format!("- repo_remote_url: `{repo_remote_url}`"));
+        }
+        if let Some(repo_git_branch) = bundle.repo_git_branch.as_deref() {
+            lines.push(format!("- repo_git_branch: `{repo_git_branch}`"));
+        }
+        if let Some(repo_head_commit) = bundle.repo_head_commit.as_deref() {
+            lines.push(format!("- repo_head_commit: `{repo_head_commit}`"));
+        }
+        lines.push(format!(
+            "- probe_session_ids: {}",
+            if bundle.probe_session_ids.is_empty() {
+                "none".to_string()
+            } else {
+                bundle
+                    .probe_session_ids
+                    .iter()
+                    .map(|session_id| format!("`{session_id}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines.push(format!(
+            "- routed_pack_ids: {}",
+            if bundle.routed_pack_ids.is_empty() {
+                "none".to_string()
+            } else {
+                bundle
+                    .routed_pack_ids
+                    .iter()
+                    .map(|pack_id| format!("`{pack_id}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines.push(format!(
+            "- mounted_pack_ids: {}",
+            if bundle.mounted_pack_ids.is_empty() {
+                "none".to_string()
+            } else {
+                bundle
+                    .mounted_pack_ids
+                    .iter()
+                    .map(|pack_id| format!("`{pack_id}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines.push(format!(
+            "- unsupported_route_reasons: {}",
+            if bundle.unsupported_route_reasons.is_empty() {
+                "none".to_string()
+            } else {
+                bundle.unsupported_route_reasons.join(" | ")
+            }
+        ));
+        lines.push(format!(
+            "- evidence: {}",
+            bundle
+                .evidence_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.evidence_bundle_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- delivery: {}",
+            bundle
+                .delivery_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.delivery_receipt_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- campaign: {}",
+            bundle
+                .campaign_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.campaign_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- promotion: {}",
+            bundle
+                .promotion_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.promotion_ledger_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- bounty: {}",
+            bundle
+                .bounty_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.bounty_contract_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        if let Some(bounty_claim_id) = bundle.bounty_claim_id.as_deref() {
+            lines.push(format!("- bounty_claim_id: `{bounty_claim_id}`"));
+        }
+        lines.push(format!(
+            "- settlement: {}",
+            bundle
+                .settlement_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.settlement_receipt_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        if let Some(hosted_receipts) = bundle.hosted_receipts.as_ref() {
+            let mut receipt_parts = Vec::new();
+            if hosted_receipts.auth.is_some() {
+                receipt_parts.push("auth");
+            }
+            if hosted_receipts.checkout.is_some() {
+                receipt_parts.push("checkout");
+            }
+            if hosted_receipts.worker.is_some() {
+                receipt_parts.push("worker");
+            }
+            if hosted_receipts.cost.is_some() {
+                receipt_parts.push("cost");
+            }
+            if hosted_receipts.cleanup.is_some() {
+                receipt_parts.push("cleanup");
+            }
+            lines.push(format!(
+                "- hosted_receipts: {}",
+                if receipt_parts.is_empty() {
+                    "none".to_string()
+                } else {
+                    receipt_parts.join(", ")
+                }
+            ));
+            lines.push(format!(
+                "- hosted_receipt_history_count: {}",
+                hosted_receipts.history.len()
+            ));
+        } else {
+            lines.push("- hosted_receipts: none".to_string());
+        }
+        lines.push(format!("- note_count: {}", bundle.notes.len()));
+        lines.push(String::new());
+        lines.push("## JSON".to_string());
+        lines.push("```json".to_string());
+        lines.push(payload);
+        lines.push("```".to_string());
+        Ok(lines.join("\n"))
+    }
+
+    fn persist_hosted_audit_export(path: &Path, payload: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "Failed to create hosted audit export dir `{}`: {error}",
+                    parent.display()
+                )
+            })?;
+        }
+        let temp_path = path.with_extension("tmp");
+        std::fs::write(&temp_path, payload).map_err(|error| {
+            format!(
+                "Failed to write hosted audit export temp file `{}`: {error}",
+                temp_path.display()
+            )
+        })?;
+        std::fs::rename(&temp_path, path).map_err(|error| {
+            format!(
+                "Failed to persist hosted audit export `{}`: {error}",
+                path.display()
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn export_probe_hosted_audit_bundle_for_thread(
+        &self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        output_path: Option<&str>,
+        exported_at_epoch_ms: u64,
+    ) -> Result<PathBuf, String> {
+        let document = self.build_hosted_audit_export_document_for_thread(
+            thread_id,
+            kind,
+            exported_at_epoch_ms,
+        )?;
+        let export_path = self.resolve_hosted_audit_export_path_for_thread(
+            thread_id,
+            &document.bundle,
+            output_path,
+        );
+        let payload = if export_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("json"))
+        {
+            serde_json::to_string_pretty(&document)
+                .map_err(|error| format!("Failed to encode hosted audit export JSON: {error}"))?
+        } else {
+            Self::render_hosted_audit_export_markdown(&document)?
+        };
+        Self::persist_hosted_audit_export(export_path.as_path(), payload.as_str())?;
+        Ok(export_path)
     }
 
     fn workspace_snapshot_for_thread(&self, thread_id: &str) -> Option<&ForgeWorkspaceSnapshot> {
@@ -25553,10 +25911,10 @@ mod tests {
         SessionAttachTransport, SessionExecutionHost, SessionExecutionHostKind,
         SessionHostedAuthKind, SessionHostedAuthReceipt, SessionHostedCheckoutKind,
         SessionHostedCheckoutReceipt, SessionHostedCleanupReceipt, SessionHostedCleanupStatus,
-        SessionHostedCostReceipt, SessionHostedReceipts, SessionHostedWorkerReceipt,
-        SessionPreparedBaselineRef, SessionPreparedBaselineStatus, SessionRuntimeOwner,
-        SessionRuntimeOwnerKind, SessionWorkspaceBootMode, SessionWorkspaceSnapshotRef,
-        SessionWorkspaceState,
+        SessionHostedCostReceipt, SessionHostedLifecycleEvent, SessionHostedReceipts,
+        SessionHostedWorkerReceipt, SessionPreparedBaselineRef, SessionPreparedBaselineStatus,
+        SessionRuntimeOwner, SessionRuntimeOwnerKind, SessionWorkspaceBootMode,
+        SessionWorkspaceSnapshotRef, SessionWorkspaceState,
     };
 
     use crate::app_state::{
@@ -30657,6 +31015,7 @@ mod tests {
                 worker: None,
                 cost: None,
                 cleanup: None,
+                history: Vec::new(),
             }),
             1_700_000_130,
         )
@@ -30872,6 +31231,26 @@ mod tests {
                     note: Some("hosted workspace reclaimed after closeout".to_string()),
                     recorded_at_ms: 1_700_000_140,
                 }),
+                history: vec![
+                    SessionHostedLifecycleEvent::RunningTurnFailedOnRestart {
+                        turn_id: "turn-3".to_string(),
+                        session_owner_id: "probe-hosted-control".to_string(),
+                        execution_host_id: "gce-worker-17".to_string(),
+                        summary:
+                            "Hosted restart interrupted an active turn before delivery refresh."
+                                .to_string(),
+                        recorded_at_ms: 1_700_000_141,
+                    },
+                    SessionHostedLifecycleEvent::CleanupStateChanged {
+                        previous_status: Some(SessionHostedCleanupStatus::Pending),
+                        status: SessionHostedCleanupStatus::Completed,
+                        workspace_root: repo.clone(),
+                        strategy: "worktree-remove".to_string(),
+                        execution_host_id: Some("gce-worker-17".to_string()),
+                        summary: "Hosted cleanup finished after operator confirmation.".to_string(),
+                        recorded_at_ms: 1_700_000_142,
+                    },
+                ],
             }),
             1_700_000_140,
         )
@@ -31005,6 +31384,26 @@ mod tests {
             reloaded_bundle.delivery_status,
             Some(ForgeDeliveryReceiptStatus::Merged)
         );
+        let export_path = repo.join("artifacts/hosted-coding-audit.md");
+        let exported_path = chat
+            .export_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::CodingCloseout,
+                Some(export_path.to_str().expect("utf8 export path")),
+                1_700_000_180,
+            )
+            .expect("hosted coding export should persist");
+        assert_eq!(exported_path, export_path);
+        let exported = std::fs::read_to_string(exported_path.as_path())
+            .expect("hosted coding export should read");
+        assert!(exported.contains("# hosted coding closeout"));
+        assert!(exported.contains(&audit_bundle_id));
+        assert!(exported.contains(&shared_session.shared_session_id));
+        assert!(exported.contains("forge-evidence-"));
+        assert!(exported.contains("forge-delivery-"));
+        assert!(exported.contains("running_turn_failed_on_restart"));
+        assert!(exported.contains("cleanup_state_changed"));
+        assert!(exported.contains("\"history\": ["));
 
         let _ = std::fs::remove_file(projection_path);
         let _ = std::fs::remove_dir_all(repo);
@@ -31128,6 +31527,16 @@ mod tests {
                     note: Some("hosted workspace reclaimed after bookkeeping rehearsal".to_string()),
                     recorded_at_ms: 1_700_000_145,
                 }),
+                history: vec![SessionHostedLifecycleEvent::ApprovalPausedTakeoverAvailable {
+                    turn_id: "turn-4".to_string(),
+                    session_owner_id: "probe-hosted-control".to_string(),
+                    execution_host_id: "gce-worker-42".to_string(),
+                    pending_approval_count: 1,
+                    summary:
+                        "Hosted control plane exposed the paused approval for explicit operator takeover."
+                            .to_string(),
+                    recorded_at_ms: 1_700_000_146,
+                }],
             }),
             1_700_000_145,
         )
@@ -31162,7 +31571,10 @@ mod tests {
                 "thread-a",
                 ForgeBountyObjectiveKind::AcceptedMerge,
                 "Hosted bookkeeping rehearsal bounty",
-                Some("Verify hosted receipts and settlement linkage from the merged result.".to_string()),
+                Some(
+                    "Verify hosted receipts and settlement linkage from the merged result."
+                        .to_string(),
+                ),
                 "operator.command:/bounty open",
                 1_700_000_170,
             )
@@ -31208,7 +31620,10 @@ mod tests {
         let settlement_receipt = chat
             .active_settlement_receipt()
             .expect("settlement receipt should exist");
-        assert_eq!(settlement_receipt.status, ForgeSettlementReceiptStatus::Recorded);
+        assert_eq!(
+            settlement_receipt.status,
+            ForgeSettlementReceiptStatus::Recorded
+        );
         assert_eq!(
             settlement_receipt.delivery_receipt_id,
             Some(delivery_receipt_id.clone())
@@ -31286,8 +31701,14 @@ mod tests {
             .expect("active hosted bookkeeping audit bundle should exist");
         assert_eq!(bundle.audit_bundle_id, audit_bundle_id);
         assert_eq!(bundle.kind, ForgeHostedAuditKind::BookkeepingRehearsal);
-        assert_eq!(bundle.evidence_bundle_id.as_deref(), Some(evidence_bundle_id.as_str()));
-        assert_eq!(bundle.delivery_receipt_id.as_deref(), Some(delivery_receipt_id.as_str()));
+        assert_eq!(
+            bundle.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(
+            bundle.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
         assert_eq!(bundle.campaign_id.as_deref(), Some(campaign_id.as_str()));
         assert_eq!(
             bundle.promotion_ledger_id.as_deref(),
@@ -31297,7 +31718,10 @@ mod tests {
             bundle.bounty_contract_id.as_deref(),
             Some(bounty_contract_id.as_str())
         );
-        assert_eq!(bundle.bounty_claim_id.as_deref(), Some(bounty_claim_id.as_str()));
+        assert_eq!(
+            bundle.bounty_claim_id.as_deref(),
+            Some(bounty_claim_id.as_str())
+        );
         assert_eq!(
             bundle.settlement_receipt_id.as_deref(),
             Some(settlement_receipt_id.as_str())
@@ -31322,7 +31746,9 @@ mod tests {
             .shared_session_for_thread("thread-a")
             .expect("reloaded shared session");
         assert_eq!(
-            reloaded_session.hosted_bookkeeping_audit_bundle_id.as_deref(),
+            reloaded_session
+                .hosted_bookkeeping_audit_bundle_id
+                .as_deref(),
             Some(audit_bundle_id.as_str())
         );
         let reloaded_bundle = reloaded
@@ -31353,6 +31779,35 @@ mod tests {
                 .and_then(|receipts| receipts.worker.as_ref())
                 .map(|receipt| receipt.execution_host_id.as_str()),
             Some("gce-worker-42")
+        );
+        let export_path = repo.join("artifacts/hosted-bookkeeping-audit.json");
+        let exported_path = chat
+            .export_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::BookkeepingRehearsal,
+                Some(export_path.to_str().expect("utf8 export path")),
+                1_700_000_260,
+            )
+            .expect("hosted bookkeeping export should persist");
+        assert_eq!(exported_path, export_path);
+        let exported = std::fs::read_to_string(exported_path.as_path())
+            .expect("hosted bookkeeping export should read");
+        let exported_json: Value =
+            serde_json::from_str(exported.as_str()).expect("bookkeeping export should parse");
+        assert_eq!(exported_json["schema_version"], 1);
+        assert_eq!(exported_json["thread_id"], "thread-a");
+        assert_eq!(exported_json["bundle"]["audit_bundle_id"], audit_bundle_id);
+        assert_eq!(
+            exported_json["bundle"]["promotion_ledger_id"],
+            promotion_ledger_id
+        );
+        assert_eq!(
+            exported_json["bundle"]["settlement_receipt_id"],
+            settlement_receipt_id
+        );
+        assert_eq!(
+            exported_json["bundle"]["hosted_receipts"]["history"][0]["kind"],
+            "approval_paused_takeover_available"
         );
 
         let _ = std::fs::remove_file(projection_path);

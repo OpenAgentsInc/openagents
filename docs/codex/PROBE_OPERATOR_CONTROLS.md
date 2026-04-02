@@ -57,6 +57,7 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/hosted note <coding|bookkeeping> <summary>`
   - `/hosted recovery <coding|bookkeeping> <summary>`
   - `/hosted defect <coding|bookkeeping> <summary>`
+  - `/hosted export <coding|bookkeeping> [path]`
   - `/hosted status`
 - The header actions for Probe-backed threads now use app-owned parity where the
   runtime seam is still narrower:
