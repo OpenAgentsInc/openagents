@@ -163,6 +163,9 @@ autopilotctl pane open provider_control
 current internal Forge MVP. It does not try to expose every future Forge object
 yet. It covers the shared coding-session seam that already exists in the app:
 
+For a narrow user-facing and agent-facing reference focused only on that Forge
+CLI, use [`docs/codex/AUTOPILOTCTL_FORGE_CLI.md`](./codex/AUTOPILOTCTL_FORGE_CLI.md).
+
 - `autopilotctl forge status [--thread-id <probe-session-id>]`
   - prints the current shared-session/controller state for the active or named
     Probe thread

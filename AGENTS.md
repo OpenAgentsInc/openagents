@@ -86,6 +86,8 @@ Default to:
 - The running desktop app now has an app-owned control plane plus a thin CLI:
   - implementation: `apps/autopilot-desktop/src/desktop_control.rs`
   - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- The narrow user/agent-facing guide for the current internal Forge CLI lives
+  in `docs/codex/AUTOPILOTCTL_FORGE_CLI.md`.
 - Full operator/testing docs for `autopilotctl`, headless compute, packaged
   app roundtrips, and log artifacts live in `docs/headless-compute.md`.
 - The current release-cut/product-scope truth, including the seller-first role
