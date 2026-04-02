@@ -49,15 +49,14 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
   campaign, promotion, delivery, settlement, hosted preflight, hosted-audit
   recording and export, plus delivery-watch refresh commands.
 - [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
-  - first-pass operator runbook for the boring GCP-hosted Forge lane,
-    including what is automated now, what stays manual, how hosted preflight
-    blocks obviously broken launches, which export paths are available today,
-    and which recovery drills must be exercised before we call hosted dogfood
-    honest.
+  - operator runbook for the boring GCP-hosted Forge lane, now updated with
+    the first successful live run, the repo-owned hosted harness entrypoint,
+    the exact proved GCP footprint, and the concrete lessons from the live
+    dogfood pass.
 - [`FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md`](./FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md)
-  - the first checked-in hosted closeout bundle covering coding closeout,
-    bookkeeping rehearsal, operator limits, and the follow-on defects created
-    from the audit.
+  - the first checked-in hosted closeout bundle for the successful April 2,
+    2026 live GCP run, including session identity, exported artifact paths,
+    fixes required to make the lane pass, and the remaining operational gaps.
 - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
   - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
 - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)

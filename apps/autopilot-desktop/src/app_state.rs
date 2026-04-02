@@ -13693,8 +13693,9 @@ impl SidebarState {
 }
 
 impl AutopilotChatState {
-    #[cfg(test)]
-    fn from_artifact_projection_path_for_tests(artifact_projection_file_path: PathBuf) -> Self {
+    pub(crate) fn from_artifact_projection_path(
+        artifact_projection_file_path: PathBuf,
+    ) -> Self {
         let mut state = Self::default();
         state.artifact_projection_file_path = artifact_projection_file_path.clone();
         match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -13787,6 +13788,13 @@ impl AutopilotChatState {
         } else {
             self.transcript_scroll_offset.clamp(0.0, max_scroll)
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_artifact_projection_path_for_tests(
+        artifact_projection_file_path: PathBuf,
+    ) -> Self {
+        Self::from_artifact_projection_path(artifact_projection_file_path)
     }
 
     pub fn scroll_transcript_by(&mut self, delta: f32, max_scroll: f32) {
@@ -23159,6 +23167,7 @@ impl PaneLoadState {
             Self::Error => "error",
         }
     }
+
 }
 
 pub trait PaneStatusAccess {

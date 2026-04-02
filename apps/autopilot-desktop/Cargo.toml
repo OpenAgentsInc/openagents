@@ -36,6 +36,10 @@ name = "autopilotctl"
 path = "src/bin/autopilotctl.rs"
 
 [[bin]]
+name = "autopilot-forge-hosted-dogfood"
+path = "src/bin/autopilot_forge_hosted_dogfood.rs"
+
+[[bin]]
 name = "autopilot-compute-mcp"
 path = "src/bin/autopilot_compute_mcp.rs"
 

@@ -40,6 +40,7 @@ mod data_seller_control;
 pub mod desktop_control;
 mod desktop_shell;
 mod economy_kernel_receipts;
+pub mod forge_hosted_harness;
 pub mod headless_compute;
 mod hotbar;
 mod input;

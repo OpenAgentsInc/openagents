@@ -49,6 +49,12 @@ then leave behind enough linked evidence to explain:
   - `/hosted defect <coding|bookkeeping> <summary>`
   - `/hosted export <coding|bookkeeping> [path]`
   - `/hosted status`
+- A repo-owned end-to-end harness now exists:
+  - `cargo run -p autopilot-desktop --bin autopilot-forge-hosted-dogfood -- ...`
+  - it runs the hosted preflight, starts the hosted Probe session, drives one
+    patch turn plus one read-back turn, projects hosted receipts back into the
+    shell, records evidence and bookkeeping objects, and exports deterministic
+    Markdown and JSON outputs.
 
 ## What Is Still Manual
 
@@ -59,6 +65,8 @@ then leave behind enough linked evidence to explain:
 
 - Hosted receipt truth is still snapshot-oriented. Restart, orphan cleanup, and
   operator takeover drills are not yet exposed as a typed event history.
+- Shell-only hosted proof turns emit a retained session summary, but they do
+  not currently emit an accepted patch summary artifact.
 
 ## Preconditions
 
@@ -71,6 +79,48 @@ then leave behind enough linked evidence to explain:
   - GCP access to the target project
   - the repo and branch to exercise
   - the knowledge packs or runbooks to mount
+
+## First Proven Run
+
+The first live run on April 2, 2026 used:
+
+- local harness:
+  - `cargo run -p autopilot-desktop --bin autopilot-forge-hosted-dogfood -- --address 127.0.0.1:17777 --remote-cwd /var/lib/probe-hosted/hosted/workspaces/forge-openagents-main/openagents --local-workspace-root /Users/christopherdavid/work/openagents --output-dir /private/tmp/forge-hosted-proof-20260402g --worker-baseline forge-openagents-main --repo-secret-ref github-public-https`
+- final hosted Probe session:
+  - `sess_1775150159726_14012_184`
+- final exported outputs:
+  - `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-summary.md`
+  - `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-coding-audit.md`
+  - `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-bookkeeping-audit.md`
+  - `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-preflight.md`
+
+What that run proved:
+
+- hosted Probe created and preserved a prepared-baseline session on GCP
+- the shell projected hosted auth, checkout, worker, cost, and cleanup receipts
+- project-scoped docs and runbook packs mounted successfully as `forge-pack-1`
+  and `forge-pack-2`
+- the coding closeout and bookkeeping rehearsal exported deterministically from
+  the shell
+- the resulting shared session closed as:
+  - delivery `merged`
+  - evidence `complete`
+  - bounty `admitted`
+  - campaign `scoped`
+  - promotion `promoted`
+  - settlement `recorded`
+
+Lessons from the proving run:
+
+- hosted Codex turns need a looser watchdog posture than the local detached
+  default, so the hosted worker now runs with a `180000ms` stall budget and
+  `300000ms` timeout budget
+- the harness must use `tool_choice = auto` for patch and read-back turns, or
+  the model never gets a clean stop condition after the tool call
+- project-scoped pack routing must include the thread project id when building
+  the mounted-ref plan
+- the shell must treat accepted patch summary artifacts as optional for
+  shell-only proof turns
 
 ## Step 1: Prepare The Session
 

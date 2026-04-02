@@ -3,14 +3,36 @@
 Date: `2026-04-02`
 
 This is the first checked-in closeout bundle for the hosted Forge dogfood lane.
-It is intentionally honest about the current state: the app can now persist the
-right operator objects, and the hosted audit bundle can now be exported from
-the shell-local projection into a deterministic Markdown or JSON artifact.
+It now corresponds to a real successful hosted GCP run, not just the local
+shell shape around a hypothetical hosted lane.
 
-## Source Commits
+## Successful Run Identity
 
-- `d0f011642` `autopilot: add hosted coding audit bundles`
-- `cde7213c4` `autopilot: add hosted bookkeeping rehearsal bundles`
+- final hosted session:
+  - `sess_1775150159726_14012_184`
+- operator endpoint:
+  - `127.0.0.1:17777`
+- remote workspace:
+  - `/var/lib/probe-hosted/hosted/workspaces/forge-openagents-main/openagents`
+- exported output directory:
+  - `/private/tmp/forge-hosted-proof-20260402g`
+
+## Hosted Environment
+
+- GCP project:
+  - `openagentsgemini`
+- region / zone:
+  - `us-central1` / `us-central1-a`
+- VPC / subnet:
+  - `oa-lightning` / `oa-lightning-us-central1`
+- Probe VM:
+  - `probe-hosted-forge-1`
+- Probe service:
+  - `probe-hosted.service`
+- Probe home:
+  - `/var/lib/probe-hosted`
+- prepared baseline:
+  - `forge-openagents-main`
 
 ## Run Scope
 
@@ -37,20 +59,62 @@ the shell-local projection into a deterministic Markdown or JSON artifact.
 - bounty claim
 - hosted bookkeeping audit bundle
 
+### Exported Files
+
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-summary.md`
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-summary.json`
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-preflight.md`
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-preflight.json`
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-coding-audit.md`
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-coding-audit.json`
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-bookkeeping-audit.md`
+- `/private/tmp/forge-hosted-proof-20260402g/forge-hosted-bookkeeping-audit.json`
+
 ## What Worked
 
-- the shared session now carries hosted session location plus mounted-pack truth
-  without hiding that state inside transcript prose
-- the shell can now run and export a hosted preflight before launch, then link
-  that report back into the shared session and hosted audit bundle
-- hosted Probe receipts project auth, checkout, worker, cost, and cleanup
-  ownership into the same shell the operator already uses for evidence and
-  delivery
-- the coding closeout and bookkeeping rehearsal are now represented as separate
-  hosted audit bundles, which makes it possible to tell runtime failures apart
-  from bookkeeping gaps
-- bookkeeping rehearsal bundles now link the campaign, promotion, bounty,
-  claim, and settlement objects that were tied to the hosted run
+- hosted Probe created a prepared-baseline session and completed both the proof
+  patch turn and the read-back turn
+- the shared session projected mounted-pack truth for:
+  - `forge-pack-1` `OpenAgents repo docs`
+  - `forge-pack-2` `Forge hosted dogfood runbook`
+- the shell exported a deterministic hosted preflight, coding audit, bookkeeping
+  audit, and summary bundle
+- hosted Probe receipts projected auth, checkout, worker, cost, and cleanup
+  ownership into the same shell the operator already uses for evidence,
+  delivery, and bookkeeping
+- the shared session closed with:
+  - delivery `merged`
+  - evidence `complete`
+  - bounty `admitted`
+  - campaign `scoped`
+  - promotion `promoted`
+  - settlement `recorded`
+
+## Failures Found While Proving The Lane
+
+1. The first hosted patch turn hit the harness tool-loop cap before the model
+   finished.
+2. The original hosted worker inherited a 30-second detached watchdog stall
+   budget, which was too aggressive for remote Codex-backed turns.
+3. Forcing `tool_choice = named("shell")` caused the model to keep calling
+   shell instead of terminating cleanly after the proof write succeeded.
+4. The first successful hosted shell run still projected zero mounted packs
+   because the harness built the route plan without the thread project id.
+5. The shell originally treated accepted patch summary packs as mandatory even
+   though the proof turn used `shell`, which only emits a retained session
+   summary today.
+
+## What Changed To Make The Live Run Pass
+
+- Probe hosted TCP now accepts an explicit watchdog policy and the deployed GCP
+  worker runs with `--watchdog-stall-ms 180000 --watchdog-timeout-ms 300000`.
+- The hosted harness now uses `ProbeToolChoice::Auto` for patch and read-back
+  turns with explicit stop instructions.
+- The hosted harness now builds the knowledge-mount plan with the thread
+  project id, so project-scoped docs and runbook packs are mounted honestly.
+- The hosted harness now treats accepted patch summary artifacts as optional
+  for shell-only proof turns and records that omission explicitly in the
+  summary.
 
 ## Manual Steps Still Required
 
@@ -68,20 +132,17 @@ Current operator expectation for the first lane:
 - if the recovery outcome is ambiguous, record `/hosted defect ...` before
   closing the run
 
-## Known Defects Filed From This Audit
+The live run also confirmed two remaining operational truths:
 
-- the defects originally filed from this audit are now closed
-- new follow-on work should come from the next hosted GCP run rather than
-  keeping this first audit artificially open forever
-
-## Follow-On Issue Links
-
-- historical follow-ons from this audit were `openagents#4105` and `probe#98`
-- both are now shipped
+- cleanup still records as `pending`; the workspace is marked managed hosted
+  state but there is no teardown hook yet
+- hosted receipt history is still snapshot-oriented rather than a typed restart
+  and takeover event log
 
 ## Honest Conclusion
 
-Forge now has enough object and projection truth to run a hosted dogfood lane
-without pretending that the runtime or bookkeeping state lives somewhere else.
-The next honest gap is a second hosted run that either confirms the current
-shape or produces a new defect list.
+Forge now has enough object and projection truth to run one real hosted GCP
+closeout lane end to end without pretending that runtime or bookkeeping state
+live somewhere else. The next honest work is repeatability and operational
+hardening: a second hosted run, restart and takeover drills, and teardown truth
+rather than more speculative object design.
