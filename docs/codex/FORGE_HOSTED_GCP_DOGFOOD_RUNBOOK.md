@@ -43,6 +43,16 @@ then leave behind enough linked evidence to explain:
   - `/hosted sessions`
   - `/hosted attach shared <shared-session-id>`
   - `/hosted attach probe <probe-session-id>`
+- Once attached, operators can coordinate one active human controller at a
+  time with:
+  - `/handoff status`
+  - `/handoff request <summary>`
+  - `/handoff accept <summary>`
+  - `/handoff take <summary>`
+  - `/handoff note <summary>`
+- The shared-session shell now shows the current controller, the participant
+  roster, any pending handoff request, and recent collaboration events above
+  the hosted Probe runtime transcript.
 - Scoped pack routing projects app-owned pack choices into typed Probe mounts.
 - Hosted Probe receipts for auth, checkout, worker ownership, cost, and cleanup
   can be projected into the shared session when Probe reports them.

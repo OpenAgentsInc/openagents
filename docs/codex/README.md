@@ -41,8 +41,9 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     promotion ledgers, scoped knowledge-pack catalogs, bounty contracts, claim
     lifecycle, settlement receipts, hosted audit bundles, hosted audit export,
     participant credit envelopes, the new internal shared Forge-state backing
-    store for cross-desktop collaboration, and the hosted-session directory and
-    attach seam above that shared state.
+    store for cross-desktop collaboration, the hosted-session directory and
+    attach seam above that shared state, and the new participant-roster plus
+    controller-handoff collaboration layer for internal team sessions.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
   follow-ups, interrupt, approval resolution, queued-turn cancel, Probe
@@ -55,8 +56,8 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     the first successful live run, the repo-owned hosted harness entrypoint,
     the exact proved GCP footprint, the shared-state config needed for
     multi-desktop internal dogfood, the hosted session directory and attach
-    flow for internal teammates, and the concrete lessons from the live
-    dogfood pass.
+    flow for internal teammates, the controller-handoff commands for shared
+    team sessions, and the concrete lessons from the live dogfood pass.
 - [`FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md`](./FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md)
   - the first checked-in hosted closeout bundle for the successful April 2,
     2026 live GCP run, including session identity, exported artifact paths,

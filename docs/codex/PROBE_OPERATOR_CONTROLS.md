@@ -67,6 +67,23 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/hosted defect <coding|bookkeeping> <summary>`
   - `/hosted export <coding|bookkeeping> [path]`
   - `/hosted status`
+- Shared-session collaboration control now also runs through:
+  - `/handoff status`
+  - shows the current controller, local watch-vs-control posture, pending
+    request, participant roster, and recent collaboration events
+  - `/handoff request <summary>`
+  - records a handoff request from the current desktop operator without
+    changing control yet
+  - `/handoff accept <summary>`
+  - accepts the pending request and moves controller ownership to the
+    requesting participant
+  - `/handoff take <summary>`
+  - immediately moves controller ownership to the current desktop operator
+  - `/handoff note <summary>`
+  - records a shared operator note on the collaboration timeline
+  - `/handoff human <summary>` and `/handoff agent <summary>`
+  - keep the coarse explicit owner flip for cases where the operator wants to
+    hand the next turn directly to the human lane or the Probe agent
 - The header actions for Probe-backed threads now use app-owned parity where the
   runtime seam is still narrower:
   - rename and archive or unarchive persist as shared-session shell overlays
@@ -107,6 +124,10 @@ This document records the current app-owned operator loop for Probe-backed Autop
   while the desktop runs the hosted preflight, persists the preflight report,
   and groups that runtime truth into one reviewer-facing closeout or
   bookkeeping audit bundle above the shared session
+- shared-session collaboration posture also stays app-owned for now: Probe
+  supplies runtime truth, while Autopilot keeps the participant roster,
+  controller lease presentation, pending handoff request, and collaboration
+  timeline above that runtime
 - local branch and compare watch now refresh automatically from Probe session
   load and detached workspace-state events when a delivery receipt already
   exists

@@ -16,6 +16,8 @@ use crate::app_state::{
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
+    current_forge_local_operator_display_name, forge_shared_session_controller_label,
+    forge_shared_session_local_role_label,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
     ForgeBountyContract, ForgeCampaign, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
     ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeHostedAuditBundle, ForgeKnowledgePack,
@@ -2776,10 +2778,20 @@ fn active_shared_session_meta_line(session: &ForgeSharedSession) -> String {
 }
 
 fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String {
+    let controller_label = forge_shared_session_controller_label(session);
     let mut lines = vec![format!(
-        "- **control owner:** {}",
-        session.control_owner.display_label()
+        "- **current controller:** {}",
+        controller_label
     )];
+    lines.push(format!(
+        "- **control posture:** {}",
+        session.control_owner.display_label()
+    ));
+    lines.push(format!(
+        "- **local role:** {} ({})",
+        forge_shared_session_local_role_label(session),
+        current_forge_local_operator_display_name()
+    ));
     lines.push(format!(
         "- **session location:** {}",
         session.remote_session.location_kind.display_label()
@@ -2897,15 +2909,36 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
         }
     }
     if !session.participants.is_empty() {
+        lines.push("- **participants:**".to_string());
+        for participant in &session.participants {
+            let mut labels = Vec::new();
+            if session.controller_participant_id.as_deref()
+                == Some(participant.participant_id.as_str())
+            {
+                labels.push("control");
+            }
+            if session
+                .pending_handoff_request
+                .as_ref()
+                .is_some_and(|request| request.participant_id == participant.participant_id)
+            {
+                labels.push("requested");
+            }
+            let suffix = if labels.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", labels.join(", "))
+            };
+            lines.push(format!("  - {}{}", participant.display_name, suffix));
+        }
+    }
+    if let Some(request) = session.pending_handoff_request.as_ref() {
         lines.push(format!(
-            "- **participants:** {}",
-            session
-                .participants
-                .iter()
-                .map(|participant| participant.display_name.clone())
-                .collect::<Vec<_>>()
-                .join(", ")
+            "- **pending handoff request:** {} — {}",
+            request.display_name, request.summary
         ));
+    } else {
+        lines.push("- **pending handoff request:** _none_".to_string());
     }
     if let Some(evidence_bundle_id) = session.evidence_bundle_id.as_deref() {
         lines.push(format!(
@@ -3049,11 +3082,18 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
         }
     }
     if let Some(handoff) = session.last_handoff.as_ref() {
+        let from_label = handoff
+            .from_display_name
+            .clone()
+            .unwrap_or_else(|| handoff.from_owner.display_label().to_string());
+        let to_label = handoff
+            .to_display_name
+            .clone()
+            .unwrap_or_else(|| handoff.to_owner.display_label().to_string());
         lines.push(String::new());
         lines.push(format!(
             "**Last handoff:** {} -> {}",
-            handoff.from_owner.display_label(),
-            handoff.to_owner.display_label()
+            from_label, to_label
         ));
         lines.push(String::new());
         lines.push(handoff.summary.clone());
@@ -3067,6 +3107,22 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
     } else {
         lines.push(String::new());
         lines.push("_No explicit handoff recorded yet._".to_string());
+    }
+    if !session.collaboration_timeline.is_empty() {
+        lines.push(String::new());
+        lines.push("**Recent collaboration:**".to_string());
+        for entry in session.collaboration_timeline.iter().take(4) {
+            let actor = entry
+                .display_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            lines.push(format!(
+                "- {} • {} • {}",
+                entry.kind.display_label(),
+                actor,
+                entry.summary
+            ));
+        }
     }
     lines.join("\n")
 }

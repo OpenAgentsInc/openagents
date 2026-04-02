@@ -78,8 +78,14 @@ Current local-first rules:
 - the shared session records the local human and the local Probe agent as
   explicit participants
 - the current control owner is stored separately from raw Probe runtime status
-- explicit handoffs persist summary, provenance, and timestamp in the desktop
-  artifact projection
+- the current controller is now tracked explicitly by participant id, not only
+  by coarse owner kind
+- explicit handoffs persist summary, provenance, timestamp, and participant
+  attribution in the desktop artifact projection
+- the shared session can also persist:
+  - one pending handoff request
+  - a short collaboration timeline of requests, accepts, take-control actions,
+    notes, and handoffs
 - the collaboration layer is no longer only local:
   - app-owned shared-session, evidence, delivery, bounty, settlement,
     campaign, promotion, and hosted-audit objects can now also persist in a
@@ -104,10 +110,24 @@ Current local-first rules:
   - execution host kind and host identity
   - operator handoff posture derived from the current control owner
 
-The first operator-facing control is the chat command:
+The operator-facing control set now includes:
 
+- `/handoff status`
+- `/handoff request <summary>`
+- `/handoff accept <summary>`
+- `/handoff take <summary>`
+- `/handoff note <summary>`
 - `/handoff human <summary>`
 - `/handoff agent <summary>`
+
+Current shell behavior:
+
+- the shared-session card shows the current controller, the local operator role
+  as `controlling` or `watching`, any pending handoff request, and recent
+  collaboration events
+- hosted attach now also upserts the local operator into the shared-session
+  participant roster, so multiple desktops can see who is attached to the
+  same hosted session even before full external identity/auth work exists
 
 When Probe exposes delegated child sessions, Autopilot now projects them as
 app-owned cards inside the shared session instead of leaving them buried in the

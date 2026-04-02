@@ -8300,7 +8300,58 @@ pub struct ForgeSharedSessionParticipant {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSessionHandoff {
     pub from_owner: ForgeSharedSessionControlOwner,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_display_name: Option<String>,
     pub to_owner: ForgeSharedSessionControlOwner,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_display_name: Option<String>,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeSharedSessionTimelineEntryKind {
+    Note,
+    ControlRequest,
+    ControlAccepted,
+    TakeControl,
+    Handoff,
+}
+
+impl ForgeSharedSessionTimelineEntryKind {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Note => "note",
+            Self::ControlRequest => "control request",
+            Self::ControlAccepted => "control accepted",
+            Self::TakeControl => "take control",
+            Self::Handoff => "handoff",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionTimelineEntry {
+    pub kind: ForgeSharedSessionTimelineEntryKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionControlRequest {
+    pub participant_id: String,
+    pub display_name: String,
     pub summary: String,
     pub provenance: String,
     pub recorded_at_epoch_ms: u64,
@@ -10032,7 +10083,13 @@ pub struct ForgeSharedSession {
     pub archived_in_shell: bool,
     pub control_owner: ForgeSharedSessionControlOwner,
     pub participants: Vec<ForgeSharedSessionParticipant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controller_participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_handoff_request: Option<ForgeSharedSessionControlRequest>,
     pub last_handoff: Option<ForgeSharedSessionHandoff>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collaboration_timeline: Vec<ForgeSharedSessionTimelineEntry>,
     #[serde(default)]
     pub remote_session: ForgeProbeRemoteSessionProjection,
     #[serde(default)]
@@ -10074,6 +10131,7 @@ pub struct ForgeHostedSessionDirectoryEntry {
     pub prepared_baseline_id: Option<String>,
     pub prepared_baseline_status: Option<ForgeProbePreparedBaselineStatus>,
     pub control_owner: ForgeSharedSessionControlOwner,
+    pub controller_label: Option<String>,
     pub participants: Vec<ForgeSharedSessionParticipant>,
     pub location_kind: ForgeProbeSessionLocationKind,
     pub owner_label: Option<String>,
@@ -11251,6 +11309,314 @@ fn default_forge_shared_session_participants() -> Vec<ForgeSharedSessionParticip
     ]
 }
 
+fn normalize_forge_shared_session_participants(
+    mut participants: Vec<ForgeSharedSessionParticipant>,
+) -> Vec<ForgeSharedSessionParticipant> {
+    participants.retain(|participant| {
+        !participant.participant_id.trim().is_empty() && !participant.display_name.trim().is_empty()
+    });
+    participants.sort_by(|lhs, rhs| {
+        lhs.participant_id
+            .cmp(&rhs.participant_id)
+            .then_with(|| lhs.display_name.cmp(&rhs.display_name))
+    });
+    participants.dedup_by(|lhs, rhs| lhs.participant_id == rhs.participant_id);
+    participants
+}
+
+fn normalize_forge_shared_session_timeline(
+    mut timeline: Vec<ForgeSharedSessionTimelineEntry>,
+) -> Vec<ForgeSharedSessionTimelineEntry> {
+    timeline.retain(|entry| !entry.summary.trim().is_empty());
+    timeline.sort_by(|lhs, rhs| {
+        rhs.recorded_at_epoch_ms
+            .cmp(&lhs.recorded_at_epoch_ms)
+            .then_with(|| lhs.summary.cmp(&rhs.summary))
+            .then_with(|| lhs.provenance.cmp(&rhs.provenance))
+    });
+    timeline.dedup_by(|lhs, rhs| {
+        lhs.kind == rhs.kind
+            && lhs.participant_id == rhs.participant_id
+            && lhs.summary == rhs.summary
+            && lhs.provenance == rhs.provenance
+            && lhs.recorded_at_epoch_ms == rhs.recorded_at_epoch_ms
+    });
+    if timeline.len() > 24 {
+        timeline.truncate(24);
+    }
+    timeline
+}
+
+fn forge_local_operator_display_name() -> String {
+    if let Ok(label) = std::env::var("OPENAGENTS_FORGE_OPERATOR_LABEL") {
+        let label = label.trim();
+        if !label.is_empty() {
+            return label.to_string();
+        }
+    }
+    let user = std::env::var("USER")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .or_else(|| std::env::var("HOST").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    match (user, host) {
+        (Some(user), Some(host)) => format!("{user}@{host}"),
+        (Some(user), None) => user,
+        (None, Some(host)) => host,
+        (None, None) => "Local operator".to_string(),
+    }
+}
+
+pub fn current_forge_local_operator_display_name() -> String {
+    forge_local_operator_display_name()
+}
+
+fn forge_local_operator_participant_id(display_name: &str) -> String {
+    let slug = forge_reference_slug(display_name);
+    if slug.is_empty() {
+        "human-local-operator".to_string()
+    } else {
+        format!("human-{slug}")
+    }
+}
+
+pub fn current_forge_local_operator_participant_id() -> String {
+    let display_name = forge_local_operator_display_name();
+    forge_local_operator_participant_id(display_name.as_str())
+}
+
+fn forge_probe_agent_participant_id(session: &ForgeSharedSession) -> Option<String> {
+    session
+        .participants
+        .iter()
+        .find(|participant| participant.kind == ForgeSharedSessionControlOwner::ProbeLocalAgent)
+        .map(|participant| participant.participant_id.clone())
+}
+
+fn forge_primary_human_participant_id(session: &ForgeSharedSession) -> Option<String> {
+    session
+        .participants
+        .iter()
+        .find(|participant| participant.kind == ForgeSharedSessionControlOwner::HumanLocal)
+        .map(|participant| participant.participant_id.clone())
+}
+
+fn forge_participant_display_name(
+    session: &ForgeSharedSession,
+    participant_id: Option<&str>,
+) -> Option<String> {
+    let participant_id = participant_id?;
+    session
+        .participants
+        .iter()
+        .find(|participant| participant.participant_id == participant_id)
+        .map(|participant| participant.display_name.clone())
+}
+
+pub fn forge_shared_session_controller_label(session: &ForgeSharedSession) -> String {
+    forge_participant_display_name(session, session.controller_participant_id.as_deref())
+        .or_else(|| {
+            session
+                .last_handoff
+                .as_ref()
+                .and_then(|handoff| handoff.to_display_name.clone())
+        })
+        .unwrap_or_else(|| session.control_owner.display_label().to_string())
+}
+
+pub fn forge_shared_session_local_role_label(session: &ForgeSharedSession) -> &'static str {
+    let local_participant_id = current_forge_local_operator_participant_id();
+    if session.control_owner == ForgeSharedSessionControlOwner::HumanLocal
+        && session.controller_participant_id.as_deref() == Some(local_participant_id.as_str())
+    {
+        "controlling"
+    } else {
+        "watching"
+    }
+}
+
+fn ensure_local_operator_participant_for_shared_session(
+    session: &mut ForgeSharedSession,
+) -> (String, String) {
+    let display_name = forge_local_operator_display_name();
+    let participant_id = forge_local_operator_participant_id(display_name.as_str());
+
+    if let Some(existing) = session.participants.iter_mut().find(|participant| {
+        participant.participant_id == participant_id
+            || participant.display_name.eq_ignore_ascii_case(display_name.as_str())
+    }) {
+        existing.kind = ForgeSharedSessionControlOwner::HumanLocal;
+        existing.display_name = display_name.clone();
+        existing.participant_id = participant_id.clone();
+        session.participants = normalize_forge_shared_session_participants(std::mem::take(
+            &mut session.participants,
+        ));
+        return (participant_id, display_name);
+    }
+
+    if let Some(existing) = session.participants.iter_mut().find(|participant| {
+        participant.participant_id == "local-human" && participant.display_name == "Local human"
+    }) {
+        existing.kind = ForgeSharedSessionControlOwner::HumanLocal;
+        existing.display_name = display_name.clone();
+        existing.participant_id = participant_id.clone();
+        session.participants = normalize_forge_shared_session_participants(std::mem::take(
+            &mut session.participants,
+        ));
+        return (participant_id, display_name);
+    }
+
+    session.participants.push(ForgeSharedSessionParticipant {
+        participant_id: participant_id.clone(),
+        kind: ForgeSharedSessionControlOwner::HumanLocal,
+        display_name: display_name.clone(),
+    });
+    session.participants =
+        normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
+    (participant_id, display_name)
+}
+
+fn sync_forge_shared_session_controller(session: &mut ForgeSharedSession) {
+    session.participants =
+        normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
+    let desired_controller = session
+        .controller_participant_id
+        .as_deref()
+        .and_then(|participant_id| {
+            session
+                .participants
+                .iter()
+                .find(|participant| participant.participant_id == participant_id)
+        })
+        .filter(|participant| participant.kind == session.control_owner)
+        .map(|participant| participant.participant_id.clone())
+        .or_else(|| match session.control_owner {
+            ForgeSharedSessionControlOwner::HumanLocal => {
+                forge_primary_human_participant_id(session)
+            }
+            ForgeSharedSessionControlOwner::ProbeLocalAgent => {
+                forge_probe_agent_participant_id(session)
+            }
+        });
+    let participant_display_names = session
+        .participants
+        .iter()
+        .map(|participant| {
+            (
+                participant.participant_id.clone(),
+                participant.display_name.clone(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    if let Some(handoff) = session.last_handoff.as_mut() {
+        handoff.summary = handoff.summary.trim().to_string();
+        handoff.provenance = handoff.provenance.trim().to_string();
+        handoff.from_participant_id = handoff
+            .from_participant_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| {
+                session
+                    .participants
+                    .iter()
+                    .any(|participant| participant.participant_id == *value)
+            });
+        handoff.to_participant_id = handoff
+            .to_participant_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| {
+                session
+                    .participants
+                    .iter()
+                    .any(|participant| participant.participant_id == *value)
+            });
+        handoff.from_display_name = handoff
+            .from_participant_id
+            .as_deref()
+            .and_then(|participant_id| participant_display_names.get(participant_id).cloned())
+            .or_else(|| {
+                handoff
+                    .from_display_name
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            });
+        handoff.to_display_name = handoff
+            .to_participant_id
+            .as_deref()
+            .and_then(|participant_id| participant_display_names.get(participant_id).cloned())
+            .or_else(|| {
+                handoff
+                    .to_display_name
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            });
+        if handoff.summary.is_empty() || handoff.provenance.is_empty() {
+            session.last_handoff = None;
+        }
+    };
+    if desired_controller.is_some() {
+        session.controller_participant_id = desired_controller;
+    } else if let Some(current_controller_id) = session.controller_participant_id.as_deref() {
+        if !session
+            .participants
+            .iter()
+            .any(|participant| participant.participant_id == current_controller_id)
+        {
+            session.controller_participant_id = None;
+        }
+    }
+    if let Some(request) = session.pending_handoff_request.as_mut() {
+        request.participant_id = request.participant_id.trim().to_string();
+        request.display_name = request.display_name.trim().to_string();
+        request.summary = request.summary.trim().to_string();
+        request.provenance = request.provenance.trim().to_string();
+        if request.participant_id.is_empty()
+            || request.display_name.is_empty()
+            || request.summary.is_empty()
+            || !session
+                .participants
+                .iter()
+                .any(|participant| participant.participant_id == request.participant_id)
+        {
+            session.pending_handoff_request = None;
+        }
+    }
+    session.collaboration_timeline = normalize_forge_shared_session_timeline(std::mem::take(
+        &mut session.collaboration_timeline,
+    ));
+}
+
+fn push_forge_shared_session_timeline_entry(
+    session: &mut ForgeSharedSession,
+    kind: ForgeSharedSessionTimelineEntryKind,
+    participant_id: Option<String>,
+    display_name: Option<String>,
+    summary: String,
+    provenance: String,
+    recorded_at_epoch_ms: u64,
+) {
+    session
+        .collaboration_timeline
+        .push(ForgeSharedSessionTimelineEntry {
+            kind,
+            participant_id,
+            display_name,
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        });
+    session.collaboration_timeline = normalize_forge_shared_session_timeline(std::mem::take(
+        &mut session.collaboration_timeline,
+    ));
+}
+
 fn default_bounty_credit_role_for_participant(
     kind: ForgeSharedSessionControlOwner,
 ) -> ForgeBountyCreditRole {
@@ -11490,6 +11856,7 @@ fn normalize_forge_shared_sessions(
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
         }
+        sync_forge_shared_session_controller(session);
         if session.workspace_restore.snapshot_ref.is_some() {
             session.workspace_restore.snapshot_ref_status =
                 ForgeWorkspaceSnapshotRefStatus::Available;
@@ -16137,6 +16504,7 @@ impl AutopilotChatState {
                     prepared_baseline_id: session.remote_session.prepared_baseline_id.clone(),
                     prepared_baseline_status: session.remote_session.prepared_baseline_status,
                     control_owner: session.control_owner,
+                    controller_label: Some(forge_shared_session_controller_label(session)),
                     participants: session.participants.clone(),
                     location_kind: session.remote_session.location_kind,
                     owner_label: session
@@ -16294,6 +16662,8 @@ impl AutopilotChatState {
                     "Hosted shared session `{shared_session_id}` disappeared before it could be attached."
                 )
             })?;
+        let _ = ensure_local_operator_participant_for_shared_session(session);
+        sync_forge_shared_session_controller(session);
         session.probe_session_ids.push(probe_session_id.to_string());
         session.probe_session_ids =
             normalize_probe_session_ids(std::mem::take(&mut session.probe_session_ids));
@@ -19771,7 +20141,17 @@ impl AutopilotChatState {
                     archived_in_shell: false,
                     control_owner,
                     participants: default_forge_shared_session_participants(),
+                    controller_participant_id: match control_owner {
+                        ForgeSharedSessionControlOwner::HumanLocal => {
+                            Some("local-human".to_string())
+                        }
+                        ForgeSharedSessionControlOwner::ProbeLocalAgent => {
+                            Some("local-probe-agent".to_string())
+                        }
+                    },
+                    pending_handoff_request: None,
                     last_handoff: None,
+                    collaboration_timeline: Vec::new(),
                     remote_session: ForgeProbeRemoteSessionProjection::default(),
                     workspace_restore: ForgeWorkspaceRestoreProvenance {
                         startup_kind: ForgeWorkspaceStartupKind::ColdStart,
@@ -19898,16 +20278,48 @@ impl AutopilotChatState {
             ));
         };
         let previous_owner = shared_session.control_owner;
+        let previous_participant_id = shared_session.controller_participant_id.clone();
+        let previous_display_name =
+            forge_participant_display_name(shared_session, previous_participant_id.as_deref());
         shared_session.control_owner = next_owner;
+        let next_participant_id = match next_owner {
+            ForgeSharedSessionControlOwner::HumanLocal => {
+                let (participant_id, _) =
+                    ensure_local_operator_participant_for_shared_session(shared_session);
+                Some(participant_id)
+            }
+            ForgeSharedSessionControlOwner::ProbeLocalAgent => {
+                forge_probe_agent_participant_id(shared_session)
+            }
+        };
+        let next_display_name =
+            forge_participant_display_name(shared_session, next_participant_id.as_deref());
+        shared_session.controller_participant_id = next_participant_id.clone();
+        shared_session.pending_handoff_request = None;
         shared_session.updated_at_epoch_ms =
             recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
             from_owner: previous_owner,
+            from_participant_id: previous_participant_id,
+            from_display_name: previous_display_name,
             to_owner: next_owner,
+            to_participant_id: next_participant_id.clone(),
+            to_display_name: next_display_name.clone(),
             summary,
             provenance: provenance.into().trim().to_string(),
             recorded_at_epoch_ms,
         });
+        if let Some(handoff) = shared_session.last_handoff.as_ref() {
+            push_forge_shared_session_timeline_entry(
+                shared_session,
+                ForgeSharedSessionTimelineEntryKind::Handoff,
+                handoff.to_participant_id.clone(),
+                handoff.to_display_name.clone(),
+                handoff.summary.clone(),
+                handoff.provenance.clone(),
+                handoff.recorded_at_epoch_ms,
+            );
+        }
         shared_session.remote_session.operator_handoff_state = forge_probe_operator_handoff_state(
             shared_session.remote_session.location_kind,
             shared_session.control_owner,
@@ -19922,8 +20334,300 @@ impl AutopilotChatState {
             .map(|handoff| handoff.provenance.clone());
         shared_session.remote_session.updated_at_epoch_ms =
             recorded_at_epoch_ms.max(shared_session.remote_session.updated_at_epoch_ms);
+        sync_forge_shared_session_controller(shared_session);
         self.persist_codex_artifact_projection();
         Ok(shared_session_id)
+    }
+
+    pub fn request_shared_session_control_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff request summary cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before a handoff request could be recorded."
+            ));
+        };
+        let (participant_id, display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        if shared_session.control_owner == ForgeSharedSessionControlOwner::HumanLocal
+            && shared_session.controller_participant_id.as_deref() == Some(participant_id.as_str())
+        {
+            return Err(format!(
+                "{display_name} already controls the hosted Forge session."
+            ));
+        }
+        shared_session.pending_handoff_request = Some(ForgeSharedSessionControlRequest {
+            participant_id: participant_id.clone(),
+            display_name: display_name.clone(),
+            summary: summary.clone(),
+            provenance: provenance.clone(),
+            recorded_at_epoch_ms,
+        });
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::ControlRequest,
+            Some(participant_id),
+            Some(display_name),
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        );
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn accept_shared_session_control_request_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff acceptance summary cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before a handoff request could be accepted."
+            ));
+        };
+        let (actor_participant_id, actor_display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        let request = shared_session.pending_handoff_request.clone().ok_or_else(|| {
+            "No pending handoff request is recorded for this shared session.".to_string()
+        })?;
+        let previous_owner = shared_session.control_owner;
+        let previous_participant_id = shared_session.controller_participant_id.clone();
+        let previous_display_name =
+            forge_participant_display_name(shared_session, previous_participant_id.as_deref());
+        shared_session.control_owner = ForgeSharedSessionControlOwner::HumanLocal;
+        shared_session.controller_participant_id = Some(request.participant_id.clone());
+        shared_session.pending_handoff_request = None;
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
+            from_owner: previous_owner,
+            from_participant_id: previous_participant_id,
+            from_display_name: previous_display_name,
+            to_owner: ForgeSharedSessionControlOwner::HumanLocal,
+            to_participant_id: Some(request.participant_id.clone()),
+            to_display_name: Some(request.display_name.clone()),
+            summary: summary.clone(),
+            provenance: provenance.clone(),
+            recorded_at_epoch_ms,
+        });
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::ControlAccepted,
+            Some(actor_participant_id),
+            Some(actor_display_name),
+            summary.clone(),
+            provenance.clone(),
+            recorded_at_epoch_ms,
+        );
+        shared_session.remote_session.operator_handoff_state = forge_probe_operator_handoff_state(
+            shared_session.remote_session.location_kind,
+            shared_session.control_owner,
+        );
+        shared_session.remote_session.operator_handoff_summary = Some(summary);
+        shared_session.remote_session.operator_handoff_provenance = Some(provenance);
+        shared_session.remote_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.remote_session.updated_at_epoch_ms);
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn take_shared_session_control_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session take-control summary cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before take-control state could be recorded."
+            ));
+        };
+        let (participant_id, display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        let previous_owner = shared_session.control_owner;
+        let previous_participant_id = shared_session.controller_participant_id.clone();
+        let previous_display_name =
+            forge_participant_display_name(shared_session, previous_participant_id.as_deref());
+        shared_session.control_owner = ForgeSharedSessionControlOwner::HumanLocal;
+        shared_session.controller_participant_id = Some(participant_id.clone());
+        shared_session.pending_handoff_request = None;
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
+            from_owner: previous_owner,
+            from_participant_id: previous_participant_id,
+            from_display_name: previous_display_name,
+            to_owner: ForgeSharedSessionControlOwner::HumanLocal,
+            to_participant_id: Some(participant_id.clone()),
+            to_display_name: Some(display_name.clone()),
+            summary: summary.clone(),
+            provenance: provenance.clone(),
+            recorded_at_epoch_ms,
+        });
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::TakeControl,
+            Some(participant_id),
+            Some(display_name),
+            summary.clone(),
+            provenance.clone(),
+            recorded_at_epoch_ms,
+        );
+        shared_session.remote_session.operator_handoff_state = forge_probe_operator_handoff_state(
+            shared_session.remote_session.location_kind,
+            shared_session.control_owner,
+        );
+        shared_session.remote_session.operator_handoff_summary = Some(summary);
+        shared_session.remote_session.operator_handoff_provenance = Some(provenance);
+        shared_session.remote_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.remote_session.updated_at_epoch_ms);
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn record_shared_session_note_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session note cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before a collaboration note could be recorded."
+            ));
+        };
+        let (participant_id, display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::Note,
+            Some(participant_id),
+            Some(display_name),
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        );
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn shared_session_handoff_status_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<String, String> {
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .ok_or_else(|| format!("No shared Forge session is available for `{thread_id}`."))?;
+        let controller_label = forge_shared_session_controller_label(shared_session);
+        let local_operator = current_forge_local_operator_display_name();
+        let local_role = forge_shared_session_local_role_label(shared_session);
+        let mut lines = vec![
+            format!("Shared session: `{}`", shared_session.shared_session_id),
+            format!("Current controller: {controller_label}"),
+            format!("Local operator: {local_operator} ({local_role})"),
+        ];
+        if let Some(request) = shared_session.pending_handoff_request.as_ref() {
+            lines.push(format!(
+                "Pending request: {} — {}",
+                request.display_name, request.summary
+            ));
+        } else {
+            lines.push("Pending request: none".to_string());
+        }
+        if !shared_session.participants.is_empty() {
+            lines.push(String::new());
+            lines.push("Participants:".to_string());
+            for participant in &shared_session.participants {
+                let mut labels = Vec::new();
+                if shared_session.controller_participant_id.as_deref()
+                    == Some(participant.participant_id.as_str())
+                {
+                    labels.push("control");
+                }
+                if shared_session
+                    .pending_handoff_request
+                    .as_ref()
+                    .is_some_and(|request| request.participant_id == participant.participant_id)
+                {
+                    labels.push("requested");
+                }
+                if current_forge_local_operator_participant_id() == participant.participant_id {
+                    labels.push("local");
+                }
+                let suffix = if labels.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [{}]", labels.join(", "))
+                };
+                lines.push(format!("- {}{}", participant.display_name, suffix));
+            }
+        }
+        if !shared_session.collaboration_timeline.is_empty() {
+            lines.push(String::new());
+            lines.push("Recent collaboration:".to_string());
+            for entry in shared_session.collaboration_timeline.iter().take(4) {
+                let actor = entry
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
+                lines.push(format!(
+                    "- {}: {} — {}",
+                    entry.kind.display_label(),
+                    actor,
+                    entry.summary
+                ));
+            }
+        }
+        Ok(lines.join("\n"))
     }
 
     pub fn sync_probe_remote_session_projection_for_thread(
@@ -23581,6 +24285,7 @@ impl AutopilotChatState {
             if let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) {
                 shared_session.control_owner =
                     forge_shared_session_owner_for_runtime_status(runtime_status.as_deref());
+                sync_forge_shared_session_controller(shared_session);
                 shared_session.updated_at_epoch_ms =
                     current_epoch_millis_for_state().max(shared_session.updated_at_epoch_ms);
             }
@@ -27234,16 +27939,17 @@ mod tests {
     };
 
     use crate::app_state::{
-        ForgeBountyClaim, ForgeBountyContract, ForgeBountyCreditRole, ForgeBountyLifecycleStatus,
-        ForgeBountyObjectiveKind, ForgeBountyParticipantCreditEnvelope, ForgeCampaign,
-        ForgeCampaignArtifactKind, ForgeCampaignArtifactRef, ForgeCampaignStatus,
-        ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
-        ForgeDelegatedChildSessionStatus, ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch,
-        ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
-        ForgeDeliveryCompareWatch, ForgeDeliveryContributor, ForgeDeliveryContributorRole,
-        ForgeDeliveryPullRequestState, ForgeDeliveryPullRequestWatch, ForgeDeliveryReceipt,
-        ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome, ForgeEvidenceBundle,
-        ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifact, ForgeEvidenceProductArtifactKind,
+        current_forge_local_operator_participant_id, ForgeBountyClaim, ForgeBountyContract,
+        ForgeBountyCreditRole, ForgeBountyLifecycleStatus, ForgeBountyObjectiveKind,
+        ForgeBountyParticipantCreditEnvelope, ForgeCampaign, ForgeCampaignArtifactKind,
+        ForgeCampaignArtifactRef, ForgeCampaignStatus, ForgeDelegatedChildDeliveryStatus,
+        ForgeDelegatedChildSessionCard, ForgeDelegatedChildSessionStatus,
+        ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch, ForgeDeliveryCiStatus,
+        ForgeDeliveryCiWatch, ForgeDeliveryComparePosture, ForgeDeliveryCompareWatch,
+        ForgeDeliveryContributor, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
+        ForgeDeliveryPullRequestWatch, ForgeDeliveryReceipt, ForgeDeliveryReceiptStatus,
+        ForgeDeliveryReviewerOutcome, ForgeEvidenceBundle, ForgeEvidenceBundleStatus,
+        ForgeEvidenceProductArtifact, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeHostedAuditBundle, ForgeHostedAuditKind,
         ForgeHostedAuditNote, ForgeHostedAuditNoteKind, ForgeHostedPreflightCheck,
         ForgeHostedPreflightCheckStatus, ForgeHostedPreflightDisposition,
@@ -27253,7 +27959,9 @@ mod tests {
         ForgeProbeSessionOwnerKind, ForgePromotionLedger, ForgePromotionLedgerStatus,
         ForgePromotionRevision, ForgeSettlementClosurePath, ForgeSettlementReceipt,
         ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeSharedSessionControlOwner,
-        ForgeSharedSessionHandoff, ForgeSharedSessionParticipant, ForgeWorkspaceBaseRepoRef,
+        ForgeSharedSessionControlRequest, ForgeSharedSessionHandoff,
+        ForgeSharedSessionParticipant, ForgeSharedSessionTimelineEntry,
+        ForgeSharedSessionTimelineEntryKind, ForgeWorkspaceBaseRepoRef,
         ForgeWorkspaceRestoreProvenance, ForgeWorkspaceSnapshotRefStatus,
         ForgeWorkspaceStartupKind,
     };
@@ -27278,7 +27986,7 @@ mod tests {
         ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
         SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
         StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-        SyncRecoveryPhase,
+        SyncRecoveryPhase, sync_forge_shared_session_controller,
     };
     use chrono::TimeZone;
     use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -32111,13 +32819,27 @@ mod tests {
                     kind: ForgeSharedSessionControlOwner::HumanLocal,
                     display_name: "Alice".to_string(),
                 }],
+                controller_participant_id: Some("alice".to_string()),
+                pending_handoff_request: None,
                 last_handoff: Some(ForgeSharedSessionHandoff {
                     from_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    from_participant_id: Some("alice".to_string()),
+                    from_display_name: Some("Alice".to_string()),
                     to_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    to_participant_id: Some("local-probe-agent".to_string()),
+                    to_display_name: Some("Local Probe agent".to_string()),
                     summary: "Continue implementation while Bob reviews.".to_string(),
                     provenance: "operator.command:/handoff".to_string(),
                     recorded_at_epoch_ms: 1_700_002_000,
                 }),
+                collaboration_timeline: vec![ForgeSharedSessionTimelineEntry {
+                    kind: ForgeSharedSessionTimelineEntryKind::Handoff,
+                    participant_id: Some("local-probe-agent".to_string()),
+                    display_name: Some("Local Probe agent".to_string()),
+                    summary: "Continue implementation while Bob reviews.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_000,
+                }],
                 remote_session: ForgeProbeRemoteSessionProjection {
                     location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
                     owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
@@ -32520,7 +33242,10 @@ mod tests {
                         display_name: "Local Probe agent".to_string(),
                     },
                 ],
+                controller_participant_id: Some("local-human".to_string()),
+                pending_handoff_request: None,
                 last_handoff: None,
+                collaboration_timeline: Vec::new(),
                 remote_session: ForgeProbeRemoteSessionProjection::default(),
                 workspace_restore: ForgeWorkspaceRestoreProvenance::default(),
                 knowledge_mounts: ForgeKnowledgeMountProjection::default(),
@@ -32566,7 +33291,10 @@ mod tests {
                         display_name: "Probe".to_string(),
                     },
                 ],
+                controller_participant_id: Some("alice".to_string()),
+                pending_handoff_request: None,
                 last_handoff: None,
+                collaboration_timeline: Vec::new(),
                 remote_session: ForgeProbeRemoteSessionProjection {
                     location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
                     owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
@@ -32654,6 +33382,7 @@ mod tests {
             session.control_owner,
             ForgeSharedSessionControlOwner::HumanLocal
         );
+        assert_eq!(session.controller_label.as_deref(), Some("Alice"));
         assert_eq!(
             session.location_kind,
             ForgeProbeSessionLocationKind::HostedWorkspace
@@ -32684,13 +33413,27 @@ mod tests {
                     kind: ForgeSharedSessionControlOwner::HumanLocal,
                     display_name: "Alice".to_string(),
                 }],
+                controller_participant_id: Some("alice".to_string()),
+                pending_handoff_request: None,
                 last_handoff: Some(ForgeSharedSessionHandoff {
                     from_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    from_participant_id: Some("local-probe-agent".to_string()),
+                    from_display_name: Some("Local Probe agent".to_string()),
                     to_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    to_participant_id: Some("alice".to_string()),
+                    to_display_name: Some("Alice".to_string()),
                     summary: "Alice is taking over the hosted session.".to_string(),
                     provenance: "operator.command:/handoff".to_string(),
                     recorded_at_epoch_ms: 1_700_002_060,
                 }),
+                collaboration_timeline: vec![ForgeSharedSessionTimelineEntry {
+                    kind: ForgeSharedSessionTimelineEntryKind::TakeControl,
+                    participant_id: Some("alice".to_string()),
+                    display_name: Some("Alice".to_string()),
+                    summary: "Alice is taking over the hosted session.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_060,
+                }],
                 remote_session: ForgeProbeRemoteSessionProjection {
                     location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
                     owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
@@ -32751,6 +33494,14 @@ mod tests {
         assert_eq!(metadata.project_name.as_deref(), Some("openagents"));
         assert_eq!(metadata.git_branch.as_deref(), Some("alice/internal-mvp"));
         assert_eq!(chat.active_thread_id.as_deref(), Some("probe-session-1"));
+        assert!(chat
+            .shared_session_for_thread("probe-session-1")
+            .expect("attached shared session")
+            .participants
+            .iter()
+            .any(|participant| {
+                participant.participant_id == current_forge_local_operator_participant_id()
+            }));
 
         let shared_session_id = chat
             .ensure_probe_shared_session_for_thread("probe-session-1", 1_700_002_100)
@@ -32763,6 +33514,149 @@ mod tests {
             .expect("probe attach should prepare");
         assert_eq!(second_target.shared_session_id, "forge-session-1");
         assert!(second_target.reused_local_thread);
+    }
+
+    #[test]
+    fn chat_state_persists_shared_session_controller_requests_and_notes() {
+        let projection_path = unique_codex_artifact_projection_path("shared-session-control");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "shared session".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_100_000,
+            updated_at: 1_700_100_010,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("thread-a", 1_700_100_020)
+            .expect("shared session");
+        {
+            let session = chat
+                .forge_shared_sessions
+                .get_mut(&shared_session_id)
+                .expect("mutable shared session");
+            session.participants.push(ForgeSharedSessionParticipant {
+                participant_id: "bob".to_string(),
+                kind: ForgeSharedSessionControlOwner::HumanLocal,
+                display_name: "Bob".to_string(),
+            });
+            session.pending_handoff_request = Some(ForgeSharedSessionControlRequest {
+                participant_id: "bob".to_string(),
+                display_name: "Bob".to_string(),
+                summary: "I can take the next review pass.".to_string(),
+                provenance: "desktop-b:/handoff request".to_string(),
+                recorded_at_epoch_ms: 1_700_100_030,
+            });
+            sync_forge_shared_session_controller(session);
+        }
+
+        chat.accept_shared_session_control_request_for_thread(
+            "thread-a",
+            "Handing the next turn to Bob.",
+            "operator.command:/handoff accept",
+            1_700_100_040,
+        )
+        .expect("accept should succeed");
+        let after_accept = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session after accept");
+        assert_eq!(
+            after_accept.controller_participant_id.as_deref(),
+            Some("bob")
+        );
+        assert!(after_accept.pending_handoff_request.is_none());
+        assert_eq!(
+            after_accept
+                .last_handoff
+                .as_ref()
+                .and_then(|handoff| handoff.to_display_name.as_deref()),
+            Some("Bob")
+        );
+
+        chat.request_shared_session_control_for_thread(
+            "thread-a",
+            "I can take the implementation back after Bob's review.",
+            "operator.command:/handoff request",
+            1_700_100_050,
+        )
+        .expect("request should succeed");
+        let local_participant_id = current_forge_local_operator_participant_id();
+        let after_request = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session after request");
+        assert_eq!(
+            after_request
+                .pending_handoff_request
+                .as_ref()
+                .map(|request| request.participant_id.as_str()),
+            Some(local_participant_id.as_str())
+        );
+
+        chat.record_shared_session_note_for_thread(
+            "thread-a",
+            "Waiting on Bob to finish the reviewer pass.",
+            "operator.command:/handoff note",
+            1_700_100_060,
+        )
+        .expect("note should record");
+        chat.take_shared_session_control_for_thread(
+            "thread-a",
+            "Taking the next turn back locally.",
+            "operator.command:/handoff take",
+            1_700_100_070,
+        )
+        .expect("take control should succeed");
+
+        let final_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("final shared session");
+        assert_eq!(
+            final_session.controller_participant_id.as_deref(),
+            Some(local_participant_id.as_str())
+        );
+        assert!(final_session.pending_handoff_request.is_none());
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::ControlAccepted
+                && entry.summary == "Handing the next turn to Bob."
+        }));
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::ControlRequest
+                && entry.summary
+                    == "I can take the implementation back after Bob's review."
+        }));
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::Note
+                && entry.summary == "Waiting on Bob to finish the reviewer pass."
+        }));
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::TakeControl
+                && entry.summary == "Taking the next turn back locally."
+        }));
+        let status = chat
+            .shared_session_handoff_status_for_thread("thread-a")
+            .expect("handoff status should format");
+        assert!(status.contains("Current controller:"));
+        assert!(status.contains("Participants:"));
+        assert!(status.contains("Recent collaboration:"));
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.controller_participant_id.as_deref(),
+            Some(local_participant_id.as_str())
+        );
+        assert!(reloaded_session.collaboration_timeline.len() >= 4);
+
+        let _ = std::fs::remove_file(projection_path);
     }
 
     #[test]

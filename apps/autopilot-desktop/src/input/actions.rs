@@ -309,6 +309,19 @@ enum ChatForgeComposerIntent {
         probe_session_id: String,
     },
     HostedAuditStatus,
+    HandoffStatus,
+    HandoffRequest {
+        summary: String,
+    },
+    HandoffAccept {
+        summary: String,
+    },
+    HandoffTake {
+        summary: String,
+    },
+    HandoffNote {
+        summary: String,
+    },
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
         summary: String,
@@ -6748,27 +6761,46 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
             snapshot_ref: words.get(2).cloned(),
         }));
     }
-    let owner = match words.get(1).map(String::as_str) {
-        Some("human") | Some("local-human") => {
-            crate::app_state::ForgeSharedSessionControlOwner::HumanLocal
-        }
-        Some("agent") | Some("probe") | Some("local-probe") => {
-            crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent
-        }
-        _ => {
-            return Err(
-                "Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string(),
-            );
-        }
+    let Some(subcommand) = words.get(1).map(String::as_str) else {
+        return Err(
+            "Handoff commands: `/handoff status`, `/handoff request <summary>`, `/handoff accept <summary>`, `/handoff take <summary>`, `/handoff note <summary>`, `/handoff human <summary>`, `/handoff agent <summary>`.".to_string(),
+        );
     };
-    if words.len() < 3 {
-        return Err("Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string());
+    let summary = |start: usize| -> Result<String, String> {
+        let summary = words[start..].join(" ").trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff summary cannot be empty.".to_string());
+        }
+        Ok(summary)
+    };
+    match subcommand {
+        "status" if words.len() == 2 => Ok(Some(ChatForgeComposerIntent::HandoffStatus)),
+        "request" if words.len() >= 3 => Ok(Some(ChatForgeComposerIntent::HandoffRequest {
+            summary: summary(2)?,
+        })),
+        "accept" if words.len() >= 3 => Ok(Some(ChatForgeComposerIntent::HandoffAccept {
+            summary: summary(2)?,
+        })),
+        "take" | "take-control" if words.len() >= 3 => {
+            Ok(Some(ChatForgeComposerIntent::HandoffTake {
+                summary: summary(2)?,
+            }))
+        }
+        "note" if words.len() >= 3 => Ok(Some(ChatForgeComposerIntent::HandoffNote {
+            summary: summary(2)?,
+        })),
+        "human" | "local-human" => Ok(Some(ChatForgeComposerIntent::Handoff {
+            owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
+            summary: summary(2)?,
+        })),
+        "agent" | "probe" | "local-probe" => Ok(Some(ChatForgeComposerIntent::Handoff {
+            owner: crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
+            summary: summary(2)?,
+        })),
+        _ => Err(
+            "Handoff commands: `/handoff status`, `/handoff request <summary>`, `/handoff accept <summary>`, `/handoff take <summary>`, `/handoff note <summary>`, `/handoff human <summary>`, `/handoff agent <summary>`.".to_string(),
+        ),
     }
-    let summary = words[2..].join(" ").trim().to_string();
-    if summary.is_empty() {
-        return Err("Shared-session handoff summary cannot be empty.".to_string());
-    }
-    Ok(Some(ChatForgeComposerIntent::Handoff { owner, summary }))
 }
 
 fn resolve_discovered_skill_index(
@@ -8739,6 +8771,109 @@ fn run_chat_forge_action(
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
         }
+        ChatForgeComposerIntent::HandoffStatus => match state
+            .autopilot_chat
+            .shared_session_handoff_status_for_thread(thread_id.as_str())
+        {
+            Ok(status) => append_chat_command_result(state, prompt, status, false),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HandoffRequest { summary } => match state
+            .autopilot_chat
+            .request_shared_session_control_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff request",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => {
+                let mut response = format!(
+                    "Recorded control request on shared session `{shared_session_id}`.\n\n{}",
+                    summary
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HandoffAccept { summary } => match state
+            .autopilot_chat
+            .accept_shared_session_control_request_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff accept",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => {
+                let mut response = format!(
+                    "Accepted the pending control request on shared session `{shared_session_id}`.\n\n{}",
+                    summary
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HandoffTake { summary } => match state
+            .autopilot_chat
+            .take_shared_session_control_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff take",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => {
+                let mut response = format!(
+                    "Took control of shared session `{shared_session_id}`.\n\n{}",
+                    summary
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HandoffNote { summary } => match state
+            .autopilot_chat
+            .record_shared_session_note_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff note",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => {
+                let mut response = format!(
+                    "Recorded collaboration note on shared session `{shared_session_id}`.\n\n{}",
+                    summary
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
         ChatForgeComposerIntent::Handoff { owner, summary } => match state
             .autopilot_chat
             .record_shared_session_handoff_for_thread(
@@ -8748,16 +8883,21 @@ fn run_chat_forge_action(
                 "operator.command:/handoff",
                 current_epoch_millis(),
             ) {
-            Ok(shared_session_id) => append_chat_command_result(
-                state,
-                prompt,
-                format!(
+            Ok(shared_session_id) => {
+                let mut response = format!(
                     "Recorded shared-session handoff `{shared_session_id}` to {}.\n\n{}",
                     owner.display_label(),
                     summary
-                ),
-                false,
-            ),
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
             Err(error) => append_chat_command_result(state, prompt, error, true),
         },
         ChatForgeComposerIntent::RestoreMark {
@@ -21474,6 +21614,36 @@ mod tests {
             Some(ChatForgeComposerIntent::Handoff {
                 owner: crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
                 summary: "continue with the implementation".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff status").unwrap(),
+            Some(ChatForgeComposerIntent::HandoffStatus)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff request bob should take the next review pass")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HandoffRequest {
+                summary: "bob should take the next review pass".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff accept handing control to bob now").unwrap(),
+            Some(ChatForgeComposerIntent::HandoffAccept {
+                summary: "handing control to bob now".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff take i am taking the next turn").unwrap(),
+            Some(ChatForgeComposerIntent::HandoffTake {
+                summary: "i am taking the next turn".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff note waiting on approval before the next turn")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HandoffNote {
+                summary: "waiting on approval before the next turn".to_string(),
             })
         );
         assert_eq!(
