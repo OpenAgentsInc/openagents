@@ -6504,7 +6504,7 @@ dependencies = [
 [[package]]
 name = "probe-client"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c362ee01046f402e3a400f068a39d8221a87e5e2#c362ee01046f402e3a400f068a39d8221a87e5e2"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c5d82f37afee1666e4c1d39c25b5663a13031007#c5d82f37afee1666e4c1d39c25b5663a13031007"
 dependencies = [
  "probe-core",
  "probe-protocol",
@@ -6514,7 +6514,7 @@ dependencies = [
 [[package]]
 name = "probe-core"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c362ee01046f402e3a400f068a39d8221a87e5e2#c362ee01046f402e3a400f068a39d8221a87e5e2"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c5d82f37afee1666e4c1d39c25b5663a13031007#c5d82f37afee1666e4c1d39c25b5663a13031007"
 dependencies = [
  "hex",
  "probe-openai-auth",
@@ -6532,7 +6532,7 @@ dependencies = [
 [[package]]
 name = "probe-openai-auth"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c362ee01046f402e3a400f068a39d8221a87e5e2#c362ee01046f402e3a400f068a39d8221a87e5e2"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c5d82f37afee1666e4c1d39c25b5663a13031007#c5d82f37afee1666e4c1d39c25b5663a13031007"
 dependencies = [
  "base64 0.22.1",
  "rand 0.8.5",
@@ -6545,7 +6545,7 @@ dependencies = [
 [[package]]
 name = "probe-protocol"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c362ee01046f402e3a400f068a39d8221a87e5e2#c362ee01046f402e3a400f068a39d8221a87e5e2"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c5d82f37afee1666e4c1d39c25b5663a13031007#c5d82f37afee1666e4c1d39c25b5663a13031007"
 dependencies = [
  "serde",
  "serde_json",
@@ -6554,7 +6554,7 @@ dependencies = [
 [[package]]
 name = "probe-provider-apple-fm"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c362ee01046f402e3a400f068a39d8221a87e5e2#c362ee01046f402e3a400f068a39d8221a87e5e2"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c5d82f37afee1666e4c1d39c25b5663a13031007#c5d82f37afee1666e4c1d39c25b5663a13031007"
 dependencies = [
  "probe-protocol",
  "psionic-apple-fm 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=73e5025a3da04673331141ed33fda91a69cfbc0a)",
@@ -6568,7 +6568,7 @@ dependencies = [
 [[package]]
 name = "probe-provider-openai"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c362ee01046f402e3a400f068a39d8221a87e5e2#c362ee01046f402e3a400f068a39d8221a87e5e2"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c5d82f37afee1666e4c1d39c25b5663a13031007#c5d82f37afee1666e4c1d39c25b5663a13031007"
 dependencies = [
  "probe-protocol",
  "reqwest",
@@ -6579,7 +6579,7 @@ dependencies = [
 [[package]]
 name = "probe-server"
 version = "0.1.0"
-source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c362ee01046f402e3a400f068a39d8221a87e5e2#c362ee01046f402e3a400f068a39d8221a87e5e2"
+source = "git+https://github.com/OpenAgentsInc/probe.git?rev=c5d82f37afee1666e4c1d39c25b5663a13031007#c5d82f37afee1666e4c1d39c25b5663a13031007"
 dependencies = [
  "probe-core",
  "probe-protocol",

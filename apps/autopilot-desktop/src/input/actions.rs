@@ -285,6 +285,16 @@ enum ChatForgeComposerIntent {
         reason: String,
     },
     SettlementStatus,
+    HostedAuditRecord {
+        kind: crate::app_state::ForgeHostedAuditKind,
+        environment_summary: String,
+    },
+    HostedAuditNote {
+        kind: crate::app_state::ForgeHostedAuditKind,
+        note_kind: crate::app_state::ForgeHostedAuditNoteKind,
+        body: String,
+    },
+    HostedAuditStatus,
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
         summary: String,
@@ -4784,6 +4794,18 @@ fn campaign_verification_kind_allowed(kind: crate::app_state::ForgeCampaignArtif
     )
 }
 
+fn parse_hosted_audit_kind(raw: &str) -> Option<crate::app_state::ForgeHostedAuditKind> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "coding" | "coding_closeout" | "closeout" => {
+            Some(crate::app_state::ForgeHostedAuditKind::CodingCloseout)
+        }
+        "bookkeeping" | "bookkeeping_rehearsal" | "rehearsal" => {
+            Some(crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal)
+        }
+        _ => None,
+    }
+}
+
 fn build_probe_settlement_status_snapshot(
     chat: &crate::app_state::AutopilotChatState,
 ) -> Result<String, String> {
@@ -4847,6 +4869,127 @@ fn build_probe_settlement_status_snapshot(
     }
     if let Some(delivery_receipt_id) = receipt.delivery_receipt_id.as_deref() {
         lines.push(format!("Delivery receipt: `{delivery_receipt_id}`."));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn build_probe_hosted_audit_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let mut bundles = Vec::new();
+    if let Some(bundle) = chat.active_hosted_coding_audit_bundle() {
+        bundles.push(bundle);
+    }
+    if let Some(bundle) = chat.active_hosted_bookkeeping_audit_bundle() {
+        bundles.push(bundle);
+    }
+    if bundles.is_empty() {
+        return Err(
+            "Record hosted audit state first with `/hosted coding <environment-summary>`."
+                .to_string(),
+        );
+    }
+    let mut lines = Vec::new();
+    for bundle in bundles {
+        lines.push(format!(
+            "{} `{}` on {}.",
+            bundle.kind.display_label(),
+            bundle.audit_bundle_id,
+            bundle.session_location_kind.display_label()
+        ));
+        lines.push(format!("Environment: {}", bundle.environment_summary));
+        lines.push(format!(
+            "Probe sessions: {}. Routed packs: {}. Mounted packs: {}.",
+            bundle.probe_session_ids.len(),
+            bundle.routed_pack_ids.len(),
+            bundle.mounted_pack_ids.len()
+        ));
+        if let Some(evidence_status) = bundle.evidence_status {
+            lines.push(format!(
+                "Evidence: {}{}",
+                evidence_status.display_label(),
+                bundle
+                    .evidence_bundle_id
+                    .as_deref()
+                    .map(|bundle_id| format!(" (`{bundle_id}`)"))
+                    .unwrap_or_default()
+            ));
+        }
+        if let Some(delivery_status) = bundle.delivery_status {
+            lines.push(format!(
+                "Delivery: {}{}",
+                delivery_status.display_label(),
+                bundle
+                    .delivery_receipt_id
+                    .as_deref()
+                    .map(|receipt_id| format!(" (`{receipt_id}`)"))
+                    .unwrap_or_default()
+            ));
+        }
+        if let Some(hosted_receipts) = bundle.hosted_receipts.as_ref() {
+            let mut receipt_parts = Vec::new();
+            if hosted_receipts.auth.is_some() {
+                receipt_parts.push("auth");
+            }
+            if hosted_receipts.checkout.is_some() {
+                receipt_parts.push("checkout");
+            }
+            if hosted_receipts.worker.is_some() {
+                receipt_parts.push("worker");
+            }
+            if hosted_receipts.cost.is_some() {
+                receipt_parts.push("cost");
+            }
+            if hosted_receipts.cleanup.is_some() {
+                receipt_parts.push("cleanup");
+            }
+            if !receipt_parts.is_empty() {
+                lines.push(format!("Hosted receipts: {}.", receipt_parts.join(", ")));
+            }
+        }
+        let defect_count = bundle
+            .notes
+            .iter()
+            .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::Defect)
+            .count();
+        let recovery_count = bundle
+            .notes
+            .iter()
+            .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::RecoveryStep)
+            .count();
+        let note_count = bundle
+            .notes
+            .iter()
+            .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::OperatorNote)
+            .count();
+        lines.push(format!(
+            "Notes: {note_count}. Recovery steps: {recovery_count}. Defects: {defect_count}."
+        ));
+        if let Some(latest_note) = bundle.notes.first() {
+            lines.push(format!(
+                "Latest {}: {}",
+                latest_note.kind.display_label(),
+                latest_note.body
+            ));
+        }
+        if bundle.kind == crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal {
+            if let Some(campaign_id) = bundle.campaign_id.as_deref() {
+                lines.push(format!("Campaign: `{campaign_id}`."));
+            }
+            if let Some(bounty_contract_id) = bundle.bounty_contract_id.as_deref() {
+                lines.push(format!("Bounty contract: `{bounty_contract_id}`."));
+            }
+            if let Some(bounty_claim_id) = bundle.bounty_claim_id.as_deref() {
+                lines.push(format!("Bounty claim: `{bounty_claim_id}`."));
+            }
+            if let Some(settlement_receipt_id) = bundle.settlement_receipt_id.as_deref() {
+                lines.push(format!("Settlement receipt: `{settlement_receipt_id}`."));
+            }
+        }
+        lines.push(String::new());
+    }
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
     }
     Ok(lines.join("\n"))
 }
@@ -5389,6 +5532,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         && first_word != "/promote"
         && first_word != "/bounty"
         && first_word != "/settle"
+        && first_word != "/hosted"
         && first_word != "/handoff"
         && first_word != "/restore"
         && first_word != "/evidence"
@@ -5937,6 +6081,59 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
             }
             _ => Err(
                 "Settlement commands: `/settle merge <reviewer-label> [summary]`, `/settle metric <evaluator-label> <reference> [summary]`, `/settle dispute <actor-label> [summary]`, `/settle cancel <reason>`, `/settle status`.".to_string(),
+            ),
+        };
+    }
+    if first_word == "/hosted" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "coding" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/hosted coding <environment-summary>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedAuditRecord {
+                    kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                    environment_summary: words[2..].join(" "),
+                }))
+            }
+            "note" | "recovery" | "defect" => {
+                let Some(raw_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, or `/hosted defect <coding|bookkeeping> <summary>`.".to_string(),
+                    );
+                };
+                if words.len() < 4 {
+                    return Err(
+                        "Usage: `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, or `/hosted defect <coding|bookkeeping> <summary>`.".to_string(),
+                    );
+                }
+                let kind = parse_hosted_audit_kind(raw_kind).ok_or_else(|| {
+                    "Hosted audit kind must be `coding` or `bookkeeping`.".to_string()
+                })?;
+                let note_kind = match subcommand {
+                    "note" => crate::app_state::ForgeHostedAuditNoteKind::OperatorNote,
+                    "recovery" => crate::app_state::ForgeHostedAuditNoteKind::RecoveryStep,
+                    "defect" => crate::app_state::ForgeHostedAuditNoteKind::Defect,
+                    _ => unreachable!(),
+                };
+                Ok(Some(ChatForgeComposerIntent::HostedAuditNote {
+                    kind,
+                    note_kind,
+                    body: words[3..].join(" "),
+                }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/hosted status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedAuditStatus))
+            }
+            _ => Err(
+                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
             ),
         };
     }
@@ -7809,6 +8006,68 @@ fn run_chat_forge_action(
         }
         ChatForgeComposerIntent::SettlementStatus => {
             match build_probe_settlement_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::HostedAuditRecord {
+            kind,
+            environment_summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                thread_id.as_str(),
+                kind,
+                environment_summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(audit_bundle_id) => {
+                let mut response = format!(
+                    "Recorded {} `{audit_bundle_id}`.\n\n{}",
+                    kind.display_label(),
+                    environment_summary
+                );
+                if let Ok(status) = build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HostedAuditNote {
+            kind,
+            note_kind,
+            body,
+        } => match state
+            .autopilot_chat
+            .record_probe_hosted_audit_note_for_thread(
+                thread_id.as_str(),
+                kind,
+                note_kind,
+                body.clone(),
+                format!("operator.command:/hosted {}", note_kind.label()),
+                current_epoch_millis(),
+            ) {
+            Ok(audit_bundle_id) => {
+                let mut response = format!(
+                    "Recorded hosted {} on `{audit_bundle_id}` for {}.\n\n{}",
+                    note_kind.display_label(),
+                    kind.display_label(),
+                    body
+                );
+                if let Ok(status) = build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HostedAuditStatus => {
+            match build_probe_hosted_audit_status_snapshot(&state.autopilot_chat) {
                 Ok(summary) => append_chat_command_result(state, prompt, summary, false),
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
@@ -20441,6 +20700,48 @@ mod tests {
             Some(ChatForgeComposerIntent::PromoteStatus)
         );
         assert_eq!(
+            parse_chat_forge_intent("/hosted coding gcp us-central1 dogfood run").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditRecord {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                environment_summary: "gcp us-central1 dogfood run".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted note coding operator attached via desktop shell")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditNote {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                note_kind: crate::app_state::ForgeHostedAuditNoteKind::OperatorNote,
+                body: "operator attached via desktop shell".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent(
+                "/hosted recovery coding restarted probe worker after approval pause"
+            )
+            .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditNote {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                note_kind: crate::app_state::ForgeHostedAuditNoteKind::RecoveryStep,
+                body: "restarted probe worker after approval pause".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent(
+                "/hosted defect bookkeeping delivery watch needed manual refresh"
+            )
+            .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditNote {
+                kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
+                note_kind: crate::app_state::ForgeHostedAuditNoteKind::Defect,
+                body: "delivery watch needed manual refresh".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted status").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditStatus)
+        );
+        assert_eq!(
             parse_chat_forge_intent("/handoff human reviewed the diff manually").unwrap(),
             Some(ChatForgeComposerIntent::Handoff {
                 owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
@@ -20544,6 +20845,7 @@ mod tests {
         assert!(parse_chat_forge_intent("/evidence").is_err());
         assert!(parse_chat_forge_intent("/deliver").is_err());
         assert!(parse_chat_forge_intent("/settle").is_err());
+        assert!(parse_chat_forge_intent("/hosted").is_err());
         assert!(parse_chat_forge_intent("/campaign").is_err());
         assert!(parse_chat_forge_intent("/campaign verify probe active").is_err());
         assert!(parse_chat_forge_intent("/promote").is_err());

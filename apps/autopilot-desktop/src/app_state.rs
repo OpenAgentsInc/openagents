@@ -14,7 +14,7 @@ use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
 };
 use probe_protocol::session::{
-    SessionExecutionHostKind as ProbeSessionExecutionHostKind,
+    SessionExecutionHostKind as ProbeSessionExecutionHostKind, SessionHostedReceipts,
     SessionMountKind as ProbeSessionMountKind, SessionMountProvenance, SessionMountRef,
     SessionPreparedBaselineStatus as ProbeSessionPreparedBaselineStatus, SessionRuntimeOwner,
     SessionRuntimeOwnerKind, SessionSummaryArtifact, SessionSummaryArtifactRef,
@@ -8448,6 +8448,8 @@ pub struct ForgeProbeRemoteSessionProjection {
     pub execution_host_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_provenance_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_receipts: Option<SessionHostedReceipts>,
     #[serde(default)]
     pub operator_handoff_state: ForgeProbeOperatorHandoffState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -8726,7 +8728,8 @@ impl ForgeEvidenceProductArtifactKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ForgeEvidenceBundleStatus {
     Missing,
     Partial,
@@ -9404,6 +9407,120 @@ pub struct ForgeSettlementReceipt {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ForgeHostedAuditKind {
+    CodingCloseout,
+    BookkeepingRehearsal,
+}
+
+impl ForgeHostedAuditKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::CodingCloseout => "coding_closeout",
+            Self::BookkeepingRehearsal => "bookkeeping_rehearsal",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::CodingCloseout => "hosted coding closeout",
+            Self::BookkeepingRehearsal => "hosted bookkeeping rehearsal",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeHostedAuditNoteKind {
+    OperatorNote,
+    RecoveryStep,
+    Defect,
+}
+
+impl ForgeHostedAuditNoteKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::OperatorNote => "operator_note",
+            Self::RecoveryStep => "recovery_step",
+            Self::Defect => "defect",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::OperatorNote => "operator note",
+            Self::RecoveryStep => "recovery step",
+            Self::Defect => "defect",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedAuditNote {
+    pub kind: ForgeHostedAuditNoteKind,
+    pub body: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedAuditBundle {
+    pub audit_bundle_id: String,
+    pub shared_session_id: String,
+    pub kind: ForgeHostedAuditKind,
+    pub environment_summary: String,
+    pub session_location_kind: ForgeProbeSessionLocationKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_session_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_remote_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_git_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_head_commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routed_pack_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounted_pack_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsupported_route_reasons: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_receipts: Option<SessionHostedReceipts>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_status: Option<ForgeEvidenceBundleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_status: Option<ForgeDeliveryReceiptStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign_status: Option<ForgeCampaignStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_ledger_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_status: Option<ForgePromotionLedgerStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty_contract_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty_status: Option<ForgeBountyLifecycleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty_claim_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<ForgeSettlementReceiptStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<ForgeHostedAuditNote>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ForgeCampaignStatus {
     Draft,
     Scoped,
@@ -9818,6 +9935,10 @@ pub struct ForgeSharedSession {
     pub bounty_claim_id: Option<String>,
     #[serde(default)]
     pub settlement_receipt_id: Option<String>,
+    #[serde(default)]
+    pub hosted_coding_audit_bundle_id: Option<String>,
+    #[serde(default)]
+    pub hosted_bookkeeping_audit_bundle_id: Option<String>,
     pub evidence_bundle_id: Option<String>,
     pub delivery_receipt_id: Option<String>,
     pub created_at_epoch_ms: u64,
@@ -10279,6 +10400,7 @@ pub struct AutopilotChatState {
     forge_settlement_receipts: std::collections::HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: std::collections::HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: std::collections::HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: std::collections::HashMap<String, ForgeHostedAuditBundle>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
@@ -10290,6 +10412,7 @@ pub struct AutopilotChatState {
     next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_probe_turn_attachment_forwarding:
         std::collections::HashMap<String, ProbeTurnAttachmentForwarding>,
@@ -10421,6 +10544,7 @@ impl Default for AutopilotChatState {
             forge_settlement_receipts,
             forge_evidence_bundles,
             forge_delivery_receipts,
+            forge_hosted_audit_bundles,
             next_forge_shared_session_seq,
             next_forge_workspace_snapshot_seq,
             next_forge_restore_manifest_seq,
@@ -10432,6 +10556,7 @@ impl Default for AutopilotChatState {
             next_forge_settlement_receipt_seq,
             next_forge_evidence_bundle_seq,
             next_forge_delivery_receipt_seq,
+            next_forge_hosted_audit_bundle_seq,
             review_thread_source_map,
             artifact_load_error,
         ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -10450,6 +10575,7 @@ impl Default for AutopilotChatState {
                 projection.forge_settlement_receipts,
                 projection.forge_evidence_bundles,
                 projection.forge_delivery_receipts,
+                projection.forge_hosted_audit_bundles,
                 projection.next_forge_shared_session_seq,
                 projection.next_forge_workspace_snapshot_seq,
                 projection.next_forge_restore_manifest_seq,
@@ -10461,6 +10587,7 @@ impl Default for AutopilotChatState {
                 projection.next_forge_settlement_receipt_seq,
                 projection.next_forge_evidence_bundle_seq,
                 projection.next_forge_delivery_receipt_seq,
+                projection.next_forge_hosted_audit_bundle_seq,
                 projection.review_thread_source_map,
                 None,
             ),
@@ -10479,6 +10606,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 1,
                 1,
@@ -10525,6 +10654,7 @@ impl Default for AutopilotChatState {
             forge_settlement_receipts,
             forge_evidence_bundles,
             forge_delivery_receipts,
+            forge_hosted_audit_bundles,
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             next_forge_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
             next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
@@ -10536,6 +10666,7 @@ impl Default for AutopilotChatState {
             next_forge_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
             next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
             next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
+            next_forge_hosted_audit_bundle_seq: next_forge_hosted_audit_bundle_seq.max(1),
             review_thread_source_map,
             thread_probe_turn_attachment_forwarding: std::collections::HashMap::new(),
             pending_probe_session_start_knowledge_routes: std::collections::HashMap::new(),
@@ -10657,6 +10788,8 @@ struct CodexArtifactProjectionDocumentV2 {
     evidence_bundles: Vec<ForgeEvidenceBundle>,
     #[serde(default)]
     delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    #[serde(default)]
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
     #[serde(default = "default_next_forge_shared_session_seq")]
     next_shared_session_seq: u64,
     #[serde(default = "default_next_forge_workspace_snapshot_seq")]
@@ -10679,6 +10812,8 @@ struct CodexArtifactProjectionDocumentV2 {
     next_evidence_bundle_seq: u64,
     #[serde(default = "default_next_forge_delivery_receipt_seq")]
     next_delivery_receipt_seq: u64,
+    #[serde(default = "default_next_forge_hosted_audit_bundle_seq")]
+    next_hosted_audit_bundle_seq: u64,
 }
 
 struct LoadedCodexArtifactProjection {
@@ -10696,6 +10831,7 @@ struct LoadedCodexArtifactProjection {
     forge_settlement_receipts: HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: HashMap<String, ForgeHostedAuditBundle>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
@@ -10707,6 +10843,7 @@ struct LoadedCodexArtifactProjection {
     next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
     review_thread_source_map: HashMap<String, String>,
 }
 
@@ -10751,6 +10888,10 @@ fn default_next_forge_evidence_bundle_seq() -> u64 {
 }
 
 fn default_next_forge_delivery_receipt_seq() -> u64 {
+    1
+}
+
+fn default_next_forge_hosted_audit_bundle_seq() -> u64 {
     1
 }
 
@@ -11077,6 +11218,16 @@ fn normalize_forge_shared_sessions(
             .filter(|value| !value.is_empty());
         session.settlement_receipt_id = session
             .settlement_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        session.hosted_coding_audit_bundle_id = session
+            .hosted_coding_audit_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        session.hosted_bookkeeping_audit_bundle_id = session
+            .hosted_bookkeeping_audit_bundle_id
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
@@ -12423,6 +12574,118 @@ fn normalize_forge_delivery_receipts(
     receipts
 }
 
+fn normalize_forge_hosted_audit_bundles(
+    mut bundles: Vec<ForgeHostedAuditBundle>,
+) -> Vec<ForgeHostedAuditBundle> {
+    bundles.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.audit_bundle_id.cmp(&rhs.audit_bundle_id))
+    });
+    let mut seen_ids = HashSet::new();
+    bundles.retain(|bundle| {
+        let audit_bundle_id = bundle.audit_bundle_id.trim();
+        !audit_bundle_id.is_empty() && seen_ids.insert(audit_bundle_id.to_string())
+    });
+    for bundle in &mut bundles {
+        bundle.audit_bundle_id = bundle.audit_bundle_id.trim().to_string();
+        bundle.shared_session_id = bundle.shared_session_id.trim().to_string();
+        bundle.environment_summary = bundle.environment_summary.trim().to_string();
+        bundle.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut bundle.probe_session_ids));
+        bundle.workspace_root = bundle
+            .workspace_root
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.repo_remote_url = bundle
+            .repo_remote_url
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.repo_git_branch = bundle
+            .repo_git_branch
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.repo_head_commit = bundle
+            .repo_head_commit
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.routed_pack_ids =
+            normalize_forge_reference_list(std::mem::take(&mut bundle.routed_pack_ids));
+        bundle.mounted_pack_ids =
+            normalize_forge_reference_list(std::mem::take(&mut bundle.mounted_pack_ids));
+        bundle.unsupported_route_reasons = bundle
+            .unsupported_route_reasons
+            .drain(..)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        bundle.unsupported_route_reasons.sort();
+        bundle.unsupported_route_reasons.dedup();
+        bundle.evidence_bundle_id = bundle
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.delivery_receipt_id = bundle
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.campaign_id = bundle
+            .campaign_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.promotion_ledger_id = bundle
+            .promotion_ledger_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.bounty_contract_id = bundle
+            .bounty_contract_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.bounty_claim_id = bundle
+            .bounty_claim_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.settlement_receipt_id = bundle
+            .settlement_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.notes = bundle
+            .notes
+            .drain(..)
+            .filter_map(|mut note| {
+                note.body = note.body.trim().to_string();
+                note.provenance = note.provenance.trim().to_string();
+                (!note.body.is_empty() && !note.provenance.is_empty()).then_some(note)
+            })
+            .collect();
+        bundle.notes.sort_by(|lhs, rhs| {
+            rhs.recorded_at_epoch_ms
+                .cmp(&lhs.recorded_at_epoch_ms)
+                .then_with(|| lhs.body.cmp(&rhs.body))
+        });
+        if bundle.notes.len() > 32 {
+            bundle.notes.truncate(32);
+        }
+    }
+    bundles.retain(|bundle| {
+        !bundle.shared_session_id.is_empty()
+            && !bundle.probe_session_ids.is_empty()
+            && !bundle.environment_summary.is_empty()
+    });
+    bundles
+}
+
 fn persist_codex_artifact_projection(
     path: &Path,
     diff_artifacts: &HashMap<String, Vec<AutopilotDiffArtifact>>,
@@ -12439,6 +12702,7 @@ fn persist_codex_artifact_projection(
     forge_settlement_receipts: &HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: &HashMap<String, ForgeHostedAuditBundle>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
@@ -12450,6 +12714,7 @@ fn persist_codex_artifact_projection(
     next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -12501,6 +12766,9 @@ fn persist_codex_artifact_projection(
         delivery_receipts: normalize_forge_delivery_receipts(
             forge_delivery_receipts.values().cloned().collect(),
         ),
+        hosted_audit_bundles: normalize_forge_hosted_audit_bundles(
+            forge_hosted_audit_bundles.values().cloned().collect(),
+        ),
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
         next_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
         next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
@@ -12512,6 +12780,7 @@ fn persist_codex_artifact_projection(
         next_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
         next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
         next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
+        next_hosted_audit_bundle_seq: next_forge_hosted_audit_bundle_seq.max(1),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
@@ -12542,6 +12811,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 forge_settlement_receipts: HashMap::new(),
                 forge_evidence_bundles: HashMap::new(),
                 forge_delivery_receipts: HashMap::new(),
+                forge_hosted_audit_bundles: HashMap::new(),
                 next_forge_shared_session_seq: 1,
                 next_forge_workspace_snapshot_seq: 1,
                 next_forge_restore_manifest_seq: 1,
@@ -12553,6 +12823,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 next_forge_settlement_receipt_seq: 1,
                 next_forge_evidence_bundle_seq: 1,
                 next_forge_delivery_receipt_seq: 1,
+                next_forge_hosted_audit_bundle_seq: 1,
                 review_thread_source_map: HashMap::new(),
             });
         }
@@ -12600,17 +12871,19 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         Vec::new(),
         Vec::new(),
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
         Vec::new(),
+        Vec::new(),
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
         1,
     ))
 }
@@ -12640,6 +12913,8 @@ fn load_codex_artifact_projection_v2(
         document.bounty_claims,
         document.settlement_receipts,
         document.evidence_bundles,
+        document.delivery_receipts,
+        document.hosted_audit_bundles,
         document.next_shared_session_seq,
         document.next_workspace_snapshot_seq,
         document.next_restore_manifest_seq,
@@ -12650,8 +12925,8 @@ fn load_codex_artifact_projection_v2(
         document.next_bounty_claim_seq,
         document.next_settlement_receipt_seq,
         document.next_evidence_bundle_seq,
-        document.delivery_receipts,
         document.next_delivery_receipt_seq,
+        document.next_hosted_audit_bundle_seq,
     ))
 }
 
@@ -12669,6 +12944,8 @@ fn build_loaded_codex_artifact_projection(
     bounty_claims: Vec<ForgeBountyClaim>,
     settlement_receipts: Vec<ForgeSettlementReceipt>,
     evidence_bundles: Vec<ForgeEvidenceBundle>,
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
     next_shared_session_seq: u64,
     next_workspace_snapshot_seq: u64,
     next_restore_manifest_seq: u64,
@@ -12679,8 +12956,8 @@ fn build_loaded_codex_artifact_projection(
     next_bounty_claim_seq: u64,
     next_settlement_receipt_seq: u64,
     next_evidence_bundle_seq: u64,
-    delivery_receipts: Vec<ForgeDeliveryReceipt>,
     next_delivery_receipt_seq: u64,
+    next_hosted_audit_bundle_seq: u64,
 ) -> LoadedCodexArtifactProjection {
     let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
     for artifact in normalize_codex_diff_artifacts(diff_artifacts) {
@@ -12759,6 +13036,10 @@ fn build_loaded_codex_artifact_projection(
     for receipt in normalize_forge_delivery_receipts(delivery_receipts) {
         forge_delivery_receipts.insert(receipt.delivery_receipt_id.clone(), receipt);
     }
+    let mut forge_hosted_audit_bundles = HashMap::<String, ForgeHostedAuditBundle>::new();
+    for bundle in normalize_forge_hosted_audit_bundles(hosted_audit_bundles) {
+        forge_hosted_audit_bundles.insert(bundle.audit_bundle_id.clone(), bundle);
+    }
 
     LoadedCodexArtifactProjection {
         thread_diff_artifacts,
@@ -12775,6 +13056,7 @@ fn build_loaded_codex_artifact_projection(
         forge_settlement_receipts,
         forge_evidence_bundles,
         forge_delivery_receipts,
+        forge_hosted_audit_bundles,
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
         next_forge_workspace_snapshot_seq: next_workspace_snapshot_seq.max(1),
         next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
@@ -12786,6 +13068,7 @@ fn build_loaded_codex_artifact_projection(
         next_forge_settlement_receipt_seq: next_settlement_receipt_seq.max(1),
         next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
         next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
+        next_forge_hosted_audit_bundle_seq: next_hosted_audit_bundle_seq.max(1),
         review_thread_source_map,
     }
 }
@@ -13252,6 +13535,7 @@ impl AutopilotChatState {
                 state.forge_settlement_receipts = projection.forge_settlement_receipts;
                 state.forge_evidence_bundles = projection.forge_evidence_bundles;
                 state.forge_delivery_receipts = projection.forge_delivery_receipts;
+                state.forge_hosted_audit_bundles = projection.forge_hosted_audit_bundles;
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
                 state.next_forge_workspace_snapshot_seq =
                     projection.next_forge_workspace_snapshot_seq;
@@ -13265,6 +13549,8 @@ impl AutopilotChatState {
                     projection.next_forge_settlement_receipt_seq;
                 state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
                 state.next_forge_delivery_receipt_seq = projection.next_forge_delivery_receipt_seq;
+                state.next_forge_hosted_audit_bundle_seq =
+                    projection.next_forge_hosted_audit_bundle_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
                 state.last_error = None;
             }
@@ -13283,6 +13569,7 @@ impl AutopilotChatState {
                 state.forge_settlement_receipts.clear();
                 state.forge_evidence_bundles.clear();
                 state.forge_delivery_receipts.clear();
+                state.forge_hosted_audit_bundles.clear();
                 state.next_forge_shared_session_seq = 1;
                 state.next_forge_workspace_snapshot_seq = 1;
                 state.next_forge_restore_manifest_seq = 1;
@@ -13294,6 +13581,7 @@ impl AutopilotChatState {
                 state.next_forge_settlement_receipt_seq = 1;
                 state.next_forge_evidence_bundle_seq = 1;
                 state.next_forge_delivery_receipt_seq = 1;
+                state.next_forge_hosted_audit_bundle_seq = 1;
                 state.review_thread_source_map.clear();
                 state.last_error = Some(error);
             }
@@ -13953,6 +14241,38 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.settlement_receipt_for_thread(thread_id))
+    }
+
+    fn hosted_audit_bundle_for_thread(
+        &self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+    ) -> Option<&ForgeHostedAuditBundle> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let audit_bundle_id = match kind {
+            ForgeHostedAuditKind::CodingCloseout => {
+                shared_session.hosted_coding_audit_bundle_id.as_deref()?
+            }
+            ForgeHostedAuditKind::BookkeepingRehearsal => shared_session
+                .hosted_bookkeeping_audit_bundle_id
+                .as_deref()?,
+        };
+        self.forge_hosted_audit_bundles.get(audit_bundle_id)
+    }
+
+    pub fn active_hosted_coding_audit_bundle(&self) -> Option<&ForgeHostedAuditBundle> {
+        self.active_thread_id.as_deref().and_then(|thread_id| {
+            self.hosted_audit_bundle_for_thread(thread_id, ForgeHostedAuditKind::CodingCloseout)
+        })
+    }
+
+    pub fn active_hosted_bookkeeping_audit_bundle(&self) -> Option<&ForgeHostedAuditBundle> {
+        self.active_thread_id.as_deref().and_then(|thread_id| {
+            self.hosted_audit_bundle_for_thread(
+                thread_id,
+                ForgeHostedAuditKind::BookkeepingRehearsal,
+            )
+        })
     }
 
     fn workspace_snapshot_for_thread(&self, thread_id: &str) -> Option<&ForgeWorkspaceSnapshot> {
@@ -14710,6 +15030,16 @@ impl AutopilotChatState {
         self.next_forge_delivery_receipt_seq =
             self.next_forge_delivery_receipt_seq.saturating_add(1);
         delivery_receipt_id
+    }
+
+    fn next_hosted_audit_bundle_id(&mut self) -> String {
+        let audit_bundle_id = format!(
+            "forge-hosted-audit-{}",
+            self.next_forge_hosted_audit_bundle_seq
+        );
+        self.next_forge_hosted_audit_bundle_seq =
+            self.next_forge_hosted_audit_bundle_seq.saturating_add(1);
+        audit_bundle_id
     }
 
     fn sync_shared_session_fields_for_thread(
@@ -16996,6 +17326,239 @@ impl AutopilotChatState {
         Ok(settlement_receipt_id)
     }
 
+    fn hosted_audit_bundle_id_for_kind(
+        shared_session: &ForgeSharedSession,
+        kind: ForgeHostedAuditKind,
+    ) -> Option<&str> {
+        match kind {
+            ForgeHostedAuditKind::CodingCloseout => {
+                shared_session.hosted_coding_audit_bundle_id.as_deref()
+            }
+            ForgeHostedAuditKind::BookkeepingRehearsal => {
+                shared_session.hosted_bookkeeping_audit_bundle_id.as_deref()
+            }
+        }
+    }
+
+    fn snapshot_hosted_audit_bundle(
+        &self,
+        shared_session: &ForgeSharedSession,
+        kind: ForgeHostedAuditKind,
+        audit_bundle_id: String,
+        environment_summary: String,
+        notes: Vec<ForgeHostedAuditNote>,
+        created_at_epoch_ms: u64,
+        updated_at_epoch_ms: u64,
+    ) -> ForgeHostedAuditBundle {
+        let evidence_bundle = shared_session
+            .evidence_bundle_id
+            .as_deref()
+            .and_then(|bundle_id| self.forge_evidence_bundles.get(bundle_id));
+        let delivery_receipt = shared_session
+            .delivery_receipt_id
+            .as_deref()
+            .and_then(|receipt_id| self.forge_delivery_receipts.get(receipt_id));
+        let campaign = shared_session
+            .campaign_id
+            .as_deref()
+            .and_then(|campaign_id| self.forge_campaigns.get(campaign_id));
+        let promotion_ledger = campaign
+            .and_then(|campaign| campaign.promotion_ledger_id.as_deref())
+            .and_then(|ledger_id| self.forge_promotion_ledgers.get(ledger_id));
+        let bounty_contract = shared_session
+            .bounty_contract_id
+            .as_deref()
+            .and_then(|contract_id| self.forge_bounty_contracts.get(contract_id));
+        let settlement_receipt = shared_session
+            .settlement_receipt_id
+            .as_deref()
+            .and_then(|receipt_id| self.forge_settlement_receipts.get(receipt_id));
+        ForgeHostedAuditBundle {
+            audit_bundle_id,
+            shared_session_id: shared_session.shared_session_id.clone(),
+            kind,
+            environment_summary,
+            session_location_kind: shared_session.remote_session.location_kind,
+            probe_session_ids: shared_session.probe_session_ids.clone(),
+            workspace_root: shared_session.workspace_root.clone(),
+            repo_remote_url: shared_session
+                .workspace_restore
+                .base_repo
+                .remote_url
+                .clone(),
+            repo_git_branch: shared_session
+                .workspace_restore
+                .base_repo
+                .git_branch
+                .clone(),
+            repo_head_commit: shared_session
+                .workspace_restore
+                .base_repo
+                .head_commit
+                .clone(),
+            routed_pack_ids: shared_session.knowledge_mounts.routed_pack_ids.clone(),
+            mounted_pack_ids: shared_session.knowledge_mounts.mounted_pack_ids.clone(),
+            unsupported_route_reasons: shared_session
+                .knowledge_mounts
+                .unsupported_routes
+                .iter()
+                .map(|issue| issue.reason.clone())
+                .collect(),
+            hosted_receipts: shared_session.remote_session.hosted_receipts.clone(),
+            evidence_bundle_id: evidence_bundle.map(|bundle| bundle.evidence_bundle_id.clone()),
+            evidence_status: evidence_bundle.map(ForgeEvidenceBundle::reviewer_status),
+            delivery_receipt_id: delivery_receipt
+                .map(|receipt| receipt.delivery_receipt_id.clone()),
+            delivery_status: delivery_receipt.map(|receipt| receipt.status),
+            campaign_id: campaign.map(|campaign| campaign.campaign_id.clone()),
+            campaign_status: campaign.map(|campaign| campaign.status),
+            promotion_ledger_id: promotion_ledger.map(|ledger| ledger.promotion_ledger_id.clone()),
+            promotion_status: promotion_ledger.map(|ledger| ledger.status),
+            bounty_contract_id: bounty_contract.map(|contract| contract.bounty_contract_id.clone()),
+            bounty_status: bounty_contract.map(|contract| contract.lifecycle_status),
+            bounty_claim_id: shared_session.bounty_claim_id.clone(),
+            settlement_receipt_id: settlement_receipt
+                .map(|receipt| receipt.settlement_receipt_id.clone()),
+            settlement_status: settlement_receipt.map(|receipt| receipt.status),
+            notes,
+            created_at_epoch_ms,
+            updated_at_epoch_ms,
+        }
+    }
+
+    pub fn record_probe_hosted_audit_bundle_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        environment_summary: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let environment_summary = environment_summary.into().trim().to_string();
+        if environment_summary.is_empty() {
+            return Err("Hosted environment summary cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let existing_bundle_id =
+            Self::hosted_audit_bundle_id_for_kind(&shared_session, kind).map(ToString::to_string);
+        let existing_bundle = existing_bundle_id
+            .as_deref()
+            .and_then(|bundle_id| self.forge_hosted_audit_bundles.get(bundle_id))
+            .cloned();
+        let audit_bundle_id =
+            existing_bundle_id.unwrap_or_else(|| self.next_hosted_audit_bundle_id());
+        let created_at_epoch_ms = existing_bundle
+            .as_ref()
+            .map(|bundle| bundle.created_at_epoch_ms)
+            .unwrap_or(updated_at_epoch_ms);
+        let notes = existing_bundle
+            .map(|bundle| bundle.notes)
+            .unwrap_or_default();
+        let bundle = self.snapshot_hosted_audit_bundle(
+            &shared_session,
+            kind,
+            audit_bundle_id.clone(),
+            environment_summary,
+            notes,
+            created_at_epoch_ms,
+            updated_at_epoch_ms,
+        );
+        self.forge_hosted_audit_bundles
+            .insert(audit_bundle_id.clone(), bundle);
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before hosted audit linkage could be recorded."
+                )
+            })?;
+        match kind {
+            ForgeHostedAuditKind::CodingCloseout => {
+                shared_session.hosted_coding_audit_bundle_id = Some(audit_bundle_id.clone());
+            }
+            ForgeHostedAuditKind::BookkeepingRehearsal => {
+                shared_session.hosted_bookkeeping_audit_bundle_id = Some(audit_bundle_id.clone());
+            }
+        }
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(audit_bundle_id)
+    }
+
+    pub fn record_probe_hosted_audit_note_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        note_kind: ForgeHostedAuditNoteKind,
+        body: impl Into<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let body = body.into().trim().to_string();
+        if body.is_empty() {
+            return Err(format!(
+                "Hosted {} cannot be empty.",
+                note_kind.display_label()
+            ));
+        }
+        let provenance = provenance.into().trim().to_string();
+        if provenance.is_empty() {
+            return Err("Hosted audit note provenance cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let audit_bundle_id = Self::hosted_audit_bundle_id_for_kind(&shared_session, kind)
+            .ok_or_else(|| {
+                format!(
+                    "Record {} first with `/hosted {}`.",
+                    kind.display_label(),
+                    match kind {
+                        ForgeHostedAuditKind::CodingCloseout => "coding <environment-summary>",
+                        ForgeHostedAuditKind::BookkeepingRehearsal => {
+                            "bookkeeping <environment-summary>"
+                        }
+                    }
+                )
+            })?
+            .to_string();
+        let existing_bundle = self
+            .forge_hosted_audit_bundles
+            .get(&audit_bundle_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Hosted audit bundle `{audit_bundle_id}` disappeared before the note could be recorded."
+                )
+            })?;
+        let mut notes = existing_bundle.notes;
+        notes.push(ForgeHostedAuditNote {
+            kind: note_kind,
+            body,
+            provenance,
+            recorded_at_epoch_ms: updated_at_epoch_ms,
+        });
+        let bundle = self.snapshot_hosted_audit_bundle(
+            &shared_session,
+            kind,
+            audit_bundle_id.clone(),
+            existing_bundle.environment_summary,
+            notes,
+            existing_bundle.created_at_epoch_ms,
+            updated_at_epoch_ms,
+        );
+        self.forge_hosted_audit_bundles
+            .insert(audit_bundle_id.clone(), bundle);
+        self.persist_codex_artifact_projection();
+        Ok(audit_bundle_id)
+    }
+
     fn delivery_contributors_for_shared_session(
         &self,
         shared_session: &ForgeSharedSession,
@@ -17661,6 +18224,8 @@ impl AutopilotChatState {
                     bounty_contract_id: None,
                     bounty_claim_id: None,
                     settlement_receipt_id: None,
+                    hosted_coding_audit_bundle_id: None,
+                    hosted_bookkeeping_audit_bundle_id: None,
                     evidence_bundle_id: None,
                     delivery_receipt_id: None,
                     created_at_epoch_ms,
@@ -17800,6 +18365,7 @@ impl AutopilotChatState {
         thread_id: &str,
         runtime_owner: Option<&SessionRuntimeOwner>,
         workspace_state: Option<&SessionWorkspaceState>,
+        hosted_receipts: Option<&SessionHostedReceipts>,
         updated_at_epoch_ms: u64,
     ) -> Result<String, String> {
         let shared_session_id = self
@@ -17807,6 +18373,7 @@ impl AutopilotChatState {
             .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
         let runtime_owner = runtime_owner.cloned();
         let workspace_state = workspace_state.cloned();
+        let hosted_receipts = hosted_receipts.cloned();
         let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
             return Err(format!(
                 "Shared session `{shared_session_id}` disappeared before remote session state could be recorded."
@@ -17914,6 +18481,7 @@ impl AutopilotChatState {
                 .as_ref()
                 .and_then(|state| state.provenance_note.clone())
                 .or(existing_remote.workspace_provenance_note),
+            hosted_receipts: hosted_receipts.or(existing_remote.hosted_receipts),
             operator_handoff_state: forge_probe_operator_handoff_state(
                 location_kind,
                 control_owner,
@@ -21264,6 +21832,7 @@ impl AutopilotChatState {
             &self.forge_settlement_receipts,
             &self.forge_evidence_bundles,
             &self.forge_delivery_receipts,
+            &self.forge_hosted_audit_bundles,
             self.next_forge_shared_session_seq,
             self.next_forge_workspace_snapshot_seq,
             self.next_forge_restore_manifest_seq,
@@ -21275,6 +21844,7 @@ impl AutopilotChatState {
             self.next_forge_settlement_receipt_seq,
             self.next_forge_evidence_bundle_seq,
             self.next_forge_delivery_receipt_seq,
+            self.next_forge_hosted_audit_bundle_seq,
         ) {
             tracing::warn!("failed to persist codex artifacts: {error}");
         }
@@ -24981,6 +25551,9 @@ impl RenderState {
 mod tests {
     use probe_protocol::session::{
         SessionAttachTransport, SessionExecutionHost, SessionExecutionHostKind,
+        SessionHostedAuthKind, SessionHostedAuthReceipt, SessionHostedCheckoutKind,
+        SessionHostedCheckoutReceipt, SessionHostedCleanupReceipt, SessionHostedCleanupStatus,
+        SessionHostedCostReceipt, SessionHostedReceipts, SessionHostedWorkerReceipt,
         SessionPreparedBaselineRef, SessionPreparedBaselineStatus, SessionRuntimeOwner,
         SessionRuntimeOwnerKind, SessionWorkspaceBootMode, SessionWorkspaceSnapshotRef,
         SessionWorkspaceState,
@@ -24994,10 +25567,10 @@ mod tests {
         ForgeDeliveryCompareWatch, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
         ForgeDeliveryPullRequestWatch, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
         ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
-        ForgeEvidenceVerificationStatus, ForgeProbeOperatorHandoffState,
-        ForgeProbePreparedBaselineStatus, ForgeProbeSessionLocationKind,
-        ForgeProbeSessionOwnerKind, ForgePromotionLedgerStatus, ForgeSettlementClosurePath,
-        ForgeSettlementReceiptStatus, ForgeSharedSessionControlOwner,
+        ForgeEvidenceVerificationStatus, ForgeHostedAuditKind, ForgeHostedAuditNoteKind,
+        ForgeProbeOperatorHandoffState, ForgeProbePreparedBaselineStatus,
+        ForgeProbeSessionLocationKind, ForgeProbeSessionOwnerKind, ForgePromotionLedgerStatus,
+        ForgeSettlementClosurePath, ForgeSettlementReceiptStatus, ForgeSharedSessionControlOwner,
         ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
     };
 
@@ -30078,6 +30651,13 @@ mod tests {
                 }),
                 provenance_note: Some("restored from prepared workspace snapshot".to_string()),
             }),
+            Some(&SessionHostedReceipts {
+                auth: None,
+                checkout: None,
+                worker: None,
+                cost: None,
+                cleanup: None,
+            }),
             1_700_000_130,
         )
         .expect("remote session projection should record");
@@ -30169,6 +30749,261 @@ mod tests {
         assert_eq!(
             reloaded_session.remote_session.operator_handoff_state,
             ForgeProbeOperatorHandoffState::ProbeAgentActive
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_hosted_coding_audit_bundle_summary() {
+        let repo = init_git_workspace("hosted-coding-audit");
+        let projection_path = unique_codex_artifact_projection_path("hosted-coding-audit");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Hosted".to_string()),
+            preview: "hosted coding closeout".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"hosted\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Hosted closeout looks consistent.",
+            1_700_000_130,
+            false,
+        );
+        chat.record_probe_evidence_verification_for_thread(
+            "thread-a",
+            "cargo-test",
+            ForgeEvidenceVerificationStatus::Passed,
+            Some("target/hosted-closeout.log".to_string()),
+            Some("Hosted GCP closeout passed".to_string()),
+            1_700_000_135,
+        )
+        .expect("verification evidence should record");
+        chat.sync_probe_remote_session_projection_for_thread(
+            "thread-a",
+            Some(&SessionRuntimeOwner {
+                kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                owner_id: "probe-hosted-control".to_string(),
+                attach_transport: SessionAttachTransport::TcpJsonl,
+                display_name: Some("Probe hosted control".to_string()),
+                attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+            }),
+            Some(&SessionWorkspaceState {
+                boot_mode: SessionWorkspaceBootMode::PreparedBaseline,
+                baseline: Some(SessionPreparedBaselineRef {
+                    baseline_id: "repo-main".to_string(),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    base_ref: Some("main".to_string()),
+                    status: SessionPreparedBaselineStatus::Ready,
+                }),
+                snapshot: Some(SessionWorkspaceSnapshotRef {
+                    snapshot_id: "snap-9".to_string(),
+                    restore_manifest_id: Some("restore-manifest-9".to_string()),
+                    source_baseline_id: Some("repo-main".to_string()),
+                }),
+                execution_host: Some(SessionExecutionHost {
+                    kind: SessionExecutionHostKind::HostedWorker,
+                    host_id: "gce-worker-17".to_string(),
+                    display_name: Some("gce-worker-17".to_string()),
+                    location: Some("us-central1".to_string()),
+                }),
+                provenance_note: Some("restored from hosted prepared baseline".to_string()),
+            }),
+            Some(&SessionHostedReceipts {
+                auth: Some(SessionHostedAuthReceipt {
+                    authority: "forge-gcp-control".to_string(),
+                    subject: "operator:christopher".to_string(),
+                    auth_kind: SessionHostedAuthKind::ControlPlaneAssertion,
+                    scope: Some("forge.hosted.closeout".to_string()),
+                    recorded_at_ms: 1_700_000_136,
+                }),
+                checkout: Some(SessionHostedCheckoutReceipt {
+                    kind: SessionHostedCheckoutKind::GitRepository,
+                    workspace_root: repo.clone(),
+                    repo_root: Some(repo.clone()),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    head_ref: Some("feature/hosted-closeout".to_string()),
+                    head_commit: Some("def456abc789".to_string()),
+                    note: Some("checked out from hosted workspace rehearsal".to_string()),
+                    recorded_at_ms: 1_700_000_137,
+                }),
+                worker: Some(SessionHostedWorkerReceipt {
+                    owner_kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                    owner_id: "probe-hosted-control".to_string(),
+                    attach_transport: SessionAttachTransport::TcpJsonl,
+                    attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+                    execution_host_kind: SessionExecutionHostKind::HostedWorker,
+                    execution_host_id: "gce-worker-17".to_string(),
+                    execution_host_label: Some("gce-worker-17".to_string()),
+                    recorded_at_ms: 1_700_000_138,
+                }),
+                cost: Some(SessionHostedCostReceipt {
+                    observed_turn_count: 3,
+                    wallclock_ms: 42_000,
+                    prompt_tokens: Some(1_400),
+                    completion_tokens: Some(620),
+                    total_tokens: Some(2_020),
+                    note: Some("closeout run plus explicit delivery confirmation".to_string()),
+                    recorded_at_ms: 1_700_000_139,
+                }),
+                cleanup: Some(SessionHostedCleanupReceipt {
+                    status: SessionHostedCleanupStatus::Completed,
+                    workspace_root: repo.clone(),
+                    strategy: "worktree-remove".to_string(),
+                    note: Some("hosted workspace reclaimed after closeout".to_string()),
+                    recorded_at_ms: 1_700_000_140,
+                }),
+            }),
+            1_700_000_140,
+        )
+        .expect("remote session projection should record");
+        chat.record_probe_delivery_pr_for_thread(
+            "thread-a",
+            "main",
+            Some("abc123".to_string()),
+            "feature/hosted-closeout",
+            "def456abc789",
+            Some(
+                "https://github.com/OpenAgentsInc/openagents/compare/main...feature/hosted-closeout?expand=1"
+                    .to_string(),
+            ),
+            Some("https://github.com/OpenAgentsInc/openagents/pull/4101".to_string()),
+            "Hosted closeout",
+            "## Summary\n- close out hosted GCP run\n- capture evidence and delivery state",
+            1_700_000_145,
+        )
+        .expect("delivery receipt should record");
+        chat.record_probe_delivery_merge_for_thread(
+            "thread-a",
+            "reviewer-a",
+            Some("Merged from the hosted closeout rehearsal.".to_string()),
+            1_700_000_150,
+        )
+        .expect("merge should record");
+
+        let audit_bundle_id = chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::CodingCloseout,
+                "GCP us-central1 coding closeout on probe hosted worker gce-worker-17",
+                1_700_000_160,
+            )
+            .expect("hosted audit should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditNoteKind::OperatorNote,
+            "Captured mounted-pack, evidence, and delivery state in the shared closeout shell.",
+            "operator.command:/hosted note",
+            1_700_000_165,
+        )
+        .expect("hosted operator note should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditNoteKind::RecoveryStep,
+            "Reattached after a hosted control-plane restart and verified the same session id.",
+            "operator.command:/hosted recovery",
+            1_700_000_170,
+        )
+        .expect("hosted recovery note should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditNoteKind::Defect,
+            "Need a more explicit cleanup receipt when the worker exits before operator refresh.",
+            "operator.command:/hosted defect",
+            1_700_000_175,
+        )
+        .expect("hosted defect note should record");
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session");
+        assert_eq!(
+            shared_session.hosted_coding_audit_bundle_id.as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let bundle = chat
+            .active_hosted_coding_audit_bundle()
+            .expect("active hosted coding audit bundle should exist");
+        assert_eq!(bundle.audit_bundle_id, audit_bundle_id);
+        assert_eq!(bundle.kind, ForgeHostedAuditKind::CodingCloseout);
+        assert_eq!(
+            bundle.delivery_status,
+            Some(ForgeDeliveryReceiptStatus::Merged)
+        );
+        assert_eq!(
+            bundle.evidence_status,
+            Some(ForgeEvidenceBundleStatus::Complete)
+        );
+        assert_eq!(bundle.notes.len(), 3);
+        assert_eq!(
+            bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.auth.as_ref())
+                .map(|receipt| receipt.auth_kind),
+            Some(SessionHostedAuthKind::ControlPlaneAssertion)
+        );
+        assert_eq!(
+            bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.cleanup.as_ref())
+                .map(|receipt| receipt.status),
+            Some(SessionHostedCleanupStatus::Completed)
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.hosted_coding_audit_bundle_id.as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.hosted_coding_audit_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_hosted_audit_bundles.get(bundle_id))
+            .expect("reloaded hosted coding audit bundle should exist");
+        assert_eq!(
+            reloaded_bundle.environment_summary,
+            "GCP us-central1 coding closeout on probe hosted worker gce-worker-17"
+        );
+        assert_eq!(reloaded_bundle.notes.len(), 3);
+        assert_eq!(
+            reloaded_bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.worker.as_ref())
+                .map(|receipt| receipt.execution_host_id.as_str()),
+            Some("gce-worker-17")
+        );
+        assert_eq!(
+            reloaded_bundle.delivery_status,
+            Some(ForgeDeliveryReceiptStatus::Merged)
         );
 
         let _ = std::fs::remove_file(projection_path);

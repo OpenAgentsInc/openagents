@@ -1,6 +1,10 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 
+use probe_protocol::session::{
+    SessionHostedAuthKind, SessionHostedCheckoutKind, SessionHostedCleanupStatus,
+    SessionHostedReceipts,
+};
 use reqwest::Url;
 use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownParser, MarkdownRenderer};
 use wgpui::{
@@ -14,8 +18,8 @@ use crate::app_state::{
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
     ForgeBountyContract, ForgeCampaign, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
-    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeKnowledgePack, ForgePromotionLedger,
-    ForgeSettlementReceipt, ForgeSettlementReceiptStatus, ForgeSharedSession,
+    ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeHostedAuditBundle, ForgeKnowledgePack,
+    ForgePromotionLedger, ForgeSettlementReceipt, ForgeSettlementReceiptStatus, ForgeSharedSession,
     ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot, ManagedChatChannelProjection,
     ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
     ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef, RenderState,
@@ -2957,6 +2961,48 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             compact_display_token(restore_manifest_id, 24)
         ));
     }
+    if let Some(hosted_receipts) = session.remote_session.hosted_receipts.as_ref() {
+        let mut receipt_parts = Vec::new();
+        if let Some(auth) = hosted_receipts.auth.as_ref() {
+            receipt_parts.push(format!("auth:{}", hosted_auth_kind_label(auth.auth_kind)));
+        }
+        if let Some(checkout) = hosted_receipts.checkout.as_ref() {
+            receipt_parts.push(format!(
+                "checkout:{}",
+                hosted_checkout_kind_label(checkout.kind)
+            ));
+        }
+        if hosted_receipts.worker.is_some() {
+            receipt_parts.push("worker".to_string());
+        }
+        if hosted_receipts.cost.is_some() {
+            receipt_parts.push("cost".to_string());
+        }
+        if let Some(cleanup) = hosted_receipts.cleanup.as_ref() {
+            receipt_parts.push(format!(
+                "cleanup:{}",
+                hosted_cleanup_status_label(cleanup.status)
+            ));
+        }
+        if !receipt_parts.is_empty() {
+            lines.push(format!(
+                "- **hosted receipts:** {}",
+                receipt_parts.join(", ")
+            ));
+        }
+    }
+    if let Some(audit_bundle_id) = session.hosted_coding_audit_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **hosted coding audit:** `{}`",
+            compact_display_token(audit_bundle_id, 24)
+        ));
+    }
+    if let Some(audit_bundle_id) = session.hosted_bookkeeping_audit_bundle_id.as_deref() {
+        lines.push(format!(
+            "- **hosted bookkeeping audit:** `{}`",
+            compact_display_token(audit_bundle_id, 24)
+        ));
+    }
     lines.push(format!(
         "- **workspace startup:** {}",
         session.workspace_restore.startup_kind.display_label()
@@ -4272,6 +4318,316 @@ fn active_settlement_receipt_markdown_source(receipt: &ForgeSettlementReceipt) -
         ));
     }
     lines.push(format!("- **provenance:** `{}`", receipt.provenance));
+    lines.join("\n")
+}
+
+fn hosted_auth_kind_label(kind: SessionHostedAuthKind) -> &'static str {
+    match kind {
+        SessionHostedAuthKind::ControlPlaneAssertion => "control plane assertion",
+        SessionHostedAuthKind::OperatorToken => "operator token",
+    }
+}
+
+fn hosted_checkout_kind_label(kind: SessionHostedCheckoutKind) -> &'static str {
+    match kind {
+        SessionHostedCheckoutKind::GitRepository => "git repository",
+        SessionHostedCheckoutKind::PlainWorkspace => "plain workspace",
+    }
+}
+
+fn hosted_cleanup_status_label(status: SessionHostedCleanupStatus) -> &'static str {
+    match status {
+        SessionHostedCleanupStatus::NotRequired => "not required",
+        SessionHostedCleanupStatus::Pending => "pending",
+        SessionHostedCleanupStatus::Completed => "completed",
+    }
+}
+
+fn hosted_audit_receipt_count(receipts: Option<&SessionHostedReceipts>) -> usize {
+    receipts.map_or(0, |receipts| {
+        usize::from(receipts.auth.is_some())
+            + usize::from(receipts.checkout.is_some())
+            + usize::from(receipts.worker.is_some())
+            + usize::from(receipts.cost.is_some())
+            + usize::from(receipts.cleanup.is_some())
+    })
+}
+
+fn active_hosted_audit_meta_line(bundle: &ForgeHostedAuditBundle) -> String {
+    let defect_count = bundle
+        .notes
+        .iter()
+        .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::Defect)
+        .count();
+    let mut parts = vec![format!(
+        "audit:{}",
+        compact_display_token(bundle.audit_bundle_id.as_str(), 18)
+    )];
+    parts.push(format!("kind:{}", bundle.kind.label()));
+    parts.push(format!("probe:{}", bundle.probe_session_ids.len()));
+    parts.push(format!(
+        "receipts:{}",
+        hosted_audit_receipt_count(bundle.hosted_receipts.as_ref())
+    ));
+    if defect_count > 0 {
+        parts.push(format!("defects:{defect_count}"));
+    }
+    if let Some(updated) = format_thread_timestamp(bundle.updated_at_epoch_ms as i64) {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn append_hosted_receipt_lines(lines: &mut Vec<String>, receipts: &SessionHostedReceipts) {
+    if let Some(auth) = receipts.auth.as_ref() {
+        let mut line = format!(
+            "- **hosted auth:** {}  •  `{}`  •  `{}`",
+            hosted_auth_kind_label(auth.auth_kind),
+            compact_display_token(auth.authority.as_str(), 32),
+            compact_display_token(auth.subject.as_str(), 32)
+        );
+        if let Some(scope) = auth.scope.as_deref() {
+            line.push_str(&format!("  •  {}", compact_display_token(scope, 40)));
+        }
+        lines.push(line);
+    } else {
+        lines.push("- **hosted auth:** _missing_".to_string());
+    }
+
+    if let Some(checkout) = receipts.checkout.as_ref() {
+        let mut line = format!(
+            "- **hosted checkout:** {}  •  `{}`",
+            hosted_checkout_kind_label(checkout.kind),
+            compact_display_token(checkout.workspace_root.display().to_string().as_str(), 48)
+        );
+        if let Some(repo_identity) = checkout.repo_identity.as_deref() {
+            line.push_str(&format!(
+                "  •  `{}`",
+                compact_display_token(repo_identity, 32)
+            ));
+        }
+        if let Some(head_ref) = checkout.head_ref.as_deref() {
+            line.push_str(&format!("  •  `{}`", compact_display_token(head_ref, 28)));
+        }
+        if let Some(head_commit) = checkout.head_commit.as_deref() {
+            line.push_str(&format!(" @ `{}`", compact_display_token(head_commit, 16)));
+        }
+        lines.push(line);
+        if let Some(note) = checkout.note.as_deref() {
+            lines.push(format!(
+                "  - checkout note: {}",
+                compact_display_token(note, 88)
+            ));
+        }
+    } else {
+        lines.push("- **hosted checkout:** _missing_".to_string());
+    }
+
+    if let Some(worker) = receipts.worker.as_ref() {
+        let mut line = format!(
+            "- **hosted worker:** owner `{}`  •  host `{}`",
+            compact_display_token(worker.owner_id.as_str(), 24),
+            compact_display_token(worker.execution_host_id.as_str(), 24)
+        );
+        if let Some(label) = worker.execution_host_label.as_deref() {
+            line.push_str(&format!("  •  {}", compact_display_token(label, 28)));
+        }
+        if let Some(attach_target) = worker.attach_target.as_deref() {
+            line.push_str(&format!(
+                "  •  `{}`",
+                compact_display_token(attach_target, 40)
+            ));
+        }
+        lines.push(line);
+    } else {
+        lines.push("- **hosted worker:** _missing_".to_string());
+    }
+
+    if let Some(cost) = receipts.cost.as_ref() {
+        let mut line = format!(
+            "- **hosted cost:** turns:{}  •  wallclock:{}ms",
+            cost.observed_turn_count, cost.wallclock_ms
+        );
+        if let Some(total_tokens) = cost.total_tokens {
+            line.push_str(&format!("  •  tokens:{total_tokens}"));
+        }
+        lines.push(line);
+        if let Some(note) = cost.note.as_deref() {
+            lines.push(format!(
+                "  - cost note: {}",
+                compact_display_token(note, 88)
+            ));
+        }
+    } else {
+        lines.push("- **hosted cost:** _missing_".to_string());
+    }
+
+    if let Some(cleanup) = receipts.cleanup.as_ref() {
+        let mut line = format!(
+            "- **hosted cleanup:** {}  •  `{}`  •  `{}`",
+            hosted_cleanup_status_label(cleanup.status),
+            compact_display_token(cleanup.workspace_root.display().to_string().as_str(), 48),
+            compact_display_token(cleanup.strategy.as_str(), 28)
+        );
+        if let Some(note) = cleanup.note.as_deref() {
+            line.push_str(&format!("  •  {}", compact_display_token(note, 40)));
+        }
+        lines.push(line);
+    } else {
+        lines.push("- **hosted cleanup:** _missing_".to_string());
+    }
+}
+
+fn active_hosted_audit_markdown_source(bundle: &ForgeHostedAuditBundle) -> String {
+    let mut lines = vec![format!("- **kind:** {}", bundle.kind.display_label())];
+    lines.push(format!(
+        "- **shared session:** `{}`",
+        compact_display_token(bundle.shared_session_id.as_str(), 24)
+    ));
+    lines.push(format!(
+        "- **location:** {}",
+        bundle.session_location_kind.display_label()
+    ));
+    lines.push(format!(
+        "- **environment:** {}",
+        compact_display_token(bundle.environment_summary.as_str(), 96)
+    ));
+    if !bundle.probe_session_ids.is_empty() {
+        lines.push(format!(
+            "- **probe sessions:** {}",
+            bundle
+                .probe_session_ids
+                .iter()
+                .map(|session_id| format!("`{}`", compact_display_token(session_id, 18)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if let Some(workspace_root) = bundle.workspace_root.as_deref() {
+        lines.push(format!(
+            "- **workspace root:** `{}`",
+            compact_display_token(workspace_root, 48)
+        ));
+    }
+    if let Some(base_repo) = format_workspace_base_repo_parts(
+        bundle.repo_remote_url.as_deref(),
+        bundle.repo_git_branch.as_deref(),
+        bundle.repo_head_commit.as_deref(),
+    ) {
+        lines.push(format!("- **base repo:** {}", base_repo));
+    }
+    lines.push(format!(
+        "- **routed packs:** {}",
+        bundle.routed_pack_ids.len()
+    ));
+    lines.push(format!(
+        "- **mounted packs:** {}",
+        bundle.mounted_pack_ids.len()
+    ));
+    if !bundle.routed_pack_ids.is_empty() {
+        lines.push(format!(
+            "  - routed: {}",
+            bundle
+                .routed_pack_ids
+                .iter()
+                .take(4)
+                .map(|pack_id| format!("`{}`", compact_display_token(pack_id, 24)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !bundle.mounted_pack_ids.is_empty() {
+        lines.push(format!(
+            "  - mounted: {}",
+            bundle
+                .mounted_pack_ids
+                .iter()
+                .take(4)
+                .map(|pack_id| format!("`{}`", compact_display_token(pack_id, 24)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !bundle.unsupported_route_reasons.is_empty() {
+        lines.push(format!(
+            "- **unsupported pack routes:** {}",
+            bundle.unsupported_route_reasons.len()
+        ));
+        for reason in bundle.unsupported_route_reasons.iter().take(4) {
+            lines.push(format!("  - {}", compact_display_token(reason, 88)));
+        }
+    }
+    if let Some(evidence_status) = bundle.evidence_status {
+        let mut line = format!("- **evidence:** {}", evidence_status.display_label());
+        if let Some(bundle_id) = bundle.evidence_bundle_id.as_deref() {
+            line.push_str(&format!("  •  `{}`", compact_display_token(bundle_id, 24)));
+        }
+        lines.push(line);
+    }
+    if let Some(delivery_status) = bundle.delivery_status {
+        let mut line = format!("- **delivery:** {}", delivery_status.display_label());
+        if let Some(receipt_id) = bundle.delivery_receipt_id.as_deref() {
+            line.push_str(&format!("  •  `{}`", compact_display_token(receipt_id, 24)));
+        }
+        lines.push(line);
+    }
+    if let Some(receipts) = bundle.hosted_receipts.as_ref() {
+        append_hosted_receipt_lines(&mut lines, receipts);
+    } else {
+        lines.push("- **hosted receipts:** _missing_".to_string());
+    }
+    if bundle.kind == crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal {
+        if let Some(campaign_id) = bundle.campaign_id.as_deref() {
+            lines.push(format!(
+                "- **campaign:** `{}`",
+                compact_display_token(campaign_id, 24)
+            ));
+        }
+        if let Some(promotion_ledger_id) = bundle.promotion_ledger_id.as_deref() {
+            lines.push(format!(
+                "- **promotion ledger:** `{}`",
+                compact_display_token(promotion_ledger_id, 24)
+            ));
+        }
+        if let Some(bounty_contract_id) = bundle.bounty_contract_id.as_deref() {
+            lines.push(format!(
+                "- **bounty contract:** `{}`",
+                compact_display_token(bounty_contract_id, 24)
+            ));
+        }
+        if let Some(bounty_claim_id) = bundle.bounty_claim_id.as_deref() {
+            lines.push(format!(
+                "- **bounty claim:** `{}`",
+                compact_display_token(bounty_claim_id, 24)
+            ));
+        }
+        if let Some(settlement_receipt_id) = bundle.settlement_receipt_id.as_deref() {
+            lines.push(format!(
+                "- **settlement receipt:** `{}`",
+                compact_display_token(settlement_receipt_id, 24)
+            ));
+        }
+    }
+    if !bundle.notes.is_empty() {
+        lines.push(format!("- **notes:** {}", bundle.notes.len()));
+        for note in bundle.notes.iter().rev().take(6) {
+            let mut line = format!(
+                "  - {}  •  {}",
+                note.kind.display_label(),
+                compact_display_token(note.body.as_str(), 88)
+            );
+            if let Some(recorded_at) = format_thread_timestamp(note.recorded_at_epoch_ms as i64) {
+                line.push_str(&format!("  •  {recorded_at}"));
+            }
+            line.push_str(&format!(
+                "  •  `{}`",
+                compact_display_token(note.provenance.as_str(), 32)
+            ));
+            lines.push(line);
+        }
+    } else {
+        lines.push("- **notes:** _none recorded_".to_string());
+    }
     lines.join("\n")
 }
 
@@ -7047,6 +7403,73 @@ pub fn paint(
                     active_settlement_receipt_markdown_source(settlement_receipt);
                 if !settlement_markdown.trim().is_empty() {
                     let markdown_document = markdown_parser.parse(&settlement_markdown);
+                    let markdown_height = markdown_renderer
+                        .render(
+                            &markdown_document,
+                            Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                            markdown_width,
+                            paint.text,
+                            paint.scene,
+                        )
+                        .height
+                        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+                    y += markdown_height;
+                }
+                y += 10.0;
+            }
+            for hosted_audit_bundle in [
+                autopilot_chat.active_hosted_coding_audit_bundle(),
+                autopilot_chat.active_hosted_bookkeeping_audit_bundle(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let defect_count = hosted_audit_bundle
+                    .notes
+                    .iter()
+                    .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::Defect)
+                    .count();
+                let hosted_audit_color = if defect_count > 0 {
+                    theme::status::ERROR
+                } else if hosted_audit_bundle.delivery_status
+                    == Some(crate::app_state::ForgeDeliveryReceiptStatus::Merged)
+                {
+                    theme::status::SUCCESS
+                } else if hosted_audit_receipt_count(hosted_audit_bundle.hosted_receipts.as_ref())
+                    > 0
+                {
+                    theme::accent::PRIMARY
+                } else {
+                    theme::status::WARNING
+                };
+                let title = match hosted_audit_bundle.kind {
+                    crate::app_state::ForgeHostedAuditKind::CodingCloseout => {
+                        "[hosted coding audit]"
+                    }
+                    crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal => {
+                        "[hosted bookkeeping audit]"
+                    }
+                };
+                paint.scene.draw_text(paint.text.layout_mono(
+                    title,
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    hosted_audit_color,
+                ));
+                y += CHAT_PROGRESS_HEADER_LINE_HEIGHT;
+
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &active_hosted_audit_meta_line(hosted_audit_bundle),
+                    Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+
+                let hosted_audit_markdown =
+                    active_hosted_audit_markdown_source(hosted_audit_bundle);
+                if !hosted_audit_markdown.trim().is_empty() {
+                    let markdown_document = markdown_parser.parse(&hosted_audit_markdown);
                     let markdown_height = markdown_renderer
                         .render(
                             &markdown_document,

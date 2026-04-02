@@ -203,6 +203,37 @@ Current local-first behavior:
 - GitHub-specific PR and CI details stay app-owned in the delivery receipt
   instead of leaking browser-provider semantics into Probe runtime truth
 
+## Hosted Audit Bundle Layer
+
+Autopilot now also keeps one app-owned hosted coding audit bundle above the
+shared session, evidence bundle, delivery receipt, and hosted Probe runtime
+projection.
+
+Current local-first behavior:
+
+- one hosted coding audit bundle can be linked from the Forge shared session
+- the bundle snapshots:
+  - environment summary
+  - session location
+  - Probe session ids
+  - workspace root and base repo identity
+  - routed and mounted pack ids plus unsupported-route reasons
+  - hosted Probe receipts for auth, checkout, worker ownership, cost, and
+    cleanup when Probe reports them
+  - linked evidence bundle and delivery receipt state
+- operators can extend the bundle through:
+  - `/hosted coding <environment-summary>`
+  - `/hosted note coding <summary>`
+  - `/hosted recovery coding <summary>`
+  - `/hosted defect coding <summary>`
+  - `/hosted status`
+- the shell renders the audit as a first-class card so the operator can review
+  hosted closeout truth without spelunking the raw transcript or detached Probe
+  session JSON
+
+This keeps Probe as the source of hosted runtime truth while keeping the closeout
+story, reviewer-facing notes, and operator defect accounting app-owned.
+
 ## Campaign Layer
 
 Autopilot now also keeps one app-owned Forge campaign above the shared session,
