@@ -4885,7 +4885,7 @@ fn build_probe_hosted_audit_status_snapshot(
     }
     if bundles.is_empty() {
         return Err(
-            "Record hosted audit state first with `/hosted coding <environment-summary>`."
+            "Record hosted audit state first with `/hosted coding <environment-summary>` or `/hosted bookkeeping <environment-summary>`."
                 .to_string(),
         );
     }
@@ -6087,7 +6087,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
     if first_word == "/hosted" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
-                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
+                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
             );
         };
         return match subcommand {
@@ -6097,6 +6097,15 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                 }
                 Ok(Some(ChatForgeComposerIntent::HostedAuditRecord {
                     kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                    environment_summary: words[2..].join(" "),
+                }))
+            }
+            "bookkeeping" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/hosted bookkeeping <environment-summary>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedAuditRecord {
+                    kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
                     environment_summary: words[2..].join(" "),
                 }))
             }
@@ -6133,7 +6142,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
                 Ok(Some(ChatForgeComposerIntent::HostedAuditStatus))
             }
             _ => Err(
-                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
+                "Hosted audit commands: `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted status`.".to_string(),
             ),
         };
     }
@@ -20704,6 +20713,14 @@ mod tests {
             Some(ChatForgeComposerIntent::HostedAuditRecord {
                 kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
                 environment_summary: "gcp us-central1 dogfood run".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted bookkeeping gcp us-central1 bounty rehearsal")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditRecord {
+                kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
+                environment_summary: "gcp us-central1 bounty rehearsal".to_string(),
             })
         );
         assert_eq!(

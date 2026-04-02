@@ -205,13 +205,14 @@ Current local-first behavior:
 
 ## Hosted Audit Bundle Layer
 
-Autopilot now also keeps one app-owned hosted coding audit bundle above the
-shared session, evidence bundle, delivery receipt, and hosted Probe runtime
-projection.
+Autopilot now also keeps app-owned hosted audit bundles above the shared
+session, evidence bundle, delivery receipt, hosted Probe runtime projection,
+and the bookkeeping objects linked to the same hosted run.
 
 Current local-first behavior:
 
-- one hosted coding audit bundle can be linked from the Forge shared session
+- one hosted coding audit bundle and one hosted bookkeeping rehearsal bundle
+  can be linked from the Forge shared session
 - the bundle snapshots:
   - environment summary
   - session location
@@ -223,16 +224,25 @@ Current local-first behavior:
   - linked evidence bundle and delivery receipt state
 - operators can extend the bundle through:
   - `/hosted coding <environment-summary>`
+  - `/hosted bookkeeping <environment-summary>`
   - `/hosted note coding <summary>`
   - `/hosted recovery coding <summary>`
   - `/hosted defect coding <summary>`
+  - `/hosted note bookkeeping <summary>`
+  - `/hosted recovery bookkeeping <summary>`
+  - `/hosted defect bookkeeping <summary>`
   - `/hosted status`
 - the shell renders the audit as a first-class card so the operator can review
   hosted closeout truth without spelunking the raw transcript or detached Probe
   session JSON
+- bookkeeping rehearsal bundles also snapshot the linked campaign,
+  promotion-ledger, bounty-contract, bounty-claim, and settlement-receipt ids
+  and statuses so the operator can see which bookkeeping steps were actually
+  tied to the hosted run versus which steps still required manual intervention
 
 This keeps Probe as the source of hosted runtime truth while keeping the closeout
-story, reviewer-facing notes, and operator defect accounting app-owned.
+story, reviewer-facing notes, bookkeeping linkage, and operator defect
+accounting app-owned.
 
 ## Campaign Layer
 

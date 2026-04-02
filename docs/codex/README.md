@@ -37,7 +37,7 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     provenance, hosted runtime ownership plus execution-host projection, and
     reviewer evidence bundle plus delivery-receipt state, active campaigns,
     promotion ledgers, scoped knowledge-pack catalogs, bounty contracts, claim
-    lifecycle, settlement receipts, hosted coding audit bundles, and
+    lifecycle, settlement receipts, hosted audit bundles, and
     participant credit envelopes.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued

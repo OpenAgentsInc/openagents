@@ -31011,6 +31011,355 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_persists_probe_hosted_bookkeeping_audit_bundle_summary() {
+        let repo = init_git_workspace("hosted-bookkeeping-audit");
+        let projection_path = unique_codex_artifact_projection_path("hosted-bookkeeping-audit");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Hosted".to_string()),
+            preview: "hosted bookkeeping rehearsal".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"bookkeeping\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Hosted bookkeeping rehearsal looks consistent.",
+            1_700_000_130,
+            false,
+        );
+        let (evidence_bundle_id, _) = chat
+            .record_probe_evidence_verification_for_thread(
+                "thread-a",
+                "cargo-test",
+                ForgeEvidenceVerificationStatus::Passed,
+                Some("target/hosted-bookkeeping.log".to_string()),
+                Some("Hosted bookkeeping rehearsal passed".to_string()),
+                1_700_000_140,
+            )
+            .expect("verification evidence should record");
+        chat.sync_probe_remote_session_projection_for_thread(
+            "thread-a",
+            Some(&SessionRuntimeOwner {
+                kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                owner_id: "probe-hosted-control".to_string(),
+                attach_transport: SessionAttachTransport::TcpJsonl,
+                display_name: Some("Probe hosted control".to_string()),
+                attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+            }),
+            Some(&SessionWorkspaceState {
+                boot_mode: SessionWorkspaceBootMode::PreparedBaseline,
+                baseline: Some(SessionPreparedBaselineRef {
+                    baseline_id: "repo-main".to_string(),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    base_ref: Some("main".to_string()),
+                    status: SessionPreparedBaselineStatus::Ready,
+                }),
+                snapshot: Some(SessionWorkspaceSnapshotRef {
+                    snapshot_id: "snap-11".to_string(),
+                    restore_manifest_id: Some("restore-manifest-11".to_string()),
+                    source_baseline_id: Some("repo-main".to_string()),
+                }),
+                execution_host: Some(SessionExecutionHost {
+                    kind: SessionExecutionHostKind::HostedWorker,
+                    host_id: "gce-worker-42".to_string(),
+                    display_name: Some("gce-worker-42".to_string()),
+                    location: Some("us-central1".to_string()),
+                }),
+                provenance_note: Some("restored from hosted prepared baseline".to_string()),
+            }),
+            Some(&SessionHostedReceipts {
+                auth: Some(SessionHostedAuthReceipt {
+                    authority: "forge-gcp-control".to_string(),
+                    subject: "operator:christopher".to_string(),
+                    auth_kind: SessionHostedAuthKind::ControlPlaneAssertion,
+                    scope: Some("forge.hosted.bookkeeping".to_string()),
+                    recorded_at_ms: 1_700_000_141,
+                }),
+                checkout: Some(SessionHostedCheckoutReceipt {
+                    kind: SessionHostedCheckoutKind::GitRepository,
+                    workspace_root: repo.clone(),
+                    repo_root: Some(repo.clone()),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    head_ref: Some("feature/hosted-bookkeeping".to_string()),
+                    head_commit: Some("fedcba987654".to_string()),
+                    note: Some("checked out from hosted bookkeeping rehearsal".to_string()),
+                    recorded_at_ms: 1_700_000_142,
+                }),
+                worker: Some(SessionHostedWorkerReceipt {
+                    owner_kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                    owner_id: "probe-hosted-control".to_string(),
+                    attach_transport: SessionAttachTransport::TcpJsonl,
+                    attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+                    execution_host_kind: SessionExecutionHostKind::HostedWorker,
+                    execution_host_id: "gce-worker-42".to_string(),
+                    execution_host_label: Some("gce-worker-42".to_string()),
+                    recorded_at_ms: 1_700_000_143,
+                }),
+                cost: Some(SessionHostedCostReceipt {
+                    observed_turn_count: 4,
+                    wallclock_ms: 56_000,
+                    prompt_tokens: Some(1_600),
+                    completion_tokens: Some(710),
+                    total_tokens: Some(2_310),
+                    note: Some("bookkeeping rehearsal plus settlement confirmation".to_string()),
+                    recorded_at_ms: 1_700_000_144,
+                }),
+                cleanup: Some(SessionHostedCleanupReceipt {
+                    status: SessionHostedCleanupStatus::Completed,
+                    workspace_root: repo.clone(),
+                    strategy: "worktree-remove".to_string(),
+                    note: Some("hosted workspace reclaimed after bookkeeping rehearsal".to_string()),
+                    recorded_at_ms: 1_700_000_145,
+                }),
+            }),
+            1_700_000_145,
+        )
+        .expect("remote session projection should record");
+        let (delivery_receipt_id, _) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("abc123".to_string()),
+                "feature/hosted-bookkeeping",
+                "fedcba987654",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/hosted-bookkeeping?expand=1"
+                        .to_string(),
+                ),
+                Some("https://github.com/OpenAgentsInc/openagents/pull/4102".to_string()),
+                "Hosted bookkeeping rehearsal",
+                "## Summary\n- exercise hosted bounty, campaign, and settlement bookkeeping",
+                1_700_000_150,
+            )
+            .expect("delivery receipt should record");
+        chat.record_probe_delivery_merge_for_thread(
+            "thread-a",
+            "reviewer-a",
+            Some("Merged from the hosted bookkeeping rehearsal.".to_string()),
+            1_700_000_160,
+        )
+        .expect("merge should record");
+
+        let bounty_contract_id = chat
+            .record_probe_bounty_contract_for_thread(
+                "thread-a",
+                ForgeBountyObjectiveKind::AcceptedMerge,
+                "Hosted bookkeeping rehearsal bounty",
+                Some("Verify hosted receipts and settlement linkage from the merged result.".to_string()),
+                "operator.command:/bounty open",
+                1_700_000_170,
+            )
+            .expect("bounty contract should record");
+        chat.record_probe_bounty_credit_for_thread("thread-a", "human", 2_500, 1_700_000_175)
+            .expect("operator credit should record");
+        chat.record_probe_bounty_credit_for_thread("thread-a", "agent", 7_500, 1_700_000_180)
+            .expect("agent credit should record");
+        let (_, bounty_claim_id) = chat
+            .record_probe_bounty_claim_for_thread(
+                "thread-a",
+                "agent",
+                Some("Probe agent carried the hosted bookkeeping rehearsal.".to_string()),
+                "operator.command:/bounty claim",
+                1_700_000_185,
+            )
+            .expect("bounty claim should record");
+        chat.record_probe_bounty_lifecycle_for_thread(
+            "thread-a",
+            ForgeBountyLifecycleStatus::Admitted,
+            Some("Hosted merge admitted as the rehearsal objective.".to_string()),
+            "operator.command:/bounty advance",
+            1_700_000_190,
+        )
+        .expect("bounty admission should record");
+        chat.record_probe_bounty_lifecycle_for_thread(
+            "thread-a",
+            ForgeBountyLifecycleStatus::Completed,
+            Some("Hosted merge completed the bookkeeping rehearsal.".to_string()),
+            "operator.command:/bounty advance",
+            1_700_000_195,
+        )
+        .expect("bounty completion should record");
+        let settlement_receipt_id = chat
+            .record_probe_settlement_merge_for_thread(
+                "thread-a",
+                "reviewer-a",
+                Some("Open the dispute window from the hosted merged result.".to_string()),
+                "operator.command:/settlement merge",
+                1_700_000_200,
+            )
+            .expect("settlement receipt should record");
+        let settlement_receipt = chat
+            .active_settlement_receipt()
+            .expect("settlement receipt should exist");
+        assert_eq!(settlement_receipt.status, ForgeSettlementReceiptStatus::Recorded);
+        assert_eq!(
+            settlement_receipt.delivery_receipt_id,
+            Some(delivery_receipt_id.clone())
+        );
+        assert!(
+            settlement_receipt.dispute_window_closes_at_epoch_ms
+                >= settlement_receipt.dispute_window_started_at_epoch_ms
+        );
+
+        let campaign_id = chat
+            .record_probe_campaign_for_thread(
+                "thread-a",
+                "Hosted retained-case bookkeeping",
+                1_700_000_210,
+            )
+            .expect("campaign should record");
+        chat.record_probe_campaign_candidate_for_thread(
+            "thread-a",
+            crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+            "latest",
+            Some("accepted patch survived the hosted rehearsal".to_string()),
+            1_700_000_220,
+        )
+        .expect("accepted patch candidate should record");
+        let (promotion_ledger_id, revision_id) = chat
+            .record_probe_promotion_shadow_for_thread(
+                "thread-a",
+                crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+                "latest",
+                "reviewer-a",
+                Some("shadow the hosted bookkeeping winner".to_string()),
+                "operator.command:/promote shadow",
+                1_700_000_230,
+            )
+            .expect("shadow revision should record");
+        let (promoted_ledger_id, promoted_revision_id) = chat
+            .record_probe_promotion_promote_for_thread(
+                "thread-a",
+                "reviewer-a",
+                Some("promote after hosted bookkeeping rehearsal".to_string()),
+                "operator.command:/promote promote",
+                1_700_000_240,
+            )
+            .expect("promotion should record");
+        assert_eq!(promoted_ledger_id, promotion_ledger_id);
+        assert_eq!(promoted_revision_id, revision_id);
+
+        let audit_bundle_id = chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::BookkeepingRehearsal,
+                "GCP us-central1 hosted bookkeeping rehearsal on probe worker gce-worker-42",
+                1_700_000_250,
+            )
+            .expect("hosted bookkeeping audit should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::BookkeepingRehearsal,
+            ForgeHostedAuditNoteKind::OperatorNote,
+            "Claim admission, settlement creation, and campaign promotion are still explicit operator steps in the hosted rehearsal.",
+            "operator.command:/hosted note",
+            1_700_000_255,
+        )
+        .expect("hosted bookkeeping note should record");
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session should exist");
+        assert_eq!(
+            shared_session.hosted_bookkeeping_audit_bundle_id.as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let bundle = chat
+            .active_hosted_bookkeeping_audit_bundle()
+            .expect("active hosted bookkeeping audit bundle should exist");
+        assert_eq!(bundle.audit_bundle_id, audit_bundle_id);
+        assert_eq!(bundle.kind, ForgeHostedAuditKind::BookkeepingRehearsal);
+        assert_eq!(bundle.evidence_bundle_id.as_deref(), Some(evidence_bundle_id.as_str()));
+        assert_eq!(bundle.delivery_receipt_id.as_deref(), Some(delivery_receipt_id.as_str()));
+        assert_eq!(bundle.campaign_id.as_deref(), Some(campaign_id.as_str()));
+        assert_eq!(
+            bundle.promotion_ledger_id.as_deref(),
+            Some(promotion_ledger_id.as_str())
+        );
+        assert_eq!(
+            bundle.bounty_contract_id.as_deref(),
+            Some(bounty_contract_id.as_str())
+        );
+        assert_eq!(bundle.bounty_claim_id.as_deref(), Some(bounty_claim_id.as_str()));
+        assert_eq!(
+            bundle.settlement_receipt_id.as_deref(),
+            Some(settlement_receipt_id.as_str())
+        );
+        assert_eq!(
+            bundle.promotion_status,
+            Some(ForgePromotionLedgerStatus::Promoted)
+        );
+        assert_eq!(
+            bundle.bounty_status,
+            Some(ForgeBountyLifecycleStatus::Completed)
+        );
+        assert_eq!(
+            bundle.settlement_status,
+            Some(ForgeSettlementReceiptStatus::Recorded)
+        );
+        assert_eq!(bundle.notes.len(), 1);
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.hosted_bookkeeping_audit_bundle_id.as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.hosted_bookkeeping_audit_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_hosted_audit_bundles.get(bundle_id))
+            .expect("reloaded hosted bookkeeping audit bundle should exist");
+        assert_eq!(
+            reloaded_bundle.environment_summary,
+            "GCP us-central1 hosted bookkeeping rehearsal on probe worker gce-worker-42"
+        );
+        assert_eq!(
+            reloaded_bundle.promotion_status,
+            Some(ForgePromotionLedgerStatus::Promoted)
+        );
+        assert_eq!(
+            reloaded_bundle.bounty_status,
+            Some(ForgeBountyLifecycleStatus::Completed)
+        );
+        assert_eq!(
+            reloaded_bundle.settlement_status,
+            Some(ForgeSettlementReceiptStatus::Recorded)
+        );
+        assert_eq!(
+            reloaded_bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.worker.as_ref())
+                .map(|receipt| receipt.execution_host_id.as_str()),
+            Some("gce-worker-42")
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
     fn chat_state_persists_probe_evidence_bundle_summary() {
         let repo = init_git_workspace("evidence-bundle");
         let projection_path = unique_codex_artifact_projection_path("evidence-bundle");
