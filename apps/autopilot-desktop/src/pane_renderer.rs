@@ -8,10 +8,9 @@ use crate::app_state::{
     CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs,
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
     CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, ContributorBetaPaneState,
-    CreateInvoicePaneInputs,
-    CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
-    DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState, DesktopPane,
-    EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
+    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
+    CreditSettlementLedgerPaneState, DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState,
+    DesktopPane, EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
     JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
     LocalInferencePaneInputs, LocalInferencePaneState, LogStreamLevelFilter, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
@@ -25,9 +24,8 @@ use crate::app_state::{
     SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState, StarterJobStatus,
     StarterJobsState, SyncHealthPaneState, SyncHealthState, TailnetStatusPaneState,
     TassadarLabPaneState, TrajectoryAuditPaneState, VoicePlaygroundPaneInputs,
-    VoicePlaygroundPaneState, mission_control_local_runtime_is_ready,
+    VoicePlaygroundPaneState, XtrainExplorerPaneState, mission_control_local_runtime_is_ready,
     mission_control_local_runtime_lane, mission_control_show_local_model_button,
-    XtrainExplorerPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -10022,10 +10020,12 @@ fn paint_job_history_pane(
                 .with_corner_radius(6.0),
         );
         let row_line = format!(
-            "{} {} src:{} payer_nostr:{} payee_nostr:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
+            "{} {} src:{} product:{} receipt:{} payer_nostr:{} payee_nostr:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} earnings:{} {} {}",
             row.job_id,
             row.status.label(),
             row.demand_source.label(),
+            row.compute_product_id.as_deref().unwrap_or("none"),
+            row.market_receipt_class.as_deref().unwrap_or("none"),
             row.requester_nostr_pubkey.as_deref().unwrap_or("unknown"),
             row.provider_nostr_pubkey.as_deref().unwrap_or("unknown"),
             row.completed_at_epoch_seconds,
@@ -10042,6 +10042,7 @@ fn paint_job_history_pane(
             row.delivery_rejection_reason_label
                 .as_deref()
                 .unwrap_or("none"),
+            row.earnings_summary.as_deref().unwrap_or("none"),
             row.result_hash,
             row.payment_pointer
         );

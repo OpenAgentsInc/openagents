@@ -32,6 +32,8 @@ pub struct DesktopControlInventoryProductStatus {
     pub backend_family: String,
     pub topology_label: String,
     pub proof_posture: String,
+    pub market_receipt_class: String,
+    pub earnings_summary: String,
     pub environment_binding: Option<String>,
     pub availability_state: String,
     pub blocker_reason: Option<String>,
@@ -192,7 +194,7 @@ pub(crate) fn inventory_detail_lines(status: &DesktopControlInventoryStatus) -> 
         }
         for product in &section.products {
             lines.push(format!(
-                "{} [{}] state={} enabled={} backend_ready={} eligible={} topology={} proof={} source={}",
+                "{} [{}] state={} enabled={} backend_ready={} eligible={} topology={} proof={} receipt={} source={}",
                 product.display_label,
                 product.product_id,
                 product.availability_state,
@@ -201,6 +203,7 @@ pub(crate) fn inventory_detail_lines(status: &DesktopControlInventoryStatus) -> 
                 product.eligible,
                 product.topology_label,
                 product.proof_posture,
+                product.market_receipt_class,
                 product.source_badge
             ));
             if let Some(environment_binding) = product.environment_binding.as_deref() {
@@ -233,6 +236,7 @@ pub(crate) fn inventory_detail_lines(status: &DesktopControlInventoryStatus) -> 
                     product.forward_terms_label.as_deref().unwrap_or("n/a")
                 ));
             }
+            lines.push(format!("earnings: {}", product.earnings_summary));
             lines.push(format!("capability: {}", product.capability_summary));
         }
     }
@@ -322,6 +326,8 @@ fn build_product_row(
         backend_family: descriptor.backend_family,
         topology_label: topology_label.to_string(),
         proof_posture: proof_posture_for_product(row.target, input.uses_remote_kernel_projection),
+        market_receipt_class: row.market_receipt_class.clone(),
+        earnings_summary: row.earnings_summary.clone(),
         environment_binding: environment_binding_for_product(row.target, input),
         availability_state: availability_state_for_row(row),
         blocker_reason: blocker_reason_for_row(row, input),
@@ -420,7 +426,7 @@ fn build_cluster_section(
         .unwrap_or("n/a");
     let product_summary = section.summary.clone();
     section.summary = format!(
-        "membership={} members={} targets={} topology={} default_model={} {}",
+        "membership={} members={} targets={} topology={} future_sharded_lane=not_marketed default_model={} {}",
         if input.pooled_inference.membership_state.trim().is_empty() {
             "unconfigured"
         } else {
@@ -681,6 +687,10 @@ mod tests {
             capability_summary:
                 "backend=gpt_oss execution=local_inference family=inference model=gpt-oss"
                     .to_string(),
+            market_receipt_class: "accepted_delivery".to_string(),
+            earnings_summary:
+                "Earns when local delivery is accepted and wallet settlement is confirmed."
+                    .to_string(),
             source_badge: "local_runtime".to_string(),
             capacity_lot_id: Some("lot.local.gpt-oss".to_string()),
             total_quantity: 1024,
@@ -706,6 +716,10 @@ mod tests {
             eligible: true,
             capability_summary:
                 "backend=sandbox execution=sandbox.python.exec family=sandbox_execution profile_id=python-batch"
+                    .to_string(),
+            market_receipt_class: "accepted_delivery".to_string(),
+            earnings_summary:
+                "Sandbox execution earns only when a declared sandbox delivery is accepted and settled."
                     .to_string(),
             source_badge: "sandbox_profiles".to_string(),
             capacity_lot_id: Some("lot.sandbox.python".to_string()),
@@ -817,6 +831,15 @@ mod tests {
                 .environment_binding
                 .as_deref(),
             Some("model:gpt-oss-20b")
+        );
+        assert_eq!(
+            status.sections[0].products[0].market_receipt_class.as_str(),
+            "accepted_delivery"
+        );
+        assert!(
+            status.sections[0].products[0]
+                .earnings_summary
+                .contains("wallet settlement")
         );
         assert_eq!(
             status.sections[2].products[0]

@@ -1074,18 +1074,20 @@ impl PooledInferenceCommand {
                 mesh_root,
                 mesh_label,
                 advertise_addrs,
-            } => Some(DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
-                mesh_root: mesh_root.as_ref().map(|path| path.display().to_string()),
-                output_path: output.display().to_string(),
-                mesh_label: mesh_label.clone(),
-                advertise_addrs: advertise_addrs.clone(),
-            }),
-            Self::ImportJoinBundle { input, mesh_root } => {
-                Some(DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+            } => Some(
+                DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                    mesh_root: mesh_root.as_ref().map(|path| path.display().to_string()),
+                    output_path: output.display().to_string(),
+                    mesh_label: mesh_label.clone(),
+                    advertise_addrs: advertise_addrs.clone(),
+                },
+            ),
+            Self::ImportJoinBundle { input, mesh_root } => Some(
+                DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
                     mesh_root: mesh_root.as_ref().map(|path| path.display().to_string()),
                     join_bundle_path: input.display().to_string(),
-                })
-            }
+                },
+            ),
         }
     }
 }
@@ -8829,9 +8831,11 @@ fn print_active_job_text(active_job: Option<&DesktopControlActiveJobStatus>) {
     match active_job {
         Some(active_job) => {
             println!(
-                "active job: request={} capability={} stage={} next={} settlement={} payment_pointer={} fees={}",
+                "active job: request={} capability={} product={} receipt={} stage={} next={} settlement={} payment_pointer={} fees={} earnings={}",
                 active_job.request_id,
                 active_job.capability,
+                active_job.compute_product_id.as_deref().unwrap_or("-"),
+                active_job.market_receipt_class.as_deref().unwrap_or("-"),
                 active_job.stage,
                 active_job.next_expected_event,
                 active_job.settlement_status.as_deref().unwrap_or("-"),
@@ -8839,7 +8843,8 @@ fn print_active_job_text(active_job: Option<&DesktopControlActiveJobStatus>) {
                 active_job
                     .settlement_fees_sats
                     .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                active_job.earnings_summary.as_deref().unwrap_or("-"),
             );
         }
         None => println!("active job: none"),
@@ -8864,10 +8869,10 @@ mod tests {
         DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, ForgeCommand,
         ForgeHandoffCommand, ForgeHostedCommand, GptOssCommand, LocalRuntimeCommand,
         PooledInferenceCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand,
-        ResearchCommand, ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg,
-        TassadarCommand, TassadarFamilyCommand, TassadarNavigationCommand,
-        TassadarReplayFamilyArg, TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg,
-        TassadarWindowCommand, TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        ResearchCommand, ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
+        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
+        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
+        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
         buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
         compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
         inventory_status_lines, materialize_data_market_delivery, nip90_sent_payments_report_lines,
@@ -9543,12 +9548,14 @@ mod tests {
                 advertise_addrs: vec!["100.90.1.10:47470".to_string()],
             }
             .action_request(),
-            Some(DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
-                mesh_root: Some("/tmp/mesh-root".to_string()),
-                output_path: "/tmp/mesh-home.join.json".to_string(),
-                mesh_label: Some("mesh-home".to_string()),
-                advertise_addrs: vec!["100.90.1.10:47470".to_string()],
-            })
+            Some(
+                DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                    mesh_root: Some("/tmp/mesh-root".to_string()),
+                    output_path: "/tmp/mesh-home.join.json".to_string(),
+                    mesh_label: Some("mesh-home".to_string()),
+                    advertise_addrs: vec!["100.90.1.10:47470".to_string()],
+                }
+            )
         );
         assert_eq!(
             PooledInferenceCommand::ImportJoinBundle {
@@ -9556,10 +9563,12 @@ mod tests {
                 mesh_root: Some(PathBuf::from("/tmp/mesh-joiner")),
             }
             .action_request(),
-            Some(DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
-                mesh_root: Some("/tmp/mesh-joiner".to_string()),
-                join_bundle_path: "/tmp/mesh-home.join.json".to_string(),
-            })
+            Some(
+                DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+                    mesh_root: Some("/tmp/mesh-joiner".to_string()),
+                    join_bundle_path: "/tmp/mesh-home.join.json".to_string(),
+                }
+            )
         );
         assert_eq!(
             ProofCommand::Status.action_request(),

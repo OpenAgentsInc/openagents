@@ -125,10 +125,8 @@ pub const DESKTOP_CONTROL_MANIFEST_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_MANIF
 pub const DESKTOP_CONTROL_BIND_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_BIND";
 pub const DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV: &str =
     "OPENAGENTS_PSIONIC_MESH_MANAGEMENT_BASE_URL";
-pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV: &str =
-    "OPENAGENTS_PSIONIC_MESH_LANE_BIN";
-pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV: &str =
-    "OPENAGENTS_PSIONIC_MESH_LANE_ROOT";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV: &str = "OPENAGENTS_PSIONIC_MESH_LANE_BIN";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV: &str = "OPENAGENTS_PSIONIC_MESH_LANE_ROOT";
 
 static DESKTOP_CONTROL_POOLED_INFERENCE_CACHE: OnceLock<Mutex<DesktopControlPooledInferenceCache>> =
     OnceLock::new();
@@ -349,7 +347,8 @@ struct DesktopControlPooledInferenceManagementJoinStateResponse {
     #[serde(default = "default_pooled_inference_join_posture")]
     posture: String,
     #[serde(default)]
-    last_joined_mesh_preference: Option<DesktopControlPooledInferenceManagementJoinedMeshPreference>,
+    last_joined_mesh_preference:
+        Option<DesktopControlPooledInferenceManagementJoinedMeshPreference>,
     #[serde(default)]
     last_imported_join_bundle: Option<DesktopControlPooledInferenceManagementImportedJoinBundle>,
 }
@@ -951,7 +950,8 @@ pub struct DesktopControlPooledInferenceImportedJoinBundleStatus {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlPooledInferenceJoinStatus {
     pub posture: String,
-    pub last_joined_mesh_preference: Option<DesktopControlPooledInferenceJoinedMeshPreferenceStatus>,
+    pub last_joined_mesh_preference:
+        Option<DesktopControlPooledInferenceJoinedMeshPreferenceStatus>,
     pub last_imported_join_bundle: Option<DesktopControlPooledInferenceImportedJoinBundleStatus>,
 }
 
@@ -1678,6 +1678,9 @@ pub struct DesktopControlActiveJobStatus {
     pub job_id: String,
     pub request_id: String,
     pub capability: String,
+    pub compute_product_id: Option<String>,
+    pub market_receipt_class: Option<String>,
+    pub earnings_summary: Option<String>,
     pub stage: String,
     pub projection_stage: String,
     pub phase: String,
@@ -4011,8 +4014,10 @@ fn active_job_status_summary(active_job: Option<&DesktopControlActiveJobStatus>)
         return "no active job".to_string();
     };
     format!(
-        "active job request={} stage={} next={}",
+        "active job request={} product={} receipt={} stage={} next={}",
         short_request_id(active_job.request_id.as_str()),
+        active_job.compute_product_id.as_deref().unwrap_or("-"),
+        active_job.market_receipt_class.as_deref().unwrap_or("-"),
         active_job.stage,
         active_job.next_expected_event
     )
@@ -4086,6 +4091,9 @@ fn active_job_status_changed(
             previous.job_id != current.job_id
                 || previous.request_id != current.request_id
                 || previous.capability != current.capability
+                || previous.compute_product_id != current.compute_product_id
+                || previous.market_receipt_class != current.market_receipt_class
+                || previous.earnings_summary != current.earnings_summary
                 || previous.stage != current.stage
                 || previous.projection_stage != current.projection_stage
                 || previous.phase != current.phase
@@ -7266,6 +7274,18 @@ pub(crate) fn current_pooled_inference_status() -> DesktopControlPooledInference
     desktop_control_pooled_inference_status()
 }
 
+#[cfg(test)]
+pub(crate) fn set_current_pooled_inference_status_for_tests(
+    status: DesktopControlPooledInferenceStatus,
+) {
+    let mut cache = desktop_control_pooled_inference_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    cache.snapshot = status;
+    cache.refreshed_at = Some(Instant::now());
+    cache.last_attempt_at = Some(Instant::now());
+}
+
 fn desktop_control_pooled_inference_status() -> DesktopControlPooledInferenceStatus {
     let should_refresh = {
         let cache = desktop_control_pooled_inference_cache()
@@ -7473,7 +7493,8 @@ fn desktop_control_join_bundle_status_from_file(
 }
 
 fn desktop_control_join_bundle_admission_kind(value: &Value) -> String {
-    value.as_object()
+    value
+        .as_object()
         .and_then(|map| map.keys().next().cloned())
         .unwrap_or_else(|| "unknown".to_string())
 }
@@ -7916,12 +7937,22 @@ fn pooled_inference_mesh_lane_config_path(root: &Path) -> PathBuf {
     root.join("config").join("mesh-lane.json")
 }
 
-fn load_pooled_inference_mesh_lane_config(root: &Path) -> Result<DesktopControlMeshLaneConfig, String> {
+fn load_pooled_inference_mesh_lane_config(
+    root: &Path,
+) -> Result<DesktopControlMeshLaneConfig, String> {
     let path = pooled_inference_mesh_lane_config_path(root);
-    let bytes = fs::read(&path)
-        .map_err(|error| format!("failed to read mesh lane config `{}`: {error}", path.display()))?;
-    serde_json::from_slice::<DesktopControlMeshLaneConfig>(&bytes)
-        .map_err(|error| format!("failed to parse mesh lane config `{}`: {error}", path.display()))
+    let bytes = fs::read(&path).map_err(|error| {
+        format!(
+            "failed to read mesh lane config `{}`: {error}",
+            path.display()
+        )
+    })?;
+    serde_json::from_slice::<DesktopControlMeshLaneConfig>(&bytes).map_err(|error| {
+        format!(
+            "failed to parse mesh lane config `{}`: {error}",
+            path.display()
+        )
+    })
 }
 
 fn load_desktop_control_join_bundle(
@@ -11667,6 +11698,9 @@ fn snapshot_for_state_with_signature(
                 job_id: active_job.job_id,
                 request_id: active_job.request_id,
                 capability: active_job.capability,
+                compute_product_id: active_job.compute_product_id,
+                market_receipt_class: active_job.market_receipt_class,
+                earnings_summary: active_job.earnings_summary,
                 stage,
                 projection_stage,
                 phase,

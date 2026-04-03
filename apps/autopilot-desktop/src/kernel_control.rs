@@ -22,7 +22,8 @@ use openagents_kernel_core::compute::{
     ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
     ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
     ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
-    GptOssRuntimeCapability, PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
+    DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+    PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
     PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
     PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID, PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
     PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
@@ -39,7 +40,10 @@ use openagents_kernel_core::receipts::{
 };
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::floor_to_minute_utc;
-use openagents_provider_substrate::{ProviderAdvertisedProduct, ProviderComputeProduct};
+use openagents_provider_substrate::{
+    ProviderAdvertisedProduct, ProviderAvailability, ProviderComputeProduct,
+    ProviderProductMarketSemantics,
+};
 use reqwest::Url;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -434,7 +438,15 @@ pub(crate) fn finalize_paid_active_job(state: &mut RenderState) -> Result<String
     state
         .earn_kernel_receipts
         .apply_authoritative_receipt(delivery_proof_receipt, "kernel.authority.delivery_proof");
+    let market_semantics = job
+        .compute_product_id
+        .as_deref()
+        .and_then(|product_id| market_semantics_for_product_id(state, product_id));
     if let Some(active_job) = state.active_job.job.as_mut() {
+        if let Some(market_semantics) = market_semantics {
+            active_job.market_receipt_class = Some(market_semantics.market_receipt_class);
+            active_job.earnings_summary = Some(market_semantics.revenue_summary);
+        }
         active_job.delivery_metering_rule_id =
             Some(delivery_evaluation.metering_rule_id.to_string());
         active_job.delivery_proof_status_label =
@@ -469,6 +481,7 @@ pub(crate) fn attach_compute_linkage_to_active_job(
     ) else {
         return;
     };
+    let market_semantics = market_semantics_for_product_id(state, linkage.product_id);
     let Some(job) = state.active_job.job.as_mut() else {
         return;
     };
@@ -476,6 +489,10 @@ pub(crate) fn attach_compute_linkage_to_active_job(
         return;
     }
     job.compute_product_id = Some(linkage.product_id.to_string());
+    if let Some(market_semantics) = market_semantics {
+        job.market_receipt_class = Some(market_semantics.market_receipt_class);
+        job.earnings_summary = Some(market_semantics.revenue_summary);
+    }
     job.capacity_lot_id = Some(linkage.capacity_lot_id);
     job.capacity_instrument_id = Some(linkage.capacity_instrument_id);
     job.delivery_proof_id = Some(linkage.delivery_proof_id);
@@ -559,6 +576,8 @@ fn build_provider_inventory_row(
         backend_ready,
         eligible,
         capability_summary: derived_product.capability_summary,
+        market_receipt_class: derived_product.market_receipt_class,
+        earnings_summary: derived_product.earnings_summary,
         source_badge: provider_inventory_source_badge(state, target, eligible).to_string(),
         capacity_lot_id,
         total_quantity,
@@ -2085,6 +2104,13 @@ fn build_delivery_proof_request(
         .execution_output
         .as_deref()
         .map(sha256_prefixed_text);
+    let topology_evidence = delivery_topology_evidence_for_binding(job, binding);
+    let verification_evidence = delivery_verification_evidence_for_binding(job, binding);
+    let market_semantics =
+        ProviderComputeProduct::for_product_id(linkage.product_id).and_then(|product| {
+            let availability = provider_availability_for_state(state);
+            Some(product.market_semantics(&availability))
+        });
     let request = RecordDeliveryProofRequest {
         idempotency_key: format!("desktop.finalize.compute_delivery:{}", job.request_id),
         trace: trace_context_for_job(job),
@@ -2108,14 +2134,15 @@ fn build_delivery_proof_request(
                 .map(|payment_id| format!("oa://wallet/payments/{payment_id}")),
             status: evaluation.status,
             rejection_reason: evaluation.rejection_reason,
-            topology_evidence: None,
+            topology_evidence,
             sandbox_evidence: None,
-            verification_evidence: None,
+            verification_evidence,
             promised_capability_envelope: Some(evaluation.promised_capability_envelope.clone()),
             observed_capability_envelope: evaluation.observed_capability_envelope.clone(),
             metadata: json!({
                 "request_id": job.request_id.clone(),
                 "job_id": job.job_id.clone(),
+                "compute_product_id": linkage.product_id,
                 "metering_rule_id": evaluation.metering_rule_id,
                 "settlement_class": evaluation.settlement_class,
                 "compute_family": compute_family_label(linkage.compute_family),
@@ -2159,6 +2186,18 @@ fn build_delivery_proof_request(
                     .execution_provenance
                     .as_ref()
                     .map(|provenance| provenance.backend.clone()),
+                "market_receipt_class": market_semantics
+                    .as_ref()
+                    .map(|semantics| semantics.market_receipt_class.clone()),
+                "earnings_trigger": market_semantics
+                    .as_ref()
+                    .map(|semantics| semantics.earnings_trigger.clone()),
+                "revenue_posture": market_semantics
+                    .as_ref()
+                    .map(|semantics| semantics.revenue_posture.clone()),
+                "earnings_summary": market_semantics
+                    .as_ref()
+                    .map(|semantics| semantics.revenue_summary.clone()),
                 "apple_bridge_status": delivery_context.apple_bridge_status.clone(),
                 "promised_capability_envelope": evaluation.promised_capability_envelope.clone(),
                 "observed_capability_envelope": evaluation.observed_capability_envelope.clone(),
@@ -2172,6 +2211,105 @@ fn build_delivery_proof_request(
         hints: receipt_hints_for_notional(job.quoted_price_sats),
     };
     Ok((request, evaluation))
+}
+
+fn delivery_topology_evidence_for_binding(
+    job: &ActiveJobRecord,
+    binding: LaunchComputeBinding,
+) -> Option<DeliveryTopologyEvidence> {
+    if binding.execution_kind != ComputeExecutionKind::ClusteredInference {
+        return None;
+    }
+    let pooled = crate::desktop_control::current_pooled_inference_status();
+    let topology_digest = pooled.topology_digest.clone()?;
+    let selected_node_refs = inferred_cluster_node_refs_for_job(job, &pooled);
+    if selected_node_refs.is_empty() {
+        return None;
+    }
+    let replica_node_refs = if binding.topology_kind == ComputeTopologyKind::Replicated {
+        selected_node_refs
+            .iter()
+            .skip(1)
+            .cloned()
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    Some(DeliveryTopologyEvidence {
+        topology_kind: Some(binding.topology_kind),
+        topology_digest: Some(topology_digest),
+        scheduler_node_ref: Some("node://scheduler/psionic.pooled_inference".to_string()),
+        transport_class: Some("psionic_management_snapshot".to_string()),
+        selected_node_refs,
+        replica_node_refs,
+    })
+}
+
+fn delivery_verification_evidence_for_binding(
+    job: &ActiveJobRecord,
+    binding: LaunchComputeBinding,
+) -> Option<DeliveryVerificationEvidence> {
+    if binding.proof_posture != ComputeProofPosture::ChallengeEligible {
+        return None;
+    }
+    Some(DeliveryVerificationEvidence {
+        proof_bundle_ref: Some(format!(
+            "oa://autopilot/compute/delivery/{}/proof_bundle",
+            delivery_proof_id_for_request(job.request_id.as_str())
+        )),
+        activation_fingerprint_ref: None,
+        validator_pool_ref: Some("validator-pool.psionic.clustered_inference".to_string()),
+        validator_run_ref: None,
+        challenge_result_refs: Vec::new(),
+        environment_ref: None,
+        environment_version: None,
+        eval_run_ref: None,
+    })
+}
+
+fn inferred_cluster_node_refs_for_job(
+    job: &ActiveJobRecord,
+    pooled: &crate::desktop_control::DesktopControlPooledInferenceStatus,
+) -> Vec<String> {
+    let requested_model = job
+        .execution_provenance
+        .as_ref()
+        .map(|provenance| provenance.served_model.clone())
+        .or_else(|| job.requested_model.clone())
+        .or_else(|| pooled.default_model.clone());
+    let mut refs = pooled
+        .members
+        .iter()
+        .filter(|member| {
+            requested_model.as_ref().is_none_or(|model| {
+                member
+                    .warm_models
+                    .iter()
+                    .any(|warm_model| warm_model == model)
+            })
+        })
+        .map(|member| {
+            format!(
+                "node://mesh/{}",
+                canonical_kernel_id_component(member.worker_id.as_str())
+            )
+        })
+        .collect::<Vec<_>>();
+    if refs.is_empty() {
+        refs = pooled
+            .members
+            .iter()
+            .map(|member| {
+                format!(
+                    "node://mesh/{}",
+                    canonical_kernel_id_component(member.worker_id.as_str())
+                )
+            })
+            .collect::<Vec<_>>();
+    }
+    refs.sort();
+    refs.dedup();
+    refs
 }
 
 fn delivery_context_for_state(state: &RenderState) -> LaunchDeliveryContext {
@@ -2438,6 +2576,9 @@ fn observed_capability_envelope_for_delivery(
 }
 
 fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
+    if binding.execution_kind == ComputeExecutionKind::ClusteredInference {
+        return "meter.psionic.clustered_inference.v1";
+    }
     match (binding.backend_family, binding.compute_family) {
         (ComputeBackendFamily::GptOss, ComputeFamily::Inference) => "meter.gpt_oss.inference.v1",
         (ComputeBackendFamily::GptOss, ComputeFamily::Embeddings) => {
@@ -2680,6 +2821,27 @@ fn delivery_proof_evidence_refs(
             .unwrap_or_else(|_| "null".to_string())
             .as_str(),
     ));
+    if let Some(product_id) = job.compute_product_id.as_deref() {
+        evidence.push(evidence_ref(
+            "compute_product_ref",
+            format!(
+                "oa://kernel/compute/products/{}",
+                canonical_kernel_id_component(product_id)
+            ),
+            product_id,
+        ));
+    }
+    if let Some(market_receipt_class) = job.market_receipt_class.as_deref() {
+        evidence.push(evidence_ref(
+            "market_receipt_class",
+            format!(
+                "oa://autopilot/compute/market_receipts/{}/{}",
+                canonical_kernel_id_component(job.job_id.as_str()),
+                canonical_kernel_id_component(market_receipt_class)
+            ),
+            market_receipt_class,
+        ));
+    }
     if let Some(observed) = evaluation.observed_capability_envelope.as_ref() {
         evidence.push(evidence_ref(
             "compute_delivery_observed_envelope",
@@ -2687,6 +2849,13 @@ fn delivery_proof_evidence_refs(
             serde_json::to_string(observed)
                 .unwrap_or_else(|_| "null".to_string())
                 .as_str(),
+        ));
+    }
+    if let Some(earnings_summary) = job.earnings_summary.as_deref() {
+        evidence.push(evidence_ref(
+            "earnings_summary_ref",
+            format!("oa://autopilot/earnings/jobs/{}/summary", job.job_id),
+            earnings_summary,
         ));
     }
     if let Some(variance_reason) = evaluation.variance_reason {
@@ -4121,6 +4290,22 @@ fn canonical_kernel_id_component(value: &str) -> String {
         .collect()
 }
 
+fn provider_availability_for_state(state: &RenderState) -> ProviderAvailability {
+    let mut availability = state.provider_runtime.availability();
+    availability.pooled_inference =
+        crate::pooled_inference_market::current_pooled_inference_availability();
+    availability
+}
+
+pub(crate) fn market_semantics_for_product_id(
+    state: &RenderState,
+    product_id: &str,
+) -> Option<ProviderProductMarketSemantics> {
+    let product = ProviderComputeProduct::for_product_id(product_id)?;
+    let availability = provider_availability_for_state(state);
+    Some(product.market_semantics(&availability))
+}
+
 fn local_projection_receipt_id(kind: &str, request_id: &str) -> String {
     format!(
         "projection.{}.{}",
@@ -4169,9 +4354,10 @@ mod tests {
         build_compute_product_request, build_forward_compute_quotes_from_market,
         build_spot_compute_quotes_from_market, compute_binding_for_backend_and_capability,
         compute_binding_for_product_id, compute_linkage_for_active_job, consume_sse_buffer,
-        current_epoch_ms, delivery_proof_id_for_request, evaluate_delivery_proof,
+        current_epoch_ms, delivery_proof_id_for_request, delivery_topology_evidence_for_binding,
+        delivery_verification_evidence_for_binding, evaluate_delivery_proof,
         flush_pending_sse_event, forward_capacity_lot_id_for_binding,
-        is_local_projection_receipt_id, local_projection_receipt_id,
+        is_local_projection_receipt_id, local_projection_receipt_id, metering_rule_id_for_binding,
         online_capacity_lot_id_for_binding, pooled_inference_binding_for_product,
         resolve_kernel_authority_mode, submission_evidence_refs,
     };
@@ -4260,6 +4446,11 @@ mod tests {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             compute_product_id: Some("psionic.local.inference.gpt_oss.single_node".to_string()),
+            market_receipt_class: Some("accepted_delivery".to_string()),
+            earnings_summary: Some(
+                "Earns when local delivery is accepted and wallet settlement is confirmed."
+                    .to_string(),
+            ),
             capacity_lot_id: Some(
                 "lot.online.npub1buyer.psionic.local.inference.gpt_oss.single_node.1762000000000"
                     .to_string(),
@@ -4645,6 +4836,117 @@ mod tests {
         assert_eq!(
             envelope.provisioning_kind,
             Some(openagents_kernel_core::compute::ComputeProvisioningKind::ClusterAttached)
+        );
+    }
+
+    #[test]
+    fn pooled_inference_delivery_proof_helpers_emit_cluster_evidence_and_metering_rule() {
+        crate::desktop_control::set_current_pooled_inference_status_for_tests(
+            crate::desktop_control::DesktopControlPooledInferenceStatus {
+                available: true,
+                source: "psionic_management".to_string(),
+                management_base_url: Some("http://127.0.0.1:7878".to_string()),
+                topology_digest: Some("mesh.topology.test".to_string()),
+                default_model: Some("llama3.2:latest".to_string()),
+                membership_state: "joined".to_string(),
+                member_count: 2,
+                targetable_model_count: 1,
+                warm_replica_count: 2,
+                local_worker_id: Some("openai_compat".to_string()),
+                local_serving_state: "proxying".to_string(),
+                served_mesh_role: Some("thin_client".to_string()),
+                served_mesh_posture: Some("standby".to_string()),
+                served_mesh_reasons: vec!["remote_only".to_string()],
+                execution_mode: Some("proxy".to_string()),
+                execution_engine: Some("llama.cpp".to_string()),
+                fallback_posture: Some("thin_client_remote_only".to_string()),
+                last_refreshed_at_epoch_ms: Some(123),
+                last_error: None,
+                targetable_models: vec![
+                    crate::desktop_control::DesktopControlPooledInferenceTargetStatus {
+                        model: "llama3.2:latest".to_string(),
+                        family: "llama3.2".to_string(),
+                        supported_endpoints: vec!["/v1/responses".to_string()],
+                        structured_outputs: false,
+                        tool_calling: true,
+                        response_state: true,
+                        warm_replica_count: 2,
+                        local_warm_replica: false,
+                    },
+                ],
+                members: vec![
+                    crate::desktop_control::DesktopControlPooledInferenceNodeStatus {
+                        worker_id: "openai_compat".to_string(),
+                        served_mesh_role: "thin_client".to_string(),
+                        served_mesh_posture: "standby".to_string(),
+                        served_mesh_reasons: vec!["remote_only".to_string()],
+                        execution_mode: "proxy".to_string(),
+                        execution_engine: "llama.cpp".to_string(),
+                        warm_model_count: 1,
+                        targetable_model_count: 1,
+                        warm_models: vec!["llama3.2:latest".to_string()],
+                    },
+                    crate::desktop_control::DesktopControlPooledInferenceNodeStatus {
+                        worker_id: "worker-b".to_string(),
+                        served_mesh_role: "runner".to_string(),
+                        served_mesh_posture: "active".to_string(),
+                        served_mesh_reasons: vec!["warm".to_string()],
+                        execution_mode: "serve".to_string(),
+                        execution_engine: "llama.cpp".to_string(),
+                        warm_model_count: 1,
+                        targetable_model_count: 1,
+                        warm_models: vec!["llama3.2:latest".to_string()],
+                    },
+                ],
+                join: crate::desktop_control::DesktopControlPooledInferenceJoinStatus::default(),
+            },
+        );
+
+        let mut job = fixture_active_job_with_gpt_oss_provenance();
+        job.compute_product_id = Some(
+            openagents_kernel_core::compute::PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID
+                .to_string(),
+        );
+        job.market_receipt_class = Some("clustered_delivery".to_string());
+        job.earnings_summary = Some(
+            "Earns when the mesh serves the whole request and the clustered delivery proof is accepted."
+                .to_string(),
+        );
+        job.capacity_lot_id = Some(
+            "lot.online.npub1buyer.psionic.cluster.inference.gpt_oss.remote_whole_request.1762000000000"
+                .to_string(),
+        );
+
+        let binding = pooled_inference_binding_for_product(
+            ProviderInventoryProductToggleTarget::PooledInferenceRemoteWholeRequest,
+        )
+        .expect("pooled binding");
+        let topology = delivery_topology_evidence_for_binding(&job, binding)
+            .expect("cluster topology evidence");
+        let verification = delivery_verification_evidence_for_binding(&job, binding)
+            .expect("verification evidence");
+        assert_eq!(
+            metering_rule_id_for_binding(binding),
+            "meter.psionic.clustered_inference.v1"
+        );
+        assert_eq!(
+            topology.topology_digest.as_deref(),
+            Some("mesh.topology.test")
+        );
+        assert_eq!(
+            topology.selected_node_refs,
+            vec![
+                "node://mesh/openai_compat".to_string(),
+                "node://mesh/worker-b".to_string()
+            ]
+        );
+        assert_eq!(
+            verification.validator_pool_ref.as_deref(),
+            Some("validator-pool.psionic.clustered_inference")
+        );
+
+        crate::desktop_control::set_current_pooled_inference_status_for_tests(
+            crate::desktop_control::DesktopControlPooledInferenceStatus::default(),
         );
     }
 

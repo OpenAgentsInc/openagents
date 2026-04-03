@@ -11447,14 +11447,15 @@ fn ensure_local_operator_participant_for_shared_session(
 
     if let Some(existing) = session.participants.iter_mut().find(|participant| {
         participant.participant_id == participant_id
-            || participant.display_name.eq_ignore_ascii_case(display_name.as_str())
+            || participant
+                .display_name
+                .eq_ignore_ascii_case(display_name.as_str())
     }) {
         existing.kind = ForgeSharedSessionControlOwner::HumanLocal;
         existing.display_name = display_name.clone();
         existing.participant_id = participant_id.clone();
-        session.participants = normalize_forge_shared_session_participants(std::mem::take(
-            &mut session.participants,
-        ));
+        session.participants =
+            normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
         return (participant_id, display_name);
     }
 
@@ -11464,9 +11465,8 @@ fn ensure_local_operator_participant_for_shared_session(
         existing.kind = ForgeSharedSessionControlOwner::HumanLocal;
         existing.display_name = display_name.clone();
         existing.participant_id = participant_id.clone();
-        session.participants = normalize_forge_shared_session_participants(std::mem::take(
-            &mut session.participants,
-        ));
+        session.participants =
+            normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
         return (participant_id, display_name);
     }
 
@@ -20413,9 +20413,12 @@ impl AutopilotChatState {
         };
         let (actor_participant_id, actor_display_name) =
             ensure_local_operator_participant_for_shared_session(shared_session);
-        let request = shared_session.pending_handoff_request.clone().ok_or_else(|| {
-            "No pending handoff request is recorded for this shared session.".to_string()
-        })?;
+        let request = shared_session
+            .pending_handoff_request
+            .clone()
+            .ok_or_else(|| {
+                "No pending handoff request is recorded for this shared session.".to_string()
+            })?;
         let previous_owner = shared_session.control_owner;
         let previous_participant_id = shared_session.controller_participant_id.clone();
         let previous_display_name =
@@ -25773,6 +25776,8 @@ pub struct ActiveJobRecord {
     pub ac_settlement_event_id: Option<String>,
     pub ac_default_event_id: Option<String>,
     pub compute_product_id: Option<String>,
+    pub market_receipt_class: Option<String>,
+    pub earnings_summary: Option<String>,
     pub capacity_lot_id: Option<String>,
     pub capacity_instrument_id: Option<String>,
     pub delivery_proof_id: Option<String>,
@@ -25909,6 +25914,8 @@ impl ActiveJobState {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             capacity_lot_id: None,
             capacity_instrument_id: None,
             delivery_proof_id: None,
@@ -26186,6 +26193,9 @@ pub struct JobHistoryReceiptRow {
     pub ac_envelope_event_id: Option<String>,
     pub ac_settlement_event_id: Option<String>,
     pub ac_default_event_id: Option<String>,
+    pub compute_product_id: Option<String>,
+    pub market_receipt_class: Option<String>,
+    pub earnings_summary: Option<String>,
     pub delivery_proof_id: Option<String>,
     pub delivery_metering_rule_id: Option<String>,
     pub delivery_proof_status_label: Option<String>,
@@ -26388,6 +26398,9 @@ impl JobHistoryState {
             ac_envelope_event_id: job.ac_envelope_event_id.clone(),
             ac_settlement_event_id: job.ac_settlement_event_id.clone(),
             ac_default_event_id: job.ac_default_event_id.clone(),
+            compute_product_id: job.compute_product_id.clone(),
+            market_receipt_class: job.market_receipt_class.clone(),
+            earnings_summary: job.earnings_summary.clone(),
             delivery_proof_id: job.delivery_proof_id.clone(),
             delivery_metering_rule_id: job.delivery_metering_rule_id.clone(),
             delivery_proof_status_label: job.delivery_proof_status_label.clone(),
@@ -27939,17 +27952,16 @@ mod tests {
     };
 
     use crate::app_state::{
-        current_forge_local_operator_participant_id, ForgeBountyClaim, ForgeBountyContract,
-        ForgeBountyCreditRole, ForgeBountyLifecycleStatus, ForgeBountyObjectiveKind,
-        ForgeBountyParticipantCreditEnvelope, ForgeCampaign, ForgeCampaignArtifactKind,
-        ForgeCampaignArtifactRef, ForgeCampaignStatus, ForgeDelegatedChildDeliveryStatus,
-        ForgeDelegatedChildSessionCard, ForgeDelegatedChildSessionStatus,
-        ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch, ForgeDeliveryCiStatus,
-        ForgeDeliveryCiWatch, ForgeDeliveryComparePosture, ForgeDeliveryCompareWatch,
-        ForgeDeliveryContributor, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
-        ForgeDeliveryPullRequestWatch, ForgeDeliveryReceipt, ForgeDeliveryReceiptStatus,
-        ForgeDeliveryReviewerOutcome, ForgeEvidenceBundle, ForgeEvidenceBundleStatus,
-        ForgeEvidenceProductArtifact, ForgeEvidenceProductArtifactKind,
+        ForgeBountyClaim, ForgeBountyContract, ForgeBountyCreditRole, ForgeBountyLifecycleStatus,
+        ForgeBountyObjectiveKind, ForgeBountyParticipantCreditEnvelope, ForgeCampaign,
+        ForgeCampaignArtifactKind, ForgeCampaignArtifactRef, ForgeCampaignStatus,
+        ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
+        ForgeDelegatedChildSessionStatus, ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch,
+        ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
+        ForgeDeliveryCompareWatch, ForgeDeliveryContributor, ForgeDeliveryContributorRole,
+        ForgeDeliveryPullRequestState, ForgeDeliveryPullRequestWatch, ForgeDeliveryReceipt,
+        ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome, ForgeEvidenceBundle,
+        ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifact, ForgeEvidenceProductArtifactKind,
         ForgeEvidenceVerificationStatus, ForgeHostedAuditBundle, ForgeHostedAuditKind,
         ForgeHostedAuditNote, ForgeHostedAuditNoteKind, ForgeHostedPreflightCheck,
         ForgeHostedPreflightCheckStatus, ForgeHostedPreflightDisposition,
@@ -27959,11 +27971,11 @@ mod tests {
         ForgeProbeSessionOwnerKind, ForgePromotionLedger, ForgePromotionLedgerStatus,
         ForgePromotionRevision, ForgeSettlementClosurePath, ForgeSettlementReceipt,
         ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeSharedSessionControlOwner,
-        ForgeSharedSessionControlRequest, ForgeSharedSessionHandoff,
-        ForgeSharedSessionParticipant, ForgeSharedSessionTimelineEntry,
-        ForgeSharedSessionTimelineEntryKind, ForgeWorkspaceBaseRepoRef,
-        ForgeWorkspaceRestoreProvenance, ForgeWorkspaceSnapshotRefStatus,
-        ForgeWorkspaceStartupKind,
+        ForgeSharedSessionControlRequest, ForgeSharedSessionHandoff, ForgeSharedSessionParticipant,
+        ForgeSharedSessionTimelineEntry, ForgeSharedSessionTimelineEntryKind,
+        ForgeWorkspaceBaseRepoRef, ForgeWorkspaceRestoreProvenance,
+        ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
+        current_forge_local_operator_participant_id,
     };
 
     use super::{
@@ -31101,6 +31113,9 @@ mod tests {
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
+            compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             delivery_proof_id: None,
             delivery_metering_rule_id: None,
             delivery_proof_status_label: None,
@@ -33494,14 +33509,15 @@ mod tests {
         assert_eq!(metadata.project_name.as_deref(), Some("openagents"));
         assert_eq!(metadata.git_branch.as_deref(), Some("alice/internal-mvp"));
         assert_eq!(chat.active_thread_id.as_deref(), Some("probe-session-1"));
-        assert!(chat
-            .shared_session_for_thread("probe-session-1")
-            .expect("attached shared session")
-            .participants
-            .iter()
-            .any(|participant| {
-                participant.participant_id == current_forge_local_operator_participant_id()
-            }));
+        assert!(
+            chat.shared_session_for_thread("probe-session-1")
+                .expect("attached shared session")
+                .participants
+                .iter()
+                .any(|participant| {
+                    participant.participant_id == current_forge_local_operator_participant_id()
+                })
+        );
 
         let shared_session_id = chat
             .ensure_probe_shared_session_for_thread("probe-session-1", 1_700_002_100)
@@ -33627,8 +33643,7 @@ mod tests {
         }));
         assert!(final_session.collaboration_timeline.iter().any(|entry| {
             entry.kind == ForgeSharedSessionTimelineEntryKind::ControlRequest
-                && entry.summary
-                    == "I can take the implementation back after Bob's review."
+                && entry.summary == "I can take the implementation back after Bob's review."
         }));
         assert!(final_session.collaboration_timeline.iter().any(|entry| {
             entry.kind == ForgeSharedSessionTimelineEntryKind::Note
@@ -39118,6 +39133,9 @@ mod tests {
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
+            compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             delivery_proof_id: None,
             delivery_metering_rule_id: None,
             delivery_proof_status_label: None,

@@ -724,6 +724,8 @@ fn inventory_rows(
                 backend_ready: product.backend_ready,
                 eligible: product.eligible,
                 capability_summary: product.capability_summary.clone(),
+                market_receipt_class: product.market_receipt_class.clone(),
+                earnings_summary: product.earnings_summary.clone(),
                 source_badge: if active {
                     "pylon.serve".to_string()
                 } else {

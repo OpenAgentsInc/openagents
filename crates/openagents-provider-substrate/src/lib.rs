@@ -731,6 +731,15 @@ pub struct ProviderPooledInferenceAvailability {
     pub targetable_models: Vec<ProviderPooledInferenceTargetStatus>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderProductMarketSemantics {
+    pub contribution_class: String,
+    pub market_receipt_class: String,
+    pub earnings_trigger: String,
+    pub revenue_posture: String,
+    pub revenue_summary: String,
+}
+
 impl ProviderPooledInferenceAvailability {
     pub fn has_authoritative_state(&self) -> bool {
         let source_authoritative = !matches!(self.source.trim(), "" | "not_configured");
@@ -812,6 +821,72 @@ impl ProviderPooledInferenceAvailability {
             self.target_model_summary(),
             self.replicated_model_summary(),
         )
+    }
+
+    fn market_semantics(&self, topology_label: &str) -> ProviderProductMarketSemantics {
+        match topology_label {
+            "remote_whole_request" => {
+                let revenue_posture = if self.remote_whole_request_ready() {
+                    "accepted_clustered_delivery"
+                } else {
+                    "not_yet_earning"
+                };
+                let revenue_summary = if !self.has_authoritative_state() {
+                    "No pooled-inference revenue yet because mesh management is not configured."
+                } else if self.targetable_models.is_empty() {
+                    "No pooled-inference revenue yet because the mesh has no targetable models."
+                } else if self.member_count == 0 {
+                    "No pooled-inference revenue yet because the mesh has no joined members."
+                } else if self.remote_whole_request_ready() {
+                    "Earns when the mesh serves the whole request and the clustered delivery proof is accepted."
+                } else {
+                    "No pooled-inference revenue yet because remote whole-request serving is not ready."
+                };
+                ProviderProductMarketSemantics {
+                    contribution_class: "remote_whole_request_serving".to_string(),
+                    market_receipt_class: "clustered_delivery".to_string(),
+                    earnings_trigger: "accepted_clustered_delivery".to_string(),
+                    revenue_posture: revenue_posture.to_string(),
+                    revenue_summary: revenue_summary.to_string(),
+                }
+            }
+            "replicated" => {
+                let revenue_posture = if self.replicated_serving_ready() {
+                    "reserved_standby_or_promoted_delivery"
+                } else {
+                    "not_yet_earning"
+                };
+                let revenue_summary = if !self.has_authoritative_state() {
+                    "No replicated revenue yet because mesh management is not configured."
+                } else if self
+                    .targetable_models
+                    .iter()
+                    .all(|target| target.warm_replica_count <= 1)
+                {
+                    "No replicated revenue yet because the mesh has not warmed multiple replicas for any model."
+                } else if self.replicated_serving_ready() {
+                    "Warm replicas publish standby capacity, but revenue only starts when a reserve window sells or a replica is promoted into accepted clustered serving."
+                } else {
+                    "No replicated revenue yet because standby capacity is visible but not ready to advertise."
+                };
+                ProviderProductMarketSemantics {
+                    contribution_class: "replicated_standby_capacity".to_string(),
+                    market_receipt_class: "clustered_standby_or_promoted_delivery".to_string(),
+                    earnings_trigger: "accepted_reserved_window_or_promoted_delivery".to_string(),
+                    revenue_posture: revenue_posture.to_string(),
+                    revenue_summary: revenue_summary.to_string(),
+                }
+            }
+            _ => ProviderProductMarketSemantics {
+                contribution_class: "clustered_inference".to_string(),
+                market_receipt_class: "clustered_delivery".to_string(),
+                earnings_trigger: "accepted_clustered_delivery".to_string(),
+                revenue_posture: "unknown".to_string(),
+                revenue_summary:
+                    "Clustered inference revenue semantics are not specified for this topology."
+                        .to_string(),
+            },
+        }
     }
 }
 
@@ -1022,12 +1097,36 @@ impl ProviderComputeProduct {
                     "{base_summary} model={ready_model} configured_model={configured_model} latency_ms_p50={latency_ms}"
                 )
             }
-            Self::PooledInferenceRemoteWholeRequest => availability
-                .pooled_inference
-                .capability_summary("remote_whole_request"),
-            Self::PooledInferenceReplicatedServing => availability
-                .pooled_inference
-                .capability_summary("replicated"),
+            Self::PooledInferenceRemoteWholeRequest => {
+                let capability = availability
+                    .pooled_inference
+                    .capability_summary("remote_whole_request");
+                let market = availability
+                    .pooled_inference
+                    .market_semantics("remote_whole_request");
+                format!(
+                    "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
+                    market.contribution_class,
+                    market.market_receipt_class,
+                    market.earnings_trigger,
+                    market.revenue_posture,
+                    canonical_market_summary_token(market.revenue_summary.as_str()),
+                )
+            }
+            Self::PooledInferenceReplicatedServing => {
+                let capability = availability
+                    .pooled_inference
+                    .capability_summary("replicated");
+                let market = availability.pooled_inference.market_semantics("replicated");
+                format!(
+                    "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
+                    market.contribution_class,
+                    market.market_receipt_class,
+                    market.earnings_trigger,
+                    market.revenue_posture,
+                    canonical_market_summary_token(market.revenue_summary.as_str()),
+                )
+            }
             Self::AppleFoundationModelsInference => {
                 let health = &availability.apple_foundation_models;
                 let ready_model = health.ready_model.as_deref().unwrap_or("none");
@@ -1191,6 +1290,93 @@ impl ProviderComputeProduct {
                 .map(|execution_class| execution_class.product_id().to_string()),
         }
     }
+
+    pub fn market_semantics(
+        self,
+        availability: &ProviderAvailability,
+    ) -> ProviderProductMarketSemantics {
+        match self {
+            Self::GptOssInference => ProviderProductMarketSemantics {
+                contribution_class: "single_node_serving".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_trigger: "wallet_settled_accepted_delivery".to_string(),
+                revenue_posture: if availability.gpt_oss.is_ready() {
+                    "serving_ready"
+                } else {
+                    "not_yet_earning"
+                }
+                .to_string(),
+                revenue_summary: if availability.gpt_oss.is_ready() {
+                    "Earns when local delivery is accepted and wallet settlement is confirmed."
+                } else {
+                    "No single-node revenue yet because the local GPT-OSS runtime is not ready."
+                }
+                .to_string(),
+            },
+            Self::AppleFoundationModelsInference => ProviderProductMarketSemantics {
+                contribution_class: "single_node_serving".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_trigger: "wallet_settled_accepted_delivery".to_string(),
+                revenue_posture: if availability.apple_foundation_models.is_ready() {
+                    "serving_ready"
+                } else {
+                    "not_yet_earning"
+                }
+                .to_string(),
+                revenue_summary: if availability.apple_foundation_models.is_ready() {
+                    "Earns when Apple FM delivery is accepted and wallet settlement is confirmed."
+                } else {
+                    "No Apple FM revenue yet because the local inference bridge is not ready."
+                }
+                .to_string(),
+            },
+            Self::PooledInferenceRemoteWholeRequest => availability
+                .pooled_inference
+                .market_semantics("remote_whole_request"),
+            Self::PooledInferenceReplicatedServing => {
+                availability.pooled_inference.market_semantics("replicated")
+            }
+            Self::GptOssEmbeddings => ProviderProductMarketSemantics {
+                contribution_class: "single_node_embedding".to_string(),
+                market_receipt_class: "unsupported".to_string(),
+                earnings_trigger: "unsupported".to_string(),
+                revenue_posture: "unsupported".to_string(),
+                revenue_summary: "GPT-OSS embeddings are not a supported market lane.".to_string(),
+            },
+            Self::AppleFoundationModelsAdapterHosting => ProviderProductMarketSemantics {
+                contribution_class: "single_node_adapter_hosting".to_string(),
+                market_receipt_class: "best_effort_adapter_hosting".to_string(),
+                earnings_trigger: "future_market_lane".to_string(),
+                revenue_posture: "future_scope".to_string(),
+                revenue_summary: "Adapter hosting is visible in the product but not a wallet-settled market lane yet.".to_string(),
+            },
+            Self::AdapterTrainingContributor => ProviderProductMarketSemantics {
+                contribution_class: "training_contributor".to_string(),
+                market_receipt_class: "accepted_window_or_sealed_contribution".to_string(),
+                earnings_trigger: "accepted_training_window".to_string(),
+                revenue_posture: "future_scope".to_string(),
+                revenue_summary: "Training contributions settle on accepted windows, not immediate inference receipts.".to_string(),
+            },
+            Self::SandboxContainerExec
+            | Self::SandboxPythonExec
+            | Self::SandboxNodeExec
+            | Self::SandboxPosixExec => ProviderProductMarketSemantics {
+                contribution_class: "sandbox_execution".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_trigger: "wallet_settled_accepted_delivery".to_string(),
+                revenue_posture: "conditional".to_string(),
+                revenue_summary: "Sandbox execution earns only when a declared sandbox delivery is accepted and settled.".to_string(),
+            },
+        }
+    }
+}
+
+fn canonical_market_summary_token(summary: &str) -> String {
+    summary
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("_")
+        .to_ascii_lowercase()
 }
 
 pub fn describe_provider_product_id(product_id: &str) -> Option<ProviderProductDescriptor> {
@@ -1204,6 +1390,8 @@ pub struct ProviderInventoryRow {
     pub backend_ready: bool,
     pub eligible: bool,
     pub capability_summary: String,
+    pub market_receipt_class: String,
+    pub earnings_summary: String,
     pub source_badge: String,
     pub capacity_lot_id: Option<String>,
     pub total_quantity: u64,
@@ -1332,6 +1520,8 @@ pub struct ProviderAdvertisedProduct {
     pub backend_ready: bool,
     pub eligible: bool,
     pub capability_summary: String,
+    pub market_receipt_class: String,
+    pub earnings_summary: String,
     pub price_floor_sats: u64,
     pub terms_label: String,
     pub forward_terms_label: String,
@@ -1347,12 +1537,15 @@ pub fn derive_provider_products(
         .map(|product| {
             let enabled = controls.is_advertised(product);
             let backend_ready = availability.product_backend_ready(product);
+            let market_semantics = product.market_semantics(availability);
             ProviderAdvertisedProduct {
                 product,
                 enabled,
                 backend_ready,
                 eligible: enabled && backend_ready,
                 capability_summary: availability.capability_summary_for_product(product),
+                market_receipt_class: market_semantics.market_receipt_class,
+                earnings_summary: market_semantics.revenue_summary,
                 price_floor_sats: product.default_price_floor_sats(),
                 terms_label: product.terms_label().to_string(),
                 forward_terms_label: product.forward_terms_label().to_string(),

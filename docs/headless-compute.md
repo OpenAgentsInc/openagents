@@ -296,6 +296,28 @@ execution-kind truth plus `remote_whole_request` or `replicated` topology and
 carry the live pooled-inference mesh state: membership posture, targetable
 model count, warm replica count, default model, and topology digest.
 
+The inventory and active-job surfaces now also spell out the revenue rule for
+each lane instead of treating pooled inference as a generic "cluster" badge:
+
+- `psionic.local.inference.*.single_node` earns when a local delivery is
+  accepted and wallet settlement is confirmed.
+- `psionic.cluster.inference.gpt_oss.remote_whole_request` earns when the mesh
+  serves the whole request and the clustered delivery proof is accepted.
+- `psionic.cluster.inference.gpt_oss.replicated` publishes standby capacity,
+  but warm replicas alone do not earn. Revenue starts only when a reserve
+  window actually sells or the replica is promoted into accepted clustered
+  serving.
+- sharded pooled-inference lanes are still future scope and are not marketed as
+  active wallet-settled products yet.
+
+When an active job or a persisted history row already carries pooled product
+identity, the desktop now preserves the same `compute_product_id`,
+`market_receipt_class`, and earnings summary through the live status view,
+kernel receipt tags, and authoritative history rehydrate. `autopilotctl status`
+and `autopilotctl pooled-inference status` therefore tell the operator whether
+the current contribution is direct serving revenue, standby capacity that has
+not sold yet, or a local single-node delivery path.
+
 The same command group now also owns the multi-machine join and invite path
 above Psionic mesh-lane truth:
 
