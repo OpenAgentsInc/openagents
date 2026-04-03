@@ -41,6 +41,9 @@ It can:
 - emit structured desktop perf snapshots from the app-owned `Frame Debugger`
   surface through `autopilotctl perf`
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
+- inspect the pooled-inference mesh surface the desktop currently sees, including
+  local serving versus proxy posture, routed model inventory, warm replicas, and
+  mesh membership
 - refresh the active local runtime and wallet state
 - inspect Apple FM adapter inventory and current session attachment truth from the
   same desktop snapshot the workbench uses
@@ -115,6 +118,8 @@ autopilotctl apple-fm status
 autopilotctl apple-fm list
 autopilotctl gpt-oss status
 autopilotctl gpt-oss warm --wait
+autopilotctl pooled-inference status
+autopilotctl pooled-inference topology
 autopilotctl wait gpt-oss-ready
 autopilotctl attnres status
 autopilotctl attnres start
@@ -262,6 +267,17 @@ It also prints the app-owned buyer procurement summary for compute RFQs and
 quotes, including the active quote mode, selected quote IDs, and the quoted
 backend, topology, proof posture, environment ref, and sandbox profile where
 those fields are present.
+
+`autopilotctl pooled-inference status` is the first dedicated operator view for
+the Psionic mesh-backed pooled-inference lane. Set
+`OPENAGENTS_PSIONIC_MESH_MANAGEMENT_BASE_URL` to the Psionic management host,
+then use the command to inspect the local machine's current pooled-inference
+posture: whether this node is serving locally, standing by, or proxying into
+the pool, which models are currently warm and targetable, how many warm
+replicas exist across the visible mesh, and which reasons are currently driving
+the local contribution posture. `autopilotctl pooled-inference topology`
+extends that same view with the visible member list and per-node warm-model
+inventory.
 
 `autopilotctl tailnet status` is the focused operator view for the same Tailnet
 roster now surfaced in the desktop `Tailnet Status` pane. It shells out to

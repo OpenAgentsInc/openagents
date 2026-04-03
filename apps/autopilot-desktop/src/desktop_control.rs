@@ -104,7 +104,7 @@ use wgpui::{
     capture_scene, theme,
 };
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 20;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 21;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -115,11 +115,17 @@ const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
 const DESKTOP_CONTROL_ACTION_TIMEOUT: Duration = Duration::from_secs(30);
 const DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS: u64 = 15_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT: usize = 8;
+const DESKTOP_CONTROL_POOLED_INFERENCE_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 const DESKTOP_CONTROL_TAILNET_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+const DESKTOP_CONTROL_POOLED_INFERENCE_LOCAL_WORKER_ID: &str = "openai_compat";
 
 pub const DESKTOP_CONTROL_MANIFEST_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_MANIFEST";
 pub const DESKTOP_CONTROL_BIND_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_BIND";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV: &str =
+    "OPENAGENTS_PSIONIC_MESH_MANAGEMENT_BASE_URL";
 
+static DESKTOP_CONTROL_POOLED_INFERENCE_CACHE: OnceLock<Mutex<DesktopControlPooledInferenceCache>> =
+    OnceLock::new();
 static DESKTOP_CONTROL_TAILNET_CACHE: OnceLock<Mutex<DesktopControlTailnetCache>> = OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -142,6 +148,7 @@ pub struct DesktopControlSnapshot {
     pub gpt_oss: DesktopControlGptOssStatus,
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
+    pub pooled_inference: DesktopControlPooledInferenceStatus,
     pub tailnet: DesktopControlTailnetStatus,
     pub tunnels: DesktopControlTunnelsStatus,
     pub inventory: DesktopControlInventoryStatus,
@@ -292,6 +299,54 @@ struct DesktopControlTailnetCache {
     snapshot: DesktopControlTailnetStatus,
     refreshed_at: Option<Instant>,
     last_attempt_at: Option<Instant>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct DesktopControlPooledInferenceCache {
+    snapshot: DesktopControlPooledInferenceStatus,
+    refreshed_at: Option<Instant>,
+    last_attempt_at: Option<Instant>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementStatusResponse {
+    topology_digest: String,
+    default_model: String,
+    #[serde(default)]
+    nodes: Vec<DesktopControlPooledInferenceManagementNodeStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementNodeStatus {
+    worker_id: String,
+    served_mesh_role: DesktopControlPooledInferenceManagementRoleState,
+    execution_mode_label: String,
+    execution_engine_label: String,
+    #[serde(default)]
+    models: Vec<DesktopControlPooledInferenceManagementModelStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementRoleState {
+    role: String,
+    posture: String,
+    #[serde(default)]
+    reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementModelStatus {
+    canonical_name: String,
+    family: String,
+    #[serde(default)]
+    supported_endpoints: Vec<String>,
+    warm_state: String,
+    #[serde(default)]
+    structured_outputs: bool,
+    #[serde(default)]
+    tool_calling: bool,
+    #[serde(default)]
+    response_state: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -743,6 +798,84 @@ pub struct DesktopControlClusterStatus {
     pub member_count: usize,
     pub members: Vec<DesktopControlClusterMemberStatus>,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceTargetStatus {
+    pub model: String,
+    pub family: String,
+    pub supported_endpoints: Vec<String>,
+    pub structured_outputs: bool,
+    pub tool_calling: bool,
+    pub response_state: bool,
+    pub warm_replica_count: usize,
+    pub local_warm_replica: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceNodeStatus {
+    pub worker_id: String,
+    pub served_mesh_role: String,
+    pub served_mesh_posture: String,
+    pub served_mesh_reasons: Vec<String>,
+    pub execution_mode: String,
+    pub execution_engine: String,
+    pub warm_model_count: usize,
+    pub targetable_model_count: usize,
+    pub warm_models: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceStatus {
+    pub available: bool,
+    pub source: String,
+    pub management_base_url: Option<String>,
+    pub topology_digest: Option<String>,
+    pub default_model: Option<String>,
+    pub membership_state: String,
+    pub member_count: usize,
+    pub targetable_model_count: usize,
+    pub warm_replica_count: usize,
+    pub local_worker_id: Option<String>,
+    pub local_serving_state: String,
+    pub served_mesh_role: Option<String>,
+    pub served_mesh_posture: Option<String>,
+    pub served_mesh_reasons: Vec<String>,
+    pub execution_mode: Option<String>,
+    pub execution_engine: Option<String>,
+    pub fallback_posture: Option<String>,
+    pub last_refreshed_at_epoch_ms: Option<u64>,
+    pub last_error: Option<String>,
+    pub targetable_models: Vec<DesktopControlPooledInferenceTargetStatus>,
+    pub members: Vec<DesktopControlPooledInferenceNodeStatus>,
+}
+
+impl Default for DesktopControlPooledInferenceStatus {
+    fn default() -> Self {
+        Self {
+            available: false,
+            source: "not_configured".to_string(),
+            management_base_url: None,
+            topology_digest: None,
+            default_model: None,
+            membership_state: "unconfigured".to_string(),
+            member_count: 0,
+            targetable_model_count: 0,
+            warm_replica_count: 0,
+            local_worker_id: None,
+            local_serving_state: "unconfigured".to_string(),
+            served_mesh_role: None,
+            served_mesh_posture: None,
+            served_mesh_reasons: Vec::new(),
+            execution_mode: None,
+            execution_engine: None,
+            fallback_posture: None,
+            last_refreshed_at_epoch_ms: None,
+            last_error: None,
+            targetable_models: Vec::new(),
+            members: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -3065,6 +3198,16 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.wallet).ok(),
         });
     }
+    if previous.is_none_or(|snapshot| snapshot.pooled_inference != current.pooled_inference) {
+        changed_domains.push("pooled_inference");
+        events.push(DesktopControlEventDraft {
+            event_type: "pooled_inference.state.changed".to_string(),
+            summary: pooled_inference_status_summary(&current.pooled_inference),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.pooled_inference).ok(),
+        });
+    }
     if previous.is_none_or(|snapshot| snapshot.inventory != current.inventory) {
         changed_domains.push("inventory");
         events.push(DesktopControlEventDraft {
@@ -3466,6 +3609,19 @@ fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
         status.balance_known,
         status.balance_reconciling,
         status.can_withdraw
+    )
+}
+
+fn pooled_inference_status_summary(status: &DesktopControlPooledInferenceStatus) -> String {
+    format!(
+        "pooled inference available={} local_state={} role={} posture={} members={} targets={} warm_replicas={}",
+        status.available,
+        status.local_serving_state,
+        status.served_mesh_role.as_deref().unwrap_or("unknown"),
+        status.served_mesh_posture.as_deref().unwrap_or("unknown"),
+        status.member_count,
+        status.targetable_model_count,
+        status.warm_replica_count
     )
 }
 
@@ -6911,6 +7067,311 @@ fn desktop_control_cluster_status() -> DesktopControlClusterStatus {
         member_count: 0,
         members: Vec::new(),
         last_error: Some(crate::provider_inventory::CLUSTER_NOT_INTEGRATED_REASON.to_string()),
+    }
+}
+
+fn desktop_control_pooled_inference_cache() -> &'static Mutex<DesktopControlPooledInferenceCache> {
+    DESKTOP_CONTROL_POOLED_INFERENCE_CACHE
+        .get_or_init(|| Mutex::new(DesktopControlPooledInferenceCache::default()))
+}
+
+fn desktop_control_pooled_inference_status() -> DesktopControlPooledInferenceStatus {
+    let should_refresh = {
+        let cache = desktop_control_pooled_inference_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let stale = cache.refreshed_at.is_none_or(|refreshed_at| {
+            refreshed_at.elapsed() >= DESKTOP_CONTROL_POOLED_INFERENCE_REFRESH_INTERVAL
+        });
+        let recently_attempted = cache
+            .last_attempt_at
+            .is_some_and(|last_attempt| last_attempt.elapsed() < Duration::from_secs(2));
+        stale && !recently_attempted
+    };
+    if !should_refresh {
+        return desktop_control_pooled_inference_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .snapshot
+            .clone();
+    }
+
+    {
+        let mut cache = desktop_control_pooled_inference_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        cache.last_attempt_at = Some(Instant::now());
+    }
+
+    let result = load_desktop_control_pooled_inference_status();
+    let mut cache = desktop_control_pooled_inference_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    match result {
+        Ok(snapshot) => {
+            cache.snapshot = snapshot.clone();
+            cache.refreshed_at = Some(Instant::now());
+            cache.last_attempt_at = cache.refreshed_at;
+            snapshot
+        }
+        Err(error) => {
+            if cache.snapshot.last_refreshed_at_epoch_ms.is_some() {
+                cache.snapshot.source = "psionic_management_stale".to_string();
+                cache.snapshot.last_error = Some(error);
+            } else {
+                cache.snapshot = DesktopControlPooledInferenceStatus {
+                    source: "psionic_management_error".to_string(),
+                    membership_state: "error".to_string(),
+                    local_serving_state: "error".to_string(),
+                    last_error: Some(error),
+                    ..DesktopControlPooledInferenceStatus::default()
+                };
+            }
+            cache.snapshot.clone()
+        }
+    }
+}
+
+fn load_desktop_control_pooled_inference_status()
+-> Result<DesktopControlPooledInferenceStatus, String> {
+    let Some(management_base_url) = configured_pooled_inference_management_base_url()? else {
+        return Ok(DesktopControlPooledInferenceStatus::default());
+    };
+    let management_url = format!("{management_base_url}/psionic/management/status");
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(1500))
+        .build()
+        .map_err(|error| format!("failed to build pooled inference client: {error}"))?;
+    let response = client
+        .get(management_url.as_str())
+        .send()
+        .map_err(|error| format!("pooled inference GET {management_url} failed: {error}"))?;
+    let response = response.error_for_status().map_err(|error| {
+        format!("pooled inference GET {management_url} returned error status: {error}")
+    })?;
+    let status = response
+        .json::<DesktopControlPooledInferenceManagementStatusResponse>()
+        .map_err(|error| format!("pooled inference JSON decode failed: {error}"))?;
+    Ok(desktop_control_pooled_inference_snapshot(
+        management_base_url.as_str(),
+        &status,
+    ))
+}
+
+fn configured_pooled_inference_management_base_url() -> Result<Option<String>, String> {
+    let value = match std::env::var(DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        Ok(_) | Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(format!(
+                "{DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV} must be valid UTF-8"
+            ));
+        }
+    };
+    normalize_desktop_control_http_base_url(value.as_str()).map(Some)
+}
+
+fn normalize_desktop_control_http_base_url(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("base_url must not be empty".to_string());
+    }
+    let mut url =
+        reqwest::Url::parse(trimmed).map_err(|error| format!("invalid base_url: {error}"))?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(format!(
+            "unsupported base_url scheme: {}; expected http or https",
+            url.scheme()
+        ));
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    if url.path().ends_with('/') {
+        let trimmed_path = url.path().trim_end_matches('/').to_string();
+        url.set_path(trimmed_path.as_str());
+    }
+    Ok(url.to_string().trim_end_matches('/').to_string())
+}
+
+fn desktop_control_pooled_inference_snapshot(
+    management_base_url: &str,
+    status: &DesktopControlPooledInferenceManagementStatusResponse,
+) -> DesktopControlPooledInferenceStatus {
+    let local_node = status
+        .nodes
+        .iter()
+        .find(|node| node.worker_id == DESKTOP_CONTROL_POOLED_INFERENCE_LOCAL_WORKER_ID);
+    let targetable_models = desktop_control_pooled_inference_targetable_models(status, local_node);
+    let warm_replica_count = status
+        .nodes
+        .iter()
+        .flat_map(|node| node.models.iter())
+        .filter(|model| model.warm_state == "warm")
+        .count();
+    DesktopControlPooledInferenceStatus {
+        available: true,
+        source: "psionic_management".to_string(),
+        management_base_url: Some(management_base_url.to_string()),
+        topology_digest: Some(status.topology_digest.clone()),
+        default_model: Some(status.default_model.clone()),
+        membership_state: if status.nodes.is_empty() {
+            "empty".to_string()
+        } else {
+            "joined".to_string()
+        },
+        member_count: status.nodes.len(),
+        targetable_model_count: targetable_models.len(),
+        warm_replica_count,
+        local_worker_id: local_node.map(|node| node.worker_id.clone()),
+        local_serving_state: pooled_inference_local_serving_state(local_node),
+        served_mesh_role: local_node.map(|node| node.served_mesh_role.role.clone()),
+        served_mesh_posture: local_node.map(|node| node.served_mesh_role.posture.clone()),
+        served_mesh_reasons: local_node
+            .map(|node| node.served_mesh_role.reasons.clone())
+            .unwrap_or_default(),
+        execution_mode: local_node.map(|node| node.execution_mode_label.clone()),
+        execution_engine: local_node.map(|node| node.execution_engine_label.clone()),
+        fallback_posture: local_node.and_then(pooled_inference_fallback_posture),
+        last_refreshed_at_epoch_ms: Some(current_epoch_ms()),
+        last_error: None,
+        targetable_models,
+        members: status
+            .nodes
+            .iter()
+            .map(desktop_control_pooled_inference_member_status)
+            .collect(),
+    }
+}
+
+fn pooled_inference_local_serving_state(
+    local_node: Option<&DesktopControlPooledInferenceManagementNodeStatus>,
+) -> String {
+    let Some(local_node) = local_node else {
+        return "not_joined".to_string();
+    };
+    if local_node.execution_mode_label == "proxy" {
+        return "proxying".to_string();
+    }
+    if local_node
+        .models
+        .iter()
+        .any(|model| model.warm_state == "warm")
+    {
+        return "serving_local".to_string();
+    }
+    if local_node.served_mesh_role.posture == "standby" {
+        return "standing_by".to_string();
+    }
+    if local_node
+        .served_mesh_role
+        .reasons
+        .iter()
+        .any(|reason| reason == "warming")
+    {
+        return "warming".to_string();
+    }
+    "joined_idle".to_string()
+}
+
+fn pooled_inference_fallback_posture(
+    node: &DesktopControlPooledInferenceManagementNodeStatus,
+) -> Option<String> {
+    if node.execution_mode_label != "proxy" {
+        return None;
+    }
+    if node.served_mesh_role.role == "thin_client"
+        && node
+            .served_mesh_role
+            .reasons
+            .iter()
+            .any(|reason| reason == "remote_only")
+    {
+        return Some("thin_client_remote_only".to_string());
+    }
+    if node
+        .served_mesh_role
+        .reasons
+        .iter()
+        .any(|reason| reason == "warming")
+    {
+        return Some("warming_until_local_ready".to_string());
+    }
+    None
+}
+
+fn desktop_control_pooled_inference_targetable_models(
+    status: &DesktopControlPooledInferenceManagementStatusResponse,
+    local_node: Option<&DesktopControlPooledInferenceManagementNodeStatus>,
+) -> Vec<DesktopControlPooledInferenceTargetStatus> {
+    let mut merged = BTreeMap::<String, DesktopControlPooledInferenceTargetStatus>::new();
+    let local_warm_models = local_node
+        .map(|node| {
+            node.models
+                .iter()
+                .filter(|model| model.warm_state == "warm")
+                .map(|model| model.canonical_name.as_str())
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    for node in &status.nodes {
+        for model in &node.models {
+            if model.warm_state != "warm" {
+                continue;
+            }
+            let entry = merged
+                .entry(model.canonical_name.clone())
+                .or_insert_with(|| DesktopControlPooledInferenceTargetStatus {
+                    model: model.canonical_name.clone(),
+                    family: model.family.clone(),
+                    supported_endpoints: Vec::new(),
+                    structured_outputs: model.structured_outputs,
+                    tool_calling: model.tool_calling,
+                    response_state: model.response_state,
+                    warm_replica_count: 0,
+                    local_warm_replica: false,
+                });
+            let mut endpoints = entry
+                .supported_endpoints
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            endpoints.extend(model.supported_endpoints.iter().cloned());
+            entry.supported_endpoints = endpoints.into_iter().collect();
+            entry.structured_outputs |= model.structured_outputs;
+            entry.tool_calling |= model.tool_calling;
+            entry.response_state |= model.response_state;
+            entry.warm_replica_count += 1;
+            if local_warm_models.contains(model.canonical_name.as_str()) {
+                entry.local_warm_replica = true;
+            }
+        }
+    }
+    merged.into_values().collect()
+}
+
+fn desktop_control_pooled_inference_member_status(
+    node: &DesktopControlPooledInferenceManagementNodeStatus,
+) -> DesktopControlPooledInferenceNodeStatus {
+    let warm_models = node
+        .models
+        .iter()
+        .filter(|model| model.warm_state == "warm")
+        .map(|model| model.canonical_name.clone())
+        .collect::<Vec<_>>();
+    DesktopControlPooledInferenceNodeStatus {
+        worker_id: node.worker_id.clone(),
+        served_mesh_role: node.served_mesh_role.role.clone(),
+        served_mesh_posture: node.served_mesh_role.posture.clone(),
+        served_mesh_reasons: node.served_mesh_role.reasons.clone(),
+        execution_mode: node.execution_mode_label.clone(),
+        execution_engine: node.execution_engine_label.clone(),
+        warm_model_count: warm_models.len(),
+        targetable_model_count: node
+            .models
+            .iter()
+            .filter(|model| model.warm_state == "warm")
+            .count(),
+        warm_models,
     }
 }
 
@@ -10466,6 +10927,7 @@ fn snapshot_for_state_with_signature(
     let inventory = crate::provider_inventory::inventory_status_for_state(state);
     let buyer_procurement = desktop_control_buyer_procurement_status(&state.network_requests);
     let gpt_oss = desktop_control_gpt_oss_status(state);
+    let pooled_inference = desktop_control_pooled_inference_status();
     let tailnet = desktop_control_tailnet_status();
 
     let mut snapshot = DesktopControlSnapshot {
@@ -10534,6 +10996,7 @@ fn snapshot_for_state_with_signature(
             last_action: state.spark_wallet.last_action.clone(),
             last_error: state.spark_wallet.last_error.clone(),
         },
+        pooled_inference,
         tailnet,
         tunnels: DesktopControlTunnelsStatus::default(),
         inventory,
@@ -11502,20 +11965,23 @@ mod tests {
         DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
         DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
         DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlProofStatus, DesktopControlProviderStatus,
-        DesktopControlRemoteTrainingExplorerStatus, DesktopControlRemoteTrainingRunStatus,
-        DesktopControlRemoteTrainingSelectedRunStatus, DesktopControlRemoteTrainingStatus,
-        DesktopControlRemoteTrainingTrackStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
-        DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlTailnetDeviceStatus,
-        DesktopControlTailnetStatus, DesktopControlTrainingParticipantStatus,
-        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
-        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
-        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
-        build_nip90_sent_payments_report_payload, build_settlement_history,
-        challenges_by_delivery_proof, command_outcome_event, command_received_event,
-        desktop_control_challenge_history_status, desktop_control_proof_history_status,
-        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlPooledInferenceManagementStatusResponse,
+        DesktopControlPooledInferenceNodeStatus, DesktopControlPooledInferenceStatus,
+        DesktopControlPooledInferenceTargetStatus, DesktopControlProofStatus,
+        DesktopControlProviderStatus, DesktopControlRemoteTrainingExplorerStatus,
+        DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
+        DesktopControlRemoteTrainingStatus, DesktopControlRemoteTrainingTrackStatus,
+        DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
+        DesktopControlSandboxStatus, DesktopControlSessionStatus, DesktopControlSnapshot,
+        DesktopControlTailnetDeviceStatus, DesktopControlTailnetStatus,
+        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
+        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
+        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
+        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
+        command_received_event, desktop_control_challenge_history_status,
+        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
+        validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -11689,6 +12155,70 @@ mod tests {
                 withdraw_block_reason: None,
                 last_action: Some("Wallet refreshed".to_string()),
                 last_error: None,
+            },
+            pooled_inference: DesktopControlPooledInferenceStatus {
+                available: true,
+                source: "psionic_management".to_string(),
+                management_base_url: Some("http://127.0.0.1:7878".to_string()),
+                topology_digest: Some("mesh.topology.1".to_string()),
+                default_model: Some("gemma4:e4b".to_string()),
+                membership_state: "joined".to_string(),
+                member_count: 2,
+                targetable_model_count: 1,
+                warm_replica_count: 1,
+                local_worker_id: Some("openai_compat".to_string()),
+                local_serving_state: "proxying".to_string(),
+                served_mesh_role: Some("thin_client".to_string()),
+                served_mesh_posture: Some("standby".to_string()),
+                served_mesh_reasons: vec![
+                    "remote_only".to_string(),
+                    "warming".to_string(),
+                ],
+                execution_mode: Some("proxy".to_string()),
+                execution_engine: Some("llama.cpp".to_string()),
+                fallback_posture: Some("thin_client_remote_only".to_string()),
+                last_refreshed_at_epoch_ms: Some(123),
+                last_error: None,
+                targetable_models: vec![DesktopControlPooledInferenceTargetStatus {
+                    model: "gemma4:e4b".to_string(),
+                    family: "gemma4".to_string(),
+                    supported_endpoints: vec![
+                        "/v1/chat/completions".to_string(),
+                        "/v1/responses".to_string(),
+                    ],
+                    structured_outputs: false,
+                    tool_calling: true,
+                    response_state: true,
+                    warm_replica_count: 1,
+                    local_warm_replica: false,
+                }],
+                members: vec![
+                    DesktopControlPooledInferenceNodeStatus {
+                        worker_id: "openai_compat".to_string(),
+                        served_mesh_role: "thin_client".to_string(),
+                        served_mesh_posture: "standby".to_string(),
+                        served_mesh_reasons: vec![
+                            "remote_only".to_string(),
+                            "warming".to_string(),
+                        ],
+                        execution_mode: "proxy".to_string(),
+                        execution_engine: "llama.cpp".to_string(),
+                        warm_model_count: 0,
+                        targetable_model_count: 0,
+                        warm_models: Vec::new(),
+                    },
+                    DesktopControlPooledInferenceNodeStatus {
+                        worker_id: "worker-gpu-a".to_string(),
+                        served_mesh_role: "worker".to_string(),
+                        served_mesh_posture: "serving".to_string(),
+                        served_mesh_reasons: vec!["demand_routed".to_string()],
+                        execution_mode: "native".to_string(),
+                        execution_engine: "psionic".to_string(),
+                        warm_model_count: 1,
+                        targetable_model_count: 1,
+                        warm_models: vec!["gemma4:e4b".to_string()],
+                    },
+                ],
             },
             tailnet: DesktopControlTailnetStatus {
                 available: true,
@@ -12327,6 +12857,91 @@ mod tests {
             parsed.peers[1].last_seen.as_deref(),
             Some("2026-03-27T02:30:00Z")
         );
+    }
+
+    #[test]
+    fn pooled_inference_snapshot_projects_mesh_membership_and_targetable_models() {
+        let status = serde_json::from_value::<DesktopControlPooledInferenceManagementStatusResponse>(
+            json!({
+                "topology_digest": "mesh.topology.1",
+                "default_model": "gemma4:e4b",
+                "nodes": [
+                    {
+                        "worker_id": "openai_compat",
+                        "served_mesh_role": {
+                            "role": "thin_client",
+                            "posture": "standby",
+                            "reasons": ["remote_only", "warming"]
+                        },
+                        "execution_mode_label": "proxy",
+                        "execution_engine_label": "llama.cpp",
+                        "models": []
+                    },
+                    {
+                        "worker_id": "worker-gpu-a",
+                        "served_mesh_role": {
+                            "role": "worker",
+                            "posture": "serving",
+                            "reasons": ["demand_routed"]
+                        },
+                        "execution_mode_label": "native",
+                        "execution_engine_label": "psionic",
+                        "models": [
+                            {
+                                "canonical_name": "gemma4:e4b",
+                                "family": "gemma4",
+                                "supported_endpoints": ["/v1/chat/completions", "/v1/responses"],
+                                "warm_state": "warm",
+                                "structured_outputs": false,
+                                "tool_calling": true,
+                                "response_state": true
+                            }
+                        ]
+                    }
+                ]
+            }),
+        )
+        .expect("pooled inference status should decode");
+
+        let snapshot =
+            super::desktop_control_pooled_inference_snapshot("http://127.0.0.1:7878", &status);
+
+        assert!(snapshot.available);
+        assert_eq!(snapshot.source, "psionic_management");
+        assert_eq!(snapshot.membership_state, "joined");
+        assert_eq!(snapshot.local_serving_state, "proxying");
+        assert_eq!(snapshot.served_mesh_role.as_deref(), Some("thin_client"));
+        assert_eq!(
+            snapshot.fallback_posture.as_deref(),
+            Some("thin_client_remote_only")
+        );
+        assert_eq!(snapshot.targetable_model_count, 1);
+        assert_eq!(snapshot.warm_replica_count, 1);
+        assert_eq!(snapshot.targetable_models[0].model, "gemma4:e4b");
+        assert_eq!(
+            snapshot.targetable_models[0].supported_endpoints,
+            vec![
+                "/v1/chat/completions".to_string(),
+                "/v1/responses".to_string()
+            ]
+        );
+        assert_eq!(snapshot.members.len(), 2);
+        assert_eq!(snapshot.members[0].worker_id, "openai_compat");
+        assert_eq!(
+            snapshot.members[1].warm_models,
+            vec!["gemma4:e4b".to_string()]
+        );
+    }
+
+    #[test]
+    fn normalize_desktop_control_http_base_url_rejects_invalid_values() {
+        assert_eq!(
+            super::normalize_desktop_control_http_base_url("http://127.0.0.1:7878/mesh/?q=1#frag")
+                .expect("valid base url"),
+            "http://127.0.0.1:7878/mesh"
+        );
+        assert!(super::normalize_desktop_control_http_base_url("ftp://mesh.example").is_err());
+        assert!(super::normalize_desktop_control_http_base_url("").is_err());
     }
 
     fn sample_history_delivery_proof() -> DeliveryProof {

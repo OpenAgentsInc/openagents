@@ -22,8 +22,8 @@ use autopilot_desktop::desktop_control::{
     DesktopControlDataMarketRevokeGrantArgs, DesktopControlEventBatch,
     DesktopControlForgeAttachPayload, DesktopControlForgeHostedSessionsPayload,
     DesktopControlForgeStatusPayload, DesktopControlLocalRuntimeStatus, DesktopControlManifest,
-    DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-    DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
+    DesktopControlNip90SentPaymentsReport, DesktopControlPooledInferenceStatus,
+    DesktopControlSnapshot, DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
     DesktopControlTassadarStatus, DesktopControlTassadarView, ForgeSharedSessionControlOwner,
     control_manifest_path,
 };
@@ -87,6 +87,10 @@ enum Command {
     Cluster {
         #[command(subcommand)]
         command: ClusterCommand,
+    },
+    PooledInference {
+        #[command(subcommand)]
+        command: PooledInferenceCommand,
     },
     Sandbox {
         #[command(subcommand)]
@@ -352,6 +356,12 @@ enum AttnResSpeedCommand {
 
 #[derive(Subcommand, Debug)]
 enum ClusterCommand {
+    Status,
+    Topology,
+}
+
+#[derive(Subcommand, Debug)]
+enum PooledInferenceCommand {
     Status,
     Topology,
 }
@@ -1830,6 +1840,21 @@ fn main() -> Result<()> {
                 print_json(payload)?;
             } else {
                 print_cluster_text(payload);
+            }
+        }
+        Command::PooledInference { command } => {
+            let snapshot = client.snapshot()?;
+            if json_output {
+                print_json(&snapshot.pooled_inference)?;
+            } else {
+                match command {
+                    PooledInferenceCommand::Status => {
+                        print_pooled_inference_status_text(&snapshot.pooled_inference);
+                    }
+                    PooledInferenceCommand::Topology => {
+                        print_pooled_inference_topology_text(&snapshot.pooled_inference);
+                    }
+                }
             }
         }
         Command::Sandbox { command } => match command {
@@ -4944,6 +4969,29 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.gpt_oss.ready_model.as_deref().unwrap_or("-")
     );
     println!(
+        "pooled inference: available={} state={} role={} posture={} members={} targets={} warm_replicas={} default_model={}",
+        snapshot.pooled_inference.available,
+        snapshot.pooled_inference.local_serving_state,
+        snapshot
+            .pooled_inference
+            .served_mesh_role
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .pooled_inference
+            .served_mesh_posture
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.pooled_inference.member_count,
+        snapshot.pooled_inference.targetable_model_count,
+        snapshot.pooled_inference.warm_replica_count,
+        snapshot
+            .pooled_inference
+            .default_model
+            .as_deref()
+            .unwrap_or("-")
+    );
+    println!(
         "wallet: balance={} network={} status={} reconciling={} withdraw_ready={}",
         if snapshot.wallet.balance_known {
             format!("{} sats", snapshot.wallet.balance_sats)
@@ -5949,6 +5997,84 @@ fn print_cluster_text(payload: &Value) {
                 .get("last_error")
                 .and_then(Value::as_str)
                 .unwrap_or("-")
+        );
+    }
+}
+
+fn print_pooled_inference_status_text(status: &DesktopControlPooledInferenceStatus) {
+    println!(
+        "pooled inference: available={} source={} state={} membership={} members={} targets={} warm_replicas={} topology={} default_model={}",
+        status.available,
+        status.source,
+        status.local_serving_state,
+        status.membership_state,
+        status.member_count,
+        status.targetable_model_count,
+        status.warm_replica_count,
+        status.topology_digest.as_deref().unwrap_or("-"),
+        status.default_model.as_deref().unwrap_or("-")
+    );
+    println!(
+        "management_base_url={} local_worker={} role={} posture={} execution_mode={} execution_engine={} fallback={}",
+        status.management_base_url.as_deref().unwrap_or("-"),
+        status.local_worker_id.as_deref().unwrap_or("-"),
+        status.served_mesh_role.as_deref().unwrap_or("-"),
+        status.served_mesh_posture.as_deref().unwrap_or("-"),
+        status.execution_mode.as_deref().unwrap_or("-"),
+        status.execution_engine.as_deref().unwrap_or("-"),
+        status.fallback_posture.as_deref().unwrap_or("-")
+    );
+    println!(
+        "served_mesh_reasons={}",
+        if status.served_mesh_reasons.is_empty() {
+            "-".to_string()
+        } else {
+            status.served_mesh_reasons.join(",")
+        }
+    );
+    if let Some(error) = status.last_error.as_deref() {
+        println!("last_error: {error}");
+    }
+    for model in &status.targetable_models {
+        println!(
+            "target={} family={} warm_replicas={} local_warm={} endpoints={} structured={} tools={} responses={}",
+            model.model,
+            model.family,
+            model.warm_replica_count,
+            model.local_warm_replica,
+            if model.supported_endpoints.is_empty() {
+                "-".to_string()
+            } else {
+                model.supported_endpoints.join(",")
+            },
+            model.structured_outputs,
+            model.tool_calling,
+            model.response_state
+        );
+    }
+}
+
+fn print_pooled_inference_topology_text(status: &DesktopControlPooledInferenceStatus) {
+    print_pooled_inference_status_text(status);
+    for member in &status.members {
+        println!(
+            "member={} role={} posture={} execution_mode={} execution_engine={} warm_models={} targetable_models={} reasons={}",
+            member.worker_id,
+            member.served_mesh_role,
+            member.served_mesh_posture,
+            member.execution_mode,
+            member.execution_engine,
+            if member.warm_models.is_empty() {
+                "-".to_string()
+            } else {
+                member.warm_models.join(",")
+            },
+            member.targetable_model_count,
+            if member.served_mesh_reasons.is_empty() {
+                "-".to_string()
+            } else {
+                member.served_mesh_reasons.join(",")
+            }
         );
     }
 }
