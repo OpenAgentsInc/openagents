@@ -317,7 +317,12 @@ fn handle_command(
             if relay_changed {
                 disconnect_pool(runtime, state);
             }
-            state.subscriptions_dirty = true;
+            // Only resubscribe when relays or channels change structurally.
+            // A cursor-only change updates state.since_created_at for future
+            // reconnect backfill but does not trigger a live resubscription.
+            if relay_changed || channel_changed {
+                state.subscriptions_dirty = true;
+            }
         }
         Nip28ChatLaneCommand::FetchKind0Metadata { pubkeys } => {
             let new_pubkeys: Vec<String> = pubkeys
@@ -739,5 +744,180 @@ mod tests {
         );
         // Request was NOT cached because send failed
         assert!(worker.last_sync_request.is_none());
+    }
+
+    // --- P2 tests: handle_command subscriptions_dirty behavior ---
+
+    use super::{Nip28ChatLaneSnapshot, Nip28ChatLaneState, handle_command};
+    use std::collections::HashMap;
+
+    fn make_test_state() -> Nip28ChatLaneState {
+        Nip28ChatLaneState {
+            pool: None,
+            desired_relays: Vec::new(),
+            desired_channel_ids: Vec::new(),
+            since_created_at: 0,
+            relay_subscription_ids: HashMap::new(),
+            next_subscription_seq: 0,
+            fetched_kind0_pubkeys: HashSet::new(),
+            snapshot: Nip28ChatLaneSnapshot {
+                configured_relays: Vec::new(),
+                subscribed_channel_ids: Vec::new(),
+                connected_relay_count: 0,
+                last_inbound_event_at_epoch_secs: None,
+                last_eose_at_epoch_secs: None,
+                reconnecting: false,
+                last_error: None,
+            },
+            last_emitted_snapshot: None,
+            subscriptions_dirty: false,
+        }
+    }
+
+    fn send_sync_command(
+        runtime: &tokio::runtime::Runtime,
+        state: &mut Nip28ChatLaneState,
+        update_tx: &mpsc::Sender<super::Nip28ChatLaneUpdate>,
+        relays: Vec<String>,
+        channels: Vec<String>,
+        since: u64,
+    ) {
+        handle_command(
+            runtime,
+            state,
+            update_tx,
+            Nip28ChatLaneCommand::SyncManagedChatSubscriptions {
+                relay_urls: relays,
+                channel_ids: channels,
+                since_created_at: since,
+            },
+        );
+    }
+
+    #[test]
+    fn handle_command_since_only_change_does_not_set_dirty() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+        let channel = "ab".repeat(32);
+
+        // Initial command sets dirty
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        assert!(state.subscriptions_dirty);
+
+        // Reset dirty flag (simulating reconcile_connections clearing it)
+        state.subscriptions_dirty = false;
+
+        // Cursor-only change: same relays+channels, different since
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            200,
+        );
+        assert!(!state.subscriptions_dirty);
+    }
+
+    #[test]
+    fn handle_command_relay_change_sets_dirty() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+        let channel = "ab".repeat(32);
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        state.subscriptions_dirty = false;
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.two".into()],
+            vec![channel.clone()],
+            100,
+        );
+        assert!(state.subscriptions_dirty);
+    }
+
+    #[test]
+    fn handle_command_channel_change_sets_dirty() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        state.subscriptions_dirty = false;
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec!["cd".repeat(32)],
+            100,
+        );
+        assert!(state.subscriptions_dirty);
+    }
+
+    #[test]
+    fn handle_command_since_only_change_still_updates_cursor() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+        let channel = "ab".repeat(32);
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        state.subscriptions_dirty = false;
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            300,
+        );
+        // Cursor updated for future reconnect use
+        assert_eq!(state.since_created_at, 300);
+        // But no resubscription triggered
+        assert!(!state.subscriptions_dirty);
     }
 }
