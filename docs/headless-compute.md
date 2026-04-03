@@ -279,6 +279,21 @@ the local contribution posture. `autopilotctl pooled-inference topology`
 extends that same view with the visible member list and per-node warm-model
 inventory.
 
+That same pooled-inference status now feeds the desktop provider inventory and
+kernel-market launch product identity. When the mesh is configured, the cluster
+inventory section no longer shows a placeholder. Instead it projects the two
+current cluster inference product lanes:
+
+- `psionic.cluster.inference.gpt_oss.remote_whole_request`
+- `psionic.cluster.inference.gpt_oss.replicated`
+
+Those product IDs are published with explicit `clustered_inference`
+execution-kind truth plus `remote_whole_request` or `replicated` topology and
+`cluster_attached` provisioning. The current market binding is still
+`gpt_oss`-family product identity, but the capability summary and lot metadata
+carry the live pooled-inference mesh state: membership posture, targetable
+model count, warm replica count, default model, and topology digest.
+
 `autopilotctl tailnet status` is the focused operator view for the same Tailnet
 roster now surfaced in the desktop `Tailnet Status` pane. It shells out to
 `tailscale status --json`, normalizes the local node plus peer devices into the

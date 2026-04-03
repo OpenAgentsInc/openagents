@@ -7075,6 +7075,10 @@ fn desktop_control_pooled_inference_cache() -> &'static Mutex<DesktopControlPool
         .get_or_init(|| Mutex::new(DesktopControlPooledInferenceCache::default()))
 }
 
+pub(crate) fn current_pooled_inference_status() -> DesktopControlPooledInferenceStatus {
+    desktop_control_pooled_inference_status()
+}
+
 fn desktop_control_pooled_inference_status() -> DesktopControlPooledInferenceStatus {
     let should_refresh = {
         let cache = desktop_control_pooled_inference_cache()

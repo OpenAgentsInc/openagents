@@ -20,8 +20,10 @@ use openagents_kernel_core::compute::{
     CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
     ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
     ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
-    ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
+    ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind,
+    ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+    GptOssRuntimeCapability, PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
+    PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
     PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID, PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
     PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
 };
@@ -480,12 +482,20 @@ pub(crate) fn attach_compute_linkage_to_active_job(
 }
 
 fn build_provider_inventory_rows(state: &RenderState) -> Vec<ProviderInventoryRow> {
-    state
-        .provider_runtime
-        .derived_inventory_products()
+    derived_inventory_products_for_state(state)
         .into_iter()
         .map(|product| build_provider_inventory_row(state, product))
         .collect()
+}
+
+fn derived_inventory_products_for_state(state: &RenderState) -> Vec<ProviderAdvertisedProduct> {
+    let mut availability = state.provider_runtime.availability();
+    availability.pooled_inference =
+        crate::pooled_inference_market::current_pooled_inference_availability();
+    openagents_provider_substrate::derive_provider_products(
+        &availability,
+        &state.provider_runtime.inventory_controls,
+    )
 }
 
 fn build_provider_inventory_row(
@@ -614,6 +624,10 @@ struct LaunchComputeBinding {
     product_id: &'static str,
     backend_family: ComputeBackendFamily,
     compute_family: ComputeFamily,
+    execution_kind: ComputeExecutionKind,
+    topology_kind: ComputeTopologyKind,
+    provisioning_kind: ComputeProvisioningKind,
+    proof_posture: ComputeProofPosture,
     model_policy: &'static str,
 }
 
@@ -1165,6 +1179,7 @@ fn build_forward_compute_quotes_from_market(
 
 fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchComputeBinding> {
     let mut bindings = Vec::new();
+    let derived_products = derived_inventory_products_for_state(state);
     if state.provider_runtime.apple_fm.is_ready()
         && state.provider_runtime.product_enabled(
             ProviderInventoryProductToggleTarget::AppleFoundationModelsInference.product_id(),
@@ -1178,9 +1193,7 @@ fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchCompute
     }
     if state.provider_runtime.product_enabled(
         ProviderInventoryProductToggleTarget::AppleFoundationModelsAdapterHosting.product_id(),
-    ) && state
-        .provider_runtime
-        .derived_inventory_products()
+    ) && derived_products
         .into_iter()
         .find(|product| {
             product.product
@@ -1192,8 +1205,20 @@ fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchCompute
             product_id: PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
             backend_family: ComputeBackendFamily::AppleFoundationModels,
             compute_family: ComputeFamily::AdapterHosting,
+            execution_kind: ComputeExecutionKind::LocalInference,
+            topology_kind: ComputeTopologyKind::SingleNode,
+            provisioning_kind: ComputeProvisioningKind::DesktopLocal,
+            proof_posture: ComputeProofPosture::DeliveryProofOnly,
             model_policy: "psionic.local.adapter_hosting.apple_foundation_models.single_node.launch",
         });
+    }
+    for product in derived_inventory_products_for_state(state) {
+        if !product.backend_ready {
+            continue;
+        }
+        if let Some(binding) = pooled_inference_binding_for_product(product.product) {
+            bindings.push(binding);
+        }
     }
     if state.provider_runtime.gpt_oss.is_ready()
         && state
@@ -1624,6 +1649,16 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
         ),
         ComputeBackendFamily::PsionicTrain => (None, None, "psionic_train"),
     };
+    let validator_requirements = matches!(
+        binding.proof_posture,
+        ComputeProofPosture::ChallengeEligible
+    )
+    .then(|| ComputeValidatorRequirements {
+        minimum_validator_count: Some(2),
+        validator_pool_ref: Some("validator-pool.cluster_inference".to_string()),
+        policy_ref: Some("policy://validator/cluster_inference".to_string()),
+        challenge_window_ms: Some(30_000),
+    });
     CreateComputeProductRequest {
         idempotency_key: format!("desktop.compute_product:{}", binding.product_id),
         trace: TraceContext {
@@ -1661,12 +1696,12 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
             taxonomy_version: Some(COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string()),
             capability_envelope: Some(ComputeCapabilityEnvelope {
                 backend_family: Some(binding.backend_family),
-                execution_kind: Some(ComputeExecutionKind::LocalInference),
+                execution_kind: Some(binding.execution_kind),
                 compute_family: Some(binding.compute_family),
-                topology_kind: None,
-                provisioning_kind: None,
-                proof_posture: None,
-                validator_requirements: None,
+                topology_kind: Some(binding.topology_kind),
+                provisioning_kind: Some(binding.provisioning_kind),
+                proof_posture: Some(binding.proof_posture),
+                validator_requirements,
                 artifact_residency: None,
                 environment_binding: None,
                 checkpoint_binding: None,
@@ -1683,6 +1718,10 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
                 "source": "desktop.online_inventory",
                 "backend_family": backend_family,
                 "compute_family": compute_family_label(binding.compute_family),
+                "execution_kind": execution_kind_label(binding.execution_kind),
+                "topology_kind": binding.topology_kind.label(),
+                "provisioning_kind": binding.provisioning_kind.label(),
+                "proof_posture": binding.proof_posture.label(),
                 "product_family": binding.product_id,
             }),
         },
@@ -1726,6 +1765,11 @@ fn build_online_capacity_lot_request(
     let provider_id = provider_id_for_state(state);
     let delivery_start_ms = session_started_at_ms;
     let delivery_end_ms = session_started_at_ms.saturating_add(ONLINE_INVENTORY_WINDOW_DURATION_MS);
+    let pooled_inference = matches!(
+        binding.execution_kind,
+        ComputeExecutionKind::ClusteredInference
+    )
+    .then(crate::desktop_control::current_pooled_inference_status);
     Ok(CreateCapacityLotRequest {
         idempotency_key: format!(
             "desktop.online.compute_lot:{}:{}:{}",
@@ -1765,8 +1809,28 @@ fn build_online_capacity_lot_request(
             min_unit_price: Some(btc_sats_money(price_floor_sats_for_product_id(
                 binding.product_id,
             ))),
-            region_hint: Some("local".to_string()),
-            attestation_posture: Some("desktop.local.best_effort".to_string()),
+            region_hint: Some(
+                if matches!(
+                    binding.execution_kind,
+                    ComputeExecutionKind::ClusteredInference
+                ) {
+                    "cluster"
+                } else {
+                    "local"
+                }
+                .to_string(),
+            ),
+            attestation_posture: Some(
+                if matches!(
+                    binding.execution_kind,
+                    ComputeExecutionKind::ClusteredInference
+                ) {
+                    "desktop.pooled_inference.best_effort"
+                } else {
+                    "desktop.local.best_effort"
+                }
+                .to_string(),
+            ),
             reserve_state: CapacityReserveState::Available,
             offer_expires_at_ms: delivery_end_ms,
             status: CapacityLotStatus::Open,
@@ -1774,6 +1838,10 @@ fn build_online_capacity_lot_request(
             metadata: json!({
                 "source": "desktop.go_online",
                 "compute_family": compute_family_label(binding.compute_family),
+                "execution_kind": execution_kind_label(binding.execution_kind),
+                "topology_kind": binding.topology_kind.label(),
+                "provisioning_kind": binding.provisioning_kind.label(),
+                "proof_posture": binding.proof_posture.label(),
                 "provider_id": provider_id,
                 "session_started_at_ms": session_started_at_ms,
                 "ready_model": ready_model_for_binding(state, binding),
@@ -1781,6 +1849,15 @@ fn build_online_capacity_lot_request(
                 "source_badge": "desktop.go_online",
                 "terms_label": terms_label_for_product_id(binding.product_id),
                 "price_floor_sats": price_floor_sats_for_product_id(binding.product_id),
+                "pooled_inference": pooled_inference.as_ref().map(|status| json!({
+                    "available": status.available,
+                    "membership_state": status.membership_state,
+                    "member_count": status.member_count,
+                    "targetable_model_count": status.targetable_model_count,
+                    "warm_replica_count": status.warm_replica_count,
+                    "default_model": status.default_model,
+                    "topology_digest": status.topology_digest,
+                })),
                 "apple_adapter_hosting": (binding.compute_family == ComputeFamily::AdapterHosting)
                     .then(|| apple_adapter_hosting_metadata(state)),
             }),
@@ -1802,6 +1879,11 @@ fn build_forward_capacity_lot_request(
     let delivery_start_ms = session_started_at_ms.saturating_add(FORWARD_INVENTORY_START_DELAY_MS);
     let delivery_end_ms = delivery_start_ms.saturating_add(FORWARD_INVENTORY_WINDOW_DURATION_MS);
     let floor_sats = price_floor_sats_for_product_id(binding.product_id).saturating_mul(2);
+    let pooled_inference = matches!(
+        binding.execution_kind,
+        ComputeExecutionKind::ClusteredInference
+    )
+    .then(crate::desktop_control::current_pooled_inference_status);
     Ok(CreateCapacityLotRequest {
         idempotency_key: format!(
             "desktop.forward.compute_lot:{}:{}:{}",
@@ -1839,8 +1921,28 @@ fn build_forward_capacity_lot_request(
             delivery_end_ms,
             quantity: FORWARD_INVENTORY_QUANTITY,
             min_unit_price: Some(btc_sats_money(floor_sats)),
-            region_hint: Some("local".to_string()),
-            attestation_posture: Some("desktop.local.forward_commitment".to_string()),
+            region_hint: Some(
+                if matches!(
+                    binding.execution_kind,
+                    ComputeExecutionKind::ClusteredInference
+                ) {
+                    "cluster"
+                } else {
+                    "local"
+                }
+                .to_string(),
+            ),
+            attestation_posture: Some(
+                if matches!(
+                    binding.execution_kind,
+                    ComputeExecutionKind::ClusteredInference
+                ) {
+                    "desktop.pooled_inference.forward_commitment"
+                } else {
+                    "desktop.local.forward_commitment"
+                }
+                .to_string(),
+            ),
             reserve_state: CapacityReserveState::Available,
             offer_expires_at_ms: delivery_start_ms,
             status: CapacityLotStatus::Open,
@@ -1849,6 +1951,10 @@ fn build_forward_capacity_lot_request(
                 "source": "desktop.forward_inventory",
                 "market_phase": "forward_physical",
                 "compute_family": compute_family_label(binding.compute_family),
+                "execution_kind": execution_kind_label(binding.execution_kind),
+                "topology_kind": binding.topology_kind.label(),
+                "provisioning_kind": binding.provisioning_kind.label(),
+                "proof_posture": binding.proof_posture.label(),
                 "provider_id": provider_id,
                 "session_started_at_ms": session_started_at_ms,
                 "delivery_start_ms": delivery_start_ms,
@@ -1859,6 +1965,15 @@ fn build_forward_capacity_lot_request(
                 "terms_label": forward_terms_label_for_product_id(binding.product_id),
                 "price_floor_sats": floor_sats,
                 "remedy_profile": forward_remedy_profile_for_product_id(binding.product_id),
+                "pooled_inference": pooled_inference.as_ref().map(|status| json!({
+                    "available": status.available,
+                    "membership_state": status.membership_state,
+                    "member_count": status.member_count,
+                    "targetable_model_count": status.targetable_model_count,
+                    "warm_replica_count": status.warm_replica_count,
+                    "default_model": status.default_model,
+                    "topology_digest": status.topology_digest,
+                })),
                 "apple_adapter_hosting": (binding.compute_family == ComputeFamily::AdapterHosting)
                     .then(|| apple_adapter_hosting_metadata(state)),
                 "bond_posture": {
@@ -2254,11 +2369,11 @@ fn promised_capability_envelope_for_delivery(
     );
     ComputeCapabilityEnvelope {
         backend_family: Some(binding.backend_family),
-        execution_kind: Some(ComputeExecutionKind::LocalInference),
+        execution_kind: Some(binding.execution_kind),
         compute_family: Some(binding.compute_family),
-        topology_kind: None,
-        provisioning_kind: None,
-        proof_posture: None,
+        topology_kind: Some(binding.topology_kind),
+        provisioning_kind: Some(binding.provisioning_kind),
+        proof_posture: Some(binding.proof_posture),
         validator_requirements: None,
         artifact_residency: None,
         environment_binding: None,
@@ -2285,11 +2400,11 @@ fn observed_capability_envelope_for_delivery(
         inferred_quantity_for_family(binding.compute_family, context.execution_output.as_deref());
     Some(ComputeCapabilityEnvelope {
         backend_family: Some(observed_backend_family),
-        execution_kind: Some(ComputeExecutionKind::LocalInference),
+        execution_kind: Some(binding.execution_kind),
         compute_family: Some(binding.compute_family),
-        topology_kind: None,
-        provisioning_kind: None,
-        proof_posture: None,
+        topology_kind: Some(binding.topology_kind),
+        provisioning_kind: Some(binding.provisioning_kind),
+        proof_posture: Some(binding.proof_posture),
         validator_requirements: None,
         artifact_residency: None,
         environment_binding: None,
@@ -3005,20 +3120,78 @@ fn compute_binding_for_backend_and_capability(
         .to_ascii_lowercase()
         .replace(['.', '-'], "_");
     match (backend, normalized.as_str()) {
-        (LocalInferenceBackend::GptOss, "text_generation") => Some(LaunchComputeBinding {
-            product_id: PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
-            backend_family: ComputeBackendFamily::GptOss,
-            compute_family: ComputeFamily::Inference,
-            model_policy: "psionic.local.inference.gpt_oss.single_node.launch",
-        }),
+        (LocalInferenceBackend::GptOss, "text_generation") => Some(launch_compute_binding(
+            PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
+            ComputeBackendFamily::GptOss,
+            ComputeFamily::Inference,
+            ComputeExecutionKind::LocalInference,
+            ComputeTopologyKind::SingleNode,
+            ComputeProvisioningKind::DesktopLocal,
+            ComputeProofPosture::DeliveryProofOnly,
+            "psionic.local.inference.gpt_oss.single_node.launch",
+        )),
         (LocalInferenceBackend::AppleFoundationModels, "text_generation") => {
-            Some(LaunchComputeBinding {
-                product_id: PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
-                backend_family: ComputeBackendFamily::AppleFoundationModels,
-                compute_family: ComputeFamily::Inference,
-                model_policy: "psionic.local.inference.apple_foundation_models.single_node.launch",
-            })
+            Some(launch_compute_binding(
+                PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
+                ComputeBackendFamily::AppleFoundationModels,
+                ComputeFamily::Inference,
+                ComputeExecutionKind::LocalInference,
+                ComputeTopologyKind::SingleNode,
+                ComputeProvisioningKind::DesktopLocal,
+                ComputeProofPosture::DeliveryProofOnly,
+                "psionic.local.inference.apple_foundation_models.single_node.launch",
+            ))
         }
+        _ => None,
+    }
+}
+
+fn launch_compute_binding(
+    product_id: &'static str,
+    backend_family: ComputeBackendFamily,
+    compute_family: ComputeFamily,
+    execution_kind: ComputeExecutionKind,
+    topology_kind: ComputeTopologyKind,
+    provisioning_kind: ComputeProvisioningKind,
+    proof_posture: ComputeProofPosture,
+    model_policy: &'static str,
+) -> LaunchComputeBinding {
+    LaunchComputeBinding {
+        product_id,
+        backend_family,
+        compute_family,
+        execution_kind,
+        topology_kind,
+        provisioning_kind,
+        proof_posture,
+        model_policy,
+    }
+}
+
+fn pooled_inference_binding_for_product(
+    product: ProviderComputeProduct,
+) -> Option<LaunchComputeBinding> {
+    match product {
+        ProviderComputeProduct::PooledInferenceRemoteWholeRequest => Some(launch_compute_binding(
+            PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
+            ComputeBackendFamily::GptOss,
+            ComputeFamily::Inference,
+            ComputeExecutionKind::ClusteredInference,
+            ComputeTopologyKind::RemoteWholeRequest,
+            ComputeProvisioningKind::ClusterAttached,
+            ComputeProofPosture::ChallengeEligible,
+            "psionic.cluster.inference.gpt_oss.remote_whole_request.launch",
+        )),
+        ProviderComputeProduct::PooledInferenceReplicatedServing => Some(launch_compute_binding(
+            PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
+            ComputeBackendFamily::GptOss,
+            ComputeFamily::Inference,
+            ComputeExecutionKind::ClusteredInference,
+            ComputeTopologyKind::Replicated,
+            ComputeProvisioningKind::ClusterAttached,
+            ComputeProofPosture::ChallengeEligible,
+            "psionic.cluster.inference.gpt_oss.replicated.launch",
+        )),
         _ => None,
     }
 }
@@ -3029,16 +3202,30 @@ fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBindi
             LocalInferenceBackend::GptOss,
             "text_generation",
         ),
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID => {
+            pooled_inference_binding_for_product(
+                ProviderInventoryProductToggleTarget::PooledInferenceRemoteWholeRequest,
+            )
+        }
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID => {
+            pooled_inference_binding_for_product(
+                ProviderInventoryProductToggleTarget::PooledInferenceReplicatedServing,
+            )
+        }
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => compute_binding_for_backend_and_capability(
             LocalInferenceBackend::AppleFoundationModels,
             "text_generation",
         ),
-        PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID => Some(LaunchComputeBinding {
-            product_id: PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
-            backend_family: ComputeBackendFamily::AppleFoundationModels,
-            compute_family: ComputeFamily::AdapterHosting,
-            model_policy: "psionic.local.adapter_hosting.apple_foundation_models.single_node.launch",
-        }),
+        PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID => Some(launch_compute_binding(
+            PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
+            ComputeBackendFamily::AppleFoundationModels,
+            ComputeFamily::AdapterHosting,
+            ComputeExecutionKind::LocalInference,
+            ComputeTopologyKind::SingleNode,
+            ComputeProvisioningKind::DesktopLocal,
+            ComputeProofPosture::DeliveryProofOnly,
+            "psionic.local.adapter_hosting.apple_foundation_models.single_node.launch",
+        )),
         _ => None,
     }
 }
@@ -3172,6 +3359,24 @@ fn provider_inventory_evidence_refs(state: &RenderState) -> Vec<EvidenceRef> {
             apple_base_url,
         ));
     }
+    let pooled_inference = crate::desktop_control::current_pooled_inference_status();
+    if let Some(topology_digest) = pooled_inference.topology_digest.as_deref() {
+        evidence.push(evidence_ref(
+            "mesh_topology_ref",
+            format!(
+                "oa://autopilot/provider/pooled_inference/topology/{}",
+                canonical_kernel_id_component(topology_digest)
+            ),
+            topology_digest,
+        ));
+    }
+    if let Some(base_url) = pooled_inference.management_base_url.as_deref() {
+        evidence.push(evidence_ref(
+            "execution_backend_ref",
+            "oa://autopilot/provider/pooled_inference/backend",
+            base_url,
+        ));
+    }
     evidence
 }
 
@@ -3212,6 +3417,11 @@ fn provider_inventory_source_badge(
     target: ProviderInventoryProductToggleTarget,
     eligible: bool,
 ) -> &'static str {
+    let pooled = matches!(
+        target,
+        ProviderInventoryProductToggleTarget::PooledInferenceRemoteWholeRequest
+            | ProviderInventoryProductToggleTarget::PooledInferenceReplicatedServing
+    );
     if !state
         .provider_runtime
         .inventory_controls
@@ -3228,9 +3438,17 @@ fn provider_inventory_source_badge(
             crate::app_state::ProviderMode::Online | crate::app_state::ProviderMode::Degraded
         )
     {
-        "desktop.go_online"
+        if pooled {
+            "desktop.pooled_inference"
+        } else {
+            "desktop.go_online"
+        }
     } else {
-        "desktop.local_preview"
+        if pooled {
+            "desktop.pooled_preview"
+        } else {
+            "desktop.local_preview"
+        }
     }
 }
 
@@ -3245,9 +3463,7 @@ fn provider_inventory_delivery_state(
     {
         return "disabled";
     }
-    if !state
-        .provider_runtime
-        .derived_inventory_products()
+    if !derived_inventory_products_for_state(state)
         .into_iter()
         .find(|product| product.product == target)
         .is_some_and(|product| product.backend_ready)
@@ -3352,6 +3568,8 @@ fn inferred_compute_family(
         ProviderComputeProduct::for_product_id(product.product_id.as_str()).map(|product| {
             match product {
                 ProviderComputeProduct::GptOssInference
+                | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+                | ProviderComputeProduct::PooledInferenceReplicatedServing
                 | ProviderComputeProduct::AppleFoundationModelsInference => {
                     ComputeFamily::Inference
                 }
@@ -3377,6 +3595,8 @@ fn inferred_backend_family(
         ProviderComputeProduct::for_product_id(product.product_id.as_str()).and_then(|product| {
             match product {
                 ProviderComputeProduct::GptOssInference
+                | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+                | ProviderComputeProduct::PooledInferenceReplicatedServing
                 | ProviderComputeProduct::GptOssEmbeddings => Some(ComputeBackendFamily::GptOss),
                 ProviderComputeProduct::AppleFoundationModelsInference
                 | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
@@ -3404,9 +3624,19 @@ fn inferred_execution_kind(
             .map(|product| match product {
                 ProviderComputeProduct::GptOssInference
                 | ProviderComputeProduct::GptOssEmbeddings
+                | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+                | ProviderComputeProduct::PooledInferenceReplicatedServing
                 | ProviderComputeProduct::AppleFoundationModelsInference
                 | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
-                    ComputeExecutionKind::LocalInference
+                    if matches!(
+                        product,
+                        ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+                            | ProviderComputeProduct::PooledInferenceReplicatedServing
+                    ) {
+                        ComputeExecutionKind::ClusteredInference
+                    } else {
+                        ComputeExecutionKind::LocalInference
+                    }
                 }
                 ProviderComputeProduct::AdapterTrainingContributor => {
                     ComputeExecutionKind::TrainingJob
@@ -3781,6 +4011,10 @@ fn forward_terms_label_for_product_id(product_id: &str) -> &'static str {
 
 fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
     match canonical_compute_product_id(product_id).unwrap_or(product_id) {
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID
+        | PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID => {
+            "forward_physical.cluster_inference.v1"
+        }
         "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
         | "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
         | "psionic.remote_sandbox.sandbox_execution.node_exec.sandbox_isolated"
@@ -3794,6 +4028,12 @@ fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
 }
 
 fn ready_model_for_binding(state: &RenderState, binding: LaunchComputeBinding) -> Option<String> {
+    if matches!(
+        binding.execution_kind,
+        ComputeExecutionKind::ClusteredInference
+    ) {
+        return crate::desktop_control::current_pooled_inference_status().default_model;
+    }
     match binding.backend_family {
         ComputeBackendFamily::GptOss => state.provider_runtime.gpt_oss.ready_model.clone(),
         ComputeBackendFamily::AppleFoundationModels => {
@@ -3807,6 +4047,12 @@ fn configured_model_for_binding(
     state: &RenderState,
     binding: LaunchComputeBinding,
 ) -> Option<String> {
+    if matches!(
+        binding.execution_kind,
+        ComputeExecutionKind::ClusteredInference
+    ) {
+        return crate::desktop_control::current_pooled_inference_status().default_model;
+    }
     match binding.backend_family {
         ComputeBackendFamily::GptOss => state.provider_runtime.gpt_oss.configured_model.clone(),
         ComputeBackendFamily::AppleFoundationModels => {
@@ -3926,8 +4172,8 @@ mod tests {
         current_epoch_ms, delivery_proof_id_for_request, evaluate_delivery_proof,
         flush_pending_sse_event, forward_capacity_lot_id_for_binding,
         is_local_projection_receipt_id, local_projection_receipt_id,
-        online_capacity_lot_id_for_binding, resolve_kernel_authority_mode,
-        submission_evidence_refs,
+        online_capacity_lot_id_for_binding, pooled_inference_binding_for_product,
+        resolve_kernel_authority_mode, submission_evidence_refs,
     };
     use crate::app_state::{ActiveJobRecord, JobDemandSource, JobLifecycleStage};
     use crate::app_state::{
@@ -3936,7 +4182,9 @@ mod tests {
     use crate::economy_kernel_receipts::{
         PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
     };
-    use crate::state::provider_runtime::LocalInferenceBackend;
+    use crate::state::provider_runtime::{
+        LocalInferenceBackend, ProviderInventoryProductToggleTarget,
+    };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
@@ -4362,6 +4610,41 @@ mod tests {
                 .as_ref()
                 .and_then(|envelope| envelope.backend_family),
             Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels)
+        );
+    }
+
+    #[test]
+    fn pooled_inference_launch_compute_product_request_uses_cluster_truth() {
+        let request = build_compute_product_request(
+            pooled_inference_binding_for_product(
+                ProviderInventoryProductToggleTarget::PooledInferenceRemoteWholeRequest,
+            )
+            .expect("pooled inference binding"),
+        );
+        assert_eq!(
+            request.idempotency_key,
+            "desktop.compute_product:psionic.cluster.inference.gpt_oss.remote_whole_request"
+        );
+        assert_eq!(
+            request.product.product_id,
+            "psionic.cluster.inference.gpt_oss.remote_whole_request"
+        );
+        let envelope = request
+            .product
+            .capability_envelope
+            .as_ref()
+            .expect("capability envelope");
+        assert_eq!(
+            envelope.execution_kind,
+            Some(openagents_kernel_core::compute::ComputeExecutionKind::ClusteredInference)
+        );
+        assert_eq!(
+            envelope.topology_kind,
+            Some(openagents_kernel_core::compute::ComputeTopologyKind::RemoteWholeRequest)
+        );
+        assert_eq!(
+            envelope.provisioning_kind,
+            Some(openagents_kernel_core::compute::ComputeProvisioningKind::ClusterAttached)
         );
     }
 

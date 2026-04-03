@@ -1660,6 +1660,10 @@ pub const PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID: &str =
     "psionic.local.inference.gpt_oss.single_node";
 pub const PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID: &str =
     "psionic.local.embeddings.gpt_oss.single_node";
+pub const PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID: &str =
+    "psionic.cluster.inference.gpt_oss.remote_whole_request";
+pub const PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID: &str =
+    "psionic.cluster.inference.gpt_oss.replicated";
 pub const PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID: &str =
     "psionic.local.inference.apple_foundation_models.single_node";
 pub const PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID: &str =
@@ -1683,6 +1687,14 @@ pub fn canonical_compute_product_id(product_id: &str) -> Option<&'static str> {
         PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID
         | "ollama.embeddings"
         | "gpt_oss.embeddings" => Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID),
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID
+        | "gpt_oss.clustered_inference.remote_whole_request" => {
+            Some(PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID)
+        }
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID
+        | "gpt_oss.clustered_inference.replicated" => {
+            Some(PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID)
+        }
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID | "apple_foundation_models.text_generation" => {
             Some(PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID)
         }
@@ -3601,6 +3613,20 @@ pub fn launch_compute_product_spec(product_id: &str) -> Option<LaunchComputeProd
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::Inference,
         }),
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID => {
+            Some(LaunchComputeProductSpec {
+                product_id: PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
+                backend_family: ComputeBackendFamily::GptOss,
+                execution_kind: ComputeExecutionKind::ClusteredInference,
+                compute_family: ComputeFamily::Inference,
+            })
+        }
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID => Some(LaunchComputeProductSpec {
+            product_id: PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
+            backend_family: ComputeBackendFamily::GptOss,
+            execution_kind: ComputeExecutionKind::ClusteredInference,
+            compute_family: ComputeFamily::Inference,
+        }),
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => Some(LaunchComputeProductSpec {
             product_id: PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
             backend_family: ComputeBackendFamily::AppleFoundationModels,
@@ -3756,6 +3782,8 @@ mod tests {
         ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
         DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
         GptOssRuntimeCapability, PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
+        PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
         PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
@@ -4362,6 +4390,93 @@ mod tests {
         assert_eq!(
             canonical_compute_product_id("gpt_oss.embeddings"),
             Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID)
+        );
+        assert_eq!(
+            canonical_compute_product_id("gpt_oss.clustered_inference.remote_whole_request"),
+            Some(PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID)
+        );
+        assert_eq!(
+            canonical_compute_product_id("gpt_oss.clustered_inference.replicated"),
+            Some(PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID)
+        );
+    }
+
+    #[test]
+    fn launch_spec_supports_clustered_gpt_oss_pooled_inference_products() {
+        let remote =
+            launch_compute_product_spec("gpt_oss.clustered_inference.remote_whole_request")
+                .expect("remote whole-request pooled inference spec");
+        assert_eq!(
+            remote.product_id,
+            PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID
+        );
+        assert_eq!(remote.backend_family, ComputeBackendFamily::GptOss);
+        assert_eq!(
+            remote.execution_kind,
+            ComputeExecutionKind::ClusteredInference
+        );
+        assert_eq!(remote.compute_family, ComputeFamily::Inference);
+
+        let replicated = launch_compute_product_spec("gpt_oss.clustered_inference.replicated")
+            .expect("replicated pooled inference spec");
+        assert_eq!(
+            replicated.product_id,
+            PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID
+        );
+        assert_eq!(replicated.backend_family, ComputeBackendFamily::GptOss);
+        assert_eq!(
+            replicated.execution_kind,
+            ComputeExecutionKind::ClusteredInference
+        );
+        assert_eq!(replicated.compute_family, ComputeFamily::Inference);
+    }
+
+    #[test]
+    fn validates_clustered_gpt_oss_pooled_inference_launch_product() {
+        let mut product =
+            launch_product(PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID);
+        product.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::GptOss),
+            execution_kind: Some(ComputeExecutionKind::ClusteredInference),
+            compute_family: Some(ComputeFamily::Inference),
+            topology_kind: Some(ComputeTopologyKind::RemoteWholeRequest),
+            provisioning_kind: Some(ComputeProvisioningKind::ClusterAttached),
+            proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+            validator_requirements: Some(ComputeValidatorRequirements {
+                minimum_validator_count: Some(2),
+                validator_pool_ref: Some("validator-pool.cluster_inference".to_string()),
+                policy_ref: Some("policy://validator/cluster_inference".to_string()),
+                challenge_window_ms: Some(30_000),
+            }),
+            artifact_residency: None,
+            environment_binding: None,
+            checkpoint_binding: None,
+            model_policy: Some("cluster.inference.remote_whole_request".to_string()),
+            model_family: Some("gpt-oss".to_string()),
+            host_capability: Some(ComputeHostCapability {
+                accelerator_vendor: Some("nvidia".to_string()),
+                accelerator_family: Some("h100".to_string()),
+                memory_gb: Some(80),
+            }),
+            apple_platform: None,
+            gpt_oss_runtime: Some(GptOssRuntimeCapability {
+                runtime_ready: Some(true),
+                model_name: Some("gpt-oss".to_string()),
+                quantization: Some("q4_k_m".to_string()),
+            }),
+            latency_ms_p50: Some(500),
+            throughput_per_minute: Some(900),
+            concurrency_limit: Some(4),
+        });
+        let spec = validate_launch_compute_product(&product)
+            .expect("clustered pooled inference launch product should validate");
+        assert_eq!(
+            spec.product_id,
+            PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID
+        );
+        assert_eq!(
+            spec.execution_kind,
+            ComputeExecutionKind::ClusteredInference
         );
     }
 

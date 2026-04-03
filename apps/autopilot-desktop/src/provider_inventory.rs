@@ -1,13 +1,13 @@
 use openagents_provider_substrate::{
-    ProviderComputeProduct, ProviderInventoryRow, ProviderSandboxExecutionClass,
-    ProviderSandboxProfile,
+    ProviderComputeProduct, ProviderInventoryRow, ProviderPooledInferenceAvailability,
+    ProviderSandboxExecutionClass, ProviderSandboxProfile,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::RenderState;
 
 pub(crate) const CLUSTER_NOT_INTEGRATED_REASON: &str =
-    "cluster transport is not integrated into the desktop control plane yet";
+    "pooled inference management is not configured";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlInventoryProjectionStatus {
@@ -97,10 +97,7 @@ pub(crate) struct InventoryStatusInput<'a> {
     pub gpt_oss_ready_model: Option<&'a str>,
     pub gpt_oss_configured_model: Option<&'a str>,
     pub apple_fm_ready_model: Option<&'a str>,
-    pub cluster_available: bool,
-    pub cluster_topology_label: &'a str,
-    pub cluster_member_count: usize,
-    pub cluster_last_error: Option<&'a str>,
+    pub pooled_inference: ProviderPooledInferenceAvailability,
 }
 
 pub(crate) fn inventory_status_for_state(state: &RenderState) -> DesktopControlInventoryStatus {
@@ -127,10 +124,7 @@ pub(crate) fn inventory_status_for_state(state: &RenderState) -> DesktopControlI
         gpt_oss_ready_model: state.provider_runtime.gpt_oss.ready_model.as_deref(),
         gpt_oss_configured_model: state.provider_runtime.gpt_oss.configured_model.as_deref(),
         apple_fm_ready_model: state.provider_runtime.apple_fm.ready_model.as_deref(),
-        cluster_available: false,
-        cluster_topology_label: "not_integrated",
-        cluster_member_count: 0,
-        cluster_last_error: Some(CLUSTER_NOT_INTEGRATED_REASON),
+        pooled_inference: crate::pooled_inference_market::current_pooled_inference_availability(),
     })
 }
 
@@ -261,13 +255,14 @@ pub(crate) fn build_inventory_status(
         (false, _) => "local_only",
     };
     let local_products = build_product_rows("local", &input);
+    let cluster_products = build_product_rows("cluster", &input);
     let sandbox_products = build_product_rows("sandbox", &input);
     DesktopControlInventoryStatus {
         authority: authority.to_string(),
         projection,
         sections: vec![
             build_section("local", "Local", local_products, None),
-            build_cluster_section(&input),
+            build_cluster_section(&input, cluster_products),
             build_sandbox_section(&input, sandbox_products),
         ],
     }
@@ -386,29 +381,58 @@ fn build_section(
     }
 }
 
-fn build_cluster_section(input: &InventoryStatusInput<'_>) -> DesktopControlInventorySectionStatus {
-    let available = input.cluster_available;
-    let blocker_reason = (!available).then(|| {
+fn build_cluster_section(
+    input: &InventoryStatusInput<'_>,
+    products: Vec<DesktopControlInventoryProductStatus>,
+) -> DesktopControlInventorySectionStatus {
+    let authoritative = input.pooled_inference.has_authoritative_state();
+    let initial_blocker_reason = (!authoritative).then(|| {
         input
-            .cluster_last_error
-            .unwrap_or(CLUSTER_NOT_INTEGRATED_REASON)
-            .to_string()
+            .pooled_inference
+            .last_error
+            .clone()
+            .unwrap_or_else(|| CLUSTER_NOT_INTEGRATED_REASON.to_string())
     });
-    DesktopControlInventorySectionStatus {
-        section_id: "cluster".to_string(),
-        label: "Cluster".to_string(),
-        available,
-        blocker_reason,
-        summary: format!(
-            "topology={} members={}",
-            input.cluster_topology_label, input.cluster_member_count
-        ),
-        product_count: 0,
-        ready_product_count: 0,
-        eligible_product_count: 0,
-        open_quantity: 0,
-        products: Vec::new(),
+    let mut section = build_section("cluster", "Cluster", products, initial_blocker_reason);
+    section.available = authoritative;
+    if authoritative && section.ready_product_count == 0 {
+        section.blocker_reason = input.pooled_inference.last_error.clone();
     }
+    let topology_summary = if section
+        .products
+        .iter()
+        .any(|product| product.topology_label == "replicated")
+    {
+        "remote_whole_request,replicated"
+    } else if section
+        .products
+        .iter()
+        .any(|product| product.topology_label == "remote_whole_request")
+    {
+        "remote_whole_request"
+    } else {
+        "unconfigured"
+    };
+    let default_model = input
+        .pooled_inference
+        .default_model
+        .as_deref()
+        .unwrap_or("n/a");
+    let product_summary = section.summary.clone();
+    section.summary = format!(
+        "membership={} members={} targets={} topology={} default_model={} {}",
+        if input.pooled_inference.membership_state.trim().is_empty() {
+            "unconfigured"
+        } else {
+            input.pooled_inference.membership_state.as_str()
+        },
+        input.pooled_inference.member_count,
+        input.pooled_inference.targetable_models.len(),
+        topology_summary,
+        default_model,
+        product_summary
+    );
+    section
 }
 
 fn build_sandbox_section(
@@ -449,6 +473,12 @@ fn scope_for_product(
         | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
             ("local", "local", "single_node")
         }
+        ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
+            ("cluster", "cluster", "remote_whole_request")
+        }
+        ProviderComputeProduct::PooledInferenceReplicatedServing => {
+            ("cluster", "cluster", "replicated")
+        }
         ProviderComputeProduct::AdapterTrainingContributor => {
             ("local", "training", "cluster_attached")
         }
@@ -463,6 +493,17 @@ fn proof_posture_for_product(
     product: ProviderComputeProduct,
     uses_remote_kernel_projection: bool,
 ) -> String {
+    if matches!(
+        product,
+        ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+            | ProviderComputeProduct::PooledInferenceReplicatedServing
+    ) {
+        return if uses_remote_kernel_projection {
+            "mesh_management_status + kernel_delivery_proof".to_string()
+        } else {
+            "mesh_management_status_only".to_string()
+        };
+    }
     match (
         product.sandbox_execution_class(),
         uses_remote_kernel_projection,
@@ -483,6 +524,20 @@ fn environment_binding_for_product(
             .gpt_oss_ready_model
             .or(input.gpt_oss_configured_model)
             .map(|model| format!("model:{model}")),
+        ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+        | ProviderComputeProduct::PooledInferenceReplicatedServing => {
+            let topology = input
+                .pooled_inference
+                .topology_digest
+                .as_deref()
+                .unwrap_or("n/a");
+            let default_model = input
+                .pooled_inference
+                .default_model
+                .as_deref()
+                .unwrap_or("n/a");
+            Some(format!("mesh:{topology} model:{default_model}"))
+        }
         ProviderComputeProduct::AppleFoundationModelsInference
         | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => input
             .apple_fm_ready_model
@@ -516,6 +571,31 @@ fn blocker_reason_for_row(
     match row.target {
         ProviderComputeProduct::GptOssInference | ProviderComputeProduct::GptOssEmbeddings => {
             Some("local GPT-OSS runtime is not ready to advertise this product".to_string())
+        }
+        ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
+            if !input.pooled_inference.has_authoritative_state() {
+                Some(CLUSTER_NOT_INTEGRATED_REASON.to_string())
+            } else if input.pooled_inference.targetable_models.is_empty() {
+                Some("pooled inference has no targetable models yet".to_string())
+            } else if input.pooled_inference.member_count == 0 {
+                Some("pooled inference has not joined any mesh members yet".to_string())
+            } else {
+                Some("pooled inference is visible but not ready for remote whole-request serving".to_string())
+            }
+        }
+        ProviderComputeProduct::PooledInferenceReplicatedServing => {
+            if !input.pooled_inference.has_authoritative_state() {
+                Some(CLUSTER_NOT_INTEGRATED_REASON.to_string())
+            } else if input
+                .pooled_inference
+                .targetable_models
+                .iter()
+                .all(|target| target.warm_replica_count <= 1)
+            {
+                Some("pooled inference has not warmed multiple replicas for any model".to_string())
+            } else {
+                Some("replicated pooled inference is visible but not ready to advertise".to_string())
+            }
         }
         ProviderComputeProduct::AppleFoundationModelsInference => {
             Some("Apple Foundation Models is not ready to advertise this product".to_string())
@@ -588,8 +668,8 @@ mod tests {
         inventory_detail_lines,
     };
     use openagents_provider_substrate::{
-        ProviderComputeProduct, ProviderInventoryRow, ProviderSandboxExecutionClass,
-        ProviderSandboxProfile, ProviderSandboxRuntimeKind,
+        ProviderComputeProduct, ProviderInventoryRow, ProviderPooledInferenceAvailability,
+        ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxRuntimeKind,
     };
 
     fn local_row() -> ProviderInventoryRow {
@@ -699,10 +779,10 @@ mod tests {
             gpt_oss_ready_model: Some("gpt-oss-20b"),
             gpt_oss_configured_model: Some("gpt-oss-20b"),
             apple_fm_ready_model: None,
-            cluster_available: false,
-            cluster_topology_label: "not_integrated",
-            cluster_member_count: 0,
-            cluster_last_error: Some(CLUSTER_NOT_INTEGRATED_REASON),
+            pooled_inference: ProviderPooledInferenceAvailability {
+                last_error: Some(CLUSTER_NOT_INTEGRATED_REASON.to_string()),
+                ..ProviderPooledInferenceAvailability::default()
+            },
         });
 
         assert_eq!(status.authority, "kernel_projected");
@@ -781,10 +861,8 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("Projection: source=local_only"))
         );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("Cluster blocker: cluster transport is not integrated"))
-        );
+        assert!(lines.iter().any(|line| {
+            line.contains("Cluster blocker: pooled inference management is not configured")
+        }));
     }
 }

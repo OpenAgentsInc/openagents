@@ -5,15 +5,17 @@ use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use nostr::{NostrIdentity, derive_keypair, load_identity_from_path};
 use openagents_provider_substrate::{
-    ProviderAdminConfig, ProviderAdminRuntime, ProviderAdminUpdate, ProviderAdvertisedProduct,
+    ProviderAdapterTrainingContributorAvailability, ProviderAdminConfig, ProviderAdminRuntime,
+    ProviderAdminUpdate, ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
     ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
     ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent, ProviderIdentityMetadata,
     ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry, ProviderMode,
-    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderReceiptSummary, ProviderRecentJob,
-    ProviderRuntimeStatusSnapshot, ProviderSandboxDetectionConfig, ProviderSandboxProfile,
-    ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSnapshotParts,
-    ProviderStatusResponse, assemble_provider_persisted_snapshot, derive_provider_products,
-    detect_sandbox_supply, provider_runtime_state_label, validate_provider_control_action,
+    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderPooledInferenceAvailability,
+    ProviderReceiptSummary, ProviderRecentJob, ProviderRuntimeStatusSnapshot,
+    ProviderSandboxDetectionConfig, ProviderSandboxProfile, ProviderSandboxProfileSpec,
+    ProviderSandboxRuntimeHealth, ProviderSnapshotParts, ProviderStatusResponse,
+    assemble_provider_persisted_snapshot, derive_provider_products, detect_sandbox_supply,
+    provider_runtime_state_label, validate_provider_control_action,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -2240,6 +2242,9 @@ async fn detect_availability(config: &PylonConfig) -> Result<ProviderAvailabilit
     Ok(ProviderAvailability {
         gpt_oss,
         apple_foundation_models,
+        apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+        adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+        pooled_inference: ProviderPooledInferenceAvailability::default(),
         sandbox,
     })
 }
@@ -2447,11 +2452,13 @@ mod tests {
         render_sandbox_report, save_config,
     };
     use openagents_provider_substrate::{
+        ProviderAdapterTrainingContributorAvailability, ProviderAppleAdapterHostingAvailability,
         ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
         ProviderEarningsSummary, ProviderInventoryControls, ProviderPersistenceStore,
-        ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
-        ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
-        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, provider_runtime_state_label,
+        ProviderPooledInferenceAvailability, ProviderReceiptSummary, ProviderRecentJob,
+        ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,
+        ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
+        provider_runtime_state_label,
     };
     use serde_json::json;
 
@@ -2747,6 +2754,9 @@ mod tests {
                 &["apple-foundation-model"],
                 Some("bridge_ready"),
             ),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability {
                 runtimes: vec![ProviderSandboxRuntimeHealth {
                     runtime_kind: ProviderSandboxRuntimeKind::Python,

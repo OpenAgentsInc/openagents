@@ -1466,6 +1466,7 @@ mod tests {
                 apple_foundation_models: ProviderBackendHealth::default(),
                 apple_adapter_hosting: Default::default(),
                 adapter_training_contributor: Default::default(),
+                pooled_inference: Default::default(),
                 sandbox: ProviderSandboxAvailability {
                     runtimes: vec![ProviderSandboxRuntimeHealth {
                         runtime_kind: ProviderSandboxRuntimeKind::Python,
