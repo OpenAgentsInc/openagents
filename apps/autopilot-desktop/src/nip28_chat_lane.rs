@@ -54,10 +54,18 @@ pub enum Nip28ChatLaneUpdate {
     Snapshot(Nip28ChatLaneSnapshot),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManagedChatSubscriptionSyncRequest {
+    relay_urls: Vec<String>,
+    channel_ids: Vec<String>,
+    since_created_at: u64,
+}
+
 pub struct Nip28ChatLaneWorker {
     update_rx: Receiver<Nip28ChatLaneUpdate>,
     command_tx: Sender<Nip28ChatLaneCommand>,
     dispatched_ids: HashSet<String>,
+    last_sync_request: Option<ManagedChatSubscriptionSyncRequest>,
 }
 
 impl Nip28ChatLaneWorker {
@@ -73,6 +81,7 @@ impl Nip28ChatLaneWorker {
             update_rx,
             command_tx,
             dispatched_ids: HashSet::new(),
+            last_sync_request: None,
         }
     }
 
@@ -95,18 +104,30 @@ impl Nip28ChatLaneWorker {
     }
 
     pub fn sync_managed_chat_subscriptions(
-        &self,
+        &mut self,
         relay_urls: Vec<String>,
         channel_ids: Vec<String>,
         since_created_at: u64,
     ) {
-        let _ = self
+        let request = ManagedChatSubscriptionSyncRequest {
+            relay_urls: normalize_relay_urls(relay_urls),
+            channel_ids: normalize_channel_ids(channel_ids),
+            since_created_at,
+        };
+        if self.last_sync_request.as_ref() == Some(&request) {
+            return;
+        }
+        if self
             .command_tx
             .send(Nip28ChatLaneCommand::SyncManagedChatSubscriptions {
-                relay_urls,
-                channel_ids,
-                since_created_at,
-            });
+                relay_urls: request.relay_urls.clone(),
+                channel_ids: request.channel_ids.clone(),
+                since_created_at: request.since_created_at,
+            })
+            .is_ok()
+        {
+            self.last_sync_request = Some(request);
+        }
     }
 
     pub fn clear_dispatched(&mut self, event_id: &str) {
@@ -546,9 +567,24 @@ async fn poll_events(state: &mut Nip28ChatLaneState, update_tx: &Sender<Nip28Cha
 #[cfg(test)]
 mod tests {
     use super::{
-        NIP28_CHAT_BACKFILL_OVERLAP_SECS, build_filters, normalize_channel_ids,
-        normalize_relay_urls,
+        NIP28_CHAT_BACKFILL_OVERLAP_SECS, Nip28ChatLaneCommand, Nip28ChatLaneUpdate,
+        Nip28ChatLaneWorker, build_filters, normalize_channel_ids, normalize_relay_urls,
     };
+    use std::collections::HashSet;
+    use std::sync::mpsc;
+
+    fn make_test_worker() -> (Nip28ChatLaneWorker, mpsc::Receiver<Nip28ChatLaneCommand>) {
+        let (update_tx, update_rx) = mpsc::channel::<Nip28ChatLaneUpdate>();
+        let (command_tx, command_rx) = mpsc::channel::<Nip28ChatLaneCommand>();
+        let _ = update_tx; // keep sender alive so worker doesn't see a disconnected rx
+        let worker = Nip28ChatLaneWorker {
+            update_rx,
+            command_tx,
+            dispatched_ids: HashSet::new(),
+            last_sync_request: None,
+        };
+        (worker, command_rx)
+    }
 
     #[test]
     fn normalize_relay_urls_dedupes_and_trims() {
@@ -583,5 +619,125 @@ mod tests {
         assert_eq!(filters.len(), 3);
         assert_eq!(filters[2]["since"].as_u64(), Some(42));
         assert_eq!(NIP28_CHAT_BACKFILL_OVERLAP_SECS, 120);
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_first_send_dispatches() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_identical_request_suppressed() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_equivalent_input_suppressed_after_normalization() {
+        let (mut worker, rx) = make_test_worker();
+        let channel = "ab".repeat(32);
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        // Same values with whitespace, uppercase, and duplicates
+        worker.sync_managed_chat_subscriptions(
+            vec![" wss://relay.one ".into(), "wss://relay.one".into()],
+            vec![channel.to_uppercase(), channel.clone()],
+            100,
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_resend_when_relays_change() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.two".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_resend_when_channels_change() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["cd".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_resend_when_since_changes() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            200,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_retry_after_send_failure() {
+        let (update_tx, update_rx) = mpsc::channel::<Nip28ChatLaneUpdate>();
+        let (command_tx, _command_rx) = mpsc::channel::<Nip28ChatLaneCommand>();
+        let _ = update_tx;
+        // Drop the receiver so sends fail
+        drop(_command_rx);
+        let mut worker = Nip28ChatLaneWorker {
+            update_rx,
+            command_tx,
+            dispatched_ids: HashSet::new(),
+            last_sync_request: None,
+        };
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        // Request was NOT cached because send failed
+        assert!(worker.last_sync_request.is_none());
     }
 }
