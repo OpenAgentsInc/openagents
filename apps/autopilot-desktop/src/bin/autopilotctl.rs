@@ -364,6 +364,20 @@ enum ClusterCommand {
 enum PooledInferenceCommand {
     Status,
     Topology,
+    ExportJoinBundle {
+        output: PathBuf,
+        #[arg(long)]
+        mesh_root: Option<PathBuf>,
+        #[arg(long)]
+        mesh_label: Option<String>,
+        #[arg(long = "advertise")]
+        advertise_addrs: Vec<String>,
+    },
+    ImportJoinBundle {
+        input: PathBuf,
+        #[arg(long)]
+        mesh_root: Option<PathBuf>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -1047,6 +1061,33 @@ impl ClusterCommand {
         match self {
             Self::Status => DesktopControlActionRequest::GetClusterStatus,
             Self::Topology => DesktopControlActionRequest::GetClusterTopology,
+        }
+    }
+}
+
+impl PooledInferenceCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Status | Self::Topology => None,
+            Self::ExportJoinBundle {
+                output,
+                mesh_root,
+                mesh_label,
+                advertise_addrs,
+            } => Some(
+                DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                    mesh_root: mesh_root.as_ref().map(|path| path.display().to_string()),
+                    output_path: output.display().to_string(),
+                    mesh_label: mesh_label.clone(),
+                    advertise_addrs: advertise_addrs.clone(),
+                },
+            ),
+            Self::ImportJoinBundle { input, mesh_root } => Some(
+                DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+                    mesh_root: mesh_root.as_ref().map(|path| path.display().to_string()),
+                    join_bundle_path: input.display().to_string(),
+                },
+            ),
         }
     }
 }
@@ -1843,16 +1884,36 @@ fn main() -> Result<()> {
             }
         }
         Command::PooledInference { command } => {
-            let snapshot = client.snapshot()?;
-            if json_output {
-                print_json(&snapshot.pooled_inference)?;
-            } else {
-                match command {
-                    PooledInferenceCommand::Status => {
-                        print_pooled_inference_status_text(&snapshot.pooled_inference);
+            if let Some(action) = command.action_request() {
+                let response = client.action(&action)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    match command {
+                        PooledInferenceCommand::ExportJoinBundle { .. } => {
+                            print_pooled_inference_join_export_text(payload);
+                        }
+                        PooledInferenceCommand::ImportJoinBundle { .. } => {
+                            print_pooled_inference_join_import_text(payload);
+                        }
+                        PooledInferenceCommand::Status | PooledInferenceCommand::Topology => {}
                     }
-                    PooledInferenceCommand::Topology => {
-                        print_pooled_inference_topology_text(&snapshot.pooled_inference);
+                }
+            } else {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.pooled_inference)?;
+                } else {
+                    match command {
+                        PooledInferenceCommand::Status => {
+                            print_pooled_inference_status_text(&snapshot.pooled_inference);
+                        }
+                        PooledInferenceCommand::Topology => {
+                            print_pooled_inference_topology_text(&snapshot.pooled_inference);
+                        }
+                        PooledInferenceCommand::ExportJoinBundle { .. }
+                        | PooledInferenceCommand::ImportJoinBundle { .. } => {}
                     }
                 }
             }
@@ -4628,6 +4689,16 @@ fn json_array_len(value: Option<&Value>) -> usize {
     value.and_then(Value::as_array).map(Vec::len).unwrap_or(0)
 }
 
+fn json_array_strings(value: Option<&Value>) -> Option<String> {
+    let values = value
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    (!values.is_empty()).then(|| values.join(","))
+}
+
 fn json_nested_u64(value: Option<&Value>, path: &[&str]) -> Option<u64> {
     path.iter()
         .try_fold(value?, |current, segment| current.get(*segment))
@@ -4969,8 +5040,9 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.gpt_oss.ready_model.as_deref().unwrap_or("-")
     );
     println!(
-        "pooled inference: available={} state={} role={} posture={} members={} targets={} warm_replicas={} default_model={}",
+        "pooled inference: available={} join={} state={} role={} posture={} members={} targets={} warm_replicas={} default_model={}",
         snapshot.pooled_inference.available,
+        snapshot.pooled_inference.join.posture,
         snapshot.pooled_inference.local_serving_state,
         snapshot
             .pooled_inference
@@ -6003,9 +6075,10 @@ fn print_cluster_text(payload: &Value) {
 
 fn print_pooled_inference_status_text(status: &DesktopControlPooledInferenceStatus) {
     println!(
-        "pooled inference: available={} source={} state={} membership={} members={} targets={} warm_replicas={} topology={} default_model={}",
+        "pooled inference: available={} source={} join={} state={} membership={} members={} targets={} warm_replicas={} topology={} default_model={}",
         status.available,
         status.source,
+        status.join.posture,
         status.local_serving_state,
         status.membership_state,
         status.member_count,
@@ -6034,6 +6107,38 @@ fn print_pooled_inference_status_text(status: &DesktopControlPooledInferenceStat
     );
     if let Some(error) = status.last_error.as_deref() {
         println!("last_error: {error}");
+    }
+    if let Some(preference) = status.join.last_joined_mesh_preference.as_ref() {
+        println!(
+            "last_joined_mesh: label={} namespace={} cluster_id={} selected_at_ms={} addrs={}",
+            preference.mesh_label,
+            preference.namespace,
+            preference.cluster_id,
+            preference.selected_at_epoch_ms,
+            if preference.advertised_control_plane_addrs.is_empty() {
+                "-".to_string()
+            } else {
+                preference.advertised_control_plane_addrs.join(",")
+            }
+        );
+    }
+    if let Some(bundle) = status.join.last_imported_join_bundle.as_ref() {
+        println!(
+            "last_imported_bundle: label={} namespace={} cluster_id={} admission={} trust={} discovery={} exported_at_ms={} imported_at_ms={} addrs={}",
+            bundle.bundle.mesh_label,
+            bundle.bundle.namespace,
+            bundle.bundle.cluster_id,
+            bundle.bundle.admission_kind,
+            bundle.bundle.trust_posture,
+            bundle.bundle.discovery_posture,
+            bundle.bundle.exported_at_epoch_ms,
+            bundle.imported_at_epoch_ms,
+            if bundle.bundle.advertised_control_plane_addrs.is_empty() {
+                "-".to_string()
+            } else {
+                bundle.bundle.advertised_control_plane_addrs.join(",")
+            }
+        );
     }
     for model in &status.targetable_models {
         println!(
@@ -6076,6 +6181,88 @@ fn print_pooled_inference_topology_text(status: &DesktopControlPooledInferenceSt
                 member.served_mesh_reasons.join(",")
             }
         );
+    }
+}
+
+fn print_pooled_inference_join_export_text(payload: &Value) {
+    println!(
+        "exported pooled inference join bundle: output={} mesh_root={} config_path={}",
+        json_str(payload.get("output_path")).unwrap_or("-"),
+        json_str(payload.get("mesh_root")).unwrap_or("-"),
+        json_str(payload.get("config_path")).unwrap_or("-"),
+    );
+    println!(
+        "service={} advertise_source={} addresses={}",
+        json_str(payload.get("service_name")).unwrap_or("-"),
+        json_str(payload.get("advertise_source")).unwrap_or("-"),
+        json_array_strings(payload.get("advertised_control_plane_addrs"))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    if let Some(bundle) = payload.get("bundle") {
+        println!(
+            "bundle: label={} namespace={} cluster_id={} admission={} trust={} discovery={} trust_bundle_version={} exported_at_ms={}",
+            json_str(bundle.get("mesh_label")).unwrap_or("-"),
+            json_str(bundle.get("namespace")).unwrap_or("-"),
+            json_str(bundle.get("cluster_id")).unwrap_or("-"),
+            json_str(bundle.get("admission_kind")).unwrap_or("-"),
+            json_str(bundle.get("trust_posture")).unwrap_or("-"),
+            json_str(bundle.get("discovery_posture")).unwrap_or("-"),
+            bundle
+                .get("trust_bundle_version")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            bundle
+                .get("exported_at_epoch_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        );
+    }
+    if let Some(device) = payload.get("tailnet_self_device") {
+        println!(
+            "tailnet_self: node_id={} display_name={} host_name={} ips={}",
+            json_str(device.get("node_id")).unwrap_or("-"),
+            json_str(device.get("display_name")).unwrap_or("-"),
+            json_str(device.get("host_name")).unwrap_or("-"),
+            json_array_strings(device.get("tailscale_ips"))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string())
+        );
+    }
+}
+
+fn print_pooled_inference_join_import_text(payload: &Value) {
+    println!(
+        "recorded pooled inference join bundle: input={} mesh_root={} config_path={}",
+        json_str(payload.get("join_bundle_path")).unwrap_or("-"),
+        json_str(payload.get("mesh_root")).unwrap_or("-"),
+        json_str(payload.get("config_path")).unwrap_or("-"),
+    );
+    if let Some(bundle) = payload.get("bundle") {
+        println!(
+            "bundle: label={} namespace={} cluster_id={} admission={} trust={} discovery={} addresses={}",
+            json_str(bundle.get("mesh_label")).unwrap_or("-"),
+            json_str(bundle.get("namespace")).unwrap_or("-"),
+            json_str(bundle.get("cluster_id")).unwrap_or("-"),
+            json_str(bundle.get("admission_kind")).unwrap_or("-"),
+            json_str(bundle.get("trust_posture")).unwrap_or("-"),
+            json_str(bundle.get("discovery_posture")).unwrap_or("-"),
+            json_array_strings(bundle.get("advertised_control_plane_addrs"))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string())
+        );
+    }
+    println!(
+        "join_posture_before={} join_posture_after={} restart_required={}",
+        json_str(payload.get("join_posture_before")).unwrap_or("-"),
+        json_str(payload.get("join_posture_after")).unwrap_or("-"),
+        payload
+            .get("restart_required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    );
+    if let Some(restart_hint) = json_str(payload.get("restart_hint")) {
+        println!("restart_hint: {restart_hint}");
     }
 }
 
@@ -8644,9 +8831,11 @@ fn print_active_job_text(active_job: Option<&DesktopControlActiveJobStatus>) {
     match active_job {
         Some(active_job) => {
             println!(
-                "active job: request={} capability={} stage={} next={} settlement={} payment_pointer={} fees={}",
+                "active job: request={} capability={} product={} receipt={} stage={} next={} settlement={} payment_pointer={} fees={} earnings={}",
                 active_job.request_id,
                 active_job.capability,
+                active_job.compute_product_id.as_deref().unwrap_or("-"),
+                active_job.market_receipt_class.as_deref().unwrap_or("-"),
                 active_job.stage,
                 active_job.next_expected_event,
                 active_job.settlement_status.as_deref().unwrap_or("-"),
@@ -8654,7 +8843,8 @@ fn print_active_job_text(active_job: Option<&DesktopControlActiveJobStatus>) {
                 active_job
                     .settlement_fees_sats
                     .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                active_job.earnings_summary.as_deref().unwrap_or("-"),
             );
         }
         None => println!("active job: none"),
@@ -8677,13 +8867,13 @@ mod tests {
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, ForgeCommand,
-        ForgeHandoffCommand, ForgeHostedCommand, GptOssCommand, LocalRuntimeCommand, ProofCommand,
-        ProviderCommand, RemoteTrainingCommand, ResearchCommand, ResolvedTarget, SandboxCommand,
-        SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
-        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
-        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
-        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
-        buy_mode_has_paid_request, buyer_procurement_status_lines,
+        ForgeHandoffCommand, ForgeHostedCommand, GptOssCommand, LocalRuntimeCommand,
+        PooledInferenceCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand,
+        ResearchCommand, ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
+        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
+        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
+        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
         compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
         inventory_status_lines, materialize_data_market_delivery, nip90_sent_payments_report_lines,
         parse_giftwrapped_delivery_pointer, parse_local_daily_window,
@@ -9347,6 +9537,38 @@ mod tests {
         assert_eq!(
             ClusterCommand::Topology.action_request(),
             DesktopControlActionRequest::GetClusterTopology
+        );
+        assert_eq!(PooledInferenceCommand::Status.action_request(), None);
+        assert_eq!(PooledInferenceCommand::Topology.action_request(), None);
+        assert_eq!(
+            PooledInferenceCommand::ExportJoinBundle {
+                output: PathBuf::from("/tmp/mesh-home.join.json"),
+                mesh_root: Some(PathBuf::from("/tmp/mesh-root")),
+                mesh_label: Some("mesh-home".to_string()),
+                advertise_addrs: vec!["100.90.1.10:47470".to_string()],
+            }
+            .action_request(),
+            Some(
+                DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                    mesh_root: Some("/tmp/mesh-root".to_string()),
+                    output_path: "/tmp/mesh-home.join.json".to_string(),
+                    mesh_label: Some("mesh-home".to_string()),
+                    advertise_addrs: vec!["100.90.1.10:47470".to_string()],
+                }
+            )
+        );
+        assert_eq!(
+            PooledInferenceCommand::ImportJoinBundle {
+                input: PathBuf::from("/tmp/mesh-home.join.json"),
+                mesh_root: Some(PathBuf::from("/tmp/mesh-joiner")),
+            }
+            .action_request(),
+            Some(
+                DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+                    mesh_root: Some("/tmp/mesh-joiner".to_string()),
+                    join_bundle_path: "/tmp/mesh-home.join.json".to_string(),
+                }
+            )
         );
         assert_eq!(
             ProofCommand::Status.action_request(),

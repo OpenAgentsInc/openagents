@@ -8826,54 +8826,54 @@ fn run_chat_forge_action(
             }
             Err(error) => append_chat_command_result(state, prompt, error, true),
         },
-        ChatForgeComposerIntent::HandoffTake { summary } => match state
-            .autopilot_chat
-            .take_shared_session_control_for_thread(
+        ChatForgeComposerIntent::HandoffTake { summary } => {
+            match state.autopilot_chat.take_shared_session_control_for_thread(
                 thread_id.as_str(),
                 summary.clone(),
                 "operator.command:/handoff take",
                 current_epoch_millis(),
             ) {
-            Ok(shared_session_id) => {
-                let mut response = format!(
-                    "Took control of shared session `{shared_session_id}`.\n\n{}",
-                    summary
-                );
-                if let Ok(status) = state
-                    .autopilot_chat
-                    .shared_session_handoff_status_for_thread(thread_id.as_str())
-                {
-                    response.push_str("\n\n");
-                    response.push_str(status.as_str());
+                Ok(shared_session_id) => {
+                    let mut response = format!(
+                        "Took control of shared session `{shared_session_id}`.\n\n{}",
+                        summary
+                    );
+                    if let Ok(status) = state
+                        .autopilot_chat
+                        .shared_session_handoff_status_for_thread(thread_id.as_str())
+                    {
+                        response.push_str("\n\n");
+                        response.push_str(status.as_str());
+                    }
+                    append_chat_command_result(state, prompt, response, false)
                 }
-                append_chat_command_result(state, prompt, response, false)
+                Err(error) => append_chat_command_result(state, prompt, error, true),
             }
-            Err(error) => append_chat_command_result(state, prompt, error, true),
-        },
-        ChatForgeComposerIntent::HandoffNote { summary } => match state
-            .autopilot_chat
-            .record_shared_session_note_for_thread(
+        }
+        ChatForgeComposerIntent::HandoffNote { summary } => {
+            match state.autopilot_chat.record_shared_session_note_for_thread(
                 thread_id.as_str(),
                 summary.clone(),
                 "operator.command:/handoff note",
                 current_epoch_millis(),
             ) {
-            Ok(shared_session_id) => {
-                let mut response = format!(
-                    "Recorded collaboration note on shared session `{shared_session_id}`.\n\n{}",
-                    summary
-                );
-                if let Ok(status) = state
-                    .autopilot_chat
-                    .shared_session_handoff_status_for_thread(thread_id.as_str())
-                {
-                    response.push_str("\n\n");
-                    response.push_str(status.as_str());
+                Ok(shared_session_id) => {
+                    let mut response = format!(
+                        "Recorded collaboration note on shared session `{shared_session_id}`.\n\n{}",
+                        summary
+                    );
+                    if let Ok(status) = state
+                        .autopilot_chat
+                        .shared_session_handoff_status_for_thread(thread_id.as_str())
+                    {
+                        response.push_str("\n\n");
+                        response.push_str(status.as_str());
+                    }
+                    append_chat_command_result(state, prompt, response, false)
                 }
-                append_chat_command_result(state, prompt, response, false)
+                Err(error) => append_chat_command_result(state, prompt, error, true),
             }
-            Err(error) => append_chat_command_result(state, prompt, error, true),
-        },
+        }
         ChatForgeComposerIntent::Handoff { owner, summary } => match state
             .autopilot_chat
             .record_shared_session_handoff_for_thread(
@@ -18169,6 +18169,11 @@ pub(super) fn run_starter_jobs_action(
                                 ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
                                 ac_settlement_event_id: state.ac_lane.settlement_event_id.clone(),
                                 ac_default_event_id: None,
+                                compute_product_id: None,
+                                market_receipt_class: Some("accepted_delivery".to_string()),
+                                earnings_summary: Some(
+                                    "Starter quests earn when delivery settles and wallet evidence confirms payment.".to_string(),
+                                ),
                                 delivery_proof_id: None,
                                 delivery_metering_rule_id: None,
                                 delivery_proof_status_label: None,
@@ -20345,6 +20350,8 @@ mod tests {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             capacity_lot_id: None,
             capacity_instrument_id: None,
             delivery_proof_id: None,
@@ -20385,6 +20392,9 @@ mod tests {
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
+            compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             delivery_proof_id: None,
             delivery_metering_rule_id: None,
             delivery_proof_status_label: None,

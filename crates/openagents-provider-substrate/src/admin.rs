@@ -1466,6 +1466,7 @@ mod tests {
                 apple_foundation_models: ProviderBackendHealth::default(),
                 apple_adapter_hosting: Default::default(),
                 adapter_training_contributor: Default::default(),
+                pooled_inference: Default::default(),
                 sandbox: ProviderSandboxAvailability {
                     runtimes: vec![ProviderSandboxRuntimeHealth {
                         runtime_kind: ProviderSandboxRuntimeKind::Python,
@@ -1517,6 +1518,10 @@ mod tests {
                 eligible: true,
                 capability_summary:
                     "backend=gpt_oss execution=local_inference family=inference".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_summary:
+                    "Earns when local delivery is accepted and wallet settlement is confirmed."
+                        .to_string(),
                 source_badge: "local".to_string(),
                 capacity_lot_id: Some("lot-1".to_string()),
                 total_quantity: 1,

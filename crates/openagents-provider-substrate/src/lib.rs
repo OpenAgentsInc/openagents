@@ -557,6 +557,8 @@ pub struct ProviderAvailability {
     pub apple_adapter_hosting: ProviderAppleAdapterHostingAvailability,
     #[serde(default)]
     pub adapter_training_contributor: ProviderAdapterTrainingContributorAvailability,
+    #[serde(default)]
+    pub pooled_inference: ProviderPooledInferenceAvailability,
     pub sandbox: ProviderSandboxAvailability,
 }
 
@@ -581,6 +583,10 @@ impl ProviderAvailability {
         match product {
             ProviderComputeProduct::GptOssInference
             | ProviderComputeProduct::AppleFoundationModelsInference => true,
+            ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+            | ProviderComputeProduct::PooledInferenceReplicatedServing => {
+                self.pooled_inference.has_authoritative_state()
+            }
             ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                 self.apple_foundation_models.reachable
                     || self.apple_adapter_hosting.has_authoritative_state()
@@ -608,6 +614,12 @@ impl ProviderAvailability {
         match product {
             ProviderComputeProduct::GptOssInference => self.gpt_oss.is_ready(),
             ProviderComputeProduct::GptOssEmbeddings => false,
+            ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
+                self.pooled_inference.remote_whole_request_ready()
+            }
+            ProviderComputeProduct::PooledInferenceReplicatedServing => {
+                self.pooled_inference.replicated_serving_ready()
+            }
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_foundation_models.is_ready()
             }
@@ -652,6 +664,8 @@ impl ProviderAvailability {
                 .unwrap_or_else(|| product.capability_summary_base().to_string()),
             ProviderComputeProduct::GptOssInference
             | ProviderComputeProduct::GptOssEmbeddings
+            | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+            | ProviderComputeProduct::PooledInferenceReplicatedServing
             | ProviderComputeProduct::AppleFoundationModelsInference
             | ProviderComputeProduct::AppleFoundationModelsAdapterHosting
             | ProviderComputeProduct::AdapterTrainingContributor => {
@@ -661,11 +675,228 @@ impl ProviderAvailability {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderPooledInferenceTargetStatus {
+    pub model: String,
+    pub family: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_endpoints: Vec<String>,
+    #[serde(default)]
+    pub structured_outputs: bool,
+    #[serde(default)]
+    pub tool_calling: bool,
+    #[serde(default)]
+    pub response_state: bool,
+    #[serde(default)]
+    pub warm_replica_count: usize,
+    #[serde(default)]
+    pub local_warm_replica: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderPooledInferenceAvailability {
+    #[serde(default)]
+    pub available: bool,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topology_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
+    #[serde(default)]
+    pub membership_state: String,
+    #[serde(default)]
+    pub member_count: usize,
+    #[serde(default)]
+    pub warm_replica_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_worker_id: Option<String>,
+    #[serde(default)]
+    pub local_serving_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub served_mesh_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub served_mesh_posture: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_engine: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_posture: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targetable_models: Vec<ProviderPooledInferenceTargetStatus>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderProductMarketSemantics {
+    pub contribution_class: String,
+    pub market_receipt_class: String,
+    pub earnings_trigger: String,
+    pub revenue_posture: String,
+    pub revenue_summary: String,
+}
+
+impl ProviderPooledInferenceAvailability {
+    pub fn has_authoritative_state(&self) -> bool {
+        let source_authoritative = !matches!(self.source.trim(), "" | "not_configured");
+        let membership_authoritative = !matches!(self.membership_state.trim(), "" | "unconfigured");
+        self.available
+            || source_authoritative
+            || self.management_base_url.is_some()
+            || self.topology_digest.is_some()
+            || self.default_model.is_some()
+            || membership_authoritative
+            || self.member_count > 0
+            || self.warm_replica_count > 0
+            || !self.targetable_models.is_empty()
+    }
+
+    pub fn remote_whole_request_ready(&self) -> bool {
+        self.available && self.member_count > 0 && !self.targetable_models.is_empty()
+    }
+
+    pub fn replicated_serving_ready(&self) -> bool {
+        self.available
+            && self
+                .targetable_models
+                .iter()
+                .any(|target| target.warm_replica_count > 1)
+    }
+
+    fn target_model_summary(&self) -> String {
+        if self.targetable_models.is_empty() {
+            return "none".to_string();
+        }
+        self.targetable_models
+            .iter()
+            .map(|target| {
+                format!(
+                    "{}:{}:{}",
+                    target.model, target.family, target.warm_replica_count
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn replicated_model_summary(&self) -> String {
+        let mut models = self
+            .targetable_models
+            .iter()
+            .filter(|target| target.warm_replica_count > 1)
+            .map(|target| target.model.clone())
+            .collect::<Vec<_>>();
+        models.sort();
+        models.dedup();
+        if models.is_empty() {
+            "none".to_string()
+        } else {
+            models.join(",")
+        }
+    }
+
+    pub fn capability_summary(&self, topology_label: &str) -> String {
+        let default_model = self.default_model.as_deref().unwrap_or("none");
+        let topology_digest = self.topology_digest.as_deref().unwrap_or("none");
+        let local_serving_state = if self.local_serving_state.trim().is_empty() {
+            "unknown"
+        } else {
+            self.local_serving_state.as_str()
+        };
+        let execution_mode = self.execution_mode.as_deref().unwrap_or("unknown");
+        let execution_engine = self.execution_engine.as_deref().unwrap_or("unknown");
+        let fallback_posture = self.fallback_posture.as_deref().unwrap_or("none");
+        let role = self.served_mesh_role.as_deref().unwrap_or("unknown");
+        let posture = self.served_mesh_posture.as_deref().unwrap_or("unknown");
+        format!(
+            "backend=gpt_oss execution=clustered_inference family=inference topology={topology_label} source={} membership_state={} members={} warm_replicas={} default_model={default_model} topology_digest={topology_digest} local_state={local_serving_state} role={role} posture={posture} execution_mode={execution_mode} execution_engine={execution_engine} fallback_posture={fallback_posture} target_models={} replicated_models={}",
+            self.source,
+            self.membership_state,
+            self.member_count,
+            self.warm_replica_count,
+            self.target_model_summary(),
+            self.replicated_model_summary(),
+        )
+    }
+
+    fn market_semantics(&self, topology_label: &str) -> ProviderProductMarketSemantics {
+        match topology_label {
+            "remote_whole_request" => {
+                let revenue_posture = if self.remote_whole_request_ready() {
+                    "accepted_clustered_delivery"
+                } else {
+                    "not_yet_earning"
+                };
+                let revenue_summary = if !self.has_authoritative_state() {
+                    "No pooled-inference revenue yet because mesh management is not configured."
+                } else if self.targetable_models.is_empty() {
+                    "No pooled-inference revenue yet because the mesh has no targetable models."
+                } else if self.member_count == 0 {
+                    "No pooled-inference revenue yet because the mesh has no joined members."
+                } else if self.remote_whole_request_ready() {
+                    "Earns when the mesh serves the whole request and the clustered delivery proof is accepted."
+                } else {
+                    "No pooled-inference revenue yet because remote whole-request serving is not ready."
+                };
+                ProviderProductMarketSemantics {
+                    contribution_class: "remote_whole_request_serving".to_string(),
+                    market_receipt_class: "clustered_delivery".to_string(),
+                    earnings_trigger: "accepted_clustered_delivery".to_string(),
+                    revenue_posture: revenue_posture.to_string(),
+                    revenue_summary: revenue_summary.to_string(),
+                }
+            }
+            "replicated" => {
+                let revenue_posture = if self.replicated_serving_ready() {
+                    "reserved_standby_or_promoted_delivery"
+                } else {
+                    "not_yet_earning"
+                };
+                let revenue_summary = if !self.has_authoritative_state() {
+                    "No replicated revenue yet because mesh management is not configured."
+                } else if self
+                    .targetable_models
+                    .iter()
+                    .all(|target| target.warm_replica_count <= 1)
+                {
+                    "No replicated revenue yet because the mesh has not warmed multiple replicas for any model."
+                } else if self.replicated_serving_ready() {
+                    "Warm replicas publish standby capacity, but revenue only starts when a reserve window sells or a replica is promoted into accepted clustered serving."
+                } else {
+                    "No replicated revenue yet because standby capacity is visible but not ready to advertise."
+                };
+                ProviderProductMarketSemantics {
+                    contribution_class: "replicated_standby_capacity".to_string(),
+                    market_receipt_class: "clustered_standby_or_promoted_delivery".to_string(),
+                    earnings_trigger: "accepted_reserved_window_or_promoted_delivery".to_string(),
+                    revenue_posture: revenue_posture.to_string(),
+                    revenue_summary: revenue_summary.to_string(),
+                }
+            }
+            _ => ProviderProductMarketSemantics {
+                contribution_class: "clustered_inference".to_string(),
+                market_receipt_class: "clustered_delivery".to_string(),
+                earnings_trigger: "accepted_clustered_delivery".to_string(),
+                revenue_posture: "unknown".to_string(),
+                revenue_summary:
+                    "Clustered inference revenue semantics are not specified for this topology."
+                        .to_string(),
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderComputeProduct {
     GptOssInference,
     GptOssEmbeddings,
+    PooledInferenceRemoteWholeRequest,
+    PooledInferenceReplicatedServing,
     AppleFoundationModelsInference,
     AppleFoundationModelsAdapterHosting,
     AdapterTrainingContributor,
@@ -684,9 +915,11 @@ pub struct ProviderProductDescriptor {
 }
 
 impl ProviderComputeProduct {
-    pub const fn all() -> [Self; 8] {
+    pub const fn all() -> [Self; 10] {
         [
             Self::GptOssInference,
+            Self::PooledInferenceRemoteWholeRequest,
+            Self::PooledInferenceReplicatedServing,
             Self::AppleFoundationModelsInference,
             Self::AppleFoundationModelsAdapterHosting,
             Self::AdapterTrainingContributor,
@@ -701,6 +934,12 @@ impl ProviderComputeProduct {
         match self {
             Self::GptOssInference => "psionic.local.inference.gpt_oss.single_node",
             Self::GptOssEmbeddings => "psionic.local.embeddings.gpt_oss.single_node",
+            Self::PooledInferenceRemoteWholeRequest => {
+                "psionic.cluster.inference.gpt_oss.remote_whole_request"
+            }
+            Self::PooledInferenceReplicatedServing => {
+                "psionic.cluster.inference.gpt_oss.replicated"
+            }
             Self::AppleFoundationModelsInference => {
                 "psionic.local.inference.apple_foundation_models.single_node"
             }
@@ -729,6 +968,8 @@ impl ProviderComputeProduct {
         match self {
             Self::GptOssInference => "GPT-OSS inference",
             Self::GptOssEmbeddings => "GPT-OSS embeddings",
+            Self::PooledInferenceRemoteWholeRequest => "Pooled inference remote whole-request",
+            Self::PooledInferenceReplicatedServing => "Pooled inference replicated serving",
             Self::AppleFoundationModelsInference => "Apple FM inference",
             Self::AppleFoundationModelsAdapterHosting => "Apple FM adapter hosting",
             Self::AdapterTrainingContributor => "Adapter training contributor",
@@ -741,7 +982,10 @@ impl ProviderComputeProduct {
 
     pub const fn backend_kind(self) -> Option<ProviderBackendKind> {
         match self {
-            Self::GptOssInference | Self::GptOssEmbeddings => Some(ProviderBackendKind::GptOss),
+            Self::GptOssInference
+            | Self::GptOssEmbeddings
+            | Self::PooledInferenceRemoteWholeRequest
+            | Self::PooledInferenceReplicatedServing => Some(ProviderBackendKind::GptOss),
             Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 Some(ProviderBackendKind::AppleFoundationModels)
             }
@@ -755,7 +999,10 @@ impl ProviderComputeProduct {
 
     pub const fn backend_label(self) -> &'static str {
         match self {
-            Self::GptOssInference | Self::GptOssEmbeddings => "gpt_oss",
+            Self::GptOssInference
+            | Self::GptOssEmbeddings
+            | Self::PooledInferenceRemoteWholeRequest
+            | Self::PooledInferenceReplicatedServing => "gpt_oss",
             Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 "apple_foundation_models"
             }
@@ -769,7 +1016,10 @@ impl ProviderComputeProduct {
 
     pub const fn compute_family_label(self) -> &'static str {
         match self {
-            Self::GptOssInference | Self::AppleFoundationModelsInference => "inference",
+            Self::GptOssInference
+            | Self::PooledInferenceRemoteWholeRequest
+            | Self::PooledInferenceReplicatedServing
+            | Self::AppleFoundationModelsInference => "inference",
             Self::AppleFoundationModelsAdapterHosting => "adapter_hosting",
             Self::AdapterTrainingContributor => "training",
             Self::GptOssEmbeddings => "embeddings",
@@ -788,6 +1038,8 @@ impl ProviderComputeProduct {
             Self::SandboxPosixExec => Some(ProviderSandboxExecutionClass::PosixExec),
             Self::GptOssInference
             | Self::GptOssEmbeddings
+            | Self::PooledInferenceRemoteWholeRequest
+            | Self::PooledInferenceReplicatedServing
             | Self::AppleFoundationModelsInference
             | Self::AppleFoundationModelsAdapterHosting
             | Self::AdapterTrainingContributor => None,
@@ -799,6 +1051,12 @@ impl ProviderComputeProduct {
             Self::GptOssInference => "backend=gpt_oss execution=local_inference family=inference",
             Self::GptOssEmbeddings => {
                 "backend=gpt_oss execution=local_inference family=embeddings status=unsupported"
+            }
+            Self::PooledInferenceRemoteWholeRequest => {
+                "backend=gpt_oss execution=clustered_inference family=inference topology=remote_whole_request"
+            }
+            Self::PooledInferenceReplicatedServing => {
+                "backend=gpt_oss execution=clustered_inference family=inference topology=replicated"
             }
             Self::AppleFoundationModelsInference => {
                 "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
@@ -837,6 +1095,36 @@ impl ProviderComputeProduct {
                     .unwrap_or_else(|| "n/a".to_string());
                 format!(
                     "{base_summary} model={ready_model} configured_model={configured_model} latency_ms_p50={latency_ms}"
+                )
+            }
+            Self::PooledInferenceRemoteWholeRequest => {
+                let capability = availability
+                    .pooled_inference
+                    .capability_summary("remote_whole_request");
+                let market = availability
+                    .pooled_inference
+                    .market_semantics("remote_whole_request");
+                format!(
+                    "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
+                    market.contribution_class,
+                    market.market_receipt_class,
+                    market.earnings_trigger,
+                    market.revenue_posture,
+                    canonical_market_summary_token(market.revenue_summary.as_str()),
+                )
+            }
+            Self::PooledInferenceReplicatedServing => {
+                let capability = availability
+                    .pooled_inference
+                    .capability_summary("replicated");
+                let market = availability.pooled_inference.market_semantics("replicated");
+                format!(
+                    "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
+                    market.contribution_class,
+                    market.market_receipt_class,
+                    market.earnings_trigger,
+                    market.revenue_posture,
+                    canonical_market_summary_token(market.revenue_summary.as_str()),
                 )
             }
             Self::AppleFoundationModelsInference => {
@@ -891,6 +1179,12 @@ impl ProviderComputeProduct {
     pub const fn terms_label(self) -> &'static str {
         match self {
             Self::GptOssInference | Self::GptOssEmbeddings => "spot session / local best effort",
+            Self::PooledInferenceRemoteWholeRequest => {
+                "spot session / pooled inference remote whole-request"
+            }
+            Self::PooledInferenceReplicatedServing => {
+                "spot session / pooled inference replicated serving"
+            }
             Self::AppleFoundationModelsInference => "spot session / Apple gated best effort",
             Self::AppleFoundationModelsAdapterHosting => {
                 "spot session / Apple gated adapter best effort"
@@ -909,6 +1203,12 @@ impl ProviderComputeProduct {
         match self {
             Self::GptOssInference | Self::GptOssEmbeddings => {
                 "forward physical / committed local window"
+            }
+            Self::PooledInferenceRemoteWholeRequest => {
+                "forward physical / pooled inference remote whole-request window"
+            }
+            Self::PooledInferenceReplicatedServing => {
+                "forward physical / pooled inference replicated serving window"
             }
             Self::AppleFoundationModelsInference => {
                 "forward physical / Apple gated committed window"
@@ -930,6 +1230,8 @@ impl ProviderComputeProduct {
         match self {
             Self::GptOssInference => 21,
             Self::GptOssEmbeddings => 8,
+            Self::PooledInferenceRemoteWholeRequest => 55,
+            Self::PooledInferenceReplicatedServing => 89,
             Self::AppleFoundationModelsInference => 34,
             Self::AppleFoundationModelsAdapterHosting => 55,
             Self::AdapterTrainingContributor => 89,
@@ -948,6 +1250,14 @@ impl ProviderComputeProduct {
             "psionic.local.embeddings.gpt_oss.single_node"
             | "ollama.embeddings"
             | "gpt_oss.embeddings" => Some(Self::GptOssEmbeddings),
+            "psionic.cluster.inference.gpt_oss.remote_whole_request"
+            | "gpt_oss.clustered_inference.remote_whole_request" => {
+                Some(Self::PooledInferenceRemoteWholeRequest)
+            }
+            "psionic.cluster.inference.gpt_oss.replicated"
+            | "gpt_oss.clustered_inference.replicated" => {
+                Some(Self::PooledInferenceReplicatedServing)
+            }
             "psionic.local.inference.apple_foundation_models.single_node"
             | "apple_foundation_models.text_generation" => {
                 Some(Self::AppleFoundationModelsInference)
@@ -980,6 +1290,93 @@ impl ProviderComputeProduct {
                 .map(|execution_class| execution_class.product_id().to_string()),
         }
     }
+
+    pub fn market_semantics(
+        self,
+        availability: &ProviderAvailability,
+    ) -> ProviderProductMarketSemantics {
+        match self {
+            Self::GptOssInference => ProviderProductMarketSemantics {
+                contribution_class: "single_node_serving".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_trigger: "wallet_settled_accepted_delivery".to_string(),
+                revenue_posture: if availability.gpt_oss.is_ready() {
+                    "serving_ready"
+                } else {
+                    "not_yet_earning"
+                }
+                .to_string(),
+                revenue_summary: if availability.gpt_oss.is_ready() {
+                    "Earns when local delivery is accepted and wallet settlement is confirmed."
+                } else {
+                    "No single-node revenue yet because the local GPT-OSS runtime is not ready."
+                }
+                .to_string(),
+            },
+            Self::AppleFoundationModelsInference => ProviderProductMarketSemantics {
+                contribution_class: "single_node_serving".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_trigger: "wallet_settled_accepted_delivery".to_string(),
+                revenue_posture: if availability.apple_foundation_models.is_ready() {
+                    "serving_ready"
+                } else {
+                    "not_yet_earning"
+                }
+                .to_string(),
+                revenue_summary: if availability.apple_foundation_models.is_ready() {
+                    "Earns when Apple FM delivery is accepted and wallet settlement is confirmed."
+                } else {
+                    "No Apple FM revenue yet because the local inference bridge is not ready."
+                }
+                .to_string(),
+            },
+            Self::PooledInferenceRemoteWholeRequest => availability
+                .pooled_inference
+                .market_semantics("remote_whole_request"),
+            Self::PooledInferenceReplicatedServing => {
+                availability.pooled_inference.market_semantics("replicated")
+            }
+            Self::GptOssEmbeddings => ProviderProductMarketSemantics {
+                contribution_class: "single_node_embedding".to_string(),
+                market_receipt_class: "unsupported".to_string(),
+                earnings_trigger: "unsupported".to_string(),
+                revenue_posture: "unsupported".to_string(),
+                revenue_summary: "GPT-OSS embeddings are not a supported market lane.".to_string(),
+            },
+            Self::AppleFoundationModelsAdapterHosting => ProviderProductMarketSemantics {
+                contribution_class: "single_node_adapter_hosting".to_string(),
+                market_receipt_class: "best_effort_adapter_hosting".to_string(),
+                earnings_trigger: "future_market_lane".to_string(),
+                revenue_posture: "future_scope".to_string(),
+                revenue_summary: "Adapter hosting is visible in the product but not a wallet-settled market lane yet.".to_string(),
+            },
+            Self::AdapterTrainingContributor => ProviderProductMarketSemantics {
+                contribution_class: "training_contributor".to_string(),
+                market_receipt_class: "accepted_window_or_sealed_contribution".to_string(),
+                earnings_trigger: "accepted_training_window".to_string(),
+                revenue_posture: "future_scope".to_string(),
+                revenue_summary: "Training contributions settle on accepted windows, not immediate inference receipts.".to_string(),
+            },
+            Self::SandboxContainerExec
+            | Self::SandboxPythonExec
+            | Self::SandboxNodeExec
+            | Self::SandboxPosixExec => ProviderProductMarketSemantics {
+                contribution_class: "sandbox_execution".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_trigger: "wallet_settled_accepted_delivery".to_string(),
+                revenue_posture: "conditional".to_string(),
+                revenue_summary: "Sandbox execution earns only when a declared sandbox delivery is accepted and settled.".to_string(),
+            },
+        }
+    }
+}
+
+fn canonical_market_summary_token(summary: &str) -> String {
+    summary
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("_")
+        .to_ascii_lowercase()
 }
 
 pub fn describe_provider_product_id(product_id: &str) -> Option<ProviderProductDescriptor> {
@@ -993,6 +1390,8 @@ pub struct ProviderInventoryRow {
     pub backend_ready: bool,
     pub eligible: bool,
     pub capability_summary: String,
+    pub market_receipt_class: String,
+    pub earnings_summary: String,
     pub source_badge: String,
     pub capacity_lot_id: Option<String>,
     pub total_quantity: u64,
@@ -1015,6 +1414,10 @@ pub struct ProviderInventoryControls {
     pub gpt_oss_inference_enabled: bool,
     #[serde(alias = "ollama_embeddings_enabled")]
     pub gpt_oss_embeddings_enabled: bool,
+    #[serde(default)]
+    pub pooled_inference_remote_whole_request_enabled: bool,
+    #[serde(default)]
+    pub pooled_inference_replicated_serving_enabled: bool,
     pub apple_fm_inference_enabled: bool,
     #[serde(default)]
     pub apple_fm_adapter_hosting_enabled: bool,
@@ -1031,6 +1434,8 @@ impl Default for ProviderInventoryControls {
         Self {
             gpt_oss_inference_enabled: true,
             gpt_oss_embeddings_enabled: false,
+            pooled_inference_remote_whole_request_enabled: true,
+            pooled_inference_replicated_serving_enabled: true,
             apple_fm_inference_enabled: true,
             apple_fm_adapter_hosting_enabled: true,
             adapter_training_contributor_enabled: false,
@@ -1047,6 +1452,12 @@ impl ProviderInventoryControls {
         match target {
             ProviderComputeProduct::GptOssInference => self.gpt_oss_inference_enabled,
             ProviderComputeProduct::GptOssEmbeddings => false,
+            ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
+                self.pooled_inference_remote_whole_request_enabled
+            }
+            ProviderComputeProduct::PooledInferenceReplicatedServing => {
+                self.pooled_inference_replicated_serving_enabled
+            }
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_fm_inference_enabled
             }
@@ -1071,6 +1482,12 @@ impl ProviderInventoryControls {
     pub fn toggle(&mut self, target: ProviderComputeProduct) -> bool {
         let enabled = match target {
             ProviderComputeProduct::GptOssInference => &mut self.gpt_oss_inference_enabled,
+            ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
+                &mut self.pooled_inference_remote_whole_request_enabled
+            }
+            ProviderComputeProduct::PooledInferenceReplicatedServing => {
+                &mut self.pooled_inference_replicated_serving_enabled
+            }
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 &mut self.apple_fm_inference_enabled
             }
@@ -1103,6 +1520,8 @@ pub struct ProviderAdvertisedProduct {
     pub backend_ready: bool,
     pub eligible: bool,
     pub capability_summary: String,
+    pub market_receipt_class: String,
+    pub earnings_summary: String,
     pub price_floor_sats: u64,
     pub terms_label: String,
     pub forward_terms_label: String,
@@ -1118,12 +1537,15 @@ pub fn derive_provider_products(
         .map(|product| {
             let enabled = controls.is_advertised(product);
             let backend_ready = availability.product_backend_ready(product);
+            let market_semantics = product.market_semantics(availability);
             ProviderAdvertisedProduct {
                 product,
                 enabled,
                 backend_ready,
                 eligible: enabled && backend_ready,
                 capability_summary: availability.capability_summary_for_product(product),
+                market_receipt_class: market_semantics.market_receipt_class,
+                earnings_summary: market_semantics.revenue_summary,
                 price_floor_sats: product.default_price_floor_sats(),
                 terms_label: product.terms_label().to_string(),
                 forward_terms_label: product.forward_terms_label().to_string(),
@@ -1205,10 +1627,11 @@ mod tests {
         ProviderAppleAdapterHostingEntry, ProviderAvailability, ProviderBackendHealth,
         ProviderBackendKind, ProviderComputeProduct, ProviderFailureClass, ProviderIngressMode,
         ProviderInventoryControls, ProviderLifecycleInput, ProviderLifecycleTransition,
-        ProviderMode, ProviderSandboxAvailability, ProviderSandboxDetectionConfig,
-        ProviderSandboxExecutionClass, ProviderSandboxProfileSpec, derive_provider_lifecycle,
-        derive_provider_products, describe_provider_product_id, detect_sandbox_supply,
-        match_adapter_training_contributor, settlement_hook_from_authority,
+        ProviderMode, ProviderPooledInferenceAvailability, ProviderPooledInferenceTargetStatus,
+        ProviderSandboxAvailability, ProviderSandboxDetectionConfig, ProviderSandboxExecutionClass,
+        ProviderSandboxProfileSpec, derive_provider_lifecycle, derive_provider_products,
+        describe_provider_product_id, detect_sandbox_supply, match_adapter_training_contributor,
+        settlement_hook_from_authority,
     };
     use openagents_kernel_core::compute::{
         ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
@@ -1384,6 +1807,7 @@ mod tests {
             apple_foundation_models: ready_health(None, "apple-foundation-model", None),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
 
@@ -1402,6 +1826,11 @@ mod tests {
         let mut controls = ProviderInventoryControls::default();
         assert!(controls.is_product_advertised("psionic.local.inference.gpt_oss.single_node"));
         assert!(!controls.is_product_advertised("psionic.local.embeddings.gpt_oss.single_node"));
+        assert!(
+            controls
+                .is_product_advertised("psionic.cluster.inference.gpt_oss.remote_whole_request")
+        );
+        assert!(controls.is_product_advertised("psionic.cluster.inference.gpt_oss.replicated"));
         assert!(
             controls.is_product_advertised(
                 "psionic.local.inference.apple_foundation_models.single_node"
@@ -1476,6 +1905,7 @@ mod tests {
             },
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
@@ -1499,6 +1929,94 @@ mod tests {
             products[2]
                 .capability_summary
                 .contains("compatible_adapters=0")
+        );
+    }
+
+    #[test]
+    fn pooled_inference_products_track_remote_and_replicated_readiness() {
+        let availability = ProviderAvailability {
+            gpt_oss: ProviderBackendHealth::default(),
+            apple_foundation_models: ProviderBackendHealth::default(),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability {
+                available: true,
+                source: "mesh_management".to_string(),
+                management_base_url: Some("http://127.0.0.1:7878".to_string()),
+                topology_digest: Some("mesh.topology.1".to_string()),
+                default_model: Some("gemma4:e4b".to_string()),
+                membership_state: "joined".to_string(),
+                member_count: 2,
+                warm_replica_count: 2,
+                local_worker_id: Some("openai_compat".to_string()),
+                local_serving_state: "proxying".to_string(),
+                served_mesh_role: Some("worker".to_string()),
+                served_mesh_posture: Some("thin_client".to_string()),
+                execution_mode: Some("remote_whole_request".to_string()),
+                execution_engine: Some("openai_compat".to_string()),
+                fallback_posture: Some("thin_client_remote_only".to_string()),
+                last_error: None,
+                targetable_models: vec![
+                    ProviderPooledInferenceTargetStatus {
+                        model: "gemma4:e4b".to_string(),
+                        family: "gemma4".to_string(),
+                        supported_endpoints: vec![
+                            "/v1/chat/completions".to_string(),
+                            "/v1/responses".to_string(),
+                        ],
+                        structured_outputs: true,
+                        tool_calling: true,
+                        response_state: true,
+                        warm_replica_count: 2,
+                        local_warm_replica: false,
+                    },
+                    ProviderPooledInferenceTargetStatus {
+                        model: "gpt-oss:20b".to_string(),
+                        family: "gpt_oss".to_string(),
+                        supported_endpoints: vec!["/v1/chat/completions".to_string()],
+                        structured_outputs: true,
+                        tool_calling: true,
+                        response_state: false,
+                        warm_replica_count: 1,
+                        local_warm_replica: true,
+                    },
+                ],
+            },
+            sandbox: ProviderSandboxAvailability::default(),
+        };
+        let products =
+            derive_provider_products(&availability, &ProviderInventoryControls::default());
+        let remote = products
+            .iter()
+            .find(|product| {
+                product.product == ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+            })
+            .expect("remote pooled product");
+        let replicated = products
+            .iter()
+            .find(|product| {
+                product.product == ProviderComputeProduct::PooledInferenceReplicatedServing
+            })
+            .expect("replicated pooled product");
+
+        assert!(remote.backend_ready);
+        assert!(remote.eligible);
+        assert!(
+            remote
+                .capability_summary
+                .contains("default_model=gemma4:e4b")
+        );
+        assert!(
+            remote
+                .capability_summary
+                .contains("target_models=gemma4:e4b:gemma4:2,gpt-oss:20b:gpt_oss:1")
+        );
+        assert!(replicated.backend_ready);
+        assert!(replicated.eligible);
+        assert!(
+            replicated
+                .capability_summary
+                .contains("replicated_models=gemma4:e4b")
         );
     }
 
@@ -1596,6 +2114,27 @@ mod tests {
                 .map(|descriptor| descriptor.product_id.as_str()),
             Some("psionic.cluster.training.adapter_contributor.cluster_attached")
         );
+
+        let pooled_remote =
+            describe_provider_product_id("gpt_oss.clustered_inference.remote_whole_request");
+        assert_eq!(
+            pooled_remote
+                .as_ref()
+                .map(|descriptor| descriptor.compute_family.as_str()),
+            Some("inference")
+        );
+        assert_eq!(
+            pooled_remote
+                .as_ref()
+                .map(|descriptor| descriptor.backend_family.as_str()),
+            Some("gpt_oss")
+        );
+        assert_eq!(
+            pooled_remote
+                .as_ref()
+                .map(|descriptor| descriptor.product_id.as_str()),
+            Some("psionic.cluster.inference.gpt_oss.remote_whole_request")
+        );
     }
 
     #[test]
@@ -1606,6 +2145,7 @@ mod tests {
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: detect_sandbox_supply(&ProviderSandboxDetectionConfig {
                 path_entries: Vec::new(),
                 declared_profiles: vec![ProviderSandboxProfileSpec {
@@ -1688,6 +2228,7 @@ mod tests {
                 ],
             },
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
@@ -1730,6 +2271,7 @@ mod tests {
                 }],
             },
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
@@ -1757,6 +2299,7 @@ mod tests {
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ready_adapter_training_contributor(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let mut controls = ProviderInventoryControls::default();
@@ -1907,6 +2450,7 @@ mod tests {
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
@@ -1927,6 +2471,7 @@ mod tests {
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
