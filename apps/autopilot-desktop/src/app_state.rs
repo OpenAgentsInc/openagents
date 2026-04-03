@@ -10695,6 +10695,7 @@ pub struct AutopilotChatState {
     buy_mode_target_selection_cache: RefCell<Option<AutopilotBuyModeTargetSelectionCacheEntry>>,
     artifact_projection_file_path: PathBuf,
     forge_shared_state_file_path: Option<PathBuf>,
+    system_channel_id: String,
 }
 
 #[derive(Clone)]
@@ -10949,6 +10950,7 @@ impl Default for AutopilotChatState {
             buy_mode_target_selection_cache: RefCell::new(None),
             artifact_projection_file_path,
             forge_shared_state_file_path,
+            system_channel_id: DefaultNip28ChannelConfig::from_env_or_default().channel_id,
         };
         if let Err(error) = state.refresh_forge_shared_state_from_backing_store() {
             state.push_projection_load_error(error);
@@ -21764,6 +21766,10 @@ impl AutopilotChatState {
         })
     }
 
+    pub fn is_system_channel(&self, channel_id: &str) -> bool {
+        channel_id == self.system_channel_id
+    }
+
     pub fn active_managed_chat_channels(&self) -> Vec<&ManagedChatChannelProjection> {
         if self.chat_browse_mode() != ChatBrowseMode::Managed {
             return Vec::new();
@@ -21781,6 +21787,7 @@ impl AutopilotChatState {
                     .iter()
                     .find(|channel| channel.channel_id == *channel_id)
             })
+            .filter(|channel| !self.is_system_channel(&channel.channel_id))
             .collect()
     }
 
@@ -22107,6 +22114,7 @@ impl AutopilotChatState {
                             .iter()
                             .find(|channel| channel.channel_id == *channel_id)
                     })
+                    .filter(|channel| !self.is_system_channel(&channel.channel_id))
                     .filter(|candidate| {
                         candidate
                             .hints
@@ -22126,6 +22134,7 @@ impl AutopilotChatState {
                             .iter()
                             .find(|channel| channel.channel_id == *channel_id)
                     })
+                    .filter(|channel| !self.is_system_channel(&channel.channel_id))
                     .filter(|candidate| {
                         candidate
                             .hints
@@ -22146,6 +22155,7 @@ impl AutopilotChatState {
                             .iter()
                             .find(|channel| channel.channel_id == *channel_id)
                     })
+                    .filter(|channel| !self.is_system_channel(&channel.channel_id))
                     .filter(|candidate| {
                         candidate
                             .hints
