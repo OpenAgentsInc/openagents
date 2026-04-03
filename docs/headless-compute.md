@@ -151,12 +151,14 @@ autopilotctl cluster status
 autopilotctl sandbox status
 autopilotctl training status
 autopilotctl gemma-finetune status
-autopilotctl gemma-finetune project create "Support agent" --tenant-id design-partner --base-served-artifact-digest sha256:gemma4-e4b-base --hidden-size <hidden-state-width>
-autopilotctl gemma-finetune dataset register support-agent-1760000000000 dataset://openagents/support-agent@2026.04 /tmp/train.jsonl /tmp/validation.jsonl /tmp/holdout.jsonl --baseline-short-path /tmp/baseline-short.jsonl --final-report-path /tmp/final-report.jsonl --chat-template-digest sha256:gemma4-e4b-template --benchmark-ref benchmark://psionic/gemma4/e4b/finetune_eval
-autopilotctl gemma-finetune job create support-agent-1760000000000 --dataset-id support-agent-2026-04-1760000000500
-autopilotctl gemma-finetune job get support-agent-1760000000000-1760000000600
-autopilotctl gemma-finetune job cancel support-agent-1760000000000-1760000000600
-autopilotctl gemma-finetune promote support-agent-1760000000000-1760000000600 --checkpoint-id support-agent-r1760000000600-final --reviewer-id operator-1 --review-state approved
+autopilotctl gemma-finetune tenant create design-partner --display-name "Design Partner"
+autopilotctl gemma-finetune tenant status --api-key <tenant-api-key>
+autopilotctl gemma-finetune project create "Support agent" --tenant-id design-partner --api-key <tenant-api-key> --base-served-artifact-digest sha256:gemma4-e4b-base --hidden-size <hidden-state-width>
+autopilotctl gemma-finetune dataset register support-agent-1760000000000 dataset://openagents/support-agent@2026.04 --api-key <tenant-api-key> /tmp/train.jsonl /tmp/validation.jsonl /tmp/holdout.jsonl --baseline-short-path /tmp/baseline-short.jsonl --final-report-path /tmp/final-report.jsonl --chat-template-digest sha256:gemma4-e4b-template --benchmark-ref benchmark://psionic/gemma4/e4b/finetune_eval
+autopilotctl gemma-finetune job create support-agent-1760000000000 --api-key <tenant-api-key> --dataset-id support-agent-2026-04-1760000000500
+autopilotctl gemma-finetune job get support-agent-1760000000000-1760000000600 --api-key <tenant-api-key>
+autopilotctl gemma-finetune job cancel support-agent-1760000000000-1760000000600 --api-key <tenant-api-key>
+autopilotctl gemma-finetune promote support-agent-1760000000000-1760000000600 --api-key <tenant-api-key> --checkpoint-id support-agent-r1760000000600-final --reviewer-id operator-1 --review-state approved
 autopilotctl remote-training status
 autopilotctl remote-training list
 autopilotctl remote-training run parameter-golf-runpod-single-h100-live-sample
@@ -430,6 +432,9 @@ the Apple adapter operator and narrower than a general finetuning platform:
 
 - it is a design-partner and operator-facing prep surface for the bounded
   CUDA-only `gemma4:e4b` lane
+- it now has an app-owned tenant registry with one provisioned API key per
+  design partner, explicit quota state, and fail-closed auth on tenant-scoped
+  project, dataset, job, and promotion actions
 - it records project identity, tenant identity, served-base binding, and the
   frozen Psionic training-family and eval-pack contract the project targets
 - it records explicit `train`, `held_out_validation`, `baseline_short`, and
@@ -437,6 +442,8 @@ the Apple adapter operator and narrower than a general finetuning platform:
 - it surfaces tokenizer/template compatibility, assistant-mask posture, overlap
   review refs, and validation receipts through the same authenticated snapshot
   contract as the desktop shell
+- it projects accepted finetune outcomes and customer-visible promoted-model
+  inventory rows once a checkpoint clears the bounded promotion gate
 
 This surface does not yet claim broad upload or raw conversation ingestion.
 Today the bounded lane expects preprocessed hidden-state supervision files in
@@ -448,35 +455,47 @@ before any training job is created.
 The new desktop-control actions are:
 
 - `gemma-finetune-status`
-  - returns the current project list, dataset list, visible validation
-    receipts, queued and completed jobs, and promoted-model discovery rows
+  - returns the operator aggregate view: tenant quota rows, current project and
+    dataset state, visible validation receipts, jobs, accepted-outcome rows,
+    and promoted-model inventory
+- `gemma-finetune-tenant-provision`
+  - creates one bounded design-partner tenant record and returns the single
+    API key used for tenant-scoped Gemma actions
+- `gemma-finetune-tenant-view`
+  - returns the authenticated tenant-scoped read model, including quota usage,
+    projects, jobs, accepted outcomes, and published inventory rows
 - `gemma-finetune-project-create`
   - binds one design-partner project to the bounded `gemma4:e4b` training lane
-    and its canonical eval pack
+    and its canonical eval pack, but only when the supplied tenant API key is
+    valid for that tenant and the bounded quota is still open
 - `gemma-finetune-dataset-register`
   - registers explicit split files, computes split digests and counts, and
     records a validation receipt that captures tokenizer/template compatibility
-    plus overlap-review posture
+    plus overlap-review posture under the authenticated tenant
 - `gemma-finetune-job-create`
   - queues one bounded async Gemma job against the admitted dataset bound to a
-    project
+    project, but fails closed if the tenant or the single-lane bounded runtime
+    is already saturated
 - `gemma-finetune-job-get`
   - returns per-job state, recent events, checkpoints, exported artifacts, and
-    the current promotion record if one exists
+    the current promotion record if one exists, scoped by the tenant API key
 - `gemma-finetune-job-cancel`
   - requests cancellation and leaves the job in explicit `cancel_requested` or
     terminal `cancelled` truth instead of hiding the operator intent
 - `gemma-finetune-checkpoint-promote`
   - records the operator review, scores the bounded Psionic promotion decision,
-    and either publishes a discoverable promoted-model ref or leaves the job in
-    explicit `hold_for_review` / `reject` posture
+    and either publishes a discoverable promoted-model ref plus accepted-outcome
+    and model-inventory truth or leaves the job in explicit `hold_for_review` /
+    `reject` posture
 
 `autopilotctl status` now prints a top-level `gemma finetune:` line alongside
 the broader desktop snapshot, and `autopilotctl gemma-finetune status` expands
-that into per-project, per-dataset, per-job, and promoted-model detail. The
-job getter prints recent events plus checkpoint and artifact rows. The create,
-register, queue, cancel, and promote commands all operate against the same
-state the desktop keeps on disk under
+that into per-tenant quota, per-project, per-dataset, per-job, accepted-outcome,
+and inventory detail. `autopilotctl gemma-finetune tenant status --api-key ...`
+returns the same read model but scoped to one design partner. The job getter
+prints recent events plus checkpoint and artifact rows. The create, register,
+queue, cancel, and promote commands all operate against the same state the
+desktop keeps on disk under
 `~/.openagents/logs/autopilot/gemma-finetune.json`.
 
 The current promotion path is intentionally narrow. OpenAgents now records the

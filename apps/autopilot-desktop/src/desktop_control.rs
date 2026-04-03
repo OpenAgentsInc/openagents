@@ -1850,21 +1850,36 @@ pub enum DesktopControlActionRequest {
     ResetResearchState,
     GetTrainingStatus,
     GetGemmaFinetuneStatus,
+    GetGemmaFinetuneTenantView {
+        api_key: String,
+    },
     GetGemmaFinetuneJob {
         job_id: String,
+        api_key: Option<String>,
     },
     GetRemoteTrainingStatus,
     GetRemoteTrainingRun {
         run_id: Option<String>,
     },
     RefreshRemoteTrainingStatus,
+    ProvisionGemmaFinetuneTenant {
+        tenant_id: String,
+        display_name: Option<String>,
+        max_projects: usize,
+        max_datasets: usize,
+        max_jobs: usize,
+        max_active_jobs: usize,
+        max_promoted_models: usize,
+    },
     CreateGemmaFinetuneProject {
+        api_key: String,
         project_name: String,
         tenant_id: Option<String>,
         base_served_artifact_digest: String,
         hidden_size: usize,
     },
     RegisterGemmaFinetuneDataset {
+        api_key: String,
         project_id: String,
         dataset_ref: String,
         train_path: String,
@@ -1879,13 +1894,16 @@ pub enum DesktopControlActionRequest {
         compared_benchmark_refs: Vec<String>,
     },
     CreateGemmaFinetuneJob {
+        api_key: String,
         project_id: String,
         dataset_id: Option<String>,
     },
     CancelGemmaFinetuneJob {
         job_id: String,
+        api_key: String,
     },
     PromoteGemmaFinetuneCheckpoint {
+        api_key: String,
         job_id: String,
         checkpoint_id: Option<String>,
         reviewer_id: String,
@@ -2139,10 +2157,12 @@ impl DesktopControlActionRequest {
             Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
             Self::GetGemmaFinetuneStatus => "gemma-finetune-status",
+            Self::GetGemmaFinetuneTenantView { .. } => "gemma-finetune-tenant-view",
             Self::GetGemmaFinetuneJob { .. } => "gemma-finetune-job-get",
             Self::GetRemoteTrainingStatus => "remote-training-status",
             Self::GetRemoteTrainingRun { .. } => "remote-training-run",
             Self::RefreshRemoteTrainingStatus => "remote-training-refresh",
+            Self::ProvisionGemmaFinetuneTenant { .. } => "gemma-finetune-tenant-provision",
             Self::CreateGemmaFinetuneProject { .. } => "gemma-finetune-project-create",
             Self::RegisterGemmaFinetuneDataset { .. } => "gemma-finetune-dataset-register",
             Self::CreateGemmaFinetuneJob { .. } => "gemma-finetune-job-create",
@@ -2957,23 +2977,49 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
-        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id } => json!({
+        DesktopControlActionRequest::GetGemmaFinetuneTenantView { api_key } => json!({
+            "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
+        }),
+        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id, api_key } => json!({
             "command_label": action.label(),
             "job_id": job_id,
+            "api_key_preview": api_key.as_deref().map(mask_secret),
+        }),
+        DesktopControlActionRequest::ProvisionGemmaFinetuneTenant {
+            tenant_id,
+            display_name,
+            max_projects,
+            max_datasets,
+            max_jobs,
+            max_active_jobs,
+            max_promoted_models,
+        } => json!({
+            "command_label": action.label(),
+            "tenant_id": tenant_id,
+            "display_name": display_name,
+            "max_projects": max_projects,
+            "max_datasets": max_datasets,
+            "max_jobs": max_jobs,
+            "max_active_jobs": max_active_jobs,
+            "max_promoted_models": max_promoted_models,
         }),
         DesktopControlActionRequest::CreateGemmaFinetuneProject {
+            api_key,
             project_name,
             tenant_id,
             base_served_artifact_digest,
             hidden_size,
         } => json!({
             "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
             "project_name": project_name,
             "tenant_id": tenant_id,
             "base_served_artifact_digest": base_served_artifact_digest,
             "hidden_size": hidden_size,
         }),
         DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+            api_key,
             project_id,
             dataset_ref,
             train_path,
@@ -2988,6 +3034,7 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             compared_benchmark_refs,
         } => json!({
             "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
             "project_id": project_id,
             "dataset_ref": dataset_ref,
             "train_path": train_path,
@@ -3002,18 +3049,22 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             "compared_benchmark_refs": compared_benchmark_refs,
         }),
         DesktopControlActionRequest::CreateGemmaFinetuneJob {
+            api_key,
             project_id,
             dataset_id,
         } => json!({
             "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
             "project_id": project_id,
             "dataset_id": dataset_id,
         }),
-        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id } => json!({
+        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id, api_key } => json!({
             "command_label": action.label(),
             "job_id": job_id,
+            "api_key_preview": mask_secret(api_key.as_str()),
         }),
         DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+            api_key,
             job_id,
             checkpoint_id,
             reviewer_id,
@@ -3022,6 +3073,7 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             summary,
         } => json!({
             "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
             "job_id": job_id,
             "checkpoint_id": checkpoint_id,
             "reviewer_id": reviewer_id,
@@ -4323,8 +4375,11 @@ fn apply_action_request(
         DesktopControlActionRequest::GetGemmaFinetuneStatus => {
             gemma_finetune_payload_response().into()
         }
-        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id } => {
-            gemma_finetune_job_payload_response(job_id.as_str()).into()
+        DesktopControlActionRequest::GetGemmaFinetuneTenantView { api_key } => {
+            gemma_finetune_tenant_view_payload_response(api_key.as_str()).into()
+        }
+        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id, api_key } => {
+            gemma_finetune_job_payload_response(job_id.as_str(), api_key.as_deref()).into()
         }
         DesktopControlActionRequest::GetRemoteTrainingStatus => {
             remote_training_payload_response(state, false).into()
@@ -4335,12 +4390,32 @@ fn apply_action_request(
         DesktopControlActionRequest::RefreshRemoteTrainingStatus => {
             remote_training_payload_response(state, true).into()
         }
+        DesktopControlActionRequest::ProvisionGemmaFinetuneTenant {
+            tenant_id,
+            display_name,
+            max_projects,
+            max_datasets,
+            max_jobs,
+            max_active_jobs,
+            max_promoted_models,
+        } => provision_gemma_finetune_tenant_action(
+            tenant_id.as_str(),
+            display_name.as_deref(),
+            *max_projects,
+            *max_datasets,
+            *max_jobs,
+            *max_active_jobs,
+            *max_promoted_models,
+        )
+        .into(),
         DesktopControlActionRequest::CreateGemmaFinetuneProject {
+            api_key,
             project_name,
             tenant_id,
             base_served_artifact_digest,
             hidden_size,
         } => create_gemma_finetune_project_action(
+            api_key.as_str(),
             project_name.as_str(),
             tenant_id.as_deref(),
             base_served_artifact_digest.as_str(),
@@ -4348,6 +4423,7 @@ fn apply_action_request(
         )
         .into(),
         DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+            api_key,
             project_id,
             dataset_ref,
             train_path,
@@ -4361,6 +4437,7 @@ fn apply_action_request(
             overlap_detail,
             compared_benchmark_refs,
         } => register_gemma_finetune_dataset_action(
+            api_key.as_str(),
             project_id.as_str(),
             dataset_ref.as_str(),
             train_path.as_str(),
@@ -4376,13 +4453,20 @@ fn apply_action_request(
         )
         .into(),
         DesktopControlActionRequest::CreateGemmaFinetuneJob {
+            api_key,
             project_id,
             dataset_id,
-        } => create_gemma_finetune_job_action(project_id.as_str(), dataset_id.as_deref()).into(),
-        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id } => {
-            cancel_gemma_finetune_job_action(job_id.as_str()).into()
+        } => create_gemma_finetune_job_action(
+            api_key.as_str(),
+            project_id.as_str(),
+            dataset_id.as_deref(),
+        )
+        .into(),
+        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id, api_key } => {
+            cancel_gemma_finetune_job_action(job_id.as_str(), api_key.as_str()).into()
         }
         DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+            api_key,
             job_id,
             checkpoint_id,
             reviewer_id,
@@ -4390,6 +4474,7 @@ fn apply_action_request(
             failed_case_ids,
             summary,
         } => promote_gemma_finetune_checkpoint_action(
+            api_key.as_str(),
             job_id.as_str(),
             checkpoint_id.as_deref(),
             reviewer_id.as_str(),
@@ -7131,8 +7216,26 @@ fn gemma_finetune_payload_response() -> DesktopControlActionResponse {
     }
 }
 
-fn gemma_finetune_job_payload_response(job_id: &str) -> DesktopControlActionResponse {
-    match crate::gemma_finetune_control::get_job(job_id) {
+fn gemma_finetune_tenant_view_payload_response(api_key: &str) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::tenant_view(api_key) {
+        Ok(status) => match serde_json::to_value(status) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                "Captured Gemma finetune tenant view",
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune tenant view: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn gemma_finetune_job_payload_response(
+    job_id: &str,
+    api_key: Option<&str>,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::get_job(job_id, api_key) {
         Ok(job) => match serde_json::to_value(job) {
             Ok(payload) => DesktopControlActionResponse::ok_with_payload(
                 format!("Captured Gemma finetune job {}", job_id),
@@ -7146,7 +7249,41 @@ fn gemma_finetune_job_payload_response(job_id: &str) -> DesktopControlActionResp
     }
 }
 
+fn provision_gemma_finetune_tenant_action(
+    tenant_id: &str,
+    display_name: Option<&str>,
+    max_projects: usize,
+    max_datasets: usize,
+    max_jobs: usize,
+    max_active_jobs: usize,
+    max_promoted_models: usize,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::provision_tenant(
+        crate::gemma_finetune_control::GemmaFinetuneTenantProvisionRequest {
+            tenant_id: tenant_id.to_string(),
+            display_name: display_name.map(str::to_string),
+            max_projects,
+            max_datasets,
+            max_jobs,
+            max_active_jobs,
+            max_promoted_models,
+        },
+    ) {
+        Ok(tenant) => match serde_json::to_value(tenant) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Provisioned Gemma finetune tenant {}", tenant_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune tenant payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
 fn create_gemma_finetune_project_action(
+    api_key: &str,
     project_name: &str,
     tenant_id: Option<&str>,
     base_served_artifact_digest: &str,
@@ -7154,6 +7291,7 @@ fn create_gemma_finetune_project_action(
 ) -> DesktopControlActionResponse {
     match crate::gemma_finetune_control::create_project(
         crate::gemma_finetune_control::GemmaFinetuneProjectCreateRequest {
+            api_key: api_key.to_string(),
             project_name: project_name.to_string(),
             tenant_id: tenant_id.map(str::to_string),
             base_served_artifact_digest: base_served_artifact_digest.to_string(),
@@ -7174,11 +7312,13 @@ fn create_gemma_finetune_project_action(
 }
 
 fn create_gemma_finetune_job_action(
+    api_key: &str,
     project_id: &str,
     dataset_id: Option<&str>,
 ) -> DesktopControlActionResponse {
     match crate::gemma_finetune_control::create_job(
         crate::gemma_finetune_control::GemmaFinetuneJobCreateRequest {
+            api_key: api_key.to_string(),
             project_id: project_id.to_string(),
             dataset_id: dataset_id.map(str::to_string),
         },
@@ -7196,8 +7336,8 @@ fn create_gemma_finetune_job_action(
     }
 }
 
-fn cancel_gemma_finetune_job_action(job_id: &str) -> DesktopControlActionResponse {
-    match crate::gemma_finetune_control::cancel_job(job_id) {
+fn cancel_gemma_finetune_job_action(job_id: &str, api_key: &str) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::cancel_job(job_id, api_key) {
         Ok(job) => match serde_json::to_value(job) {
             Ok(payload) => DesktopControlActionResponse::ok_with_payload(
                 format!("Updated Gemma finetune cancellation for {}", job_id),
@@ -7212,6 +7352,7 @@ fn cancel_gemma_finetune_job_action(job_id: &str) -> DesktopControlActionRespons
 }
 
 fn promote_gemma_finetune_checkpoint_action(
+    api_key: &str,
     job_id: &str,
     checkpoint_id: Option<&str>,
     reviewer_id: &str,
@@ -7221,6 +7362,7 @@ fn promote_gemma_finetune_checkpoint_action(
 ) -> DesktopControlActionResponse {
     match crate::gemma_finetune_control::promote_checkpoint(
         crate::gemma_finetune_control::GemmaFinetuneCheckpointPromotionRequest {
+            api_key: api_key.to_string(),
             job_id: job_id.to_string(),
             checkpoint_id: checkpoint_id.map(str::to_string),
             reviewer_id: reviewer_id.to_string(),
@@ -7244,6 +7386,7 @@ fn promote_gemma_finetune_checkpoint_action(
 
 #[allow(clippy::too_many_arguments)]
 fn register_gemma_finetune_dataset_action(
+    api_key: &str,
     project_id: &str,
     dataset_ref: &str,
     train_path: &str,
@@ -7259,6 +7402,7 @@ fn register_gemma_finetune_dataset_action(
 ) -> DesktopControlActionResponse {
     match crate::gemma_finetune_control::register_dataset(
         crate::gemma_finetune_control::GemmaFinetuneDatasetRegisterRequest {
+            api_key: api_key.to_string(),
             project_id: project_id.to_string(),
             dataset_ref: dataset_ref.to_string(),
             train_path: train_path.to_string(),
@@ -12687,6 +12831,19 @@ fn auth_token_preview(auth_token: &str) -> String {
     }
 }
 
+fn mask_secret(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() <= 12 {
+        trimmed.to_string()
+    } else {
+        format!(
+            "{}...{}",
+            &trimmed[..8],
+            &trimmed[trimmed.len().saturating_sub(4)..]
+        )
+    }
+}
+
 fn refresh_snapshot_attnres_summary(snapshot: &mut DesktopControlSnapshot) {
     let Ok(status) = crate::attnres_lab_control::current_status() else {
         return;
@@ -13581,14 +13738,52 @@ mod tests {
             gemma_finetune: crate::gemma_finetune_control::GemmaFinetuneStatus {
                 available: true,
                 schema_version: 1,
+                view_scope: "operator_aggregate".to_string(),
+                scope_tenant_id: None,
                 storage_path: Some(
                     "/tmp/openagents/logs/autopilot/gemma-finetune.json".to_string(),
                 ),
+                tenant_count: 1,
                 project_count: 1,
                 dataset_count: 1,
                 validation_receipt_count: 1,
                 job_count: 0,
                 promoted_model_count: 0,
+                accepted_outcome_count: 0,
+                model_inventory_count: 0,
+                quota_blocked_tenant_count: 0,
+                tenants: vec![crate::gemma_finetune_control::GemmaFinetuneTenantStatus {
+                    tenant_id: "design-partner".to_string(),
+                    display_name: "Design Partner".to_string(),
+                    created_at_epoch_ms: 1_762_500_004_000,
+                    updated_at_epoch_ms: 1_762_500_004_500,
+                    api_key_id: "tenant-key-design-partner".to_string(),
+                    api_key_preview: "gft_dead...beef".to_string(),
+                    last_authenticated_at_epoch_ms: Some(1_762_500_004_600),
+                    quota: crate::gemma_finetune_control::GemmaFinetuneTenantQuotaStatus {
+                        max_projects: 3,
+                        max_datasets: 6,
+                        max_jobs: 8,
+                        max_active_jobs: 1,
+                        max_promoted_models: 2,
+                    },
+                    usage: crate::gemma_finetune_control::GemmaFinetuneTenantUsageStatus {
+                        project_count: 1,
+                        dataset_count: 1,
+                        job_count: 0,
+                        active_job_count: 0,
+                        promoted_model_count: 0,
+                        accepted_outcome_count: 0,
+                        inventory_model_count: 0,
+                    },
+                    quota_ready: true,
+                    quota_blockers: Vec::new(),
+                    project_ids: vec!["support-agent-1762500004000".to_string()],
+                    accepted_outcome_ids: Vec::new(),
+                    inventory_model_refs: Vec::new(),
+                    last_action: Some("Provisioned Gemma finetune tenant".to_string()),
+                    last_error: None,
+                }],
                 projects: vec![crate::gemma_finetune_control::GemmaFinetuneProjectStatus {
                     project_id: "support-agent-1762500004000".to_string(),
                     tenant_id: "design-partner".to_string(),
@@ -13683,6 +13878,8 @@ mod tests {
                 }],
                 jobs: Vec::new(),
                 promoted_models: Vec::new(),
+                accepted_outcomes: Vec::new(),
+                model_inventory: Vec::new(),
                 last_action: Some("Registered Gemma finetune dataset".to_string()),
                 last_error: None,
             },

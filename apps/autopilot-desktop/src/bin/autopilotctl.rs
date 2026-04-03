@@ -501,6 +501,10 @@ enum TrainingCommand {
 #[derive(Subcommand, Debug)]
 enum GemmaFinetuneCommand {
     Status,
+    Tenant {
+        #[command(subcommand)]
+        command: GemmaFinetuneTenantCommand,
+    },
     Project {
         #[command(subcommand)]
         command: GemmaFinetuneProjectCommand,
@@ -525,6 +529,31 @@ enum GemmaFinetuneCommand {
         failed_case_ids: Vec<String>,
         #[arg(long)]
         summary: Option<String>,
+        #[arg(long)]
+        api_key: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneTenantCommand {
+    Create {
+        tenant_id: String,
+        #[arg(long)]
+        display_name: Option<String>,
+        #[arg(long, default_value_t = 3)]
+        max_projects: usize,
+        #[arg(long, default_value_t = 6)]
+        max_datasets: usize,
+        #[arg(long, default_value_t = 8)]
+        max_jobs: usize,
+        #[arg(long, default_value_t = 1)]
+        max_active_jobs: usize,
+        #[arg(long, default_value_t = 2)]
+        max_promoted_models: usize,
+    },
+    Status {
+        #[arg(long)]
+        api_key: String,
     },
 }
 
@@ -534,6 +563,8 @@ enum GemmaFinetuneProjectCommand {
         project_name: String,
         #[arg(long)]
         tenant_id: Option<String>,
+        #[arg(long)]
+        api_key: String,
         #[arg(long)]
         base_served_artifact_digest: String,
         #[arg(long)]
@@ -546,6 +577,8 @@ enum GemmaFinetuneDatasetCommand {
     Register {
         project_id: String,
         dataset_ref: String,
+        #[arg(long)]
+        api_key: String,
         train_path: PathBuf,
         validation_path: PathBuf,
         holdout_path: PathBuf,
@@ -571,13 +604,19 @@ enum GemmaFinetuneJobCommand {
     Create {
         project_id: String,
         #[arg(long)]
+        api_key: String,
+        #[arg(long)]
         dataset_id: Option<String>,
     },
     Get {
         job_id: String,
+        #[arg(long)]
+        api_key: String,
     },
     Cancel {
         job_id: String,
+        #[arg(long)]
+        api_key: String,
     },
 }
 
@@ -1323,6 +1362,7 @@ impl GemmaFinetuneCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
             Self::Status => DesktopControlActionRequest::GetGemmaFinetuneStatus,
+            Self::Tenant { command } => command.action_request(),
             Self::Project { command } => command.action_request(),
             Self::Dataset { command } => command.action_request(),
             Self::Job { command } => command.action_request(),
@@ -1333,7 +1373,9 @@ impl GemmaFinetuneCommand {
                 review_state,
                 failed_case_ids,
                 summary,
+                api_key,
             } => DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+                api_key: api_key.clone(),
                 job_id: job_id.clone(),
                 checkpoint_id: checkpoint_id.clone(),
                 reviewer_id: reviewer_id.clone(),
@@ -1345,15 +1387,44 @@ impl GemmaFinetuneCommand {
     }
 }
 
+impl GemmaFinetuneTenantCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Create {
+                tenant_id,
+                display_name,
+                max_projects,
+                max_datasets,
+                max_jobs,
+                max_active_jobs,
+                max_promoted_models,
+            } => DesktopControlActionRequest::ProvisionGemmaFinetuneTenant {
+                tenant_id: tenant_id.clone(),
+                display_name: display_name.clone(),
+                max_projects: *max_projects,
+                max_datasets: *max_datasets,
+                max_jobs: *max_jobs,
+                max_active_jobs: *max_active_jobs,
+                max_promoted_models: *max_promoted_models,
+            },
+            Self::Status { api_key } => DesktopControlActionRequest::GetGemmaFinetuneTenantView {
+                api_key: api_key.clone(),
+            },
+        }
+    }
+}
+
 impl GemmaFinetuneProjectCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
             Self::Create {
                 project_name,
                 tenant_id,
+                api_key,
                 base_served_artifact_digest,
                 hidden_size,
             } => DesktopControlActionRequest::CreateGemmaFinetuneProject {
+                api_key: api_key.clone(),
                 project_name: project_name.clone(),
                 tenant_id: tenant_id.clone(),
                 base_served_artifact_digest: base_served_artifact_digest.clone(),
@@ -1369,6 +1440,7 @@ impl GemmaFinetuneDatasetCommand {
             Self::Register {
                 project_id,
                 dataset_ref,
+                api_key,
                 train_path,
                 validation_path,
                 holdout_path,
@@ -1380,6 +1452,7 @@ impl GemmaFinetuneDatasetCommand {
                 overlap_detail,
                 compared_benchmark_refs,
             } => DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+                api_key: api_key.clone(),
                 project_id: project_id.clone(),
                 dataset_ref: dataset_ref.clone(),
                 train_path: train_path.display().to_string(),
@@ -1406,17 +1479,23 @@ impl GemmaFinetuneJobCommand {
         match self {
             Self::Create {
                 project_id,
+                api_key,
                 dataset_id,
             } => DesktopControlActionRequest::CreateGemmaFinetuneJob {
+                api_key: api_key.clone(),
                 project_id: project_id.clone(),
                 dataset_id: dataset_id.clone(),
             },
-            Self::Get { job_id } => DesktopControlActionRequest::GetGemmaFinetuneJob {
+            Self::Get { job_id, api_key } => DesktopControlActionRequest::GetGemmaFinetuneJob {
                 job_id: job_id.clone(),
+                api_key: Some(api_key.clone()),
             },
-            Self::Cancel { job_id } => DesktopControlActionRequest::CancelGemmaFinetuneJob {
-                job_id: job_id.clone(),
-            },
+            Self::Cancel { job_id, api_key } => {
+                DesktopControlActionRequest::CancelGemmaFinetuneJob {
+                    job_id: job_id.clone(),
+                    api_key: api_key.clone(),
+                }
+            }
         }
     }
 }
@@ -2222,11 +2301,25 @@ fn main() -> Result<()> {
             if json_output {
                 print_json(payload)?;
             } else {
-                if !matches!(command, GemmaFinetuneCommand::Status) {
+                if !matches!(
+                    command,
+                    GemmaFinetuneCommand::Status
+                        | GemmaFinetuneCommand::Tenant {
+                            command: GemmaFinetuneTenantCommand::Status { .. }
+                        }
+                ) {
                     println!("{}", response.message);
                 }
                 match command {
                     GemmaFinetuneCommand::Status => print_gemma_finetune_text(payload),
+                    GemmaFinetuneCommand::Tenant { command } => match command {
+                        GemmaFinetuneTenantCommand::Create { .. } => {
+                            print_gemma_finetune_tenant_provision_text(payload);
+                        }
+                        GemmaFinetuneTenantCommand::Status { .. } => {
+                            print_gemma_finetune_text(payload);
+                        }
+                    },
                     GemmaFinetuneCommand::Project { .. } => {
                         print_gemma_finetune_project_text(payload);
                     }
@@ -5983,13 +6076,23 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
 
 fn gemma_finetune_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     let mut lines = vec![format!(
-        "gemma finetune: available={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} storage={} last_action={} last_error={}",
+        "gemma finetune: available={} scope={} scope_tenant={} tenants={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} accepted_outcomes={} inventory_models={} quota_blocked_tenants={} storage={} last_action={} last_error={}",
         snapshot.gemma_finetune.available,
+        snapshot.gemma_finetune.view_scope,
+        snapshot
+            .gemma_finetune
+            .scope_tenant_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.gemma_finetune.tenant_count,
         snapshot.gemma_finetune.project_count,
         snapshot.gemma_finetune.dataset_count,
         snapshot.gemma_finetune.validation_receipt_count,
         snapshot.gemma_finetune.job_count,
         snapshot.gemma_finetune.promoted_model_count,
+        snapshot.gemma_finetune.accepted_outcome_count,
+        snapshot.gemma_finetune.model_inventory_count,
+        snapshot.gemma_finetune.quota_blocked_tenant_count,
         snapshot
             .gemma_finetune
             .storage_path
@@ -6002,6 +6105,32 @@ fn gemma_finetune_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String>
             .unwrap_or("-"),
         snapshot.gemma_finetune.last_error.as_deref().unwrap_or("-")
     )];
+    for tenant in snapshot.gemma_finetune.tenants.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune tenant: id={} display_name={} api_key={} projects={}/{} datasets={}/{} jobs={}/{} active_jobs={}/{} promoted_models={}/{} accepted_outcomes={} inventory_models={} quota_ready={} blockers={}",
+            tenant.tenant_id,
+            tenant.display_name,
+            tenant.api_key_preview,
+            tenant.usage.project_count,
+            tenant.quota.max_projects,
+            tenant.usage.dataset_count,
+            tenant.quota.max_datasets,
+            tenant.usage.job_count,
+            tenant.quota.max_jobs,
+            tenant.usage.active_job_count,
+            tenant.quota.max_active_jobs,
+            tenant.usage.promoted_model_count,
+            tenant.quota.max_promoted_models,
+            tenant.usage.accepted_outcome_count,
+            tenant.usage.inventory_model_count,
+            tenant.quota_ready,
+            if tenant.quota_blockers.is_empty() {
+                "-".to_string()
+            } else {
+                tenant.quota_blockers.join(" | ")
+            }
+        ));
+    }
     for project in snapshot.gemma_finetune.projects.iter().take(3) {
         lines.push(format!(
             "gemma finetune project: id={} tenant={} name={} base_digest={} hidden_size={} active_dataset={} model={} training_family={} eval_pack={} last_error={}",
@@ -6065,12 +6194,46 @@ fn gemma_finetune_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String>
     }
     for model in snapshot.gemma_finetune.promoted_models.iter().take(3) {
         lines.push(format!(
-            "gemma finetune promoted model: ref={} project={} job={} checkpoint={} digest={}",
+            "gemma finetune promoted model: ref={} tenant={} project={} job={} checkpoint={} digest={} accepted_outcome={} inventory_model={}",
             model.model_ref,
+            model.tenant_id,
             model.project_id,
             model.job_id,
             model.checkpoint_id,
             model.adapter_artifact_digest,
+            if model.accepted_outcome_id.is_empty() {
+                "-".to_string()
+            } else {
+                model.accepted_outcome_id.clone()
+            },
+            if model.inventory_model_id.is_empty() {
+                "-".to_string()
+            } else {
+                model.inventory_model_id.clone()
+            },
+        ));
+    }
+    for outcome in snapshot.gemma_finetune.accepted_outcomes.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune accepted outcome: id={} tenant={} project={} model_ref={} benchmark={} inventory_model={}",
+            outcome.outcome_id,
+            outcome.tenant_id,
+            outcome.project_id,
+            outcome.model_ref,
+            outcome.benchmark_package_storage_key,
+            outcome.inventory_model_id,
+        ));
+    }
+    for inventory in snapshot.gemma_finetune.model_inventory.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune inventory model: id={} tenant={} model_ref={} display_name={} publication_state={} serving_posture={} accepted_outcome={}",
+            inventory.inventory_model_id,
+            inventory.tenant_id,
+            inventory.model_ref,
+            inventory.display_name,
+            inventory.publication_state,
+            inventory.serving_posture,
+            inventory.accepted_outcome_id,
         ));
     }
     lines
@@ -7935,11 +8098,23 @@ fn print_training_text(payload: &Value) {
 
 fn print_gemma_finetune_text(payload: &Value) {
     println!(
-        "gemma finetune: available={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} storage={} last_action={} last_error={}",
+        "gemma finetune: available={} scope={} scope_tenant={} tenants={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} accepted_outcomes={} inventory_models={} quota_blocked_tenants={} storage={} last_action={} last_error={}",
         payload
             .get("available")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        payload
+            .get("view_scope")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("scope_tenant_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
         payload
             .get("project_count")
             .and_then(Value::as_u64)
@@ -7961,6 +8136,18 @@ fn print_gemma_finetune_text(payload: &Value) {
             .and_then(Value::as_u64)
             .unwrap_or(0),
         payload
+            .get("accepted_outcome_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("model_inventory_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("quota_blocked_tenant_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
             .get("storage_path")
             .and_then(Value::as_str)
             .unwrap_or("-"),
@@ -7973,6 +8160,105 @@ fn print_gemma_finetune_text(payload: &Value) {
             .and_then(Value::as_str)
             .unwrap_or("-"),
     );
+    if let Some(tenants) = payload.get("tenants").and_then(Value::as_array) {
+        for tenant in tenants.iter().take(3) {
+            let quota_blockers = tenant
+                .get("quota_blockers")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                })
+                .unwrap_or_else(|| "-".to_string());
+            println!(
+                "gemma finetune tenant: id={} display_name={} api_key={} projects={}/{} datasets={}/{} jobs={}/{} active_jobs={}/{} promoted_models={}/{} accepted_outcomes={} inventory_models={} quota_ready={} blockers={}",
+                tenant
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                tenant
+                    .get("display_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                tenant
+                    .get("api_key_preview")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("project_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_projects"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("dataset_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_datasets"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("job_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_jobs"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("active_job_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_active_jobs"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("promoted_model_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_promoted_models"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("accepted_outcome_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("inventory_model_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota_ready")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                if quota_blockers.is_empty() {
+                    "-".to_string()
+                } else {
+                    quota_blockers
+                },
+            );
+        }
+    }
     if let Some(projects) = payload.get("projects").and_then(Value::as_array) {
         for project in projects.iter().take(3) {
             println!(
@@ -8146,9 +8432,13 @@ fn print_gemma_finetune_text(payload: &Value) {
     if let Some(models) = payload.get("promoted_models").and_then(Value::as_array) {
         for model in models.iter().take(3) {
             println!(
-                "gemma finetune promoted model: ref={} project={} job={} checkpoint={} digest={}",
+                "gemma finetune promoted model: ref={} tenant={} project={} job={} checkpoint={} digest={} accepted_outcome={} inventory_model={}",
                 model
                     .get("model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("tenant_id")
                     .and_then(Value::as_str)
                     .unwrap_or("-"),
                 model
@@ -8164,9 +8454,133 @@ fn print_gemma_finetune_text(payload: &Value) {
                     .get("adapter_artifact_digest")
                     .and_then(Value::as_str)
                     .unwrap_or("-"),
+                model
+                    .get("accepted_outcome_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("inventory_model_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
             );
         }
     }
+    if let Some(outcomes) = payload.get("accepted_outcomes").and_then(Value::as_array) {
+        for outcome in outcomes.iter().take(3) {
+            println!(
+                "gemma finetune accepted outcome: id={} tenant={} project={} model_ref={} benchmark={} inventory_model={}",
+                outcome
+                    .get("outcome_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("benchmark_package_storage_key")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("inventory_model_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(inventory) = payload.get("model_inventory").and_then(Value::as_array) {
+        for model in inventory.iter().take(3) {
+            println!(
+                "gemma finetune inventory model: id={} tenant={} model_ref={} display_name={} publication_state={} serving_posture={} accepted_outcome={}",
+                model
+                    .get("inventory_model_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("display_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("publication_state")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("serving_posture")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("accepted_outcome_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+}
+
+fn print_gemma_finetune_tenant_provision_text(payload: &Value) {
+    println!(
+        "gemma finetune tenant provisioned: id={} display_name={} api_key={} quota_projects={} quota_datasets={} quota_jobs={} quota_active_jobs={} quota_promoted_models={}",
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("tenant_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("display_name"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("api_key")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_projects"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_datasets"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_jobs"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_active_jobs"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_promoted_models"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+    );
 }
 
 fn print_gemma_finetune_project_text(payload: &Value) {
@@ -8289,8 +8703,12 @@ fn print_gemma_finetune_dataset_text(payload: &Value) {
 
 fn print_gemma_finetune_job_text(payload: &Value) {
     println!(
-        "gemma finetune job: id={} project={} dataset={} ref={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} cancel_requested={} last_action={} last_error={}",
+        "gemma finetune job: id={} tenant={} project={} dataset={} ref={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} promoted_model={} accepted_outcome={} inventory_model={} cancel_requested={} last_action={} last_error={}",
         payload.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("tenant_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
         payload
             .get("project_id")
             .and_then(Value::as_str)
@@ -8326,6 +8744,21 @@ fn print_gemma_finetune_job_text(payload: &Value) {
             .get("artifacts")
             .and_then(Value::as_array)
             .map_or(0, Vec::len),
+        payload
+            .get("promotion")
+            .and_then(|value| value.get("promoted_model_ref"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promotion")
+            .and_then(|value| value.get("accepted_outcome_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promotion")
+            .and_then(|value| value.get("inventory_model_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
         payload
             .get("cancel_requested")
             .and_then(Value::as_bool)
@@ -8415,7 +8848,7 @@ fn print_gemma_finetune_job_text(payload: &Value) {
 
 fn print_gemma_finetune_promotion_text(payload: &Value) {
     println!(
-        "gemma finetune promotion: checkpoint={} decision={} benchmark={} promoted_model={} promoted_at={} last_action={} last_error={}",
+        "gemma finetune promotion: checkpoint={} decision={} benchmark={} promoted_model={} accepted_outcome={} inventory_model={} promoted_at={} last_action={} last_error={}",
         payload
             .get("checkpoint_id")
             .and_then(Value::as_str)
@@ -8432,6 +8865,14 @@ fn print_gemma_finetune_promotion_text(payload: &Value) {
             .unwrap_or("-"),
         payload
             .get("promoted_model_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("accepted_outcome_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("inventory_model_id")
             .and_then(Value::as_str)
             .unwrap_or("-"),
         payload
@@ -9711,13 +10152,14 @@ mod tests {
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, ForgeCommand,
         ForgeHandoffCommand, ForgeHostedCommand, GemmaFinetuneCommand, GemmaFinetuneDatasetCommand,
-        GemmaFinetuneJobCommand, GemmaFinetuneProjectCommand, GptOssCommand, LocalRuntimeCommand,
-        PooledInferenceCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand,
-        ResearchCommand, ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
-        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
-        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
-        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
-        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        GemmaFinetuneJobCommand, GemmaFinetuneProjectCommand, GemmaFinetuneTenantCommand,
+        GptOssCommand, LocalRuntimeCommand, PooledInferenceCommand, ProofCommand, ProviderCommand,
+        RemoteTrainingCommand, ResearchCommand, ResolvedTarget, SandboxCommand,
+        SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
+        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
+        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
+        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
+        buy_mode_has_paid_request, buyer_procurement_status_lines,
         compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
         gemma_finetune_status_lines, inventory_status_lines, materialize_data_market_delivery,
         nip90_sent_payments_report_lines, parse_giftwrapped_delivery_pointer,
@@ -10485,16 +10927,29 @@ mod tests {
             DesktopControlActionRequest::GetGemmaFinetuneStatus
         );
         assert_eq!(
+            GemmaFinetuneCommand::Tenant {
+                command: GemmaFinetuneTenantCommand::Status {
+                    api_key: "gft_test_key".to_string(),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::GetGemmaFinetuneTenantView {
+                api_key: "gft_test_key".to_string(),
+            }
+        );
+        assert_eq!(
             GemmaFinetuneCommand::Project {
                 command: GemmaFinetuneProjectCommand::Create {
                     project_name: "Support agent".to_string(),
                     tenant_id: Some("design-partner".to_string()),
+                    api_key: "gft_test_key".to_string(),
                     base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
                     hidden_size: 4,
                 },
             }
             .action_request(),
             DesktopControlActionRequest::CreateGemmaFinetuneProject {
+                api_key: "gft_test_key".to_string(),
                 project_name: "Support agent".to_string(),
                 tenant_id: Some("design-partner".to_string()),
                 base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
@@ -10506,6 +10961,7 @@ mod tests {
                 command: GemmaFinetuneDatasetCommand::Register {
                     project_id: "support-agent-1".to_string(),
                     dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                    api_key: "gft_test_key".to_string(),
                     train_path: PathBuf::from("/tmp/train.json"),
                     validation_path: PathBuf::from("/tmp/validation.json"),
                     holdout_path: PathBuf::from("/tmp/holdout.json"),
@@ -10522,6 +10978,7 @@ mod tests {
             }
             .action_request(),
             DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+                api_key: "gft_test_key".to_string(),
                 project_id: "support-agent-1".to_string(),
                 dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
                 train_path: "/tmp/train.json".to_string(),
@@ -10542,11 +10999,13 @@ mod tests {
             GemmaFinetuneCommand::Job {
                 command: GemmaFinetuneJobCommand::Create {
                     project_id: "support-agent-1".to_string(),
+                    api_key: "gft_test_key".to_string(),
                     dataset_id: Some("dataset-1".to_string()),
                 },
             }
             .action_request(),
             DesktopControlActionRequest::CreateGemmaFinetuneJob {
+                api_key: "gft_test_key".to_string(),
                 project_id: "support-agent-1".to_string(),
                 dataset_id: Some("dataset-1".to_string()),
             }
@@ -10555,22 +11014,26 @@ mod tests {
             GemmaFinetuneCommand::Job {
                 command: GemmaFinetuneJobCommand::Get {
                     job_id: "support-agent-job-1".to_string(),
+                    api_key: "gft_test_key".to_string(),
                 },
             }
             .action_request(),
             DesktopControlActionRequest::GetGemmaFinetuneJob {
                 job_id: "support-agent-job-1".to_string(),
+                api_key: Some("gft_test_key".to_string()),
             }
         );
         assert_eq!(
             GemmaFinetuneCommand::Job {
                 command: GemmaFinetuneJobCommand::Cancel {
                     job_id: "support-agent-job-1".to_string(),
+                    api_key: "gft_test_key".to_string(),
                 },
             }
             .action_request(),
             DesktopControlActionRequest::CancelGemmaFinetuneJob {
                 job_id: "support-agent-job-1".to_string(),
+                api_key: "gft_test_key".to_string(),
             }
         );
         assert_eq!(
@@ -10581,9 +11044,11 @@ mod tests {
                 review_state: "approved".to_string(),
                 failed_case_ids: Vec::new(),
                 summary: Some("approve".to_string()),
+                api_key: "gft_test_key".to_string(),
             }
             .action_request(),
             DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+                api_key: "gft_test_key".to_string(),
                 job_id: "support-agent-job-1".to_string(),
                 checkpoint_id: Some("support-agent-r1-final".to_string()),
                 reviewer_id: "operator-1".to_string(),
@@ -11703,12 +12168,52 @@ mod tests {
         snapshot.gemma_finetune = autopilot_desktop::gemma_finetune_control::GemmaFinetuneStatus {
             available: true,
             schema_version: 1,
+            view_scope: "operator_aggregate".to_string(),
+            scope_tenant_id: None,
             storage_path: Some("/tmp/openagents/logs/autopilot/gemma-finetune.json".to_string()),
+            tenant_count: 1,
             project_count: 1,
             dataset_count: 1,
             validation_receipt_count: 1,
             job_count: 0,
             promoted_model_count: 0,
+            accepted_outcome_count: 0,
+            model_inventory_count: 0,
+            quota_blocked_tenant_count: 0,
+            tenants: vec![
+                autopilot_desktop::gemma_finetune_control::GemmaFinetuneTenantStatus {
+                    tenant_id: "design-partner".to_string(),
+                    display_name: "Design Partner".to_string(),
+                    created_at_epoch_ms: 1,
+                    updated_at_epoch_ms: 2,
+                    api_key_id: "tenant-key-design-partner".to_string(),
+                    api_key_preview: "gft_test...cafe".to_string(),
+                    last_authenticated_at_epoch_ms: Some(3),
+                    quota: autopilot_desktop::gemma_finetune_control::GemmaFinetuneTenantQuotaStatus {
+                        max_projects: 3,
+                        max_datasets: 6,
+                        max_jobs: 8,
+                        max_active_jobs: 1,
+                        max_promoted_models: 2,
+                    },
+                    usage: autopilot_desktop::gemma_finetune_control::GemmaFinetuneTenantUsageStatus {
+                        project_count: 1,
+                        dataset_count: 1,
+                        job_count: 0,
+                        active_job_count: 0,
+                        promoted_model_count: 0,
+                        accepted_outcome_count: 0,
+                        inventory_model_count: 0,
+                    },
+                    quota_ready: true,
+                    quota_blockers: Vec::new(),
+                    project_ids: vec!["support-agent-1".to_string()],
+                    accepted_outcome_ids: Vec::new(),
+                    inventory_model_refs: Vec::new(),
+                    last_action: Some("Provisioned Gemma finetune tenant".to_string()),
+                    last_error: None,
+                }
+            ],
             projects: vec![
                 autopilot_desktop::gemma_finetune_control::GemmaFinetuneProjectStatus {
                     project_id: "support-agent-1".to_string(),
@@ -11818,6 +12323,8 @@ mod tests {
             ],
             jobs: Vec::new(),
             promoted_models: Vec::new(),
+            accepted_outcomes: Vec::new(),
+            model_inventory: Vec::new(),
             last_action: Some("Registered Gemma finetune dataset".to_string()),
             last_error: None,
         };

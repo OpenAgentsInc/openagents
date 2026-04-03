@@ -4,11 +4,11 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use psionic_train::{
-    GEMMA_E4B_BASELINE_SWEEP_REQUEST_SCHEMA_VERSION,
-    GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION,
-    GEMMA_E4B_FINETUNE_EVAL_RECEIPT_SCHEMA_VERSION, GEMMA_E4B_OPERATOR_REVIEW_SCHEMA_VERSION,
-    GemmaE4bAssistantMaskKind, GemmaE4bBaselineCandidate, GemmaE4bBaselineSweepOutcome,
-    GemmaE4bBaselineSweepRequest, GemmaE4bBenchmarkOverlapCheck,
+    canonical_gemma_e4b_cuda_adapter_target_set, canonical_gemma_e4b_finetune_eval_pack_binding,
+    canonical_gemma_e4b_finetuning_mvp_contract,
+    canonical_gemma_e4b_promoted_checkpoint_vibe_packet, decide_gemma_e4b_checkpoint_promotion,
+    run_gemma_e4b_baseline_sweep, GemmaE4bAssistantMaskKind, GemmaE4bBaselineCandidate,
+    GemmaE4bBaselineSweepOutcome, GemmaE4bBaselineSweepRequest, GemmaE4bBenchmarkOverlapCheck,
     GemmaE4bCheckpointPromotionDecision, GemmaE4bCudaAdapterCheckpoint,
     GemmaE4bCudaAdapterExportRequest, GemmaE4bCudaAdapterExportedArtifact,
     GemmaE4bCudaAdapterSftConfig, GemmaE4bCudaAdapterSftTrainer, GemmaE4bCudaAdapterTargetSet,
@@ -18,20 +18,26 @@ use psionic_train::{
     GemmaE4bOperatorReviewState, GemmaE4bPromotedCheckpointVibePacket,
     GemmaE4bPromotionDecisionState, GemmaE4bReviewVerdictStatus, GemmaE4bServedBaseModelBinding,
     TrainingLoopBudget, TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
-    canonical_gemma_e4b_cuda_adapter_target_set, canonical_gemma_e4b_finetune_eval_pack_binding,
-    canonical_gemma_e4b_finetuning_mvp_contract,
-    canonical_gemma_e4b_promoted_checkpoint_vibe_packet, decide_gemma_e4b_checkpoint_promotion,
-    run_gemma_e4b_baseline_sweep,
+    GEMMA_E4B_BASELINE_SWEEP_REQUEST_SCHEMA_VERSION,
+    GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION,
+    GEMMA_E4B_FINETUNE_EVAL_RECEIPT_SCHEMA_VERSION, GEMMA_E4B_OPERATOR_REVIEW_SCHEMA_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const GEMMA_FINETUNE_SCHEMA_VERSION: u16 = 2;
+const GEMMA_FINETUNE_SCHEMA_VERSION: u16 = 3;
 const GEMMA_FINETUNE_STATE_FILENAME: &str = "gemma-finetune.json";
 const GEMMA_FINETUNE_ROOT_DIR: &str = "gemma-finetune";
 const DEFAULT_TENANT_ID: &str = "desktop-owner";
 const GEMMA_FINETUNE_EVAL_BENCHMARK_REF: &str = "benchmark://psionic/gemma4/e4b/finetune_eval";
 const GEMMA_FINETUNE_VALIDATOR_POLICY_REF: &str = "policy://validator/gemma4/e4b-text-sft";
+const GEMMA_FINETUNE_DEFAULT_MAX_PROJECTS_PER_TENANT: usize = 3;
+const GEMMA_FINETUNE_DEFAULT_MAX_DATASETS_PER_TENANT: usize = 6;
+const GEMMA_FINETUNE_DEFAULT_MAX_JOBS_PER_TENANT: usize = 8;
+const GEMMA_FINETUNE_DEFAULT_MAX_ACTIVE_JOBS_PER_TENANT: usize = 1;
+const GEMMA_FINETUNE_DEFAULT_MAX_PROMOTED_MODELS_PER_TENANT: usize = 2;
+const GEMMA_FINETUNE_GLOBAL_MAX_ACTIVE_JOBS: usize = 1;
+const GEMMA_FINETUNE_API_KEY_PREFIX: &str = "gft_";
 const GEMMA_FINETUNE_DEFAULT_STEP_DURATION_MS: u64 = 25;
 const GEMMA_FINETUNE_DEFAULT_MAX_STEPS: u64 = 4;
 const GEMMA_FINETUNE_DEFAULT_BATCH_SIZE: usize = 2;
@@ -49,6 +55,7 @@ static GEMMA_FINETUNE_CONTROLLER: OnceLock<Mutex<GemmaFinetuneController>> = Onc
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct GemmaFinetuneProjectCreateRequest {
+    pub api_key: String,
     pub project_name: String,
     pub tenant_id: Option<String>,
     pub base_served_artifact_digest: String,
@@ -57,6 +64,7 @@ pub(crate) struct GemmaFinetuneProjectCreateRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct GemmaFinetuneDatasetRegisterRequest {
+    pub api_key: String,
     pub project_id: String,
     pub dataset_ref: String,
     pub train_path: String,
@@ -73,18 +81,131 @@ pub(crate) struct GemmaFinetuneDatasetRegisterRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct GemmaFinetuneJobCreateRequest {
+    pub api_key: String,
     pub project_id: String,
     pub dataset_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct GemmaFinetuneCheckpointPromotionRequest {
+    pub api_key: String,
     pub job_id: String,
     pub checkpoint_id: Option<String>,
     pub reviewer_id: String,
     pub review_state: Option<String>,
     pub failed_case_ids: Vec<String>,
     pub summary: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct GemmaFinetuneTenantProvisionRequest {
+    pub tenant_id: String,
+    pub display_name: Option<String>,
+    pub max_projects: usize,
+    pub max_datasets: usize,
+    pub max_jobs: usize,
+    pub max_active_jobs: usize,
+    pub max_promoted_models: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GemmaFinetuneTenantQuotaStatus {
+    pub max_projects: usize,
+    pub max_datasets: usize,
+    pub max_jobs: usize,
+    pub max_active_jobs: usize,
+    pub max_promoted_models: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GemmaFinetuneTenantUsageStatus {
+    pub project_count: usize,
+    pub dataset_count: usize,
+    pub job_count: usize,
+    pub active_job_count: usize,
+    pub promoted_model_count: usize,
+    pub accepted_outcome_count: usize,
+    pub inventory_model_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GemmaFinetuneTenantStatus {
+    pub tenant_id: String,
+    pub display_name: String,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+    pub api_key_id: String,
+    pub api_key_preview: String,
+    pub last_authenticated_at_epoch_ms: Option<u64>,
+    pub quota: GemmaFinetuneTenantQuotaStatus,
+    pub usage: GemmaFinetuneTenantUsageStatus,
+    pub quota_ready: bool,
+    pub quota_blockers: Vec<String>,
+    pub project_ids: Vec<String>,
+    pub accepted_outcome_ids: Vec<String>,
+    pub inventory_model_refs: Vec<String>,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GemmaFinetuneTenantProvisionedStatus {
+    pub tenant: GemmaFinetuneTenantStatus,
+    pub api_key: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GemmaFinetuneAcceptedOutcomeStatus {
+    pub outcome_id: String,
+    pub tenant_id: String,
+    pub project_id: String,
+    pub dataset_id: String,
+    pub job_id: String,
+    pub checkpoint_id: String,
+    pub artifact_id: String,
+    pub model_ref: String,
+    pub benchmark_package_storage_key: String,
+    pub validator_policy_ref: String,
+    pub inventory_model_id: String,
+    pub accepted_at_epoch_ms: u64,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GemmaFinetuneModelInventoryStatus {
+    pub inventory_model_id: String,
+    pub tenant_id: String,
+    pub project_id: String,
+    pub job_id: String,
+    pub model_ref: String,
+    pub display_name: String,
+    pub model_id: String,
+    pub model_family: String,
+    pub base_model_revision: String,
+    pub accepted_outcome_id: String,
+    pub benchmark_package_storage_key: String,
+    pub adapter_artifact_digest: String,
+    pub publication_state: String,
+    pub serving_posture: String,
+    pub promoted_at_epoch_ms: u64,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PersistedGemmaFinetuneTenantRecord {
+    tenant_id: String,
+    display_name: String,
+    created_at_epoch_ms: u64,
+    updated_at_epoch_ms: u64,
+    api_key_id: String,
+    api_key_preview: String,
+    api_key_digest: String,
+    quota: GemmaFinetuneTenantQuotaStatus,
+    last_authenticated_at_epoch_ms: Option<u64>,
+    last_action: Option<String>,
+    last_error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,6 +433,10 @@ pub struct GemmaFinetunePromotionStatus {
     pub vibe_packet: GemmaE4bPromotedCheckpointVibePacket,
     pub operator_review: GemmaE4bOperatorPromotionReview,
     pub decision: GemmaE4bCheckpointPromotionDecision,
+    #[serde(default)]
+    pub accepted_outcome_id: Option<String>,
+    #[serde(default)]
+    pub inventory_model_id: Option<String>,
     pub promoted_model_ref: Option<String>,
     pub promoted_at_epoch_ms: Option<u64>,
     pub last_action: Option<String>,
@@ -321,6 +446,8 @@ pub struct GemmaFinetunePromotionStatus {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GemmaFinetunePromotedModelStatus {
     pub model_ref: String,
+    #[serde(default)]
+    pub tenant_id: String,
     pub project_id: String,
     pub dataset_id: String,
     pub job_id: String,
@@ -330,6 +457,10 @@ pub struct GemmaFinetunePromotedModelStatus {
     pub adapter_revision: String,
     pub adapter_artifact_digest: String,
     pub benchmark_package_storage_key: String,
+    #[serde(default)]
+    pub accepted_outcome_id: String,
+    #[serde(default)]
+    pub inventory_model_id: String,
     pub promoted_at_epoch_ms: u64,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
@@ -368,16 +499,25 @@ pub struct GemmaFinetuneJobStatus {
 pub struct GemmaFinetuneStatus {
     pub available: bool,
     pub schema_version: u16,
+    pub view_scope: String,
+    pub scope_tenant_id: Option<String>,
     pub storage_path: Option<String>,
+    pub tenant_count: usize,
     pub project_count: usize,
     pub dataset_count: usize,
     pub validation_receipt_count: usize,
     pub job_count: usize,
     pub promoted_model_count: usize,
+    pub accepted_outcome_count: usize,
+    pub model_inventory_count: usize,
+    pub quota_blocked_tenant_count: usize,
+    pub tenants: Vec<GemmaFinetuneTenantStatus>,
     pub projects: Vec<GemmaFinetuneProjectStatus>,
     pub datasets: Vec<GemmaFinetuneDatasetStatus>,
     pub jobs: Vec<GemmaFinetuneJobStatus>,
     pub promoted_models: Vec<GemmaFinetunePromotedModelStatus>,
+    pub accepted_outcomes: Vec<GemmaFinetuneAcceptedOutcomeStatus>,
+    pub model_inventory: Vec<GemmaFinetuneModelInventoryStatus>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
 }
@@ -389,6 +529,8 @@ struct PersistedGemmaFinetuneState {
     last_action: Option<String>,
     last_error: Option<String>,
     #[serde(default)]
+    tenants: Vec<PersistedGemmaFinetuneTenantRecord>,
+    #[serde(default)]
     projects: Vec<GemmaFinetuneProjectStatus>,
     #[serde(default)]
     datasets: Vec<GemmaFinetuneDatasetStatus>,
@@ -396,6 +538,10 @@ struct PersistedGemmaFinetuneState {
     jobs: Vec<GemmaFinetuneJobStatus>,
     #[serde(default)]
     promoted_models: Vec<GemmaFinetunePromotedModelStatus>,
+    #[serde(default)]
+    accepted_outcomes: Vec<GemmaFinetuneAcceptedOutcomeStatus>,
+    #[serde(default)]
+    model_inventory: Vec<GemmaFinetuneModelInventoryStatus>,
 }
 
 struct GemmaFinetuneController {
@@ -420,10 +566,13 @@ impl GemmaFinetuneController {
                 updated_at_epoch_ms: current_epoch_ms(),
                 last_action: None,
                 last_error: None,
+                tenants: Vec::new(),
                 projects: Vec::new(),
                 datasets: Vec::new(),
                 jobs: Vec::new(),
                 promoted_models: Vec::new(),
+                accepted_outcomes: Vec::new(),
+                model_inventory: Vec::new(),
             });
         Self {
             storage_path,
@@ -445,28 +594,501 @@ impl GemmaFinetuneController {
     }
 
     fn status(&self) -> GemmaFinetuneStatus {
+        self.build_status(None)
+    }
+
+    fn tenant_view(&mut self, api_key: &str) -> Result<GemmaFinetuneStatus, String> {
+        let tenant = self.authenticate_api_key(api_key)?;
+        Ok(self.build_status(Some(tenant.tenant_id.as_str())))
+    }
+
+    fn build_status(&self, scope_tenant_id: Option<&str>) -> GemmaFinetuneStatus {
+        let scoped_projects = self
+            .state
+            .projects
+            .iter()
+            .filter(|project| {
+                scope_tenant_id
+                    .map(|tenant_id| project.tenant_id == tenant_id)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let scoped_project_ids = scoped_projects
+            .iter()
+            .map(|project| project.project_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        let scoped_datasets = self
+            .state
+            .datasets
+            .iter()
+            .filter(|dataset| scoped_project_ids.contains(dataset.project_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        let scoped_jobs = self
+            .state
+            .jobs
+            .iter()
+            .filter(|job| {
+                scope_tenant_id
+                    .map(|tenant_id| job.tenant_id == tenant_id)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let scoped_promoted_models = self
+            .state
+            .promoted_models
+            .iter()
+            .filter(|model| {
+                scope_tenant_id
+                    .map(|tenant_id| model.tenant_id == tenant_id)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let scoped_accepted_outcomes = self
+            .state
+            .accepted_outcomes
+            .iter()
+            .filter(|outcome| {
+                scope_tenant_id
+                    .map(|tenant_id| outcome.tenant_id == tenant_id)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let scoped_model_inventory = self
+            .state
+            .model_inventory
+            .iter()
+            .filter(|model| {
+                scope_tenant_id
+                    .map(|tenant_id| model.tenant_id == tenant_id)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let tenants = self
+            .state
+            .tenants
+            .iter()
+            .filter(|tenant| {
+                scope_tenant_id
+                    .map(|tenant_id| tenant.tenant_id == tenant_id)
+                    .unwrap_or(true)
+            })
+            .map(|tenant| self.project_tenant_status(tenant))
+            .collect::<Vec<_>>();
+        let quota_blocked_tenant_count =
+            tenants.iter().filter(|tenant| !tenant.quota_ready).count();
         GemmaFinetuneStatus {
             available: true,
             schema_version: self.state.schema_version,
+            view_scope: scope_tenant_id
+                .map(|_| "tenant_api_key".to_string())
+                .unwrap_or_else(|| "operator_aggregate".to_string()),
+            scope_tenant_id: scope_tenant_id.map(str::to_string),
             storage_path: Some(self.storage_path.display().to_string()),
-            project_count: self.state.projects.len(),
-            dataset_count: self.state.datasets.len(),
-            validation_receipt_count: self.state.datasets.len(),
-            job_count: self.state.jobs.len(),
-            promoted_model_count: self.state.promoted_models.len(),
-            projects: self.state.projects.clone(),
-            datasets: self.state.datasets.clone(),
-            jobs: self.state.jobs.clone(),
-            promoted_models: self.state.promoted_models.clone(),
+            tenant_count: tenants.len(),
+            project_count: scoped_projects.len(),
+            dataset_count: scoped_datasets.len(),
+            validation_receipt_count: scoped_datasets.len(),
+            job_count: scoped_jobs.len(),
+            promoted_model_count: scoped_promoted_models.len(),
+            accepted_outcome_count: scoped_accepted_outcomes.len(),
+            model_inventory_count: scoped_model_inventory.len(),
+            quota_blocked_tenant_count,
+            tenants,
+            projects: scoped_projects,
+            datasets: scoped_datasets,
+            jobs: scoped_jobs,
+            promoted_models: scoped_promoted_models,
+            accepted_outcomes: scoped_accepted_outcomes,
+            model_inventory: scoped_model_inventory,
             last_action: self.state.last_action.clone(),
             last_error: self.state.last_error.clone(),
         }
+    }
+
+    fn project_tenant_status(
+        &self,
+        tenant: &PersistedGemmaFinetuneTenantRecord,
+    ) -> GemmaFinetuneTenantStatus {
+        let usage = self.tenant_usage(tenant.tenant_id.as_str());
+        let quota_blockers = self.tenant_quota_blockers(tenant.tenant_id.as_str(), &usage);
+        let project_ids = self
+            .state
+            .projects
+            .iter()
+            .filter(|project| project.tenant_id == tenant.tenant_id)
+            .map(|project| project.project_id.clone())
+            .collect::<Vec<_>>();
+        let accepted_outcome_ids = self
+            .state
+            .accepted_outcomes
+            .iter()
+            .filter(|outcome| outcome.tenant_id == tenant.tenant_id)
+            .map(|outcome| outcome.outcome_id.clone())
+            .collect::<Vec<_>>();
+        let inventory_model_refs = self
+            .state
+            .model_inventory
+            .iter()
+            .filter(|model| model.tenant_id == tenant.tenant_id)
+            .map(|model| model.model_ref.clone())
+            .collect::<Vec<_>>();
+        GemmaFinetuneTenantStatus {
+            tenant_id: tenant.tenant_id.clone(),
+            display_name: tenant.display_name.clone(),
+            created_at_epoch_ms: tenant.created_at_epoch_ms,
+            updated_at_epoch_ms: tenant.updated_at_epoch_ms,
+            api_key_id: tenant.api_key_id.clone(),
+            api_key_preview: tenant.api_key_preview.clone(),
+            last_authenticated_at_epoch_ms: tenant.last_authenticated_at_epoch_ms,
+            quota: tenant.quota.clone(),
+            usage,
+            quota_ready: quota_blockers.is_empty(),
+            quota_blockers,
+            project_ids,
+            accepted_outcome_ids,
+            inventory_model_refs,
+            last_action: tenant.last_action.clone(),
+            last_error: tenant.last_error.clone(),
+        }
+    }
+
+    fn provision_tenant(
+        &mut self,
+        request: &GemmaFinetuneTenantProvisionRequest,
+    ) -> Result<GemmaFinetuneTenantProvisionedStatus, String> {
+        let tenant_id = normalized_tenant_id(Some(request.tenant_id.as_str()));
+        if self
+            .state
+            .tenants
+            .iter()
+            .any(|tenant| tenant.tenant_id == tenant_id)
+        {
+            return Err(format!(
+                "Gemma finetune tenant `{tenant_id}` already exists"
+            ));
+        }
+        let api_key = generate_api_key()?;
+        let now = current_epoch_ms();
+        self.state.tenants.push(PersistedGemmaFinetuneTenantRecord {
+            tenant_id: tenant_id.clone(),
+            display_name: request
+                .display_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(tenant_id.as_str())
+                .to_string(),
+            created_at_epoch_ms: now,
+            updated_at_epoch_ms: now,
+            api_key_id: format!("tenant-key-{}", slugify(tenant_id.as_str())),
+            api_key_preview: api_key_preview(api_key.as_str()),
+            api_key_digest: api_key_digest(api_key.as_str()),
+            quota: GemmaFinetuneTenantQuotaStatus {
+                max_projects: normalized_quota_limit(
+                    request.max_projects,
+                    GEMMA_FINETUNE_DEFAULT_MAX_PROJECTS_PER_TENANT,
+                ),
+                max_datasets: normalized_quota_limit(
+                    request.max_datasets,
+                    GEMMA_FINETUNE_DEFAULT_MAX_DATASETS_PER_TENANT,
+                ),
+                max_jobs: normalized_quota_limit(
+                    request.max_jobs,
+                    GEMMA_FINETUNE_DEFAULT_MAX_JOBS_PER_TENANT,
+                ),
+                max_active_jobs: normalized_quota_limit(
+                    request.max_active_jobs,
+                    GEMMA_FINETUNE_DEFAULT_MAX_ACTIVE_JOBS_PER_TENANT,
+                ),
+                max_promoted_models: normalized_quota_limit(
+                    request.max_promoted_models,
+                    GEMMA_FINETUNE_DEFAULT_MAX_PROMOTED_MODELS_PER_TENANT,
+                ),
+            },
+            last_authenticated_at_epoch_ms: None,
+            last_action: Some("Provisioned Gemma finetune tenant".to_string()),
+            last_error: None,
+        });
+        self.sort_state();
+        self.state.last_action = Some(format!("Provisioned Gemma finetune tenant {tenant_id}"));
+        self.state.last_error = None;
+        self.persist()?;
+        let tenant = self
+            .state
+            .tenants
+            .iter()
+            .find(|tenant| tenant.tenant_id == tenant_id)
+            .map(|tenant| self.project_tenant_status(tenant))
+            .ok_or_else(|| format!("Gemma finetune tenant `{tenant_id}` disappeared"))?;
+        Ok(GemmaFinetuneTenantProvisionedStatus { tenant, api_key })
+    }
+
+    fn authenticate_api_key(
+        &mut self,
+        api_key: &str,
+    ) -> Result<PersistedGemmaFinetuneTenantRecord, String> {
+        let digest = api_key_digest(api_key);
+        let index = self
+            .state
+            .tenants
+            .iter()
+            .position(|tenant| tenant.api_key_digest == digest)
+            .ok_or_else(|| "Gemma finetune api_key is invalid".to_string())?;
+        let now = current_epoch_ms();
+        let tenant = self
+            .state
+            .tenants
+            .get_mut(index)
+            .ok_or_else(|| "Gemma finetune tenant disappeared during auth".to_string())?;
+        tenant.last_authenticated_at_epoch_ms = Some(now);
+        tenant.updated_at_epoch_ms = now;
+        tenant.last_action = Some("Authenticated Gemma finetune tenant api_key".to_string());
+        tenant.last_error = None;
+        let snapshot = tenant.clone();
+        self.persist()?;
+        Ok(snapshot)
+    }
+
+    fn ensure_api_key_for_tenant(
+        &mut self,
+        api_key: &str,
+        tenant_id: &str,
+    ) -> Result<PersistedGemmaFinetuneTenantRecord, String> {
+        let tenant = self.authenticate_api_key(api_key)?;
+        if tenant.tenant_id != tenant_id {
+            return Err(format!(
+                "Gemma finetune api_key is not authorized for tenant `{tenant_id}`"
+            ));
+        }
+        Ok(tenant)
+    }
+
+    fn tenant_usage(&self, tenant_id: &str) -> GemmaFinetuneTenantUsageStatus {
+        let project_ids = self
+            .state
+            .projects
+            .iter()
+            .filter(|project| project.tenant_id == tenant_id)
+            .map(|project| project.project_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        GemmaFinetuneTenantUsageStatus {
+            project_count: project_ids.len(),
+            dataset_count: self
+                .state
+                .datasets
+                .iter()
+                .filter(|dataset| project_ids.contains(dataset.project_id.as_str()))
+                .count(),
+            job_count: self
+                .state
+                .jobs
+                .iter()
+                .filter(|job| job.tenant_id == tenant_id)
+                .count(),
+            active_job_count: self
+                .state
+                .jobs
+                .iter()
+                .filter(|job| job.tenant_id == tenant_id && !job.state.is_terminal())
+                .count(),
+            promoted_model_count: self
+                .state
+                .promoted_models
+                .iter()
+                .filter(|model| model.tenant_id == tenant_id)
+                .count(),
+            accepted_outcome_count: self
+                .state
+                .accepted_outcomes
+                .iter()
+                .filter(|outcome| outcome.tenant_id == tenant_id)
+                .count(),
+            inventory_model_count: self
+                .state
+                .model_inventory
+                .iter()
+                .filter(|model| model.tenant_id == tenant_id)
+                .count(),
+        }
+    }
+
+    fn tenant_quota_blockers(
+        &self,
+        tenant_id: &str,
+        usage: &GemmaFinetuneTenantUsageStatus,
+    ) -> Vec<String> {
+        let Some(tenant) = self
+            .state
+            .tenants
+            .iter()
+            .find(|tenant| tenant.tenant_id == tenant_id)
+        else {
+            return vec![format!("unknown tenant `{tenant_id}`")];
+        };
+        let mut blockers = Vec::new();
+        if usage.project_count >= tenant.quota.max_projects {
+            blockers.push(format!(
+                "project quota reached ({}/{})",
+                usage.project_count, tenant.quota.max_projects
+            ));
+        }
+        if usage.dataset_count >= tenant.quota.max_datasets {
+            blockers.push(format!(
+                "dataset quota reached ({}/{})",
+                usage.dataset_count, tenant.quota.max_datasets
+            ));
+        }
+        if usage.job_count >= tenant.quota.max_jobs {
+            blockers.push(format!(
+                "job quota reached ({}/{})",
+                usage.job_count, tenant.quota.max_jobs
+            ));
+        }
+        if usage.active_job_count >= tenant.quota.max_active_jobs {
+            blockers.push(format!(
+                "active job quota reached ({}/{})",
+                usage.active_job_count, tenant.quota.max_active_jobs
+            ));
+        }
+        if usage.promoted_model_count >= tenant.quota.max_promoted_models {
+            blockers.push(format!(
+                "promoted model quota reached ({}/{})",
+                usage.promoted_model_count, tenant.quota.max_promoted_models
+            ));
+        }
+        let global_active_job_count = self
+            .state
+            .jobs
+            .iter()
+            .filter(|job| !job.state.is_terminal())
+            .count();
+        if global_active_job_count >= GEMMA_FINETUNE_GLOBAL_MAX_ACTIVE_JOBS {
+            blockers.push(format!(
+                "bounded lane saturated ({}/{})",
+                global_active_job_count, GEMMA_FINETUNE_GLOBAL_MAX_ACTIVE_JOBS
+            ));
+        }
+        blockers
+    }
+
+    fn ensure_tenant_exists(&self, tenant_id: &str) -> Result<(), String> {
+        if self
+            .state
+            .tenants
+            .iter()
+            .any(|tenant| tenant.tenant_id == tenant_id)
+        {
+            Ok(())
+        } else {
+            Err(format!("Unknown Gemma finetune tenant `{tenant_id}`"))
+        }
+    }
+
+    fn ensure_project_create_allowed(&self, tenant_id: &str) -> Result<(), String> {
+        let usage = self.tenant_usage(tenant_id);
+        let Some(tenant) = self
+            .state
+            .tenants
+            .iter()
+            .find(|tenant| tenant.tenant_id == tenant_id)
+        else {
+            return Err(format!("Unknown Gemma finetune tenant `{tenant_id}`"));
+        };
+        if usage.project_count >= tenant.quota.max_projects {
+            return Err(format!(
+                "Gemma finetune tenant `{tenant_id}` reached project quota ({}/{})",
+                usage.project_count, tenant.quota.max_projects
+            ));
+        }
+        Ok(())
+    }
+
+    fn ensure_dataset_register_allowed(&self, tenant_id: &str) -> Result<(), String> {
+        let usage = self.tenant_usage(tenant_id);
+        let Some(tenant) = self
+            .state
+            .tenants
+            .iter()
+            .find(|tenant| tenant.tenant_id == tenant_id)
+        else {
+            return Err(format!("Unknown Gemma finetune tenant `{tenant_id}`"));
+        };
+        if usage.dataset_count >= tenant.quota.max_datasets {
+            return Err(format!(
+                "Gemma finetune tenant `{tenant_id}` reached dataset quota ({}/{})",
+                usage.dataset_count, tenant.quota.max_datasets
+            ));
+        }
+        Ok(())
+    }
+
+    fn ensure_job_create_allowed(&self, tenant_id: &str) -> Result<(), String> {
+        let usage = self.tenant_usage(tenant_id);
+        let Some(tenant) = self
+            .state
+            .tenants
+            .iter()
+            .find(|tenant| tenant.tenant_id == tenant_id)
+        else {
+            return Err(format!("Unknown Gemma finetune tenant `{tenant_id}`"));
+        };
+        if usage.job_count >= tenant.quota.max_jobs {
+            return Err(format!(
+                "Gemma finetune tenant `{tenant_id}` reached job quota ({}/{})",
+                usage.job_count, tenant.quota.max_jobs
+            ));
+        }
+        if usage.active_job_count >= tenant.quota.max_active_jobs {
+            return Err(format!(
+                "Gemma finetune tenant `{tenant_id}` reached active-job quota ({}/{})",
+                usage.active_job_count, tenant.quota.max_active_jobs
+            ));
+        }
+        let global_active_job_count = self
+            .state
+            .jobs
+            .iter()
+            .filter(|job| !job.state.is_terminal())
+            .count();
+        if global_active_job_count >= GEMMA_FINETUNE_GLOBAL_MAX_ACTIVE_JOBS {
+            return Err(format!(
+                "Gemma finetune bounded lane is saturated ({}/{})",
+                global_active_job_count, GEMMA_FINETUNE_GLOBAL_MAX_ACTIVE_JOBS
+            ));
+        }
+        Ok(())
+    }
+
+    fn ensure_promotion_allowed(&self, tenant_id: &str) -> Result<(), String> {
+        let usage = self.tenant_usage(tenant_id);
+        let Some(tenant) = self
+            .state
+            .tenants
+            .iter()
+            .find(|tenant| tenant.tenant_id == tenant_id)
+        else {
+            return Err(format!("Unknown Gemma finetune tenant `{tenant_id}`"));
+        };
+        if usage.promoted_model_count >= tenant.quota.max_promoted_models {
+            return Err(format!(
+                "Gemma finetune tenant `{tenant_id}` reached promoted-model quota ({}/{})",
+                usage.promoted_model_count, tenant.quota.max_promoted_models
+            ));
+        }
+        Ok(())
     }
 
     fn create_project(
         &mut self,
         request: &GemmaFinetuneProjectCreateRequest,
     ) -> Result<GemmaFinetuneProjectStatus, String> {
+        let authenticated_tenant = self.authenticate_api_key(request.api_key.as_str())?;
         if request.project_name.trim().is_empty() {
             return Err("Gemma finetune project name must be present".to_string());
         }
@@ -483,7 +1105,18 @@ impl GemmaFinetuneController {
             .map_err(|error| format!("Failed to load bounded Gemma contract: {error}"))?;
         let eval_pack = canonical_gemma_e4b_finetune_eval_pack_binding()
             .map_err(|error| format!("Failed to load Gemma eval-pack binding: {error}"))?;
-        let tenant_id = normalized_tenant_id(request.tenant_id.as_deref());
+        let tenant_id = request
+            .tenant_id
+            .as_deref()
+            .map(|value| normalized_tenant_id(Some(value)))
+            .unwrap_or_else(|| authenticated_tenant.tenant_id.clone());
+        if tenant_id != authenticated_tenant.tenant_id {
+            return Err(format!(
+                "Gemma finetune api_key is not authorized for tenant `{tenant_id}`"
+            ));
+        }
+        self.ensure_tenant_exists(tenant_id.as_str())?;
+        self.ensure_project_create_allowed(tenant_id.as_str())?;
         let now = current_epoch_ms();
         let project_name = request.project_name.trim().to_string();
         let project_id = format!("{}-{}", slugify(project_name.as_str()), now);
@@ -557,6 +1190,8 @@ impl GemmaFinetuneController {
                     request.project_id
                 )
             })?;
+        self.ensure_api_key_for_tenant(request.api_key.as_str(), project.tenant_id.as_str())?;
+        self.ensure_dataset_register_allowed(project.tenant_id.as_str())?;
         let train_path = PathBuf::from(request.train_path.as_str());
         let validation_path = PathBuf::from(request.validation_path.as_str());
         let holdout_path = PathBuf::from(request.holdout_path.as_str());
@@ -766,6 +1401,8 @@ impl GemmaFinetuneController {
             .find(|project| project.project_id == request.project_id)
             .cloned()
             .ok_or_else(|| format!("Unknown Gemma finetune project `{}`", request.project_id))?;
+        self.ensure_api_key_for_tenant(request.api_key.as_str(), project.tenant_id.as_str())?;
+        self.ensure_job_create_allowed(project.tenant_id.as_str())?;
         let dataset = resolve_job_dataset(
             &self.state.datasets,
             &project,
@@ -848,16 +1485,37 @@ impl GemmaFinetuneController {
         Ok(job)
     }
 
-    fn job(&self, job_id: &str) -> Result<GemmaFinetuneJobStatus, String> {
-        self.state
+    fn job(
+        &mut self,
+        job_id: &str,
+        api_key: Option<&str>,
+    ) -> Result<GemmaFinetuneJobStatus, String> {
+        let job = self
+            .state
             .jobs
             .iter()
             .find(|job| job.job_id == job_id)
             .cloned()
-            .ok_or_else(|| format!("Unknown Gemma finetune job `{job_id}`"))
+            .ok_or_else(|| format!("Unknown Gemma finetune job `{job_id}`"))?;
+        if let Some(api_key) = api_key {
+            self.ensure_api_key_for_tenant(api_key, job.tenant_id.as_str())?;
+        }
+        Ok(job)
     }
 
-    fn cancel_job(&mut self, job_id: &str) -> Result<GemmaFinetuneJobStatus, String> {
+    fn cancel_job(
+        &mut self,
+        job_id: &str,
+        api_key: &str,
+    ) -> Result<GemmaFinetuneJobStatus, String> {
+        let tenant_id = self
+            .state
+            .jobs
+            .iter()
+            .find(|job| job.job_id == job_id)
+            .map(|job| job.tenant_id.clone())
+            .ok_or_else(|| format!("Unknown Gemma finetune job `{job_id}`"))?;
+        self.ensure_api_key_for_tenant(api_key, tenant_id.as_str())?;
         let now = current_epoch_ms();
         let result = self.mutate_job(job_id, |job| {
             if job.state.is_terminal() {
@@ -902,7 +1560,13 @@ impl GemmaFinetuneController {
         &self,
         job_id: &str,
     ) -> Result<GemmaFinetuneJobRuntimeContext, String> {
-        let job = self.job(job_id)?;
+        let job = self
+            .state
+            .jobs
+            .iter()
+            .find(|job| job.job_id == job_id)
+            .cloned()
+            .ok_or_else(|| format!("Unknown Gemma finetune job `{job_id}`"))?;
         let project = self
             .state
             .projects
@@ -925,7 +1589,13 @@ impl GemmaFinetuneController {
     }
 
     fn job_cancel_requested(&self, job_id: &str) -> Result<bool, String> {
-        Ok(self.job(job_id)?.cancel_requested)
+        Ok(self
+            .state
+            .jobs
+            .iter()
+            .find(|job| job.job_id == job_id)
+            .map(|job| job.cancel_requested)
+            .ok_or_else(|| format!("Unknown Gemma finetune job `{job_id}`"))?)
     }
 
     fn mark_job_started(&mut self, job_id: &str, detail: &str) -> Result<(), String> {
@@ -1220,12 +1890,25 @@ impl GemmaFinetuneController {
             .get(job_index)
             .cloned()
             .ok_or_else(|| format!("Gemma finetune job `{}` disappeared", request.job_id))?;
+        self.ensure_api_key_for_tenant(request.api_key.as_str(), job_snapshot.tenant_id.as_str())?;
         if job_snapshot.state != GemmaFinetuneJobState::Completed {
             return Err(format!(
                 "Gemma finetune job `{}` is not ready for promotion",
                 request.job_id
             ));
         }
+        let project_snapshot = self
+            .state
+            .projects
+            .iter()
+            .find(|project| project.project_id == job_snapshot.project_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Gemma finetune project `{}` disappeared",
+                    job_snapshot.project_id
+                )
+            })?;
         let checkpoint_status = request
             .checkpoint_id
             .as_deref()
@@ -1315,7 +1998,10 @@ impl GemmaFinetuneController {
         let now = current_epoch_ms();
         let mut promoted_model_ref = None;
         let mut promoted_at_epoch_ms = None;
+        let mut accepted_outcome_id = None;
+        let mut inventory_model_id = None;
         if decision.decision_state == GemmaE4bPromotionDecisionState::Promote {
+            self.ensure_promotion_allowed(job_snapshot.tenant_id.as_str())?;
             let artifact = job_snapshot.artifacts.first().cloned().ok_or_else(|| {
                 format!(
                     "Gemma finetune job `{}` has no exported artifact",
@@ -1326,8 +2012,19 @@ impl GemmaFinetuneController {
                 "model://openagents/gemma4/e4b/{}/{}",
                 job_snapshot.project_id, artifact.adapter_revision
             );
+            let accepted_id = format!(
+                "accepted.training.gemma4.e4b.{}.{}",
+                slugify(job_snapshot.project_id.as_str()),
+                artifact.adapter_revision
+            );
+            let inventory_id = format!(
+                "inventory.model.gemma4.e4b.{}.{}",
+                slugify(job_snapshot.project_id.as_str()),
+                artifact.adapter_revision
+            );
             let promoted_model = GemmaFinetunePromotedModelStatus {
                 model_ref: model_ref.clone(),
+                tenant_id: job_snapshot.tenant_id.clone(),
                 project_id: job_snapshot.project_id.clone(),
                 dataset_id: job_snapshot.dataset_id.clone(),
                 job_id: job_snapshot.job_id.clone(),
@@ -1337,8 +2034,48 @@ impl GemmaFinetuneController {
                 adapter_revision: artifact.adapter_revision.clone(),
                 adapter_artifact_digest: artifact.adapter_artifact_digest.clone(),
                 benchmark_package_storage_key: decision.benchmark_package_storage_key.clone(),
+                accepted_outcome_id: accepted_id.clone(),
+                inventory_model_id: inventory_id.clone(),
                 promoted_at_epoch_ms: now,
                 last_action: Some("Promoted Gemma finetune checkpoint".to_string()),
+                last_error: None,
+            };
+            let accepted_outcome = GemmaFinetuneAcceptedOutcomeStatus {
+                outcome_id: accepted_id.clone(),
+                tenant_id: job_snapshot.tenant_id.clone(),
+                project_id: job_snapshot.project_id.clone(),
+                dataset_id: job_snapshot.dataset_id.clone(),
+                job_id: job_snapshot.job_id.clone(),
+                checkpoint_id: checkpoint_status.checkpoint_id.clone(),
+                artifact_id: artifact.artifact_id.clone(),
+                model_ref: model_ref.clone(),
+                benchmark_package_storage_key: decision.benchmark_package_storage_key.clone(),
+                validator_policy_ref: job_snapshot.plan.validator_policy_ref.clone(),
+                inventory_model_id: inventory_id.clone(),
+                accepted_at_epoch_ms: now,
+                last_action: Some("Accepted Gemma finetune outcome into product truth".to_string()),
+                last_error: None,
+            };
+            let inventory_model = GemmaFinetuneModelInventoryStatus {
+                inventory_model_id: inventory_id.clone(),
+                tenant_id: job_snapshot.tenant_id.clone(),
+                project_id: job_snapshot.project_id.clone(),
+                job_id: job_snapshot.job_id.clone(),
+                model_ref: model_ref.clone(),
+                display_name: format!(
+                    "{} {}",
+                    project_snapshot.project_name, artifact.adapter_revision
+                ),
+                model_id: project_snapshot.lane_binding.model_id.clone(),
+                model_family: project_snapshot.lane_binding.model_family.clone(),
+                base_model_revision: project_snapshot.lane_binding.base_model_revision.clone(),
+                accepted_outcome_id: accepted_id.clone(),
+                benchmark_package_storage_key: decision.benchmark_package_storage_key.clone(),
+                adapter_artifact_digest: artifact.adapter_artifact_digest.clone(),
+                publication_state: "accepted".to_string(),
+                serving_posture: "optional_promoted_revision".to_string(),
+                promoted_at_epoch_ms: now,
+                last_action: Some("Published Gemma finetune model inventory entry".to_string()),
                 last_error: None,
             };
             self.state
@@ -1348,14 +2085,26 @@ impl GemmaFinetuneController {
             self.state
                 .promoted_models
                 .sort_by(|left, right| right.promoted_at_epoch_ms.cmp(&left.promoted_at_epoch_ms));
+            self.state
+                .accepted_outcomes
+                .retain(|item| item.outcome_id != accepted_outcome.outcome_id);
+            self.state.accepted_outcomes.push(accepted_outcome);
+            self.state
+                .model_inventory
+                .retain(|item| item.inventory_model_id != inventory_model.inventory_model_id);
+            self.state.model_inventory.push(inventory_model);
             promoted_model_ref = Some(model_ref);
             promoted_at_epoch_ms = Some(now);
+            accepted_outcome_id = Some(accepted_id);
+            inventory_model_id = Some(inventory_id);
         }
         let promotion = GemmaFinetunePromotionStatus {
             checkpoint_id: checkpoint_status.checkpoint_id.clone(),
             vibe_packet,
             operator_review,
             decision: decision.clone(),
+            accepted_outcome_id: accepted_outcome_id.clone(),
+            inventory_model_id: inventory_model_id.clone(),
             promoted_model_ref: promoted_model_ref.clone(),
             promoted_at_epoch_ms,
             last_action: Some("Scored Gemma checkpoint promotion".to_string()),
@@ -1456,6 +2205,9 @@ impl GemmaFinetuneController {
 
     fn sort_state(&mut self) {
         self.state
+            .tenants
+            .sort_by(|left, right| right.updated_at_epoch_ms.cmp(&left.updated_at_epoch_ms));
+        self.state
             .projects
             .sort_by(|left, right| right.updated_at_epoch_ms.cmp(&left.updated_at_epoch_ms));
         self.state
@@ -1464,11 +2216,39 @@ impl GemmaFinetuneController {
         self.state
             .jobs
             .sort_by(|left, right| right.updated_at_epoch_ms.cmp(&left.updated_at_epoch_ms));
+        self.state.promoted_models.sort_by(|left, right| {
+            right
+                .promoted_at_epoch_ms
+                .cmp(&left.promoted_at_epoch_ms)
+                .then_with(|| right.model_ref.cmp(&left.model_ref))
+        });
+        self.state.accepted_outcomes.sort_by(|left, right| {
+            right
+                .accepted_at_epoch_ms
+                .cmp(&left.accepted_at_epoch_ms)
+                .then_with(|| right.outcome_id.cmp(&left.outcome_id))
+        });
+        self.state.model_inventory.sort_by(|left, right| {
+            right
+                .promoted_at_epoch_ms
+                .cmp(&left.promoted_at_epoch_ms)
+                .then_with(|| right.inventory_model_id.cmp(&left.inventory_model_id))
+        });
     }
 }
 
 pub(crate) fn status() -> Result<GemmaFinetuneStatus, String> {
     with_controller(|controller| Ok(controller.status()))
+}
+
+pub(crate) fn tenant_view(api_key: &str) -> Result<GemmaFinetuneStatus, String> {
+    with_controller(|controller| controller.tenant_view(api_key))
+}
+
+pub(crate) fn provision_tenant(
+    request: GemmaFinetuneTenantProvisionRequest,
+) -> Result<GemmaFinetuneTenantProvisionedStatus, String> {
+    with_controller(|controller| controller.provision_tenant(&request))
 }
 
 pub(crate) fn create_project(
@@ -1492,12 +2272,15 @@ pub(crate) fn create_job(
     Ok(job)
 }
 
-pub(crate) fn get_job(job_id: &str) -> Result<GemmaFinetuneJobStatus, String> {
-    with_controller(|controller| controller.job(job_id))
+pub(crate) fn get_job(
+    job_id: &str,
+    api_key: Option<&str>,
+) -> Result<GemmaFinetuneJobStatus, String> {
+    with_controller(|controller| controller.job(job_id, api_key))
 }
 
-pub(crate) fn cancel_job(job_id: &str) -> Result<GemmaFinetuneJobStatus, String> {
-    with_controller(|controller| controller.cancel_job(job_id))
+pub(crate) fn cancel_job(job_id: &str, api_key: &str) -> Result<GemmaFinetuneJobStatus, String> {
+    with_controller(|controller| controller.cancel_job(job_id, api_key))
 }
 
 pub(crate) fn promote_checkpoint(
@@ -1690,7 +2473,7 @@ fn run_job_worker(job_id: &str) -> Result<(), String> {
         held_out_samples,
         &exported_artifact,
     )?;
-    let candidate_checkpoint = with_controller(|controller| controller.job(job_id))?
+    let candidate_checkpoint = with_controller(|controller| controller.job(job_id, None))?
         .checkpoints
         .first()
         .cloned()
@@ -1764,6 +2547,39 @@ fn normalized_tenant_id(raw: Option<&str>) -> String {
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_TENANT_ID)
         .to_string()
+}
+
+fn normalized_quota_limit(value: usize, default_value: usize) -> usize {
+    if value == 0 {
+        default_value
+    } else {
+        value
+    }
+}
+
+fn generate_api_key() -> Result<String, String> {
+    let mut bytes = [0_u8; 24];
+    getrandom::fill(&mut bytes)
+        .map_err(|error| format!("Failed to generate Gemma finetune api_key: {error}"))?;
+    Ok(format!(
+        "{GEMMA_FINETUNE_API_KEY_PREFIX}{}",
+        hex::encode(bytes)
+    ))
+}
+
+fn api_key_digest(api_key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.trim().as_bytes());
+    format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
+fn api_key_preview(api_key: &str) -> String {
+    let trimmed = api_key.trim();
+    if trimmed.len() <= 12 {
+        trimmed.to_string()
+    } else {
+        format!("{}...{}", &trimmed[..8], &trimmed[trimmed.len() - 4..])
+    }
 }
 
 fn slugify(value: &str) -> String {
@@ -2262,14 +3078,35 @@ mod tests {
         fs::write(path, raw).expect("write rows");
     }
 
+    fn provision_test_tenant(controller: &mut GemmaFinetuneController, tenant_id: &str) -> String {
+        controller
+            .provision_tenant(&GemmaFinetuneTenantProvisionRequest {
+                tenant_id: tenant_id.to_string(),
+                display_name: Some(tenant_id.to_string()),
+                max_projects: 3,
+                max_datasets: 6,
+                max_jobs: 8,
+                max_active_jobs: 1,
+                max_promoted_models: 2,
+            })
+            .expect("provision tenant")
+            .api_key
+    }
+
     fn prepare_project_and_dataset(
         controller: &mut GemmaFinetuneController,
         train: &Path,
         validation: &Path,
         holdout: &Path,
-    ) -> (GemmaFinetuneProjectStatus, GemmaFinetuneDatasetStatus) {
+    ) -> (
+        String,
+        GemmaFinetuneProjectStatus,
+        GemmaFinetuneDatasetStatus,
+    ) {
+        let api_key = provision_test_tenant(controller, "design-partner");
         let project = controller
             .create_project(&GemmaFinetuneProjectCreateRequest {
+                api_key: api_key.clone(),
                 project_name: "Support agent".to_string(),
                 tenant_id: Some("design-partner".to_string()),
                 base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
@@ -2278,6 +3115,7 @@ mod tests {
             .expect("create project");
         let dataset = controller
             .register_dataset(&GemmaFinetuneDatasetRegisterRequest {
+                api_key: api_key.clone(),
                 project_id: project.project_id.clone(),
                 dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
                 train_path: train.display().to_string(),
@@ -2295,15 +3133,17 @@ mod tests {
                 compared_benchmark_refs: Vec::new(),
             })
             .expect("register dataset");
-        (project, dataset)
+        (api_key, project, dataset)
     }
 
     #[test]
     fn create_project_binds_bounded_gemma_lane() {
         let storage = temp_path("project-state");
         let mut controller = GemmaFinetuneController::load(storage.clone());
+        let api_key = provision_test_tenant(&mut controller, DEFAULT_TENANT_ID);
         let project = controller
             .create_project(&GemmaFinetuneProjectCreateRequest {
+                api_key,
                 project_name: "Support agent".to_string(),
                 tenant_id: None,
                 base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
@@ -2312,12 +3152,10 @@ mod tests {
             .expect("create project");
         assert_eq!(project.tenant_id, DEFAULT_TENANT_ID);
         assert_eq!(project.lane_binding.model_id, "gemma4:e4b");
-        assert!(
-            project
-                .lane_binding
-                .eval_pack_storage_key
-                .contains("benchmark://psionic/gemma4/e4b/finetune_eval")
-        );
+        assert!(project
+            .lane_binding
+            .eval_pack_storage_key
+            .contains("benchmark://psionic/gemma4/e4b/finetune_eval"));
         assert!(storage.exists());
         let _ = fs::remove_file(storage);
     }
@@ -2333,7 +3171,7 @@ mod tests {
         write_rows(holdout.as_path());
 
         let mut controller = GemmaFinetuneController::load(storage.clone());
-        let (project, dataset) = prepare_project_and_dataset(
+        let (api_key, project, dataset) = prepare_project_and_dataset(
             &mut controller,
             train.as_path(),
             validation.as_path(),
@@ -2341,6 +3179,7 @@ mod tests {
         );
         let job = controller
             .create_job(&GemmaFinetuneJobCreateRequest {
+                api_key,
                 project_id: project.project_id.clone(),
                 dataset_id: Some(dataset.dataset_id.clone()),
             })
@@ -2357,8 +3196,8 @@ mod tests {
     }
 
     #[test]
-    fn promote_checkpoint_records_model_ref_when_decision_is_promote()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn promote_checkpoint_records_model_ref_when_decision_is_promote(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let storage = temp_path("promotion-state");
         let train = temp_path("promotion-train");
         let validation = temp_path("promotion-validation");
@@ -2368,7 +3207,7 @@ mod tests {
         write_rows(holdout.as_path());
 
         let mut controller = GemmaFinetuneController::load(storage.clone());
-        let (project, dataset) = prepare_project_and_dataset(
+        let (api_key, project, dataset) = prepare_project_and_dataset(
             &mut controller,
             train.as_path(),
             validation.as_path(),
@@ -2376,6 +3215,7 @@ mod tests {
         );
         let job = controller
             .create_job(&GemmaFinetuneJobCreateRequest {
+                api_key: api_key.clone(),
                 project_id: project.project_id.clone(),
                 dataset_id: Some(dataset.dataset_id.clone()),
             })
@@ -2441,6 +3281,7 @@ mod tests {
             .expect("seed completed job");
         let promotion = controller
             .promote_checkpoint(&GemmaFinetuneCheckpointPromotionRequest {
+                api_key,
                 job_id: job.job_id,
                 checkpoint_id: Some("support-agent-r1-final".to_string()),
                 reviewer_id: "operator-1".to_string(),
