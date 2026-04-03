@@ -106,7 +106,7 @@ use wgpui::{
     capture_scene, theme,
 };
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 21;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 22;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -160,6 +160,7 @@ pub struct DesktopControlSnapshot {
     pub cluster: DesktopControlClusterStatus,
     pub sandbox: DesktopControlSandboxStatus,
     pub training: DesktopControlTrainingStatus,
+    pub gemma_finetune: crate::gemma_finetune_control::GemmaFinetuneStatus,
     pub remote_training: DesktopControlRemoteTrainingStatus,
     pub proofs: DesktopControlProofStatus,
     pub challenges: DesktopControlChallengeStatus,
@@ -1848,11 +1849,32 @@ pub enum DesktopControlActionRequest {
     GetResearchStatus,
     ResetResearchState,
     GetTrainingStatus,
+    GetGemmaFinetuneStatus,
     GetRemoteTrainingStatus,
     GetRemoteTrainingRun {
         run_id: Option<String>,
     },
     RefreshRemoteTrainingStatus,
+    CreateGemmaFinetuneProject {
+        project_name: String,
+        tenant_id: Option<String>,
+        base_served_artifact_digest: String,
+        hidden_size: usize,
+    },
+    RegisterGemmaFinetuneDataset {
+        project_id: String,
+        dataset_ref: String,
+        train_path: String,
+        validation_path: String,
+        holdout_path: String,
+        baseline_short_path: Option<String>,
+        final_report_path: Option<String>,
+        chat_template_digest: Option<String>,
+        assistant_mask_coverage_bps: u32,
+        overlap_check_id: Option<String>,
+        overlap_detail: Option<String>,
+        compared_benchmark_refs: Vec<String>,
+    },
     LaunchAppleAdapterTraining {
         train_dataset_path: String,
         held_out_dataset_path: String,
@@ -2098,9 +2120,12 @@ impl DesktopControlActionRequest {
             Self::GetResearchStatus => "research-status",
             Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
+            Self::GetGemmaFinetuneStatus => "gemma-finetune-status",
             Self::GetRemoteTrainingStatus => "remote-training-status",
             Self::GetRemoteTrainingRun { .. } => "remote-training-run",
             Self::RefreshRemoteTrainingStatus => "remote-training-refresh",
+            Self::CreateGemmaFinetuneProject { .. } => "gemma-finetune-project-create",
+            Self::RegisterGemmaFinetuneDataset { .. } => "gemma-finetune-dataset-register",
             Self::LaunchAppleAdapterTraining { .. } => "training-launch-apple-adapter",
             Self::ExportAppleAdapterTraining { .. } => "training-export-apple-adapter",
             Self::AcceptAppleAdapterTraining { .. } => "training-accept-apple-adapter",
@@ -2903,12 +2928,53 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetResearchStatus
         | DesktopControlActionRequest::ResetResearchState
         | DesktopControlActionRequest::GetTrainingStatus
+        | DesktopControlActionRequest::GetGemmaFinetuneStatus
         | DesktopControlActionRequest::GetRemoteTrainingStatus
         | DesktopControlActionRequest::RefreshRemoteTrainingStatus
         | DesktopControlActionRequest::GetProofStatus
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::CreateGemmaFinetuneProject {
+            project_name,
+            tenant_id,
+            base_served_artifact_digest,
+            hidden_size,
+        } => json!({
+            "command_label": action.label(),
+            "project_name": project_name,
+            "tenant_id": tenant_id,
+            "base_served_artifact_digest": base_served_artifact_digest,
+            "hidden_size": hidden_size,
+        }),
+        DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+            project_id,
+            dataset_ref,
+            train_path,
+            validation_path,
+            holdout_path,
+            baseline_short_path,
+            final_report_path,
+            chat_template_digest,
+            assistant_mask_coverage_bps,
+            overlap_check_id,
+            overlap_detail,
+            compared_benchmark_refs,
+        } => json!({
+            "command_label": action.label(),
+            "project_id": project_id,
+            "dataset_ref": dataset_ref,
+            "train_path": train_path,
+            "validation_path": validation_path,
+            "holdout_path": holdout_path,
+            "baseline_short_path": baseline_short_path,
+            "final_report_path": final_report_path,
+            "chat_template_digest": chat_template_digest,
+            "assistant_mask_coverage_bps": assistant_mask_coverage_bps,
+            "overlap_check_id": overlap_check_id,
+            "overlap_detail": overlap_detail,
+            "compared_benchmark_refs": compared_benchmark_refs,
+        }),
         DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
             mesh_root,
             output_path,
@@ -4200,6 +4266,9 @@ fn apply_action_request(
         DesktopControlActionRequest::GetResearchStatus => research_payload_response().into(),
         DesktopControlActionRequest::ResetResearchState => reset_research_action().into(),
         DesktopControlActionRequest::GetTrainingStatus => training_payload_response(state).into(),
+        DesktopControlActionRequest::GetGemmaFinetuneStatus => {
+            gemma_finetune_payload_response().into()
+        }
         DesktopControlActionRequest::GetRemoteTrainingStatus => {
             remote_training_payload_response(state, false).into()
         }
@@ -4209,6 +4278,46 @@ fn apply_action_request(
         DesktopControlActionRequest::RefreshRemoteTrainingStatus => {
             remote_training_payload_response(state, true).into()
         }
+        DesktopControlActionRequest::CreateGemmaFinetuneProject {
+            project_name,
+            tenant_id,
+            base_served_artifact_digest,
+            hidden_size,
+        } => create_gemma_finetune_project_action(
+            project_name.as_str(),
+            tenant_id.as_deref(),
+            base_served_artifact_digest.as_str(),
+            *hidden_size,
+        )
+        .into(),
+        DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+            project_id,
+            dataset_ref,
+            train_path,
+            validation_path,
+            holdout_path,
+            baseline_short_path,
+            final_report_path,
+            chat_template_digest,
+            assistant_mask_coverage_bps,
+            overlap_check_id,
+            overlap_detail,
+            compared_benchmark_refs,
+        } => register_gemma_finetune_dataset_action(
+            project_id.as_str(),
+            dataset_ref.as_str(),
+            train_path.as_str(),
+            validation_path.as_str(),
+            holdout_path.as_str(),
+            baseline_short_path.as_deref(),
+            final_report_path.as_deref(),
+            chat_template_digest.as_deref(),
+            *assistant_mask_coverage_bps,
+            overlap_check_id.as_deref(),
+            overlap_detail.as_deref(),
+            compared_benchmark_refs.as_slice(),
+        )
+        .into(),
         DesktopControlActionRequest::LaunchAppleAdapterTraining {
             train_dataset_path,
             held_out_dataset_path,
@@ -6924,6 +7033,92 @@ fn remote_training_run_payload_response(
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode remote training run detail: {error}"
         )),
+    }
+}
+
+fn gemma_finetune_payload_response() -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::status() {
+        Ok(status) => match serde_json::to_value(status) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                "Captured Gemma finetune control state",
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune control state: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn create_gemma_finetune_project_action(
+    project_name: &str,
+    tenant_id: Option<&str>,
+    base_served_artifact_digest: &str,
+    hidden_size: usize,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::create_project(
+        crate::gemma_finetune_control::GemmaFinetuneProjectCreateRequest {
+            project_name: project_name.to_string(),
+            tenant_id: tenant_id.map(str::to_string),
+            base_served_artifact_digest: base_served_artifact_digest.to_string(),
+            hidden_size,
+        },
+    ) {
+        Ok(project) => match serde_json::to_value(project) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Created Gemma finetune project {}", project_name),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune project payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn register_gemma_finetune_dataset_action(
+    project_id: &str,
+    dataset_ref: &str,
+    train_path: &str,
+    validation_path: &str,
+    holdout_path: &str,
+    baseline_short_path: Option<&str>,
+    final_report_path: Option<&str>,
+    chat_template_digest: Option<&str>,
+    assistant_mask_coverage_bps: u32,
+    overlap_check_id: Option<&str>,
+    overlap_detail: Option<&str>,
+    compared_benchmark_refs: &[String],
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::register_dataset(
+        crate::gemma_finetune_control::GemmaFinetuneDatasetRegisterRequest {
+            project_id: project_id.to_string(),
+            dataset_ref: dataset_ref.to_string(),
+            train_path: train_path.to_string(),
+            validation_path: validation_path.to_string(),
+            holdout_path: holdout_path.to_string(),
+            baseline_short_path: baseline_short_path.map(str::to_string),
+            final_report_path: final_report_path.map(str::to_string),
+            chat_template_digest: chat_template_digest.map(str::to_string),
+            assistant_mask_coverage_bps,
+            overlap_check_id: overlap_check_id.map(str::to_string),
+            overlap_detail: overlap_detail.map(str::to_string),
+            compared_benchmark_refs: compared_benchmark_refs.to_vec(),
+        },
+    ) {
+        Ok(dataset) => match serde_json::to_value(dataset) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Registered Gemma finetune dataset {}", dataset_ref),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune dataset payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
     }
 }
 
@@ -11561,6 +11756,7 @@ fn snapshot_for_state_with_signature(
     let gpt_oss = desktop_control_gpt_oss_status(state);
     let pooled_inference = desktop_control_pooled_inference_status();
     let tailnet = desktop_control_tailnet_status();
+    let gemma_finetune = crate::gemma_finetune_control::status().unwrap_or_default();
 
     let mut snapshot = DesktopControlSnapshot {
         schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
@@ -11636,6 +11832,7 @@ fn snapshot_for_state_with_signature(
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
         training: desktop_control_training_status(state),
+        gemma_finetune,
         remote_training: desktop_control_remote_training_status(state),
         proofs: desktop_control_proof_status(state),
         challenges: desktop_control_challenge_status(state),
@@ -12675,6 +12872,42 @@ mod tests {
     use tokio_tungstenite::{accept_async, tungstenite::Message};
 
     fn sample_snapshot() -> DesktopControlSnapshot {
+        let gemma_contract =
+            psionic_train::canonical_gemma_e4b_finetuning_mvp_contract().expect("gemma contract");
+        let template_digest = gemma_contract
+            .tokenizer
+            .template_digest
+            .clone()
+            .expect("gemma template digest");
+        let eval_pack_binding = psionic_train::canonical_gemma_e4b_finetune_eval_pack_binding()
+            .expect("gemma eval-pack binding");
+        let mut dataset_contract = psionic_train::GemmaE4bFinetuneDatasetContract {
+            schema_version: psionic_train::GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION
+                .to_string(),
+            dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+            train_split_ref: "split://openagents/gemma4/e4b/support-agent/train".to_string(),
+            held_out_validation_split_ref:
+                "split://openagents/gemma4/e4b/support-agent/held_out_validation".to_string(),
+            final_report_split_ref: "split://openagents/gemma4/e4b/support-agent/final_report"
+                .to_string(),
+            baseline_short_split_ref: "split://openagents/gemma4/e4b/support-agent/baseline_short"
+                .to_string(),
+            chat_template_digest: template_digest.clone(),
+            assistant_mask_kind: psionic_train::GemmaE4bAssistantMaskKind::AssistantResponsesOnly,
+            assistant_mask_coverage_bps: 10_000,
+            benchmark_overlap_check: psionic_train::GemmaE4bBenchmarkOverlapCheck {
+                check_id: "support-agent-overlap-check".to_string(),
+                compared_benchmark_refs: vec![
+                    "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                ],
+                exact_overlap_refs: Vec::new(),
+                near_duplicate_overlap_refs: Vec::new(),
+                passed: true,
+                detail: "bounded dataset cleared overlap review".to_string(),
+            },
+            dataset_digest: String::new(),
+        };
+        dataset_contract.dataset_digest = dataset_contract.stable_digest();
         DesktopControlSnapshot {
             schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
             snapshot_revision: 1,
@@ -13179,6 +13412,110 @@ mod tests {
                 contributions: Vec::new(),
                 contributor: crate::desktop_control::DesktopControlTrainingContributorStatus::default(),
                 operator: DesktopControlAppleAdapterOperatorStatus::default(),
+                last_error: None,
+            },
+            gemma_finetune: crate::gemma_finetune_control::GemmaFinetuneStatus {
+                available: true,
+                schema_version: 1,
+                storage_path: Some(
+                    "/tmp/openagents/logs/autopilot/gemma-finetune.json".to_string(),
+                ),
+                project_count: 1,
+                dataset_count: 1,
+                validation_receipt_count: 1,
+                projects: vec![crate::gemma_finetune_control::GemmaFinetuneProjectStatus {
+                    project_id: "support-agent-1762500004000".to_string(),
+                    tenant_id: "design-partner".to_string(),
+                    project_name: "Support agent".to_string(),
+                    created_at_epoch_ms: 1_762_500_004_000,
+                    updated_at_epoch_ms: 1_762_500_004_500,
+                    base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                    hidden_size: 4,
+                    active_dataset_id: Some("support-agent-2026-04-1762500004500".to_string()),
+                    lane_binding: crate::gemma_finetune_control::GemmaFinetuneLaneBindingStatus {
+                        model_id: gemma_contract.model_id.clone(),
+                        model_family: gemma_contract.model_family.clone(),
+                        training_family_id: gemma_contract.training_family_id.clone(),
+                        checkpoint_family: gemma_contract.checkpoint_family.clone(),
+                        base_model_revision: gemma_contract.base_model_revision.clone(),
+                        adapter_family: gemma_contract.adapter_target.adapter_family.clone(),
+                        eval_pack_storage_key: eval_pack_binding
+                            .benchmark_package_storage_key
+                            .clone(),
+                        tokenizer_contract_digest: gemma_contract.tokenizer_contract_digest.clone(),
+                    },
+                    last_action: Some("Bound dataset to project".to_string()),
+                    last_error: None,
+                }],
+                datasets: vec![crate::gemma_finetune_control::GemmaFinetuneDatasetStatus {
+                    dataset_id: "support-agent-2026-04-1762500004500".to_string(),
+                    project_id: "support-agent-1762500004000".to_string(),
+                    dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                    created_at_epoch_ms: 1_762_500_004_500,
+                    updated_at_epoch_ms: 1_762_500_004_500,
+                    train_split: crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "train".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/train"
+                            .to_string(),
+                        file_path: "/tmp/train.json".to_string(),
+                        file_digest: "train-digest".to_string(),
+                        sample_count: 128,
+                    },
+                    held_out_validation_split:
+                        crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                            split_id: "held_out_validation".to_string(),
+                            split_ref:
+                                "split://openagents/gemma4/e4b/support-agent/held_out_validation"
+                                    .to_string(),
+                            file_path: "/tmp/validation.json".to_string(),
+                            file_digest: "validation-digest".to_string(),
+                            sample_count: 32,
+                        },
+                    final_report_split:
+                        crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                            split_id: "final_report".to_string(),
+                            split_ref:
+                                "split://openagents/gemma4/e4b/support-agent/final_report"
+                                    .to_string(),
+                            file_path: "/tmp/holdout.json".to_string(),
+                            file_digest: "holdout-digest".to_string(),
+                            sample_count: 32,
+                        },
+                    baseline_short_split:
+                        crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                            split_id: "baseline_short".to_string(),
+                            split_ref:
+                                "split://openagents/gemma4/e4b/support-agent/baseline_short"
+                                    .to_string(),
+                            file_path: "/tmp/validation.json".to_string(),
+                            file_digest: "validation-digest".to_string(),
+                            sample_count: 32,
+                        },
+                    validation_receipt:
+                        crate::gemma_finetune_control::GemmaFinetuneValidationReceiptStatus {
+                            receipt_id: "support-agent.validation".to_string(),
+                            validated_at_epoch_ms: 1_762_500_004_500,
+                            status: "validated".to_string(),
+                            tokenizer_contract_digest: gemma_contract
+                                .tokenizer_contract_digest
+                                .clone(),
+                            tokenizer_compatible: true,
+                            template_compatible: true,
+                            assistant_mask_coverage_bps: 10_000,
+                            compared_benchmark_refs: vec![
+                                "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                            ],
+                            warnings: vec![
+                                "baseline_short path defaulted to the validation file for the bounded MVP lane".to_string(),
+                            ],
+                            errors: Vec::new(),
+                            dataset_contract,
+                            eval_pack_binding,
+                        },
+                    last_action: Some("Registered Gemma finetune dataset".to_string()),
+                    last_error: None,
+                }],
+                last_action: Some("Registered Gemma finetune dataset".to_string()),
                 last_error: None,
             },
             remote_training: DesktopControlRemoteTrainingStatus {

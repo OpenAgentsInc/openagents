@@ -35,6 +35,9 @@ It can:
   app-owned snapshot the desktop uses, including delivery acceptance,
   validator outcomes, accepted training outcomes, checkpoint lineage, and
   settlement history when kernel authority is configured
+- inspect and mutate the bounded `gemma4:e4b` finetuning prep surface through
+  authenticated desktop control, including project binding, explicit split
+  identity, and tokenizer/template compatibility receipts
 - list, open, focus, close, and inspect panes in the running desktop shell
 - inspect the bounded contributor-beta control surface and its governed
   submission state through the same pane snapshot contract as the GUI
@@ -146,6 +149,9 @@ autopilotctl tunnels status
 autopilotctl cluster status
 autopilotctl sandbox status
 autopilotctl training status
+autopilotctl gemma-finetune status
+autopilotctl gemma-finetune project create "Support agent" --tenant-id design-partner --base-served-artifact-digest sha256:gemma4-e4b-base --hidden-size <hidden-state-width>
+autopilotctl gemma-finetune dataset register support-agent-1760000000000 dataset://openagents/support-agent@2026.04 /tmp/train.jsonl /tmp/validation.jsonl /tmp/holdout.jsonl --baseline-short-path /tmp/baseline-short.jsonl --final-report-path /tmp/final-report.jsonl --chat-template-digest sha256:gemma4-e4b-template --benchmark-ref benchmark://psionic/gemma4/e4b/finetune_eval
 autopilotctl remote-training status
 autopilotctl remote-training list
 autopilotctl remote-training run parameter-golf-runpod-single-h100-live-sample
@@ -412,6 +418,46 @@ training read model. It includes:
 - a contributor-focused summary for the current desktop node so operators can
   see whether the local runtime is blocked, awaiting assignment, submitted,
   accepted, quarantined, replay-required, or settlement-ready
+
+Desktop control now also carries a separate bounded `gemma_finetune` surface
+for the first `gemma4:e4b` adapter-SFT MVP. This is intentionally narrower than
+the Apple adapter operator and narrower than a general finetuning platform:
+
+- it is a design-partner and operator-facing prep surface for the bounded
+  CUDA-only `gemma4:e4b` lane
+- it records project identity, tenant identity, served-base binding, and the
+  frozen Psionic training-family and eval-pack contract the project targets
+- it records explicit `train`, `held_out_validation`, `baseline_short`, and
+  `final_report` split identity before a job exists
+- it surfaces tokenizer/template compatibility, assistant-mask posture, overlap
+  review refs, and validation receipts through the same authenticated snapshot
+  contract as the desktop shell
+
+This surface does not yet claim broad upload or raw conversation ingestion.
+Today the bounded lane expects preprocessed hidden-state supervision files in
+the Psionic `GemmaE4bLmHeadSupervisionSample` shape, provided either as JSON
+arrays or JSONL. The operator must declare train, validation, and holdout files
+explicitly, and the desktop-control layer truthfully rejects template drift
+before any training job is created.
+
+The new desktop-control actions are:
+
+- `gemma-finetune-status`
+  - returns the current project list, dataset list, and visible validation
+    receipts
+- `gemma-finetune-project-create`
+  - binds one design-partner project to the bounded `gemma4:e4b` training lane
+    and its canonical eval pack
+- `gemma-finetune-dataset-register`
+  - registers explicit split files, computes split digests and counts, and
+    records a validation receipt that captures tokenizer/template compatibility
+    plus overlap-review posture
+
+`autopilotctl status` now prints a top-level `gemma finetune:` line alongside
+the broader desktop snapshot, and `autopilotctl gemma-finetune status` expands
+that into per-project and per-dataset detail. The create and register commands
+print the same project binding and validation-receipt truth the desktop keeps on
+disk under `~/.openagents/logs/autopilot/gemma-finetune.json`.
 
 Desktop control now also carries a separate `remote_training` mirror for the
 Psionic Google and RunPod lanes. That surface is app-owned and provider-neutral:

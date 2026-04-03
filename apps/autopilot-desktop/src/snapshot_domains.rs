@@ -83,9 +83,79 @@ pub(crate) fn desktop_control_signature(state: &RenderState) -> String {
     append_desktop_control_shell_signature(&mut builder, state);
     append_desktop_control_buy_mode_signature(&mut builder, state);
     append_desktop_control_compute_history_signature(&mut builder, state);
+    append_desktop_control_gemma_finetune_signature(&mut builder);
     append_desktop_control_remote_training_signature(&mut builder, state);
     append_desktop_control_log_signature(&mut builder, state);
     builder.finish()
+}
+
+fn append_desktop_control_gemma_finetune_signature(builder: &mut SignatureBuilder) {
+    let status = crate::gemma_finetune_control::status().unwrap_or_default();
+    builder.bool("gemma_finetune_available", status.available);
+    builder.field("gemma_finetune_project_count", status.project_count);
+    builder.field("gemma_finetune_dataset_count", status.dataset_count);
+    builder.field(
+        "gemma_finetune_validation_receipt_count",
+        status.validation_receipt_count,
+    );
+    builder.opt_str(
+        "gemma_finetune_storage_path",
+        status.storage_path.as_deref(),
+    );
+    builder.opt_str("gemma_finetune_last_action", status.last_action.as_deref());
+    builder.opt_str("gemma_finetune_last_error", status.last_error.as_deref());
+    for project in &status.projects {
+        builder.field("gemma_finetune_project_id", project.project_id.as_str());
+        builder.field("gemma_finetune_project_tenant", project.tenant_id.as_str());
+        builder.opt_str(
+            "gemma_finetune_project_active_dataset",
+            project.active_dataset_id.as_deref(),
+        );
+        builder.field(
+            "gemma_finetune_project_base_digest",
+            project.base_served_artifact_digest.as_str(),
+        );
+        builder.opt_str(
+            "gemma_finetune_project_last_error",
+            project.last_error.as_deref(),
+        );
+    }
+    for dataset in &status.datasets {
+        builder.field("gemma_finetune_dataset_id", dataset.dataset_id.as_str());
+        builder.field(
+            "gemma_finetune_dataset_project",
+            dataset.project_id.as_str(),
+        );
+        builder.field("gemma_finetune_dataset_ref", dataset.dataset_ref.as_str());
+        builder.field(
+            "gemma_finetune_dataset_receipt_status",
+            dataset.validation_receipt.status.as_str(),
+        );
+        builder.bool(
+            "gemma_finetune_dataset_template_compatible",
+            dataset.validation_receipt.template_compatible,
+        );
+        builder.bool(
+            "gemma_finetune_dataset_tokenizer_compatible",
+            dataset.validation_receipt.tokenizer_compatible,
+        );
+        builder.field(
+            "gemma_finetune_dataset_train_count",
+            dataset.train_split.sample_count,
+        );
+        builder.field(
+            "gemma_finetune_dataset_validation_count",
+            dataset.held_out_validation_split.sample_count,
+        );
+        builder.field(
+            "gemma_finetune_dataset_holdout_count",
+            dataset.final_report_split.sample_count,
+        );
+        builder.opt_str(
+            "gemma_finetune_dataset_last_error",
+            dataset.last_error.as_deref(),
+        );
+    }
 }
 
 fn append_provider_runtime_signature(builder: &mut SignatureBuilder, state: &RenderState) {

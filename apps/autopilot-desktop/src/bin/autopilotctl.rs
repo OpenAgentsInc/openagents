@@ -108,6 +108,11 @@ enum Command {
         #[command(subcommand)]
         command: TrainingCommand,
     },
+    #[command(name = "gemma-finetune")]
+    GemmaFinetune {
+        #[command(subcommand)]
+        command: GemmaFinetuneCommand,
+    },
     #[command(name = "remote-training")]
     RemoteTraining {
         #[command(subcommand)]
@@ -490,6 +495,57 @@ enum TrainingCommand {
     },
     Accept {
         run_id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneCommand {
+    Status,
+    Project {
+        #[command(subcommand)]
+        command: GemmaFinetuneProjectCommand,
+    },
+    Dataset {
+        #[command(subcommand)]
+        command: GemmaFinetuneDatasetCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneProjectCommand {
+    Create {
+        project_name: String,
+        #[arg(long)]
+        tenant_id: Option<String>,
+        #[arg(long)]
+        base_served_artifact_digest: String,
+        #[arg(long)]
+        hidden_size: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneDatasetCommand {
+    Register {
+        project_id: String,
+        dataset_ref: String,
+        train_path: PathBuf,
+        validation_path: PathBuf,
+        holdout_path: PathBuf,
+        #[arg(long)]
+        baseline_short_path: Option<PathBuf>,
+        #[arg(long)]
+        final_report_path: Option<PathBuf>,
+        #[arg(long)]
+        chat_template_digest: Option<String>,
+        #[arg(long, default_value_t = 10_000)]
+        assistant_mask_coverage_bps: u32,
+        #[arg(long)]
+        overlap_check_id: Option<String>,
+        #[arg(long)]
+        overlap_detail: Option<String>,
+        #[arg(long = "benchmark-ref")]
+        compared_benchmark_refs: Vec<String>,
     },
 }
 
@@ -1226,6 +1282,72 @@ impl TrainingCommand {
             },
             Self::Accept { run_id } => DesktopControlActionRequest::AcceptAppleAdapterTraining {
                 run_id: run_id.clone(),
+            },
+        }
+    }
+}
+
+impl GemmaFinetuneCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetGemmaFinetuneStatus,
+            Self::Project { command } => command.action_request(),
+            Self::Dataset { command } => command.action_request(),
+        }
+    }
+}
+
+impl GemmaFinetuneProjectCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Create {
+                project_name,
+                tenant_id,
+                base_served_artifact_digest,
+                hidden_size,
+            } => DesktopControlActionRequest::CreateGemmaFinetuneProject {
+                project_name: project_name.clone(),
+                tenant_id: tenant_id.clone(),
+                base_served_artifact_digest: base_served_artifact_digest.clone(),
+                hidden_size: *hidden_size,
+            },
+        }
+    }
+}
+
+impl GemmaFinetuneDatasetCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Register {
+                project_id,
+                dataset_ref,
+                train_path,
+                validation_path,
+                holdout_path,
+                baseline_short_path,
+                final_report_path,
+                chat_template_digest,
+                assistant_mask_coverage_bps,
+                overlap_check_id,
+                overlap_detail,
+                compared_benchmark_refs,
+            } => DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+                project_id: project_id.clone(),
+                dataset_ref: dataset_ref.clone(),
+                train_path: train_path.display().to_string(),
+                validation_path: validation_path.display().to_string(),
+                holdout_path: holdout_path.display().to_string(),
+                baseline_short_path: baseline_short_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
+                final_report_path: final_report_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
+                chat_template_digest: chat_template_digest.clone(),
+                assistant_mask_coverage_bps: *assistant_mask_coverage_bps,
+                overlap_check_id: overlap_check_id.clone(),
+                overlap_detail: overlap_detail.clone(),
+                compared_benchmark_refs: compared_benchmark_refs.clone(),
             },
         }
     }
@@ -2025,6 +2147,27 @@ fn main() -> Result<()> {
                 }
             }
         },
+        Command::GemmaFinetune { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                if !matches!(command, GemmaFinetuneCommand::Status) {
+                    println!("{}", response.message);
+                }
+                match command {
+                    GemmaFinetuneCommand::Status => print_gemma_finetune_text(payload),
+                    GemmaFinetuneCommand::Project { .. } => {
+                        print_gemma_finetune_project_text(payload);
+                    }
+                    GemmaFinetuneCommand::Dataset { .. } => {
+                        print_gemma_finetune_dataset_text(payload);
+                    }
+                }
+            }
+        }
         Command::RemoteTraining { command } => {
             let response = client.action(&command.action_request())?;
             ensure_action_success(&response)?;
@@ -5116,6 +5259,9 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
     for line in training_status_lines(snapshot) {
         println!("{line}");
     }
+    for line in gemma_finetune_status_lines(snapshot) {
+        println!("{line}");
+    }
     for line in remote_training_status_lines(snapshot) {
         println!("{line}");
     }
@@ -5757,6 +5903,69 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     }
     if let Some(error) = snapshot.training.last_error.as_deref() {
         lines.push(format!("training last_error: {error}"));
+    }
+    lines
+}
+
+fn gemma_finetune_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
+    let mut lines = vec![format!(
+        "gemma finetune: available={} projects={} datasets={} validation_receipts={} storage={} last_action={} last_error={}",
+        snapshot.gemma_finetune.available,
+        snapshot.gemma_finetune.project_count,
+        snapshot.gemma_finetune.dataset_count,
+        snapshot.gemma_finetune.validation_receipt_count,
+        snapshot
+            .gemma_finetune
+            .storage_path
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .gemma_finetune
+            .last_action
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.gemma_finetune.last_error.as_deref().unwrap_or("-")
+    )];
+    for project in snapshot.gemma_finetune.projects.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune project: id={} tenant={} name={} base_digest={} hidden_size={} active_dataset={} model={} training_family={} eval_pack={} last_error={}",
+            project.project_id,
+            project.tenant_id,
+            project.project_name,
+            project.base_served_artifact_digest,
+            project.hidden_size,
+            project.active_dataset_id.as_deref().unwrap_or("-"),
+            project.lane_binding.model_id,
+            project.lane_binding.training_family_id,
+            project.lane_binding.eval_pack_storage_key,
+            project.last_error.as_deref().unwrap_or("-"),
+        ));
+    }
+    for dataset in snapshot.gemma_finetune.datasets.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune dataset: id={} project={} ref={} receipt={} tokenizer_ok={} template_ok={} train={} validation={} holdout={} baseline_short={} final_report={} overlap_refs={} warnings={} errors={}",
+            dataset.dataset_id,
+            dataset.project_id,
+            dataset.dataset_ref,
+            dataset.validation_receipt.status,
+            dataset.validation_receipt.tokenizer_compatible,
+            dataset.validation_receipt.template_compatible,
+            dataset.train_split.sample_count,
+            dataset.held_out_validation_split.sample_count,
+            dataset.final_report_split.sample_count,
+            dataset.baseline_short_split.sample_count,
+            dataset.final_report_split.sample_count,
+            dataset.validation_receipt.compared_benchmark_refs.len(),
+            dataset.validation_receipt.warnings.len(),
+            dataset.validation_receipt.errors.len(),
+        ));
+        if !dataset.validation_receipt.errors.is_empty() {
+            lines.push(format!(
+                "gemma finetune dataset errors: id={} detail={}",
+                dataset.dataset_id,
+                dataset.validation_receipt.errors.join(" | ")
+            ));
+        }
     }
     lines
 }
@@ -7618,6 +7827,295 @@ fn print_training_text(payload: &Value) {
     }
 }
 
+fn print_gemma_finetune_text(payload: &Value) {
+    println!(
+        "gemma finetune: available={} projects={} datasets={} validation_receipts={} storage={} last_action={} last_error={}",
+        payload
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("project_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("dataset_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("validation_receipt_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("storage_path")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_action")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+    if let Some(projects) = payload.get("projects").and_then(Value::as_array) {
+        for project in projects.iter().take(3) {
+            println!(
+                "gemma finetune project: id={} tenant={} name={} base_digest={} hidden_size={} active_dataset={} model={} training_family={} eval_pack={} last_error={}",
+                project
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("project_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("base_served_artifact_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("hidden_size")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                project
+                    .get("active_dataset_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("lane_binding")
+                    .and_then(|value| value.get("model_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("lane_binding")
+                    .and_then(|value| value.get("training_family_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("lane_binding")
+                    .and_then(|value| value.get("eval_pack_storage_key"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("last_error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(datasets) = payload.get("datasets").and_then(Value::as_array) {
+        for dataset in datasets.iter().take(3) {
+            println!(
+                "gemma finetune dataset: id={} project={} ref={} receipt={} tokenizer_ok={} template_ok={} train={} validation={} holdout={} overlap_refs={} warnings={} errors={}",
+                dataset
+                    .get("dataset_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("dataset_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("status"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("tokenizer_compatible"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("template_compatible"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                dataset
+                    .get("train_split")
+                    .and_then(|value| value.get("sample_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                dataset
+                    .get("held_out_validation_split")
+                    .and_then(|value| value.get("sample_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                dataset
+                    .get("final_report_split")
+                    .and_then(|value| value.get("sample_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("compared_benchmark_refs"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("warnings"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("errors"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+            );
+            let errors = dataset
+                .get("validation_receipt")
+                .and_then(|value| value.get("errors"))
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                })
+                .unwrap_or_default();
+            if !errors.is_empty() {
+                println!(
+                    "gemma finetune dataset errors: id={} detail={}",
+                    dataset
+                        .get("dataset_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    errors
+                );
+            }
+        }
+    }
+}
+
+fn print_gemma_finetune_project_text(payload: &Value) {
+    println!(
+        "gemma finetune project created: id={} tenant={} name={} base_digest={} hidden_size={} model={} training_family={} eval_pack={}",
+        payload
+            .get("project_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("project_name")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("base_served_artifact_digest")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("hidden_size")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("lane_binding")
+            .and_then(|value| value.get("model_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("lane_binding")
+            .and_then(|value| value.get("training_family_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("lane_binding")
+            .and_then(|value| value.get("eval_pack_storage_key"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+}
+
+fn print_gemma_finetune_dataset_text(payload: &Value) {
+    println!(
+        "gemma finetune dataset registered: id={} project={} ref={} receipt={} tokenizer_ok={} template_ok={} benchmark_refs={} warnings={} errors={}",
+        payload
+            .get("dataset_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("project_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("dataset_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("status"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("tokenizer_compatible"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("template_compatible"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("compared_benchmark_refs"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("warnings"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("errors"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+    );
+    println!(
+        "gemma finetune splits: train={} validation={} holdout={} baseline_short={} final_report={}",
+        payload
+            .get("train_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("held_out_validation_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("final_report_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("baseline_short_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("final_report_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+    );
+}
+
 fn watch_training_run(
     client: &DesktopControlClient,
     requested_run_id: Option<&str>,
@@ -8867,18 +9365,19 @@ mod tests {
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, ForgeCommand,
-        ForgeHandoffCommand, ForgeHostedCommand, GptOssCommand, LocalRuntimeCommand,
-        PooledInferenceCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand,
-        ResearchCommand, ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
-        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
-        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
-        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
-        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        ForgeHandoffCommand, ForgeHostedCommand, GemmaFinetuneCommand, GemmaFinetuneDatasetCommand,
+        GemmaFinetuneProjectCommand, GptOssCommand, LocalRuntimeCommand, PooledInferenceCommand,
+        ProofCommand, ProviderCommand, RemoteTrainingCommand, ResearchCommand, ResolvedTarget,
+        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
+        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
+        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
+        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
+        buy_mode_has_paid_request, buyer_procurement_status_lines,
         compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
-        inventory_status_lines, materialize_data_market_delivery, nip90_sent_payments_report_lines,
-        parse_giftwrapped_delivery_pointer, parse_local_daily_window,
-        parse_nip90_sent_payments_report, parse_report_boundary, private_key_bytes,
-        remote_training_status_lines, request_has_failed, request_has_paid,
+        gemma_finetune_status_lines, inventory_status_lines, materialize_data_market_delivery,
+        nip90_sent_payments_report_lines, parse_giftwrapped_delivery_pointer,
+        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
+        private_key_bytes, remote_training_status_lines, request_has_failed, request_has_paid,
         request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
@@ -9634,6 +10133,64 @@ mod tests {
             .action_request(),
             DesktopControlActionRequest::AcceptAppleAdapterTraining {
                 run_id: "weather-helper-1".to_string(),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Status.action_request(),
+            DesktopControlActionRequest::GetGemmaFinetuneStatus
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Project {
+                command: GemmaFinetuneProjectCommand::Create {
+                    project_name: "Support agent".to_string(),
+                    tenant_id: Some("design-partner".to_string()),
+                    base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                    hidden_size: 4,
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::CreateGemmaFinetuneProject {
+                project_name: "Support agent".to_string(),
+                tenant_id: Some("design-partner".to_string()),
+                base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                hidden_size: 4,
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Dataset {
+                command: GemmaFinetuneDatasetCommand::Register {
+                    project_id: "support-agent-1".to_string(),
+                    dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                    train_path: PathBuf::from("/tmp/train.json"),
+                    validation_path: PathBuf::from("/tmp/validation.json"),
+                    holdout_path: PathBuf::from("/tmp/holdout.json"),
+                    baseline_short_path: Some(PathBuf::from("/tmp/baseline-short.json")),
+                    final_report_path: Some(PathBuf::from("/tmp/final-report.json")),
+                    chat_template_digest: Some("sha256:gemma-template".to_string()),
+                    assistant_mask_coverage_bps: 10_000,
+                    overlap_check_id: Some("overlap-1".to_string()),
+                    overlap_detail: Some("cleared".to_string()),
+                    compared_benchmark_refs: vec![
+                        "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                    ],
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+                project_id: "support-agent-1".to_string(),
+                dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                train_path: "/tmp/train.json".to_string(),
+                validation_path: "/tmp/validation.json".to_string(),
+                holdout_path: "/tmp/holdout.json".to_string(),
+                baseline_short_path: Some("/tmp/baseline-short.json".to_string()),
+                final_report_path: Some("/tmp/final-report.json".to_string()),
+                chat_template_digest: Some("sha256:gemma-template".to_string()),
+                assistant_mask_coverage_bps: 10_000,
+                overlap_check_id: Some("overlap-1".to_string()),
+                overlap_detail: Some("cleared".to_string()),
+                compared_benchmark_refs: vec![
+                    "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                ],
             }
         );
         assert_eq!(
@@ -10739,6 +11296,144 @@ mod tests {
         assert!(lines.iter().any(|line| line.contains(
             "training operator note: export, runtime smoke, and authority acceptance do not by themselves prove benchmark-useful adapter quality"
         )));
+    }
+
+    #[test]
+    fn gemma_finetune_status_lines_surface_validation_receipts() {
+        let mut snapshot = sample_snapshot();
+        snapshot.gemma_finetune = autopilot_desktop::gemma_finetune_control::GemmaFinetuneStatus {
+            available: true,
+            schema_version: 1,
+            storage_path: Some("/tmp/openagents/logs/autopilot/gemma-finetune.json".to_string()),
+            project_count: 1,
+            dataset_count: 1,
+            validation_receipt_count: 1,
+            projects: vec![
+                autopilot_desktop::gemma_finetune_control::GemmaFinetuneProjectStatus {
+                    project_id: "support-agent-1".to_string(),
+                    tenant_id: "design-partner".to_string(),
+                    project_name: "Support agent".to_string(),
+                    created_at_epoch_ms: 1,
+                    updated_at_epoch_ms: 2,
+                    base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                    hidden_size: 4,
+                    active_dataset_id: Some("dataset-1".to_string()),
+                    lane_binding: autopilot_desktop::gemma_finetune_control::GemmaFinetuneLaneBindingStatus {
+                        model_id: "gemma4:e4b".to_string(),
+                        model_family: "gemma4".to_string(),
+                        training_family_id: "gemma4.e4b.adapter_sft.cuda.v1".to_string(),
+                        checkpoint_family: "gemma4_e4b_adapter".to_string(),
+                        base_model_revision: "gemma4:e4b@bounded".to_string(),
+                        adapter_family: "gemma4_e4b_lora".to_string(),
+                        eval_pack_storage_key: "benchmark://psionic/gemma4/e4b/finetune_eval@2026.04.03".to_string(),
+                        tokenizer_contract_digest: "sha256:gemma-template".to_string(),
+                    },
+                    last_action: Some("Bound dataset to project".to_string()),
+                    last_error: None,
+                }
+            ],
+            datasets: vec![
+                autopilot_desktop::gemma_finetune_control::GemmaFinetuneDatasetStatus {
+                    dataset_id: "dataset-1".to_string(),
+                    project_id: "support-agent-1".to_string(),
+                    dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                    created_at_epoch_ms: 2,
+                    updated_at_epoch_ms: 2,
+                    train_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "train".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/train".to_string(),
+                        file_path: "/tmp/train.json".to_string(),
+                        file_digest: "train-digest".to_string(),
+                        sample_count: 128,
+                    },
+                    held_out_validation_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "held_out_validation".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/held_out_validation".to_string(),
+                        file_path: "/tmp/validation.json".to_string(),
+                        file_digest: "validation-digest".to_string(),
+                        sample_count: 32,
+                    },
+                    final_report_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "final_report".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/final_report".to_string(),
+                        file_path: "/tmp/holdout.json".to_string(),
+                        file_digest: "holdout-digest".to_string(),
+                        sample_count: 32,
+                    },
+                    baseline_short_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "baseline_short".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/baseline_short".to_string(),
+                        file_path: "/tmp/baseline-short.json".to_string(),
+                        file_digest: "baseline-short-digest".to_string(),
+                        sample_count: 16,
+                    },
+                    validation_receipt: autopilot_desktop::gemma_finetune_control::GemmaFinetuneValidationReceiptStatus {
+                        receipt_id: "dataset-1.validation".to_string(),
+                        validated_at_epoch_ms: 2,
+                        status: "validated".to_string(),
+                        tokenizer_contract_digest: "sha256:gemma-template".to_string(),
+                        tokenizer_compatible: true,
+                        template_compatible: true,
+                        assistant_mask_coverage_bps: 10_000,
+                        compared_benchmark_refs: vec![
+                            "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                        ],
+                        warnings: vec![
+                            "baseline_short path defaulted to the validation file for the bounded MVP lane".to_string(),
+                        ],
+                        errors: Vec::new(),
+                        dataset_contract: {
+                            let mut contract = psionic_train::GemmaE4bFinetuneDatasetContract {
+                                schema_version: psionic_train::GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION.to_string(),
+                                dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                                train_split_ref: "split://openagents/gemma4/e4b/support-agent/train".to_string(),
+                                held_out_validation_split_ref: "split://openagents/gemma4/e4b/support-agent/held_out_validation".to_string(),
+                                final_report_split_ref: "split://openagents/gemma4/e4b/support-agent/final_report".to_string(),
+                                baseline_short_split_ref: "split://openagents/gemma4/e4b/support-agent/baseline_short".to_string(),
+                                chat_template_digest: "sha256:gemma-template".to_string(),
+                                assistant_mask_kind: psionic_train::GemmaE4bAssistantMaskKind::AssistantResponsesOnly,
+                                assistant_mask_coverage_bps: 10_000,
+                                benchmark_overlap_check: psionic_train::GemmaE4bBenchmarkOverlapCheck {
+                                    check_id: "overlap-1".to_string(),
+                                    compared_benchmark_refs: vec![
+                                        "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                                    ],
+                                    exact_overlap_refs: Vec::new(),
+                                    near_duplicate_overlap_refs: Vec::new(),
+                                    passed: true,
+                                    detail: "cleared".to_string(),
+                                },
+                                dataset_digest: String::new(),
+                            };
+                            contract.dataset_digest = contract.stable_digest();
+                            contract
+                        },
+                        eval_pack_binding: psionic_train::canonical_gemma_e4b_finetune_eval_pack_binding()
+                            .expect("eval-pack binding"),
+                    },
+                    last_action: Some("Registered dataset".to_string()),
+                    last_error: None,
+                }
+            ],
+            last_action: Some("Registered Gemma finetune dataset".to_string()),
+            last_error: None,
+        };
+        let lines = gemma_finetune_status_lines(&snapshot);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("gemma finetune: available=true"))
+        );
+        assert!(lines.iter().any(|line| {
+            line.contains("gemma finetune project:")
+                && line.contains("tenant=design-partner")
+                && line.contains("model=gemma4:e4b")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("gemma finetune dataset:")
+                && line.contains("receipt=validated")
+                && line.contains("template_ok=true")
+        }));
     }
 
     #[test]
