@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::ffi::OsString;
 use std::fs;
 use std::net::{IpAddr, SocketAddr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
@@ -123,6 +125,10 @@ pub const DESKTOP_CONTROL_MANIFEST_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_MANIF
 pub const DESKTOP_CONTROL_BIND_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_BIND";
 pub const DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV: &str =
     "OPENAGENTS_PSIONIC_MESH_MANAGEMENT_BASE_URL";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV: &str =
+    "OPENAGENTS_PSIONIC_MESH_LANE_BIN";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV: &str =
+    "OPENAGENTS_PSIONIC_MESH_LANE_ROOT";
 
 static DESKTOP_CONTROL_POOLED_INFERENCE_CACHE: OnceLock<Mutex<DesktopControlPooledInferenceCache>> =
     OnceLock::new();
@@ -308,12 +314,97 @@ struct DesktopControlPooledInferenceCache {
     last_attempt_at: Option<Instant>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DesktopControlMeshLaneCommandPlan {
+    program: PathBuf,
+    args: Vec<OsString>,
+}
+
+impl DesktopControlMeshLaneCommandPlan {
+    fn into_command(self) -> Command {
+        let mut command = Command::new(self.program);
+        command.args(self.args);
+        command
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlMeshLaneConfig {
+    service_name: String,
+    mesh_bind_addr: SocketAddr,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 struct DesktopControlPooledInferenceManagementStatusResponse {
     topology_digest: String,
     default_model: String,
     #[serde(default)]
+    join_state: DesktopControlPooledInferenceManagementJoinStateResponse,
+    #[serde(default)]
     nodes: Vec<DesktopControlPooledInferenceManagementNodeStatus>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinStateResponse {
+    #[serde(default = "default_pooled_inference_join_posture")]
+    posture: String,
+    #[serde(default)]
+    last_joined_mesh_preference: Option<DesktopControlPooledInferenceManagementJoinedMeshPreference>,
+    #[serde(default)]
+    last_imported_join_bundle: Option<DesktopControlPooledInferenceManagementImportedJoinBundle>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinedMeshPreference {
+    mesh_label: String,
+    namespace: String,
+    cluster_id: String,
+    #[serde(default)]
+    advertised_control_plane_addrs: Vec<String>,
+    trust_policy_digest: String,
+    selected_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementImportedJoinBundle {
+    bundle: DesktopControlPooledInferenceManagementJoinBundle,
+    imported_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinBundle {
+    mesh_label: String,
+    namespace: String,
+    cluster_id: String,
+    #[serde(default)]
+    advertised_control_plane_addrs: Vec<String>,
+    trust_metadata: DesktopControlPooledInferenceManagementJoinBundleTrustMetadata,
+    admission: Value,
+    exported_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinBundleTrustMetadata {
+    trust_policy_digest: String,
+    trust_posture: String,
+    discovery_posture: String,
+    trust_bundle_version: u64,
+    #[serde(default)]
+    accepted_trust_bundle_versions: Vec<u64>,
+    #[serde(default)]
+    introduction_policy_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceJoinBundleFile {
+    mesh_label: String,
+    namespace: String,
+    cluster_id: String,
+    #[serde(default)]
+    advertised_control_plane_addrs: Vec<String>,
+    trust_metadata: DesktopControlPooledInferenceManagementJoinBundleTrustMetadata,
+    admission: Value,
+    exported_at_ms: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -825,6 +916,45 @@ pub struct DesktopControlPooledInferenceNodeStatus {
     pub warm_models: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceJoinBundleStatus {
+    pub mesh_label: String,
+    pub namespace: String,
+    pub cluster_id: String,
+    pub advertised_control_plane_addrs: Vec<String>,
+    pub trust_policy_digest: String,
+    pub trust_posture: String,
+    pub discovery_posture: String,
+    pub trust_bundle_version: u64,
+    pub accepted_trust_bundle_versions: Vec<u64>,
+    pub introduction_policy_digest: Option<String>,
+    pub admission_kind: String,
+    pub exported_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+    pub mesh_label: String,
+    pub namespace: String,
+    pub cluster_id: String,
+    pub advertised_control_plane_addrs: Vec<String>,
+    pub trust_policy_digest: String,
+    pub selected_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceImportedJoinBundleStatus {
+    pub bundle: DesktopControlPooledInferenceJoinBundleStatus,
+    pub imported_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceJoinStatus {
+    pub posture: String,
+    pub last_joined_mesh_preference: Option<DesktopControlPooledInferenceJoinedMeshPreferenceStatus>,
+    pub last_imported_join_bundle: Option<DesktopControlPooledInferenceImportedJoinBundleStatus>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlPooledInferenceStatus {
     pub available: bool,
@@ -848,6 +978,7 @@ pub struct DesktopControlPooledInferenceStatus {
     pub last_error: Option<String>,
     pub targetable_models: Vec<DesktopControlPooledInferenceTargetStatus>,
     pub members: Vec<DesktopControlPooledInferenceNodeStatus>,
+    pub join: DesktopControlPooledInferenceJoinStatus,
 }
 
 impl Default for DesktopControlPooledInferenceStatus {
@@ -874,6 +1005,10 @@ impl Default for DesktopControlPooledInferenceStatus {
             last_error: None,
             targetable_models: Vec::new(),
             members: Vec::new(),
+            join: DesktopControlPooledInferenceJoinStatus {
+                posture: default_pooled_inference_join_posture(),
+                ..DesktopControlPooledInferenceJoinStatus::default()
+            },
         }
     }
 }
@@ -1658,6 +1793,16 @@ pub enum DesktopControlActionRequest {
     GetSnapshot,
     GetClusterStatus,
     GetClusterTopology,
+    ExportPooledInferenceJoinBundle {
+        mesh_root: Option<String>,
+        output_path: String,
+        mesh_label: Option<String>,
+        advertise_addrs: Vec<String>,
+    },
+    ImportPooledInferenceJoinBundle {
+        mesh_root: Option<String>,
+        join_bundle_path: String,
+    },
     GetSandboxStatus,
     CreateSandboxJob {
         profile_id: String,
@@ -1937,6 +2082,8 @@ impl DesktopControlActionRequest {
             Self::GetSnapshot => "get-snapshot",
             Self::GetClusterStatus => "cluster-status",
             Self::GetClusterTopology => "cluster-topology",
+            Self::ExportPooledInferenceJoinBundle { .. } => "pooled-inference-export-join-bundle",
+            Self::ImportPooledInferenceJoinBundle { .. } => "pooled-inference-import-join-bundle",
             Self::GetSandboxStatus => "sandbox-status",
             Self::CreateSandboxJob { .. } => "sandbox-create",
             Self::GetSandboxJob { .. } => "sandbox-get",
@@ -2759,6 +2906,26 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+            mesh_root,
+            output_path,
+            mesh_label,
+            advertise_addrs,
+        } => json!({
+            "command_label": action.label(),
+            "mesh_root": mesh_root,
+            "output_path": output_path,
+            "mesh_label": mesh_label,
+            "advertise_addrs": advertise_addrs,
+        }),
+        DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+            mesh_root,
+            join_bundle_path,
+        } => json!({
+            "command_label": action.label(),
+            "mesh_root": mesh_root,
+            "join_bundle_path": join_bundle_path,
+        }),
         DesktopControlActionRequest::GetRemoteTrainingRun { run_id } => json!({
             "command_label": action.label(),
             "run_id": run_id,
@@ -4001,6 +4168,26 @@ fn apply_action_request(
         }
         DesktopControlActionRequest::GetClusterStatus
         | DesktopControlActionRequest::GetClusterTopology => cluster_payload_response(state),
+        DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+            mesh_root,
+            output_path,
+            mesh_label,
+            advertise_addrs,
+        } => export_pooled_inference_join_bundle_action(
+            mesh_root.as_deref(),
+            output_path.as_str(),
+            mesh_label.as_deref(),
+            advertise_addrs.as_slice(),
+        )
+        .into(),
+        DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+            mesh_root,
+            join_bundle_path,
+        } => import_pooled_inference_join_bundle_action(
+            mesh_root.as_deref(),
+            join_bundle_path.as_str(),
+        )
+        .into(),
         DesktopControlActionRequest::GetSandboxStatus => sandbox_status_payload_response(state),
         DesktopControlActionRequest::GetResearchStatus => research_payload_response().into(),
         DesktopControlActionRequest::ResetResearchState => reset_research_action().into(),
@@ -7197,6 +7384,100 @@ fn normalize_desktop_control_http_base_url(value: &str) -> Result<String, String
     Ok(url.to_string().trim_end_matches('/').to_string())
 }
 
+fn default_pooled_inference_join_posture() -> String {
+    "standalone".to_string()
+}
+
+fn desktop_control_pooled_inference_join_status(
+    status: &DesktopControlPooledInferenceManagementStatusResponse,
+) -> DesktopControlPooledInferenceJoinStatus {
+    DesktopControlPooledInferenceJoinStatus {
+        posture: status.join_state.posture.clone(),
+        last_joined_mesh_preference: status
+            .join_state
+            .last_joined_mesh_preference
+            .as_ref()
+            .map(desktop_control_joined_mesh_preference_status),
+        last_imported_join_bundle: status
+            .join_state
+            .last_imported_join_bundle
+            .as_ref()
+            .map(desktop_control_imported_join_bundle_status),
+    }
+}
+
+fn desktop_control_joined_mesh_preference_status(
+    preference: &DesktopControlPooledInferenceManagementJoinedMeshPreference,
+) -> DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+    DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+        mesh_label: preference.mesh_label.clone(),
+        namespace: preference.namespace.clone(),
+        cluster_id: preference.cluster_id.clone(),
+        advertised_control_plane_addrs: preference.advertised_control_plane_addrs.clone(),
+        trust_policy_digest: preference.trust_policy_digest.clone(),
+        selected_at_epoch_ms: preference.selected_at_ms,
+    }
+}
+
+fn desktop_control_imported_join_bundle_status(
+    bundle: &DesktopControlPooledInferenceManagementImportedJoinBundle,
+) -> DesktopControlPooledInferenceImportedJoinBundleStatus {
+    DesktopControlPooledInferenceImportedJoinBundleStatus {
+        bundle: desktop_control_join_bundle_status(&bundle.bundle),
+        imported_at_epoch_ms: bundle.imported_at_ms,
+    }
+}
+
+fn desktop_control_join_bundle_status(
+    bundle: &DesktopControlPooledInferenceManagementJoinBundle,
+) -> DesktopControlPooledInferenceJoinBundleStatus {
+    DesktopControlPooledInferenceJoinBundleStatus {
+        mesh_label: bundle.mesh_label.clone(),
+        namespace: bundle.namespace.clone(),
+        cluster_id: bundle.cluster_id.clone(),
+        advertised_control_plane_addrs: bundle.advertised_control_plane_addrs.clone(),
+        trust_policy_digest: bundle.trust_metadata.trust_policy_digest.clone(),
+        trust_posture: bundle.trust_metadata.trust_posture.clone(),
+        discovery_posture: bundle.trust_metadata.discovery_posture.clone(),
+        trust_bundle_version: bundle.trust_metadata.trust_bundle_version,
+        accepted_trust_bundle_versions: bundle
+            .trust_metadata
+            .accepted_trust_bundle_versions
+            .clone(),
+        introduction_policy_digest: bundle.trust_metadata.introduction_policy_digest.clone(),
+        admission_kind: desktop_control_join_bundle_admission_kind(&bundle.admission),
+        exported_at_epoch_ms: bundle.exported_at_ms,
+    }
+}
+
+fn desktop_control_join_bundle_status_from_file(
+    bundle: &DesktopControlPooledInferenceJoinBundleFile,
+) -> DesktopControlPooledInferenceJoinBundleStatus {
+    DesktopControlPooledInferenceJoinBundleStatus {
+        mesh_label: bundle.mesh_label.clone(),
+        namespace: bundle.namespace.clone(),
+        cluster_id: bundle.cluster_id.clone(),
+        advertised_control_plane_addrs: bundle.advertised_control_plane_addrs.clone(),
+        trust_policy_digest: bundle.trust_metadata.trust_policy_digest.clone(),
+        trust_posture: bundle.trust_metadata.trust_posture.clone(),
+        discovery_posture: bundle.trust_metadata.discovery_posture.clone(),
+        trust_bundle_version: bundle.trust_metadata.trust_bundle_version,
+        accepted_trust_bundle_versions: bundle
+            .trust_metadata
+            .accepted_trust_bundle_versions
+            .clone(),
+        introduction_policy_digest: bundle.trust_metadata.introduction_policy_digest.clone(),
+        admission_kind: desktop_control_join_bundle_admission_kind(&bundle.admission),
+        exported_at_epoch_ms: bundle.exported_at_ms,
+    }
+}
+
+fn desktop_control_join_bundle_admission_kind(value: &Value) -> String {
+    value.as_object()
+        .and_then(|map| map.keys().next().cloned())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 fn desktop_control_pooled_inference_snapshot(
     management_base_url: &str,
     status: &DesktopControlPooledInferenceManagementStatusResponse,
@@ -7244,6 +7525,7 @@ fn desktop_control_pooled_inference_snapshot(
             .iter()
             .map(desktop_control_pooled_inference_member_status)
             .collect(),
+        join: desktop_control_pooled_inference_join_status(status),
     }
 }
 
@@ -7377,6 +7659,321 @@ fn desktop_control_pooled_inference_member_status(
             .count(),
         warm_models,
     }
+}
+
+fn clear_desktop_control_pooled_inference_cache() {
+    let mut cache = desktop_control_pooled_inference_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    cache.refreshed_at = None;
+    cache.last_attempt_at = None;
+}
+
+fn export_pooled_inference_join_bundle_action(
+    mesh_root: Option<&str>,
+    output_path: &str,
+    mesh_label: Option<&str>,
+    advertise_addrs: &[String],
+) -> DesktopControlActionResponse {
+    let output_path = match resolve_desktop_control_absolute_path(output_path) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let mesh_root = match resolve_pooled_inference_mesh_lane_root(mesh_root) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let mesh_config = match load_pooled_inference_mesh_lane_config(mesh_root.as_path()) {
+        Ok(config) => config,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let (advertise_targets, advertise_source, tailnet_self_device) =
+        match resolve_pooled_inference_join_advertise_addrs(advertise_addrs, &mesh_config) {
+            Ok(result) => result,
+            Err(error) => return DesktopControlActionResponse::error(error),
+        };
+    let mut args = vec![
+        OsString::from("export-join-bundle"),
+        OsString::from("--root"),
+        mesh_root.as_os_str().to_os_string(),
+        OsString::from("--out"),
+        output_path.as_os_str().to_os_string(),
+    ];
+    if let Some(mesh_label) = mesh_label.map(str::trim).filter(|value| !value.is_empty()) {
+        args.push(OsString::from("--mesh-label"));
+        args.push(OsString::from(mesh_label));
+    }
+    for advertise in &advertise_targets {
+        args.push(OsString::from("--advertise"));
+        args.push(OsString::from(advertise.to_string()));
+    }
+    let command_stdout = match run_pooled_inference_mesh_lane_command(args) {
+        Ok(stdout) => stdout,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let bundle = match load_desktop_control_join_bundle(output_path.as_path()) {
+        Ok(bundle) => desktop_control_join_bundle_status_from_file(&bundle),
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let message = format!(
+        "Exported pooled inference join bundle to `{}`",
+        output_path.display()
+    );
+    DesktopControlActionResponse::ok_with_payload(
+        message,
+        json!({
+            "mesh_root": mesh_root.display().to_string(),
+            "config_path": pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display().to_string(),
+            "service_name": mesh_config.service_name,
+            "output_path": output_path.display().to_string(),
+            "advertise_source": advertise_source,
+            "advertised_control_plane_addrs": bundle.advertised_control_plane_addrs,
+            "tailnet_self_device": tailnet_self_device,
+            "bundle": bundle,
+            "command_stdout": (!command_stdout.is_empty()).then_some(command_stdout),
+        }),
+    )
+}
+
+fn import_pooled_inference_join_bundle_action(
+    mesh_root: Option<&str>,
+    join_bundle_path: &str,
+) -> DesktopControlActionResponse {
+    let mesh_root = match resolve_pooled_inference_mesh_lane_root(mesh_root) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let join_bundle_path = match resolve_desktop_control_absolute_path(join_bundle_path) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let before = desktop_control_pooled_inference_status();
+    let args = vec![
+        OsString::from("install"),
+        OsString::from("--root"),
+        mesh_root.as_os_str().to_os_string(),
+        OsString::from("--join-bundle"),
+        join_bundle_path.as_os_str().to_os_string(),
+    ];
+    let command_stdout = match run_pooled_inference_mesh_lane_command(args) {
+        Ok(stdout) => stdout,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    clear_desktop_control_pooled_inference_cache();
+    let after = desktop_control_pooled_inference_status();
+    let bundle = match load_desktop_control_join_bundle(join_bundle_path.as_path()) {
+        Ok(bundle) => desktop_control_join_bundle_status_from_file(&bundle),
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let restart_required = before.source == "psionic_management" && before.join == after.join;
+    let restart_hint = restart_required.then(|| {
+        format!(
+            "restart the local psionic mesh lane service so `{}` is imported into file-backed mesh state",
+            join_bundle_path.display()
+        )
+    });
+    let message = if restart_required {
+        format!(
+            "Recorded pooled inference join bundle in `{}`; restart the mesh lane to apply it",
+            pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display()
+        )
+    } else {
+        format!(
+            "Recorded pooled inference join bundle in `{}`",
+            pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display()
+        )
+    };
+    DesktopControlActionResponse::ok_with_payload(
+        message,
+        json!({
+            "mesh_root": mesh_root.display().to_string(),
+            "config_path": pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display().to_string(),
+            "join_bundle_path": join_bundle_path.display().to_string(),
+            "bundle": bundle,
+            "join_posture_before": before.join.posture,
+            "join_posture_after": after.join.posture,
+            "restart_required": restart_required,
+            "restart_hint": restart_hint,
+            "command_stdout": (!command_stdout.is_empty()).then_some(command_stdout),
+        }),
+    )
+}
+
+fn run_pooled_inference_mesh_lane_command(args: Vec<OsString>) -> Result<String, String> {
+    let mut command = resolve_pooled_inference_mesh_lane_command_plan()?.into_command();
+    command.args(args);
+    let output = command
+        .output()
+        .map_err(|error| format!("failed to run psionic mesh lane command: {error}"))?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        format!("exit status {}", output.status)
+    };
+    Err(format!("psionic mesh lane command failed: {detail}"))
+}
+
+fn resolve_pooled_inference_mesh_lane_command_plan()
+-> Result<DesktopControlMeshLaneCommandPlan, String> {
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current exe: {error}"))?;
+    if let Some(path) = std::env::var_os(DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV) {
+        return Ok(DesktopControlMeshLaneCommandPlan {
+            program: PathBuf::from(path),
+            args: Vec::new(),
+        });
+    }
+    let sibling_binary =
+        desktop_control_sibling_named_binary_path(current_exe.as_path(), "psionic-mesh-lane");
+    if sibling_binary.is_file() {
+        return Ok(DesktopControlMeshLaneCommandPlan {
+            program: sibling_binary,
+            args: Vec::new(),
+        });
+    }
+    let sibling_manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .map(|workspace_root| workspace_root.join("psionic/Cargo.toml"))
+        .ok_or_else(|| "failed to resolve sibling psionic workspace".to_string())?;
+    if sibling_manifest.is_file() {
+        return Ok(DesktopControlMeshLaneCommandPlan {
+            program: PathBuf::from("cargo"),
+            args: vec![
+                OsString::from("run"),
+                OsString::from("--manifest-path"),
+                sibling_manifest.as_os_str().to_os_string(),
+                OsString::from("-p"),
+                OsString::from("psionic-serve"),
+                OsString::from("--bin"),
+                OsString::from("psionic-mesh-lane"),
+                OsString::from("--"),
+            ],
+        });
+    }
+    Err(format!(
+        "pooled inference mesh lane binary is not configured; set {DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV} or keep a sibling `psionic` checkout available"
+    ))
+}
+
+fn desktop_control_sibling_named_binary_path(current_exe: &Path, binary_name: &str) -> PathBuf {
+    let base_dir = current_exe
+        .parent()
+        .and_then(|parent| {
+            if parent.file_name().is_some_and(|name| name == "deps") {
+                parent.parent()
+            } else {
+                Some(parent)
+            }
+        })
+        .unwrap_or_else(|| Path::new("."));
+    base_dir.join(format!("{binary_name}{}", std::env::consts::EXE_SUFFIX))
+}
+
+fn resolve_pooled_inference_mesh_lane_root(explicit_root: Option<&str>) -> Result<PathBuf, String> {
+    let root = explicit_root
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            std::env::var(DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .ok_or_else(|| {
+            format!(
+                "pooled inference mesh lane root is not configured; pass `--mesh-root` or set {DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV}"
+            )
+        })?;
+    resolve_desktop_control_absolute_path(root.as_str())
+}
+
+fn resolve_desktop_control_absolute_path(value: &str) -> Result<PathBuf, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("path must not be empty".to_string());
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .map_err(|error| format!("failed to resolve current directory: {error}"))
+    }
+}
+
+fn pooled_inference_mesh_lane_config_path(root: &Path) -> PathBuf {
+    root.join("config").join("mesh-lane.json")
+}
+
+fn load_pooled_inference_mesh_lane_config(root: &Path) -> Result<DesktopControlMeshLaneConfig, String> {
+    let path = pooled_inference_mesh_lane_config_path(root);
+    let bytes = fs::read(&path)
+        .map_err(|error| format!("failed to read mesh lane config `{}`: {error}", path.display()))?;
+    serde_json::from_slice::<DesktopControlMeshLaneConfig>(&bytes)
+        .map_err(|error| format!("failed to parse mesh lane config `{}`: {error}", path.display()))
+}
+
+fn load_desktop_control_join_bundle(
+    path: &Path,
+) -> Result<DesktopControlPooledInferenceJoinBundleFile, String> {
+    let bytes = fs::read(path)
+        .map_err(|error| format!("failed to read join bundle `{}`: {error}", path.display()))?;
+    serde_json::from_slice::<DesktopControlPooledInferenceJoinBundleFile>(&bytes)
+        .map_err(|error| format!("failed to parse join bundle `{}`: {error}", path.display()))
+}
+
+fn resolve_pooled_inference_join_advertise_addrs(
+    explicit_addrs: &[String],
+    mesh_config: &DesktopControlMeshLaneConfig,
+) -> Result<(Vec<SocketAddr>, &'static str, Option<Value>), String> {
+    if !explicit_addrs.is_empty() {
+        let mut addrs = explicit_addrs
+            .iter()
+            .map(|value| {
+                value
+                    .parse::<SocketAddr>()
+                    .map_err(|error| format!("invalid --advertise value `{value}`: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        addrs.sort_unstable();
+        addrs.dedup();
+        return Ok((addrs, "explicit", None));
+    }
+    let tailnet = desktop_control_tailnet_status();
+    if let Some(self_device) = tailnet.self_device.as_ref() {
+        let mut addrs = self_device
+            .tailscale_ips
+            .iter()
+            .filter_map(|value| value.parse::<IpAddr>().ok())
+            .map(|ip| SocketAddr::new(ip, mesh_config.mesh_bind_addr.port()))
+            .collect::<Vec<_>>();
+        addrs.sort_unstable();
+        addrs.dedup();
+        if !addrs.is_empty() {
+            return Ok((
+                addrs,
+                "tailnet_self",
+                Some(json!({
+                    "node_id": self_device.node_id,
+                    "display_name": self_device.display_name,
+                    "host_name": self_device.host_name,
+                    "tailscale_ips": self_device.tailscale_ips,
+                })),
+            ));
+        }
+    }
+    Ok((Vec::new(), "mesh_config_default", None))
 }
 
 fn desktop_control_sandbox_profile_status(
@@ -11969,6 +12566,8 @@ mod tests {
         DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
         DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
         DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
+        DesktopControlPooledInferenceJoinStatus,
+        DesktopControlPooledInferenceJoinedMeshPreferenceStatus,
         DesktopControlPooledInferenceManagementStatusResponse,
         DesktopControlPooledInferenceNodeStatus, DesktopControlPooledInferenceStatus,
         DesktopControlPooledInferenceTargetStatus, DesktopControlProofStatus,
@@ -12223,6 +12822,22 @@ mod tests {
                         warm_models: vec!["gemma4:e4b".to_string()],
                     },
                 ],
+                join: DesktopControlPooledInferenceJoinStatus {
+                    posture: "joined".to_string(),
+                    last_joined_mesh_preference: Some(
+                        DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+                            mesh_label: "mesh-home".to_string(),
+                            namespace: "mesh-home".to_string(),
+                            cluster_id: "cluster.mesh-home".to_string(),
+                            advertised_control_plane_addrs: vec![
+                                "100.90.1.10:47470".to_string(),
+                            ],
+                            trust_policy_digest: "trust.mesh-home".to_string(),
+                            selected_at_epoch_ms: 1_762_100_000_000,
+                        },
+                    ),
+                    last_imported_join_bundle: None,
+                },
             },
             tailnet: DesktopControlTailnetStatus {
                 available: true,
@@ -12869,6 +13484,40 @@ mod tests {
             json!({
                 "topology_digest": "mesh.topology.1",
                 "default_model": "gemma4:e4b",
+                "join_state": {
+                    "posture": "joined",
+                    "last_joined_mesh_preference": {
+                        "mesh_label": "mesh-home",
+                        "namespace": "mesh-home",
+                        "cluster_id": "cluster.mesh-home",
+                        "advertised_control_plane_addrs": ["100.90.1.10:47470"],
+                        "trust_policy_digest": "trust.mesh-home",
+                        "selected_at_ms": 1762100000000u64
+                    },
+                    "last_imported_join_bundle": {
+                        "bundle": {
+                            "mesh_label": "mesh-home",
+                            "namespace": "mesh-home",
+                            "cluster_id": "cluster.mesh-home",
+                            "advertised_control_plane_addrs": ["100.90.1.10:47470"],
+                            "trust_metadata": {
+                                "trust_policy_digest": "trust.mesh-home",
+                                "trust_posture": "trusted_lan",
+                                "discovery_posture": "lan_only",
+                                "trust_bundle_version": 4u64,
+                                "accepted_trust_bundle_versions": [3u64],
+                                "introduction_policy_digest": null
+                            },
+                            "admission": {
+                                "shared_admission": {
+                                    "admission_token": "mesh-token"
+                                }
+                            },
+                            "exported_at_ms": 1762100005000u64
+                        },
+                        "imported_at_ms": 1762100009000u64
+                    }
+                },
                 "nodes": [
                     {
                         "worker_id": "openai_compat",
@@ -12922,6 +13571,23 @@ mod tests {
         assert_eq!(snapshot.targetable_model_count, 1);
         assert_eq!(snapshot.warm_replica_count, 1);
         assert_eq!(snapshot.targetable_models[0].model, "gemma4:e4b");
+        assert_eq!(snapshot.join.posture, "joined");
+        assert_eq!(
+            snapshot
+                .join
+                .last_joined_mesh_preference
+                .as_ref()
+                .map(|value| value.mesh_label.as_str()),
+            Some("mesh-home")
+        );
+        assert_eq!(
+            snapshot
+                .join
+                .last_imported_join_bundle
+                .as_ref()
+                .map(|value| value.bundle.admission_kind.as_str()),
+            Some("shared_admission")
+        );
         assert_eq!(
             snapshot.targetable_models[0].supported_endpoints,
             vec![
@@ -14651,6 +15317,24 @@ mod tests {
         assert_eq!(
             DesktopControlActionRequest::GetAttnResStatus.label(),
             "attnres-status"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                mesh_root: Some("/tmp/mesh-root".to_string()),
+                output_path: "/tmp/mesh-home.join.json".to_string(),
+                mesh_label: Some("mesh-home".to_string()),
+                advertise_addrs: vec!["100.90.1.10:47470".to_string()],
+            }
+            .label(),
+            "pooled-inference-export-join-bundle"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+                mesh_root: Some("/tmp/mesh-root".to_string()),
+                join_bundle_path: "/tmp/mesh-home.join.json".to_string(),
+            }
+            .label(),
+            "pooled-inference-import-join-bundle"
         );
         assert_eq!(
             DesktopControlActionRequest::StartAttnRes.label(),

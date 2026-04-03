@@ -120,6 +120,8 @@ autopilotctl gpt-oss status
 autopilotctl gpt-oss warm --wait
 autopilotctl pooled-inference status
 autopilotctl pooled-inference topology
+autopilotctl pooled-inference export-join-bundle /tmp/mesh-home.join.json --mesh-root /tmp/mesh-home
+autopilotctl pooled-inference import-join-bundle /tmp/mesh-home.join.json --mesh-root /tmp/mesh-joiner
 autopilotctl wait gpt-oss-ready
 autopilotctl attnres status
 autopilotctl attnres start
@@ -293,6 +295,70 @@ execution-kind truth plus `remote_whole_request` or `replicated` topology and
 `gpt_oss`-family product identity, but the capability summary and lot metadata
 carry the live pooled-inference mesh state: membership posture, targetable
 model count, warm replica count, default model, and topology digest.
+
+The same command group now also owns the multi-machine join and invite path
+above Psionic mesh-lane truth:
+
+- `autopilotctl pooled-inference export-join-bundle <output-path>`
+- `autopilotctl pooled-inference import-join-bundle <input-path>`
+
+Those commands shell out to `psionic-mesh-lane`, read or update the file-backed
+lane root, and then project the resulting join state back through the normal
+desktop-control snapshot. The desktop and CLI keep Psionic as the source of
+truth for:
+
+- whether the local lane is still `standalone` or has `joined`
+- the last selected mesh preference, including label, namespace, cluster id,
+  trust digest, and advertised control-plane addresses
+- the last imported join bundle, including admission kind, trust posture,
+  discovery posture, trust-bundle version, and export/import timestamps
+
+Configure the lane root with either:
+
+- `--mesh-root /absolute/path/to/mesh-root`
+- `OPENAGENTS_PSIONIC_MESH_LANE_ROOT=/absolute/path/to/mesh-root`
+
+If `autopilotctl` cannot find a colocated `psionic-mesh-lane` binary, point it
+at one explicitly with:
+
+- `OPENAGENTS_PSIONIC_MESH_LANE_BIN=/absolute/path/to/psionic-mesh-lane`
+
+Otherwise it first looks for a sibling binary beside the current desktop
+artifacts and then falls back to running the sibling `../psionic` checkout with
+`cargo run -p psionic-serve --bin psionic-mesh-lane -- ...`.
+
+Join-bundle export uses the mesh lane's configured service port and derives
+advertised control-plane addresses from the current Tailnet self-device IPs
+when you do not pass explicit `--advertise <ip:port>` values. That keeps the
+common "share this machine with another machine on my Tailnet" path short:
+
+```bash
+export OPENAGENTS_PSIONIC_MESH_LANE_ROOT=/tmp/mesh-home
+autopilotctl pooled-inference export-join-bundle /tmp/mesh-home.join.json
+```
+
+If you need to publish a different address set, override it directly:
+
+```bash
+autopilotctl pooled-inference export-join-bundle /tmp/mesh-home.join.json \
+  --mesh-root /tmp/mesh-home \
+  --mesh-label mesh-home \
+  --advertise 100.90.1.10:47470 \
+  --advertise 100.90.1.11:47470
+```
+
+Import records the join bundle into the target lane root by running
+`psionic-mesh-lane install --join-bundle ...`. If the local pooled-inference
+lane is already running, the file-backed join state may require a lane restart
+before the management host reflects the new posture. `autopilotctl` reports
+that explicitly through `restart_required` and `restart_hint` so operators do
+not mistake "bundle recorded" for "running process already reloaded."
+
+```bash
+export OPENAGENTS_PSIONIC_MESH_LANE_ROOT=/tmp/mesh-joiner
+autopilotctl pooled-inference import-join-bundle /tmp/mesh-home.join.json
+autopilotctl pooled-inference status
+```
 
 `autopilotctl tailnet status` is the focused operator view for the same Tailnet
 roster now surfaced in the desktop `Tailnet Status` pane. It shells out to
