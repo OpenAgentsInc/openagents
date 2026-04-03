@@ -509,6 +509,23 @@ enum GemmaFinetuneCommand {
         #[command(subcommand)]
         command: GemmaFinetuneDatasetCommand,
     },
+    Job {
+        #[command(subcommand)]
+        command: GemmaFinetuneJobCommand,
+    },
+    Promote {
+        job_id: String,
+        #[arg(long)]
+        checkpoint_id: Option<String>,
+        #[arg(long)]
+        reviewer_id: String,
+        #[arg(long, default_value = "approved")]
+        review_state: String,
+        #[arg(long = "failed-case")]
+        failed_case_ids: Vec<String>,
+        #[arg(long)]
+        summary: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -546,6 +563,21 @@ enum GemmaFinetuneDatasetCommand {
         overlap_detail: Option<String>,
         #[arg(long = "benchmark-ref")]
         compared_benchmark_refs: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneJobCommand {
+    Create {
+        project_id: String,
+        #[arg(long)]
+        dataset_id: Option<String>,
+    },
+    Get {
+        job_id: String,
+    },
+    Cancel {
+        job_id: String,
     },
 }
 
@@ -1293,6 +1325,22 @@ impl GemmaFinetuneCommand {
             Self::Status => DesktopControlActionRequest::GetGemmaFinetuneStatus,
             Self::Project { command } => command.action_request(),
             Self::Dataset { command } => command.action_request(),
+            Self::Job { command } => command.action_request(),
+            Self::Promote {
+                job_id,
+                checkpoint_id,
+                reviewer_id,
+                review_state,
+                failed_case_ids,
+                summary,
+            } => DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+                job_id: job_id.clone(),
+                checkpoint_id: checkpoint_id.clone(),
+                reviewer_id: reviewer_id.clone(),
+                review_state: Some(review_state.clone()),
+                failed_case_ids: failed_case_ids.clone(),
+                summary: summary.clone(),
+            },
         }
     }
 }
@@ -1348,6 +1396,26 @@ impl GemmaFinetuneDatasetCommand {
                 overlap_check_id: overlap_check_id.clone(),
                 overlap_detail: overlap_detail.clone(),
                 compared_benchmark_refs: compared_benchmark_refs.clone(),
+            },
+        }
+    }
+}
+
+impl GemmaFinetuneJobCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Create {
+                project_id,
+                dataset_id,
+            } => DesktopControlActionRequest::CreateGemmaFinetuneJob {
+                project_id: project_id.clone(),
+                dataset_id: dataset_id.clone(),
+            },
+            Self::Get { job_id } => DesktopControlActionRequest::GetGemmaFinetuneJob {
+                job_id: job_id.clone(),
+            },
+            Self::Cancel { job_id } => DesktopControlActionRequest::CancelGemmaFinetuneJob {
+                job_id: job_id.clone(),
             },
         }
     }
@@ -2164,6 +2232,12 @@ fn main() -> Result<()> {
                     }
                     GemmaFinetuneCommand::Dataset { .. } => {
                         print_gemma_finetune_dataset_text(payload);
+                    }
+                    GemmaFinetuneCommand::Job { .. } => {
+                        print_gemma_finetune_job_text(payload);
+                    }
+                    GemmaFinetuneCommand::Promote { .. } => {
+                        print_gemma_finetune_promotion_text(payload);
                     }
                 }
             }
@@ -5909,11 +5983,13 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
 
 fn gemma_finetune_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     let mut lines = vec![format!(
-        "gemma finetune: available={} projects={} datasets={} validation_receipts={} storage={} last_action={} last_error={}",
+        "gemma finetune: available={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} storage={} last_action={} last_error={}",
         snapshot.gemma_finetune.available,
         snapshot.gemma_finetune.project_count,
         snapshot.gemma_finetune.dataset_count,
         snapshot.gemma_finetune.validation_receipt_count,
+        snapshot.gemma_finetune.job_count,
+        snapshot.gemma_finetune.promoted_model_count,
         snapshot
             .gemma_finetune
             .storage_path
@@ -5966,6 +6042,36 @@ fn gemma_finetune_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String>
                 dataset.validation_receipt.errors.join(" | ")
             ));
         }
+    }
+    for job in snapshot.gemma_finetune.jobs.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune job: id={} project={} dataset={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} promoted_model={} last_error={}",
+            job.job_id,
+            job.project_id,
+            job.dataset_id,
+            job.state.label(),
+            job.phase.label(),
+            job.completed_steps,
+            job.plan.max_steps,
+            job.selected_candidate_id.as_deref().unwrap_or("-"),
+            job.checkpoints.len(),
+            job.artifacts.len(),
+            job.promotion
+                .as_ref()
+                .and_then(|promotion| promotion.promoted_model_ref.as_deref())
+                .unwrap_or("-"),
+            job.last_error.as_deref().unwrap_or("-"),
+        ));
+    }
+    for model in snapshot.gemma_finetune.promoted_models.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune promoted model: ref={} project={} job={} checkpoint={} digest={}",
+            model.model_ref,
+            model.project_id,
+            model.job_id,
+            model.checkpoint_id,
+            model.adapter_artifact_digest,
+        ));
     }
     lines
 }
@@ -7829,7 +7935,7 @@ fn print_training_text(payload: &Value) {
 
 fn print_gemma_finetune_text(payload: &Value) {
     println!(
-        "gemma finetune: available={} projects={} datasets={} validation_receipts={} storage={} last_action={} last_error={}",
+        "gemma finetune: available={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} storage={} last_action={} last_error={}",
         payload
             .get("available")
             .and_then(Value::as_bool)
@@ -7844,6 +7950,14 @@ fn print_gemma_finetune_text(payload: &Value) {
             .unwrap_or(0),
         payload
             .get("validation_receipt_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("job_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("promoted_model_count")
             .and_then(Value::as_u64)
             .unwrap_or(0),
         payload
@@ -7996,6 +8110,63 @@ fn print_gemma_finetune_text(payload: &Value) {
             }
         }
     }
+    if let Some(jobs) = payload.get("jobs").and_then(Value::as_array) {
+        for job in jobs.iter().take(3) {
+            println!(
+                "gemma finetune job: id={} project={} dataset={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} promoted_model={} last_error={}",
+                job.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+                job.get("project_id").and_then(Value::as_str).unwrap_or("-"),
+                job.get("dataset_id").and_then(Value::as_str).unwrap_or("-"),
+                job.get("state").and_then(Value::as_str).unwrap_or("-"),
+                job.get("phase").and_then(Value::as_str).unwrap_or("-"),
+                job.get("completed_steps")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                job.get("plan")
+                    .and_then(|value| value.get("max_steps"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                job.get("selected_candidate_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                job.get("checkpoints")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                job.get("artifacts")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                job.get("promotion")
+                    .and_then(|value| value.get("promoted_model_ref"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                job.get("last_error").and_then(Value::as_str).unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(models) = payload.get("promoted_models").and_then(Value::as_array) {
+        for model in models.iter().take(3) {
+            println!(
+                "gemma finetune promoted model: ref={} project={} job={} checkpoint={} digest={}",
+                model
+                    .get("model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+                model
+                    .get("checkpoint_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("adapter_artifact_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
 }
 
 fn print_gemma_finetune_project_text(payload: &Value) {
@@ -8114,6 +8285,180 @@ fn print_gemma_finetune_dataset_text(payload: &Value) {
             .and_then(Value::as_u64)
             .unwrap_or(0),
     );
+}
+
+fn print_gemma_finetune_job_text(payload: &Value) {
+    println!(
+        "gemma finetune job: id={} project={} dataset={} ref={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} cancel_requested={} last_action={} last_error={}",
+        payload.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("project_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("dataset_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("dataset_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload.get("state").and_then(Value::as_str).unwrap_or("-"),
+        payload.get("phase").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("completed_steps")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("plan")
+            .and_then(|value| value.get("max_steps"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("selected_candidate_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("checkpoints")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("artifacts")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("cancel_requested")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("last_action")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+    if let Some(events) = payload.get("events").and_then(Value::as_array) {
+        for event in events.iter().take(4) {
+            println!(
+                "gemma finetune job event: id={} seq={} kind={} phase={} detail={}",
+                event.get("event_id").and_then(Value::as_str).unwrap_or("-"),
+                event.get("seq").and_then(Value::as_u64).unwrap_or(0),
+                event.get("kind").and_then(Value::as_str).unwrap_or("-"),
+                event.get("phase").and_then(Value::as_str).unwrap_or("-"),
+                event.get("detail").and_then(Value::as_str).unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(checkpoints) = payload.get("checkpoints").and_then(Value::as_array) {
+        for checkpoint in checkpoints.iter().take(3) {
+            println!(
+                "gemma finetune checkpoint: id={} digest={} steps={}/{} mean_loss={} promoted_state={}",
+                checkpoint
+                    .get("checkpoint_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                checkpoint
+                    .get("checkpoint_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                checkpoint
+                    .get("completed_steps")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                checkpoint
+                    .get("max_steps")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                checkpoint
+                    .get("mean_loss")
+                    .and_then(Value::as_f64)
+                    .map(|value| format!("{value:.4}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                checkpoint
+                    .get("promotion_decision")
+                    .and_then(|value| value.get("decision_state"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(artifacts) = payload.get("artifacts").and_then(Value::as_array) {
+        for artifact in artifacts.iter().take(3) {
+            println!(
+                "gemma finetune artifact: id={} adapter={} revision={} digest={} promoted_model={}",
+                artifact
+                    .get("artifact_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("adapter_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("adapter_revision")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("adapter_artifact_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("promoted_model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+}
+
+fn print_gemma_finetune_promotion_text(payload: &Value) {
+    println!(
+        "gemma finetune promotion: checkpoint={} decision={} benchmark={} promoted_model={} promoted_at={} last_action={} last_error={}",
+        payload
+            .get("checkpoint_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("decision")
+            .and_then(|value| value.get("decision_state"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("decision")
+            .and_then(|value| value.get("benchmark_package_storage_key"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promoted_model_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promoted_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("last_action")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+    if let Some(review) = payload.get("operator_review") {
+        println!(
+            "gemma finetune promotion review: reviewer={} state={} summary={}",
+            review
+                .get("reviewer_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            review.get("state").and_then(Value::as_str).unwrap_or("-"),
+            review.get("summary").and_then(Value::as_str).unwrap_or("-"),
+        );
+    }
 }
 
 fn watch_training_run(
@@ -9366,13 +9711,13 @@ mod tests {
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, ForgeCommand,
         ForgeHandoffCommand, ForgeHostedCommand, GemmaFinetuneCommand, GemmaFinetuneDatasetCommand,
-        GemmaFinetuneProjectCommand, GptOssCommand, LocalRuntimeCommand, PooledInferenceCommand,
-        ProofCommand, ProviderCommand, RemoteTrainingCommand, ResearchCommand, ResolvedTarget,
-        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
-        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
-        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
-        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
-        buy_mode_has_paid_request, buyer_procurement_status_lines,
+        GemmaFinetuneJobCommand, GemmaFinetuneProjectCommand, GptOssCommand, LocalRuntimeCommand,
+        PooledInferenceCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand,
+        ResearchCommand, ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
+        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
+        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
+        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
         compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
         gemma_finetune_status_lines, inventory_status_lines, materialize_data_market_delivery,
         nip90_sent_payments_report_lines, parse_giftwrapped_delivery_pointer,
@@ -10191,6 +10536,60 @@ mod tests {
                 compared_benchmark_refs: vec![
                     "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
                 ],
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Job {
+                command: GemmaFinetuneJobCommand::Create {
+                    project_id: "support-agent-1".to_string(),
+                    dataset_id: Some("dataset-1".to_string()),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::CreateGemmaFinetuneJob {
+                project_id: "support-agent-1".to_string(),
+                dataset_id: Some("dataset-1".to_string()),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Job {
+                command: GemmaFinetuneJobCommand::Get {
+                    job_id: "support-agent-job-1".to_string(),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::GetGemmaFinetuneJob {
+                job_id: "support-agent-job-1".to_string(),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Job {
+                command: GemmaFinetuneJobCommand::Cancel {
+                    job_id: "support-agent-job-1".to_string(),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::CancelGemmaFinetuneJob {
+                job_id: "support-agent-job-1".to_string(),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Promote {
+                job_id: "support-agent-job-1".to_string(),
+                checkpoint_id: Some("support-agent-r1-final".to_string()),
+                reviewer_id: "operator-1".to_string(),
+                review_state: "approved".to_string(),
+                failed_case_ids: Vec::new(),
+                summary: Some("approve".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+                job_id: "support-agent-job-1".to_string(),
+                checkpoint_id: Some("support-agent-r1-final".to_string()),
+                reviewer_id: "operator-1".to_string(),
+                review_state: Some("approved".to_string()),
+                failed_case_ids: Vec::new(),
+                summary: Some("approve".to_string()),
             }
         );
         assert_eq!(
@@ -11308,6 +11707,8 @@ mod tests {
             project_count: 1,
             dataset_count: 1,
             validation_receipt_count: 1,
+            job_count: 0,
+            promoted_model_count: 0,
             projects: vec![
                 autopilot_desktop::gemma_finetune_control::GemmaFinetuneProjectStatus {
                     project_id: "support-agent-1".to_string(),
@@ -11415,6 +11816,8 @@ mod tests {
                     last_error: None,
                 }
             ],
+            jobs: Vec::new(),
+            promoted_models: Vec::new(),
             last_action: Some("Registered Gemma finetune dataset".to_string()),
             last_error: None,
         };

@@ -35,9 +35,10 @@ It can:
   app-owned snapshot the desktop uses, including delivery acceptance,
   validator outcomes, accepted training outcomes, checkpoint lineage, and
   settlement history when kernel authority is configured
-- inspect and mutate the bounded `gemma4:e4b` finetuning prep surface through
+- inspect and mutate the bounded `gemma4:e4b` finetuning surface through
   authenticated desktop control, including project binding, explicit split
-  identity, and tokenizer/template compatibility receipts
+  identity, tokenizer/template compatibility receipts, async jobs, checkpoint
+  and artifact truth, and bounded promotion state
 - list, open, focus, close, and inspect panes in the running desktop shell
 - inspect the bounded contributor-beta control surface and its governed
   submission state through the same pane snapshot contract as the GUI
@@ -152,6 +153,10 @@ autopilotctl training status
 autopilotctl gemma-finetune status
 autopilotctl gemma-finetune project create "Support agent" --tenant-id design-partner --base-served-artifact-digest sha256:gemma4-e4b-base --hidden-size <hidden-state-width>
 autopilotctl gemma-finetune dataset register support-agent-1760000000000 dataset://openagents/support-agent@2026.04 /tmp/train.jsonl /tmp/validation.jsonl /tmp/holdout.jsonl --baseline-short-path /tmp/baseline-short.jsonl --final-report-path /tmp/final-report.jsonl --chat-template-digest sha256:gemma4-e4b-template --benchmark-ref benchmark://psionic/gemma4/e4b/finetune_eval
+autopilotctl gemma-finetune job create support-agent-1760000000000 --dataset-id support-agent-2026-04-1760000000500
+autopilotctl gemma-finetune job get support-agent-1760000000000-1760000000600
+autopilotctl gemma-finetune job cancel support-agent-1760000000000-1760000000600
+autopilotctl gemma-finetune promote support-agent-1760000000000-1760000000600 --checkpoint-id support-agent-r1760000000600-final --reviewer-id operator-1 --review-state approved
 autopilotctl remote-training status
 autopilotctl remote-training list
 autopilotctl remote-training run parameter-golf-runpod-single-h100-live-sample
@@ -443,8 +448,8 @@ before any training job is created.
 The new desktop-control actions are:
 
 - `gemma-finetune-status`
-  - returns the current project list, dataset list, and visible validation
-    receipts
+  - returns the current project list, dataset list, visible validation
+    receipts, queued and completed jobs, and promoted-model discovery rows
 - `gemma-finetune-project-create`
   - binds one design-partner project to the bounded `gemma4:e4b` training lane
     and its canonical eval pack
@@ -452,12 +457,35 @@ The new desktop-control actions are:
   - registers explicit split files, computes split digests and counts, and
     records a validation receipt that captures tokenizer/template compatibility
     plus overlap-review posture
+- `gemma-finetune-job-create`
+  - queues one bounded async Gemma job against the admitted dataset bound to a
+    project
+- `gemma-finetune-job-get`
+  - returns per-job state, recent events, checkpoints, exported artifacts, and
+    the current promotion record if one exists
+- `gemma-finetune-job-cancel`
+  - requests cancellation and leaves the job in explicit `cancel_requested` or
+    terminal `cancelled` truth instead of hiding the operator intent
+- `gemma-finetune-checkpoint-promote`
+  - records the operator review, scores the bounded Psionic promotion decision,
+    and either publishes a discoverable promoted-model ref or leaves the job in
+    explicit `hold_for_review` / `reject` posture
 
 `autopilotctl status` now prints a top-level `gemma finetune:` line alongside
 the broader desktop snapshot, and `autopilotctl gemma-finetune status` expands
-that into per-project and per-dataset detail. The create and register commands
-print the same project binding and validation-receipt truth the desktop keeps on
-disk under `~/.openagents/logs/autopilot/gemma-finetune.json`.
+that into per-project, per-dataset, per-job, and promoted-model detail. The
+job getter prints recent events plus checkpoint and artifact rows. The create,
+register, queue, cancel, and promote commands all operate against the same
+state the desktop keeps on disk under
+`~/.openagents/logs/autopilot/gemma-finetune.json`.
+
+The current promotion path is intentionally narrow. OpenAgents now records the
+real Psionic baseline sweep, trainer progress, checkpoint digests, exported
+adapter digests, and operator review packet. The public Psionic scorer is not
+yet exported through this repo, so the current eval receipts are explicitly
+derived from the bounded held-out loss lane plus the frozen dataset/template
+contract checks. The promotion decision surfaces that truth directly instead of
+pretending the desktop already owns a broader finetune control plane.
 
 Desktop control now also carries a separate `remote_training` mirror for the
 Psionic Google and RunPod lanes. That surface is app-owned and provider-neutral:

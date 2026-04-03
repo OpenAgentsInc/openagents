@@ -98,6 +98,11 @@ fn append_desktop_control_gemma_finetune_signature(builder: &mut SignatureBuilde
         "gemma_finetune_validation_receipt_count",
         status.validation_receipt_count,
     );
+    builder.field("gemma_finetune_job_count", status.job_count);
+    builder.field(
+        "gemma_finetune_promoted_model_count",
+        status.promoted_model_count,
+    );
     builder.opt_str(
         "gemma_finetune_storage_path",
         status.storage_path.as_deref(),
@@ -154,6 +159,59 @@ fn append_desktop_control_gemma_finetune_signature(builder: &mut SignatureBuilde
         builder.opt_str(
             "gemma_finetune_dataset_last_error",
             dataset.last_error.as_deref(),
+        );
+    }
+    for job in &status.jobs {
+        builder.field("gemma_finetune_job_id", job.job_id.as_str());
+        builder.field("gemma_finetune_job_project", job.project_id.as_str());
+        builder.field("gemma_finetune_job_dataset", job.dataset_id.as_str());
+        builder.field("gemma_finetune_job_state", job.state.label());
+        builder.field("gemma_finetune_job_phase", job.phase.label());
+        builder.bool("gemma_finetune_job_cancel_requested", job.cancel_requested);
+        builder.field("gemma_finetune_job_completed_steps", job.completed_steps);
+        builder.opt_str(
+            "gemma_finetune_job_selected_candidate",
+            job.selected_candidate_id.as_deref(),
+        );
+        builder.opt_str("gemma_finetune_job_last_error", job.last_error.as_deref());
+        if let Some(promotion) = job.promotion.as_ref() {
+            builder.field(
+                "gemma_finetune_job_promotion_checkpoint",
+                promotion.checkpoint_id.as_str(),
+            );
+            builder.opt_str(
+                "gemma_finetune_job_promoted_model_ref",
+                promotion.promoted_model_ref.as_deref(),
+            );
+            builder.field(
+                "gemma_finetune_job_promotion_state",
+                match promotion.decision.decision_state {
+                    psionic_train::GemmaE4bPromotionDecisionState::Promote => "promote",
+                    psionic_train::GemmaE4bPromotionDecisionState::HoldForReview => {
+                        "hold_for_review"
+                    }
+                    psionic_train::GemmaE4bPromotionDecisionState::Reject => "reject",
+                },
+            );
+        }
+    }
+    for model in &status.promoted_models {
+        builder.field(
+            "gemma_finetune_promoted_model_ref",
+            model.model_ref.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_promoted_model_project",
+            model.project_id.as_str(),
+        );
+        builder.field("gemma_finetune_promoted_model_job", model.job_id.as_str());
+        builder.field(
+            "gemma_finetune_promoted_model_checkpoint",
+            model.checkpoint_id.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_promoted_model_digest",
+            model.adapter_artifact_digest.as_str(),
         );
     }
 }

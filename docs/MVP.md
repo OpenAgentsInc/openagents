@@ -146,7 +146,7 @@ We are shipping:
 * A wallet that can receive earnings, generate invoices, send payments, and show deterministic history.
 * A retained sync lane so conversations and job/activity state remain consistent and replay-safe across reconnects and restarts.
 * A starter Data Market slice that can register assets, publish grants, accept targeted NIP-90 access requests, issue delivery bundles, revoke access, and expose the same flow through panes, `autopilotctl`, and the no-window headless runtime.
-* A bounded design-partner `gemma4:e4b` finetuning prep surface that can register explicit train/validation/holdout split files, bind them to the frozen Gemma training lane, and expose tokenizer/template compatibility receipts through desktop control and `autopilotctl`.
+* A bounded design-partner `gemma4:e4b` finetuning surface that can register explicit train/validation/holdout split files, queue one async adapter-SFT job against the frozen Gemma lane, expose checkpoints and exported artifacts, and publish truthful promotion state plus promoted-model discovery through desktop control and `autopilotctl`.
 
 We are intentionally *not* shipping:
 

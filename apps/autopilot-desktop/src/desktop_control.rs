@@ -106,7 +106,7 @@ use wgpui::{
     capture_scene, theme,
 };
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 22;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 23;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -1850,6 +1850,9 @@ pub enum DesktopControlActionRequest {
     ResetResearchState,
     GetTrainingStatus,
     GetGemmaFinetuneStatus,
+    GetGemmaFinetuneJob {
+        job_id: String,
+    },
     GetRemoteTrainingStatus,
     GetRemoteTrainingRun {
         run_id: Option<String>,
@@ -1874,6 +1877,21 @@ pub enum DesktopControlActionRequest {
         overlap_check_id: Option<String>,
         overlap_detail: Option<String>,
         compared_benchmark_refs: Vec<String>,
+    },
+    CreateGemmaFinetuneJob {
+        project_id: String,
+        dataset_id: Option<String>,
+    },
+    CancelGemmaFinetuneJob {
+        job_id: String,
+    },
+    PromoteGemmaFinetuneCheckpoint {
+        job_id: String,
+        checkpoint_id: Option<String>,
+        reviewer_id: String,
+        review_state: Option<String>,
+        failed_case_ids: Vec<String>,
+        summary: Option<String>,
     },
     LaunchAppleAdapterTraining {
         train_dataset_path: String,
@@ -2121,11 +2139,15 @@ impl DesktopControlActionRequest {
             Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
             Self::GetGemmaFinetuneStatus => "gemma-finetune-status",
+            Self::GetGemmaFinetuneJob { .. } => "gemma-finetune-job-get",
             Self::GetRemoteTrainingStatus => "remote-training-status",
             Self::GetRemoteTrainingRun { .. } => "remote-training-run",
             Self::RefreshRemoteTrainingStatus => "remote-training-refresh",
             Self::CreateGemmaFinetuneProject { .. } => "gemma-finetune-project-create",
             Self::RegisterGemmaFinetuneDataset { .. } => "gemma-finetune-dataset-register",
+            Self::CreateGemmaFinetuneJob { .. } => "gemma-finetune-job-create",
+            Self::CancelGemmaFinetuneJob { .. } => "gemma-finetune-job-cancel",
+            Self::PromoteGemmaFinetuneCheckpoint { .. } => "gemma-finetune-checkpoint-promote",
             Self::LaunchAppleAdapterTraining { .. } => "training-launch-apple-adapter",
             Self::ExportAppleAdapterTraining { .. } => "training-export-apple-adapter",
             Self::AcceptAppleAdapterTraining { .. } => "training-accept-apple-adapter",
@@ -2935,6 +2957,10 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+        }),
         DesktopControlActionRequest::CreateGemmaFinetuneProject {
             project_name,
             tenant_id,
@@ -2974,6 +3000,34 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             "overlap_check_id": overlap_check_id,
             "overlap_detail": overlap_detail,
             "compared_benchmark_refs": compared_benchmark_refs,
+        }),
+        DesktopControlActionRequest::CreateGemmaFinetuneJob {
+            project_id,
+            dataset_id,
+        } => json!({
+            "command_label": action.label(),
+            "project_id": project_id,
+            "dataset_id": dataset_id,
+        }),
+        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+        }),
+        DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+            job_id,
+            checkpoint_id,
+            reviewer_id,
+            review_state,
+            failed_case_ids,
+            summary,
+        } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+            "checkpoint_id": checkpoint_id,
+            "reviewer_id": reviewer_id,
+            "review_state": review_state,
+            "failed_case_ids": failed_case_ids,
+            "summary": summary,
         }),
         DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
             mesh_root,
@@ -4269,6 +4323,9 @@ fn apply_action_request(
         DesktopControlActionRequest::GetGemmaFinetuneStatus => {
             gemma_finetune_payload_response().into()
         }
+        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id } => {
+            gemma_finetune_job_payload_response(job_id.as_str()).into()
+        }
         DesktopControlActionRequest::GetRemoteTrainingStatus => {
             remote_training_payload_response(state, false).into()
         }
@@ -4316,6 +4373,29 @@ fn apply_action_request(
             overlap_check_id.as_deref(),
             overlap_detail.as_deref(),
             compared_benchmark_refs.as_slice(),
+        )
+        .into(),
+        DesktopControlActionRequest::CreateGemmaFinetuneJob {
+            project_id,
+            dataset_id,
+        } => create_gemma_finetune_job_action(project_id.as_str(), dataset_id.as_deref()).into(),
+        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id } => {
+            cancel_gemma_finetune_job_action(job_id.as_str()).into()
+        }
+        DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+            job_id,
+            checkpoint_id,
+            reviewer_id,
+            review_state,
+            failed_case_ids,
+            summary,
+        } => promote_gemma_finetune_checkpoint_action(
+            job_id.as_str(),
+            checkpoint_id.as_deref(),
+            reviewer_id.as_str(),
+            review_state.as_deref(),
+            failed_case_ids.as_slice(),
+            summary.as_deref(),
         )
         .into(),
         DesktopControlActionRequest::LaunchAppleAdapterTraining {
@@ -7051,6 +7131,21 @@ fn gemma_finetune_payload_response() -> DesktopControlActionResponse {
     }
 }
 
+fn gemma_finetune_job_payload_response(job_id: &str) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::get_job(job_id) {
+        Ok(job) => match serde_json::to_value(job) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Captured Gemma finetune job {}", job_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune job payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
 fn create_gemma_finetune_project_action(
     project_name: &str,
     tenant_id: Option<&str>,
@@ -7072,6 +7167,75 @@ fn create_gemma_finetune_project_action(
             ),
             Err(error) => DesktopControlActionResponse::error(format!(
                 "Failed to encode Gemma finetune project payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn create_gemma_finetune_job_action(
+    project_id: &str,
+    dataset_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::create_job(
+        crate::gemma_finetune_control::GemmaFinetuneJobCreateRequest {
+            project_id: project_id.to_string(),
+            dataset_id: dataset_id.map(str::to_string),
+        },
+    ) {
+        Ok(job) => match serde_json::to_value(job) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Queued Gemma finetune job for project {}", project_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune job payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn cancel_gemma_finetune_job_action(job_id: &str) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::cancel_job(job_id) {
+        Ok(job) => match serde_json::to_value(job) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Updated Gemma finetune cancellation for {}", job_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune cancellation payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn promote_gemma_finetune_checkpoint_action(
+    job_id: &str,
+    checkpoint_id: Option<&str>,
+    reviewer_id: &str,
+    review_state: Option<&str>,
+    failed_case_ids: &[String],
+    summary: Option<&str>,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::promote_checkpoint(
+        crate::gemma_finetune_control::GemmaFinetuneCheckpointPromotionRequest {
+            job_id: job_id.to_string(),
+            checkpoint_id: checkpoint_id.map(str::to_string),
+            reviewer_id: reviewer_id.to_string(),
+            review_state: review_state.map(str::to_string),
+            failed_case_ids: failed_case_ids.to_vec(),
+            summary: summary.map(str::to_string),
+        },
+    ) {
+        Ok(promotion) => match serde_json::to_value(promotion) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Scored Gemma checkpoint promotion for {}", job_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma promotion payload: {error}"
             )),
         },
         Err(error) => DesktopControlActionResponse::error(error),
@@ -13423,6 +13587,8 @@ mod tests {
                 project_count: 1,
                 dataset_count: 1,
                 validation_receipt_count: 1,
+                job_count: 0,
+                promoted_model_count: 0,
                 projects: vec![crate::gemma_finetune_control::GemmaFinetuneProjectStatus {
                     project_id: "support-agent-1762500004000".to_string(),
                     tenant_id: "design-partner".to_string(),
@@ -13515,6 +13681,8 @@ mod tests {
                     last_action: Some("Registered Gemma finetune dataset".to_string()),
                     last_error: None,
                 }],
+                jobs: Vec::new(),
+                promoted_models: Vec::new(),
                 last_action: Some("Registered Gemma finetune dataset".to_string()),
                 last_error: None,
             },
