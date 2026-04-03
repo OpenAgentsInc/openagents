@@ -329,6 +329,8 @@ lane root, and then project the resulting join state back through the normal
 desktop-control snapshot. The desktop and CLI keep Psionic as the source of
 truth for:
 
+- the owned pooled-inference service binary and management surface; this path
+  does not depend on a separate external mesh sidecar runtime
 - whether the local lane is still `standalone` or has `joined`
 - the last selected mesh preference, including label, namespace, cluster id,
   trust digest, and advertised control-plane addresses

@@ -7838,7 +7838,7 @@ fn run_pooled_inference_mesh_lane_command(args: Vec<OsString>) -> Result<String,
     } else {
         format!("exit status {}", output.status)
     };
-    Err(format!("psionic mesh lane command failed: {detail}"))
+    Err(format!("psionic-owned mesh lane command failed: {detail}"))
 }
 
 fn resolve_pooled_inference_mesh_lane_command_plan()
@@ -7881,7 +7881,7 @@ fn resolve_pooled_inference_mesh_lane_command_plan()
         });
     }
     Err(format!(
-        "pooled inference mesh lane binary is not configured; set {DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV} or keep a sibling `psionic` checkout available"
+        "the supported pooled inference path uses the Psionic-owned `psionic-mesh-lane` binary; set {DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV} or keep a sibling `psionic` checkout available"
     ))
 }
 
