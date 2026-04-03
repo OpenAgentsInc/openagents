@@ -192,6 +192,11 @@ enum ChatRemoteComposerIntent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatCodingProjectComposerIntent {
+    AddBacklogTasks { titles: Vec<String> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ChatForgeComposerIntent {
     PackRepoFiles {
         kind: crate::app_state::ForgeKnowledgePackKind,
@@ -441,6 +446,16 @@ pub(super) fn run_chat_submit_action_with_trigger(
     match parse_chat_remote_intent(&trimmed_prompt) {
         Ok(Some(intent)) => {
             return run_chat_remote_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_coding_project_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_coding_project_action(state, prompt, intent);
         }
         Ok(None) => {}
         Err(error) => {
@@ -7144,6 +7159,148 @@ fn run_chat_remote_action(
             }
         }
     }
+}
+
+fn run_chat_coding_project_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatCodingProjectComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    match intent {
+        ChatCodingProjectComposerIntent::AddBacklogTasks { titles } => {
+            if titles.is_empty() {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "No task titles were found. Try: add task Implement provider routing matrix"
+                        .to_string(),
+                    true,
+                );
+            }
+            let mut added = 0usize;
+            for title in titles {
+                let clean_title = title.trim();
+                if clean_title.is_empty() {
+                    continue;
+                }
+                state
+                    .coding_project
+                    .tasks
+                    .push(crate::app_state::CodingProjectTask {
+                        title: clean_title.to_string(),
+                        summary: "Added from chat command.".to_string(),
+                        details: format!("Task created from chat request: {clean_title}"),
+                        status: crate::app_state::CodingProjectTaskStatus::Backlog,
+                        updates: vec!["Created from chat in Coding Project pane.".to_string()],
+                        notes: Vec::new(),
+                    });
+                added += 1;
+            }
+            if added == 0 {
+                return append_chat_command_result(
+                    state,
+                    prompt,
+                    "No valid task titles were parsed from that request.".to_string(),
+                    true,
+                );
+            }
+            state.coding_project.last_error = None;
+            state.coding_project.last_action = Some(format!("Added {added} backlog task(s)"));
+            append_chat_command_result(
+                state,
+                prompt,
+                format!("Added {added} task(s) to Backlog."),
+                false,
+            )
+        }
+    }
+}
+
+fn parse_chat_coding_project_intent(
+    prompt: &str,
+) -> Result<Option<ChatCodingProjectComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let normalized = trimmed.to_ascii_lowercase();
+    let prefixes = [
+        "add tasks:",
+        "add task:",
+        "add tasks ",
+        "add task ",
+        "add to backlog:",
+        "add to backlog ",
+        "create task:",
+        "create task ",
+        "new task:",
+        "new task ",
+        "backlog:",
+    ];
+    let mut payload = None;
+    for prefix in prefixes {
+        if normalized.starts_with(prefix) {
+            payload = Some(trimmed[prefix.len()..].trim().to_string());
+            break;
+        }
+    }
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+
+    if payload.is_empty() {
+        return Err("Task text is empty. Add a title after the command.".to_string());
+    }
+
+    let multi = normalized.starts_with("add tasks");
+    let mut titles = Vec::new();
+    if multi {
+        for raw in payload.split(['\n', ';', ',']) {
+            let candidate = sanitize_task_title(raw);
+            if !candidate.is_empty() {
+                titles.push(candidate);
+            }
+        }
+    } else {
+        let candidate = sanitize_task_title(payload.as_str());
+        if !candidate.is_empty() {
+            titles.push(candidate);
+        }
+    }
+
+    if titles.is_empty() {
+        return Err("Could not parse any task title from that request.".to_string());
+    }
+
+    Ok(Some(ChatCodingProjectComposerIntent::AddBacklogTasks {
+        titles,
+    }))
+}
+
+fn sanitize_task_title(raw: &str) -> String {
+    let trimmed = raw
+        .trim()
+        .trim_start_matches(|ch: char| {
+            ch == '-'
+                || ch == '*'
+                || ch == '.'
+                || ch == ')'
+                || ch == ':'
+                || ch.is_ascii_digit()
+                || ch.is_whitespace()
+        })
+        .trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let mut title = trimmed.to_string();
+    if title.chars().count() > 96 {
+        title = title.chars().take(96).collect::<String>();
+    }
+    title
 }
 
 fn run_chat_forge_action(

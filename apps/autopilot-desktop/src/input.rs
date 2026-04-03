@@ -54,16 +54,18 @@ use crate::pane_system::{
     ActivityFeedPaneAction, AlertsRecoveryPaneAction, AttnResLabPaneAction, CadDemoPaneAction,
     CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
-    CredentialsPaneAction, EarningsScoreboardPaneAction, MissionControlPaneAction,
-    NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
-    PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
-    RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TassadarLabPaneAction, XtrainExplorerPaneAction,
-    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
-    dispatch_active_job_scroll_event, dispatch_activity_feed_detail_scroll_event,
-    dispatch_apple_adapter_training_input_event, dispatch_apple_fm_workbench_input_event,
-    dispatch_apple_fm_workbench_log_scroll_event, dispatch_buy_mode_payments_scroll_event,
-    dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
+    CodingProjectPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
+    MissionControlPaneAction, NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction,
+    PaneController, PaneHitAction, PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
+    SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction, TassadarLabPaneAction,
+    XtrainExplorerPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
+    clamp_all_panes_to_window, dispatch_active_job_scroll_event,
+    dispatch_activity_feed_detail_scroll_event, dispatch_apple_adapter_training_input_event,
+    dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
+    dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
+    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_coding_project_input_event,
+    dispatch_coding_project_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_data_buyer_scroll_event, dispatch_data_market_scroll_event,
     dispatch_data_seller_input_event, dispatch_data_seller_scroll_event,
@@ -2998,6 +3000,9 @@ fn dispatch_mouse_scroll(
                 handled |= dispatch_wallet_scroll_event(state, point, *dy);
             }
             if !handled {
+                handled |= dispatch_coding_project_scroll_event(state, point, *dy);
+            }
+            if !handled {
                 handled |= dispatch_chat_scroll_event(state, point, *dy);
             }
         }
@@ -3316,6 +3321,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
             Some(PaneKind::Settings) => dispatch_settings_input_event(state, event),
             Some(PaneKind::Credentials) => dispatch_credentials_input_event(state, event),
             Some(PaneKind::AutopilotChat) => dispatch_chat_input_event(state, event),
+            Some(PaneKind::CodingProject) => dispatch_coding_project_input_event(state, event),
             Some(PaneKind::DataSeller) => dispatch_data_seller_input_event(state, event),
             Some(PaneKind::Calculator) => dispatch_calculator_input_event(state, event),
             Some(PaneKind::JobHistory) => dispatch_job_history_input_event(state, event),
@@ -3337,6 +3343,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
+    handled |= dispatch_coding_project_input_event(state, event);
     handled |= dispatch_data_seller_input_event(state, event);
     handled |= dispatch_calculator_input_event(state, event);
     handled |= dispatch_job_history_input_event(state, event);
@@ -3536,6 +3543,7 @@ fn dispatch_keyboard_submit_actions(
     logical_key: &WinitLogicalKey,
 ) -> bool {
     handle_chat_keyboard_input(state, logical_key)
+        || handle_coding_project_keyboard_input(state, logical_key)
         || handle_data_seller_keyboard_input(state, logical_key)
         || handle_spark_wallet_keyboard_input(state, logical_key)
         || handle_mission_control_keyboard_input(state, logical_key)
@@ -3682,6 +3690,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::DataSeller(action) => run_data_seller_action(state, action),
         PaneHitAction::DataBuyer(action) => run_data_buyer_action(state, action),
         PaneHitAction::DataMarket(action) => run_data_market_action(state, action),
+        PaneHitAction::CodingProject(action) => run_coding_project_action(state, action),
         PaneHitAction::SparkReplay(action) => run_spark_replay_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
@@ -4024,6 +4033,36 @@ fn provider_preflight_console_error(state: &crate::app_state::RenderState) -> Op
     .map(|details| format!("Mission Control preflight blockers: {details}"))
 }
 
+fn run_coding_project_action(
+    state: &mut crate::app_state::RenderState,
+    action: CodingProjectPaneAction,
+) -> bool {
+    match action {
+        CodingProjectPaneAction::SendChat => run_chat_submit_action(state),
+        CodingProjectPaneAction::SelectTask(index) => state.coding_project.open_task_detail(index),
+        CodingProjectPaneAction::CloseTaskDetail => {
+            state.coding_project.close_task_detail();
+            true
+        }
+        CodingProjectPaneAction::AddTaskNote => {
+            let note = state
+                .coding_project_inputs
+                .task_note
+                .get_value()
+                .trim()
+                .to_string();
+            if state.coding_project.add_selected_task_note(note) {
+                state
+                    .coding_project_inputs
+                    .task_note
+                    .set_value(String::new());
+                return true;
+            }
+            false
+        }
+    }
+}
+
 fn should_mirror_provider_preflight_error(
     mode: crate::state::provider_runtime::ProviderMode,
 ) -> bool {
@@ -4108,6 +4147,19 @@ fn handle_data_seller_keyboard_input(
                 crate::pane_system::DataSellerPaneAction::SubmitPrompt,
             )
         },
+    )
+}
+
+fn handle_coding_project_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        |s| s.coding_project_inputs.task_note.is_focused(),
+        dispatch_coding_project_input_event,
+        |s| run_coding_project_action(s, crate::pane_system::CodingProjectPaneAction::AddTaskNote),
     )
 }
 

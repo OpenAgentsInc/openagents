@@ -13,9 +13,10 @@ use crate::pane_registry::pane_spec;
 use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
-    chat as chat_pane, data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
-    local_inference as local_inference_pane, relay_connections as relay_connections_pane,
-    rive as rive_pane, voice_playground as voice_playground_pane, wallet as wallet_pane,
+    chat as chat_pane, coding_project as coding_project_pane, data_seller as data_seller_pane,
+    earnings_jobs as earnings_jobs_pane, local_inference as local_inference_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
+    voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::render::{
     hotbar_drag_handle_bounds_for_state, logical_size, pane_fullscreen_active,
@@ -620,6 +621,14 @@ pub enum DataBuyerPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DataMarketPaneAction {
     Refresh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodingProjectPaneAction {
+    SendChat,
+    SelectTask(usize),
+    CloseTaskDetail,
+    AddTaskNote,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1332,6 +1341,7 @@ pub enum PaneHitAction {
     JobInbox(JobInboxPaneAction),
     ActiveJob(ActiveJobPaneAction),
     JobHistory(JobHistoryPaneAction),
+    CodingProject(CodingProjectPaneAction),
     AgentProfileState(AgentProfileStatePaneAction),
     AgentScheduleTick(AgentScheduleTickPaneAction),
     TrajectoryAudit(TrajectoryAuditPaneAction),
@@ -1425,6 +1435,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
 
     match kind {
         PaneKind::AutopilotChat => pane_size_for_content(620.0, 500.0),
+        PaneKind::CodingProject => pane_size_for_content(760.0, 520.0),
         PaneKind::CodexAccount
         | PaneKind::CodexModels
         | PaneKind::CodexConfig
@@ -2062,6 +2073,15 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
+            PaneKind::CodingProject => {
+                if coding_project_chat_composer_bounds(content_bounds).contains(point)
+                    || (state.coding_project.task_detail_open
+                        && coding_project_task_detail_note_input_bounds(content_bounds)
+                            .contains(point))
+                {
+                    return CursorIcon::Text;
+                }
+            }
             PaneKind::SparkWallet => {
                 let layout = spark_pane::layout_with_scroll(
                     spark_pane::scroll_content_bounds(content_bounds),
@@ -2689,6 +2709,168 @@ pub fn chat_transcript_body_bounds_with_height(
         (transcript.size.width - 16.0).max(160.0),
         (transcript.size.height - CHAT_TRANSCRIPT_HEADER_HEIGHT - 10.0).max(80.0),
     )
+}
+
+pub fn coding_project_action_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let overview = coding_project_overview_panel_bounds(content_bounds);
+    let width = (overview.size.width - CHAT_PAD * 2.0).max(140.0);
+    let height = 32.0;
+    Bounds::new(
+        overview.origin.x + CHAT_PAD,
+        overview.origin.y + 84.0 + index as f32 * (height + 8.0),
+        width,
+        height,
+    )
+}
+
+pub fn coding_project_left_column_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.25 - CHAT_PAD * 1.5).max(220.0),
+        (content_bounds.size.height - CHAT_PAD * 2.0).max(180.0),
+    )
+}
+
+pub fn coding_project_overview_panel_bounds(content_bounds: Bounds) -> Bounds {
+    let left = coding_project_left_column_bounds(content_bounds);
+    let chat_h = (left.size.height * 0.60).clamp(220.0, 480.0);
+    let overview_h = (left.size.height - chat_h - 10.0).max(140.0);
+    Bounds::new(left.origin.x, left.origin.y, left.size.width, overview_h)
+}
+
+pub fn coding_project_board_bounds(content_bounds: Bounds) -> Bounds {
+    let left = coding_project_left_column_bounds(content_bounds);
+    let right_x = left.max_x() + CHAT_PAD;
+    Bounds::new(
+        right_x,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.max_x() - right_x - CHAT_PAD).max(340.0),
+        (content_bounds.size.height - CHAT_PAD * 2.0).max(180.0),
+    )
+}
+
+pub fn coding_project_board_column_bounds(content_bounds: Bounds, column: usize) -> Bounds {
+    let board = coding_project_board_bounds(content_bounds);
+    let gap = 8.0;
+    let width = ((board.size.width - gap * 3.0 - 16.0) / 4.0).max(100.0);
+    let clamped_column = column.min(3) as f32;
+    Bounds::new(
+        board.origin.x + 8.0 + clamped_column * (width + gap),
+        board.origin.y + 30.0,
+        width,
+        (board.size.height - 38.0).max(120.0),
+    )
+}
+
+pub fn coding_project_chat_panel_bounds(content_bounds: Bounds) -> Bounds {
+    let overview = coding_project_overview_panel_bounds(content_bounds);
+    Bounds::new(
+        overview.origin.x,
+        overview.max_y() + 10.0,
+        overview.size.width,
+        (coding_project_left_column_bounds(content_bounds).max_y() - overview.max_y() - 10.0)
+            .max(140.0),
+    )
+}
+
+pub fn coding_project_chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = coding_project_chat_panel_bounds(content_bounds);
+    Bounds::new(
+        panel.origin.x + 8.0,
+        panel.origin.y + 30.0,
+        (panel.size.width - 16.0).max(120.0),
+        (panel.size.height - 104.0).max(80.0),
+    )
+}
+
+pub fn coding_project_chat_composer_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = coding_project_chat_panel_bounds(content_bounds);
+    Bounds::new(
+        panel.origin.x + 8.0,
+        panel.max_y() - 46.0,
+        (panel.size.width - 52.0).max(120.0),
+        30.0,
+    )
+}
+
+pub fn coding_project_chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
+    let composer = coding_project_chat_composer_bounds(content_bounds);
+    Bounds::new(
+        composer.max_x() + 6.0,
+        composer.origin.y + 2.0,
+        24.0,
+        24.0,
+    )
+}
+
+pub fn coding_project_task_card_bounds(
+    content_bounds: Bounds,
+    tasks: &[crate::app_state::CodingProjectTask],
+    task_index: usize,
+) -> Option<Bounds> {
+    coding_project_task_card_bounds_with_scroll(content_bounds, tasks, task_index, 0.0)
+}
+
+pub fn coding_project_task_card_bounds_with_scroll(
+    content_bounds: Bounds,
+    tasks: &[crate::app_state::CodingProjectTask],
+    task_index: usize,
+    scroll_offset: f32,
+) -> Option<Bounds> {
+    let task = tasks.get(task_index)?;
+    let status = task.status;
+    let mut lane_index = 0usize;
+    for prior in tasks.iter().take(task_index) {
+        if prior.status == status {
+            lane_index += 1;
+        }
+    }
+    let column = match status {
+        crate::app_state::CodingProjectTaskStatus::Backlog => 0,
+        crate::app_state::CodingProjectTaskStatus::InProgress => 1,
+        crate::app_state::CodingProjectTaskStatus::Review => 2,
+        crate::app_state::CodingProjectTaskStatus::Done => 3,
+    };
+    let column_bounds = coding_project_board_column_bounds(content_bounds, column);
+    let y = column_bounds.origin.y + 24.0 + lane_index as f32 * 56.0 - scroll_offset;
+    Some(Bounds::new(
+        column_bounds.origin.x + 4.0,
+        y,
+        (column_bounds.size.width - 8.0).max(90.0),
+        48.0,
+    ))
+}
+
+pub fn coding_project_task_detail_popup_bounds(content_bounds: Bounds) -> Bounds {
+    let width = (content_bounds.size.width * 0.62).clamp(420.0, 760.0);
+    let height = (content_bounds.size.height * 0.66).clamp(260.0, 520.0);
+    Bounds::new(
+        content_bounds.origin.x + (content_bounds.size.width - width) * 0.5,
+        content_bounds.origin.y + (content_bounds.size.height - height) * 0.5,
+        width,
+        height,
+    )
+}
+
+pub fn coding_project_task_detail_close_button_bounds(content_bounds: Bounds) -> Bounds {
+    let popup = coding_project_task_detail_popup_bounds(content_bounds);
+    Bounds::new(popup.max_x() - 78.0, popup.origin.y + 8.0, 66.0, 26.0)
+}
+
+pub fn coding_project_task_detail_note_input_bounds(content_bounds: Bounds) -> Bounds {
+    let popup = coding_project_task_detail_popup_bounds(content_bounds);
+    Bounds::new(
+        popup.origin.x + 12.0,
+        popup.max_y() - 58.0,
+        (popup.size.width - 116.0).max(180.0),
+        36.0,
+    )
+}
+
+pub fn coding_project_task_detail_add_note_button_bounds(content_bounds: Bounds) -> Bounds {
+    let input = coding_project_task_detail_note_input_bounds(content_bounds);
+    Bounds::new(input.max_x() + 8.0, input.origin.y, 84.0, input.size.height)
 }
 
 pub fn provider_control_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -5439,7 +5621,10 @@ const CONTRIBUTOR_BETA_ACTION_BUTTON_GAP: f32 = 10.0;
 const CONTRIBUTOR_BETA_ROW_HEIGHT: f32 = 46.0;
 const CONTRIBUTOR_BETA_ROW_GAP: f32 = 8.0;
 
-pub fn contributor_beta_action_button_bounds(content_bounds: Bounds, button_index: usize) -> Bounds {
+pub fn contributor_beta_action_button_bounds(
+    content_bounds: Bounds,
+    button_index: usize,
+) -> Bounds {
     Bounds::new(
         content_bounds.origin.x
             + 12.0
@@ -7629,6 +7814,45 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::ProjectOps => None,
+        PaneKind::CodingProject => {
+            if state.coding_project.task_detail_open {
+                let popup = coding_project_task_detail_popup_bounds(content_bounds);
+                if !popup.contains(point) {
+                    return None;
+                }
+                if coding_project_task_detail_close_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::CodingProject(
+                        CodingProjectPaneAction::CloseTaskDetail,
+                    ));
+                }
+                if coding_project_task_detail_add_note_button_bounds(content_bounds).contains(point)
+                {
+                    return Some(PaneHitAction::CodingProject(
+                        CodingProjectPaneAction::AddTaskNote,
+                    ));
+                }
+            }
+            if coding_project_chat_send_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::CodingProject(
+                    CodingProjectPaneAction::SendChat,
+                ));
+            }
+            for index in 0..state.coding_project.tasks.len() {
+                if coding_project_task_card_bounds_with_scroll(
+                    content_bounds,
+                    state.coding_project.tasks.as_slice(),
+                    index,
+                    state.coding_project.board_scroll_offset(),
+                )
+                .is_some_and(|bounds| bounds.contains(point))
+                {
+                    return Some(PaneHitAction::CodingProject(
+                        CodingProjectPaneAction::SelectTask(index),
+                    ));
+                }
+            }
+            None
+        }
         PaneKind::AutopilotChat => {
             set_chat_shell_layout_state(
                 state.autopilot_chat.workspace_rail_collapsed,
@@ -9742,6 +9966,18 @@ pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &Inp
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     chat_pane::dispatch_input_event(state, event)
+}
+
+pub fn dispatch_coding_project_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    coding_project_pane::dispatch_input_event(state, event)
+}
+
+pub fn dispatch_coding_project_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    coding_project_pane::dispatch_scroll_event(state, cursor_position, scroll_dy)
 }
 
 pub fn dispatch_data_seller_input_event(state: &mut RenderState, event: &InputEvent) -> bool {

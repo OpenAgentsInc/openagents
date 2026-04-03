@@ -24,8 +24,7 @@ use crate::apple_fm_bridge::{AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{
-    HOTBAR_DRAG_HANDLE_SIZE, configure_hotbar, hotbar_bounds, hotbar_drag_handle_bounds,
-    new_hotbar,
+    HOTBAR_DRAG_HANDLE_SIZE, configure_hotbar, hotbar_bounds, hotbar_drag_handle_bounds, new_hotbar,
 };
 use crate::input::{bootstrap_startup_cad_mesh, ensure_mission_control_local_runtime_preflight};
 use crate::local_inference_runtime::{
@@ -42,8 +41,8 @@ use crate::pane_system::{
     cad_palette_command_specs, clamp_all_panes_to_window, mission_control_docked_visible,
     sidebar_reserved_width,
 };
-use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::probe_lane::{ProbeLaneConfig, ProbeLaneSnapshot, ProbeLaneWorker};
+use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, SaLaneSnapshot, SaLaneWorker,
     SaLifecycleCommand, SklLaneSnapshot, SklLaneWorker,
@@ -741,6 +740,7 @@ pub fn init_state(
             credentials_inputs,
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
+            coding_project_inputs: crate::app_state::CodingProjectPaneInputs::default(),
             data_seller_inputs: crate::app_state::DataSellerPaneInputs::default(),
             calculator_inputs: crate::app_state::CalculatorPaneInputs::default(),
             provider_control: crate::app_state::ProviderControlPaneState::default(),
@@ -756,6 +756,7 @@ pub fn init_state(
             data_market: crate::app_state::DataMarketPaneState::default(),
             spark_replay: crate::app_state::SparkReplayPaneState::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
+            coding_project: crate::app_state::CodingProjectPaneState::default(),
             project_ops: crate::project_ops::ProjectOpsPaneState::default(),
             chat_transcript_selection_drag: None,
             codex_account: crate::app_state::CodexAccountPaneState::default(),
@@ -894,7 +895,10 @@ pub fn init_state(
             command_palette_actions,
             pane_search_filter: default_pane_search_filter,
         };
-        if matches!(state.autopilot_coding_runtime, AutopilotCodingRuntimeKind::Probe) {
+        if matches!(
+            state.autopilot_coding_runtime,
+            AutopilotCodingRuntimeKind::Probe
+        ) {
             state
                 .autopilot_chat
                 .set_connection_status(state.probe_lane.lifecycle.label());
@@ -1784,6 +1788,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.credentials_inputs,
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
+            &mut state.coding_project_inputs,
             &mut state.data_seller_inputs,
             &mut state.calculator_inputs,
             &state.sidebar,
@@ -1800,6 +1805,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &state.data_seller,
             &state.data_buyer,
             &state.data_market,
+            &state.coding_project,
             &mut state.spark_replay,
             &mut paint,
         );
@@ -2181,8 +2187,11 @@ fn paint_hotbar_drag_handle(paint: &mut PaintContext<'_>, bar_bounds: Bounds, ac
         mid = (HOTBAR_DRAG_HANDLE_SIZE * 0.5) as i32,
     );
     paint.scene.draw_svg(
-        SvgQuad::new(handle, std::sync::Arc::<[u8]>::from(triangle_svg.into_bytes()))
-            .with_tint(wgpui::Hsla::white().with_alpha(alpha)),
+        SvgQuad::new(
+            handle,
+            std::sync::Arc::<[u8]>::from(triangle_svg.into_bytes()),
+        )
+        .with_tint(wgpui::Hsla::white().with_alpha(alpha)),
     );
 }
 
