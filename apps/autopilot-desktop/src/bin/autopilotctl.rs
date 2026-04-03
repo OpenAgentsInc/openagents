@@ -6620,11 +6620,26 @@ fn print_pooled_inference_status_text(status: &DesktopControlPooledInferenceStat
     }
     for model in &status.targetable_models {
         println!(
-            "target={} family={} warm_replicas={} local_warm={} endpoints={} structured={} tools={} responses={}",
+            "target={} family={} warm_replicas={} local_warm={} execution_modes={} topologies={} workers={} endpoints={} structured={} tools={} responses={}",
             model.model,
             model.family,
             model.warm_replica_count,
             model.local_warm_replica,
+            if model.cluster_execution_modes.is_empty() {
+                "-".to_string()
+            } else {
+                model.cluster_execution_modes.join(",")
+            },
+            if model.cluster_execution_topologies.is_empty() {
+                "-".to_string()
+            } else {
+                model.cluster_execution_topologies.join(",")
+            },
+            if model.participating_workers.is_empty() {
+                "-".to_string()
+            } else {
+                model.participating_workers.join(",")
+            },
             if model.supported_endpoints.is_empty() {
                 "-".to_string()
             } else {

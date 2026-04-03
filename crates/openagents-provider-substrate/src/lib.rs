@@ -584,7 +584,9 @@ impl ProviderAvailability {
             ProviderComputeProduct::GptOssInference
             | ProviderComputeProduct::AppleFoundationModelsInference => true,
             ProviderComputeProduct::PooledInferenceRemoteWholeRequest
-            | ProviderComputeProduct::PooledInferenceReplicatedServing => {
+            | ProviderComputeProduct::PooledInferenceReplicatedServing
+            | ProviderComputeProduct::PooledInferenceDenseSplit
+            | ProviderComputeProduct::PooledInferenceSparseExpert => {
                 self.pooled_inference.has_authoritative_state()
             }
             ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
@@ -619,6 +621,12 @@ impl ProviderAvailability {
             }
             ProviderComputeProduct::PooledInferenceReplicatedServing => {
                 self.pooled_inference.replicated_serving_ready()
+            }
+            ProviderComputeProduct::PooledInferenceDenseSplit => {
+                self.pooled_inference.dense_split_ready()
+            }
+            ProviderComputeProduct::PooledInferenceSparseExpert => {
+                self.pooled_inference.sparse_expert_ready()
             }
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_foundation_models.is_ready()
@@ -666,6 +674,8 @@ impl ProviderAvailability {
             | ProviderComputeProduct::GptOssEmbeddings
             | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
             | ProviderComputeProduct::PooledInferenceReplicatedServing
+            | ProviderComputeProduct::PooledInferenceDenseSplit
+            | ProviderComputeProduct::PooledInferenceSparseExpert
             | ProviderComputeProduct::AppleFoundationModelsInference
             | ProviderComputeProduct::AppleFoundationModelsAdapterHosting
             | ProviderComputeProduct::AdapterTrainingContributor => {
@@ -691,6 +701,12 @@ pub struct ProviderPooledInferenceTargetStatus {
     pub warm_replica_count: usize,
     #[serde(default)]
     pub local_warm_replica: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cluster_execution_modes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cluster_execution_topologies: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub participating_workers: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -740,6 +756,20 @@ pub struct ProviderProductMarketSemantics {
     pub revenue_summary: String,
 }
 
+const POOLED_REMOTE_WHOLE_REQUEST_MODE: &str = "remote_whole_request";
+const POOLED_REPLICATED_MODE: &str = "replicated";
+const POOLED_DENSE_SPLIT_MODE: &str = "dense_split";
+const POOLED_SPARSE_EXPERT_MODE: &str = "sparse_expert";
+
+impl ProviderPooledInferenceTargetStatus {
+    fn supports_execution_mode(&self, mode: &str) -> bool {
+        self.cluster_execution_modes
+            .iter()
+            .any(|existing| existing == mode)
+            || matches!(mode, POOLED_REPLICATED_MODE) && self.warm_replica_count > 1
+    }
+}
+
 impl ProviderPooledInferenceAvailability {
     pub fn has_authoritative_state(&self) -> bool {
         let source_authoritative = !matches!(self.source.trim(), "" | "not_configured");
@@ -756,15 +786,24 @@ impl ProviderPooledInferenceAvailability {
     }
 
     pub fn remote_whole_request_ready(&self) -> bool {
-        self.available && self.member_count > 0 && !self.targetable_models.is_empty()
+        self.available
+            && self.member_count > 0
+            && !self.targetable_models.is_empty()
+            && (self.targetable_models_support_mode(POOLED_REMOTE_WHOLE_REQUEST_MODE)
+                || self.execution_mode.as_deref() == Some("proxy")
+                || self.local_serving_state == "proxying")
     }
 
     pub fn replicated_serving_ready(&self) -> bool {
-        self.available
-            && self
-                .targetable_models
-                .iter()
-                .any(|target| target.warm_replica_count > 1)
+        self.available && self.targetable_models_support_mode(POOLED_REPLICATED_MODE)
+    }
+
+    pub fn dense_split_ready(&self) -> bool {
+        self.available && self.targetable_models_support_mode(POOLED_DENSE_SPLIT_MODE)
+    }
+
+    pub fn sparse_expert_ready(&self) -> bool {
+        self.available && self.targetable_models_support_mode(POOLED_SPARSE_EXPERT_MODE)
     }
 
     fn target_model_summary(&self) -> String {
@@ -774,20 +813,46 @@ impl ProviderPooledInferenceAvailability {
         self.targetable_models
             .iter()
             .map(|target| {
+                let execution_modes = if target.cluster_execution_modes.is_empty() {
+                    "unspecified".to_string()
+                } else {
+                    target.cluster_execution_modes.join("+")
+                };
+                let execution_topologies = if target.cluster_execution_topologies.is_empty() {
+                    "unspecified".to_string()
+                } else {
+                    target.cluster_execution_topologies.join("+")
+                };
+                let participating_workers = if target.participating_workers.is_empty() {
+                    "unspecified".to_string()
+                } else {
+                    target.participating_workers.join("+")
+                };
                 format!(
-                    "{}:{}:{}",
-                    target.model, target.family, target.warm_replica_count
+                    "{}:{}:{}:{}:{}:{}",
+                    target.model,
+                    target.family,
+                    execution_modes,
+                    execution_topologies,
+                    participating_workers,
+                    target.warm_replica_count
                 )
             })
             .collect::<Vec<_>>()
             .join(",")
     }
 
-    fn replicated_model_summary(&self) -> String {
+    fn targetable_models_support_mode(&self, mode: &str) -> bool {
+        self.targetable_models
+            .iter()
+            .any(|target| target.supports_execution_mode(mode))
+    }
+
+    fn mode_model_summary(&self, mode: &str) -> String {
         let mut models = self
             .targetable_models
             .iter()
-            .filter(|target| target.warm_replica_count > 1)
+            .filter(|target| target.supports_execution_mode(mode))
             .map(|target| target.model.clone())
             .collect::<Vec<_>>();
         models.sort();
@@ -799,7 +864,39 @@ impl ProviderPooledInferenceAvailability {
         }
     }
 
-    pub fn capability_summary(&self, topology_label: &str) -> String {
+    fn mode_topology_summary(&self, mode: &str) -> String {
+        let mut topologies = self
+            .targetable_models
+            .iter()
+            .filter(|target| target.supports_execution_mode(mode))
+            .flat_map(|target| target.cluster_execution_topologies.iter().cloned())
+            .collect::<Vec<_>>();
+        topologies.sort();
+        topologies.dedup();
+        if topologies.is_empty() {
+            "none".to_string()
+        } else {
+            topologies.join(",")
+        }
+    }
+
+    fn mode_worker_summary(&self, mode: &str) -> String {
+        let mut workers = self
+            .targetable_models
+            .iter()
+            .filter(|target| target.supports_execution_mode(mode))
+            .flat_map(|target| target.participating_workers.iter().cloned())
+            .collect::<Vec<_>>();
+        workers.sort();
+        workers.dedup();
+        if workers.is_empty() {
+            "none".to_string()
+        } else {
+            workers.join(",")
+        }
+    }
+
+    pub fn capability_summary(&self, mode_label: &str) -> String {
         let default_model = self.default_model.as_deref().unwrap_or("none");
         let topology_digest = self.topology_digest.as_deref().unwrap_or("none");
         let local_serving_state = if self.local_serving_state.trim().is_empty() {
@@ -813,66 +910,114 @@ impl ProviderPooledInferenceAvailability {
         let role = self.served_mesh_role.as_deref().unwrap_or("unknown");
         let posture = self.served_mesh_posture.as_deref().unwrap_or("unknown");
         format!(
-            "backend=gpt_oss execution=clustered_inference family=inference topology={topology_label} source={} membership_state={} members={} warm_replicas={} default_model={default_model} topology_digest={topology_digest} local_state={local_serving_state} role={role} posture={posture} execution_mode={execution_mode} execution_engine={execution_engine} fallback_posture={fallback_posture} target_models={} replicated_models={}",
+            "backend=pooled_inference execution=clustered_inference family=inference mode={mode_label} source={} membership_state={} members={} warm_replicas={} default_model={default_model} topology_digest={topology_digest} local_state={local_serving_state} role={role} posture={posture} execution_mode={execution_mode} execution_engine={execution_engine} fallback_posture={fallback_posture} target_models={} mode_models={} mode_topologies={} mode_workers={}",
             self.source,
             self.membership_state,
             self.member_count,
             self.warm_replica_count,
             self.target_model_summary(),
-            self.replicated_model_summary(),
+            self.mode_model_summary(mode_label),
+            self.mode_topology_summary(mode_label),
+            self.mode_worker_summary(mode_label),
         )
     }
 
-    fn market_semantics(&self, topology_label: &str) -> ProviderProductMarketSemantics {
-        match topology_label {
-            "remote_whole_request" => {
+    fn market_semantics(&self, mode_label: &str) -> ProviderProductMarketSemantics {
+        match mode_label {
+            POOLED_REMOTE_WHOLE_REQUEST_MODE => {
                 let revenue_posture = if self.remote_whole_request_ready() {
-                    "accepted_clustered_delivery"
+                    "serving_ready"
                 } else {
                     "not_yet_earning"
                 };
                 let revenue_summary = if !self.has_authoritative_state() {
-                    "No pooled-inference revenue yet because mesh management is not configured."
+                    "No pooled revenue yet because mesh management is not configured."
                 } else if self.targetable_models.is_empty() {
-                    "No pooled-inference revenue yet because the mesh has no targetable models."
+                    "No pooled revenue yet because the mesh has no targetable models."
                 } else if self.member_count == 0 {
-                    "No pooled-inference revenue yet because the mesh has no joined members."
+                    "No pooled revenue yet because the mesh has no joined members."
                 } else if self.remote_whole_request_ready() {
-                    "Earns when the mesh serves the whole request and the clustered delivery proof is accepted."
+                    "Earns when one machine serves the whole request on behalf of the pool and the clustered delivery proof is accepted."
                 } else {
-                    "No pooled-inference revenue yet because remote whole-request serving is not ready."
+                    "No pooled revenue yet because remote whole-request serving is not ready."
                 };
                 ProviderProductMarketSemantics {
                     contribution_class: "remote_whole_request_serving".to_string(),
                     market_receipt_class: "clustered_delivery".to_string(),
-                    earnings_trigger: "accepted_clustered_delivery".to_string(),
+                    earnings_trigger: "wallet_settled_accepted_clustered_delivery".to_string(),
                     revenue_posture: revenue_posture.to_string(),
                     revenue_summary: revenue_summary.to_string(),
                 }
             }
-            "replicated" => {
+            POOLED_REPLICATED_MODE => {
                 let revenue_posture = if self.replicated_serving_ready() {
-                    "reserved_standby_or_promoted_delivery"
+                    "standby_capacity_visible"
                 } else {
                     "not_yet_earning"
                 };
                 let revenue_summary = if !self.has_authoritative_state() {
-                    "No replicated revenue yet because mesh management is not configured."
+                    "No standby revenue yet because mesh management is not configured."
                 } else if self
                     .targetable_models
                     .iter()
-                    .all(|target| target.warm_replica_count <= 1)
+                    .all(|target| !target.supports_execution_mode(POOLED_REPLICATED_MODE))
                 {
-                    "No replicated revenue yet because the mesh has not warmed multiple replicas for any model."
+                    "No standby revenue yet because the pool has not warmed multiple replicas for any model."
                 } else if self.replicated_serving_ready() {
-                    "Warm replicas publish standby capacity, but revenue only starts when a reserve window sells or a replica is promoted into accepted clustered serving."
+                    "Warm replicas publish standby capacity, but revenue starts only when a reserve window sells or one replica is promoted into accepted delivery."
                 } else {
-                    "No replicated revenue yet because standby capacity is visible but not ready to advertise."
+                    "No standby revenue yet because the visible replica capacity is not ready to advertise."
                 };
                 ProviderProductMarketSemantics {
                     contribution_class: "replicated_standby_capacity".to_string(),
                     market_receipt_class: "clustered_standby_or_promoted_delivery".to_string(),
                     earnings_trigger: "accepted_reserved_window_or_promoted_delivery".to_string(),
+                    revenue_posture: revenue_posture.to_string(),
+                    revenue_summary: revenue_summary.to_string(),
+                }
+            }
+            POOLED_DENSE_SPLIT_MODE => {
+                let revenue_posture = if self.dense_split_ready() {
+                    "serving_ready"
+                } else {
+                    "not_yet_earning"
+                };
+                let revenue_summary = if !self.has_authoritative_state() {
+                    "No split-inference revenue yet because mesh management is not configured."
+                } else if !self.targetable_models_support_mode(POOLED_DENSE_SPLIT_MODE) {
+                    "No split-inference revenue yet because the pool has not admitted any split-across-machines model."
+                } else if self.dense_split_ready() {
+                    "Earns when one dense model request is actually split across multiple machines and the clustered delivery proof is accepted."
+                } else {
+                    "No split-inference revenue yet because split-across-machines serving is not ready."
+                };
+                ProviderProductMarketSemantics {
+                    contribution_class: "dense_split_serving".to_string(),
+                    market_receipt_class: "clustered_delivery".to_string(),
+                    earnings_trigger: "wallet_settled_accepted_clustered_delivery".to_string(),
+                    revenue_posture: revenue_posture.to_string(),
+                    revenue_summary: revenue_summary.to_string(),
+                }
+            }
+            POOLED_SPARSE_EXPERT_MODE => {
+                let revenue_posture = if self.sparse_expert_ready() {
+                    "serving_ready"
+                } else {
+                    "not_yet_earning"
+                };
+                let revenue_summary = if !self.has_authoritative_state() {
+                    "No expert-sharded revenue yet because mesh management is not configured."
+                } else if !self.targetable_models_support_mode(POOLED_SPARSE_EXPERT_MODE) {
+                    "No expert-sharded revenue yet because the pool has not admitted any expert-sharded model."
+                } else if self.sparse_expert_ready() {
+                    "Earns when an expert-sharded request is executed across the pool and the clustered delivery proof is accepted."
+                } else {
+                    "No expert-sharded revenue yet because the admitted expert-sharded path is not ready to advertise."
+                };
+                ProviderProductMarketSemantics {
+                    contribution_class: "sparse_expert_serving".to_string(),
+                    market_receipt_class: "clustered_delivery".to_string(),
+                    earnings_trigger: "wallet_settled_accepted_clustered_delivery".to_string(),
                     revenue_posture: revenue_posture.to_string(),
                     revenue_summary: revenue_summary.to_string(),
                 }
@@ -897,6 +1042,8 @@ pub enum ProviderComputeProduct {
     GptOssEmbeddings,
     PooledInferenceRemoteWholeRequest,
     PooledInferenceReplicatedServing,
+    PooledInferenceDenseSplit,
+    PooledInferenceSparseExpert,
     AppleFoundationModelsInference,
     AppleFoundationModelsAdapterHosting,
     AdapterTrainingContributor,
@@ -915,11 +1062,13 @@ pub struct ProviderProductDescriptor {
 }
 
 impl ProviderComputeProduct {
-    pub const fn all() -> [Self; 10] {
+    pub const fn all() -> [Self; 12] {
         [
             Self::GptOssInference,
             Self::PooledInferenceRemoteWholeRequest,
             Self::PooledInferenceReplicatedServing,
+            Self::PooledInferenceDenseSplit,
+            Self::PooledInferenceSparseExpert,
             Self::AppleFoundationModelsInference,
             Self::AppleFoundationModelsAdapterHosting,
             Self::AdapterTrainingContributor,
@@ -935,11 +1084,11 @@ impl ProviderComputeProduct {
             Self::GptOssInference => "psionic.local.inference.gpt_oss.single_node",
             Self::GptOssEmbeddings => "psionic.local.embeddings.gpt_oss.single_node",
             Self::PooledInferenceRemoteWholeRequest => {
-                "psionic.cluster.inference.gpt_oss.remote_whole_request"
+                "psionic.cluster.inference.pooled.remote_whole_request"
             }
-            Self::PooledInferenceReplicatedServing => {
-                "psionic.cluster.inference.gpt_oss.replicated"
-            }
+            Self::PooledInferenceReplicatedServing => "psionic.cluster.inference.pooled.replicated",
+            Self::PooledInferenceDenseSplit => "psionic.cluster.inference.pooled.dense_split",
+            Self::PooledInferenceSparseExpert => "psionic.cluster.inference.pooled.sparse_expert",
             Self::AppleFoundationModelsInference => {
                 "psionic.local.inference.apple_foundation_models.single_node"
             }
@@ -968,8 +1117,10 @@ impl ProviderComputeProduct {
         match self {
             Self::GptOssInference => "GPT-OSS inference",
             Self::GptOssEmbeddings => "GPT-OSS embeddings",
-            Self::PooledInferenceRemoteWholeRequest => "Pooled inference remote whole-request",
-            Self::PooledInferenceReplicatedServing => "Pooled inference replicated serving",
+            Self::PooledInferenceRemoteWholeRequest => "Pooled remote serving",
+            Self::PooledInferenceReplicatedServing => "Pooled standby replicas",
+            Self::PooledInferenceDenseSplit => "Pooled split inference",
+            Self::PooledInferenceSparseExpert => "Pooled expert-sharded inference",
             Self::AppleFoundationModelsInference => "Apple FM inference",
             Self::AppleFoundationModelsAdapterHosting => "Apple FM adapter hosting",
             Self::AdapterTrainingContributor => "Adapter training contributor",
@@ -982,14 +1133,15 @@ impl ProviderComputeProduct {
 
     pub const fn backend_kind(self) -> Option<ProviderBackendKind> {
         match self {
-            Self::GptOssInference
-            | Self::GptOssEmbeddings
-            | Self::PooledInferenceRemoteWholeRequest
-            | Self::PooledInferenceReplicatedServing => Some(ProviderBackendKind::GptOss),
+            Self::GptOssInference | Self::GptOssEmbeddings => Some(ProviderBackendKind::GptOss),
             Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 Some(ProviderBackendKind::AppleFoundationModels)
             }
             Self::AdapterTrainingContributor => Some(ProviderBackendKind::PsionicTrain),
+            Self::PooledInferenceRemoteWholeRequest
+            | Self::PooledInferenceReplicatedServing
+            | Self::PooledInferenceDenseSplit
+            | Self::PooledInferenceSparseExpert => None,
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -999,14 +1151,15 @@ impl ProviderComputeProduct {
 
     pub const fn backend_label(self) -> &'static str {
         match self {
-            Self::GptOssInference
-            | Self::GptOssEmbeddings
-            | Self::PooledInferenceRemoteWholeRequest
-            | Self::PooledInferenceReplicatedServing => "gpt_oss",
+            Self::GptOssInference | Self::GptOssEmbeddings => "gpt_oss",
             Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 "apple_foundation_models"
             }
             Self::AdapterTrainingContributor => "psionic_train",
+            Self::PooledInferenceRemoteWholeRequest
+            | Self::PooledInferenceReplicatedServing
+            | Self::PooledInferenceDenseSplit
+            | Self::PooledInferenceSparseExpert => "pooled_inference",
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -1019,6 +1172,8 @@ impl ProviderComputeProduct {
             Self::GptOssInference
             | Self::PooledInferenceRemoteWholeRequest
             | Self::PooledInferenceReplicatedServing
+            | Self::PooledInferenceDenseSplit
+            | Self::PooledInferenceSparseExpert
             | Self::AppleFoundationModelsInference => "inference",
             Self::AppleFoundationModelsAdapterHosting => "adapter_hosting",
             Self::AdapterTrainingContributor => "training",
@@ -1040,6 +1195,8 @@ impl ProviderComputeProduct {
             | Self::GptOssEmbeddings
             | Self::PooledInferenceRemoteWholeRequest
             | Self::PooledInferenceReplicatedServing
+            | Self::PooledInferenceDenseSplit
+            | Self::PooledInferenceSparseExpert
             | Self::AppleFoundationModelsInference
             | Self::AppleFoundationModelsAdapterHosting
             | Self::AdapterTrainingContributor => None,
@@ -1053,10 +1210,16 @@ impl ProviderComputeProduct {
                 "backend=gpt_oss execution=local_inference family=embeddings status=unsupported"
             }
             Self::PooledInferenceRemoteWholeRequest => {
-                "backend=gpt_oss execution=clustered_inference family=inference topology=remote_whole_request"
+                "backend=pooled_inference execution=clustered_inference family=inference mode=remote_whole_request"
             }
             Self::PooledInferenceReplicatedServing => {
-                "backend=gpt_oss execution=clustered_inference family=inference topology=replicated"
+                "backend=pooled_inference execution=clustered_inference family=inference mode=replicated"
+            }
+            Self::PooledInferenceDenseSplit => {
+                "backend=pooled_inference execution=clustered_inference family=inference mode=dense_split"
+            }
+            Self::PooledInferenceSparseExpert => {
+                "backend=pooled_inference execution=clustered_inference family=inference mode=sparse_expert"
             }
             Self::AppleFoundationModelsInference => {
                 "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
@@ -1100,10 +1263,10 @@ impl ProviderComputeProduct {
             Self::PooledInferenceRemoteWholeRequest => {
                 let capability = availability
                     .pooled_inference
-                    .capability_summary("remote_whole_request");
+                    .capability_summary(POOLED_REMOTE_WHOLE_REQUEST_MODE);
                 let market = availability
                     .pooled_inference
-                    .market_semantics("remote_whole_request");
+                    .market_semantics(POOLED_REMOTE_WHOLE_REQUEST_MODE);
                 format!(
                     "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
                     market.contribution_class,
@@ -1116,8 +1279,42 @@ impl ProviderComputeProduct {
             Self::PooledInferenceReplicatedServing => {
                 let capability = availability
                     .pooled_inference
-                    .capability_summary("replicated");
-                let market = availability.pooled_inference.market_semantics("replicated");
+                    .capability_summary(POOLED_REPLICATED_MODE);
+                let market = availability
+                    .pooled_inference
+                    .market_semantics(POOLED_REPLICATED_MODE);
+                format!(
+                    "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
+                    market.contribution_class,
+                    market.market_receipt_class,
+                    market.earnings_trigger,
+                    market.revenue_posture,
+                    canonical_market_summary_token(market.revenue_summary.as_str()),
+                )
+            }
+            Self::PooledInferenceDenseSplit => {
+                let capability = availability
+                    .pooled_inference
+                    .capability_summary(POOLED_DENSE_SPLIT_MODE);
+                let market = availability
+                    .pooled_inference
+                    .market_semantics(POOLED_DENSE_SPLIT_MODE);
+                format!(
+                    "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
+                    market.contribution_class,
+                    market.market_receipt_class,
+                    market.earnings_trigger,
+                    market.revenue_posture,
+                    canonical_market_summary_token(market.revenue_summary.as_str()),
+                )
+            }
+            Self::PooledInferenceSparseExpert => {
+                let capability = availability
+                    .pooled_inference
+                    .capability_summary(POOLED_SPARSE_EXPERT_MODE);
+                let market = availability
+                    .pooled_inference
+                    .market_semantics(POOLED_SPARSE_EXPERT_MODE);
                 format!(
                     "{capability} contribution_class={} market_receipt_class={} earnings_trigger={} revenue_posture={} revenue_summary={}",
                     market.contribution_class,
@@ -1179,12 +1376,12 @@ impl ProviderComputeProduct {
     pub const fn terms_label(self) -> &'static str {
         match self {
             Self::GptOssInference | Self::GptOssEmbeddings => "spot session / local best effort",
-            Self::PooledInferenceRemoteWholeRequest => {
-                "spot session / pooled inference remote whole-request"
+            Self::PooledInferenceRemoteWholeRequest => "spot session / pooled remote serving",
+            Self::PooledInferenceReplicatedServing => "spot session / pooled standby replicas",
+            Self::PooledInferenceDenseSplit => {
+                "spot session / pooled split-across-machines inference"
             }
-            Self::PooledInferenceReplicatedServing => {
-                "spot session / pooled inference replicated serving"
-            }
+            Self::PooledInferenceSparseExpert => "spot session / pooled expert-sharded inference",
             Self::AppleFoundationModelsInference => "spot session / Apple gated best effort",
             Self::AppleFoundationModelsAdapterHosting => {
                 "spot session / Apple gated adapter best effort"
@@ -1205,11 +1402,13 @@ impl ProviderComputeProduct {
                 "forward physical / committed local window"
             }
             Self::PooledInferenceRemoteWholeRequest => {
-                "forward physical / pooled inference remote whole-request window"
+                "forward physical / pooled remote serving window"
             }
             Self::PooledInferenceReplicatedServing => {
-                "forward physical / pooled inference replicated serving window"
+                "forward physical / pooled standby replica window"
             }
+            Self::PooledInferenceDenseSplit => "forward physical / pooled split inference window",
+            Self::PooledInferenceSparseExpert => "forward physical / pooled expert-sharded window",
             Self::AppleFoundationModelsInference => {
                 "forward physical / Apple gated committed window"
             }
@@ -1232,6 +1431,8 @@ impl ProviderComputeProduct {
             Self::GptOssEmbeddings => 8,
             Self::PooledInferenceRemoteWholeRequest => 55,
             Self::PooledInferenceReplicatedServing => 89,
+            Self::PooledInferenceDenseSplit => 144,
+            Self::PooledInferenceSparseExpert => 233,
             Self::AppleFoundationModelsInference => 34,
             Self::AppleFoundationModelsAdapterHosting => 55,
             Self::AdapterTrainingContributor => 89,
@@ -1250,13 +1451,19 @@ impl ProviderComputeProduct {
             "psionic.local.embeddings.gpt_oss.single_node"
             | "ollama.embeddings"
             | "gpt_oss.embeddings" => Some(Self::GptOssEmbeddings),
-            "psionic.cluster.inference.gpt_oss.remote_whole_request"
+            "psionic.cluster.inference.pooled.remote_whole_request"
+            | "psionic.cluster.inference.gpt_oss.remote_whole_request"
             | "gpt_oss.clustered_inference.remote_whole_request" => {
                 Some(Self::PooledInferenceRemoteWholeRequest)
             }
-            "psionic.cluster.inference.gpt_oss.replicated"
+            "psionic.cluster.inference.pooled.replicated"
+            | "psionic.cluster.inference.gpt_oss.replicated"
             | "gpt_oss.clustered_inference.replicated" => {
                 Some(Self::PooledInferenceReplicatedServing)
+            }
+            "psionic.cluster.inference.pooled.dense_split" => Some(Self::PooledInferenceDenseSplit),
+            "psionic.cluster.inference.pooled.sparse_expert" => {
+                Some(Self::PooledInferenceSparseExpert)
             }
             "psionic.local.inference.apple_foundation_models.single_node"
             | "apple_foundation_models.text_generation" => {
@@ -1332,10 +1539,18 @@ impl ProviderComputeProduct {
             },
             Self::PooledInferenceRemoteWholeRequest => availability
                 .pooled_inference
-                .market_semantics("remote_whole_request"),
+                .market_semantics(POOLED_REMOTE_WHOLE_REQUEST_MODE),
             Self::PooledInferenceReplicatedServing => {
-                availability.pooled_inference.market_semantics("replicated")
+                availability
+                    .pooled_inference
+                    .market_semantics(POOLED_REPLICATED_MODE)
             }
+            Self::PooledInferenceDenseSplit => availability
+                .pooled_inference
+                .market_semantics(POOLED_DENSE_SPLIT_MODE),
+            Self::PooledInferenceSparseExpert => availability
+                .pooled_inference
+                .market_semantics(POOLED_SPARSE_EXPERT_MODE),
             Self::GptOssEmbeddings => ProviderProductMarketSemantics {
                 contribution_class: "single_node_embedding".to_string(),
                 market_receipt_class: "unsupported".to_string(),
@@ -1418,6 +1633,10 @@ pub struct ProviderInventoryControls {
     pub pooled_inference_remote_whole_request_enabled: bool,
     #[serde(default)]
     pub pooled_inference_replicated_serving_enabled: bool,
+    #[serde(default)]
+    pub pooled_inference_dense_split_enabled: bool,
+    #[serde(default)]
+    pub pooled_inference_sparse_expert_enabled: bool,
     pub apple_fm_inference_enabled: bool,
     #[serde(default)]
     pub apple_fm_adapter_hosting_enabled: bool,
@@ -1436,6 +1655,8 @@ impl Default for ProviderInventoryControls {
             gpt_oss_embeddings_enabled: false,
             pooled_inference_remote_whole_request_enabled: true,
             pooled_inference_replicated_serving_enabled: true,
+            pooled_inference_dense_split_enabled: true,
+            pooled_inference_sparse_expert_enabled: true,
             apple_fm_inference_enabled: true,
             apple_fm_adapter_hosting_enabled: true,
             adapter_training_contributor_enabled: false,
@@ -1457,6 +1678,12 @@ impl ProviderInventoryControls {
             }
             ProviderComputeProduct::PooledInferenceReplicatedServing => {
                 self.pooled_inference_replicated_serving_enabled
+            }
+            ProviderComputeProduct::PooledInferenceDenseSplit => {
+                self.pooled_inference_dense_split_enabled
+            }
+            ProviderComputeProduct::PooledInferenceSparseExpert => {
+                self.pooled_inference_sparse_expert_enabled
             }
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_fm_inference_enabled
@@ -1487,6 +1714,12 @@ impl ProviderInventoryControls {
             }
             ProviderComputeProduct::PooledInferenceReplicatedServing => {
                 &mut self.pooled_inference_replicated_serving_enabled
+            }
+            ProviderComputeProduct::PooledInferenceDenseSplit => {
+                &mut self.pooled_inference_dense_split_enabled
+            }
+            ProviderComputeProduct::PooledInferenceSparseExpert => {
+                &mut self.pooled_inference_sparse_expert_enabled
             }
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 &mut self.apple_fm_inference_enabled
@@ -1827,10 +2060,11 @@ mod tests {
         assert!(controls.is_product_advertised("psionic.local.inference.gpt_oss.single_node"));
         assert!(!controls.is_product_advertised("psionic.local.embeddings.gpt_oss.single_node"));
         assert!(
-            controls
-                .is_product_advertised("psionic.cluster.inference.gpt_oss.remote_whole_request")
+            controls.is_product_advertised("psionic.cluster.inference.pooled.remote_whole_request")
         );
-        assert!(controls.is_product_advertised("psionic.cluster.inference.gpt_oss.replicated"));
+        assert!(controls.is_product_advertised("psionic.cluster.inference.pooled.replicated"));
+        assert!(controls.is_product_advertised("psionic.cluster.inference.pooled.dense_split"));
+        assert!(controls.is_product_advertised("psionic.cluster.inference.pooled.sparse_expert"));
         assert!(
             controls.is_product_advertised(
                 "psionic.local.inference.apple_foundation_models.single_node"
@@ -1969,6 +2203,19 @@ mod tests {
                         response_state: true,
                         warm_replica_count: 2,
                         local_warm_replica: false,
+                        cluster_execution_modes: vec![
+                            "remote_whole_request".to_string(),
+                            "replicated".to_string(),
+                            "dense_split".to_string(),
+                        ],
+                        cluster_execution_topologies: vec![
+                            "replicated".to_string(),
+                            "pipeline_sharded".to_string(),
+                        ],
+                        participating_workers: vec![
+                            "openai_compat".to_string(),
+                            "worker-gpu-a".to_string(),
+                        ],
                     },
                     ProviderPooledInferenceTargetStatus {
                         model: "gpt-oss:20b".to_string(),
@@ -1979,6 +2226,28 @@ mod tests {
                         response_state: false,
                         warm_replica_count: 1,
                         local_warm_replica: true,
+                        cluster_execution_modes: vec!["remote_whole_request".to_string()],
+                        cluster_execution_topologies: Vec::new(),
+                        participating_workers: vec!["openai_compat".to_string()],
+                    },
+                    ProviderPooledInferenceTargetStatus {
+                        model: "gemma4:26b".to_string(),
+                        family: "gemma4".to_string(),
+                        supported_endpoints: vec![
+                            "/v1/chat/completions".to_string(),
+                            "/v1/responses".to_string(),
+                        ],
+                        structured_outputs: false,
+                        tool_calling: true,
+                        response_state: true,
+                        warm_replica_count: 1,
+                        local_warm_replica: false,
+                        cluster_execution_modes: vec!["sparse_expert".to_string()],
+                        cluster_execution_topologies: vec!["tensor_sharded".to_string()],
+                        participating_workers: vec![
+                            "worker-gpu-a".to_string(),
+                            "worker-gpu-b".to_string(),
+                        ],
                     },
                 ],
             },
@@ -1998,6 +2267,14 @@ mod tests {
                 product.product == ProviderComputeProduct::PooledInferenceReplicatedServing
             })
             .expect("replicated pooled product");
+        let dense_split = products
+            .iter()
+            .find(|product| product.product == ProviderComputeProduct::PooledInferenceDenseSplit)
+            .expect("dense split pooled product");
+        let sparse_expert = products
+            .iter()
+            .find(|product| product.product == ProviderComputeProduct::PooledInferenceSparseExpert)
+            .expect("sparse expert pooled product");
 
         assert!(remote.backend_ready);
         assert!(remote.eligible);
@@ -2009,14 +2286,28 @@ mod tests {
         assert!(
             remote
                 .capability_summary
-                .contains("target_models=gemma4:e4b:gemma4:2,gpt-oss:20b:gpt_oss:1")
+                .contains("target_models=gemma4:e4b:gemma4:remote_whole_request+replicated+dense_split:replicated+pipeline_sharded:openai_compat+worker-gpu-a:2")
         );
         assert!(replicated.backend_ready);
         assert!(replicated.eligible);
         assert!(
             replicated
                 .capability_summary
-                .contains("replicated_models=gemma4:e4b")
+                .contains("mode_models=gemma4:e4b")
+        );
+        assert!(dense_split.backend_ready);
+        assert!(dense_split.eligible);
+        assert!(
+            dense_split
+                .capability_summary
+                .contains("mode_topologies=pipeline_sharded")
+        );
+        assert!(sparse_expert.backend_ready);
+        assert!(sparse_expert.eligible);
+        assert!(
+            sparse_expert
+                .capability_summary
+                .contains("mode_models=gemma4:26b")
         );
     }
 
@@ -2127,13 +2418,13 @@ mod tests {
             pooled_remote
                 .as_ref()
                 .map(|descriptor| descriptor.backend_family.as_str()),
-            Some("gpt_oss")
+            Some("pooled_inference")
         );
         assert_eq!(
             pooled_remote
                 .as_ref()
                 .map(|descriptor| descriptor.product_id.as_str()),
-            Some("psionic.cluster.inference.gpt_oss.remote_whole_request")
+            Some("psionic.cluster.inference.pooled.remote_whole_request")
         );
     }
 
