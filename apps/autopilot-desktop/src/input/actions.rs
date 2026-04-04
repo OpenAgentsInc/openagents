@@ -16359,13 +16359,16 @@ fn build_spot_compute_rfq_from_inputs(
             "gpt_oss" | "gptoss" | "psionic" | "local_inference" | "ollama" => {
                 Some(ComputeBackendFamily::GptOss)
             }
+            "pooled_inference" | "pooled" | "clustered_inference" | "psionic_cluster" => {
+                Some(ComputeBackendFamily::PooledInference)
+            }
             "apple_foundation_models" | "apple_fm" | "apple_foundation" => {
                 Some(ComputeBackendFamily::AppleFoundationModels)
             }
             "sandbox" | "none" | "any" if compute_family == ComputeFamily::SandboxExecution => None,
             other => {
                 return Err(format!(
-                    "Preferred backend must be gpt_oss, apple_foundation_models, or empty, got {other}"
+                    "Preferred backend must be gpt_oss, pooled_inference, apple_foundation_models, or empty, got {other}"
                 ));
             }
         },

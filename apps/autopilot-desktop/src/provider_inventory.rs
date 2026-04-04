@@ -485,6 +485,10 @@ fn scope_for_product(
         ProviderComputeProduct::PooledInferenceReplicatedServing => {
             ("cluster", "cluster", "replicated")
         }
+        ProviderComputeProduct::PooledInferenceDenseSplit => ("cluster", "cluster", "dense_split"),
+        ProviderComputeProduct::PooledInferenceSparseExpert => {
+            ("cluster", "cluster", "sparse_expert")
+        }
         ProviderComputeProduct::AdapterTrainingContributor => {
             ("local", "training", "cluster_attached")
         }
@@ -503,6 +507,8 @@ fn proof_posture_for_product(
         product,
         ProviderComputeProduct::PooledInferenceRemoteWholeRequest
             | ProviderComputeProduct::PooledInferenceReplicatedServing
+            | ProviderComputeProduct::PooledInferenceDenseSplit
+            | ProviderComputeProduct::PooledInferenceSparseExpert
     ) {
         return if uses_remote_kernel_projection {
             "mesh_management_status + kernel_delivery_proof".to_string()
@@ -531,7 +537,9 @@ fn environment_binding_for_product(
             .or(input.gpt_oss_configured_model)
             .map(|model| format!("model:{model}")),
         ProviderComputeProduct::PooledInferenceRemoteWholeRequest
-        | ProviderComputeProduct::PooledInferenceReplicatedServing => {
+        | ProviderComputeProduct::PooledInferenceReplicatedServing
+        | ProviderComputeProduct::PooledInferenceDenseSplit
+        | ProviderComputeProduct::PooledInferenceSparseExpert => {
             let topology = input
                 .pooled_inference
                 .topology_digest
@@ -601,6 +609,29 @@ fn blocker_reason_for_row(
                 Some("pooled inference has not warmed multiple replicas for any model".to_string())
             } else {
                 Some("replicated pooled inference is visible but not ready to advertise".to_string())
+            }
+        }
+        ProviderComputeProduct::PooledInferenceDenseSplit => {
+            if !input.pooled_inference.has_authoritative_state() {
+                Some(CLUSTER_NOT_INTEGRATED_REASON.to_string())
+            } else if !input.pooled_inference.dense_split_ready() {
+                Some(
+                    "pooled inference has not admitted any split-across-machines model yet"
+                        .to_string(),
+                )
+            } else {
+                Some("split-across-machines pooled inference is visible but not ready to advertise".to_string())
+            }
+        }
+        ProviderComputeProduct::PooledInferenceSparseExpert => {
+            if !input.pooled_inference.has_authoritative_state() {
+                Some(CLUSTER_NOT_INTEGRATED_REASON.to_string())
+            } else if !input.pooled_inference.sparse_expert_ready() {
+                Some(
+                    "pooled inference has not admitted any expert-sharded model yet".to_string(),
+                )
+            } else {
+                Some("expert-sharded pooled inference is visible but not ready to advertise".to_string())
             }
         }
         ProviderComputeProduct::AppleFoundationModelsInference => {

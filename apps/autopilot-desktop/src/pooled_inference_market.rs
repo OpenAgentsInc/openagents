@@ -42,6 +42,9 @@ pub(crate) fn pooled_inference_availability_from_status(
                 response_state: target.response_state,
                 warm_replica_count: target.warm_replica_count,
                 local_warm_replica: target.local_warm_replica,
+                cluster_execution_modes: target.cluster_execution_modes.clone(),
+                cluster_execution_topologies: target.cluster_execution_topologies.clone(),
+                participating_workers: target.participating_workers.clone(),
             })
             .collect(),
     }

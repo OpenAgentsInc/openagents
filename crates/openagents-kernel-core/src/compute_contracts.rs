@@ -1052,6 +1052,9 @@ fn compute_synthetic_data_sample_status_from_proto(value: i32) -> ComputeSynthet
 fn compute_backend_family_to_proto(value: ComputeBackendFamily) -> i32 {
     match value {
         ComputeBackendFamily::GptOss => proto_compute::ComputeBackendFamily::GptOss as i32,
+        ComputeBackendFamily::PooledInference => {
+            proto_compute::ComputeBackendFamily::PooledInference as i32
+        }
         ComputeBackendFamily::AppleFoundationModels => {
             proto_compute::ComputeBackendFamily::AppleFoundationModels as i32
         }
@@ -1066,6 +1069,9 @@ fn compute_backend_family_from_proto(value: i32) -> Result<ComputeBackendFamily>
         .unwrap_or(proto_compute::ComputeBackendFamily::Unspecified)
     {
         proto_compute::ComputeBackendFamily::GptOss => Ok(ComputeBackendFamily::GptOss),
+        proto_compute::ComputeBackendFamily::PooledInference => {
+            Ok(ComputeBackendFamily::PooledInference)
+        }
         proto_compute::ComputeBackendFamily::AppleFoundationModels => {
             Ok(ComputeBackendFamily::AppleFoundationModels)
         }

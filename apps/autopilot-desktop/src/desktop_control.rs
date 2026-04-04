@@ -438,6 +438,10 @@ struct DesktopControlPooledInferenceManagementModelStatus {
     tool_calling: bool,
     #[serde(default)]
     response_state: bool,
+    #[serde(default)]
+    cluster_execution_modes: Vec<String>,
+    #[serde(default)]
+    cluster_execution_topologies: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -901,6 +905,9 @@ pub struct DesktopControlPooledInferenceTargetStatus {
     pub response_state: bool,
     pub warm_replica_count: usize,
     pub local_warm_replica: bool,
+    pub cluster_execution_modes: Vec<String>,
+    pub cluster_execution_topologies: Vec<String>,
+    pub participating_workers: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -8139,6 +8146,9 @@ fn desktop_control_pooled_inference_targetable_models(
                     response_state: model.response_state,
                     warm_replica_count: 0,
                     local_warm_replica: false,
+                    cluster_execution_modes: Vec::new(),
+                    cluster_execution_topologies: Vec::new(),
+                    participating_workers: Vec::new(),
                 });
             let mut endpoints = entry
                 .supported_endpoints
@@ -8147,12 +8157,34 @@ fn desktop_control_pooled_inference_targetable_models(
                 .collect::<BTreeSet<_>>();
             endpoints.extend(model.supported_endpoints.iter().cloned());
             entry.supported_endpoints = endpoints.into_iter().collect();
+            let mut execution_modes = entry
+                .cluster_execution_modes
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            execution_modes.extend(model.cluster_execution_modes.iter().cloned());
+            entry.cluster_execution_modes = execution_modes.into_iter().collect();
+            let mut execution_topologies = entry
+                .cluster_execution_topologies
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            execution_topologies.extend(model.cluster_execution_topologies.iter().cloned());
+            entry.cluster_execution_topologies = execution_topologies.into_iter().collect();
             entry.structured_outputs |= model.structured_outputs;
             entry.tool_calling |= model.tool_calling;
             entry.response_state |= model.response_state;
             entry.warm_replica_count += 1;
             if local_warm_models.contains(model.canonical_name.as_str()) {
                 entry.local_warm_replica = true;
+            }
+            if !entry
+                .participating_workers
+                .iter()
+                .any(|worker| worker == &node.worker_id)
+            {
+                entry.participating_workers.push(node.worker_id.clone());
+                entry.participating_workers.sort();
             }
         }
     }
@@ -11755,6 +11787,9 @@ fn procurement_backend_label(
 ) -> &'static str {
     match backend_family {
         Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+        Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => {
+            "pooled_inference"
+        }
         Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => {
             "apple_foundation_models"
         }
@@ -13382,6 +13417,15 @@ mod tests {
                     response_state: true,
                     warm_replica_count: 1,
                     local_warm_replica: false,
+                    cluster_execution_modes: vec![
+                        "remote_whole_request".to_string(),
+                        "dense_split".to_string(),
+                    ],
+                    cluster_execution_topologies: vec!["pipeline_sharded".to_string()],
+                    participating_workers: vec![
+                        "openai_compat".to_string(),
+                        "worker-gpu-a".to_string(),
+                    ],
                 }],
                 members: vec![
                     DesktopControlPooledInferenceNodeStatus {
@@ -14283,7 +14327,9 @@ mod tests {
                                 "warm_state": "warm",
                                 "structured_outputs": false,
                                 "tool_calling": true,
-                                "response_state": true
+                                "response_state": true,
+                                "cluster_execution_modes": ["dense_split"],
+                                "cluster_execution_topologies": ["pipeline_sharded"]
                             }
                         ]
                     }
@@ -14307,6 +14353,18 @@ mod tests {
         assert_eq!(snapshot.targetable_model_count, 1);
         assert_eq!(snapshot.warm_replica_count, 1);
         assert_eq!(snapshot.targetable_models[0].model, "gemma4:e4b");
+        assert_eq!(
+            snapshot.targetable_models[0].cluster_execution_modes,
+            vec!["dense_split".to_string()]
+        );
+        assert_eq!(
+            snapshot.targetable_models[0].cluster_execution_topologies,
+            vec!["pipeline_sharded".to_string()]
+        );
+        assert_eq!(
+            snapshot.targetable_models[0].participating_workers,
+            vec!["worker-gpu-a".to_string()]
+        );
         assert_eq!(snapshot.join.posture, "joined");
         assert_eq!(
             snapshot

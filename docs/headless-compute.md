@@ -296,40 +296,62 @@ inventory.
 
 That same pooled-inference status now feeds the desktop provider inventory and
 kernel-market launch product identity. When the mesh is configured, the cluster
-inventory section no longer shows a placeholder. Instead it projects the two
-current cluster inference product lanes:
+inventory section no longer shows a placeholder. Instead it projects four
+distinct pooled inference products:
 
-- `psionic.cluster.inference.gpt_oss.remote_whole_request`
-- `psionic.cluster.inference.gpt_oss.replicated`
+- `psionic.cluster.inference.pooled.remote_whole_request`
+- `psionic.cluster.inference.pooled.replicated`
+- `psionic.cluster.inference.pooled.dense_split`
+- `psionic.cluster.inference.pooled.sparse_expert`
 
-Those product IDs are published with explicit `clustered_inference`
-execution-kind truth plus `remote_whole_request` or `replicated` topology and
-`cluster_attached` provisioning. The current market binding is still
-`gpt_oss`-family product identity, but the capability summary and lot metadata
-carry the live pooled-inference mesh state: membership posture, targetable
-model count, warm replica count, default model, and topology digest.
+Those product IDs are published as generic pooled-inference products rather
+than `gpt_oss`-only products. Each one carries explicit clustered-execution
+truth, topology, provisioning, and live mesh state. The desktop and
+`autopilotctl pooled-inference status` surfaces now show the models that are
+actually targetable through the pool, the execution modes each model supports,
+the topology used for that mode, and the participating machines currently
+behind it.
 
-The inventory and active-job surfaces now also spell out the revenue rule for
-each lane instead of treating pooled inference as a generic "cluster" badge:
+The four pooled products map to plain operator-visible behaviors:
+
+- `psionic.cluster.inference.pooled.remote_whole_request`
+  One machine in the pool handles the full request, even if the request entered
+  through a different machine.
+- `psionic.cluster.inference.pooled.replicated`
+  The pool keeps multiple warm copies of the same model ready so requests can
+  fail over or be promoted into serving faster.
+- `psionic.cluster.inference.pooled.dense_split`
+  One dense model request is split across multiple machines instead of requiring
+  a single machine to hold the whole serving workload.
+- `psionic.cluster.inference.pooled.sparse_expert`
+  An expert-sharded model runs across multiple machines, with different
+  machines responsible for different expert shards.
+
+The inventory and active-job surfaces also spell out the current revenue rule
+for each product:
 
 - `psionic.local.inference.*.single_node` earns when a local delivery is
   accepted and wallet settlement is confirmed.
-- `psionic.cluster.inference.gpt_oss.remote_whole_request` earns when the mesh
-  serves the whole request and the clustered delivery proof is accepted.
-- `psionic.cluster.inference.gpt_oss.replicated` publishes standby capacity,
-  but warm replicas alone do not earn. Revenue starts only when a reserve
-  window actually sells or the replica is promoted into accepted clustered
-  serving.
-- sharded pooled-inference lanes are still future scope and are not marketed as
-  active wallet-settled products yet.
+- `psionic.cluster.inference.pooled.remote_whole_request` earns when the pool
+  serves the request and the clustered delivery proof is accepted.
+- `psionic.cluster.inference.pooled.replicated` publishes standby capacity, but
+  warm replicas alone do not earn. Revenue starts only when a reserve window
+  sells or a replica is promoted into accepted delivery.
+- `psionic.cluster.inference.pooled.dense_split` earns when a single request is
+  actually split across multiple machines and the clustered delivery proof is
+  accepted.
+- `psionic.cluster.inference.pooled.sparse_expert` earns when an expert-sharded
+  request is executed across the pool and the clustered delivery proof is
+  accepted.
 
 When an active job or a persisted history row already carries pooled product
 identity, the desktop now preserves the same `compute_product_id`,
 `market_receipt_class`, and earnings summary through the live status view,
 kernel receipt tags, and authoritative history rehydrate. `autopilotctl status`
 and `autopilotctl pooled-inference status` therefore tell the operator whether
-the current contribution is direct serving revenue, standby capacity that has
-not sold yet, or a local single-node delivery path.
+the current contribution is direct local serving, whole-request pooled serving,
+standby replica capacity, split-across-machines serving, or expert-sharded
+pooled serving.
 
 The same command group now also owns the multi-machine join and invite path
 above Psionic mesh-lane truth:

@@ -25,6 +25,8 @@ use openagents_kernel_core::compute::{
     DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
     PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
     PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
+    PSIONIC_CLUSTER_POOLED_INFERENCE_DENSE_SPLIT_PRODUCT_ID,
+    PSIONIC_CLUSTER_POOLED_INFERENCE_SPARSE_EXPERT_PRODUCT_ID,
     PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID, PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
     PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
 };
@@ -1656,6 +1658,7 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
             }),
             "gpt_oss",
         ),
+        ComputeBackendFamily::PooledInference => (None, None, "pooled_inference"),
         ComputeBackendFamily::AppleFoundationModels => (
             Some(ApplePlatformCapability {
                 apple_silicon_required: true,
@@ -2558,6 +2561,7 @@ fn observed_capability_envelope_for_delivery(
                 minimum_macos_version: Some("26.0".to_string()),
             }),
             ComputeBackendFamily::GptOss => None,
+            ComputeBackendFamily::PooledInference => None,
             ComputeBackendFamily::PsionicTrain => None,
         },
         gpt_oss_runtime: match observed_backend_family {
@@ -2567,6 +2571,7 @@ fn observed_capability_envelope_for_delivery(
                 quantization: None,
             }),
             ComputeBackendFamily::AppleFoundationModels => None,
+            ComputeBackendFamily::PooledInference => None,
             ComputeBackendFamily::PsionicTrain => None,
         },
         latency_ms_p50: latency_from_provenance(provenance),
@@ -2583,6 +2588,12 @@ fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
         (ComputeBackendFamily::GptOss, ComputeFamily::Inference) => "meter.gpt_oss.inference.v1",
         (ComputeBackendFamily::GptOss, ComputeFamily::Embeddings) => {
             "meter.gpt_oss.embeddings.unsupported"
+        }
+        (ComputeBackendFamily::PooledInference, ComputeFamily::Inference) => {
+            "meter.psionic.clustered_inference.v1"
+        }
+        (ComputeBackendFamily::PooledInference, ComputeFamily::Embeddings) => {
+            "meter.psionic.clustered_inference.unsupported"
         }
         (ComputeBackendFamily::AppleFoundationModels, ComputeFamily::Inference) => {
             "meter.apple_fm.inference.v1"
@@ -2694,6 +2705,7 @@ fn embedding_quantity_from_output(execution_output: Option<&str>) -> u64 {
 fn backend_family_from_runtime_label(value: &str) -> Option<ComputeBackendFamily> {
     match value.trim() {
         "gpt_oss" | "psionic" | "ollama" => Some(ComputeBackendFamily::GptOss),
+        "pooled_inference" | "psionic_cluster" => Some(ComputeBackendFamily::PooledInference),
         "apple_foundation_models" => Some(ComputeBackendFamily::AppleFoundationModels),
         "psionic_train" => Some(ComputeBackendFamily::PsionicTrain),
         _ => None,
@@ -2707,6 +2719,7 @@ fn context_metrics_for_binding(
     match binding.backend_family {
         ComputeBackendFamily::GptOss => context.gpt_oss_metrics.as_ref(),
         ComputeBackendFamily::AppleFoundationModels => context.apple_metrics.as_ref(),
+        ComputeBackendFamily::PooledInference => None,
         ComputeBackendFamily::PsionicTrain => None,
     }
 }
@@ -2718,6 +2731,7 @@ fn ready_model_from_delivery_context(
     match binding.backend_family {
         ComputeBackendFamily::GptOss => context.gpt_oss_ready_model.clone(),
         ComputeBackendFamily::AppleFoundationModels => context.apple_ready_model.clone(),
+        ComputeBackendFamily::PooledInference => None,
         ComputeBackendFamily::PsionicTrain => None,
     }
 }
@@ -3343,23 +3357,43 @@ fn pooled_inference_binding_for_product(
     match product {
         ProviderComputeProduct::PooledInferenceRemoteWholeRequest => Some(launch_compute_binding(
             PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
-            ComputeBackendFamily::GptOss,
+            ComputeBackendFamily::PooledInference,
             ComputeFamily::Inference,
             ComputeExecutionKind::ClusteredInference,
             ComputeTopologyKind::RemoteWholeRequest,
             ComputeProvisioningKind::ClusterAttached,
             ComputeProofPosture::ChallengeEligible,
-            "psionic.cluster.inference.gpt_oss.remote_whole_request.launch",
+            "psionic.cluster.inference.pooled.remote_whole_request.launch",
         )),
         ProviderComputeProduct::PooledInferenceReplicatedServing => Some(launch_compute_binding(
             PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
-            ComputeBackendFamily::GptOss,
+            ComputeBackendFamily::PooledInference,
             ComputeFamily::Inference,
             ComputeExecutionKind::ClusteredInference,
             ComputeTopologyKind::Replicated,
             ComputeProvisioningKind::ClusterAttached,
             ComputeProofPosture::ChallengeEligible,
-            "psionic.cluster.inference.gpt_oss.replicated.launch",
+            "psionic.cluster.inference.pooled.replicated.launch",
+        )),
+        ProviderComputeProduct::PooledInferenceDenseSplit => Some(launch_compute_binding(
+            PSIONIC_CLUSTER_POOLED_INFERENCE_DENSE_SPLIT_PRODUCT_ID,
+            ComputeBackendFamily::PooledInference,
+            ComputeFamily::Inference,
+            ComputeExecutionKind::ClusteredInference,
+            ComputeTopologyKind::PipelineSharded,
+            ComputeProvisioningKind::ClusterAttached,
+            ComputeProofPosture::ChallengeEligible,
+            "psionic.cluster.inference.pooled.dense_split.launch",
+        )),
+        ProviderComputeProduct::PooledInferenceSparseExpert => Some(launch_compute_binding(
+            PSIONIC_CLUSTER_POOLED_INFERENCE_SPARSE_EXPERT_PRODUCT_ID,
+            ComputeBackendFamily::PooledInference,
+            ComputeFamily::Inference,
+            ComputeExecutionKind::ClusteredInference,
+            ComputeTopologyKind::TensorSharded,
+            ComputeProvisioningKind::ClusterAttached,
+            ComputeProofPosture::ChallengeEligible,
+            "psionic.cluster.inference.pooled.sparse_expert.launch",
         )),
         _ => None,
     }
@@ -3379,6 +3413,16 @@ fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBindi
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID => {
             pooled_inference_binding_for_product(
                 ProviderInventoryProductToggleTarget::PooledInferenceReplicatedServing,
+            )
+        }
+        PSIONIC_CLUSTER_POOLED_INFERENCE_DENSE_SPLIT_PRODUCT_ID => {
+            pooled_inference_binding_for_product(
+                ProviderInventoryProductToggleTarget::PooledInferenceDenseSplit,
+            )
+        }
+        PSIONIC_CLUSTER_POOLED_INFERENCE_SPARSE_EXPERT_PRODUCT_ID => {
+            pooled_inference_binding_for_product(
+                ProviderInventoryProductToggleTarget::PooledInferenceSparseExpert,
             )
         }
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => compute_binding_for_backend_and_capability(
@@ -3590,6 +3634,8 @@ fn provider_inventory_source_badge(
         target,
         ProviderInventoryProductToggleTarget::PooledInferenceRemoteWholeRequest
             | ProviderInventoryProductToggleTarget::PooledInferenceReplicatedServing
+            | ProviderInventoryProductToggleTarget::PooledInferenceDenseSplit
+            | ProviderInventoryProductToggleTarget::PooledInferenceSparseExpert
     );
     if !state
         .provider_runtime
@@ -3739,6 +3785,8 @@ fn inferred_compute_family(
                 ProviderComputeProduct::GptOssInference
                 | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
                 | ProviderComputeProduct::PooledInferenceReplicatedServing
+                | ProviderComputeProduct::PooledInferenceDenseSplit
+                | ProviderComputeProduct::PooledInferenceSparseExpert
                 | ProviderComputeProduct::AppleFoundationModelsInference => {
                     ComputeFamily::Inference
                 }
@@ -3764,9 +3812,13 @@ fn inferred_backend_family(
         ProviderComputeProduct::for_product_id(product.product_id.as_str()).and_then(|product| {
             match product {
                 ProviderComputeProduct::GptOssInference
-                | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
-                | ProviderComputeProduct::PooledInferenceReplicatedServing
                 | ProviderComputeProduct::GptOssEmbeddings => Some(ComputeBackendFamily::GptOss),
+                ProviderComputeProduct::PooledInferenceRemoteWholeRequest
+                | ProviderComputeProduct::PooledInferenceReplicatedServing
+                | ProviderComputeProduct::PooledInferenceDenseSplit
+                | ProviderComputeProduct::PooledInferenceSparseExpert => {
+                    Some(ComputeBackendFamily::PooledInference)
+                }
                 ProviderComputeProduct::AppleFoundationModelsInference
                 | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                     Some(ComputeBackendFamily::AppleFoundationModels)
@@ -3795,12 +3847,16 @@ fn inferred_execution_kind(
                 | ProviderComputeProduct::GptOssEmbeddings
                 | ProviderComputeProduct::PooledInferenceRemoteWholeRequest
                 | ProviderComputeProduct::PooledInferenceReplicatedServing
+                | ProviderComputeProduct::PooledInferenceDenseSplit
+                | ProviderComputeProduct::PooledInferenceSparseExpert
                 | ProviderComputeProduct::AppleFoundationModelsInference
                 | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                     if matches!(
                         product,
                         ProviderComputeProduct::PooledInferenceRemoteWholeRequest
                             | ProviderComputeProduct::PooledInferenceReplicatedServing
+                            | ProviderComputeProduct::PooledInferenceDenseSplit
+                            | ProviderComputeProduct::PooledInferenceSparseExpert
                     ) {
                         ComputeExecutionKind::ClusteredInference
                     } else {
@@ -4138,6 +4194,7 @@ fn backend_family_label(
 ) -> &'static str {
     match backend_family {
         Some(ComputeBackendFamily::GptOss) => "gpt_oss",
+        Some(ComputeBackendFamily::PooledInference) => "pooled_inference",
         Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
         Some(ComputeBackendFamily::PsionicTrain) => "psionic_train",
         None if matches!(compute_family, ComputeFamily::SandboxExecution)
@@ -4181,7 +4238,9 @@ fn forward_terms_label_for_product_id(product_id: &str) -> &'static str {
 fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
     match canonical_compute_product_id(product_id).unwrap_or(product_id) {
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID
-        | PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID => {
+        | PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID
+        | PSIONIC_CLUSTER_POOLED_INFERENCE_DENSE_SPLIT_PRODUCT_ID
+        | PSIONIC_CLUSTER_POOLED_INFERENCE_SPARSE_EXPERT_PRODUCT_ID => {
             "forward_physical.cluster_inference.v1"
         }
         "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
@@ -4205,6 +4264,9 @@ fn ready_model_for_binding(state: &RenderState, binding: LaunchComputeBinding) -
     }
     match binding.backend_family {
         ComputeBackendFamily::GptOss => state.provider_runtime.gpt_oss.ready_model.clone(),
+        ComputeBackendFamily::PooledInference => {
+            crate::desktop_control::current_pooled_inference_status().default_model
+        }
         ComputeBackendFamily::AppleFoundationModels => {
             state.provider_runtime.apple_fm.ready_model.clone()
         }
@@ -4224,6 +4286,9 @@ fn configured_model_for_binding(
     }
     match binding.backend_family {
         ComputeBackendFamily::GptOss => state.provider_runtime.gpt_oss.configured_model.clone(),
+        ComputeBackendFamily::PooledInference => {
+            crate::desktop_control::current_pooled_inference_status().default_model
+        }
         ComputeBackendFamily::AppleFoundationModels => {
             state.provider_runtime.apple_fm.ready_model.clone()
         }
@@ -4814,17 +4879,21 @@ mod tests {
         );
         assert_eq!(
             request.idempotency_key,
-            "desktop.compute_product:psionic.cluster.inference.gpt_oss.remote_whole_request"
+            "desktop.compute_product:psionic.cluster.inference.pooled.remote_whole_request"
         );
         assert_eq!(
             request.product.product_id,
-            "psionic.cluster.inference.gpt_oss.remote_whole_request"
+            "psionic.cluster.inference.pooled.remote_whole_request"
         );
         let envelope = request
             .product
             .capability_envelope
             .as_ref()
             .expect("capability envelope");
+        assert_eq!(
+            envelope.backend_family,
+            Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference)
+        );
         assert_eq!(
             envelope.execution_kind,
             Some(openagents_kernel_core::compute::ComputeExecutionKind::ClusteredInference)
@@ -4872,6 +4941,15 @@ mod tests {
                         response_state: true,
                         warm_replica_count: 2,
                         local_warm_replica: false,
+                        cluster_execution_modes: vec![
+                            "remote_whole_request".to_string(),
+                            "replicated".to_string(),
+                        ],
+                        cluster_execution_topologies: vec!["replicated".to_string()],
+                        participating_workers: vec![
+                            "openai_compat".to_string(),
+                            "worker-b".to_string(),
+                        ],
                     },
                 ],
                 members: vec![
@@ -4909,11 +4987,11 @@ mod tests {
         );
         job.market_receipt_class = Some("clustered_delivery".to_string());
         job.earnings_summary = Some(
-            "Earns when the mesh serves the whole request and the clustered delivery proof is accepted."
+            "Earns when one machine serves the whole request on behalf of the pool and the clustered delivery proof is accepted."
                 .to_string(),
         );
         job.capacity_lot_id = Some(
-            "lot.online.npub1buyer.psionic.cluster.inference.gpt_oss.remote_whole_request.1762000000000"
+            "lot.online.npub1buyer.psionic.cluster.inference.pooled.remote_whole_request.1762000000000"
                 .to_string(),
         );
 

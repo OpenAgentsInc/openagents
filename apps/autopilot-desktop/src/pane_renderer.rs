@@ -6510,6 +6510,7 @@ fn paint_network_requests_pane(
                             order.product_id,
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => "pooled_inference",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
@@ -6659,6 +6660,7 @@ fn paint_network_requests_pane(
                             order.product_id,
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => "pooled_inference",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
