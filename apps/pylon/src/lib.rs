@@ -3928,6 +3928,7 @@ mod tests {
         remove_configured_relay, render_human_status, render_sandbox_report,
         resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
+        PylonWalletInvoiceRecord, WalletInvoiceReport, WalletRuntimeSurface,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -4717,6 +4718,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn provider_run_processes_matching_request_locally()
     -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
         let base_url =
             start_mock_http_server(
                 |method, path, body| match (method.as_str(), path.as_str()) {
@@ -4780,7 +4782,6 @@ mod tests {
                     "tags": [
                         ["i", "hello from buyer", "text"],
                         ["param", "model", "gemma4:e4b"],
-                        ["bid", "2400"],
                         ["p", provider_pubkey]
                     ],
                     "content": "",
@@ -4885,6 +4886,192 @@ mod tests {
                 .any(|entry| entry.kind == "nip90.result_published"),
             "provider run should persist result publication activity",
         )?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_run_publishes_payment_required_feedback_and_persists_invoice()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
+        super::nip90_runtime::set_test_wallet_invoice_hook(Some(Box::new(
+            |amount_sats, description, _expiry_seconds| {
+                Ok(WalletInvoiceReport {
+                    runtime: WalletRuntimeSurface::default(),
+                    invoice: PylonWalletInvoiceRecord {
+                        invoice_id: "invoice-001".to_string(),
+                        amount_sats,
+                        status: "created".to_string(),
+                        payment_request: "lnbc3000n1pyloninvoice".to_string(),
+                        description,
+                        created_at_ms: 1_762_000_000_000,
+                        updated_at_ms: 1_762_000_000_000,
+                    },
+                })
+            },
+        )));
+
+        let base_url =
+            start_mock_http_server(
+                |method, path, _body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4:e4b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let provider_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let (scan_stream, _) = relay_listener.accept().await.expect("accept scan client");
+            let mut scan_ws = accept_async(scan_stream)
+                .await
+                .expect("upgrade scan websocket");
+            while let Some(message) = scan_ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"REQ\"") {
+                    continue;
+                }
+                let matching = json!(["EVENT", "run", {
+                    "id": "run-job-pay-001",
+                    "pubkey": "buyer-pubkey-001",
+                    "created_at": 1_760_000_210u64,
+                    "kind": 5050,
+                    "tags": [
+                        ["i", "pay before run", "text"],
+                        ["param", "model", "gemma4:e4b"],
+                        ["bid", "24000"],
+                        ["p", provider_pubkey]
+                    ],
+                    "content": "",
+                    "sig": "44".repeat(64)
+                }]);
+                scan_ws
+                    .send(Message::Text(matching.to_string().into()))
+                    .await
+                    .expect("send matching request");
+                break;
+            }
+            drop(scan_ws);
+
+            let (publish_stream, _) = relay_listener
+                .accept()
+                .await
+                .expect("accept publish client");
+            let mut publish_ws = accept_async(publish_stream)
+                .await
+                .expect("upgrade publish websocket");
+            while let Some(message) = publish_ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"EVENT\"") {
+                    continue;
+                }
+                let value: serde_json::Value =
+                    serde_json::from_str(payload.as_str()).expect("parse published event");
+                return value[1].clone();
+            }
+            panic!("relay did not receive the payment-required feedback event");
+        });
+
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url];
+        config.ollama_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
+
+        let report = run_provider_requests(config_path.as_path(), 1).await?;
+        ensure(
+            report.accepted_count == 1
+                && report.payment_required_count == 1
+                && report.completed_count == 0,
+            "provider run should stop at payment-required for priced jobs",
+        )?;
+        ensure(
+            report.entries.iter().any(|entry| {
+                entry.request_event_id == "run-job-pay-001"
+                    && entry.status == "payment_required"
+                    && entry.amount_msats == Some(21_000)
+                    && entry.bolt11.as_deref() == Some("lnbc3000n1pyloninvoice")
+                    && entry.feedback_event_ids.len() == 1
+                    && entry.result_event_id.is_none()
+            }),
+            "provider run should surface the invoice-bearing payment-required state",
+        )?;
+
+        let published = relay_server.await?;
+        ensure(
+            published["kind"] == 7000,
+            "provider run should publish kind:7000 payment-required feedback",
+        )?;
+        ensure(
+            published["tags"]
+                .as_array()
+                .is_some_and(|tags| tags.iter().any(|tag| {
+                    tag.as_array().is_some_and(|items| {
+                        items.len() >= 2 && items[0] == "status" && items[1] == "payment-required"
+                    })
+                })),
+            "payment-required feedback should carry the payment-required status tag",
+        )?;
+        ensure(
+            published["tags"]
+                .as_array()
+                .is_some_and(|tags| tags.iter().any(|tag| {
+                    tag.as_array().is_some_and(|items| {
+                        items.len() >= 3
+                            && items[0] == "amount"
+                            && items[1] == "21000"
+                            && items[2] == "lnbc3000n1pyloninvoice"
+                    })
+                })),
+            "payment-required feedback should carry amount and bolt11 tags",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == "run-job-pay-001")
+            .ok_or_else(|| std::io::Error::other("missing payment-required provider job"))?;
+        ensure(
+            job.status == "payment_required",
+            "provider run should persist the payment-required lifecycle state",
+        )?;
+        ensure(
+            job.amount_msats == Some(21_000)
+                && job.bolt11.as_deref() == Some("lnbc3000n1pyloninvoice")
+                && job.feedback_event_ids.len() == 1
+                && job.result_event_id.is_none(),
+            "provider run should persist invoice amount, bolt11, and published feedback",
+        )?;
+        ensure(
+            ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "nip90.job_payment_required"),
+            "provider run should persist payment-required relay activity",
+        )?;
+
+        super::nip90_runtime::set_test_wallet_invoice_hook(None);
         Ok(())
     }
 

@@ -16,8 +16,9 @@ use serde_json::json;
 
 use crate::{
     LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatTarget, PylonConfig,
-    PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, ensure_identity,
-    load_config_and_status, load_ledger, mutate_ledger, products_from_status,
+    PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, WalletInvoiceReport,
+    create_wallet_invoice_report, ensure_identity, load_config_and_status, load_ledger,
+    mutate_ledger, products_from_status,
 };
 
 const ANNOUNCEMENT_KIND_TEXT_GENERATION: u16 = nostr::nip90::KIND_JOB_TEXT_GENERATION;
@@ -62,6 +63,8 @@ pub struct ProviderRunEntry {
     pub prompt_preview: Option<String>,
     pub model: Option<String>,
     pub bid_msats: Option<u64>,
+    pub amount_msats: Option<u64>,
+    pub bolt11: Option<String>,
     pub result_preview: Option<String>,
     pub error_detail: Option<String>,
     pub feedback_event_ids: Vec<String>,
@@ -74,6 +77,7 @@ pub struct ProviderRunReport {
     pub provider_pubkey: String,
     pub local_model: Option<String>,
     pub accepted_count: usize,
+    pub payment_required_count: usize,
     pub completed_count: usize,
     pub failed_count: usize,
     pub dropped_count: usize,
@@ -118,6 +122,37 @@ struct ProviderRequestCollection {
     desired_mode: openagents_provider_substrate::ProviderDesiredMode,
     spec: Option<AnnouncementSpec>,
     observed: Vec<ObservedProviderRequest>,
+}
+
+#[derive(Clone, Debug)]
+struct ProviderPaymentRequirement {
+    bolt11: String,
+}
+
+#[cfg(test)]
+type TestWalletInvoiceHook =
+    Box<dyn Fn(u64, Option<String>, Option<u32>) -> Result<WalletInvoiceReport> + Send + Sync>;
+
+#[cfg(test)]
+static TEST_WALLET_INVOICE_HOOK: std::sync::OnceLock<
+    std::sync::Mutex<Option<TestWalletInvoiceHook>>,
+> = std::sync::OnceLock::new();
+
+#[cfg(test)]
+static TEST_RUNTIME_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn set_test_wallet_invoice_hook(hook: Option<TestWalletInvoiceHook>) {
+    let slot = TEST_WALLET_INVOICE_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().expect("test wallet invoice hook lock") = hook;
+}
+
+#[cfg(test)]
+pub(crate) fn lock_test_runtime() -> std::sync::MutexGuard<'static, ()> {
+    TEST_RUNTIME_LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .expect("test runtime lock")
 }
 
 pub async fn load_announcement_report(config_path: &Path) -> Result<AnnouncementReport> {
@@ -310,6 +345,7 @@ pub fn render_provider_intake_report(report: &ProviderIntakeReport) -> String {
 pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<ProviderRunReport> {
     let collected = collect_provider_requests(config_path, seconds).await?;
     let local_target = collected.spec.as_ref().map(spec_to_local_target);
+    let price_msats = collected.spec.as_ref().and_then(|spec| spec.price_msats);
     let config = crate::ensure_local_setup(config_path)?;
     let identity = ensure_identity(config.identity_path.as_path())?;
     let signer_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
@@ -321,6 +357,7 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
         .collect::<BTreeMap<_, _>>();
     let mut report_entries = Vec::new();
     let mut accepted_count = 0usize;
+    let mut payment_required_count = 0usize;
     let mut completed_count = 0usize;
     let mut failed_count = 0usize;
     let mut dropped_count = 0usize;
@@ -339,6 +376,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 prompt_preview: observed.entry.prompt_preview.clone(),
                 model: observed.entry.model.clone(),
                 bid_msats: observed.entry.bid_msats,
+                amount_msats: None,
+                bolt11: None,
                 result_preview: None,
                 error_detail: Some("job already handled locally".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -358,6 +397,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "observed_drop".to_string());
             report_entries.push(ProviderRunEntry {
@@ -368,6 +409,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 prompt_preview: observed.entry.prompt_preview.clone(),
                 model: observed.entry.model.clone(),
                 bid_msats: observed.entry.bid_msats,
+                amount_msats: None,
+                bolt11: None,
                 result_preview: None,
                 error_detail: observed.entry.drop_reason.clone(),
                 feedback_event_ids: Vec::new(),
@@ -387,6 +430,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_policy".to_string());
             report_entries.push(ProviderRunEntry {
@@ -397,6 +442,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 prompt_preview: observed.entry.prompt_preview.clone(),
                 model: observed.entry.model.clone(),
                 bid_msats: observed.entry.bid_msats,
+                amount_msats: None,
+                bolt11: None,
                 result_preview: None,
                 error_detail: Some("provider_not_online".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -416,6 +463,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_supply".to_string());
             report_entries.push(ProviderRunEntry {
@@ -426,6 +475,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 prompt_preview: observed.entry.prompt_preview.clone(),
                 model: observed.entry.model.clone(),
                 bid_msats: observed.entry.bid_msats,
+                amount_msats: None,
+                bolt11: None,
                 result_preview: None,
                 error_detail: Some("no_local_supply".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -447,6 +498,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     None,
                     None,
+                    None,
+                    None,
                 )?;
                 known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
                 report_entries.push(ProviderRunEntry {
@@ -457,6 +510,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     prompt_preview: observed.entry.prompt_preview.clone(),
                     model: observed.entry.model.clone(),
                     bid_msats: observed.entry.bid_msats,
+                    amount_msats: None,
+                    bolt11: None,
                     result_preview: None,
                     error_detail: Some("invalid_request".to_string()),
                     feedback_event_ids: Vec::new(),
@@ -477,6 +532,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_model".to_string());
             report_entries.push(ProviderRunEntry {
@@ -487,6 +544,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 prompt_preview: observed.entry.prompt_preview.clone(),
                 model: Some(target.model.clone()),
                 bid_msats: observed.entry.bid_msats,
+                amount_msats: None,
+                bolt11: None,
                 result_preview: None,
                 error_detail: Some("model_unavailable".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -506,6 +565,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
             report_entries.push(ProviderRunEntry {
@@ -516,6 +577,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 prompt_preview: observed.entry.prompt_preview.clone(),
                 model: Some(target.model.clone()),
                 bid_msats: observed.entry.bid_msats,
+                amount_msats: None,
+                bolt11: None,
                 result_preview: None,
                 error_detail: Some("missing_text_input".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -524,12 +587,182 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             continue;
         };
 
+        if let Some(price_msats) = price_msats
+            .filter(|value| *value > 0)
+            .filter(|_| observed.entry.bid_msats.is_some())
+        {
+            if observed
+                .entry
+                .bid_msats
+                .is_some_and(|bid_msats| bid_msats < price_msats)
+            {
+                dropped_count += 1;
+                persist_provider_run_state(
+                    config_path,
+                    collected.provider_pubkey.as_str(),
+                    &observed.entry,
+                    "rejected_policy",
+                    Some("bid_below_price_floor"),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )?;
+                known_statuses.insert(request_event_id.clone(), "rejected_policy".to_string());
+                report_entries.push(ProviderRunEntry {
+                    request_event_id: observed.entry.request_event_id.clone(),
+                    requester_pubkey: observed.entry.requester_pubkey.clone(),
+                    relay_url: observed.entry.relay_url.clone(),
+                    status: "dropped".to_string(),
+                    prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                    model: Some(target.model.clone()),
+                    bid_msats: observed.entry.bid_msats,
+                    amount_msats: Some(price_msats),
+                    bolt11: None,
+                    result_preview: None,
+                    error_detail: Some("bid_below_price_floor".to_string()),
+                    feedback_event_ids: Vec::new(),
+                    result_event_id: None,
+                });
+                continue;
+            }
+
+            accepted_count += 1;
+            let payment_requirement = match create_provider_payment_requirement(
+                config_path,
+                &observed.entry,
+                price_msats,
+            )
+            .await
+            {
+                Ok(requirement) => requirement,
+                Err(error) => {
+                    failed_count += 1;
+                    let error_string = error.to_string();
+                    persist_provider_run_state(
+                        config_path,
+                        collected.provider_pubkey.as_str(),
+                        &observed.entry,
+                        "invoice_failed",
+                        Some(error_string.as_str()),
+                        None,
+                        None,
+                        None,
+                        Some(price_msats),
+                        None,
+                    )?;
+                    known_statuses.insert(request_event_id.clone(), "invoice_failed".to_string());
+                    report_entries.push(ProviderRunEntry {
+                        request_event_id: observed.entry.request_event_id.clone(),
+                        requester_pubkey: observed.entry.requester_pubkey.clone(),
+                        relay_url: observed.entry.relay_url.clone(),
+                        status: "failed".to_string(),
+                        prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                        model: Some(target.model.clone()),
+                        bid_msats: observed.entry.bid_msats,
+                        amount_msats: Some(price_msats),
+                        bolt11: None,
+                        result_preview: None,
+                        error_detail: Some(error_string),
+                        feedback_event_ids: Vec::new(),
+                        result_event_id: None,
+                    });
+                    continue;
+                }
+            };
+            let pool = match publish_pool.as_ref() {
+                Some(pool) => pool,
+                None => {
+                    publish_pool = Some(build_relay_pool(&config, &identity).await?);
+                    publish_pool.as_ref().expect("publish pool should exist")
+                }
+            };
+            let payment_event = match publish_payment_required_feedback(
+                pool,
+                &signer_key,
+                &observed.event,
+                observed.entry.relay_url.as_deref(),
+                price_msats,
+                payment_requirement.bolt11.as_str(),
+            )
+            .await
+            {
+                Ok(event) => event,
+                Err(error) => {
+                    failed_count += 1;
+                    let error_string = error.to_string();
+                    persist_provider_run_state(
+                        config_path,
+                        collected.provider_pubkey.as_str(),
+                        &observed.entry,
+                        "publish_failed",
+                        Some(error_string.as_str()),
+                        None,
+                        None,
+                        None,
+                        Some(price_msats),
+                        Some(payment_requirement.bolt11.as_str()),
+                    )?;
+                    known_statuses.insert(request_event_id.clone(), "publish_failed".to_string());
+                    report_entries.push(ProviderRunEntry {
+                        request_event_id: observed.entry.request_event_id.clone(),
+                        requester_pubkey: observed.entry.requester_pubkey.clone(),
+                        relay_url: observed.entry.relay_url.clone(),
+                        status: "failed".to_string(),
+                        prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                        model: Some(target.model.clone()),
+                        bid_msats: observed.entry.bid_msats,
+                        amount_msats: Some(price_msats),
+                        bolt11: Some(payment_requirement.bolt11.clone()),
+                        result_preview: None,
+                        error_detail: Some(error_string),
+                        feedback_event_ids: Vec::new(),
+                        result_event_id: None,
+                    });
+                    continue;
+                }
+            };
+            payment_required_count += 1;
+            persist_provider_run_state(
+                config_path,
+                collected.provider_pubkey.as_str(),
+                &observed.entry,
+                "payment_required",
+                None,
+                None,
+                Some(payment_event.id.as_str()),
+                None,
+                Some(price_msats),
+                Some(payment_requirement.bolt11.as_str()),
+            )?;
+            known_statuses.insert(request_event_id.clone(), "payment_required".to_string());
+            report_entries.push(ProviderRunEntry {
+                request_event_id: observed.entry.request_event_id.clone(),
+                requester_pubkey: observed.entry.requester_pubkey.clone(),
+                relay_url: observed.entry.relay_url.clone(),
+                status: "payment_required".to_string(),
+                prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                model: Some(target.model.clone()),
+                bid_msats: observed.entry.bid_msats,
+                amount_msats: Some(price_msats),
+                bolt11: Some(payment_requirement.bolt11),
+                result_preview: None,
+                error_detail: None,
+                feedback_event_ids: vec![payment_event.id],
+                result_event_id: None,
+            });
+            continue;
+        }
+
         accepted_count += 1;
         persist_provider_run_state(
             config_path,
             collected.provider_pubkey.as_str(),
             &observed.entry,
             "accepted_local",
+            None,
+            None,
             None,
             None,
             None,
@@ -564,6 +797,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     None,
                     None,
+                    None,
+                    None,
                 )?;
                 known_statuses.insert(request_event_id.clone(), "publish_failed".to_string());
                 report_entries.push(ProviderRunEntry {
@@ -574,6 +809,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                     model: Some(target.model.clone()),
                     bid_msats: observed.entry.bid_msats,
+                    amount_msats: None,
+                    bolt11: None,
                     result_preview: None,
                     error_detail: Some(error_string),
                     feedback_event_ids: Vec::new(),
@@ -590,6 +827,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             None,
             None,
             Some(processing_event.id.as_str()),
+            None,
+            None,
             None,
         )?;
         known_statuses.insert(request_event_id.clone(), "processing_local".to_string());
@@ -613,6 +852,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     Some(result_preview.as_str()),
                     Some(processing_event.id.as_str()),
+                    None,
+                    None,
                     None,
                 )?;
                 let result_event = match publish_job_result(
@@ -638,6 +879,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                             Some(result_preview.as_str()),
                             Some(processing_event.id.as_str()),
                             None,
+                            None,
+                            None,
                         )?;
                         known_statuses
                             .insert(request_event_id.clone(), "publish_failed".to_string());
@@ -649,6 +892,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                             prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                             model: Some(target.model.clone()),
                             bid_msats: observed.entry.bid_msats,
+                            amount_msats: None,
+                            bolt11: None,
                             result_preview: Some(result_preview),
                             error_detail: Some(error_string),
                             feedback_event_ids: vec![processing_event.id.clone()],
@@ -668,6 +913,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     Some(result_preview.as_str()),
                     Some(processing_event.id.as_str()),
                     Some(result_event.id.as_str()),
+                    None,
+                    None,
                 )?;
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
@@ -677,6 +924,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                     model: Some(target.model.clone()),
                     bid_msats: observed.entry.bid_msats,
+                    amount_msats: None,
+                    bolt11: None,
                     result_preview: Some(result_preview),
                     error_detail: None,
                     feedback_event_ids: vec![processing_event.id.clone()],
@@ -704,6 +953,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     error_feedback.as_ref().map(|event| event.id.as_str()),
                     None,
+                    None,
+                    None,
                 )?;
                 known_statuses.insert(request_event_id.clone(), "failed_local".to_string());
                 report_entries.push(ProviderRunEntry {
@@ -714,6 +965,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                     model: Some(target.model.clone()),
                     bid_msats: observed.entry.bid_msats,
+                    amount_msats: None,
+                    bolt11: None,
                     result_preview: None,
                     error_detail: Some(error_string),
                     feedback_event_ids: error_feedback
@@ -730,6 +983,7 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
         provider_pubkey: collected.provider_pubkey,
         local_model: local_target.map(|target| target.model),
         accepted_count,
+        payment_required_count,
         completed_count,
         failed_count,
         dropped_count,
@@ -746,6 +1000,7 @@ pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
             report.local_model.as_deref().unwrap_or("none")
         ),
         format!("accepted_count: {}", report.accepted_count),
+        format!("payment_required_count: {}", report.payment_required_count),
         format!("completed_count: {}", report.completed_count),
         format!("failed_count: {}", report.failed_count),
         format!("dropped_count: {}", report.dropped_count),
@@ -767,6 +1022,12 @@ pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
         }
         if let Some(bid_msats) = entry.bid_msats {
             lines.push(format!("bid_msats: {bid_msats}"));
+        }
+        if let Some(amount_msats) = entry.amount_msats {
+            lines.push(format!("amount_msats: {amount_msats}"));
+        }
+        if let Some(bolt11) = entry.bolt11.as_deref() {
+            lines.push(format!("bolt11: {bolt11}"));
         }
         if let Some(result_preview) = entry.result_preview.as_deref() {
             lines.push(format!("result_preview: {result_preview}"));
@@ -1185,6 +1446,8 @@ fn persist_provider_run_state(
     result_preview: Option<&str>,
     feedback_event_id: Option<&str>,
     result_event_id: Option<&str>,
+    amount_msats: Option<u64>,
+    bolt11: Option<&str>,
 ) -> Result<()> {
     mutate_ledger(config_path, |ledger| {
         let mut job = ledger
@@ -1207,6 +1470,12 @@ fn persist_provider_run_state(
         job.prompt = entry.prompt_preview.clone();
         job.model = entry.model.clone();
         job.bid_msats = entry.bid_msats;
+        if let Some(amount_msats) = amount_msats {
+            job.amount_msats = Some(amount_msats);
+        }
+        if let Some(bolt11) = bolt11 {
+            job.bolt11 = Some(bolt11.to_string());
+        }
         job.status = status.to_string();
         job.error_detail = error_detail.map(ToString::to_string);
         if let Some(result_preview) = result_preview {
@@ -1233,6 +1502,8 @@ fn persist_provider_run_state(
                 "processing_local" => "nip90.job_processing",
                 "completed_local" => "nip90.job_completed",
                 "failed_local" => "nip90.job_failed",
+                "payment_required" => "nip90.job_payment_required",
+                "invoice_failed" => "nip90.job_invoice_failed",
                 "rejected_policy" | "rejected_supply" | "rejected_model" | "rejected_input" => {
                     "nip90.job_rejected"
                 }
@@ -1246,6 +1517,16 @@ fn persist_provider_run_state(
                 "completed_local" => format!("completed request {}", entry.request_event_id),
                 "failed_local" => format!(
                     "failed request {} ({})",
+                    entry.request_event_id,
+                    error_detail.unwrap_or("unknown")
+                ),
+                "payment_required" => format!(
+                    "payment required for request {} ({})",
+                    entry.request_event_id,
+                    bolt11.unwrap_or("missing_invoice")
+                ),
+                "invoice_failed" => format!(
+                    "invoice failed for request {} ({})",
                     entry.request_event_id,
                     error_detail.unwrap_or("unknown")
                 ),
@@ -1291,6 +1572,19 @@ fn persist_provider_run_state(
     Ok(())
 }
 
+async fn create_provider_payment_requirement(
+    config_path: &Path,
+    entry: &ProviderIntakeEntry,
+    amount_msats: u64,
+) -> Result<ProviderPaymentRequirement> {
+    let description = Some(format!("pylon nip90 {}", entry.request_event_id));
+    let report =
+        create_provider_invoice_report(config_path, amount_msats, description, None).await?;
+    Ok(ProviderPaymentRequirement {
+        bolt11: report.invoice.payment_request,
+    })
+}
+
 async fn publish_processing_feedback(
     pool: &RelayPool,
     signer_key: &[u8; 32],
@@ -1312,6 +1606,33 @@ async fn publish_processing_feedback(
         signer_key,
         create_job_feedback_event(&feedback),
         "processing feedback",
+    )
+    .await
+}
+
+async fn publish_payment_required_feedback(
+    pool: &RelayPool,
+    signer_key: &[u8; 32],
+    request_event: &Event,
+    relay_url: Option<&str>,
+    amount_msats: u64,
+    bolt11: &str,
+) -> Result<Event> {
+    let mut feedback = JobFeedback::new(
+        JobStatus::PaymentRequired,
+        request_event.id.clone(),
+        request_event.pubkey.clone(),
+    )
+    .with_status_extra("lightning settlement required".to_string())
+    .with_amount(amount_msats, Some(bolt11.to_string()));
+    if let Some(relay_url) = relay_url {
+        feedback = feedback.with_request_relay(relay_url.to_string());
+    }
+    publish_signed_event(
+        pool,
+        signer_key,
+        create_job_feedback_event(&feedback),
+        "payment-required feedback",
     )
     .await
 }
@@ -1473,4 +1794,35 @@ fn preview_text(value: &str, max_chars: usize) -> String {
         return trimmed.to_string();
     }
     trimmed.chars().take(max_chars).collect::<String>() + "..."
+}
+
+async fn create_provider_invoice_report(
+    config_path: &Path,
+    amount_msats: u64,
+    description: Option<String>,
+    expiry_seconds: Option<u32>,
+) -> Result<WalletInvoiceReport> {
+    #[cfg(test)]
+    {
+        if let Some(slot) = TEST_WALLET_INVOICE_HOOK.get() {
+            if let Some(hook) = slot
+                .lock()
+                .expect("test wallet invoice hook lock")
+                .as_ref()
+            {
+                return hook(msats_to_sats_rounded_up(amount_msats), description, expiry_seconds);
+            }
+        }
+    }
+    create_wallet_invoice_report(
+        config_path,
+        msats_to_sats_rounded_up(amount_msats),
+        description,
+        expiry_seconds,
+    )
+    .await
+}
+
+fn msats_to_sats_rounded_up(amount_msats: u64) -> u64 {
+    amount_msats.saturating_add(999) / 1000
 }
