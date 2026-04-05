@@ -16,4 +16,6 @@ crossterm.workspace = true
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
 pylon = { path = "../pylon" }
 ratatui.workspace = true
+serde_json.workspace = true
+sysinfo.workspace = true
 tokio.workspace = true

@@ -1,6 +1,7 @@
 use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::process::Command;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEventKind};
@@ -9,8 +10,8 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use openagents_provider_substrate::{
-    ProviderBackendHealth, ProviderDesiredMode, ProviderMode, ProviderPersistedSnapshot,
-    ProviderStatusResponse, provider_runtime_state_label,
+    ProviderBackendHealth, ProviderPersistedSnapshot, ProviderStatusResponse,
+    provider_runtime_state_label,
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout};
@@ -18,9 +19,12 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
+use serde_json::Value;
+use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
 const TICK_RATE: Duration = Duration::from_millis(200);
 const REFRESH_RATE: Duration = Duration::from_secs(2);
+const GPU_REFRESH_RATE: Duration = Duration::from_secs(30);
 
 fn shell_border() -> Style {
     Style::default().fg(Color::Rgb(0x73, 0xc2, 0xfb))
@@ -88,24 +92,54 @@ impl LoadedState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Gemma4Status {
+    loaded: bool,
+    models: Vec<String>,
+    sources: Vec<String>,
+    note: String,
+}
+
+#[derive(Clone, Debug, Default)]
+struct LiveSystemStats {
+    cpu_brand: Option<String>,
+    logical_cpus: usize,
+    cpu_usage_percent: Option<f32>,
+    load_average: Option<(f64, f64, f64)>,
+    available_memory_bytes: Option<u64>,
+    total_memory_bytes: Option<u64>,
+    gpu_summary: Option<String>,
+    gpu_scan_error: Option<String>,
+}
+
 struct AppShell {
     config_path: PathBuf,
     loaded: Option<LoadedState>,
+    system: System,
+    system_stats: LiveSystemStats,
     last_refresh_at: Option<Instant>,
     last_error: Option<String>,
     next_refresh_at: Instant,
+    next_gpu_refresh_at: Instant,
     should_quit: bool,
 }
 
 impl AppShell {
     fn new(config_path: PathBuf) -> Self {
+        let system = System::new_with_specifics(
+            RefreshKind::nothing()
+                .with_cpu(CpuRefreshKind::everything())
+                .with_memory(MemoryRefreshKind::everything()),
+        );
         Self {
             config_path,
             loaded: None,
+            system,
+            system_stats: LiveSystemStats::default(),
             last_refresh_at: None,
             last_error: None,
             next_refresh_at: Instant::now(),
+            next_gpu_refresh_at: Instant::now(),
             should_quit: false,
         }
     }
@@ -131,18 +165,49 @@ impl AppShell {
     }
 
     async fn refresh(&mut self) {
+        self.refresh_system_stats();
         match pylon::load_config_and_status(self.config_path.as_path()).await {
             Ok((config, status)) => {
                 self.loaded = Some(LoadedState { config, status });
                 self.last_error = None;
-                self.last_refresh_at = Some(Instant::now());
             }
             Err(error) => {
                 self.last_error = Some(error.to_string());
-                self.last_refresh_at = Some(Instant::now());
             }
         }
+        self.last_refresh_at = Some(Instant::now());
         self.next_refresh_at = Instant::now() + REFRESH_RATE;
+    }
+
+    fn refresh_system_stats(&mut self) {
+        self.system.refresh_memory();
+        self.system.refresh_cpu_usage();
+
+        self.system_stats.logical_cpus = self.system.cpus().len();
+        self.system_stats.cpu_brand = self.system.cpus().iter().find_map(|cpu| {
+            let brand = cpu.brand().trim();
+            (!brand.is_empty()).then(|| brand.to_string())
+        });
+        self.system_stats.cpu_usage_percent =
+            (!self.system.cpus().is_empty()).then(|| self.system.global_cpu_usage());
+
+        let load = System::load_average();
+        self.system_stats.load_average = Some((load.one, load.five, load.fifteen));
+        self.system_stats.available_memory_bytes = Some(self.system.available_memory());
+        self.system_stats.total_memory_bytes = Some(self.system.total_memory());
+
+        if Instant::now() >= self.next_gpu_refresh_at || self.system_stats.gpu_summary.is_none() {
+            match detect_gpu_summary() {
+                Ok(summary) => {
+                    self.system_stats.gpu_summary = Some(summary);
+                    self.system_stats.gpu_scan_error = None;
+                }
+                Err(error) => {
+                    self.system_stats.gpu_scan_error = Some(error.to_string());
+                }
+            }
+            self.next_gpu_refresh_at = Instant::now() + GPU_REFRESH_RATE;
+        }
     }
 
     fn render(&self, frame: &mut Frame<'_>) {
@@ -151,7 +216,7 @@ impl AppShell {
             .padding(Padding::horizontal(1))
             .title(Line::from(vec![
                 Span::styled(" Pylon ", shell_accent()),
-                Span::styled(" local operator shell ", shell_border()),
+                Span::styled(" gemma + system ", shell_border()),
             ]))
             .style(shell_border());
         let area = frame.area();
@@ -160,20 +225,19 @@ impl AppShell {
 
         let vertical = Layout::vertical([
             Constraint::Length(3),
-            Constraint::Min(12),
+            Constraint::Length(8),
+            Constraint::Min(10),
             Constraint::Length(2),
         ])
         .split(inner);
-        let columns = Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)])
-            .split(vertical[1]);
-        let right = Layout::vertical([Constraint::Percentage(48), Constraint::Percentage(52)])
-            .split(columns[1]);
+        let lower = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(vertical[2]);
 
         frame.render_widget(self.header_panel(), vertical[0]);
-        frame.render_widget(self.node_panel(), columns[0]);
-        frame.render_widget(self.stats_panel(), right[0]);
-        frame.render_widget(self.notes_panel(), right[1]);
-        frame.render_widget(self.footer_panel(), vertical[2]);
+        frame.render_widget(self.gemma_panel(), vertical[1]);
+        frame.render_widget(self.system_panel(), lower[0]);
+        frame.render_widget(self.backends_panel(), lower[1]);
+        frame.render_widget(self.footer_panel(), vertical[3]);
     }
 
     fn header_panel(&self) -> Paragraph<'static> {
@@ -210,16 +274,16 @@ impl AppShell {
             .wrap(Wrap { trim: false })
     }
 
-    fn node_panel(&self) -> Paragraph<'static> {
-        panel("Node", Text::from(self.node_lines()))
+    fn gemma_panel(&self) -> Paragraph<'static> {
+        panel("Gemma 4", Text::from(self.gemma_lines()))
     }
 
-    fn stats_panel(&self) -> Paragraph<'static> {
-        panel("Stats", Text::from(self.stats_lines()))
+    fn system_panel(&self) -> Paragraph<'static> {
+        panel("System", Text::from(self.system_lines()))
     }
 
-    fn notes_panel(&self) -> Paragraph<'static> {
-        panel("Backends", Text::from(self.notes_lines()))
+    fn backends_panel(&self) -> Paragraph<'static> {
+        panel("Backends", Text::from(self.backend_lines()))
     }
 
     fn footer_panel(&self) -> Paragraph<'static> {
@@ -232,145 +296,129 @@ impl AppShell {
         .block(Block::default().style(shell_border()))
     }
 
-    fn node_lines(&self) -> Vec<Line<'static>> {
+    fn gemma_lines(&self) -> Vec<Line<'static>> {
+        let gemma = gemma4_status(self.loaded.as_ref(), self.config_path.as_path());
         let mut lines = vec![Line::from(format!(
-            "config path: {}",
-            self.config_path.display()
+            "loaded: {}",
+            if gemma.loaded { "yes" } else { "no" }
         ))];
+        lines.push(Line::from(format!(
+            "models: {}",
+            comma_or_none(gemma.models.as_slice())
+        )));
+        lines.push(Line::from(format!(
+            "sources: {}",
+            comma_or_none(gemma.sources.as_slice())
+        )));
         if let Some(loaded) = self.loaded.as_ref() {
             lines.push(Line::from(format!(
-                "node label: {}",
-                loaded.config.node_label
-            )));
-            lines.push(Line::from(format!(
-                "config file: {}",
-                yes_no(self.config_path.exists())
-            )));
-            lines.push(Line::from(format!(
-                "identity file: {}",
-                yes_no(loaded.config.identity_path.exists())
-            )));
-            lines.push(Line::from(format!("state: {}", loaded.state_label())));
-            lines.push(Line::from(format!(
-                "desired mode: {}",
+                "provider state: {} / {}",
+                loaded.state_label(),
                 loaded.status.desired_mode.label()
             )));
-            lines.push(Line::from(format!(
-                "admin listen: {}",
-                loaded
-                    .status
-                    .listen_addr
-                    .as_deref()
-                    .unwrap_or(loaded.config.admin_listen_addr.as_str())
-            )));
-            lines.push(Line::from(format!(
-                "execution backend: {}",
-                loaded
-                    .snapshot()
-                    .map(|snapshot| snapshot.runtime.execution_backend_label.as_str())
-                    .unwrap_or("unknown")
-            )));
-            lines.push(Line::from(format!(
-                "snapshot age: {}",
-                loaded
-                    .snapshot()
-                    .map(|snapshot| age_label(snapshot.captured_at_ms))
-                    .unwrap_or_else(|| "none".to_string())
-            )));
-            if let Some(snapshot) = loaded.snapshot() {
-                if let Some(reason_code) = snapshot.runtime.degraded_reason_code.as_deref() {
-                    lines.push(Line::from(format!("reason code: {reason_code}")));
-                }
-                if let Some(last_error) = snapshot.runtime.last_error.as_deref() {
-                    lines.push(Line::from(format!("runtime error: {last_error}")));
-                }
-                if !snapshot.runtime.provider_blocker_codes.is_empty() {
-                    lines.push(Line::from(format!(
-                        "blockers: {}",
-                        snapshot.runtime.provider_blocker_codes.join(", ")
-                    )));
-                }
-            }
-            if let Some(destination) = loaded.config.payout_destination.as_deref() {
-                lines.push(Line::from(format!("payout destination: {destination}")));
-            }
-        } else {
-            lines.push(Line::from("provider state unavailable"));
         }
+        lines.push(Line::from(""));
+        lines.push(Line::from(gemma.note));
         if let Some(error) = self.last_error.as_deref() {
             lines.push(Line::from(""));
-            lines.push(Line::from(format!("last refresh error: {error}")));
+            lines.push(Line::from(format!("refresh error: {error}")));
         }
         lines
     }
 
-    fn stats_lines(&self) -> Vec<Line<'static>> {
+    fn system_lines(&self) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        lines.push(Line::from(format!(
+            "cpu: {}",
+            self.system_stats
+                .cpu_brand
+                .as_deref()
+                .unwrap_or("unknown cpu")
+        )));
+        lines.push(Line::from(format!(
+            "logical cores: {}",
+            self.system_stats.logical_cpus
+        )));
+        lines.push(Line::from(format!(
+            "cpu usage: {}",
+            self.system_stats
+                .cpu_usage_percent
+                .map(format_percent)
+                .unwrap_or_else(|| "unknown".to_string())
+        )));
+        lines.push(Line::from(format!(
+            "load avg: {}",
+            self.system_stats
+                .load_average
+                .map(format_load_average)
+                .unwrap_or_else(|| "unknown".to_string())
+        )));
+        lines.push(Line::from(format!(
+            "memory available: {}",
+            self.system_stats
+                .available_memory_bytes
+                .zip(self.system_stats.total_memory_bytes)
+                .map(|(available, total)| {
+                    format!("{} / {}", format_bytes(available), format_bytes(total))
+                })
+                .unwrap_or_else(|| "unknown".to_string())
+        )));
+        lines.push(Line::from(format!(
+            "gpu: {}",
+            self.system_stats
+                .gpu_summary
+                .as_deref()
+                .unwrap_or("not detected")
+        )));
+        if let Some(error) = self.system_stats.gpu_scan_error.as_deref() {
+            lines.push(Line::from(format!("gpu note: {error}")));
+        }
+        lines
+    }
+
+    fn backend_lines(&self) -> Vec<Line<'static>> {
         let Some(loaded) = self.loaded.as_ref() else {
             return vec![Line::from("waiting for provider status")];
         };
         let Some(snapshot) = loaded.snapshot() else {
-            return vec![Line::from("no persisted provider snapshot yet")];
+            return vec![Line::from(
+                "no provider snapshot yet; start the headless serve loop to publish backend state",
+            )];
         };
-        let eligible_products = snapshot
-            .inventory_rows
-            .iter()
-            .filter(|row| row.eligible)
-            .count();
-        let backend_ready_products = snapshot
-            .inventory_rows
-            .iter()
-            .filter(|row| row.backend_ready)
-            .count();
-        let available_rows = snapshot
-            .inventory_rows
-            .iter()
-            .filter(|row| row.available_quantity > 0)
-            .count();
+
         let mut lines = vec![
-            Line::from(format!(
-                "visible products: {}",
-                snapshot.inventory_rows.len()
-            )),
-            Line::from(format!("eligible products: {eligible_products}")),
-            Line::from(format!("backend-ready products: {backend_ready_products}")),
-            Line::from(format!("active inventory rows: {available_rows}")),
-            Line::from(format!("recent jobs: {}", snapshot.recent_jobs.len())),
-            Line::from(format!("receipts: {}", snapshot.receipts.len())),
-            Line::from(format!("payout rows: {}", snapshot.payouts.len())),
-            Line::from(format!("health events: {}", snapshot.health_events.len())),
-            Line::from(format!("queue depth: {}", snapshot.runtime.queue_depth)),
-            Line::from(format!(
-                "online uptime: {}",
-                format_duration(Duration::from_secs(snapshot.runtime.online_uptime_seconds))
+            Line::from(backend_line("gpt-oss", &snapshot.availability.gpt_oss)),
+            Line::from(backend_line(
+                "apple fm",
+                &snapshot.availability.apple_foundation_models,
             )),
         ];
-        if let Some(earnings) = snapshot.earnings.as_ref() {
-            lines.push(Line::from(format!("sats today: {}", earnings.sats_today)));
+
+        if snapshot
+            .availability
+            .pooled_inference
+            .has_authoritative_state()
+        {
+            let pooled_models = snapshot
+                .availability
+                .pooled_inference
+                .targetable_models
+                .iter()
+                .map(|target| target.model.clone())
+                .collect::<Vec<_>>();
             lines.push(Line::from(format!(
-                "lifetime sats: {}",
-                earnings.lifetime_sats
-            )));
-            lines.push(Line::from(format!("jobs today: {}", earnings.jobs_today)));
-            lines.push(Line::from(format!(
-                "last job result: {}",
-                earnings.last_job_result
+                "pooled: members {}  warm replicas {}  models {}",
+                snapshot.availability.pooled_inference.member_count,
+                snapshot.availability.pooled_inference.warm_replica_count,
+                comma_or_none(pooled_models.as_slice())
             )));
         }
-        lines
-    }
 
-    fn notes_lines(&self) -> Vec<Line<'static>> {
-        let Some(loaded) = self.loaded.as_ref() else {
-            return vec![Line::from("No provider status yet.")];
-        };
-        let mut lines = vec![Line::from(operator_note(
+        lines.push(Line::from(""));
+        lines.push(Line::from(provider_note(
             loaded,
             self.config_path.as_path(),
-        ))];
-        if let Some(snapshot) = loaded.snapshot() {
-            lines.push(Line::from(""));
-            lines.extend(backend_lines(snapshot));
-        }
+        )));
         lines
     }
 }
@@ -442,91 +490,131 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
     Ok(())
 }
 
-fn operator_note(loaded: &LoadedState, config_path: &Path) -> String {
+fn gemma4_status(loaded: Option<&LoadedState>, config_path: &Path) -> Gemma4Status {
+    if !config_path.exists() {
+        return Gemma4Status {
+            note: format!(
+                "No config file exists at {}. Initialize Pylon first with `cargo pylon-headless init`.",
+                config_path.display()
+            ),
+            ..Gemma4Status::default()
+        };
+    }
+
+    let Some(loaded) = loaded else {
+        return Gemma4Status {
+            note: "Waiting for provider status.".to_string(),
+            ..Gemma4Status::default()
+        };
+    };
+
+    let Some(snapshot) = loaded.snapshot() else {
+        return Gemma4Status {
+            note:
+                "No provider snapshot yet. Start the headless serve loop to publish backend state."
+                    .to_string(),
+            ..Gemma4Status::default()
+        };
+    };
+
+    let mut models = Vec::new();
+    let mut sources = Vec::new();
+
+    collect_gemma4_backend_models(
+        &snapshot.availability.gpt_oss,
+        "gpt-oss",
+        &mut models,
+        &mut sources,
+    );
+    collect_gemma4_backend_models(
+        &snapshot.availability.apple_foundation_models,
+        "apple fm",
+        &mut models,
+        &mut sources,
+    );
+
+    if let Some(default_model) = snapshot
+        .availability
+        .pooled_inference
+        .default_model
+        .as_deref()
+    {
+        if is_gemma4_model(default_model) {
+            models.push(default_model.to_string());
+            sources.push("pooled inference".to_string());
+        }
+    }
+    for target in &snapshot.availability.pooled_inference.targetable_models {
+        if is_gemma4_model(target.model.as_str()) || is_gemma4_model(target.family.as_str()) {
+            models.push(target.model.clone());
+            sources.push("pooled inference".to_string());
+        }
+    }
+
+    sort_and_dedup(&mut models);
+    sort_and_dedup(&mut sources);
+
+    let loaded_flag = !models.is_empty();
+    let note = if loaded_flag {
+        "Gemma 4 weights are visible to this node right now.".to_string()
+    } else if snapshot.runtime.degraded_reason_code.as_deref() == Some("UNCONFIGURED") {
+        "Pylon is still unconfigured, so no Gemma 4-serving path is visible yet.".to_string()
+    } else {
+        "No Gemma 4 model is visible across gpt-oss, Apple FM, or pooled inference right now."
+            .to_string()
+    };
+
+    Gemma4Status {
+        loaded: loaded_flag,
+        models,
+        sources,
+        note,
+    }
+}
+
+fn collect_gemma4_backend_models(
+    backend: &ProviderBackendHealth,
+    source: &str,
+    models: &mut Vec<String>,
+    sources: &mut Vec<String>,
+) {
+    if let Some(model) = backend.ready_model.as_deref() {
+        if is_gemma4_model(model) {
+            models.push(model.to_string());
+            sources.push(source.to_string());
+        }
+    }
+    for model in &backend.available_models {
+        if is_gemma4_model(model.as_str()) {
+            models.push(model.clone());
+            sources.push(source.to_string());
+        }
+    }
+}
+
+fn is_gemma4_model(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized.contains("gemma4") || normalized.contains("gemma-4")
+}
+
+fn provider_note(loaded: &LoadedState, config_path: &Path) -> String {
     if !config_path.exists() {
         return format!(
-            "No config file exists at {}. Initialize the headless Pylon CLI to create config and identity.",
+            "No config file exists at {}. Initialize Pylon first.",
             config_path.display()
         );
     }
     let Some(snapshot) = loaded.snapshot() else {
-        return "The node has no persisted provider snapshot yet. Start the headless serve loop to publish state.".to_string();
+        return "The headless serve loop has not published a provider snapshot yet.".to_string();
     };
-    let eligible_products = snapshot
-        .inventory_rows
-        .iter()
-        .filter(|row| row.eligible)
-        .count();
-    if snapshot.inventory_rows.is_empty() {
-        return "No compute products are visible yet. Backend detection is still unconfigured or offline.".to_string();
+    if loaded.state_label() == "unconfigured" {
+        return "Pylon is unconfigured. Create config and identity before expecting backend truth."
+            .to_string();
     }
-    if eligible_products == 0 {
-        return "Products are visible, but none are eligible to sell yet.".to_string();
+    if snapshot.runtime.last_error.is_some() {
+        return "Provider state is degraded. Check the backend lines above.".to_string();
     }
-    if loaded.status.desired_mode != ProviderDesiredMode::Online {
-        return format!(
-            "{eligible_products} eligible products are visible, but desired mode is {}.",
-            loaded.status.desired_mode.label()
-        );
-    }
-    if snapshot.runtime.mode != ProviderMode::Online {
-        return "Desired mode is online, but the headless serve loop is not currently reporting an online runtime.".to_string();
-    }
-    format!(
-        "{eligible_products} eligible products are visible. The headless serve loop can advertise this supply."
-    )
-}
-
-fn backend_lines(snapshot: &ProviderPersistedSnapshot) -> Vec<Line<'static>> {
-    let mut lines = vec![
-        Line::from(backend_line("gpt-oss", &snapshot.availability.gpt_oss)),
-        Line::from(backend_line(
-            "apple fm",
-            &snapshot.availability.apple_foundation_models,
-        )),
-    ];
-    if snapshot
-        .availability
-        .pooled_inference
-        .has_authoritative_state()
-    {
-        lines.push(Line::from(format!(
-            "pooled inference: members {}  warm replicas {}  local state {}",
-            snapshot.availability.pooled_inference.member_count,
-            snapshot.availability.pooled_inference.warm_replica_count,
-            snapshot.availability.pooled_inference.local_serving_state
-        )));
-    }
-    let declared_classes = snapshot.availability.sandbox.declared_execution_classes();
-    let ready_classes = snapshot.availability.sandbox.ready_execution_classes();
-    if !declared_classes.is_empty() || !snapshot.availability.sandbox.runtimes.is_empty() {
-        let declared = declared_classes
-            .iter()
-            .map(|class| class.product_id().to_string())
-            .collect::<Vec<_>>();
-        let ready = ready_classes
-            .iter()
-            .map(|class| class.product_id().to_string())
-            .collect::<Vec<_>>();
-        lines.push(Line::from(format!(
-            "sandbox: runtimes {}  declared {}  ready {}",
-            snapshot.availability.sandbox.runtimes.len(),
-            if declared.is_empty() {
-                "none".to_string()
-            } else {
-                declared.join(", ")
-            },
-            if ready.is_empty() {
-                "none".to_string()
-            } else {
-                ready.join(", ")
-            }
-        )));
-    }
-    if let Some(last_error) = snapshot.availability.sandbox.last_scan_error.as_deref() {
-        lines.push(Line::from(format!("sandbox scan error: {last_error}")));
-    }
-    lines
+    "Backend summaries refresh live with the local system stats pane.".to_string()
 }
 
 fn backend_line(label: &str, health: &ProviderBackendHealth) -> String {
@@ -546,27 +634,92 @@ fn backend_line(label: &str, health: &ProviderBackendHealth) -> String {
     if let Some(latency_ms_p50) = health.latency_ms_p50 {
         line.push_str(format!("  p50 {latency_ms_p50}ms").as_str());
     }
-    if let Some(message) = health.availability_message.as_deref() {
-        line.push_str(format!("  note {message}").as_str());
-    } else if let Some(last_error) = health.last_error.as_deref() {
+    if let Some(last_error) = health.last_error.as_deref() {
         line.push_str(format!("  error {last_error}").as_str());
+    } else if let Some(message) = health.availability_message.as_deref() {
+        line.push_str(format!("  note {message}").as_str());
     }
     line
 }
 
-fn age_label(captured_at_ms: i64) -> String {
-    if captured_at_ms <= 0 {
-        return "none".to_string();
+fn detect_gpu_summary() -> Result<String> {
+    if cfg!(target_os = "macos") {
+        return detect_macos_gpu_summary();
     }
-    let now_ms = now_epoch_ms();
-    let delta_ms = now_ms.saturating_sub(captured_at_ms);
-    format_duration(Duration::from_millis(delta_ms as u64))
+    detect_nvidia_gpu_summary()
 }
 
-fn now_epoch_ms() -> i64 {
-    match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
-        Err(_) => 0,
+fn detect_macos_gpu_summary() -> Result<String> {
+    let output = Command::new("system_profiler")
+        .args(["SPDisplaysDataType", "-json", "-detailLevel", "mini"])
+        .output()?;
+    if !output.status.success() {
+        return Err(anyhow!("system_profiler failed"));
+    }
+    let payload = serde_json::from_slice::<Value>(&output.stdout)?;
+    let Some(entries) = payload.get("SPDisplaysDataType").and_then(Value::as_array) else {
+        return Err(anyhow!("SPDisplaysDataType missing"));
+    };
+
+    let mut summaries = entries
+        .iter()
+        .filter_map(|entry| {
+            let model = entry
+                .get("sppci_model")
+                .or_else(|| entry.get("_name"))
+                .and_then(Value::as_str)?;
+            let vram = entry
+                .get("spdisplays_vram")
+                .or_else(|| entry.get("spdisplays_vram_shared"))
+                .and_then(Value::as_str);
+            Some(match vram {
+                Some(vram) if !vram.trim().is_empty() => format!("{model} ({vram})"),
+                _ => model.to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    sort_and_dedup(&mut summaries);
+    if summaries.is_empty() {
+        return Err(anyhow!("no gpu entries reported"));
+    }
+    Ok(summaries.join(", "))
+}
+
+fn detect_nvidia_gpu_summary() -> Result<String> {
+    let output = Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=name,memory.free,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(anyhow!("nvidia-smi unavailable"));
+    }
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut lines = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    sort_and_dedup(&mut lines);
+    if lines.is_empty() {
+        return Err(anyhow!("no nvidia gpu rows reported"));
+    }
+    Ok(lines.join(", "))
+}
+
+fn sort_and_dedup(values: &mut Vec<String>) {
+    values.sort();
+    values.dedup();
+}
+
+fn comma_or_none(values: &[String]) -> String {
+    if values.is_empty() {
+        "none".to_string()
+    } else {
+        values.join(", ")
     }
 }
 
@@ -586,6 +739,15 @@ fn format_duration(duration: Duration) -> String {
     format!("{}d", hours / 24)
 }
 
-fn yes_no(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
+fn format_bytes(value: u64) -> String {
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    format!("{:.1} GiB", value as f64 / GIB)
+}
+
+fn format_percent(value: f32) -> String {
+    format!("{value:.0}%")
+}
+
+fn format_load_average((one, five, fifteen): (f64, f64, f64)) -> String {
+    format!("{one:.2} / {five:.2} / {fifteen:.2}")
 }

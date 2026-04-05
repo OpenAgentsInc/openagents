@@ -66,11 +66,10 @@ cargo pylon
 
 The first cut is intentionally small. It renders one full-screen status view with:
 
-- node label
-- current provider state and desired mode
-- admin listen address
-- backend readiness summary
-- product, inventory, job, receipt, and earnings counts
+- whether a Gemma 4-serving path is visible to the node
+- live CPU and memory state
+- a basic GPU summary when the host can report one
+- a tight backend summary for `gpt-oss`, Apple FM, and pooled inference
 
 The shell is read-only. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
