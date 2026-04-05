@@ -66,13 +66,15 @@ Open the local terminal shell:
 cargo pylon
 ```
 
-The first cut is intentionally small. It renders one full-screen status view with:
+The first cut is intentionally small. It renders one full-screen transcript shell with:
 
 - whether a Gemma 4-serving path is visible to the node
 - live CPU and memory state
 - a basic GPU summary when the host can report one
+- a retained transcript area for local shell activity
+- a bottom textbox that accepts one submitted input at a time
 
-The shell is still read-only today, but `Pylon` now also has a local Gemma chat-stream adapter behind the TUI work so the next shell step can send prompts to already-loaded local Gemma weights without adding a second runtime path. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell now keeps submitted input in the transcript instead of showing only a static status panel. The local Gemma chat-stream adapter is already in `Pylon`; the next step is wiring the `/chat` command into this shell. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 Initialize a standalone config and identity:
 

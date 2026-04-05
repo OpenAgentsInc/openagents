@@ -1,9 +1,13 @@
+mod bottom_pane;
+mod transcript;
+
 use std::io::{self, Stdout};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
+use bottom_pane::{BottomPane, ComposerSubmission};
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
@@ -20,6 +24,7 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use serde_json::Value;
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use transcript::{RetainedTranscript, TranscriptEntry, TranscriptRole};
 
 const TICK_RATE: Duration = Duration::from_millis(200);
 const REFRESH_RATE: Duration = Duration::from_secs(2);
@@ -108,6 +113,8 @@ struct AppShell {
     next_refresh_at: Instant,
     next_gpu_refresh_at: Instant,
     should_quit: bool,
+    transcript: RetainedTranscript,
+    bottom_pane: BottomPane,
 }
 
 impl AppShell {
@@ -117,6 +124,14 @@ impl AppShell {
                 .with_cpu(CpuRefreshKind::everything())
                 .with_memory(MemoryRefreshKind::everything()),
         );
+        let mut transcript = RetainedTranscript::new();
+        transcript.push_entry(TranscriptEntry::new(
+            TranscriptRole::System,
+            "Shell Ready",
+            vec![String::from(
+                "Type /chat [prompt]. Submitted input stays here.",
+            )],
+        ));
         Self {
             config_path,
             loaded: None,
@@ -127,6 +142,8 @@ impl AppShell {
             next_refresh_at: Instant::now(),
             next_gpu_refresh_at: Instant::now(),
             should_quit: false,
+            transcript,
+            bottom_pane: BottomPane::default(),
         }
     }
 
@@ -157,8 +174,26 @@ impl AppShell {
                 code: KeyCode::Char('r'),
                 ..
             } => self.schedule_refresh_now(),
-            _ => {}
+            _ => {
+                if let Some(submission) = self.bottom_pane.handle_key(key) {
+                    self.apply_submission(submission);
+                }
+            }
         }
+    }
+
+    fn apply_submission(&mut self, submission: ComposerSubmission) {
+        let title = match submission.slash_command.as_deref() {
+            Some(command) => format!("Command /{command}"),
+            None => String::from("Input"),
+        };
+        let body = submission
+            .text
+            .lines()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        self.transcript
+            .push_entry(TranscriptEntry::new(TranscriptRole::User, title, body));
     }
 
     async fn refresh(&mut self) {
@@ -214,7 +249,7 @@ impl AppShell {
             .padding(Padding::horizontal(1))
             .title(Line::from(vec![
                 Span::styled(" Pylon ", shell_accent()),
-                Span::styled(" gemma + system ", shell_border()),
+                Span::styled(" transcript shell ", shell_border()),
             ]))
             .style(shell_border());
         let area = frame.area();
@@ -223,16 +258,24 @@ impl AppShell {
 
         let vertical = Layout::vertical([
             Constraint::Length(3),
-            Constraint::Length(8),
-            Constraint::Min(8),
+            Constraint::Length(7),
+            Constraint::Min(10),
+            Constraint::Length(self.bottom_pane.height()),
             Constraint::Length(2),
         ])
         .split(inner);
 
         frame.render_widget(self.header_panel(), vertical[0]);
-        frame.render_widget(self.gemma_panel(), vertical[1]);
-        frame.render_widget(self.system_panel(), vertical[2]);
-        frame.render_widget(self.footer_panel(), vertical[3]);
+        frame.render_widget(self.summary_panel(), vertical[1]);
+        frame.render_widget(self.transcript_panel(), vertical[2]);
+        self.bottom_pane.render(
+            frame,
+            vertical[3],
+            shell_border(),
+            shell_accent(),
+            Some("Type /chat [prompt]. Enter submits. Ctrl+J inserts a newline."),
+        );
+        frame.render_widget(self.footer_panel(), vertical[4]);
     }
 
     fn header_panel(&self) -> Paragraph<'static> {
@@ -262,12 +305,20 @@ impl AppShell {
             .wrap(Wrap { trim: false })
     }
 
-    fn gemma_panel(&self) -> Paragraph<'static> {
-        panel("Gemma 4", Text::from(self.gemma_lines()))
+    fn summary_panel(&self) -> Paragraph<'static> {
+        panel("Gemma + System", Text::from(self.summary_lines()))
     }
 
-    fn system_panel(&self) -> Paragraph<'static> {
-        panel("System", Text::from(self.system_lines()))
+    fn transcript_panel(&self) -> Paragraph<'static> {
+        let body = if self.transcript.is_empty() {
+            Text::from(vec![
+                Line::from("Submitted prompts stay here."),
+                Line::from("Live assistant output will stream here when chat is running."),
+            ])
+        } else {
+            self.transcript.as_text()
+        };
+        panel("Transcript", body)
     }
 
     fn footer_panel(&self) -> Paragraph<'static> {
@@ -277,61 +328,46 @@ impl AppShell {
             Span::styled(" Ctrl+C ", shell_accent()),
             Span::raw("quit  "),
             Span::styled(" r ", shell_accent()),
-            Span::raw("refresh"),
+            Span::raw("refresh  "),
+            Span::styled(" Enter ", shell_accent()),
+            Span::raw("submit"),
         ]))
         .block(Block::default().style(shell_border()))
     }
 
-    fn gemma_lines(&self) -> Vec<Line<'static>> {
+    fn summary_lines(&self) -> Vec<Line<'static>> {
         let gemma = gemma4_status(self.loaded.as_ref());
-        let mut lines = vec![Line::from(format!(
-            "loaded: {}",
-            if gemma.loaded { "yes" } else { "no" }
-        ))];
-        lines.push(Line::from(format!(
-            "models: {}",
-            comma_or_none(gemma.models.as_slice())
-        )));
-        lines.push(Line::from(""));
-        lines.push(Line::from(gemma.note));
-        if let Some(error) = self.last_error.as_deref() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(format!("refresh error: {error}")));
-        }
-        lines
-    }
-
-    fn system_lines(&self) -> Vec<Line<'static>> {
-        vec![
+        let mut lines = vec![
             Line::from(format!(
-                "cpu: {}",
+                "gemma loaded: {}",
+                if gemma.loaded { "yes" } else { "no" }
+            )),
+            Line::from(format!(
+                "models: {}",
+                comma_or_none(gemma.models.as_slice())
+            )),
+            Line::from(format!(
+                "cpu: {}  usage: {}  load: {}",
                 self.system_stats
                     .cpu_brand
                     .as_deref()
-                    .unwrap_or("unknown cpu")
-            )),
-            Line::from(format!("logical cores: {}", self.system_stats.logical_cpus)),
-            Line::from(format!(
-                "cpu usage: {}",
+                    .unwrap_or("unknown cpu"),
                 self.system_stats
                     .cpu_usage_percent
                     .map(format_percent)
-                    .unwrap_or_else(|| "unknown".to_string())
-            )),
-            Line::from(format!(
-                "load avg: {}",
+                    .unwrap_or_else(|| "unknown".to_string()),
                 self.system_stats
                     .load_average
                     .map(format_load_average)
                     .unwrap_or_else(|| "unknown".to_string())
             )),
             Line::from(format!(
-                "memory available: {}",
+                "memory: {}",
                 self.system_stats
                     .available_memory_bytes
                     .zip(self.system_stats.total_memory_bytes)
                     .map(|(available, total)| {
-                        format!("{} / {}", format_bytes(available), format_bytes(total))
+                        format!("{} free / {}", format_bytes(available), format_bytes(total))
                     })
                     .unwrap_or_else(|| "unknown".to_string())
             )),
@@ -342,7 +378,12 @@ impl AppShell {
                     .as_deref()
                     .unwrap_or("not detected")
             )),
-        ]
+            Line::from(gemma.note),
+        ];
+        if let Some(error) = self.last_error.as_deref() {
+            lines.push(Line::from(format!("refresh error: {error}")));
+        }
+        lines
     }
 }
 
@@ -350,7 +391,9 @@ pub fn usage() -> &'static str {
     "Usage: pylon-tui [--config-path <path>]\n\
 Controls:\n\
   q / Esc  quit\n\
-  r        refresh now\n"
+  r        refresh now\n\
+  Enter    submit composer\n\
+  Ctrl+J   insert newline\n"
 }
 
 pub async fn run_pylon_tui() -> Result<()> {
@@ -391,9 +434,7 @@ async fn run_loop(
         terminal.draw(|frame| app.render(frame))?;
         if event::poll(TICK_RATE)? {
             match event::read()? {
-                CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => {
-                    app.handle_key(key);
-                }
+                CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => app.handle_key(key),
                 CrosstermEvent::Resize(_, _) => app.schedule_refresh_now(),
                 _ => {}
             }
