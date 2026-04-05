@@ -4,7 +4,9 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
-use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEventKind};
+use crossterm::event::{
+    self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -140,10 +142,21 @@ impl AppShell {
         self.next_refresh_at = Instant::now();
     }
 
-    fn handle_key(&mut self, code: KeyCode) {
-        match code {
-            KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
-            KeyCode::Char('r') => self.schedule_refresh_now(),
+    fn handle_key(&mut self, key: KeyEvent) {
+        match key {
+            KeyEvent {
+                code: KeyCode::Char('c'),
+                modifiers,
+                ..
+            } if modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
+            KeyEvent {
+                code: KeyCode::Char('q') | KeyCode::Esc,
+                ..
+            } => self.should_quit = true,
+            KeyEvent {
+                code: KeyCode::Char('r'),
+                ..
+            } => self.schedule_refresh_now(),
             _ => {}
         }
     }
@@ -261,6 +274,8 @@ impl AppShell {
         Paragraph::new(Line::from(vec![
             Span::styled(" q ", shell_accent()),
             Span::raw("quit  "),
+            Span::styled(" Ctrl+C ", shell_accent()),
+            Span::raw("quit  "),
             Span::styled(" r ", shell_accent()),
             Span::raw("refresh"),
         ]))
@@ -377,7 +392,7 @@ async fn run_loop(
         if event::poll(TICK_RATE)? {
             match event::read()? {
                 CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => {
-                    app.handle_key(key.code);
+                    app.handle_key(key);
                 }
                 CrosstermEvent::Resize(_, _) => app.schedule_refresh_now(),
                 _ => {}
