@@ -12,6 +12,7 @@ use bottom_pane::{BottomPane, ComposerSubmission};
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture, MouseEvent, MouseEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -151,6 +152,9 @@ struct AppShell {
     active_chat_text: String,
     chat_history: Vec<pylon::LocalGemmaChatMessage>,
     pending_chat_prompt: Option<String>,
+    transcript_follow_latest: bool,
+    transcript_scroll_from_bottom: u16,
+    transcript_line_count: usize,
 }
 
 impl AppShell {
@@ -169,6 +173,7 @@ impl AppShell {
                 "Type /chat [prompt]. Live local replies stay here.",
             )],
         ));
+        let transcript_line_count = transcript.as_text().lines.len();
         Self {
             config_path,
             loaded: None,
@@ -191,6 +196,9 @@ impl AppShell {
             active_chat_text: String::new(),
             chat_history: Vec::new(),
             pending_chat_prompt: None,
+            transcript_follow_latest: true,
+            transcript_scroll_from_bottom: 0,
+            transcript_line_count,
         }
     }
 
@@ -221,11 +229,27 @@ impl AppShell {
                 code: KeyCode::Char('r'),
                 ..
             } => self.schedule_refresh_now(),
+            KeyEvent {
+                code: KeyCode::PageUp,
+                ..
+            } => self.scroll_transcript_up(10),
+            KeyEvent {
+                code: KeyCode::PageDown,
+                ..
+            } => self.scroll_transcript_down(10),
             _ => {
                 if let Some(submission) = self.bottom_pane.handle_key(key) {
                     self.handle_submission(submission);
                 }
             }
+        }
+    }
+
+    fn handle_mouse(&mut self, mouse: MouseEvent) {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => self.scroll_transcript_up(3),
+            MouseEventKind::ScrollDown => self.scroll_transcript_down(3),
+            _ => {}
         }
     }
 
@@ -241,6 +265,7 @@ impl AppShell {
             .collect::<Vec<_>>();
         self.transcript
             .push_entry(TranscriptEntry::new(TranscriptRole::User, title, body));
+        self.sync_transcript_scroll_after_update();
 
         let Some(command) = submission.slash_command.as_deref() else {
             self.push_system_message("Input Error", "Only /chat [prompt] is available right now.");
@@ -311,6 +336,7 @@ impl AppShell {
             "Local Gemma",
             vec![String::from("Connecting to local Gemma...")],
         ));
+        self.sync_transcript_scroll_after_update();
 
         let config_path = self.config_path.clone();
         let tx = self.worker_tx.clone();
@@ -425,6 +451,7 @@ impl AppShell {
                 self.active_chat_text.clear();
             }
         }
+        self.sync_transcript_scroll_after_update();
     }
 
     fn push_system_message(&mut self, title: impl Into<String>, message: impl Into<String>) {
@@ -433,6 +460,7 @@ impl AppShell {
             title,
             vec![message.into()],
         ));
+        self.sync_transcript_scroll_after_update();
     }
 
     async fn refresh(&mut self) {
@@ -535,7 +563,7 @@ impl AppShell {
 
         frame.render_widget(self.header_panel(), vertical[0]);
         frame.render_widget(self.summary_panel(), vertical[1]);
-        frame.render_widget(self.transcript_panel(), vertical[2]);
+        frame.render_widget(self.transcript_panel(vertical[2].height), vertical[2]);
         self.bottom_pane.render(
             frame,
             vertical[3],
@@ -577,16 +605,19 @@ impl AppShell {
         panel("Gemma + System", Text::from(self.summary_lines()))
     }
 
-    fn transcript_panel(&self) -> Paragraph<'static> {
-        let body = if self.transcript.is_empty() {
-            Text::from(vec![
-                Line::from("Submitted prompts stay here."),
-                Line::from("Live assistant output will stream here when chat is running."),
-            ])
-        } else {
-            self.transcript.as_text()
-        };
-        panel("Transcript", body)
+    fn transcript_panel(&self, area_height: u16) -> Paragraph<'static> {
+        let body = self.transcript_body();
+        let scroll_y = self.transcript_scroll_y(body.lines.len(), area_height);
+        Paragraph::new(body)
+            .scroll((scroll_y, 0))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .padding(Padding::horizontal(1))
+                    .title(format!("─ {} ", self.transcript_panel_title()))
+                    .style(shell_border()),
+            )
+            .wrap(Wrap { trim: false })
     }
 
     fn footer_panel(&self) -> Paragraph<'static> {
@@ -597,6 +628,8 @@ impl AppShell {
             Span::raw("quit  "),
             Span::styled(" r ", shell_accent()),
             Span::raw("refresh  "),
+            Span::styled(" PgUp/PgDn ", shell_accent()),
+            Span::raw("scroll  "),
             Span::styled(" Enter ", shell_accent()),
             Span::raw("submit"),
         ]))
@@ -733,19 +766,91 @@ impl AppShell {
                     .as_deref()
                     .unwrap_or("unavailable")
             )),
-            Line::from(format!(
-                "draw: {}",
-                self.system_stats
-                    .power_draw_summary
-                    .as_deref()
-                    .unwrap_or("unavailable from unprivileged sensors")
-            )),
             Line::from(gemma.note),
         ];
+        if let Some(draw) = self.system_stats.power_draw_summary.as_deref() {
+            lines.insert(
+                lines.len().saturating_sub(1),
+                Line::from(format!("draw: {draw}")),
+            );
+        }
         if let Some(error) = self.last_error.as_deref() {
             lines.push(Line::from(format!("refresh error: {error}")));
         }
         lines
+    }
+
+    fn transcript_body(&self) -> Text<'static> {
+        if self.transcript.is_empty() {
+            Text::from(vec![
+                Line::from("Submitted prompts stay here."),
+                Line::from("Live assistant output will stream here when chat is running."),
+            ])
+        } else {
+            self.transcript.as_text()
+        }
+    }
+
+    fn transcript_panel_title(&self) -> String {
+        if self.transcript_follow_latest || self.transcript_scroll_from_bottom == 0 {
+            return String::from("Transcript");
+        }
+        format!("Transcript v {} below", self.transcript_scroll_from_bottom)
+    }
+
+    fn sync_transcript_scroll_after_update(&mut self) {
+        let line_count = self.transcript_body().lines.len();
+        if self.transcript_follow_latest {
+            self.transcript_scroll_from_bottom = 0;
+        } else if line_count > self.transcript_line_count {
+            let added = line_count.saturating_sub(self.transcript_line_count);
+            self.transcript_scroll_from_bottom = self
+                .transcript_scroll_from_bottom
+                .saturating_add(added.min(u16::MAX as usize) as u16)
+                .min(self.max_transcript_scroll_from_bottom_for_line_count(line_count));
+        } else {
+            self.transcript_scroll_from_bottom = self
+                .transcript_scroll_from_bottom
+                .min(self.max_transcript_scroll_from_bottom_for_line_count(line_count));
+        }
+        self.transcript_line_count = line_count;
+    }
+
+    fn scroll_transcript_up(&mut self, amount: u16) {
+        let max = self.max_transcript_scroll_from_bottom();
+        self.transcript_scroll_from_bottom = self
+            .transcript_scroll_from_bottom
+            .saturating_add(amount)
+            .min(max);
+        self.transcript_follow_latest = self.transcript_scroll_from_bottom == 0;
+        self.transcript_line_count = self.transcript_body().lines.len();
+    }
+
+    fn scroll_transcript_down(&mut self, amount: u16) {
+        self.transcript_scroll_from_bottom =
+            self.transcript_scroll_from_bottom.saturating_sub(amount);
+        self.transcript_follow_latest = self.transcript_scroll_from_bottom == 0;
+        self.transcript_line_count = self.transcript_body().lines.len();
+    }
+
+    fn max_transcript_scroll_from_bottom_for_line_count(&self, line_count: usize) -> u16 {
+        line_count.saturating_sub(1).min(u16::MAX as usize) as u16
+    }
+
+    fn max_transcript_scroll_from_bottom(&self) -> u16 {
+        self.max_transcript_scroll_from_bottom_for_line_count(self.transcript_body().lines.len())
+    }
+
+    fn transcript_scroll_y(&self, line_count: usize, panel_height: u16) -> u16 {
+        let viewport_height = panel_height.max(2).saturating_sub(2) as usize;
+        let max_top_scroll = line_count.saturating_sub(viewport_height);
+        let from_bottom = usize::from(
+            self.transcript_scroll_from_bottom
+                .min(max_top_scroll.min(u16::MAX as usize) as u16),
+        );
+        max_top_scroll
+            .saturating_sub(from_bottom)
+            .min(u16::MAX as usize) as u16
     }
 }
 
@@ -754,6 +859,7 @@ pub fn usage() -> &'static str {
 Controls:\n\
   q / Esc / Ctrl+C  quit\n\
   r        refresh now\n\
+  PgUp/PgDn / wheel  scroll transcript\n\
   Enter    submit composer\n\
   Ctrl+J   insert newline\n\
 Composer:\n\
@@ -775,7 +881,7 @@ pub async fn run_pylon_tui_with_args(args: Vec<String>) -> Result<()> {
 async fn run_pylon_tui_with_config(config: TuiLaunchConfig) -> Result<()> {
     let mut stdout = io::stdout();
     enable_raw_mode()?;
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -800,6 +906,7 @@ async fn run_loop(
         if event::poll(TICK_RATE)? {
             match event::read()? {
                 CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => app.handle_key(key),
+                CrosstermEvent::Mouse(mouse) => app.handle_mouse(mouse),
                 CrosstermEvent::Resize(_, _) => app.schedule_refresh_now(),
                 _ => {}
             }
@@ -815,7 +922,11 @@ async fn run_loop(
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
     Ok(())
 }
@@ -1281,5 +1392,26 @@ mod tests {
                 pylon::LocalGemmaChatMessage::assistant("hello world"),
             ]
         );
+    }
+
+    #[test]
+    fn manual_scroll_pauses_follow_until_return_to_bottom() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        for index in 0..40 {
+            app.push_system_message("Line", format!("older line {index}"));
+        }
+        app.scroll_transcript_up(6);
+
+        assert!(!app.transcript_follow_latest);
+        assert!(app.transcript_panel_title().starts_with("Transcript v "));
+
+        let scrolled_offset = app.transcript_scroll_from_bottom;
+        app.push_system_message("Line", "streaming marker");
+        assert!(app.transcript_scroll_from_bottom >= scrolled_offset);
+        assert!(!app.transcript_follow_latest);
+
+        app.scroll_transcript_down(u16::MAX);
+        assert!(app.transcript_follow_latest);
+        assert_eq!(app.transcript_panel_title(), "Transcript");
     }
 }
