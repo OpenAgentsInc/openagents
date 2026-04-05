@@ -551,27 +551,27 @@ impl AppShell {
         let inner = shell.inner(area);
         frame.render_widget(shell, area);
 
-        let summary_height = (self.summary_lines().len() as u16 + 2).clamp(7, 18);
         let vertical = Layout::vertical([
             Constraint::Length(3),
-            Constraint::Length(summary_height),
             Constraint::Min(10),
             Constraint::Length(self.bottom_pane.height()),
             Constraint::Length(2),
         ])
         .split(inner);
+        let middle = Layout::horizontal([Constraint::Percentage(67), Constraint::Percentage(33)])
+            .split(vertical[1]);
 
         frame.render_widget(self.header_panel(), vertical[0]);
-        frame.render_widget(self.summary_panel(), vertical[1]);
-        frame.render_widget(self.transcript_panel(vertical[2].height), vertical[2]);
+        frame.render_widget(self.transcript_panel(middle[0].height), middle[0]);
+        frame.render_widget(self.summary_panel(), middle[1]);
         self.bottom_pane.render(
             frame,
-            vertical[3],
+            vertical[2],
             shell_border(),
             shell_accent(),
             Some("Type /chat [prompt]. Enter submits. Ctrl+J inserts a newline."),
         );
-        frame.render_widget(self.footer_panel(), vertical[4]);
+        frame.render_widget(self.footer_panel(), vertical[3]);
     }
 
     fn header_panel(&self) -> Paragraph<'static> {
