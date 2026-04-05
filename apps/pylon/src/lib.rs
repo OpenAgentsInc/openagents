@@ -4761,9 +4761,11 @@ mod tests {
         let relay_url = format!("ws://{relay_addr}");
         let provider_pubkey = identity.public_key_hex.clone();
         let relay_server = tokio::spawn(async move {
-            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
-            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
-            while let Some(message) = ws.next().await {
+            let (scan_stream, _) = relay_listener.accept().await.expect("accept scan client");
+            let mut scan_ws = accept_async(scan_stream)
+                .await
+                .expect("upgrade scan websocket");
+            while let Some(message) = scan_ws.next().await {
                 let Ok(Message::Text(payload)) = message else {
                     continue;
                 };
@@ -4784,12 +4786,37 @@ mod tests {
                     "content": "",
                     "sig": "33".repeat(64)
                 }]);
-                ws.send(Message::Text(matching.to_string().into()))
+                scan_ws
+                    .send(Message::Text(matching.to_string().into()))
                     .await
                     .expect("send matching request");
-                return;
+                break;
             }
-            panic!("relay did not receive a REQ frame");
+            drop(scan_ws);
+
+            let (publish_stream, _) = relay_listener
+                .accept()
+                .await
+                .expect("accept publish client");
+            let mut publish_ws = accept_async(publish_stream)
+                .await
+                .expect("upgrade publish websocket");
+            let mut published = Vec::new();
+            while let Some(message) = publish_ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"EVENT\"") {
+                    continue;
+                }
+                let value: serde_json::Value =
+                    serde_json::from_str(payload.as_str()).expect("parse published event");
+                published.push(value[1].clone());
+                if published.len() == 2 {
+                    return published;
+                }
+            }
+            panic!("relay did not receive the published feedback and result events");
         });
 
         let mut config = load_or_create_config(config_path.as_path())?;
@@ -4811,8 +4838,24 @@ mod tests {
                         .result_preview
                         .as_deref()
                         .is_some_and(|value| value.contains("mesh reply"))
+                    && entry.feedback_event_ids.len() == 1
+                    && entry.result_event_id.is_some()
             }),
             "provider run report should surface the local result preview",
+        )?;
+
+        let published = relay_server.await?;
+        ensure(
+            published.len() == 2,
+            "provider run should publish both a feedback event and a result event",
+        )?;
+        ensure(
+            published.iter().any(|event| event["kind"] == 7000),
+            "provider run should publish kind:7000 processing feedback",
+        )?;
+        ensure(
+            published.iter().any(|event| event["kind"] == 6050),
+            "provider run should publish kind:6050 job results",
         )?;
 
         let ledger = load_ledger(config_path.as_path())?;
@@ -4831,8 +4874,17 @@ mod tests {
                 .is_some_and(|value| value.contains("mesh reply")),
             "provider run should persist the streamed local result preview",
         )?;
-
-        relay_server.await?;
+        ensure(
+            job.feedback_event_ids.len() == 1 && job.result_event_id.is_some(),
+            "provider run should persist the published feedback and result event ids",
+        )?;
+        ensure(
+            ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "nip90.result_published"),
+            "provider run should persist result publication activity",
+        )?;
         Ok(())
     }
 

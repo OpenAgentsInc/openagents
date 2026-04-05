@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use nostr::nip89::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO, PricingInfo};
-use nostr::nip90::JobRequest;
+use nostr::nip90::{
+    JobFeedback, JobRequest, JobResult, JobStatus, create_job_feedback_event,
+    create_job_result_event,
+};
 use nostr::{Event, EventTemplate, finalize_event};
 use nostr_client::{PoolConfig, RelayConfig, RelayMessage, RelayPool};
 use openagents_provider_substrate::ProviderAdvertisedProduct;
@@ -61,6 +64,8 @@ pub struct ProviderRunEntry {
     pub bid_msats: Option<u64>,
     pub result_preview: Option<String>,
     pub error_detail: Option<String>,
+    pub feedback_event_ids: Vec<String>,
+    pub result_event_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -305,6 +310,10 @@ pub fn render_provider_intake_report(report: &ProviderIntakeReport) -> String {
 pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<ProviderRunReport> {
     let collected = collect_provider_requests(config_path, seconds).await?;
     let local_target = collected.spec.as_ref().map(spec_to_local_target);
+    let config = crate::ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let signer_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
+    let mut publish_pool: Option<RelayPool> = None;
     let mut known_statuses = load_ledger(config_path)?
         .jobs
         .into_iter()
@@ -332,6 +341,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 result_preview: None,
                 error_detail: Some("job already handled locally".to_string()),
+                feedback_event_ids: Vec::new(),
+                result_event_id: None,
             });
             continue;
         }
@@ -345,6 +356,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 "observed_drop",
                 observed.entry.drop_reason.as_deref(),
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "observed_drop".to_string());
             report_entries.push(ProviderRunEntry {
@@ -357,6 +370,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 result_preview: None,
                 error_detail: observed.entry.drop_reason.clone(),
+                feedback_event_ids: Vec::new(),
+                result_event_id: None,
             });
             continue;
         }
@@ -370,6 +385,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 "rejected_policy",
                 Some("provider_not_online"),
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_policy".to_string());
             report_entries.push(ProviderRunEntry {
@@ -382,6 +399,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 result_preview: None,
                 error_detail: Some("provider_not_online".to_string()),
+                feedback_event_ids: Vec::new(),
+                result_event_id: None,
             });
             continue;
         }
@@ -395,6 +414,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 "rejected_supply",
                 Some("no_local_supply"),
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_supply".to_string());
             report_entries.push(ProviderRunEntry {
@@ -407,6 +428,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 result_preview: None,
                 error_detail: Some("no_local_supply".to_string()),
+                feedback_event_ids: Vec::new(),
+                result_event_id: None,
             });
             continue;
         };
@@ -422,6 +445,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     "rejected_input",
                     Some("invalid_request"),
                     None,
+                    None,
+                    None,
                 )?;
                 known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
                 report_entries.push(ProviderRunEntry {
@@ -434,6 +459,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     result_preview: None,
                     error_detail: Some("invalid_request".to_string()),
+                    feedback_event_ids: Vec::new(),
+                    result_event_id: None,
                 });
                 continue;
             }
@@ -448,6 +475,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 "rejected_model",
                 Some("model_unavailable"),
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_model".to_string());
             report_entries.push(ProviderRunEntry {
@@ -460,6 +489,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 result_preview: None,
                 error_detail: Some("model_unavailable".to_string()),
+                feedback_event_ids: Vec::new(),
+                result_event_id: None,
             });
             continue;
         }
@@ -473,6 +504,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 "rejected_input",
                 Some("missing_text_input"),
                 None,
+                None,
+                None,
             )?;
             known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
             report_entries.push(ProviderRunEntry {
@@ -485,6 +518,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 result_preview: None,
                 error_detail: Some("missing_text_input".to_string()),
+                feedback_event_ids: Vec::new(),
+                result_event_id: None,
             });
             continue;
         };
@@ -497,13 +532,64 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             "accepted_local",
             None,
             None,
+            None,
+            None,
         )?;
+        let pool = match publish_pool.as_ref() {
+            Some(pool) => pool,
+            None => {
+                publish_pool = Some(build_relay_pool(&config, &identity).await?);
+                publish_pool.as_ref().expect("publish pool should exist")
+            }
+        };
+        let processing_event = match publish_processing_feedback(
+            pool,
+            &signer_key,
+            &observed.event,
+            observed.entry.relay_url.as_deref(),
+            target.model.as_str(),
+        )
+        .await
+        {
+            Ok(event) => event,
+            Err(error) => {
+                failed_count += 1;
+                let error_string = error.to_string();
+                persist_provider_run_state(
+                    config_path,
+                    collected.provider_pubkey.as_str(),
+                    &observed.entry,
+                    "publish_failed",
+                    Some(error_string.as_str()),
+                    None,
+                    None,
+                    None,
+                )?;
+                known_statuses.insert(request_event_id.clone(), "publish_failed".to_string());
+                report_entries.push(ProviderRunEntry {
+                    request_event_id: observed.entry.request_event_id.clone(),
+                    requester_pubkey: observed.entry.requester_pubkey.clone(),
+                    relay_url: observed.entry.relay_url.clone(),
+                    status: "failed".to_string(),
+                    prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                    model: Some(target.model.clone()),
+                    bid_msats: observed.entry.bid_msats,
+                    result_preview: None,
+                    error_detail: Some(error_string),
+                    feedback_event_ids: Vec::new(),
+                    result_event_id: None,
+                });
+                continue;
+            }
+        };
         persist_provider_run_state(
             config_path,
             collected.provider_pubkey.as_str(),
             &observed.entry,
             "processing_local",
             None,
+            None,
+            Some(processing_event.id.as_str()),
             None,
         )?;
         known_statuses.insert(request_event_id.clone(), "processing_local".to_string());
@@ -518,7 +604,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             .await;
         match result {
             Ok(_) => {
-                completed_count += 1;
                 let result_preview = preview_text(output.as_str(), 280);
                 persist_provider_run_state(
                     config_path,
@@ -527,8 +612,63 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     "completed_local",
                     None,
                     Some(result_preview.as_str()),
+                    Some(processing_event.id.as_str()),
+                    None,
                 )?;
+                let result_event = match publish_job_result(
+                    pool,
+                    &signer_key,
+                    &observed.event,
+                    &request,
+                    observed.entry.relay_url.as_deref(),
+                    output.as_str(),
+                )
+                .await
+                {
+                    Ok(event) => event,
+                    Err(error) => {
+                        failed_count += 1;
+                        let error_string = error.to_string();
+                        persist_provider_run_state(
+                            config_path,
+                            collected.provider_pubkey.as_str(),
+                            &observed.entry,
+                            "publish_failed",
+                            Some(error_string.as_str()),
+                            Some(result_preview.as_str()),
+                            Some(processing_event.id.as_str()),
+                            None,
+                        )?;
+                        known_statuses
+                            .insert(request_event_id.clone(), "publish_failed".to_string());
+                        report_entries.push(ProviderRunEntry {
+                            request_event_id: observed.entry.request_event_id.clone(),
+                            requester_pubkey: observed.entry.requester_pubkey.clone(),
+                            relay_url: observed.entry.relay_url.clone(),
+                            status: "failed".to_string(),
+                            prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                            model: Some(target.model.clone()),
+                            bid_msats: observed.entry.bid_msats,
+                            result_preview: Some(result_preview),
+                            error_detail: Some(error_string),
+                            feedback_event_ids: vec![processing_event.id.clone()],
+                            result_event_id: None,
+                        });
+                        continue;
+                    }
+                };
+                completed_count += 1;
                 known_statuses.insert(request_event_id.clone(), "completed_local".to_string());
+                persist_provider_run_state(
+                    config_path,
+                    collected.provider_pubkey.as_str(),
+                    &observed.entry,
+                    "completed_local",
+                    None,
+                    Some(result_preview.as_str()),
+                    Some(processing_event.id.as_str()),
+                    Some(result_event.id.as_str()),
+                )?;
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
                     requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -539,17 +679,30 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     result_preview: Some(result_preview),
                     error_detail: None,
+                    feedback_event_ids: vec![processing_event.id.clone()],
+                    result_event_id: Some(result_event.id),
                 });
             }
             Err(error) => {
                 failed_count += 1;
                 let error_string = error.to_string();
+                let error_feedback = publish_error_feedback(
+                    pool,
+                    &signer_key,
+                    &observed.event,
+                    observed.entry.relay_url.as_deref(),
+                    error_string.as_str(),
+                )
+                .await
+                .ok();
                 persist_provider_run_state(
                     config_path,
                     collected.provider_pubkey.as_str(),
                     &observed.entry,
                     "failed_local",
                     Some(error_string.as_str()),
+                    None,
+                    error_feedback.as_ref().map(|event| event.id.as_str()),
                     None,
                 )?;
                 known_statuses.insert(request_event_id.clone(), "failed_local".to_string());
@@ -563,6 +716,10 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     result_preview: None,
                     error_detail: Some(error_string),
+                    feedback_event_ids: error_feedback
+                        .map(|event| vec![processing_event.id.clone(), event.id])
+                        .unwrap_or_else(|| vec![processing_event.id.clone()]),
+                    result_event_id: None,
                 });
             }
         }
@@ -616,6 +773,15 @@ pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
         }
         if let Some(error_detail) = entry.error_detail.as_deref() {
             lines.push(format!("error_detail: {error_detail}"));
+        }
+        if !entry.feedback_event_ids.is_empty() {
+            lines.push(format!(
+                "feedback_event_ids: {}",
+                entry.feedback_event_ids.join(", ")
+            ));
+        }
+        if let Some(result_event_id) = entry.result_event_id.as_deref() {
+            lines.push(format!("result_event_id: {result_event_id}"));
         }
     }
     lines.join("\n")
@@ -1002,9 +1168,11 @@ fn provider_job_blocks_reintake(status: &str) -> bool {
         "accepted_local"
             | "processing_local"
             | "completed_local"
+            | "failed_local"
             | "payment_required"
             | "settled"
             | "result_published"
+            | "publish_failed"
     )
 }
 
@@ -1015,6 +1183,8 @@ fn persist_provider_run_state(
     status: &str,
     error_detail: Option<&str>,
     result_preview: Option<&str>,
+    feedback_event_id: Option<&str>,
+    result_event_id: Option<&str>,
 ) -> Result<()> {
     mutate_ledger(config_path, |ledger| {
         let mut job = ledger
@@ -1041,6 +1211,18 @@ fn persist_provider_run_state(
         job.error_detail = error_detail.map(ToString::to_string);
         if let Some(result_preview) = result_preview {
             job.result_preview = Some(result_preview.to_string());
+        }
+        if let Some(feedback_event_id) = feedback_event_id {
+            if !job
+                .feedback_event_ids
+                .iter()
+                .any(|existing| existing == feedback_event_id)
+            {
+                job.feedback_event_ids.push(feedback_event_id.to_string());
+            }
+        }
+        if let Some(result_event_id) = result_event_id {
+            job.result_event_id = Some(result_event_id.to_string());
         }
         ledger.upsert_job(job);
         ledger.push_relay_activity(PylonRelayActivity {
@@ -1082,9 +1264,133 @@ fn persist_provider_run_state(
                 _ => format!("updated request {}", entry.request_event_id),
             },
         });
+        if let Some(feedback_event_id) = feedback_event_id {
+            ledger.push_relay_activity(PylonRelayActivity {
+                at_ms: crate::now_epoch_ms() as u64,
+                url: entry.relay_url.clone(),
+                kind: "nip90.feedback_published".to_string(),
+                detail: format!(
+                    "published feedback {} for request {}",
+                    feedback_event_id, entry.request_event_id
+                ),
+            });
+        }
+        if let Some(result_event_id) = result_event_id {
+            ledger.push_relay_activity(PylonRelayActivity {
+                at_ms: crate::now_epoch_ms() as u64,
+                url: entry.relay_url.clone(),
+                kind: "nip90.result_published".to_string(),
+                detail: format!(
+                    "published result {} for request {}",
+                    result_event_id, entry.request_event_id
+                ),
+            });
+        }
         Ok(())
     })?;
     Ok(())
+}
+
+async fn publish_processing_feedback(
+    pool: &RelayPool,
+    signer_key: &[u8; 32],
+    request_event: &Event,
+    relay_url: Option<&str>,
+    model: &str,
+) -> Result<Event> {
+    let mut feedback = JobFeedback::new(
+        JobStatus::Processing,
+        request_event.id.clone(),
+        request_event.pubkey.clone(),
+    )
+    .with_status_extra(format!("processing with local {}", model));
+    if let Some(relay_url) = relay_url {
+        feedback = feedback.with_request_relay(relay_url.to_string());
+    }
+    publish_signed_event(
+        pool,
+        signer_key,
+        create_job_feedback_event(&feedback),
+        "processing feedback",
+    )
+    .await
+}
+
+async fn publish_error_feedback(
+    pool: &RelayPool,
+    signer_key: &[u8; 32],
+    request_event: &Event,
+    relay_url: Option<&str>,
+    error_detail: &str,
+) -> Result<Event> {
+    let mut feedback = JobFeedback::new(
+        JobStatus::Error,
+        request_event.id.clone(),
+        request_event.pubkey.clone(),
+    )
+    .with_status_extra(error_detail.to_string());
+    if let Some(relay_url) = relay_url {
+        feedback = feedback.with_request_relay(relay_url.to_string());
+    }
+    publish_signed_event(
+        pool,
+        signer_key,
+        create_job_feedback_event(&feedback),
+        "error feedback",
+    )
+    .await
+}
+
+async fn publish_job_result(
+    pool: &RelayPool,
+    signer_key: &[u8; 32],
+    request_event: &Event,
+    request: &JobRequest,
+    relay_url: Option<&str>,
+    output: &str,
+) -> Result<Event> {
+    let mut result = JobResult::new(
+        request.kind,
+        request_event.id.clone(),
+        request_event.pubkey.clone(),
+        output,
+    )?;
+    if let Some(relay_url) = relay_url {
+        result = result.with_request_relay(relay_url.to_string());
+    }
+    for input in &request.inputs {
+        result = result.add_input(input.clone());
+    }
+    publish_signed_event(
+        pool,
+        signer_key,
+        create_job_result_event(&result),
+        "job result",
+    )
+    .await
+}
+
+async fn publish_signed_event(
+    pool: &RelayPool,
+    signer_key: &[u8; 32],
+    template: nostr::nip01::EventTemplate,
+    label: &str,
+) -> Result<Event> {
+    let event = finalize_event(&template, signer_key)
+        .with_context(|| format!("failed to sign Pylon {label}"))?;
+    let confirmations = pool.publish(&event).await?;
+    if !confirmations
+        .iter()
+        .any(|confirmation| confirmation.accepted)
+    {
+        let detail = confirmations
+            .iter()
+            .map(|confirmation| format!("{}:{}", confirmation.relay_url, confirmation.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        bail!("no relay accepted the {label}: {detail}");
+    }
+    Ok(event)
 }
 
 fn persist_provider_intake(config_path: &Path, report: &ProviderIntakeReport) -> Result<()> {
