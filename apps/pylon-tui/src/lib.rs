@@ -189,6 +189,13 @@ enum WorkerEvent {
     BuyerJobCommandFailed {
         error: String,
     },
+    PayoutCommandFinished {
+        title: String,
+        output: String,
+    },
+    PayoutCommandFailed {
+        error: String,
+    },
     WalletCommandFinished {
         title: String,
         output: String,
@@ -388,6 +395,10 @@ impl AppShell {
                 }
                 SlashCommandId::Job => {
                     self.handle_job_command(args);
+                    return;
+                }
+                SlashCommandId::Payout => {
+                    self.handle_payout_command(args);
                     return;
                 }
                 SlashCommandId::Relay => {
@@ -752,6 +763,12 @@ impl AppShell {
             }
             WorkerEvent::BuyerJobCommandFailed { error } => {
                 self.push_system_message("Buyer Job Error", error);
+            }
+            WorkerEvent::PayoutCommandFinished { title, output } => {
+                self.push_system_lines(title, text_body_lines(output.as_str()));
+            }
+            WorkerEvent::PayoutCommandFailed { error } => {
+                self.push_system_message("Payout Error", error);
             }
             WorkerEvent::WalletCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
@@ -1352,6 +1369,145 @@ impl AppShell {
         self.push_system_message("Wallet", "Running wallet command...");
     }
 
+    fn handle_payout_command(&mut self, args: String) {
+        let trimmed = args.trim();
+        if trimmed.is_empty() || trimmed == "show" || trimmed == "status" {
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                let error_tx = tx.clone();
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
+                            error: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+                let result = runtime.block_on(async move {
+                    pylon::load_payout_report(config_path.as_path(), Some(10)).await
+                });
+                match result {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::PayoutCommandFinished {
+                            title: "Payout".to_string(),
+                            output: pylon::render_payout_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Payout", "Loading provider payout state...");
+            return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("history") {
+            let limit = match parse_tui_payout_history_request(remainder) {
+                Ok(limit) => limit,
+                Err(error) => {
+                    self.push_system_message("Payout Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                let error_tx = tx.clone();
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
+                            error: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+                let result = runtime.block_on(async move {
+                    pylon::load_payout_report(config_path.as_path(), limit).await
+                });
+                match result {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::PayoutCommandFinished {
+                            title: "Payout History".to_string(),
+                            output: pylon::render_payout_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Payout History", "Loading retained payout history...");
+            return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("withdraw") {
+            let (payment_request, amount_sats) = match parse_tui_payout_withdraw_request(remainder)
+            {
+                Ok(request) => request,
+                Err(error) => {
+                    self.push_system_message("Payout Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                let error_tx = tx.clone();
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
+                            error: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+                let result = runtime.block_on(async move {
+                    pylon::run_payout_withdrawal(
+                        config_path.as_path(),
+                        payment_request.as_str(),
+                        amount_sats,
+                    )
+                    .await
+                });
+                match result {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::PayoutCommandFinished {
+                            title: "Payout Withdrawal".to_string(),
+                            output: pylon::render_payout_withdrawal_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Payout Withdrawal", "Submitting provider withdrawal...");
+            return;
+        }
+        self.push_system_message(
+            "Payout Error",
+            "Usage: /payout | /payout history [--limit <n>] | /payout withdraw <payment_request> [--amount-sats <n>]",
+        );
+    }
+
     async fn refresh(&mut self) {
         self.refresh_system_stats();
         self.installed_gemma_models = installed_gemma_models(self.config_path.as_path());
@@ -1907,6 +2063,46 @@ fn parse_tui_buyer_job_policy_mode(args: &str) -> Result<pylon::BuyerPaymentPoli
     }
 }
 
+fn parse_tui_payout_history_request(args: &str) -> Result<Option<u32>> {
+    let mut remainder = args.trim();
+    let mut limit = None;
+    while !remainder.is_empty() {
+        if let Some(value) = remainder.strip_prefix("--limit ") {
+            let (raw, tail) = take_next_tui_word(value);
+            limit = Some(
+                raw.parse::<u32>()
+                    .map_err(|_| anyhow!("invalid payout history limit `{raw}`"))?,
+            );
+            remainder = tail;
+            continue;
+        }
+        bail!("unexpected payout history argument `{remainder}`");
+    }
+    Ok(limit)
+}
+
+fn parse_tui_payout_withdraw_request(args: &str) -> Result<(String, Option<u64>)> {
+    let trimmed = args.trim();
+    if trimmed.is_empty() {
+        bail!("payout withdraw requires <payment_request>");
+    }
+    let (payment_request, mut remainder) = take_next_tui_word(trimmed);
+    let mut amount_sats = None;
+    while !remainder.is_empty() {
+        if let Some(value) = remainder.strip_prefix("--amount-sats ") {
+            let (raw, tail) = take_next_tui_word(value);
+            amount_sats = Some(
+                raw.parse::<u64>()
+                    .map_err(|_| anyhow!("invalid payout withdraw amount `{raw}`"))?,
+            );
+            remainder = tail;
+            continue;
+        }
+        bail!("unexpected payout withdraw argument `{remainder}`");
+    }
+    Ok((payment_request.to_string(), amount_sats))
+}
+
 fn take_next_tui_word(value: &str) -> (&str, &str) {
     let trimmed = value.trim_start();
     match trimmed.find(char::is_whitespace) {
@@ -1933,6 +2129,7 @@ Controls:\n\
   /job approve <request_event_id>  pay one retained buyer invoice\n\
   /job deny <request_event_id>  deny one retained buyer invoice locally\n\
   /job policy [show|auto|manual]  inspect or set buyer auto-pay policy\n\
+  /payout [history|withdraw] ...  inspect provider earnings and run withdrawals\n\
   /relay [list|add|remove|refresh]  inspect or update configured relays\n\
   /wallet [status|balance|address|invoice|pay|history]  run retained Spark wallet commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
@@ -2591,7 +2788,8 @@ mod tests {
         active_chat_title, estimate_token_count, max_transcript_scroll_y,
         parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
         parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
-        parse_tui_buyer_job_watch_request, summarize_chat_metrics, transcript_viewport_height,
+        parse_tui_buyer_job_watch_request, parse_tui_payout_history_request,
+        parse_tui_payout_withdraw_request, summarize_chat_metrics, transcript_viewport_height,
         transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -2717,6 +2915,19 @@ mod tests {
         assert_eq!(
             parse_tui_buyer_job_policy_mode("manual").expect("manual"),
             pylon::BuyerPaymentPolicyMode::Manual
+        );
+    }
+
+    #[test]
+    fn tui_payout_parsers_support_history_and_withdraw() {
+        assert_eq!(
+            parse_tui_payout_history_request("--limit 4").expect("payout limit"),
+            Some(4)
+        );
+        assert_eq!(
+            parse_tui_payout_withdraw_request("lnbc1test --amount-sats 21")
+                .expect("payout withdraw"),
+            ("lnbc1test".to_string(), Some(21))
         );
     }
 

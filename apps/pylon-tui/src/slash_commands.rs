@@ -6,6 +6,7 @@ pub enum SlashCommandId {
     Announce,
     Provider,
     Job,
+    Payout,
     Relay,
     Wallet,
 }
@@ -70,6 +71,12 @@ const COMMANDS: &[SlashCommandSpec] = &[
         summary: "submit, inspect, replay, or settle retained NIP-90 buyer jobs",
     },
     SlashCommandSpec {
+        id: SlashCommandId::Payout,
+        name: "payout",
+        usage: "/payout [history|withdraw] ...",
+        summary: "inspect provider earnings and move retained value out",
+    },
+    SlashCommandSpec {
         id: SlashCommandId::Relay,
         name: "relay",
         usage: "/relay [list|add|remove|refresh]",
@@ -131,7 +138,8 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "help", "chat", "download", "announce", "provider", "job", "relay", "wallet"
+                "help", "chat", "download", "announce", "provider", "job", "payout", "relay",
+                "wallet"
             ]
         );
     }
@@ -181,7 +189,8 @@ mod tests {
         assert_eq!(registry()[3].id, SlashCommandId::Announce);
         assert_eq!(registry()[4].id, SlashCommandId::Provider);
         assert_eq!(registry()[5].id, SlashCommandId::Job);
-        assert_eq!(registry()[6].id, SlashCommandId::Relay);
-        assert_eq!(registry()[7].id, SlashCommandId::Wallet);
+        assert_eq!(registry()[6].id, SlashCommandId::Payout);
+        assert_eq!(registry()[7].id, SlashCommandId::Relay);
+        assert_eq!(registry()[8].id, SlashCommandId::Wallet);
     }
 }

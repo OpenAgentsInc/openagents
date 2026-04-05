@@ -29,10 +29,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use ledger::{
-    PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerSummary, PylonRelayActivity,
-    PylonRelayConfigSnapshot, PylonRelayState, PylonSettlementRecord, PylonWalletInvoiceRecord,
-    PylonWalletLedger, PylonWalletPaymentRecord, default_ledger_path, ensure_local_ledger,
-    load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
+    PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerPayout, PylonLedgerSummary,
+    PylonRelayActivity, PylonRelayConfigSnapshot, PylonRelayState, PylonSettlementRecord,
+    PylonWalletInvoiceRecord, PylonWalletLedger, PylonWalletPaymentRecord, default_ledger_path,
+    ensure_local_ledger, load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
     AnnouncementAction, AnnouncementReport, BuyerJobHistoryReport, BuyerJobPaymentReport,
@@ -170,6 +170,15 @@ pub enum Command {
     },
     JobPolicy {
         mode: BuyerPaymentPolicyMode,
+        json: bool,
+    },
+    Payout {
+        limit: Option<u32>,
+        json: bool,
+    },
+    PayoutWithdraw {
+        payment_request: String,
+        amount_sats: Option<u64>,
         json: bool,
     },
     Wallet {
@@ -312,6 +321,29 @@ struct EarningsReport {
 struct ReceiptsReport {
     context: ReportContext,
     receipts: Vec<ProviderReceiptSummary>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct PayoutReport {
+    payout_destination: Option<String>,
+    wallet_balance: WalletBalanceSnapshot,
+    earnings_lifetime_sats: u64,
+    earnings_sats_today: u64,
+    jobs_today: u64,
+    last_job_result: String,
+    withdrawals: Vec<PylonLedgerPayout>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct PayoutWithdrawalReport {
+    payout_destination: Option<String>,
+    payment_id: String,
+    status: String,
+    amount_sats: u64,
+    fees_sats: u64,
+    invoice: String,
+    post_balance: WalletBalanceSnapshot,
+    detail: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -884,6 +916,29 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_buyer_payment_policy_report(&report)))
         }
+        Command::Payout { limit, json } => {
+            let report = load_payout_report(cli.config_path.as_path(), limit).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_payout_report(&report)))
+        }
+        Command::PayoutWithdraw {
+            payment_request,
+            amount_sats,
+            json,
+        } => {
+            let report = run_payout_withdrawal(
+                cli.config_path.as_path(),
+                payment_request.as_str(),
+                amount_sats,
+            )
+            .await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_payout_withdrawal_report(&report)))
+        }
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
@@ -955,6 +1010,8 @@ Commands:\n\
   job approve <request_event_id> [--json]\n\
   job deny <request_event_id> [--json]\n\
   job policy [show|auto|manual] [--json]\n\
+  payout [--limit <n>] [--json]\n\
+  payout withdraw <payment_request> [--amount-sats <n>] [--json]\n\
   wallet status [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
@@ -1186,6 +1243,26 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             }
             Some(other) => bail!("unknown job command: {other}"),
             None => bail!("missing job subcommand"),
+        },
+        "payout" => match args.get(start_index + 1).map(String::as_str) {
+            None => {
+                let (limit, json) = parse_payout_flags(args, start_index + 1, "payout")?;
+                Ok(Command::Payout { limit, json })
+            }
+            Some("withdraw") => {
+                let (payment_request, amount_sats, json) =
+                    parse_payout_withdraw_command(args, start_index + 2)?;
+                Ok(Command::PayoutWithdraw {
+                    payment_request,
+                    amount_sats,
+                    json,
+                })
+            }
+            Some(value) if value.starts_with("--") => {
+                let (limit, json) = parse_payout_flags(args, start_index + 1, "payout")?;
+                Ok(Command::Payout { limit, json })
+            }
+            Some(other) => bail!("unknown payout command: {other}"),
         },
         "wallet" => Ok(Command::Wallet {
             command: parse_wallet_command(args, start_index)?,
@@ -1481,6 +1558,71 @@ fn parse_job_policy_command(
         }
         Some(other) => bail!("unknown job policy mode: {other}"),
     }
+}
+
+fn parse_payout_flags(
+    args: &[String],
+    mut index: usize,
+    command: &str,
+) -> Result<(Option<u32>, bool)> {
+    let mut limit = None;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--limit" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --limit"))?;
+                limit = Some(
+                    value
+                        .parse::<u32>()
+                        .with_context(|| format!("invalid {command} limit: {value}"))?,
+                );
+                index += 1;
+            }
+            other => bail!("unexpected argument for {command}: {other}"),
+        }
+    }
+    Ok((limit, json))
+}
+
+fn parse_payout_withdraw_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(String, Option<u64>, bool)> {
+    let payment_request = args
+        .get(index)
+        .ok_or_else(|| anyhow!("missing <payment_request> for payout withdraw"))?
+        .clone();
+    index += 1;
+    let mut amount_sats = None;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--amount-sats" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --amount-sats"))?;
+                amount_sats =
+                    Some(value.parse::<u64>().with_context(|| {
+                        format!("invalid payout withdraw amount_sats: {value}")
+                    })?);
+                index += 1;
+            }
+            other => bail!("unexpected argument for payout withdraw: {other}"),
+        }
+    }
+    Ok((payment_request, amount_sats, json))
 }
 
 fn parse_provider_scan_flags(
@@ -3573,6 +3715,133 @@ async fn load_receipts_report(config_path: &Path, limit: Option<usize>) -> Resul
     })
 }
 
+pub async fn load_payout_report(config_path: &Path, limit: Option<u32>) -> Result<PayoutReport> {
+    let config = load_or_create_config(config_path)?;
+    let earnings = load_earnings_report(config_path).await?;
+    let ledger = load_ledger(config_path).unwrap_or_default();
+    let wallet_balance = match load_wallet_status_report(config_path).await {
+        Ok(report) => report.balance,
+        Err(_) => WalletBalanceSnapshot {
+            total_sats: ledger.wallet.last_balance_sats.unwrap_or(0),
+            ..WalletBalanceSnapshot::default()
+        },
+    };
+    let mut withdrawals = ledger.payouts;
+    withdrawals.sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
+    if let Some(limit) = limit {
+        withdrawals.truncate(limit as usize);
+    }
+    let earnings = earnings.earnings.unwrap_or_default();
+    Ok(PayoutReport {
+        payout_destination: config.payout_destination,
+        wallet_balance,
+        earnings_lifetime_sats: earnings.lifetime_sats,
+        earnings_sats_today: earnings.sats_today,
+        jobs_today: earnings.jobs_today,
+        last_job_result: earnings.last_job_result,
+        withdrawals,
+    })
+}
+
+pub async fn run_payout_withdrawal(
+    config_path: &Path,
+    payment_request: &str,
+    amount_sats: Option<u64>,
+) -> Result<PayoutWithdrawalReport> {
+    let config = load_or_create_config(config_path)?;
+    let payout_destination = config.payout_destination.clone();
+    let payment_request = payment_request.trim().to_string();
+    if payment_request.is_empty() {
+        bail!("payout withdraw requires a payment request");
+    }
+    let result =
+        pay_payout_invoice_report(config_path, payment_request.as_str(), amount_sats).await;
+    match result {
+        Ok(report) => {
+            let detail = "provider withdrawal submitted".to_string();
+            mutate_ledger(config_path, |ledger| {
+                ledger.wallet.last_balance_sats = Some(report.post_balance.total_sats);
+                ledger.wallet.last_balance_at_ms = Some(now_epoch_ms() as u64);
+                ledger.upsert_wallet_payment(report.payment.clone());
+                ledger.upsert_payout(PylonLedgerPayout {
+                    payout_id: format!("withdrawal:{}", report.payment_id),
+                    payment_id: Some(report.payment_id.clone()),
+                    status: report.payment.status.clone(),
+                    amount_sats: Some(report.payment.amount_sats),
+                    fees_sats: Some(report.payment.fees_sats),
+                    invoice: Some(payment_request.clone()),
+                    payout_destination: payout_destination.clone(),
+                    detail: Some(detail.clone()),
+                    created_at_ms: now_epoch_ms() as u64,
+                    updated_at_ms: now_epoch_ms() as u64,
+                });
+                ledger.push_relay_activity(PylonRelayActivity {
+                    at_ms: now_epoch_ms() as u64,
+                    url: None,
+                    kind: "payout.withdrawal_submitted".to_string(),
+                    detail: format!(
+                        "provider withdrawal {} submitted for {}",
+                        report.payment_id, payment_request
+                    ),
+                });
+                Ok(())
+            })?;
+            Ok(PayoutWithdrawalReport {
+                payout_destination,
+                payment_id: report.payment_id,
+                status: report.payment.status,
+                amount_sats: report.payment.amount_sats,
+                fees_sats: report.payment.fees_sats,
+                invoice: payment_request,
+                post_balance: report.post_balance,
+                detail: Some(detail),
+            })
+        }
+        Err(error) => {
+            let error_string = error.to_string();
+            let payout_id = format!("withdrawal-failed:{}", now_epoch_ms());
+            mutate_ledger(config_path, |ledger| {
+                ledger.upsert_payout(PylonLedgerPayout {
+                    payout_id,
+                    payment_id: None,
+                    status: "failed".to_string(),
+                    amount_sats,
+                    fees_sats: None,
+                    invoice: Some(payment_request.clone()),
+                    payout_destination: payout_destination.clone(),
+                    detail: Some(error_string.clone()),
+                    created_at_ms: now_epoch_ms() as u64,
+                    updated_at_ms: now_epoch_ms() as u64,
+                });
+                ledger.push_relay_activity(PylonRelayActivity {
+                    at_ms: now_epoch_ms() as u64,
+                    url: None,
+                    kind: "payout.withdrawal_failed".to_string(),
+                    detail: format!("provider withdrawal failed: {error_string}"),
+                });
+                Ok(())
+            })?;
+            Err(error)
+        }
+    }
+}
+
+async fn pay_payout_invoice_report(
+    config_path: &Path,
+    payment_request: &str,
+    amount_sats: Option<u64>,
+) -> Result<WalletPayReport> {
+    #[cfg(test)]
+    {
+        if let Some(slot) = TEST_PAYOUT_PAY_HOOK.get() {
+            if let Some(hook) = slot.lock().expect("test payout pay hook lock").as_ref() {
+                return hook(payment_request, amount_sats);
+            }
+        }
+    }
+    pay_wallet_invoice_report(config_path, payment_request, amount_sats).await
+}
+
 fn merge_ledger_recent_jobs(
     mut jobs: Vec<ProviderRecentJob>,
     ledger: &PylonLedger,
@@ -4045,6 +4314,82 @@ fn render_earnings_report(report: &EarningsReport) -> String {
     lines.join("\n")
 }
 
+pub fn render_payout_report(report: &PayoutReport) -> String {
+    let mut lines = vec![
+        format!(
+            "payout_destination: {}",
+            report.payout_destination.as_deref().unwrap_or("none")
+        ),
+        format!("wallet_total_sats: {}", report.wallet_balance.total_sats),
+        format!(
+            "wallet_lightning_sats: {}",
+            report.wallet_balance.lightning_sats
+        ),
+        format!(
+            "wallet_onchain_sats: {}",
+            report.wallet_balance.onchain_sats
+        ),
+        format!("earned_lifetime_sats: {}", report.earnings_lifetime_sats),
+        format!("earned_sats_today: {}", report.earnings_sats_today),
+        format!("jobs_today: {}", report.jobs_today),
+        format!("last_job_result: {}", report.last_job_result),
+        format!("withdrawals: {}", report.withdrawals.len()),
+    ];
+    for payout in &report.withdrawals {
+        lines.push(String::new());
+        lines.push(format!("payout_id: {}", payout.payout_id));
+        lines.push(format!("status: {}", payout.status));
+        lines.push(format!(
+            "payment_id: {}",
+            payout.payment_id.as_deref().unwrap_or("none")
+        ));
+        lines.push(format!(
+            "amount_sats: {}",
+            payout
+                .amount_sats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "fees_sats: {}",
+            payout
+                .fees_sats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "invoice: {}",
+            payout.invoice.as_deref().unwrap_or("none")
+        ));
+        if let Some(detail) = payout.detail.as_deref() {
+            lines.push(format!("detail: {detail}"));
+        }
+    }
+    lines.join("\n")
+}
+
+pub fn render_payout_withdrawal_report(report: &PayoutWithdrawalReport) -> String {
+    let mut lines = vec![
+        format!(
+            "payout_destination: {}",
+            report.payout_destination.as_deref().unwrap_or("none")
+        ),
+        format!("payment_id: {}", report.payment_id),
+        format!("status: {}", report.status),
+        format!("amount_sats: {}", report.amount_sats),
+        format!("fees_sats: {}", report.fees_sats),
+        format!("invoice: {}", report.invoice),
+        format!(
+            "post_balance_total_sats: {}",
+            report.post_balance.total_sats
+        ),
+    ];
+    if let Some(detail) = report.detail.as_deref() {
+        lines.push(format!("detail: {detail}"));
+    }
+    lines.join("\n")
+}
+
 fn render_receipts_report(report: &ReceiptsReport) -> String {
     let mut lines = render_report_context(&report.context);
     for receipt in &report.receipts {
@@ -4507,6 +4852,19 @@ fn now_epoch_ms() -> i64 {
         Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
         Err(_) => 0,
     }
+}
+
+#[cfg(test)]
+type TestPayoutPayHook = Box<dyn Fn(&str, Option<u64>) -> Result<WalletPayReport> + Send + Sync>;
+
+#[cfg(test)]
+static TEST_PAYOUT_PAY_HOOK: std::sync::OnceLock<std::sync::Mutex<Option<TestPayoutPayHook>>> =
+    std::sync::OnceLock::new();
+
+#[cfg(test)]
+fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
+    let slot = TEST_PAYOUT_PAY_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().expect("test payout pay hook lock") = hook;
 }
 
 #[cfg(test)]
@@ -5068,6 +5426,41 @@ mod tests {
                     json: true,
                 },
             "job policy should parse mode and json flag",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_payout_commands() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "payout".to_string(),
+                "--limit".to_string(),
+                "7".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Payout {
+                    limit: Some(7),
+                    json: true,
+                },
+            "payout should parse limit and json flags",
+        )?;
+        ensure(
+            parse_args(vec![
+                "payout".to_string(),
+                "withdraw".to_string(),
+                "lnbc21payout".to_string(),
+                "--amount-sats".to_string(),
+                "21".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::PayoutWithdraw {
+                    payment_request: "lnbc21payout".to_string(),
+                    amount_sats: Some(21),
+                    json: true,
+                },
+            "payout withdraw should parse invoice, amount, and json flag",
         )
     }
 
@@ -6038,6 +6431,89 @@ mod tests {
                 && report.activity[1].kind == "nip90.payment_submitted",
             "buyer replay should project the retained job, settlement, and matching activity",
         )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn run_payout_withdrawal_persists_history() -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
+        super::set_test_payout_pay_hook(Some(Box::new(|bolt11, amount_sats| {
+            if bolt11 != "lnbc21withdraw" || amount_sats != Some(21) {
+                return Err(std::io::Error::other(
+                    "payout withdrawal should pass the retained invoice and amount",
+                )
+                .into());
+            }
+            Ok(super::WalletPayReport {
+                runtime: WalletRuntimeSurface::default(),
+                payment_id: "payment-withdraw-001".to_string(),
+                payment: PylonWalletPaymentRecord {
+                    payment_id: "payment-withdraw-001".to_string(),
+                    direction: "send".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 21,
+                    fees_sats: 1,
+                    method: "lightning".to_string(),
+                    description: Some("provider withdrawal".to_string()),
+                    invoice: Some(bolt11.to_string()),
+                    created_at_ms: 1_762_200_000_000,
+                    updated_at_ms: 1_762_200_000_000,
+                },
+                post_balance: super::WalletBalanceSnapshot {
+                    total_sats: 144,
+                    spark_sats: 144,
+                    lightning_sats: 144,
+                    onchain_sats: 0,
+                },
+            })
+        })));
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.payout_destination = Some("lnurlp:provider".to_string());
+        save_config(config_path.as_path(), &config)?;
+        mutate_ledger(config_path.as_path(), |ledger| {
+            ledger.wallet.last_balance_sats = Some(200);
+            Ok(())
+        })?;
+
+        let report =
+            super::run_payout_withdrawal(config_path.as_path(), "lnbc21withdraw", Some(21)).await?;
+        ensure(
+            report.payout_destination.as_deref() == Some("lnurlp:provider")
+                && report.payment_id == "payment-withdraw-001"
+                && report.status == "completed"
+                && report.amount_sats == 21
+                && report.fees_sats == 1
+                && report.invoice == "lnbc21withdraw"
+                && report.post_balance.total_sats == 144,
+            "payout withdrawal should surface the retained destination and payment outcome",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        ensure(
+            ledger.wallet.last_balance_sats == Some(144)
+                && ledger
+                    .wallet
+                    .payments
+                    .iter()
+                    .any(|payment| payment.payment_id == "payment-withdraw-001")
+                && ledger.payouts.iter().any(|payout| {
+                    payout.payout_id == "withdrawal:payment-withdraw-001"
+                        && payout.payment_id.as_deref() == Some("payment-withdraw-001")
+                        && payout.status == "completed"
+                        && payout.invoice.as_deref() == Some("lnbc21withdraw")
+                        && payout.payout_destination.as_deref() == Some("lnurlp:provider")
+                })
+                && ledger
+                    .relay_activity
+                    .iter()
+                    .any(|entry| entry.kind == "payout.withdrawal_submitted"),
+            "payout withdrawal should persist payment history, payout history, and relay activity",
+        )?;
+
+        super::set_test_payout_pay_hook(None);
+        Ok(())
     }
 
     #[tokio::test(flavor = "current_thread")]

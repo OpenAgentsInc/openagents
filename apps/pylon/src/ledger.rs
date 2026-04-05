@@ -9,6 +9,7 @@ const MAX_ANNOUNCEMENTS: usize = 32;
 const MAX_JOBS: usize = 256;
 const MAX_INVOICES: usize = 128;
 const MAX_PAYMENTS: usize = 256;
+const MAX_PAYOUTS: usize = 128;
 const MAX_SETTLEMENTS: usize = 256;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -158,6 +159,20 @@ pub struct PylonWalletPaymentRecord {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonLedgerPayout {
+    pub payout_id: String,
+    pub payment_id: Option<String>,
+    pub status: String,
+    pub amount_sats: Option<u64>,
+    pub fees_sats: Option<u64>,
+    pub invoice: Option<String>,
+    pub payout_destination: Option<String>,
+    pub detail: Option<String>,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonWalletLedger {
     pub runtime_status: Option<String>,
     pub last_error: Option<String>,
@@ -215,6 +230,8 @@ pub struct PylonLedger {
     #[serde(default)]
     pub wallet: PylonWalletLedger,
     #[serde(default)]
+    pub payouts: Vec<PylonLedgerPayout>,
+    #[serde(default)]
     pub settlements: Vec<PylonSettlementRecord>,
 }
 
@@ -228,6 +245,7 @@ impl Default for PylonLedger {
             announcements: Vec::new(),
             jobs: Vec::new(),
             wallet: PylonWalletLedger::default(),
+            payouts: Vec::new(),
             settlements: Vec::new(),
         }
     }
@@ -368,6 +386,24 @@ impl PylonLedger {
         self.settlements
             .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
         trim_tail(&mut self.settlements, MAX_SETTLEMENTS);
+    }
+
+    pub fn upsert_payout(&mut self, mut payout: PylonLedgerPayout) {
+        payout.updated_at_ms = now_epoch_ms();
+        if let Some(existing) = self
+            .payouts
+            .iter_mut()
+            .find(|existing| existing.payout_id == payout.payout_id)
+        {
+            let created_at_ms = existing.created_at_ms;
+            *existing = payout;
+            existing.created_at_ms = created_at_ms;
+            return;
+        }
+        self.payouts.push(payout);
+        self.payouts
+            .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
+        trim_tail(&mut self.payouts, MAX_PAYOUTS);
     }
 }
 
