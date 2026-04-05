@@ -2,7 +2,7 @@ mod bottom_pane;
 mod transcript;
 
 use std::io::{self, Stdout};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -24,7 +24,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use serde_json::Value;
-use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use sysinfo::{Components, CpuRefreshKind, Disks, Networks, RefreshKind, System};
 use transcript::{ActiveTurn, RetainedTranscript, TranscriptEntry, TranscriptRole};
 
 const TICK_RATE: Duration = Duration::from_millis(50);
@@ -95,13 +95,30 @@ struct Gemma4Status {
 
 #[derive(Clone, Debug, Default)]
 struct LiveSystemStats {
+    host_name: Option<String>,
+    os_version: Option<String>,
+    kernel_version: Option<String>,
+    cpu_arch: Option<String>,
+    physical_cpus: Option<usize>,
     cpu_brand: Option<String>,
     logical_cpus: usize,
+    cpu_frequency_mhz: Option<u64>,
     cpu_usage_percent: Option<f32>,
     load_average: Option<(f64, f64, f64)>,
+    used_memory_bytes: Option<u64>,
     available_memory_bytes: Option<u64>,
     total_memory_bytes: Option<u64>,
+    used_swap_bytes: Option<u64>,
+    free_swap_bytes: Option<u64>,
+    total_swap_bytes: Option<u64>,
+    uptime_seconds: Option<u64>,
     gpu_summary: Option<String>,
+    disk_summary: Option<String>,
+    disk_io_summary: Option<String>,
+    network_summary: Option<String>,
+    thermal_summary: Option<String>,
+    power_summary: Option<String>,
+    power_draw_summary: Option<String>,
 }
 
 #[derive(Debug)]
@@ -116,6 +133,9 @@ struct AppShell {
     config_path: PathBuf,
     loaded: Option<LoadedState>,
     system: System,
+    disks: Disks,
+    networks: Networks,
+    components: Components,
     system_stats: LiveSystemStats,
     last_refresh_at: Option<Instant>,
     last_error: Option<String>,
@@ -138,7 +158,7 @@ impl AppShell {
         let system = System::new_with_specifics(
             RefreshKind::nothing()
                 .with_cpu(CpuRefreshKind::everything())
-                .with_memory(MemoryRefreshKind::everything()),
+                .with_memory(sysinfo::MemoryRefreshKind::everything()),
         );
         let (worker_tx, worker_rx) = mpsc::channel();
         let mut transcript = RetainedTranscript::new();
@@ -153,6 +173,9 @@ impl AppShell {
             config_path,
             loaded: None,
             system,
+            disks: Disks::new_with_refreshed_list(),
+            networks: Networks::new_with_refreshed_list(),
+            components: Components::new_with_refreshed_list(),
             system_stats: LiveSystemStats::default(),
             last_refresh_at: None,
             last_error: None,
@@ -438,23 +461,51 @@ impl AppShell {
 
     fn refresh_system_stats(&mut self) {
         self.system.refresh_memory();
-        self.system.refresh_cpu_usage();
+        self.system.refresh_cpu_all();
+        self.disks.refresh(false);
+        self.networks.refresh(false);
+        self.components.refresh(false);
 
+        self.system_stats.host_name = System::host_name();
+        self.system_stats.os_version = System::long_os_version();
+        self.system_stats.kernel_version = Some(System::kernel_long_version());
+        self.system_stats.cpu_arch = Some(System::cpu_arch());
+        self.system_stats.physical_cpus = System::physical_core_count();
         self.system_stats.logical_cpus = self.system.cpus().len();
         self.system_stats.cpu_brand = self.system.cpus().iter().find_map(|cpu| {
             let brand = cpu.brand().trim();
             (!brand.is_empty()).then(|| brand.to_string())
         });
+        self.system_stats.cpu_frequency_mhz = self
+            .system
+            .cpus()
+            .first()
+            .map(sysinfo::Cpu::frequency)
+            .filter(|frequency| *frequency > 0);
         self.system_stats.cpu_usage_percent =
             (!self.system.cpus().is_empty()).then(|| self.system.global_cpu_usage());
 
         let load = System::load_average();
         self.system_stats.load_average = Some((load.one, load.five, load.fifteen));
+        self.system_stats.used_memory_bytes = Some(self.system.used_memory());
         self.system_stats.available_memory_bytes = Some(self.system.available_memory());
         self.system_stats.total_memory_bytes = Some(self.system.total_memory());
+        self.system_stats.used_swap_bytes = Some(self.system.used_swap());
+        self.system_stats.free_swap_bytes = Some(self.system.free_swap());
+        self.system_stats.total_swap_bytes = Some(self.system.total_swap());
+        self.system_stats.uptime_seconds = Some(System::uptime());
+        self.system_stats.disk_summary =
+            detect_disk_summary(self.disks.list(), self.config_path.as_path());
+        self.system_stats.disk_io_summary =
+            detect_disk_io_summary(self.disks.list(), self.config_path.as_path());
+        self.system_stats.network_summary = detect_network_summary(&self.networks);
+        self.system_stats.thermal_summary = detect_thermal_summary(&self.components);
 
         if Instant::now() >= self.next_gpu_refresh_at || self.system_stats.gpu_summary.is_none() {
             self.system_stats.gpu_summary = detect_gpu_summary().ok();
+            let (power_summary, power_draw_summary) = detect_power_status();
+            self.system_stats.power_summary = power_summary;
+            self.system_stats.power_draw_summary = power_draw_summary;
             self.next_gpu_refresh_at = Instant::now() + GPU_REFRESH_RATE;
         }
     }
@@ -472,9 +523,10 @@ impl AppShell {
         let inner = shell.inner(area);
         frame.render_widget(shell, area);
 
+        let summary_height = (self.summary_lines().len() as u16 + 2).clamp(7, 18);
         let vertical = Layout::vertical([
             Constraint::Length(3),
-            Constraint::Length(7),
+            Constraint::Length(summary_height),
             Constraint::Min(10),
             Constraint::Length(self.bottom_pane.height()),
             Constraint::Length(2),
@@ -555,6 +607,23 @@ impl AppShell {
         let gemma = gemma4_status(self.loaded.as_ref());
         let mut lines = vec![
             Line::from(format!(
+                "host: {}  os: {}  arch: {}",
+                self.system_stats.host_name.as_deref().unwrap_or("unknown"),
+                self.system_stats.os_version.as_deref().unwrap_or("unknown"),
+                self.system_stats.cpu_arch.as_deref().unwrap_or("unknown"),
+            )),
+            Line::from(format!(
+                "uptime: {}  kernel: {}",
+                self.system_stats
+                    .uptime_seconds
+                    .map(format_uptime)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                self.system_stats
+                    .kernel_version
+                    .as_deref()
+                    .unwrap_or("unknown"),
+            )),
+            Line::from(format!(
                 "gemma loaded: {}",
                 if gemma.loaded { "yes" } else { "no" }
             )),
@@ -563,11 +632,26 @@ impl AppShell {
                 comma_or_none(gemma.models.as_slice())
             )),
             Line::from(format!(
-                "cpu: {}  usage: {}  load: {}",
+                "cpu: {}",
                 self.system_stats
                     .cpu_brand
                     .as_deref()
                     .unwrap_or("unknown cpu"),
+            )),
+            Line::from(format!(
+                "cores: {} physical / {} logical  freq: {}",
+                self.system_stats
+                    .physical_cpus
+                    .map(|count| count.to_string())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                self.system_stats.logical_cpus,
+                self.system_stats
+                    .cpu_frequency_mhz
+                    .map(format_frequency)
+                    .unwrap_or_else(|| "unknown".to_string()),
+            )),
+            Line::from(format!(
+                "usage: {}  load: {}",
                 self.system_stats
                     .cpu_usage_percent
                     .map(format_percent)
@@ -578,13 +662,33 @@ impl AppShell {
                     .unwrap_or_else(|| "unknown".to_string())
             )),
             Line::from(format!(
-                "memory: {}",
+                "memory: {} free / {} total  used: {}",
                 self.system_stats
                     .available_memory_bytes
-                    .zip(self.system_stats.total_memory_bytes)
-                    .map(|(available, total)| {
-                        format!("{} free / {}", format_bytes(available), format_bytes(total))
-                    })
+                    .map(format_byte_size)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                self.system_stats
+                    .total_memory_bytes
+                    .map(format_byte_size)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                self.system_stats
+                    .used_memory_bytes
+                    .map(format_byte_size)
+                    .unwrap_or_else(|| "unknown".to_string())
+            )),
+            Line::from(format!(
+                "swap: {} free / {} total  used: {}",
+                self.system_stats
+                    .free_swap_bytes
+                    .map(format_byte_size)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                self.system_stats
+                    .total_swap_bytes
+                    .map(format_byte_size)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                self.system_stats
+                    .used_swap_bytes
+                    .map(format_byte_size)
                     .unwrap_or_else(|| "unknown".to_string())
             )),
             Line::from(format!(
@@ -593,6 +697,48 @@ impl AppShell {
                     .gpu_summary
                     .as_deref()
                     .unwrap_or("not detected")
+            )),
+            Line::from(format!(
+                "disk: {}",
+                self.system_stats
+                    .disk_summary
+                    .as_deref()
+                    .unwrap_or("unavailable")
+            )),
+            Line::from(format!(
+                "disk io: {}",
+                self.system_stats
+                    .disk_io_summary
+                    .as_deref()
+                    .unwrap_or("unavailable")
+            )),
+            Line::from(format!(
+                "network: {}",
+                self.system_stats
+                    .network_summary
+                    .as_deref()
+                    .unwrap_or("unavailable")
+            )),
+            Line::from(format!(
+                "thermal: {}",
+                self.system_stats
+                    .thermal_summary
+                    .as_deref()
+                    .unwrap_or("unavailable")
+            )),
+            Line::from(format!(
+                "power: {}",
+                self.system_stats
+                    .power_summary
+                    .as_deref()
+                    .unwrap_or("unavailable")
+            )),
+            Line::from(format!(
+                "draw: {}",
+                self.system_stats
+                    .power_draw_summary
+                    .as_deref()
+                    .unwrap_or("unavailable from unprivileged sensors")
             )),
             Line::from(gemma.note),
         ];
@@ -820,6 +966,184 @@ fn detect_nvidia_gpu_summary() -> Result<String> {
     Ok(lines.join(", "))
 }
 
+fn detect_disk_summary(disks: &[sysinfo::Disk], path: &Path) -> Option<String> {
+    let disk = select_disk_for_path(disks, path)?;
+    Some(format!(
+        "{} free / {} total @ {}",
+        format_byte_size(disk.available_space()),
+        format_byte_size(disk.total_space()),
+        disk.mount_point().display()
+    ))
+}
+
+fn detect_disk_io_summary(disks: &[sysinfo::Disk], path: &Path) -> Option<String> {
+    let disk = select_disk_for_path(disks, path)?;
+    let usage = disk.usage();
+    Some(format!(
+        "read Δ{} write Δ{} total read {} total write {}",
+        format_byte_size(usage.read_bytes),
+        format_byte_size(usage.written_bytes),
+        format_byte_size(usage.total_read_bytes),
+        format_byte_size(usage.total_written_bytes),
+    ))
+}
+
+fn select_disk_for_path<'a>(disks: &'a [sysinfo::Disk], path: &Path) -> Option<&'a sysinfo::Disk> {
+    disks
+        .iter()
+        .filter(|disk| path.starts_with(disk.mount_point()))
+        .max_by_key(|disk| disk.mount_point().as_os_str().len())
+        .or_else(|| {
+            disks
+                .iter()
+                .find(|disk| disk.mount_point() == Path::new("/"))
+        })
+}
+
+fn detect_network_summary(networks: &Networks) -> Option<String> {
+    let mut received = 0_u64;
+    let mut transmitted = 0_u64;
+    let mut total_received = 0_u64;
+    let mut total_transmitted = 0_u64;
+    let mut interface_count = 0_usize;
+
+    for (name, network) in networks {
+        if is_ignored_network_interface(name.as_str()) {
+            continue;
+        }
+        interface_count += 1;
+        received += network.received();
+        transmitted += network.transmitted();
+        total_received += network.total_received();
+        total_transmitted += network.total_transmitted();
+    }
+
+    if interface_count == 0 {
+        return None;
+    }
+
+    Some(format!(
+        "{} interfaces  rx Δ{} tx Δ{} total rx {} total tx {}",
+        interface_count,
+        format_byte_size(received),
+        format_byte_size(transmitted),
+        format_byte_size(total_received),
+        format_byte_size(total_transmitted),
+    ))
+}
+
+fn is_ignored_network_interface(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    normalized.starts_with("lo")
+}
+
+fn detect_thermal_summary(components: &Components) -> Option<String> {
+    let hottest = components
+        .iter()
+        .filter_map(|component| {
+            component
+                .temperature()
+                .map(|temperature| (component, temperature))
+        })
+        .max_by(|(_, left), (_, right)| left.total_cmp(right))?;
+    let critical = hottest
+        .0
+        .critical()
+        .map(|value| format!(" crit {:.1}C", value))
+        .unwrap_or_default();
+    Some(format!(
+        "{} {:.1}C{}",
+        hottest.0.label(),
+        hottest.1,
+        critical
+    ))
+}
+
+fn detect_power_status() -> (Option<String>, Option<String>) {
+    if cfg!(target_os = "macos") {
+        let summary = detect_macos_power_summary().ok();
+        return (
+            summary,
+            Some(String::from(
+                "power draw unavailable from unprivileged macOS sensors",
+            )),
+        );
+    }
+    if let Ok(summary) = detect_nvidia_power_summary() {
+        return (Some(String::from("GPU power telemetry")), Some(summary));
+    }
+    (
+        None,
+        Some(String::from(
+            "power draw unavailable without host-specific sensors",
+        )),
+    )
+}
+
+fn detect_nvidia_power_summary() -> Result<String> {
+    let output = Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=name,power.draw,power.limit",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(anyhow!("nvidia-smi unavailable"));
+    }
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut rows = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| {
+            let mut parts = line.split(',').map(str::trim);
+            let name = parts.next()?;
+            let draw = parts.next().unwrap_or("unknown");
+            let limit = parts.next().unwrap_or("unknown");
+            Some(format!("{name} {draw}W / {limit}W"))
+        })
+        .collect::<Vec<_>>();
+    if rows.is_empty() {
+        return Err(anyhow!("no nvidia power rows reported"));
+    }
+    sort_and_dedup(&mut rows);
+    Ok(rows.join(", "))
+}
+
+fn detect_macos_power_summary() -> Result<String> {
+    let output = Command::new("pmset").args(["-g", "batt"]).output()?;
+    if !output.status.success() {
+        return Err(anyhow!("pmset failed"));
+    }
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut lines = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    let source_line = lines
+        .next()
+        .ok_or_else(|| anyhow!("pmset source missing"))?;
+    let detail_line = lines.next().unwrap_or_default();
+    let source = source_line
+        .split('\'')
+        .nth(1)
+        .unwrap_or(source_line)
+        .to_string();
+    let detail = detail_line
+        .split('\t')
+        .nth(1)
+        .unwrap_or(detail_line)
+        .split(" present:")
+        .next()
+        .unwrap_or(detail_line)
+        .trim();
+    if detail.is_empty() {
+        Ok(source)
+    } else {
+        Ok(format!("{source}  {detail}"))
+    }
+}
+
 fn sort_and_dedup(values: &mut Vec<String>) {
     values.sort();
     values.dedup();
@@ -849,9 +1173,44 @@ fn format_duration(duration: Duration) -> String {
     format!("{}d", hours / 24)
 }
 
-fn format_bytes(value: u64) -> String {
-    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
-    format!("{:.1} GiB", value as f64 / GIB)
+fn format_uptime(seconds: u64) -> String {
+    let days = seconds / 86_400;
+    let hours = (seconds % 86_400) / 3_600;
+    let minutes = (seconds % 3_600) / 60;
+    if days > 0 {
+        format!("{days}d {hours}h {minutes}m")
+    } else if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else {
+        format!("{minutes}m")
+    }
+}
+
+fn format_byte_size(value: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    const TIB: f64 = GIB * 1024.0;
+    let value = value as f64;
+    if value >= TIB {
+        format!("{:.1} TiB", value / TIB)
+    } else if value >= GIB {
+        format!("{:.1} GiB", value / GIB)
+    } else if value >= MIB {
+        format!("{:.1} MiB", value / MIB)
+    } else if value >= KIB {
+        format!("{:.1} KiB", value / KIB)
+    } else {
+        format!("{} B", value as u64)
+    }
+}
+
+fn format_frequency(mhz: u64) -> String {
+    if mhz >= 1000 {
+        format!("{:.2} GHz", mhz as f64 / 1000.0)
+    } else {
+        format!("{mhz} MHz")
+    }
 }
 
 fn format_percent(value: f32) -> String {
