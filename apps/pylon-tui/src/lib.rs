@@ -759,15 +759,14 @@ impl AppShell {
                     .as_deref()
                     .unwrap_or("unavailable")
             )),
-            Line::from(format!(
-                "power: {}",
-                self.system_stats
-                    .power_summary
-                    .as_deref()
-                    .unwrap_or("unavailable")
-            )),
             Line::from(gemma.note),
         ];
+        if let Some(power) = self.system_stats.power_summary.as_deref() {
+            lines.insert(
+                lines.len().saturating_sub(1),
+                Line::from(format!("power: {power}")),
+            );
+        }
         if let Some(draw) = self.system_stats.power_draw_summary.as_deref() {
             lines.insert(
                 lines.len().saturating_sub(1),
@@ -1173,22 +1172,12 @@ fn detect_thermal_summary(components: &Components) -> Option<String> {
 fn detect_power_status() -> (Option<String>, Option<String>) {
     if cfg!(target_os = "macos") {
         let summary = detect_macos_power_summary().ok();
-        return (
-            summary,
-            Some(String::from(
-                "power draw unavailable from unprivileged macOS sensors",
-            )),
-        );
+        return (summary, None);
     }
     if let Ok(summary) = detect_nvidia_power_summary() {
         return (Some(String::from("GPU power telemetry")), Some(summary));
     }
-    (
-        None,
-        Some(String::from(
-            "power draw unavailable without host-specific sensors",
-        )),
-    )
+    (None, None)
 }
 
 fn detect_nvidia_power_summary() -> Result<String> {
