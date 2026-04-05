@@ -30,7 +30,7 @@ You run Pylon so your machine joins the market. When a job comes in, Pylon asks 
 
 ## “Run on any computer and give access to certain resources”
 
-- **Pylon** is the thing that “runs on any computer.” You install it, run `pylon init`, `pylon serve`, `pylon online`. It discovers what that machine can do (e.g. “Ollama is available,” or later “Psionic is available,” “Apple FM is available,” and eventually “sandbox profile X is available”).
+- **Pylon** is the thing that “runs on any computer.” You install it, run the explicit headless CLI (`cargo pylon-headless init`, `cargo pylon-headless serve`, `cargo pylon-headless online`, or the equivalent direct `pylon` binary commands). It discovers what that machine can do (e.g. “Ollama is available,” or later “Psionic is available,” “Apple FM is available,” and eventually “sandbox profile X is available”).
 - **Resources** = the compute products that machine can truthfully offer: e.g. `ollama.text_generation`, `ollama.embeddings`, `apple_foundation_models.text_generation`. Those become **inventory** published to the OpenAgents network. Buyers see and procure that supply; when a job is assigned to this provider, Pylon runs it locally using the appropriate backend.
 - So: the computer runs Pylon → Pylon detects backends → Pylon advertises products → market gets access to that machine’s inference/embeddings (and later sandbox) capacity.
 

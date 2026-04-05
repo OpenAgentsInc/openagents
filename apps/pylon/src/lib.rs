@@ -329,7 +329,10 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
 }
 
 pub fn usage() -> &'static str {
-    "Usage: pylon [--config-path <path>] <command>\n\
+    "Headless Pylon provider CLI.\n\
+From this repo, run it with `cargo pylon-headless <command>` or invoke the `pylon` binary directly.\n\
+\n\
+Usage: pylon [--config-path <path>] <command>\n\
 Commands:\n\
   init\n\
   doctor\n\

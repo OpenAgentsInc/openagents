@@ -1,6 +1,7 @@
 [alias]
 autopilot = "run -p autopilot-desktop --bin autopilot-desktop --"
 autopilot-release = "run -p autopilot-desktop --bin autopilot-desktop --release --"
+pylon-headless = "run -p pylon --"
 
 [env]
 # Use the repo's vendored protoc resolver so transitive gRPC build scripts do

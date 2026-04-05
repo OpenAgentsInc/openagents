@@ -60,46 +60,46 @@ The first cut is intentionally small. It renders one full-screen status view wit
 - backend readiness summary
 - product, inventory, job, receipt, and earnings counts
 
-The shell is read-only. The current provider automation still lives in the explicit headless `pylon` CLI below.
+The shell is read-only. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below.
 
 Initialize a standalone config and identity:
 
 ```bash
-cargo run -p pylon -- init
+cargo pylon-headless init
 ```
 
 Inspect status:
 
 ```bash
-cargo run -p pylon -- status
-cargo run -p pylon -- status --json
+cargo pylon-headless status
+cargo pylon-headless status --json
 ```
 
 Inspect provider truth:
 
 ```bash
-cargo run -p pylon -- backends
-cargo run -p pylon -- products
-cargo run -p pylon -- sandbox
-cargo run -p pylon -- inventory
-cargo run -p pylon -- jobs
-cargo run -p pylon -- earnings
-cargo run -p pylon -- receipts
+cargo pylon-headless backends
+cargo pylon-headless products
+cargo pylon-headless sandbox
+cargo pylon-headless inventory
+cargo pylon-headless jobs
+cargo pylon-headless earnings
+cargo pylon-headless receipts
 ```
 
 Move the node through explicit lifecycle controls:
 
 ```bash
-cargo run -p pylon -- online
-cargo run -p pylon -- pause
-cargo run -p pylon -- resume
-cargo run -p pylon -- offline
+cargo pylon-headless online
+cargo pylon-headless pause
+cargo pylon-headless resume
+cargo pylon-headless offline
 ```
 
 Run the local admin/status loop:
 
 ```bash
-cargo run -p pylon -- serve
+cargo pylon-headless serve
 ```
 
 Important:
@@ -108,6 +108,7 @@ Important:
 - lifecycle is explicit; use `pylon online` / `offline` / `pause` / `resume`
 - status should show `unconfigured`, `ready`, `online`, `paused`, `draining`, `degraded`, `offline`, or `error` truthfully
 - when sandbox supply is declared, `status`, `backends`, `sandbox`, `jobs`, and `receipts` should surface execution classes, profile IDs, termination reasons, and failure reasons without inventing a separate sandbox-only provider model
+- `cargo run -p pylon -- <command>` remains a direct fallback if you do not want the alias
 
 ## Config and Paths
 
@@ -138,11 +139,11 @@ The generated config currently includes:
 
 `Pylon` is service-style. The simplest supported operational pattern is:
 
-1. initialize once with `pylon init`
-2. set desired mode explicitly with `pylon online` or `pylon offline`
-3. run `pylon serve` under a local service manager
-4. use `pylon status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, and `receipts` for observability
-5. use `pylon sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
+1. initialize once with `cargo pylon-headless init`
+2. set desired mode explicitly with `cargo pylon-headless online` or `cargo pylon-headless offline`
+3. run `cargo pylon-headless serve` under a local service manager
+4. use `cargo pylon-headless status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, and `receipts` for observability
+5. use `cargo pylon-headless sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
 
 ### `systemd` example
 
@@ -156,7 +157,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/path/to/openagents
 Environment=OPENAGENTS_PYLON_HOME=/var/lib/openagents/pylon
-ExecStart=/usr/bin/env cargo run -p pylon -- serve
+ExecStart=/usr/bin/env cargo pylon-headless serve
 Restart=on-failure
 RestartSec=5
 
@@ -166,7 +167,7 @@ WantedBy=multi-user.target
 
 ### `launchd` / user-session guidance
 
-On macOS, run the same `pylon serve` command under `launchd`, `tmux`, or another persistent user-session manager. The operational requirement is explicit lifecycle control plus a stable long-running `serve` process, not a specific packaging format.
+On macOS, run the same `cargo pylon-headless serve` command under `launchd`, `tmux`, or another persistent user-session manager. The operational requirement is explicit lifecycle control plus a stable long-running `serve` process, not a specific packaging format.
 
 ## Verification and Release Discipline
 
