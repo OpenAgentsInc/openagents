@@ -208,6 +208,46 @@ pub struct BuyerJobPaymentReport {
     pub detail: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobHistoryEntry {
+    pub job_id: String,
+    pub request_event_id: String,
+    pub status: String,
+    pub provider_pubkey: Option<String>,
+    pub model: Option<String>,
+    pub bid_msats: Option<u64>,
+    pub amount_msats: Option<u64>,
+    pub payment_id: Option<String>,
+    pub result_preview: Option<String>,
+    pub error_detail: Option<String>,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobHistoryReport {
+    pub total_count: usize,
+    pub entries: Vec<BuyerJobHistoryEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobReplayActivity {
+    pub at_ms: u64,
+    pub relay_url: Option<String>,
+    pub kind: String,
+    pub detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobReplayReport {
+    pub entry: BuyerJobHistoryEntry,
+    pub feedback_event_ids: Vec<String>,
+    pub result_event_id: Option<String>,
+    pub settlement_status: Option<String>,
+    pub settlement_detail: Option<String>,
+    pub activity: Vec<BuyerJobReplayActivity>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 struct StructuredBuyerJobPayload {
     #[serde(default)]
@@ -1756,6 +1796,209 @@ pub fn render_buyer_job_payment_report(report: &BuyerJobPaymentReport) -> String
     lines.join("\n")
 }
 
+pub fn load_buyer_job_history(
+    config_path: &Path,
+    limit: Option<usize>,
+) -> Result<BuyerJobHistoryReport> {
+    let ledger = load_ledger(config_path)?;
+    let mut entries = ledger
+        .jobs
+        .iter()
+        .filter(|job| job.direction == "buyer")
+        .map(history_entry_from_job)
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        right
+            .updated_at_ms
+            .cmp(&left.updated_at_ms)
+            .then_with(|| right.created_at_ms.cmp(&left.created_at_ms))
+    });
+    let total_count = entries.len();
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(BuyerJobHistoryReport {
+        total_count,
+        entries,
+    })
+}
+
+pub fn render_buyer_job_history_report(report: &BuyerJobHistoryReport) -> String {
+    let mut lines = vec![format!("total_count: {}", report.total_count)];
+    for entry in &report.entries {
+        lines.push(String::new());
+        lines.push(format!("request_event_id: {}", entry.request_event_id));
+        lines.push(format!("status: {}", entry.status));
+        lines.push(format!(
+            "provider_pubkey: {}",
+            entry.provider_pubkey.as_deref().unwrap_or("none")
+        ));
+        lines.push(format!(
+            "model: {}",
+            entry.model.as_deref().unwrap_or("none")
+        ));
+        lines.push(format!(
+            "bid_msats: {}",
+            entry
+                .bid_msats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "amount_msats: {}",
+            entry
+                .amount_msats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "payment_id: {}",
+            entry.payment_id.as_deref().unwrap_or("none")
+        ));
+        lines.push(format!("updated_at_ms: {}", entry.updated_at_ms));
+        if let Some(result_preview) = entry.result_preview.as_deref() {
+            lines.push(format!("result_preview: {result_preview}"));
+        }
+        if let Some(error_detail) = entry.error_detail.as_deref() {
+            lines.push(format!("error_detail: {error_detail}"));
+        }
+    }
+    lines.join("\n")
+}
+
+pub fn load_buyer_job_replay(
+    config_path: &Path,
+    request_event_id: &str,
+) -> Result<BuyerJobReplayReport> {
+    let request_event_id = request_event_id.trim();
+    if request_event_id.is_empty() {
+        bail!("buyer replay requires a request event id");
+    }
+    let ledger = load_ledger(config_path)?;
+    let job = ledger
+        .jobs
+        .iter()
+        .find(|job| {
+            job.direction == "buyer"
+                && job
+                    .request_event_id
+                    .as_deref()
+                    .is_some_and(|value| value == request_event_id)
+        })
+        .cloned()
+        .or_else(|| {
+            ledger
+                .jobs
+                .iter()
+                .find(|job| job.direction == "buyer" && job.id == request_event_id)
+                .cloned()
+        })
+        .ok_or_else(|| anyhow::anyhow!("unknown buyer job `{request_event_id}`"))?;
+    let entry = history_entry_from_job(&job);
+    let settlement = ledger
+        .settlements
+        .iter()
+        .find(|settlement| {
+            settlement.job_id == entry.request_event_id
+                || settlement.job_id == entry.job_id
+                || job
+                    .settlement_id
+                    .as_deref()
+                    .is_some_and(|value| value == settlement.settlement_id)
+        })
+        .cloned();
+    let mut activity = ledger
+        .relay_activity
+        .iter()
+        .filter(|activity| buyer_job_matches_activity(&job, activity))
+        .map(|activity| BuyerJobReplayActivity {
+            at_ms: activity.at_ms,
+            relay_url: activity.url.clone(),
+            kind: activity.kind.clone(),
+            detail: activity.detail.clone(),
+        })
+        .collect::<Vec<_>>();
+    activity.sort_by(|left, right| left.at_ms.cmp(&right.at_ms));
+    Ok(BuyerJobReplayReport {
+        entry,
+        feedback_event_ids: job.feedback_event_ids,
+        result_event_id: job.result_event_id,
+        settlement_status: settlement
+            .as_ref()
+            .map(|settlement| settlement.status.clone()),
+        settlement_detail: settlement.and_then(|settlement| settlement.receipt_detail),
+        activity,
+    })
+}
+
+pub fn render_buyer_job_replay_report(report: &BuyerJobReplayReport) -> String {
+    let mut lines = vec![
+        format!("request_event_id: {}", report.entry.request_event_id),
+        format!("job_id: {}", report.entry.job_id),
+        format!("status: {}", report.entry.status),
+        format!(
+            "provider_pubkey: {}",
+            report.entry.provider_pubkey.as_deref().unwrap_or("none")
+        ),
+        format!("model: {}", report.entry.model.as_deref().unwrap_or("none")),
+        format!(
+            "bid_msats: {}",
+            report
+                .entry
+                .bid_msats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ),
+        format!(
+            "amount_msats: {}",
+            report
+                .entry
+                .amount_msats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ),
+        format!(
+            "payment_id: {}",
+            report.entry.payment_id.as_deref().unwrap_or("none")
+        ),
+        format!(
+            "result_event_id: {}",
+            report.result_event_id.as_deref().unwrap_or("none")
+        ),
+        format!(
+            "feedback_event_ids: {}",
+            comma_or_none(report.feedback_event_ids.as_slice())
+        ),
+        format!(
+            "settlement_status: {}",
+            report.settlement_status.as_deref().unwrap_or("none")
+        ),
+        format!(
+            "settlement_detail: {}",
+            report.settlement_detail.as_deref().unwrap_or("none")
+        ),
+        format!("created_at_ms: {}", report.entry.created_at_ms),
+        format!("updated_at_ms: {}", report.entry.updated_at_ms),
+    ];
+    if let Some(result_preview) = report.entry.result_preview.as_deref() {
+        lines.push(format!("result_preview: {result_preview}"));
+    }
+    if let Some(error_detail) = report.entry.error_detail.as_deref() {
+        lines.push(format!("error_detail: {error_detail}"));
+    }
+    if !report.activity.is_empty() {
+        lines.push(String::new());
+        lines.push("activity:".to_string());
+        for activity in &report.activity {
+            lines.push(format!(
+                "  {}  {}  {}",
+                activity.at_ms, activity.kind, activity.detail
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
 fn build_buyer_job_request(
     config: &PylonConfig,
     request: &BuyerJobSubmitRequest,
@@ -3139,6 +3382,44 @@ async fn pay_buyer_invoice_report(
         }
     }
     pay_wallet_invoice_report(config_path, bolt11, amount_sats).await
+}
+
+fn history_entry_from_job(job: &PylonLedgerJob) -> BuyerJobHistoryEntry {
+    BuyerJobHistoryEntry {
+        job_id: job.id.clone(),
+        request_event_id: job
+            .request_event_id
+            .clone()
+            .unwrap_or_else(|| job.id.clone()),
+        status: job.status.clone(),
+        provider_pubkey: job.provider_pubkey.clone(),
+        model: job.model.clone(),
+        bid_msats: job.bid_msats,
+        amount_msats: job.amount_msats,
+        payment_id: job.payment_id.clone(),
+        result_preview: job.result_preview.clone(),
+        error_detail: job.error_detail.clone(),
+        created_at_ms: job.created_at_ms,
+        updated_at_ms: job.updated_at_ms,
+    }
+}
+
+fn buyer_job_matches_activity(job: &PylonLedgerJob, activity: &PylonRelayActivity) -> bool {
+    let request_event_id = job.request_event_id.as_deref().unwrap_or(job.id.as_str());
+    activity.detail.contains(request_event_id)
+        || activity.detail.contains(job.id.as_str())
+        || job
+            .payment_id
+            .as_deref()
+            .is_some_and(|payment_id| activity.detail.contains(payment_id))
+        || job
+            .result_event_id
+            .as_deref()
+            .is_some_and(|result_event_id| activity.detail.contains(result_event_id))
+        || job
+            .feedback_event_ids
+            .iter()
+            .any(|feedback_event_id| activity.detail.contains(feedback_event_id))
 }
 
 fn msats_to_sats_rounded_up(amount_msats: u64) -> u64 {

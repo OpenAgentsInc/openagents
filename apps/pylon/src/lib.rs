@@ -35,12 +35,14 @@ pub use ledger::{
     load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
-    AnnouncementAction, AnnouncementReport, BuyerJobPaymentReport, BuyerJobSubmitReport,
-    BuyerJobSubmitRequest, BuyerJobWatchEntry, BuyerJobWatchReport, BuyerPaymentPolicyMode,
-    BuyerPaymentPolicyReport, ProviderIntakeReport, ProviderRunReport, apply_buyer_payment_policy,
-    approve_buyer_job_payment, deny_buyer_job_payment, load_announcement_report,
-    publish_announcement_report, render_announcement_report, render_buyer_job_payment_report,
-    render_buyer_job_submit_report, render_buyer_job_watch_report,
+    AnnouncementAction, AnnouncementReport, BuyerJobHistoryReport, BuyerJobPaymentReport,
+    BuyerJobReplayReport, BuyerJobSubmitReport, BuyerJobSubmitRequest, BuyerJobWatchEntry,
+    BuyerJobWatchReport, BuyerPaymentPolicyMode, BuyerPaymentPolicyReport, ProviderIntakeReport,
+    ProviderRunReport, apply_buyer_payment_policy, approve_buyer_job_payment,
+    deny_buyer_job_payment, load_announcement_report, load_buyer_job_history,
+    load_buyer_job_replay, publish_announcement_report, render_announcement_report,
+    render_buyer_job_history_report, render_buyer_job_payment_report,
+    render_buyer_job_replay_report, render_buyer_job_submit_report, render_buyer_job_watch_report,
     render_buyer_payment_policy_report, render_provider_intake_report, render_provider_run_report,
     run_provider_requests, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
 };
@@ -148,6 +150,14 @@ pub enum Command {
     JobWatch {
         request_event_id: Option<String>,
         seconds: u64,
+        json: bool,
+    },
+    JobHistory {
+        limit: Option<usize>,
+        json: bool,
+    },
+    JobReplay {
+        request_event_id: String,
         json: bool,
     },
     JobApprove {
@@ -826,6 +836,24 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_buyer_job_watch_report(&report)))
         }
+        Command::JobHistory { limit, json } => {
+            let report = load_buyer_job_history(cli.config_path.as_path(), limit)?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_buyer_job_history_report(&report)))
+        }
+        Command::JobReplay {
+            request_event_id,
+            json,
+        } => {
+            let report =
+                load_buyer_job_replay(cli.config_path.as_path(), request_event_id.as_str())?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_buyer_job_replay_report(&report)))
+        }
         Command::JobApprove {
             request_event_id,
             json,
@@ -922,6 +950,8 @@ Commands:\n\
   provider run [--seconds <n>] [--json]\n\
   job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt> [--json]\n\
   job watch [<request_event_id>] [--seconds <n>] [--json]\n\
+  job history [--limit <n>] [--json]\n\
+  job replay <request_event_id> [--json]\n\
   job approve <request_event_id> [--json]\n\
   job deny <request_event_id> [--json]\n\
   job policy [show|auto|manual] [--json]\n\
@@ -1119,6 +1149,18 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
                 Ok(Command::JobWatch {
                     request_event_id,
                     seconds,
+                    json,
+                })
+            }
+            Some("history") => {
+                let (limit, json) = parse_job_history_command(args, start_index + 2)?;
+                Ok(Command::JobHistory { limit, json })
+            }
+            Some("replay") => {
+                let (request_event_id, json) =
+                    parse_job_request_id_with_json(args, start_index + 2, "job replay")?;
+                Ok(Command::JobReplay {
+                    request_event_id,
                     json,
                 })
             }
@@ -1371,6 +1413,33 @@ fn parse_job_watch_command(
         }
     }
     Ok((request_event_id, seconds.max(1), json))
+}
+
+fn parse_job_history_command(args: &[String], mut index: usize) -> Result<(Option<usize>, bool)> {
+    let mut limit = None;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--limit" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --limit"))?;
+                limit = Some(
+                    value
+                        .parse::<usize>()
+                        .with_context(|| format!("invalid buyer history limit: {value}"))?,
+                );
+                index += 1;
+            }
+            other => bail!("unexpected argument for job history: {other}"),
+        }
+    }
+    Ok((limit, json))
 }
 
 fn parse_job_request_id_with_json(
@@ -4934,6 +5003,34 @@ mod tests {
         ensure(
             parse_args(vec![
                 "job".to_string(),
+                "history".to_string(),
+                "--limit".to_string(),
+                "6".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::JobHistory {
+                    limit: Some(6),
+                    json: true,
+                },
+            "job history should parse limit and json flags",
+        )?;
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
+                "replay".to_string(),
+                "job-replay-001".to_string(),
+            ])?
+            .command
+                == Command::JobReplay {
+                    request_event_id: "job-replay-001".to_string(),
+                    json: false,
+                },
+            "job replay should parse a retained request id",
+        )?;
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
                 "approve".to_string(),
                 "job-approve-001".to_string(),
                 "--json".to_string(),
@@ -5827,6 +5924,120 @@ mod tests {
         relay_server.await?;
         super::nip90_runtime::set_test_wallet_pay_hook(None);
         Ok(())
+    }
+
+    #[test]
+    fn load_buyer_job_history_reads_retained_buyer_jobs() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        load_or_create_config(config_path.as_path())?;
+        mutate_ledger(config_path.as_path(), |ledger| {
+            let mut older =
+                super::PylonLedgerJob::new("buyer-history-001", "buyer", 5050, "submitted");
+            older.request_event_id = Some("buyer-history-001".to_string());
+            older.provider_pubkey = Some("provider-history-001".to_string());
+            ledger.upsert_job(older);
+            if let Some(existing) = ledger
+                .jobs
+                .iter_mut()
+                .find(|job| job.id == "buyer-history-001")
+            {
+                existing.updated_at_ms = 10;
+            }
+
+            let mut newer =
+                super::PylonLedgerJob::new("buyer-history-002", "buyer", 5050, "result_received");
+            newer.request_event_id = Some("buyer-history-002".to_string());
+            newer.provider_pubkey = Some("provider-history-002".to_string());
+            newer.result_preview = Some("history result".to_string());
+            ledger.upsert_job(newer);
+            if let Some(existing) = ledger
+                .jobs
+                .iter_mut()
+                .find(|job| job.id == "buyer-history-002")
+            {
+                existing.updated_at_ms = 20;
+            }
+
+            let provider_job =
+                super::PylonLedgerJob::new("provider-history-ignore", "provider", 5050, "settled");
+            ledger.upsert_job(provider_job);
+            Ok(())
+        })?;
+
+        let report = super::load_buyer_job_history(config_path.as_path(), Some(1))?;
+        ensure(
+            report.total_count == 2
+                && report.entries.len() == 1
+                && report.entries[0].request_event_id == "buyer-history-002"
+                && report.entries[0].provider_pubkey.as_deref() == Some("provider-history-002")
+                && report.entries[0].result_preview.as_deref() == Some("history result"),
+            "buyer history should return retained buyer jobs ordered by most recent update",
+        )
+    }
+
+    #[test]
+    fn load_buyer_job_replay_projects_settlement_and_activity()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        load_or_create_config(config_path.as_path())?;
+        mutate_ledger(config_path.as_path(), |ledger| {
+            let mut job =
+                super::PylonLedgerJob::new("buyer-replay-001", "buyer", 5050, "result_received");
+            job.request_event_id = Some("buyer-replay-001".to_string());
+            job.provider_pubkey = Some("provider-replay-001".to_string());
+            job.bid_msats = Some(21_000);
+            job.amount_msats = Some(21_000);
+            job.payment_id = Some("payment-replay-001".to_string());
+            job.feedback_event_ids = vec!["feedback-replay-001".to_string()];
+            job.result_event_id = Some("result-replay-001".to_string());
+            job.result_preview = Some("replayed result".to_string());
+            ledger.upsert_job(job);
+            ledger.upsert_settlement(super::PylonSettlementRecord {
+                settlement_id: "buyer-settlement-replay-001".to_string(),
+                job_id: "buyer-replay-001".to_string(),
+                direction: "buyer".to_string(),
+                status: "payment_submitted".to_string(),
+                amount_msats: 21_000,
+                payment_reference: Some("payment-replay-001".to_string()),
+                receipt_detail: Some("buyer approved and submitted invoice payment".to_string()),
+                created_at_ms: 40,
+                updated_at_ms: 50,
+            });
+            ledger.push_relay_activity(super::PylonRelayActivity {
+                at_ms: 41,
+                url: Some("wss://relay.example.com".to_string()),
+                kind: "nip90.job_submitted".to_string(),
+                detail: "submitted buyer request buyer-replay-001".to_string(),
+            });
+            ledger.push_relay_activity(super::PylonRelayActivity {
+                at_ms: 42,
+                url: Some("wss://relay.example.com".to_string()),
+                kind: "nip90.payment_submitted".to_string(),
+                detail: "submitted buyer payment payment-replay-001 for request buyer-replay-001"
+                    .to_string(),
+            });
+            Ok(())
+        })?;
+
+        let report = super::load_buyer_job_replay(config_path.as_path(), "buyer-replay-001")?;
+        ensure(
+            report.entry.request_event_id == "buyer-replay-001"
+                && report.entry.provider_pubkey.as_deref() == Some("provider-replay-001")
+                && report.settlement_status.as_deref() == Some("payment_submitted")
+                && report
+                    .settlement_detail
+                    .as_deref()
+                    .is_some_and(|value| value.contains("buyer approved"))
+                && report.feedback_event_ids == vec!["feedback-replay-001".to_string()]
+                && report.result_event_id.as_deref() == Some("result-replay-001")
+                && report.activity.len() == 2
+                && report.activity[0].kind == "nip90.job_submitted"
+                && report.activity[1].kind == "nip90.payment_submitted",
+            "buyer replay should project the retained job, settlement, and matching activity",
+        )
     }
 
     #[tokio::test(flavor = "current_thread")]

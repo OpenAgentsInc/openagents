@@ -1083,6 +1083,63 @@ impl AppShell {
             }
             return;
         }
+        if let Some(remainder) = trimmed.strip_prefix("history") {
+            let limit = match parse_tui_buyer_job_history_request(remainder) {
+                Ok(limit) => limit,
+                Err(error) => {
+                    self.push_system_message("Buyer Job Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                match pylon::load_buyer_job_history(config_path.as_path(), limit) {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
+                            title: "Buyer Job History".to_string(),
+                            output: pylon::render_buyer_job_history_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Buyer Job History", "Loading retained buyer job history...");
+            return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("replay") {
+            let request_event_id = match parse_tui_buyer_job_request_id(remainder, "job replay") {
+                Ok(request_event_id) => request_event_id,
+                Err(error) => {
+                    self.push_system_message("Buyer Job Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                match pylon::load_buyer_job_replay(config_path.as_path(), request_event_id.as_str())
+                {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
+                            title: format!("Buyer Job Replay {}", report.entry.request_event_id),
+                            output: pylon::render_buyer_job_replay_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Buyer Job Replay", "Replaying retained buyer job state...");
+            return;
+        }
         if let Some(remainder) = trimmed.strip_prefix("approve") {
             let request_event_id = match parse_tui_buyer_job_request_id(remainder, "job approve") {
                 Ok(request_event_id) => request_event_id,
@@ -1192,7 +1249,7 @@ impl AppShell {
         }
         self.push_system_message(
             "Buyer Job Error",
-            "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt> | /job watch [<request_event_id>] [--seconds <n>] | /job approve <request_event_id> | /job deny <request_event_id> | /job policy [show|auto|manual]",
+            "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt> | /job watch [<request_event_id>] [--seconds <n>] | /job history [--limit <n>] | /job replay <request_event_id> | /job approve <request_event_id> | /job deny <request_event_id> | /job policy [show|auto|manual]",
         );
     }
 
@@ -1811,6 +1868,24 @@ fn parse_tui_buyer_job_watch_request(args: &str) -> Result<(Option<String>, u64)
     Ok((request_event_id, seconds.max(1)))
 }
 
+fn parse_tui_buyer_job_history_request(args: &str) -> Result<Option<usize>> {
+    let mut remainder = args.trim();
+    let mut limit = None;
+    while !remainder.is_empty() {
+        if let Some(value) = remainder.strip_prefix("--limit ") {
+            let (raw, tail) = take_next_tui_word(value);
+            limit = Some(
+                raw.parse::<usize>()
+                    .map_err(|_| anyhow!("invalid buyer history limit `{raw}`"))?,
+            );
+            remainder = tail;
+            continue;
+        }
+        bail!("unexpected buyer job history argument `{remainder}`");
+    }
+    Ok(limit)
+}
+
 fn parse_tui_buyer_job_request_id(args: &str, command: &str) -> Result<String> {
     let trimmed = args.trim();
     if trimmed.is_empty() {
@@ -1853,6 +1928,8 @@ Controls:\n\
   /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
   /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] <prompt>  publish a retained NIP-90 buyer request\n\
   /job watch [<request_event_id>] [--seconds <n>]  stream retained buyer feedback and results into the transcript\n\
+  /job history [--limit <n>]  show retained buyer job history from the local ledger\n\
+  /job replay <request_event_id>  replay one retained buyer job from local state\n\
   /job approve <request_event_id>  pay one retained buyer invoice\n\
   /job deny <request_event_id>  deny one retained buyer invoice locally\n\
   /job policy [show|auto|manual]  inspect or set buyer auto-pay policy\n\
@@ -2512,10 +2589,10 @@ mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
         active_chat_title, estimate_token_count, max_transcript_scroll_y,
-        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
-        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
-        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
-        wrapped_row_count,
+        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
+        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
+        parse_tui_buyer_job_watch_request, summarize_chat_metrics, transcript_viewport_height,
+        transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -2601,6 +2678,18 @@ mod tests {
         let parsed =
             parse_tui_buyer_job_watch_request("job-001 --seconds 12").expect("parse watch args");
         assert_eq!(parsed, (Some("job-001".to_string()), 12));
+    }
+
+    #[test]
+    fn tui_job_history_parser_supports_optional_limit() {
+        assert_eq!(
+            parse_tui_buyer_job_history_request("").expect("no limit"),
+            None
+        );
+        assert_eq!(
+            parse_tui_buyer_job_history_request("--limit 5").expect("limit"),
+            Some(5)
+        );
     }
 
     #[test]
