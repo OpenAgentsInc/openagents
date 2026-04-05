@@ -36,9 +36,11 @@ pub use ledger::{
 };
 pub use nip90_runtime::{
     AnnouncementAction, AnnouncementReport, BuyerJobSubmitReport, BuyerJobSubmitRequest,
-    ProviderIntakeReport, ProviderRunReport, load_announcement_report, publish_announcement_report,
-    render_announcement_report, render_buyer_job_submit_report, render_provider_intake_report,
+    BuyerJobWatchEntry, BuyerJobWatchReport, ProviderIntakeReport, ProviderRunReport,
+    load_announcement_report, publish_announcement_report, render_announcement_report,
+    render_buyer_job_submit_report, render_buyer_job_watch_report, render_provider_intake_report,
     render_provider_run_report, run_provider_requests, scan_provider_requests, submit_buyer_job,
+    watch_buyer_jobs,
 };
 pub use wallet_runtime::{
     WalletAddressReport, WalletBalanceSnapshot, WalletHistoryReport, WalletInvoiceReport,
@@ -137,6 +139,11 @@ pub enum Command {
     },
     JobSubmit {
         request: BuyerJobSubmitRequest,
+        json: bool,
+    },
+    JobWatch {
+        request_event_id: Option<String>,
+        seconds: u64,
         json: bool,
     },
     Wallet {
@@ -786,6 +793,23 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_buyer_job_submit_report(&report)))
         }
+        Command::JobWatch {
+            request_event_id,
+            seconds,
+            json,
+        } => {
+            let report = watch_buyer_jobs(
+                cli.config_path.as_path(),
+                request_event_id.as_deref(),
+                seconds,
+                |_| {},
+            )
+            .await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_buyer_job_watch_report(&report)))
+        }
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
@@ -851,6 +875,7 @@ Commands:\n\
   provider scan [--seconds <n>] [--json]\n\
   provider run [--seconds <n>] [--json]\n\
   job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt> [--json]\n\
+  job watch [<request_event_id>] [--seconds <n>] [--json]\n\
   wallet status [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
@@ -1038,6 +1063,15 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             Some("submit") => {
                 let (request, json) = parse_job_submit_command(args, start_index + 2)?;
                 Ok(Command::JobSubmit { request, json })
+            }
+            Some("watch") => {
+                let (request_event_id, seconds, json) =
+                    parse_job_watch_command(args, start_index + 2)?;
+                Ok(Command::JobWatch {
+                    request_event_id,
+                    seconds,
+                    json,
+                })
             }
             Some(other) => bail!("unknown job command: {other}"),
             None => bail!("missing job subcommand"),
@@ -1230,6 +1264,44 @@ fn parse_job_submit_command(
         },
         json,
     ))
+}
+
+fn parse_job_watch_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(Option<String>, u64, bool)> {
+    let mut request_event_id = None::<String>;
+    let mut seconds = 30u64;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--seconds" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --seconds"))?;
+                seconds = value
+                    .parse::<u64>()
+                    .with_context(|| format!("invalid buyer watch seconds: {value}"))?;
+                index += 1;
+            }
+            value if value.starts_with("--") => {
+                bail!("unexpected argument for job watch: {value}");
+            }
+            value => {
+                if request_event_id.is_some() {
+                    bail!("job watch accepts at most one <request_event_id>");
+                }
+                request_event_id = Some(value.to_string());
+                index += 1;
+            }
+        }
+    }
+    Ok((request_event_id, seconds.max(1), json))
 }
 
 fn parse_provider_scan_flags(
@@ -4262,11 +4334,11 @@ mod tests {
         gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
         load_inventory_report, load_jobs_report, load_ledger, load_or_create_config,
         load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
-        load_status_or_detect, parse_args, provider_admin_config, publish_announcement_report,
-        refresh_relay_report, remove_configured_relay, render_human_status, render_sandbox_report,
-        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
-        submit_buyer_job,
+        load_status_or_detect, mutate_ledger, parse_args, provider_admin_config,
+        publish_announcement_report, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
+        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
+        save_config, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -4705,6 +4777,27 @@ mod tests {
                     json: false,
                 },
             "job submit should parse structured payload mode",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_job_watch() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
+                "watch".to_string(),
+                "job-001".to_string(),
+                "--seconds".to_string(),
+                "12".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::JobWatch {
+                    request_event_id: Some("job-001".to_string()),
+                    seconds: 12,
+                    json: true,
+                },
+            "job watch should parse request id, seconds, and json flags",
         )
     }
 
@@ -5175,6 +5268,135 @@ mod tests {
                 && job.model.as_deref() == Some("gemma4:json"),
             "structured buyer submit should persist the raw JSON payload locally",
         )?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn watch_buyer_jobs_persists_feedback_and_result_updates()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        config.relay_urls = vec![relay_url];
+        save_config(config_path.as_path(), &config)?;
+
+        mutate_ledger(config_path.as_path(), |ledger| {
+            let mut job = super::PylonLedgerJob::new("buyer-watch-001", "buyer", 5050, "submitted");
+            job.request_event_id = Some("buyer-watch-001".to_string());
+            job.customer_pubkey = Some(identity.public_key_hex.clone());
+            job.prompt = Some("watch me".to_string());
+            ledger.upsert_job(job);
+            Ok(())
+        })?;
+
+        let customer_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"REQ\"") {
+                    continue;
+                }
+                let payment_required = json!(["EVENT", "watch", {
+                    "id": "buyer-feedback-001",
+                    "pubkey": "provider-pubkey-001",
+                    "created_at": 1_760_000_500u64,
+                    "kind": 7000,
+                    "tags": [
+                        ["status", "payment-required", "lightning settlement required"],
+                        ["e", "buyer-watch-001", "wss://relay.example.com"],
+                        ["p", customer_pubkey],
+                        ["amount", "21000", "lnbc21000n1buyerwatch"]
+                    ],
+                    "content": "",
+                    "sig": "66".repeat(64)
+                }]);
+                let result = json!(["EVENT", "watch", {
+                    "id": "buyer-result-001",
+                    "pubkey": "provider-pubkey-001",
+                    "created_at": 1_760_000_501u64,
+                    "kind": 6050,
+                    "tags": [
+                        ["e", "buyer-watch-001", "wss://relay.example.com"],
+                        ["p", customer_pubkey]
+                    ],
+                    "content": "final retained result",
+                    "sig": "77".repeat(64)
+                }]);
+                ws.send(Message::Text(payment_required.to_string().into()))
+                    .await
+                    .expect("send payment-required feedback");
+                ws.send(Message::Text(result.to_string().into()))
+                    .await
+                    .expect("send buyer result");
+                break;
+            }
+        });
+
+        let report =
+            watch_buyer_jobs(config_path.as_path(), Some("buyer-watch-001"), 1, |_| {}).await?;
+        ensure(
+            report.feedback_count == 1
+                && report.result_count == 1
+                && report.entries.iter().any(|entry| {
+                    entry.event_kind == "feedback"
+                        && entry.status == "payment-required"
+                        && entry.amount_msats == Some(21_000)
+                        && entry.bolt11.as_deref() == Some("lnbc21000n1buyerwatch")
+                })
+                && report.entries.iter().any(|entry| {
+                    entry.event_kind == "result"
+                        && entry.status == "result_received"
+                        && entry
+                            .result_preview
+                            .as_deref()
+                            .is_some_and(|value| value.contains("final retained result"))
+                }),
+            "buyer watch should capture payment-required feedback and the retained result",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == "buyer-watch-001")
+            .ok_or_else(|| std::io::Error::other("missing buyer watch ledger job"))?;
+        ensure(
+            job.status == "result_received"
+                && job
+                    .feedback_event_ids
+                    .iter()
+                    .any(|id| id == "buyer-feedback-001")
+                && job.result_event_id.as_deref() == Some("buyer-result-001")
+                && job.amount_msats == Some(21_000)
+                && job.bolt11.as_deref() == Some("lnbc21000n1buyerwatch")
+                && job
+                    .result_preview
+                    .as_deref()
+                    .is_some_and(|value| value.contains("final retained result")),
+            "buyer watch should persist feedback and result state into the ledger",
+        )?;
+        ensure(
+            ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "nip90.feedback_received")
+                && ledger
+                    .relay_activity
+                    .iter()
+                    .any(|entry| entry.kind == "nip90.result_received"),
+            "buyer watch should persist relay activity for feedback and results",
+        )?;
+
+        relay_server.await?;
         Ok(())
     }
 

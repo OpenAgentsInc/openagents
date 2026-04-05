@@ -160,6 +160,28 @@ pub struct BuyerJobSubmitReport {
     pub detail: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobWatchEntry {
+    pub request_event_id: String,
+    pub relay_url: Option<String>,
+    pub event_id: String,
+    pub event_kind: String,
+    pub status: String,
+    pub amount_msats: Option<u64>,
+    pub bolt11: Option<String>,
+    pub result_preview: Option<String>,
+    pub detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobWatchReport {
+    pub seconds: u64,
+    pub tracked_request_ids: Vec<String>,
+    pub feedback_count: usize,
+    pub result_count: usize,
+    pub entries: Vec<BuyerJobWatchEntry>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 struct StructuredBuyerJobPayload {
     #[serde(default)]
@@ -1366,6 +1388,124 @@ pub fn render_buyer_job_submit_report(report: &BuyerJobSubmitReport) -> String {
     lines.join("\n")
 }
 
+pub async fn watch_buyer_jobs<F>(
+    config_path: &Path,
+    request_event_id: Option<&str>,
+    seconds: u64,
+    mut on_event: F,
+) -> Result<BuyerJobWatchReport>
+where
+    F: FnMut(BuyerJobWatchEntry),
+{
+    let config = crate::ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let tracked_request_ids = tracked_buyer_request_ids(config_path, request_event_id)?;
+    if tracked_request_ids.is_empty() {
+        bail!("no retained buyer jobs are available to watch");
+    }
+    let pool = build_relay_pool(&config, &identity).await?;
+    let subscription_id = format!("pylon-buyer-watch-{}", crate::now_epoch_ms());
+    pool.subscribe_filters(
+        subscription_id.as_str(),
+        vec![json!({
+            "kinds": [nostr::nip90::KIND_JOB_FEEDBACK, ANNOUNCEMENT_KIND_TEXT_GENERATION + 1000],
+            "#e": tracked_request_ids.clone(),
+        })],
+    )
+    .await
+    .context("failed to subscribe for buyer job tracking")?;
+
+    let tracked = tracked_request_ids
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let deadline = std::time::Instant::now() + Duration::from_secs(seconds.max(1));
+    let poll_step = Duration::from_millis(150);
+    let mut seen_event_ids = std::collections::BTreeSet::new();
+    let mut entries = Vec::new();
+    let mut feedback_count = 0usize;
+    let mut result_count = 0usize;
+
+    while std::time::Instant::now() < deadline {
+        let relays = pool.relays().await;
+        for relay in relays {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let wait = remaining.min(poll_step);
+            let recv = tokio::time::timeout(wait, relay.recv()).await;
+            let message = match recv {
+                Ok(Ok(Some(message))) => message,
+                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => continue,
+            };
+            let RelayMessage::Event(_, event) = message else {
+                continue;
+            };
+            if !seen_event_ids.insert(event.id.clone()) {
+                continue;
+            }
+            let Some(entry) = classify_buyer_job_event(relay.url(), &tracked, &event) else {
+                continue;
+            };
+            persist_buyer_job_event(config_path, &entry)?;
+            if entry.event_kind == "feedback" {
+                feedback_count += 1;
+            } else if entry.event_kind == "result" {
+                result_count += 1;
+            }
+            on_event(entry.clone());
+            entries.push(entry);
+        }
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+    let _ = pool.unsubscribe(subscription_id.as_str()).await;
+
+    Ok(BuyerJobWatchReport {
+        seconds,
+        tracked_request_ids,
+        feedback_count,
+        result_count,
+        entries,
+    })
+}
+
+pub fn render_buyer_job_watch_report(report: &BuyerJobWatchReport) -> String {
+    let mut lines = vec![
+        format!("watch_seconds: {}", report.seconds),
+        format!(
+            "tracked_request_ids: {}",
+            comma_or_none(report.tracked_request_ids.as_slice())
+        ),
+        format!("feedback_count: {}", report.feedback_count),
+        format!("result_count: {}", report.result_count),
+    ];
+    for entry in &report.entries {
+        lines.push(String::new());
+        lines.push(format!("request_event_id: {}", entry.request_event_id));
+        lines.push(format!(
+            "relay_url: {}",
+            entry.relay_url.as_deref().unwrap_or("unknown")
+        ));
+        lines.push(format!("event_id: {}", entry.event_id));
+        lines.push(format!("event_kind: {}", entry.event_kind));
+        lines.push(format!("status: {}", entry.status));
+        if let Some(amount_msats) = entry.amount_msats {
+            lines.push(format!("amount_msats: {amount_msats}"));
+        }
+        if let Some(bolt11) = entry.bolt11.as_deref() {
+            lines.push(format!("bolt11: {bolt11}"));
+        }
+        if let Some(result_preview) = entry.result_preview.as_deref() {
+            lines.push(format!("result_preview: {result_preview}"));
+        }
+        if let Some(detail) = entry.detail.as_deref() {
+            lines.push(format!("detail: {detail}"));
+        }
+    }
+    lines.join("\n")
+}
+
 fn build_buyer_job_request(
     config: &PylonConfig,
     request: &BuyerJobSubmitRequest,
@@ -1471,6 +1611,72 @@ fn build_buyer_job_request(
         job_request = job_request.with_bid(bid_msats);
     }
     Ok(job_request)
+}
+
+fn tracked_buyer_request_ids(
+    config_path: &Path,
+    request_event_id: Option<&str>,
+) -> Result<Vec<String>> {
+    if let Some(request_event_id) = request_event_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(vec![request_event_id.to_string()]);
+    }
+    let ledger = load_ledger(config_path)?;
+    Ok(ledger
+        .jobs
+        .iter()
+        .filter(|job| job.direction == "buyer")
+        .filter_map(|job| {
+            job.request_event_id
+                .clone()
+                .or_else(|| Some(job.id.clone()))
+        })
+        .collect())
+}
+
+fn classify_buyer_job_event(
+    relay_url: &str,
+    tracked_request_ids: &std::collections::BTreeSet<String>,
+    event: &Event,
+) -> Option<BuyerJobWatchEntry> {
+    if event.kind == nostr::nip90::KIND_JOB_FEEDBACK {
+        let feedback = JobFeedback::from_event(event).ok()?;
+        if !tracked_request_ids.contains(feedback.request_id.as_str()) {
+            return None;
+        }
+        return Some(BuyerJobWatchEntry {
+            request_event_id: feedback.request_id,
+            relay_url: Some(relay_url.to_string()),
+            event_id: event.id.clone(),
+            event_kind: "feedback".to_string(),
+            status: feedback.status.as_str().to_string(),
+            amount_msats: feedback.amount,
+            bolt11: feedback.bolt11,
+            result_preview: (!feedback.content.trim().is_empty())
+                .then(|| preview_text(feedback.content.as_str(), 72)),
+            detail: feedback.status_extra,
+        });
+    }
+    if event.kind == ANNOUNCEMENT_KIND_TEXT_GENERATION + 1000 {
+        let result = JobResult::from_event(event).ok()?;
+        if !tracked_request_ids.contains(result.request_id.as_str()) {
+            return None;
+        }
+        return Some(BuyerJobWatchEntry {
+            request_event_id: result.request_id,
+            relay_url: Some(relay_url.to_string()),
+            event_id: event.id.clone(),
+            event_kind: "result".to_string(),
+            status: "result_received".to_string(),
+            amount_msats: result.amount,
+            bolt11: result.bolt11,
+            result_preview: Some(preview_text(result.content.as_str(), 72)),
+            detail: Some("received retained kind:6050 result".to_string()),
+        });
+    }
+    None
 }
 
 fn build_announcement_report(
@@ -2413,6 +2619,72 @@ fn persist_buyer_job_submission(
                 "submitted buyer request {} to {}",
                 event.id,
                 comma_or_none(relay_urls)
+            ),
+        });
+        Ok(())
+    })?;
+    Ok(())
+}
+
+fn persist_buyer_job_event(config_path: &Path, entry: &BuyerJobWatchEntry) -> Result<()> {
+    mutate_ledger(config_path, |ledger| {
+        let mut job = ledger
+            .jobs
+            .iter()
+            .find(|job| {
+                job.direction == "buyer"
+                    && job
+                        .request_event_id
+                        .as_deref()
+                        .is_some_and(|value| value == entry.request_event_id)
+            })
+            .cloned()
+            .unwrap_or_else(|| {
+                let mut job = PylonLedgerJob::new(
+                    entry.request_event_id.clone(),
+                    "buyer",
+                    ANNOUNCEMENT_KIND_TEXT_GENERATION,
+                    "observed",
+                );
+                job.request_event_id = Some(entry.request_event_id.clone());
+                job
+            });
+        job.relay_url = entry.relay_url.clone().or(job.relay_url);
+        if entry.event_kind == "feedback" {
+            if !job
+                .feedback_event_ids
+                .iter()
+                .any(|id| id == &entry.event_id)
+            {
+                job.feedback_event_ids.push(entry.event_id.clone());
+            }
+            job.status = entry.status.replace('-', "_");
+            job.amount_msats = entry.amount_msats.or(job.amount_msats);
+            job.bolt11 = entry.bolt11.clone().or(job.bolt11.clone());
+            if let Some(preview) = entry.result_preview.as_deref() {
+                job.result_preview = Some(preview.to_string());
+            }
+            job.error_detail = entry.detail.clone();
+        } else if entry.event_kind == "result" {
+            job.status = "result_received".to_string();
+            job.result_event_id = Some(entry.event_id.clone());
+            job.amount_msats = entry.amount_msats.or(job.amount_msats);
+            job.bolt11 = entry.bolt11.clone().or(job.bolt11.clone());
+            job.result_preview = entry.result_preview.clone();
+            job.error_detail = entry.detail.clone();
+        }
+        ledger.upsert_job(job);
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: entry.relay_url.clone(),
+            kind: if entry.event_kind == "result" {
+                "nip90.result_received".to_string()
+            } else {
+                "nip90.feedback_received".to_string()
+            },
+            detail: format!(
+                "{} for buyer request {}",
+                entry.status, entry.request_event_id
             ),
         });
         Ok(())

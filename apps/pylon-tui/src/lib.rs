@@ -173,10 +173,16 @@ enum WorkerEvent {
     ProviderRunFailed {
         error: String,
     },
-    BuyerJobFinished {
-        output: String,
+    BuyerJobSubmitted {
+        report: pylon::BuyerJobSubmitReport,
     },
-    BuyerJobFailed {
+    BuyerJobWatchObserved {
+        entry: pylon::BuyerJobWatchEntry,
+    },
+    BuyerJobWatchFinished {
+        report: pylon::BuyerJobWatchReport,
+    },
+    BuyerJobCommandFailed {
         error: String,
     },
     WalletCommandFinished {
@@ -717,10 +723,27 @@ impl AppShell {
             WorkerEvent::ProviderRunFailed { error } => {
                 self.push_system_message("Provider Error", error);
             }
-            WorkerEvent::BuyerJobFinished { output } => {
-                self.push_system_lines("Buyer Job", text_body_lines(output.as_str()));
+            WorkerEvent::BuyerJobSubmitted { report } => {
+                let request_event_id = report.request_event_id.clone();
+                self.push_system_lines(
+                    "Buyer Job",
+                    text_body_lines(pylon::render_buyer_job_submit_report(&report).as_str()),
+                );
+                self.start_buyer_job_watch(Some(request_event_id), 30);
             }
-            WorkerEvent::BuyerJobFailed { error } => {
+            WorkerEvent::BuyerJobWatchObserved { entry } => {
+                self.push_system_lines(
+                    buyer_job_entry_title(&entry),
+                    buyer_job_entry_lines(&entry),
+                );
+            }
+            WorkerEvent::BuyerJobWatchFinished { report } => {
+                self.push_system_lines(
+                    "Buyer Job Watch",
+                    text_body_lines(pylon::render_buyer_job_watch_report(&report).as_str()),
+                );
+            }
+            WorkerEvent::BuyerJobCommandFailed { error } => {
                 self.push_system_message("Buyer Job Error", error);
             }
             WorkerEvent::WalletCommandFinished { title, output } => {
@@ -1002,53 +1025,112 @@ impl AppShell {
     }
 
     fn handle_job_command(&mut self, args: String) {
-        let Some(remainder) = args.trim().strip_prefix("submit") else {
-            self.push_system_message(
-                "Buyer Job Error",
-                "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt>",
-            );
+        let trimmed = args.trim();
+        if let Some(remainder) = trimmed.strip_prefix("submit") {
+            let request = match parse_tui_buyer_job_submit_request(remainder) {
+                Ok(request) => request,
+                Err(error) => {
+                    self.push_system_message("Buyer Job Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                let error_tx = tx.clone();
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+                let result = runtime.block_on(async move {
+                    pylon::submit_buyer_job(config_path.as_path(), request).await
+                });
+                match result {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobSubmitted { report });
+                    }
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Buyer Job", "Publishing retained NIP-90 buyer request...");
             return;
-        };
-        let request = match parse_tui_buyer_job_submit_request(remainder) {
-            Ok(request) => request,
-            Err(error) => {
-                self.push_system_message("Buyer Job Error", error.to_string());
-                return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("watch") {
+            match parse_tui_buyer_job_watch_request(remainder) {
+                Ok((request_event_id, seconds)) => {
+                    self.start_buyer_job_watch(request_event_id, seconds);
+                }
+                Err(error) => self.push_system_message("Buyer Job Error", error.to_string()),
             }
-        };
+            return;
+        }
+        self.push_system_message(
+            "Buyer Job Error",
+            "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt> | /job watch [<request_event_id>] [--seconds <n>]",
+        );
+    }
+
+    fn start_buyer_job_watch(&mut self, request_event_id: Option<String>, seconds: u64) {
         let config_path = self.config_path.clone();
         let tx = self.worker_tx.clone();
+        let request_event_id_for_thread = request_event_id.clone();
         std::thread::spawn(move || {
             let error_tx = tx.clone();
+            let event_tx = tx.clone();
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
             {
                 Ok(runtime) => runtime,
                 Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::BuyerJobFailed {
+                    let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
                         error: error.to_string(),
                     });
                     return;
                 }
             };
             let result = runtime.block_on(async move {
-                pylon::submit_buyer_job(config_path.as_path(), request).await
+                pylon::watch_buyer_jobs(
+                    config_path.as_path(),
+                    request_event_id_for_thread.as_deref(),
+                    seconds,
+                    |entry| {
+                        let _ = event_tx.send(WorkerEvent::BuyerJobWatchObserved { entry });
+                    },
+                )
+                .await
             });
             match result {
                 Ok(report) => {
-                    let _ = tx.send(WorkerEvent::BuyerJobFinished {
-                        output: pylon::render_buyer_job_submit_report(&report),
-                    });
+                    let _ = tx.send(WorkerEvent::BuyerJobWatchFinished { report });
                 }
                 Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::BuyerJobFailed {
+                    let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
                         error: error.to_string(),
                     });
                 }
             }
         });
-        self.push_system_message("Buyer Job", "Publishing retained NIP-90 buyer request...");
+        self.push_system_message(
+            "Buyer Job Watch",
+            if let Some(request_event_id) = request_event_id.as_deref() {
+                format!("Watching buyer job {request_event_id} for {}s...", seconds)
+            } else {
+                format!("Watching retained buyer jobs for {}s...", seconds)
+            },
+        );
     }
 
     fn handle_wallet_command(&mut self, args: String) {
@@ -1589,6 +1671,32 @@ fn parse_tui_buyer_job_submit_request(args: &str) -> Result<pylon::BuyerJobSubmi
     })
 }
 
+fn parse_tui_buyer_job_watch_request(args: &str) -> Result<(Option<String>, u64)> {
+    let mut remainder = args.trim();
+    let mut request_event_id = None::<String>;
+    let mut seconds = 30u64;
+
+    if !remainder.is_empty() && !remainder.starts_with("--") {
+        let (raw, tail) = take_next_tui_word(remainder);
+        request_event_id = Some(raw.to_string());
+        remainder = tail;
+    }
+
+    while !remainder.is_empty() {
+        if let Some(value) = remainder.strip_prefix("--seconds ") {
+            let (raw, tail) = take_next_tui_word(value);
+            seconds = raw
+                .parse::<u64>()
+                .map_err(|_| anyhow!("invalid buyer watch seconds `{raw}`"))?;
+            remainder = tail;
+            continue;
+        }
+        bail!("unexpected buyer job watch argument `{remainder}`");
+    }
+
+    Ok((request_event_id, seconds.max(1)))
+}
+
 fn take_next_tui_word(value: &str) -> (&str, &str) {
     let trimmed = value.trim_start();
     match trimmed.find(char::is_whitespace) {
@@ -1609,6 +1717,7 @@ Controls:\n\
   /help  show available commands\n\
   /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
   /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] <prompt>  publish a retained NIP-90 buyer request\n\
+  /job watch [<request_event_id>] [--seconds <n>]  stream retained buyer feedback and results into the transcript\n\
   /relay [list|add|remove|refresh]  inspect or update configured relays\n\
   /wallet [status|balance|address|invoice|pay|history]  run retained Spark wallet commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
@@ -1686,6 +1795,34 @@ fn text_body_lines(value: &str) -> Vec<String> {
     } else {
         lines
     }
+}
+
+fn buyer_job_entry_title(entry: &pylon::BuyerJobWatchEntry) -> String {
+    if entry.event_kind == "result" {
+        format!("Buyer Result {}", entry.request_event_id)
+    } else {
+        format!("Buyer Feedback {} {}", entry.request_event_id, entry.status)
+    }
+}
+
+fn buyer_job_entry_lines(entry: &pylon::BuyerJobWatchEntry) -> Vec<String> {
+    let mut lines = vec![
+        format!("relay: {}", entry.relay_url.as_deref().unwrap_or("unknown")),
+        format!("event_id: {}", entry.event_id),
+    ];
+    if let Some(amount_msats) = entry.amount_msats {
+        lines.push(format!("amount_msats: {amount_msats}"));
+    }
+    if let Some(bolt11) = entry.bolt11.as_deref() {
+        lines.push(format!("bolt11: {bolt11}"));
+    }
+    if let Some(result_preview) = entry.result_preview.as_deref() {
+        lines.push(result_preview.to_string());
+    }
+    if let Some(detail) = entry.detail.as_deref() {
+        lines.push(format!("detail: {detail}"));
+    }
+    lines
 }
 
 fn gemma4_status(loaded: Option<&LoadedState>) -> Gemma4Status {
@@ -2234,8 +2371,9 @@ mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
         active_chat_title, estimate_token_count, max_transcript_scroll_y,
-        parse_tui_buyer_job_submit_request, summarize_chat_metrics, transcript_viewport_height,
-        transcript_wrap_width, wrapped_row_count,
+        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
+        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
+        wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -2314,6 +2452,13 @@ mod tests {
                 output_mime: None,
             }
         );
+    }
+
+    #[test]
+    fn tui_job_watch_parser_supports_request_id_and_seconds() {
+        let parsed =
+            parse_tui_buyer_job_watch_request("job-001 --seconds 12").expect("parse watch args");
+        assert_eq!(parsed, (Some("job-001".to_string()), 12));
     }
 
     #[test]
