@@ -35,10 +35,10 @@ pub use ledger::{
     load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
-    AnnouncementAction, AnnouncementReport, ProviderIntakeReport, ProviderRunReport,
-    load_announcement_report, publish_announcement_report, render_announcement_report,
-    render_provider_intake_report, render_provider_run_report, run_provider_requests,
-    scan_provider_requests,
+    AnnouncementAction, AnnouncementReport, BuyerJobSubmitReport, BuyerJobSubmitRequest,
+    ProviderIntakeReport, ProviderRunReport, load_announcement_report, publish_announcement_report,
+    render_announcement_report, render_buyer_job_submit_report, render_provider_intake_report,
+    render_provider_run_report, run_provider_requests, scan_provider_requests, submit_buyer_job,
 };
 pub use wallet_runtime::{
     WalletAddressReport, WalletBalanceSnapshot, WalletHistoryReport, WalletInvoiceReport,
@@ -133,6 +133,10 @@ pub enum Command {
     },
     ProviderRun {
         seconds: u64,
+        json: bool,
+    },
+    JobSubmit {
+        request: BuyerJobSubmitRequest,
         json: bool,
     },
     Wallet {
@@ -775,6 +779,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_provider_run_report(&report)))
         }
+        Command::JobSubmit { request, json } => {
+            let report = submit_buyer_job(cli.config_path.as_path(), request).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_buyer_job_submit_report(&report)))
+        }
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
@@ -839,6 +850,7 @@ Commands:\n\
   announce [show|publish|refresh] [--json]\n\
   provider scan [--seconds <n>] [--json]\n\
   provider run [--seconds <n>] [--json]\n\
+  job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt> [--json]\n\
   wallet status [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
@@ -1022,6 +1034,14 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             Some(other) => bail!("unknown provider command: {other}"),
             None => bail!("missing provider subcommand"),
         },
+        "job" => match args.get(start_index + 1).map(String::as_str) {
+            Some("submit") => {
+                let (request, json) = parse_job_submit_command(args, start_index + 2)?;
+                Ok(Command::JobSubmit { request, json })
+            }
+            Some(other) => bail!("unknown job command: {other}"),
+            None => bail!("missing job subcommand"),
+        },
         "wallet" => Ok(Command::Wallet {
             command: parse_wallet_command(args, start_index)?,
         }),
@@ -1120,6 +1140,96 @@ fn parse_json_only(args: &[String], start_index: usize, command: &str) -> Result
         }
         Some(other) => bail!("unexpected argument for {command}: {other}"),
     }
+}
+
+fn parse_job_submit_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(BuyerJobSubmitRequest, bool)> {
+    let mut prompt_parts = Vec::new();
+    let mut request_json = None::<String>;
+    let mut bid_msats = None::<u64>;
+    let mut model = None::<String>;
+    let mut provider_pubkey = None::<String>;
+    let mut output_mime = None::<String>;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--request-json" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --request-json"))?;
+                request_json = Some(value.clone());
+                index += 1;
+            }
+            "--bid-msats" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --bid-msats"))?;
+                bid_msats = Some(
+                    value
+                        .parse::<u64>()
+                        .with_context(|| format!("invalid buyer bid millisats: {value}"))?,
+                );
+                index += 1;
+            }
+            "--model" => {
+                index += 1;
+                model = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --model"))?
+                        .clone(),
+                );
+                index += 1;
+            }
+            "--provider" => {
+                index += 1;
+                provider_pubkey = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --provider"))?
+                        .clone(),
+                );
+                index += 1;
+            }
+            "--output" => {
+                index += 1;
+                output_mime = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --output"))?
+                        .clone(),
+                );
+                index += 1;
+            }
+            value => {
+                prompt_parts.push(value.to_string());
+                index += 1;
+            }
+        }
+    }
+    let prompt = (!prompt_parts.is_empty()).then(|| prompt_parts.join(" "));
+    if prompt.is_none() && request_json.is_none() {
+        bail!("job submit requires prompt text or --request-json");
+    }
+    if prompt.is_some() && request_json.is_some() {
+        bail!("job submit accepts either prompt text or --request-json, not both");
+    }
+    Ok((
+        BuyerJobSubmitRequest {
+            prompt,
+            request_json,
+            bid_msats,
+            model,
+            provider_pubkey,
+            output_mime,
+        },
+        json,
+    ))
 }
 
 fn parse_provider_scan_flags(
@@ -3196,8 +3306,11 @@ async fn load_receipts_report(config_path: &Path, limit: Option<usize>) -> Resul
     } else {
         Vec::new()
     };
-    let receipts =
-        merge_ledger_receipts(receipts, &load_ledger(config_path).unwrap_or_default(), limit);
+    let receipts = merge_ledger_receipts(
+        receipts,
+        &load_ledger(config_path).unwrap_or_default(),
+        limit,
+    );
     Ok(ReceiptsReport {
         context: report_context(&status),
         receipts,
@@ -3218,7 +3331,11 @@ fn merge_ledger_recent_jobs(
             jobs.push(job);
         }
     }
-    jobs.sort_by(|left, right| right.completed_at_epoch_seconds.cmp(&left.completed_at_epoch_seconds));
+    jobs.sort_by(|left, right| {
+        right
+            .completed_at_epoch_seconds
+            .cmp(&left.completed_at_epoch_seconds)
+    });
     take_limited_rows(jobs, limit)
 }
 
@@ -3228,7 +3345,10 @@ fn merge_ledger_earnings(
     status: &ProviderStatusResponse,
 ) -> Option<ProviderEarningsSummary> {
     if !ledger.jobs.iter().any(|job| job.direction == "provider")
-        && !ledger.settlements.iter().any(|settlement| settlement.direction == "provider")
+        && !ledger
+            .settlements
+            .iter()
+            .any(|settlement| settlement.direction == "provider")
     {
         return base;
     }
@@ -4133,20 +4253,20 @@ fn now_epoch_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AnnouncementAction, Command, GemmaDownloadEvent, LocalGemmaChatBackend,
-        LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, WalletSubcommand,
-        add_configured_relay, apply_config_set, apply_control_command,
-        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
-        ensure_identity, gemma_download_spec, gemma_local_installations, inventory_rows,
-        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
-        load_ledger, load_or_create_config, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect, parse_args,
-        provider_admin_config, publish_announcement_report, refresh_relay_report,
-        remove_configured_relay, render_human_status, render_sandbox_report,
+        AnnouncementAction, BuyerJobSubmitRequest, Command, GemmaDownloadEvent,
+        LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig,
+        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletInvoiceReport,
+        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
+        apply_control_command, build_snapshot_from_availability, default_config,
+        download_gemma_model_from_base_url, ensure_identity, gemma_download_spec,
+        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_ledger, load_or_create_config,
+        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
+        load_status_or_detect, parse_args, provider_admin_config, publish_announcement_report,
+        refresh_relay_report, remove_configured_relay, render_human_status, render_sandbox_report,
         resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
-        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletInvoiceReport,
-        WalletRuntimeSurface,
+        submit_buyer_job,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -4536,6 +4656,59 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_supports_job_submit() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
+                "submit".to_string(),
+                "--bid-msats".to_string(),
+                "21000".to_string(),
+                "--model".to_string(),
+                "gemma4:e4b".to_string(),
+                "--provider".to_string(),
+                "provider-001".to_string(),
+                "hello".to_string(),
+                "buyer".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::JobSubmit {
+                    request: BuyerJobSubmitRequest {
+                        prompt: Some("hello buyer".to_string()),
+                        request_json: None,
+                        bid_msats: Some(21_000),
+                        model: Some("gemma4:e4b".to_string()),
+                        provider_pubkey: Some("provider-001".to_string()),
+                        output_mime: None,
+                    },
+                    json: true,
+                },
+            "job submit should parse buyer submission flags and prompt",
+        )?;
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
+                "submit".to_string(),
+                "--request-json".to_string(),
+                "{\"prompt\":\"json\"}".to_string(),
+            ])?
+            .command
+                == Command::JobSubmit {
+                    request: BuyerJobSubmitRequest {
+                        prompt: None,
+                        request_json: Some("{\"prompt\":\"json\"}".to_string()),
+                        bid_msats: None,
+                        model: None,
+                        provider_pubkey: None,
+                        output_mime: None,
+                    },
+                    json: false,
+                },
+            "job submit should parse structured payload mode",
+        )
+    }
+
+    #[test]
     fn parse_args_supports_wallet_commands() -> Result<(), Box<dyn std::error::Error>> {
         ensure(
             parse_args(vec![
@@ -4793,6 +4966,215 @@ mod tests {
         )?;
 
         ollama_server.await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn submit_buyer_job_publishes_request_and_persists_ledger()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                let value: Value =
+                    serde_json::from_str(payload.as_str()).expect("parse buyer event frame");
+                if value[0] == "EVENT" {
+                    return value[1].clone();
+                }
+            }
+            panic!("relay did not receive a buyer EVENT frame");
+        });
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url.clone()];
+        save_config(config_path.as_path(), &config)?;
+
+        let report = submit_buyer_job(
+            config_path.as_path(),
+            BuyerJobSubmitRequest {
+                prompt: Some("hello buyer".to_string()),
+                request_json: None,
+                bid_msats: Some(21_000),
+                model: Some("gemma4:e4b".to_string()),
+                provider_pubkey: Some("provider-001".to_string()),
+                output_mime: None,
+            },
+        )
+        .await?;
+        ensure(
+            report.status == "submitted" && report.request_event_id == report.job_id,
+            "buyer submit should return a submitted request report",
+        )?;
+
+        let event = relay_server.await?;
+        let tags = event["tags"]
+            .as_array()
+            .ok_or_else(|| std::io::Error::other("buyer request tags missing"))?;
+        let has_tag = |expected: &[&str]| {
+            tags.iter().any(|tag| {
+                tag.as_array().is_some_and(|values| {
+                    values
+                        .iter()
+                        .map(|value| value.as_str().unwrap_or_default())
+                        .collect::<Vec<_>>()
+                        == expected
+                })
+            })
+        };
+        ensure(
+            event["kind"] == 5050,
+            "buyer submit should publish a kind:5050 event",
+        )?;
+        ensure(
+            has_tag(&["i", "hello buyer", "text"]),
+            "buyer submit should publish the text input",
+        )?;
+        ensure(
+            has_tag(&["param", "model", "gemma4:e4b"]),
+            "buyer submit should publish the model param",
+        )?;
+        ensure(
+            has_tag(&["bid", "21000"]),
+            "buyer submit should publish the bid tag",
+        )?;
+        ensure(
+            has_tag(&["p", "provider-001"]),
+            "buyer submit should publish the targeted provider preference",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == report.job_id)
+            .ok_or_else(|| std::io::Error::other("missing buyer job ledger entry"))?;
+        ensure(
+            job.direction == "buyer"
+                && job.status == "submitted"
+                && job.prompt.as_deref() == Some("hello buyer")
+                && job.request_event_id.as_deref() == Some(report.request_event_id.as_str())
+                && job.provider_pubkey.as_deref() == Some("provider-001")
+                && job.bid_msats == Some(21_000),
+            "buyer submit should persist the outbound job locally",
+        )?;
+        ensure(
+            ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "nip90.job_submitted"),
+            "buyer submit should persist relay activity",
+        )?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn submit_buyer_job_accepts_structured_payload_json()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                let value: Value =
+                    serde_json::from_str(payload.as_str()).expect("parse buyer event frame");
+                if value[0] == "EVENT" {
+                    return value[1].clone();
+                }
+            }
+            panic!("relay did not receive a structured buyer EVENT frame");
+        });
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url];
+        save_config(config_path.as_path(), &config)?;
+
+        let request_json = json!({
+            "inputs": [{"type": "text", "data": "json prompt"}],
+            "params": {"temperature": "0.2", "max_tokens": "64"},
+            "model": "gemma4:json",
+            "provider": "provider-json",
+            "bid_msats": 12000,
+            "output": "text/plain"
+        })
+        .to_string();
+        let report = submit_buyer_job(
+            config_path.as_path(),
+            BuyerJobSubmitRequest {
+                prompt: None,
+                request_json: Some(request_json.clone()),
+                bid_msats: None,
+                model: None,
+                provider_pubkey: None,
+                output_mime: None,
+            },
+        )
+        .await?;
+        ensure(
+            report.model.as_deref() == Some("gemma4:json")
+                && report.provider_pubkey.as_deref() == Some("provider-json")
+                && report.output_mime.as_deref() == Some("text/plain"),
+            "structured buyer submit should surface JSON-derived fields",
+        )?;
+
+        let event = relay_server.await?;
+        let tags = event["tags"]
+            .as_array()
+            .ok_or_else(|| std::io::Error::other("structured buyer request tags missing"))?;
+        let has_tag = |expected: &[&str]| {
+            tags.iter().any(|tag| {
+                tag.as_array().is_some_and(|values| {
+                    values
+                        .iter()
+                        .map(|value| value.as_str().unwrap_or_default())
+                        .collect::<Vec<_>>()
+                        == expected
+                })
+            })
+        };
+        ensure(
+            has_tag(&["i", "json prompt", "text"]),
+            "structured buyer submit should publish the input payload",
+        )?;
+        ensure(
+            has_tag(&["param", "temperature", "0.2"])
+                && has_tag(&["param", "max_tokens", "64"])
+                && has_tag(&["param", "model", "gemma4:json"]),
+            "structured buyer submit should publish JSON params",
+        )?;
+        ensure(
+            has_tag(&["output", "text/plain"])
+                && has_tag(&["bid", "12000"])
+                && has_tag(&["p", "provider-json"]),
+            "structured buyer submit should publish output, bid, and provider tags",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == report.job_id)
+            .ok_or_else(|| std::io::Error::other("missing structured buyer job"))?;
+        ensure(
+            job.prompt.as_deref() == Some(request_json.as_str())
+                && job.result_preview.as_deref() == Some("json prompt")
+                && job.model.as_deref() == Some("gemma4:json"),
+            "structured buyer submit should persist the raw JSON payload locally",
+        )?;
         Ok(())
     }
 
@@ -5241,26 +5623,26 @@ mod tests {
             "provider run should publish kind:7000 payment-required feedback",
         )?;
         ensure(
-            published["tags"]
-                .as_array()
-                .is_some_and(|tags| tags.iter().any(|tag| {
+            published["tags"].as_array().is_some_and(|tags| {
+                tags.iter().any(|tag| {
                     tag.as_array().is_some_and(|items| {
                         items.len() >= 2 && items[0] == "status" && items[1] == "payment-required"
                     })
-                })),
+                })
+            }),
             "payment-required feedback should carry the payment-required status tag",
         )?;
         ensure(
-            published["tags"]
-                .as_array()
-                .is_some_and(|tags| tags.iter().any(|tag| {
+            published["tags"].as_array().is_some_and(|tags| {
+                tags.iter().any(|tag| {
                     tag.as_array().is_some_and(|items| {
                         items.len() >= 3
                             && items[0] == "amount"
                             && items[1] == "21000"
                             && items[2] == "lnbc3000n1pyloninvoice"
                     })
-                })),
+                })
+            }),
             "payment-required feedback should carry amount and bolt11 tags",
         )?;
 
@@ -5534,14 +5916,11 @@ mod tests {
 
         let earnings_report = load_earnings_report(config_path.as_path()).await?;
         ensure(
-            earnings_report
-                .earnings
-                .as_ref()
-                .is_some_and(|earnings| {
-                    earnings.lifetime_sats == 21
-                        && earnings.jobs_today == 1
-                        && earnings.last_job_result == "settled"
-                }),
+            earnings_report.earnings.as_ref().is_some_and(|earnings| {
+                earnings.lifetime_sats == 21
+                    && earnings.jobs_today == 1
+                    && earnings.last_job_result == "settled"
+            }),
             "earnings report should project retained provider settlement totals",
         )?;
 

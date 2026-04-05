@@ -5,6 +5,7 @@ pub enum SlashCommandId {
     Download,
     Announce,
     Provider,
+    Job,
     Relay,
     Wallet,
 }
@@ -61,6 +62,12 @@ const COMMANDS: &[SlashCommandSpec] = &[
         name: "provider",
         usage: "/provider [scan|run] [--seconds <n>]",
         summary: "scan or process retained inbound NIP-90 jobs",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Job,
+        name: "job",
+        usage: "/job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] <prompt>",
+        summary: "publish a retained NIP-90 buyer request to the configured relays",
     },
     SlashCommandSpec {
         id: SlashCommandId::Relay,
@@ -124,7 +131,7 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "help", "chat", "download", "announce", "provider", "relay", "wallet"
+                "help", "chat", "download", "announce", "provider", "job", "relay", "wallet"
             ]
         );
     }
@@ -173,7 +180,8 @@ mod tests {
         assert_eq!(registry()[1].id, SlashCommandId::Chat);
         assert_eq!(registry()[3].id, SlashCommandId::Announce);
         assert_eq!(registry()[4].id, SlashCommandId::Provider);
-        assert_eq!(registry()[5].id, SlashCommandId::Relay);
-        assert_eq!(registry()[6].id, SlashCommandId::Wallet);
+        assert_eq!(registry()[5].id, SlashCommandId::Job);
+        assert_eq!(registry()[6].id, SlashCommandId::Relay);
+        assert_eq!(registry()[7].id, SlashCommandId::Wallet);
     }
 }

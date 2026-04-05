@@ -108,6 +108,12 @@ The retained wallet controls now also exist in both places:
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
 
+The first retained buyer controls now also exist in both places:
+- TUI: `/job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt>`
+- headless: `cargo pylon-headless job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt>`
+
+That path publishes a retained `kind:5050` buyer request to the configured relays and persists the outbound request locally in the Pylon ledger. It already supports plain prompt text and structured JSON payload mode. Buyer-side relay feedback, invoice acceptance, result tracking, and replay land on top of the same retained request record.
+
 Initialize a standalone config and identity:
 
 ```bash
@@ -124,6 +130,7 @@ cargo pylon-headless announce
 cargo pylon-headless announce publish
 cargo pylon-headless provider scan --seconds 5
 cargo pylon-headless provider run --seconds 5
+cargo pylon-headless job submit --model gemma4:e4b --bid-msats 21000 "write a haiku about bitcoin"
 ```
 
 Inspect provider truth:

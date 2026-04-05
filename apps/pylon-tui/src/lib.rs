@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use bottom_pane::{BottomPane, ComposerSubmission};
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
@@ -171,6 +171,12 @@ enum WorkerEvent {
         output: String,
     },
     ProviderRunFailed {
+        error: String,
+    },
+    BuyerJobFinished {
+        output: String,
+    },
+    BuyerJobFailed {
         error: String,
     },
     WalletCommandFinished {
@@ -368,6 +374,10 @@ impl AppShell {
                 }
                 SlashCommandId::Provider => {
                     self.handle_provider_command(args);
+                    return;
+                }
+                SlashCommandId::Job => {
+                    self.handle_job_command(args);
                     return;
                 }
                 SlashCommandId::Relay => {
@@ -707,6 +717,12 @@ impl AppShell {
             WorkerEvent::ProviderRunFailed { error } => {
                 self.push_system_message("Provider Error", error);
             }
+            WorkerEvent::BuyerJobFinished { output } => {
+                self.push_system_lines("Buyer Job", text_body_lines(output.as_str()));
+            }
+            WorkerEvent::BuyerJobFailed { error } => {
+                self.push_system_message("Buyer Job Error", error);
+            }
             WorkerEvent::WalletCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
             }
@@ -983,6 +999,56 @@ impl AppShell {
                 format!("Scanning configured relays for {}s...", seconds)
             },
         );
+    }
+
+    fn handle_job_command(&mut self, args: String) {
+        let Some(remainder) = args.trim().strip_prefix("submit") else {
+            self.push_system_message(
+                "Buyer Job Error",
+                "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt>",
+            );
+            return;
+        };
+        let request = match parse_tui_buyer_job_submit_request(remainder) {
+            Ok(request) => request,
+            Err(error) => {
+                self.push_system_message("Buyer Job Error", error.to_string());
+                return;
+            }
+        };
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::BuyerJobFailed {
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                pylon::submit_buyer_job(config_path.as_path(), request).await
+            });
+            match result {
+                Ok(report) => {
+                    let _ = tx.send(WorkerEvent::BuyerJobFinished {
+                        output: pylon::render_buyer_job_submit_report(&report),
+                    });
+                }
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::BuyerJobFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Buyer Job", "Publishing retained NIP-90 buyer request...");
     }
 
     fn handle_wallet_command(&mut self, args: String) {
@@ -1461,6 +1527,76 @@ impl AppShell {
     }
 }
 
+fn parse_tui_buyer_job_submit_request(args: &str) -> Result<pylon::BuyerJobSubmitRequest> {
+    let mut remainder = args.trim();
+    let mut bid_msats = None::<u64>;
+    let mut model = None::<String>;
+    let mut provider_pubkey = None::<String>;
+    let mut output_mime = None::<String>;
+    let mut request_json = None::<String>;
+
+    while remainder.starts_with("--") {
+        if let Some(value) = remainder.strip_prefix("--bid-msats ") {
+            let (raw, tail) = take_next_tui_word(value);
+            bid_msats = Some(
+                raw.parse::<u64>()
+                    .map_err(|_| anyhow!("invalid buyer bid millisats `{raw}`"))?,
+            );
+            remainder = tail;
+            continue;
+        }
+        if let Some(value) = remainder.strip_prefix("--model ") {
+            let (raw, tail) = take_next_tui_word(value);
+            model = Some(raw.to_string());
+            remainder = tail;
+            continue;
+        }
+        if let Some(value) = remainder.strip_prefix("--provider ") {
+            let (raw, tail) = take_next_tui_word(value);
+            provider_pubkey = Some(raw.to_string());
+            remainder = tail;
+            continue;
+        }
+        if let Some(value) = remainder.strip_prefix("--output ") {
+            let (raw, tail) = take_next_tui_word(value);
+            output_mime = Some(raw.to_string());
+            remainder = tail;
+            continue;
+        }
+        if let Some(value) = remainder.strip_prefix("--request-json ") {
+            request_json = Some(value.trim().to_string());
+            remainder = "";
+            break;
+        }
+        break;
+    }
+
+    let prompt = (!remainder.trim().is_empty()).then(|| remainder.trim().to_string());
+    if prompt.is_none() && request_json.is_none() {
+        bail!("job submit requires prompt text or --request-json");
+    }
+    if prompt.is_some() && request_json.is_some() {
+        bail!("job submit accepts either prompt text or --request-json, not both");
+    }
+
+    Ok(pylon::BuyerJobSubmitRequest {
+        prompt,
+        request_json,
+        bid_msats,
+        model,
+        provider_pubkey,
+        output_mime,
+    })
+}
+
+fn take_next_tui_word(value: &str) -> (&str, &str) {
+    let trimmed = value.trim_start();
+    match trimmed.find(char::is_whitespace) {
+        Some(index) => (&trimmed[..index], trimmed[index..].trim_start()),
+        None => (trimmed, ""),
+    }
+}
+
 pub fn usage() -> &'static str {
     "Usage: pylon-tui [--config-path <path>]\n\
 Controls:\n\
@@ -1472,6 +1608,7 @@ Controls:\n\
   [prompt]  stream a reply from local Gemma when weights are loaded\n\
   /help  show available commands\n\
   /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
+  /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] <prompt>  publish a retained NIP-90 buyer request\n\
   /relay [list|add|remove|refresh]  inspect or update configured relays\n\
   /wallet [status|balance|address|invoice|pay|history]  run retained Spark wallet commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
@@ -2096,8 +2233,9 @@ fn estimate_token_count(text: &str) -> usize {
 mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
-        active_chat_title, estimate_token_count, max_transcript_scroll_y, summarize_chat_metrics,
-        transcript_viewport_height, transcript_wrap_width, wrapped_row_count,
+        active_chat_title, estimate_token_count, max_transcript_scroll_y,
+        parse_tui_buyer_job_submit_request, summarize_chat_metrics, transcript_viewport_height,
+        transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -2140,6 +2278,42 @@ mod tests {
         let transcript = transcript_text(&app);
         assert!(transcript.contains("[user] Command /plan"));
         assert!(transcript.contains("Unknown command /plan"));
+    }
+
+    #[test]
+    fn tui_job_submit_parser_supports_flags_and_prompt() {
+        let request = parse_tui_buyer_job_submit_request(
+            "--bid-msats 21000 --model gemma4:e4b --provider provider-001 hello buyer",
+        )
+        .expect("parse buyer prompt request");
+        assert_eq!(
+            request,
+            pylon::BuyerJobSubmitRequest {
+                prompt: Some("hello buyer".to_string()),
+                request_json: None,
+                bid_msats: Some(21_000),
+                model: Some("gemma4:e4b".to_string()),
+                provider_pubkey: Some("provider-001".to_string()),
+                output_mime: None,
+            }
+        );
+    }
+
+    #[test]
+    fn tui_job_submit_parser_supports_structured_json_mode() {
+        let request = parse_tui_buyer_job_submit_request("--request-json {\"prompt\":\"json\"}")
+            .expect("parse buyer json request");
+        assert_eq!(
+            request,
+            pylon::BuyerJobSubmitRequest {
+                prompt: None,
+                request_json: Some("{\"prompt\":\"json\"}".to_string()),
+                bid_msats: None,
+                model: None,
+                provider_pubkey: None,
+                output_mime: None,
+            }
+        );
     }
 
     #[test]

@@ -1,16 +1,18 @@
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use nostr::nip89::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO, PricingInfo};
 use nostr::nip90::{
-    JobFeedback, JobRequest, JobResult, JobStatus, create_job_feedback_event,
-    create_job_result_event,
+    InputType, JobFeedback, JobInput, JobRequest, JobResult, JobStatus, create_job_feedback_event,
+    create_job_request_event, create_job_result_event,
 };
 use nostr::{Event, EventTemplate, finalize_event};
 use nostr_client::{PoolConfig, RelayConfig, RelayMessage, RelayPool};
 use openagents_provider_substrate::ProviderAdvertisedProduct;
+use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 
@@ -131,6 +133,60 @@ struct ProviderRequestCollection {
 #[derive(Clone, Debug)]
 struct ProviderPaymentRequirement {
     bolt11: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BuyerJobSubmitRequest {
+    pub prompt: Option<String>,
+    pub request_json: Option<String>,
+    pub bid_msats: Option<u64>,
+    pub model: Option<String>,
+    pub provider_pubkey: Option<String>,
+    pub output_mime: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobSubmitReport {
+    pub job_id: String,
+    pub request_event_id: String,
+    pub customer_pubkey: String,
+    pub relay_urls: Vec<String>,
+    pub provider_pubkey: Option<String>,
+    pub model: Option<String>,
+    pub bid_msats: Option<u64>,
+    pub output_mime: Option<String>,
+    pub prompt_preview: Option<String>,
+    pub status: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+struct StructuredBuyerJobPayload {
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    inputs: Vec<StructuredBuyerJobInput>,
+    #[serde(default)]
+    params: BTreeMap<String, String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    bid_msats: Option<u64>,
+    #[serde(default)]
+    output: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+struct StructuredBuyerJobInput {
+    #[serde(alias = "type")]
+    input_type: String,
+    data: String,
+    #[serde(default)]
+    relay: Option<String>,
+    #[serde(default)]
+    marker: Option<String>,
 }
 
 #[cfg(test)]
@@ -400,7 +456,9 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 amount_msats: None,
                 bolt11: None,
                 payment_id: existing_job.as_ref().and_then(|job| job.payment_id.clone()),
-                settlement_id: existing_job.as_ref().and_then(|job| job.settlement_id.clone()),
+                settlement_id: existing_job
+                    .as_ref()
+                    .and_then(|job| job.settlement_id.clone()),
                 result_preview: None,
                 error_detail: Some("job already handled locally".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -701,73 +759,29 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     continue;
                 }
             } else {
-            if observed
-                .entry
-                .bid_msats
-                .is_some_and(|bid_msats| bid_msats < price_msats)
-            {
-                dropped_count += 1;
-                persist_provider_run_state(
-                    config_path,
-                    collected.provider_pubkey.as_str(),
-                    &observed.entry,
-                    "rejected_policy",
-                    Some("bid_below_price_floor"),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                )?;
-                report_entries.push(ProviderRunEntry {
-                    request_event_id: observed.entry.request_event_id.clone(),
-                    requester_pubkey: observed.entry.requester_pubkey.clone(),
-                    relay_url: observed.entry.relay_url.clone(),
-                    status: "dropped".to_string(),
-                    prompt_preview: Some(preview_text(prompt.as_str(), 72)),
-                    model: Some(target.model.clone()),
-                    bid_msats: observed.entry.bid_msats,
-                    amount_msats: Some(price_msats),
-                    bolt11: None,
-                    payment_id: None,
-                    settlement_id: None,
-                    result_preview: None,
-                    error_detail: Some("bid_below_price_floor".to_string()),
-                    feedback_event_ids: Vec::new(),
-                    result_event_id: None,
-                });
-                continue;
-            }
-
-            accepted_count += 1;
-            let payment_requirement = match create_provider_payment_requirement(
-                config_path,
-                &observed.entry,
-                price_msats,
-            )
-            .await
-            {
-                Ok(requirement) => requirement,
-                Err(error) => {
-                    failed_count += 1;
-                    let error_string = error.to_string();
+                if observed
+                    .entry
+                    .bid_msats
+                    .is_some_and(|bid_msats| bid_msats < price_msats)
+                {
+                    dropped_count += 1;
                     persist_provider_run_state(
                         config_path,
                         collected.provider_pubkey.as_str(),
                         &observed.entry,
-                        "invoice_failed",
-                        Some(error_string.as_str()),
+                        "rejected_policy",
+                        Some("bid_below_price_floor"),
                         None,
                         None,
                         None,
-                        Some(price_msats),
+                        None,
                         None,
                     )?;
                     report_entries.push(ProviderRunEntry {
                         request_event_id: observed.entry.request_event_id.clone(),
                         requester_pubkey: observed.entry.requester_pubkey.clone(),
                         relay_url: observed.entry.relay_url.clone(),
-                        status: "failed".to_string(),
+                        status: "dropped".to_string(),
                         prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                         model: Some(target.model.clone()),
                         bid_msats: observed.entry.bid_msats,
@@ -776,97 +790,141 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                         payment_id: None,
                         settlement_id: None,
                         result_preview: None,
-                        error_detail: Some(error_string),
+                        error_detail: Some("bid_below_price_floor".to_string()),
                         feedback_event_ids: Vec::new(),
                         result_event_id: None,
                     });
                     continue;
                 }
-            };
-            let pool = match publish_pool.as_ref() {
-                Some(pool) => pool,
-                None => {
-                    publish_pool = Some(build_relay_pool(&config, &identity).await?);
-                    publish_pool.as_ref().expect("publish pool should exist")
-                }
-            };
-            let payment_event = match publish_payment_required_feedback(
-                pool,
-                &signer_key,
-                &observed.event,
-                observed.entry.relay_url.as_deref(),
-                price_msats,
-                payment_requirement.bolt11.as_str(),
-            )
-            .await
-            {
-                Ok(event) => event,
-                Err(error) => {
-                    failed_count += 1;
-                    let error_string = error.to_string();
-                    persist_provider_run_state(
-                        config_path,
-                        collected.provider_pubkey.as_str(),
-                        &observed.entry,
-                        "publish_failed",
-                        Some(error_string.as_str()),
-                        None,
-                        None,
-                        None,
-                        Some(price_msats),
-                        Some(payment_requirement.bolt11.as_str()),
-                    )?;
-                    report_entries.push(ProviderRunEntry {
-                        request_event_id: observed.entry.request_event_id.clone(),
-                        requester_pubkey: observed.entry.requester_pubkey.clone(),
-                        relay_url: observed.entry.relay_url.clone(),
-                        status: "failed".to_string(),
-                        prompt_preview: Some(preview_text(prompt.as_str(), 72)),
-                        model: Some(target.model.clone()),
-                        bid_msats: observed.entry.bid_msats,
-                        amount_msats: Some(price_msats),
-                        bolt11: Some(payment_requirement.bolt11.clone()),
-                        payment_id: None,
-                        settlement_id: None,
-                        result_preview: None,
-                        error_detail: Some(error_string),
-                        feedback_event_ids: Vec::new(),
-                        result_event_id: None,
-                    });
-                    continue;
-                }
-            };
-            payment_required_count += 1;
-            persist_provider_run_state(
-                config_path,
-                collected.provider_pubkey.as_str(),
-                &observed.entry,
-                "payment_required",
-                None,
-                None,
-                Some(payment_event.id.as_str()),
-                None,
-                Some(price_msats),
-                Some(payment_requirement.bolt11.as_str()),
-            )?;
-            report_entries.push(ProviderRunEntry {
-                request_event_id: observed.entry.request_event_id.clone(),
-                requester_pubkey: observed.entry.requester_pubkey.clone(),
-                relay_url: observed.entry.relay_url.clone(),
-                status: "payment_required".to_string(),
-                prompt_preview: Some(preview_text(prompt.as_str(), 72)),
-                model: Some(target.model.clone()),
-                bid_msats: observed.entry.bid_msats,
-                amount_msats: Some(price_msats),
-                bolt11: Some(payment_requirement.bolt11),
-                payment_id: None,
-                settlement_id: None,
-                result_preview: None,
-                error_detail: None,
-                feedback_event_ids: vec![payment_event.id],
-                result_event_id: None,
-            });
-            continue;
+
+                accepted_count += 1;
+                let payment_requirement = match create_provider_payment_requirement(
+                    config_path,
+                    &observed.entry,
+                    price_msats,
+                )
+                .await
+                {
+                    Ok(requirement) => requirement,
+                    Err(error) => {
+                        failed_count += 1;
+                        let error_string = error.to_string();
+                        persist_provider_run_state(
+                            config_path,
+                            collected.provider_pubkey.as_str(),
+                            &observed.entry,
+                            "invoice_failed",
+                            Some(error_string.as_str()),
+                            None,
+                            None,
+                            None,
+                            Some(price_msats),
+                            None,
+                        )?;
+                        report_entries.push(ProviderRunEntry {
+                            request_event_id: observed.entry.request_event_id.clone(),
+                            requester_pubkey: observed.entry.requester_pubkey.clone(),
+                            relay_url: observed.entry.relay_url.clone(),
+                            status: "failed".to_string(),
+                            prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                            model: Some(target.model.clone()),
+                            bid_msats: observed.entry.bid_msats,
+                            amount_msats: Some(price_msats),
+                            bolt11: None,
+                            payment_id: None,
+                            settlement_id: None,
+                            result_preview: None,
+                            error_detail: Some(error_string),
+                            feedback_event_ids: Vec::new(),
+                            result_event_id: None,
+                        });
+                        continue;
+                    }
+                };
+                let pool = match publish_pool.as_ref() {
+                    Some(pool) => pool,
+                    None => {
+                        publish_pool = Some(build_relay_pool(&config, &identity).await?);
+                        publish_pool.as_ref().expect("publish pool should exist")
+                    }
+                };
+                let payment_event = match publish_payment_required_feedback(
+                    pool,
+                    &signer_key,
+                    &observed.event,
+                    observed.entry.relay_url.as_deref(),
+                    price_msats,
+                    payment_requirement.bolt11.as_str(),
+                )
+                .await
+                {
+                    Ok(event) => event,
+                    Err(error) => {
+                        failed_count += 1;
+                        let error_string = error.to_string();
+                        persist_provider_run_state(
+                            config_path,
+                            collected.provider_pubkey.as_str(),
+                            &observed.entry,
+                            "publish_failed",
+                            Some(error_string.as_str()),
+                            None,
+                            None,
+                            None,
+                            Some(price_msats),
+                            Some(payment_requirement.bolt11.as_str()),
+                        )?;
+                        report_entries.push(ProviderRunEntry {
+                            request_event_id: observed.entry.request_event_id.clone(),
+                            requester_pubkey: observed.entry.requester_pubkey.clone(),
+                            relay_url: observed.entry.relay_url.clone(),
+                            status: "failed".to_string(),
+                            prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                            model: Some(target.model.clone()),
+                            bid_msats: observed.entry.bid_msats,
+                            amount_msats: Some(price_msats),
+                            bolt11: Some(payment_requirement.bolt11.clone()),
+                            payment_id: None,
+                            settlement_id: None,
+                            result_preview: None,
+                            error_detail: Some(error_string),
+                            feedback_event_ids: Vec::new(),
+                            result_event_id: None,
+                        });
+                        continue;
+                    }
+                };
+                payment_required_count += 1;
+                persist_provider_run_state(
+                    config_path,
+                    collected.provider_pubkey.as_str(),
+                    &observed.entry,
+                    "payment_required",
+                    None,
+                    None,
+                    Some(payment_event.id.as_str()),
+                    None,
+                    Some(price_msats),
+                    Some(payment_requirement.bolt11.as_str()),
+                )?;
+                report_entries.push(ProviderRunEntry {
+                    request_event_id: observed.entry.request_event_id.clone(),
+                    requester_pubkey: observed.entry.requester_pubkey.clone(),
+                    relay_url: observed.entry.relay_url.clone(),
+                    status: "payment_required".to_string(),
+                    prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                    model: Some(target.model.clone()),
+                    bid_msats: observed.entry.bid_msats,
+                    amount_msats: Some(price_msats),
+                    bolt11: Some(payment_requirement.bolt11),
+                    payment_id: None,
+                    settlement_id: None,
+                    result_preview: None,
+                    error_detail: None,
+                    feedback_event_ids: vec![payment_event.id],
+                    result_event_id: None,
+                });
+                continue;
             }
         }
 
@@ -925,7 +983,9 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
                     bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
-                    payment_id: settled_payment.as_ref().map(|payment| payment.payment_id.clone()),
+                    payment_id: settled_payment
+                        .as_ref()
+                        .map(|payment| payment.payment_id.clone()),
                     settlement_id: settlement_id.clone(),
                     result_preview: None,
                     error_detail: Some(error_string),
@@ -1005,7 +1065,9 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                             prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                             model: Some(target.model.clone()),
                             bid_msats: observed.entry.bid_msats,
-                            amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
+                            amount_msats: settled_payment
+                                .as_ref()
+                                .map(|_| price_msats.unwrap_or(0)),
                             bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
                             payment_id: settled_payment
                                 .as_ref()
@@ -1069,7 +1131,9 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
                     bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
-                    payment_id: settled_payment.as_ref().map(|payment| payment.payment_id.clone()),
+                    payment_id: settled_payment
+                        .as_ref()
+                        .map(|payment| payment.payment_id.clone()),
                     settlement_id: settlement_id.clone(),
                     result_preview: Some(result_preview),
                     error_detail: None,
@@ -1111,7 +1175,9 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
                     bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
-                    payment_id: settled_payment.as_ref().map(|payment| payment.payment_id.clone()),
+                    payment_id: settled_payment
+                        .as_ref()
+                        .map(|payment| payment.payment_id.clone()),
                     settlement_id: settlement_id.clone(),
                     result_preview: None,
                     error_detail: Some(error_string.clone()),
@@ -1211,6 +1277,200 @@ pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
         }
     }
     lines.join("\n")
+}
+
+pub async fn submit_buyer_job(
+    config_path: &Path,
+    request: BuyerJobSubmitRequest,
+) -> Result<BuyerJobSubmitReport> {
+    let config = crate::ensure_local_setup(config_path)?;
+    if config.relay_urls.is_empty() {
+        bail!("no relays are configured for buyer job submission");
+    }
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let signer_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
+    let job_request = build_buyer_job_request(&config, &request)?;
+    let prompt_preview =
+        request_prompt(&job_request).map(|prompt| preview_text(prompt.as_str(), 72));
+    let model = job_request
+        .params
+        .iter()
+        .find(|param| param.key == "model")
+        .map(|param| param.value.clone());
+    let provider_pubkey = job_request.service_providers.first().cloned();
+    let output_mime = job_request.output.clone();
+    let pool = build_relay_pool(&config, &identity).await?;
+    let event = publish_signed_event(
+        &pool,
+        &signer_key,
+        create_job_request_event(&job_request),
+        "buyer job request",
+    )
+    .await?;
+    persist_buyer_job_submission(
+        config_path,
+        identity.public_key_hex.as_str(),
+        config.relay_urls.as_slice(),
+        &request,
+        &event,
+        prompt_preview.as_deref(),
+        model.as_deref(),
+        provider_pubkey.as_deref(),
+        job_request.bid,
+    )?;
+    Ok(BuyerJobSubmitReport {
+        job_id: event.id.clone(),
+        request_event_id: event.id,
+        customer_pubkey: identity.public_key_hex,
+        relay_urls: config.relay_urls.clone(),
+        provider_pubkey,
+        model,
+        bid_msats: job_request.bid,
+        output_mime,
+        prompt_preview,
+        status: "submitted".to_string(),
+        detail: Some("published retained kind:5050 request to configured relays".to_string()),
+    })
+}
+
+pub fn render_buyer_job_submit_report(report: &BuyerJobSubmitReport) -> String {
+    let mut lines = vec![
+        format!("job_id: {}", report.job_id),
+        format!("request_event_id: {}", report.request_event_id),
+        format!("customer_pubkey: {}", report.customer_pubkey),
+        format!("status: {}", report.status),
+        format!("relays: {}", comma_or_none(report.relay_urls.as_slice())),
+        format!(
+            "provider_pubkey: {}",
+            report.provider_pubkey.as_deref().unwrap_or("none")
+        ),
+        format!("model: {}", report.model.as_deref().unwrap_or("none")),
+        format!(
+            "bid_msats: {}",
+            report
+                .bid_msats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ),
+        format!(
+            "output: {}",
+            report.output_mime.as_deref().unwrap_or("none")
+        ),
+    ];
+    if let Some(prompt_preview) = report.prompt_preview.as_deref() {
+        lines.push(format!("prompt_preview: {prompt_preview}"));
+    }
+    if let Some(detail) = report.detail.as_deref() {
+        lines.push(format!("detail: {detail}"));
+    }
+    lines.join("\n")
+}
+
+fn build_buyer_job_request(
+    config: &PylonConfig,
+    request: &BuyerJobSubmitRequest,
+) -> Result<JobRequest> {
+    let structured = match request.request_json.as_deref() {
+        Some(raw) => Some(
+            serde_json::from_str::<StructuredBuyerJobPayload>(raw)
+                .context("failed to parse buyer job structured payload")?,
+        ),
+        None => None,
+    };
+    if request.prompt.is_some() && structured.is_some() {
+        bail!("buyer job submit accepts either prompt text or --request-json, not both");
+    }
+
+    let mut job_request = JobRequest::new(ANNOUNCEMENT_KIND_TEXT_GENERATION)
+        .context("failed to build retained kind:5050 request")?;
+    for relay_url in &config.relay_urls {
+        job_request = job_request.add_relay(relay_url.clone());
+    }
+
+    if let Some(structured) = structured.as_ref() {
+        if let Some(prompt) = structured
+            .prompt
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            job_request = job_request.add_input(JobInput::text(prompt.to_string()));
+        }
+        for input in &structured.inputs {
+            let input_type = InputType::from_str(input.input_type.as_str()).with_context(|| {
+                format!("unsupported buyer job input type `{}`", input.input_type)
+            })?;
+            job_request = job_request.add_input(JobInput {
+                data: input.data.clone(),
+                input_type,
+                relay: input.relay.clone(),
+                marker: input.marker.clone(),
+            });
+        }
+        for (key, value) in &structured.params {
+            job_request = job_request.add_param(key.clone(), value.clone());
+        }
+    }
+
+    if let Some(prompt) = request
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        job_request = job_request.add_input(JobInput::text(prompt.to_string()));
+    }
+
+    if job_request.inputs.is_empty() {
+        bail!("buyer job submit requires prompt text or structured inputs");
+    }
+
+    if let Some(output) = request
+        .output_mime
+        .as_deref()
+        .or_else(|| {
+            structured
+                .as_ref()
+                .and_then(|payload| payload.output.as_deref())
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        job_request = job_request.with_output(output.to_string());
+    }
+    if let Some(model) = request
+        .model
+        .as_deref()
+        .or_else(|| {
+            structured
+                .as_ref()
+                .and_then(|payload| payload.model.as_deref())
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        job_request = job_request.add_param("model", model.to_string());
+    }
+    if let Some(provider_pubkey) = request
+        .provider_pubkey
+        .as_deref()
+        .or_else(|| {
+            structured
+                .as_ref()
+                .and_then(|payload| payload.provider.as_deref())
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        job_request = job_request.add_service_provider(provider_pubkey.to_string());
+    }
+    if let Some(bid_msats) = request
+        .bid_msats
+        .or_else(|| structured.as_ref().and_then(|payload| payload.bid_msats))
+    {
+        job_request = job_request.with_bid(bid_msats);
+    }
+    Ok(job_request)
 }
 
 fn build_announcement_report(
@@ -1866,7 +2126,9 @@ fn record_provider_settlement_outcome(
     Ok(settlement_id)
 }
 
-async fn load_provider_wallet_payments(config_path: &Path) -> Result<Vec<PylonWalletPaymentRecord>> {
+async fn load_provider_wallet_payments(
+    config_path: &Path,
+) -> Result<Vec<PylonWalletPaymentRecord>> {
     #[cfg(test)]
     {
         if let Some(slot) = TEST_WALLET_PAYMENTS_HOOK.get() {
@@ -2109,6 +2371,55 @@ fn persist_provider_intake(config_path: &Path, report: &ProviderIntakeReport) ->
     Ok(())
 }
 
+fn persist_buyer_job_submission(
+    config_path: &Path,
+    customer_pubkey: &str,
+    relay_urls: &[String],
+    request: &BuyerJobSubmitRequest,
+    event: &Event,
+    prompt_preview: Option<&str>,
+    model: Option<&str>,
+    provider_pubkey: Option<&str>,
+    bid_msats: Option<u64>,
+) -> Result<()> {
+    mutate_ledger(config_path, |ledger| {
+        let mut job = PylonLedgerJob::new(
+            event.id.clone(),
+            "buyer",
+            ANNOUNCEMENT_KIND_TEXT_GENERATION,
+            "submitted",
+        );
+        job.request_event_id = Some(event.id.clone());
+        job.customer_pubkey = Some(customer_pubkey.to_string());
+        job.provider_pubkey = provider_pubkey.map(ToString::to_string);
+        job.relay_url = relay_urls.first().cloned();
+        job.prompt = Some(
+            request
+                .prompt
+                .clone()
+                .or_else(|| request.request_json.clone())
+                .unwrap_or_default(),
+        );
+        job.model = model.map(ToString::to_string);
+        job.bid_msats = bid_msats;
+        job.result_preview = prompt_preview.map(ToString::to_string);
+        job.error_detail = None;
+        ledger.upsert_job(job);
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: None,
+            kind: "nip90.job_submitted".to_string(),
+            detail: format!(
+                "submitted buyer request {} to {}",
+                event.id,
+                comma_or_none(relay_urls)
+            ),
+        });
+        Ok(())
+    })?;
+    Ok(())
+}
+
 fn decode_private_key_hex(value: &str) -> Result<[u8; 32]> {
     let bytes = hex::decode(value).with_context(|| "invalid pylon private key hex")?;
     let bytes: [u8; 32] = bytes
@@ -2142,12 +2453,12 @@ async fn create_provider_invoice_report(
     #[cfg(test)]
     {
         if let Some(slot) = TEST_WALLET_INVOICE_HOOK.get() {
-            if let Some(hook) = slot
-                .lock()
-                .expect("test wallet invoice hook lock")
-                .as_ref()
-            {
-                return hook(msats_to_sats_rounded_up(amount_msats), description, expiry_seconds);
+            if let Some(hook) = slot.lock().expect("test wallet invoice hook lock").as_ref() {
+                return hook(
+                    msats_to_sats_rounded_up(amount_msats),
+                    description,
+                    expiry_seconds,
+                );
             }
         }
     }
