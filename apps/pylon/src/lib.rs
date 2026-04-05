@@ -528,6 +528,12 @@ fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
     Ok(config)
 }
 
+pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
+    let config = load_or_create_config(config_path)?;
+    let _ = ensure_identity(config.identity_path.as_path())?;
+    Ok(config)
+}
+
 fn load_config(path: &Path) -> Result<PylonConfig> {
     let payload = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read pylon config {}", path.display()))?;
