@@ -72,7 +72,7 @@ The first cut is intentionally small. It renders one full-screen status view wit
 - live CPU and memory state
 - a basic GPU summary when the host can report one
 
-The shell is read-only. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell is still read-only today, but `Pylon` now also has a local Gemma chat-stream adapter behind the TUI work so the next shell step can send prompts to already-loaded local Gemma weights without adding a second runtime path. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 Initialize a standalone config and identity:
 

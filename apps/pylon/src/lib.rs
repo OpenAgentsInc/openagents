@@ -172,6 +172,34 @@ struct SandboxReport {
     profiles: Vec<ProviderSandboxProfile>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalGemmaChatBackend {
+    Ollama,
+    OpenAiCompat,
+}
+
+impl LocalGemmaChatBackend {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ollama => "ollama",
+            Self::OpenAiCompat => "openai_compat",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalGemmaChatTarget {
+    pub backend: LocalGemmaChatBackend,
+    pub model: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LocalGemmaChatEvent {
+    Started { target: LocalGemmaChatTarget },
+    Delta(String),
+    Finished { target: LocalGemmaChatTarget },
+}
+
 pub fn parse_args(args: Vec<String>) -> Result<Cli> {
     if args.is_empty() {
         return Err(anyhow!("missing command"));
@@ -1315,6 +1343,315 @@ pub async fn load_config_and_status(
     Ok((config, status))
 }
 
+pub async fn resolve_local_gemma_chat_target(config_path: &Path) -> Result<LocalGemmaChatTarget> {
+    ensure_local_setup(config_path)?;
+    let (config, status) = load_config_and_status(config_path).await?;
+    resolve_local_gemma_chat_target_from_status(&config, &status)
+}
+
+pub async fn run_local_gemma_chat_stream<F>(
+    config_path: &Path,
+    prompt: &str,
+    mut emit: F,
+) -> Result<LocalGemmaChatTarget>
+where
+    F: FnMut(LocalGemmaChatEvent),
+{
+    let trimmed_prompt = prompt.trim();
+    if trimmed_prompt.is_empty() {
+        bail!("chat prompt is empty");
+    }
+
+    ensure_local_setup(config_path)?;
+    let (config, status) = load_config_and_status(config_path).await?;
+    let target = resolve_local_gemma_chat_target_from_status(&config, &status)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .context("failed to build pylon chat client")?;
+
+    emit(LocalGemmaChatEvent::Started {
+        target: target.clone(),
+    });
+    match target.backend {
+        LocalGemmaChatBackend::Ollama => {
+            stream_ollama_chat(&client, &config, &target, trimmed_prompt, &mut emit).await?;
+        }
+        LocalGemmaChatBackend::OpenAiCompat => {
+            stream_openai_compat_chat(&client, &config, &target, trimmed_prompt, &mut emit).await?;
+        }
+    }
+    emit(LocalGemmaChatEvent::Finished {
+        target: target.clone(),
+    });
+    Ok(target)
+}
+
+fn resolve_local_gemma_chat_target_from_status(
+    config: &PylonConfig,
+    status: &ProviderStatusResponse,
+) -> Result<LocalGemmaChatTarget> {
+    let Some(snapshot) = status.snapshot.as_ref() else {
+        bail!("local Gemma weights are not loaded");
+    };
+
+    if let Some(model) = gemma_ready_model(&snapshot.availability.gpt_oss) {
+        return Ok(LocalGemmaChatTarget {
+            backend: LocalGemmaChatBackend::Ollama,
+            model,
+        });
+    }
+
+    if config.apple_fm_base_url.is_some() {
+        if let Some(model) = gemma_ready_model(&snapshot.availability.apple_foundation_models) {
+            return Ok(LocalGemmaChatTarget {
+                backend: LocalGemmaChatBackend::OpenAiCompat,
+                model,
+            });
+        }
+    }
+
+    bail!("local Gemma weights are not loaded");
+}
+
+fn gemma_ready_model(health: &ProviderBackendHealth) -> Option<String> {
+    if let Some(model) = health.ready_model.as_deref() {
+        if is_gemma_model(model) {
+            return Some(model.to_string());
+        }
+    }
+    health
+        .available_models
+        .iter()
+        .find(|model| is_gemma_model(model.as_str()))
+        .cloned()
+}
+
+fn is_gemma_model(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized.contains("gemma")
+}
+
+async fn stream_ollama_chat<F>(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    target: &LocalGemmaChatTarget,
+    prompt: &str,
+    emit: &mut F,
+) -> Result<()>
+where
+    F: FnMut(LocalGemmaChatEvent),
+{
+    let url = format!("{}/api/chat", config.ollama_base_url.trim_end_matches('/'));
+    let payload = json!({
+        "model": target.model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "stream": true,
+    });
+    let mut response = client
+        .post(url)
+        .json(&payload)
+        .send()
+        .await
+        .context("failed to send local Gemma chat request")?;
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        bail!(
+            "local Gemma chat failed: {}",
+            http_error_message(body.as_str())
+        );
+    }
+
+    let mut pending = String::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .context("failed reading local Gemma chat stream")?
+    {
+        pending.push_str(String::from_utf8_lossy(&chunk).as_ref());
+        while let Some(line_end) = pending.find('\n') {
+            let line = pending[..line_end].trim().to_string();
+            pending.drain(..=line_end);
+            if line.is_empty() {
+                continue;
+            }
+            if let Some(delta) = decode_ollama_chat_delta(line.as_str())? {
+                emit(LocalGemmaChatEvent::Delta(delta));
+            }
+        }
+    }
+
+    let trailing = pending.trim();
+    if !trailing.is_empty() {
+        if let Some(delta) = decode_ollama_chat_delta(trailing)? {
+            emit(LocalGemmaChatEvent::Delta(delta));
+        }
+    }
+
+    Ok(())
+}
+
+async fn stream_openai_compat_chat<F>(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    target: &LocalGemmaChatTarget,
+    prompt: &str,
+    emit: &mut F,
+) -> Result<()>
+where
+    F: FnMut(LocalGemmaChatEvent),
+{
+    let Some(base_url) = config.apple_fm_base_url.as_deref() else {
+        bail!("local Gemma weights are not loaded");
+    };
+    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+    let payload = json!({
+        "model": target.model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "stream": true,
+    });
+    let mut response = client
+        .post(url)
+        .header(reqwest::header::ACCEPT, "text/event-stream")
+        .json(&payload)
+        .send()
+        .await
+        .context("failed to send local Gemma chat request")?;
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        bail!(
+            "local Gemma chat failed: {}",
+            http_error_message(body.as_str())
+        );
+    }
+
+    let mut pending = String::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .context("failed reading local Gemma chat stream")?
+    {
+        pending.push_str(String::from_utf8_lossy(&chunk).as_ref());
+        while let Some(event) = take_sse_event(&mut pending) {
+            match decode_openai_sse_event(event.as_str())? {
+                OpenAiSseEvent::Delta(delta) => emit(LocalGemmaChatEvent::Delta(delta)),
+                OpenAiSseEvent::Done => return Ok(()),
+                OpenAiSseEvent::Ignored => {}
+            }
+        }
+    }
+
+    if !pending.trim().is_empty() {
+        match decode_openai_sse_event(pending.trim())? {
+            OpenAiSseEvent::Delta(delta) => emit(LocalGemmaChatEvent::Delta(delta)),
+            OpenAiSseEvent::Done | OpenAiSseEvent::Ignored => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn decode_ollama_chat_delta(line: &str) -> Result<Option<String>> {
+    let payload = serde_json::from_str::<Value>(line)
+        .with_context(|| format!("invalid local Gemma stream chunk: {line}"))?;
+    if payload.get("done").and_then(Value::as_bool) == Some(true) {
+        return Ok(None);
+    }
+    Ok(payload
+        .get("message")
+        .and_then(|message| message.get("content"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum OpenAiSseEvent {
+    Delta(String),
+    Done,
+    Ignored,
+}
+
+fn decode_openai_sse_event(event: &str) -> Result<OpenAiSseEvent> {
+    let mut payload_lines = Vec::new();
+    for line in event.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with(':') || trimmed.starts_with("event:") {
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("data:") {
+            payload_lines.push(value.trim().to_string());
+        }
+    }
+
+    if payload_lines.is_empty() {
+        return Ok(OpenAiSseEvent::Ignored);
+    }
+
+    let payload = payload_lines.join("\n");
+    if payload == "[DONE]" {
+        return Ok(OpenAiSseEvent::Done);
+    }
+
+    let value = serde_json::from_str::<Value>(payload.as_str())
+        .with_context(|| format!("invalid local Gemma SSE chunk: {payload}"))?;
+    let delta = value
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| {
+            choice
+                .get("delta")
+                .and_then(|delta| delta.get("content"))
+                .or_else(|| {
+                    choice
+                        .get("message")
+                        .and_then(|message| message.get("content"))
+                })
+        })
+        .and_then(Value::as_str)
+        .filter(|content| !content.is_empty())
+        .map(ToString::to_string);
+    Ok(delta.map_or(OpenAiSseEvent::Ignored, OpenAiSseEvent::Delta))
+}
+
+fn take_sse_event(buffer: &mut String) -> Option<String> {
+    let delimiter = if let Some(index) = buffer.find("\r\n\r\n") {
+        Some((index, 4))
+    } else {
+        buffer.find("\n\n").map(|index| (index, 2))
+    }?;
+    let event = buffer[..delimiter.0].to_string();
+    buffer.drain(..delimiter.0 + delimiter.1);
+    Some(event)
+}
+
+fn http_error_message(body: &str) -> String {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return "request failed".to_string();
+    }
+    serde_json::from_str::<Value>(trimmed)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+                .or_else(|| {
+                    value
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                })
+        })
+        .unwrap_or_else(|| trimmed.to_string())
+}
+
 fn report_context(status: &ProviderStatusResponse) -> ReportContext {
     ReportContext {
         state: provider_runtime_state_label(status),
@@ -2455,12 +2792,13 @@ fn now_epoch_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, PylonConfig, apply_config_set, apply_control_command,
-        build_snapshot_from_availability, default_config, ensure_identity, inventory_rows,
-        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
-        load_or_create_config, load_product_report, load_receipts_report, load_sandbox_report,
-        load_status_or_detect, parse_args, provider_admin_config, render_human_status,
-        render_sandbox_report, save_config,
+        Command, LocalGemmaChatBackend, LocalGemmaChatEvent, PylonConfig, apply_config_set,
+        apply_control_command, build_snapshot_from_availability, default_config, ensure_identity,
+        inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
+        load_jobs_report, load_or_create_config, load_product_report, load_receipts_report,
+        load_sandbox_report, load_status_or_detect, parse_args, provider_admin_config,
+        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
+        run_local_gemma_chat_stream, save_config,
     };
     use openagents_provider_substrate::{
         ProviderAdapterTrainingContributorAvailability, ProviderAppleAdapterHostingAvailability,
@@ -2472,6 +2810,8 @@ mod tests {
         provider_runtime_state_label,
     };
     use serde_json::json;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
 
     fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         if condition {
@@ -2922,6 +3262,295 @@ mod tests {
         store.set_desired_mode(ProviderDesiredMode::Online)?;
         store.persist_snapshot(&snapshot)?;
         Ok(config)
+    }
+
+    async fn start_mock_http_server<F>(responder: F) -> std::io::Result<String>
+    where
+        F: Fn(String, String, String) -> (u16, &'static str, String) + Send + Sync + 'static,
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let request = read_http_request(&mut stream).await;
+                let (status, content_type, body) = match request {
+                    Ok((method, path, body)) => responder(method, path, body),
+                    Err(error) => (
+                        500,
+                        "text/plain",
+                        format!("failed to read test request: {error}"),
+                    ),
+                };
+                let _ = write_http_response(&mut stream, status, content_type, body.as_str()).await;
+            }
+        });
+        Ok(format!("http://{addr}"))
+    }
+
+    async fn read_http_request(
+        stream: &mut TcpStream,
+    ) -> std::io::Result<(String, String, String)> {
+        let mut buffer = Vec::new();
+        let mut header_end = None;
+        while header_end.is_none() {
+            let mut chunk = [0_u8; 1024];
+            let read = stream.read(&mut chunk).await?;
+            if read == 0 {
+                break;
+            }
+            buffer.extend_from_slice(&chunk[..read]);
+            header_end = find_header_end(buffer.as_slice());
+        }
+        let Some(header_end) = header_end else {
+            return Err(std::io::Error::other("missing request headers"));
+        };
+        let head = String::from_utf8(buffer[..header_end].to_vec())
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let mut lines = head.lines();
+        let request_line = lines
+            .next()
+            .ok_or_else(|| std::io::Error::other("missing request line"))?;
+        let mut request_parts = request_line.split_whitespace();
+        let method = request_parts
+            .next()
+            .ok_or_else(|| std::io::Error::other("missing request method"))?
+            .to_string();
+        let path = request_parts
+            .next()
+            .ok_or_else(|| std::io::Error::other("missing request path"))?
+            .to_string();
+
+        let content_length = lines
+            .filter_map(|line| line.split_once(':'))
+            .find_map(|(name, value)| {
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>())
+            })
+            .transpose()
+            .map_err(|error| std::io::Error::other(error.to_string()))?
+            .unwrap_or(0);
+
+        let body_start = match buffer[header_end..].strip_prefix(b"\r\n\r\n") {
+            Some(_) => header_end + 4,
+            None => header_end + 2,
+        };
+        while buffer.len() < body_start + content_length {
+            let mut chunk = vec![0_u8; body_start + content_length - buffer.len()];
+            let read = stream.read(&mut chunk).await?;
+            if read == 0 {
+                break;
+            }
+            buffer.extend_from_slice(&chunk[..read]);
+        }
+        let body = String::from_utf8(buffer[body_start..body_start + content_length].to_vec())
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        Ok((method, path, body))
+    }
+
+    fn find_header_end(buffer: &[u8]) -> Option<usize> {
+        buffer
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .or_else(|| buffer.windows(2).position(|window| window == b"\n\n"))
+    }
+
+    async fn write_http_response(
+        stream: &mut TcpStream,
+        status: u16,
+        content_type: &str,
+        body: &str,
+    ) -> std::io::Result<()> {
+        let status_text = match status {
+            200 => "OK",
+            500 => "Internal Server Error",
+            _ => "OK",
+        };
+        let response = format!(
+            "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).await?;
+        stream.flush().await?;
+        Ok(())
+    }
+
+    fn collect_chat_deltas(events: &[LocalGemmaChatEvent]) -> String {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                LocalGemmaChatEvent::Delta(value) => Some(value.as_str()),
+                LocalGemmaChatEvent::Started { .. } | LocalGemmaChatEvent::Finished { .. } => None,
+            })
+            .collect::<String>()
+    }
+
+    #[test]
+    fn resolve_local_gemma_chat_target_prefers_ollama_gemma()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.apple_fm_base_url = Some("http://127.0.0.1:9999".to_string());
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let availability = ProviderAvailability {
+            gpt_oss: ready_health("gemma4:e4b", &["gemma4:e4b"], None),
+            apple_foundation_models: ready_health("gemma4:26b", &["gemma4:26b"], None),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
+            sandbox: ProviderSandboxAvailability::default(),
+        };
+        let status = super::ProviderStatusResponse {
+            listen_addr: Some(config.admin_listen_addr.clone()),
+            desired_mode: ProviderDesiredMode::Offline,
+            snapshot: Some(build_snapshot_from_availability(
+                &config,
+                Some(&identity),
+                ProviderDesiredMode::Offline,
+                None,
+                availability,
+                None,
+            )),
+        };
+
+        let target = resolve_local_gemma_chat_target_from_status(&config, &status)?;
+        ensure(
+            target.backend == LocalGemmaChatBackend::Ollama && target.model == "gemma4:e4b",
+            "resolver should prefer the ready local Ollama Gemma target",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn local_ollama_gemma_chat_stream_emits_deltas() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let base_url =
+            start_mock_http_server(
+                |method, path, body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4:e4b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/api/chat") => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                        assert_eq!(request["model"], json!("gemma4:e4b"));
+                        assert_eq!(request["messages"][0]["content"], json!("hello"));
+                        (
+                            200,
+                            "application/x-ndjson",
+                            concat!(
+                                "{\"message\":{\"content\":\"hello \"},\"done\":false}\n",
+                                "{\"message\":{\"content\":\"world\"},\"done\":false}\n",
+                                "{\"done\":true}\n"
+                            )
+                            .to_string(),
+                        )
+                    }
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.ollama_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+
+        let mut events = Vec::new();
+        let target = run_local_gemma_chat_stream(config_path.as_path(), "hello", |event| {
+            events.push(event);
+        })
+        .await?;
+
+        ensure(
+            target.backend == LocalGemmaChatBackend::Ollama && target.model == "gemma4:e4b",
+            "chat stream should resolve the local Ollama Gemma target",
+        )?;
+        ensure(
+            collect_chat_deltas(events.as_slice()) == "hello world",
+            "chat stream should emit the streamed Ollama deltas in order",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn local_openai_compat_gemma_chat_stream_emits_sse_deltas()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let base_url =
+            start_mock_http_server(
+                |method, path, body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "llama3.2:latest"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("GET", "/health") => {
+                        (200, "application/json", json!({"ok": true}).to_string())
+                    }
+                    ("GET", "/v1/models") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "data": [
+                                {"id": "gemma4:26b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/v1/chat/completions") => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("valid openai chat body");
+                        assert_eq!(request["model"], json!("gemma4:26b"));
+                        assert_eq!(request["messages"][0]["content"], json!("hello"));
+                        (
+                            200,
+                            "text/event-stream",
+                            concat!(
+                                "data: {\"choices\":[{\"delta\":{\"content\":\"hello \"}}]}\n\n",
+                                "data: {\"choices\":[{\"delta\":{\"content\":\"world\"}}]}\n\n",
+                                "data: [DONE]\n\n"
+                            )
+                            .to_string(),
+                        )
+                    }
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.ollama_base_url = base_url.clone();
+        config.apple_fm_base_url = Some(base_url);
+        save_config(config_path.as_path(), &config)?;
+
+        let mut events = Vec::new();
+        let target = run_local_gemma_chat_stream(config_path.as_path(), "hello", |event| {
+            events.push(event);
+        })
+        .await?;
+
+        ensure(
+            target.backend == LocalGemmaChatBackend::OpenAiCompat && target.model == "gemma4:26b",
+            "chat stream should resolve the local OpenAI-compatible Gemma target",
+        )?;
+        ensure(
+            collect_chat_deltas(events.as_slice()) == "hello world",
+            "chat stream should emit streamed SSE deltas in order",
+        )
     }
 
     #[tokio::test(flavor = "current_thread")]
