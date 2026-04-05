@@ -91,6 +91,12 @@ The retained provider announcement controls now also exist in both places:
 
 The current retained announcement scope is one honest local text-generation handler for `kind:5050`. Pylon only publishes it when a local Gemma-backed text-generation path is actually eligible.
 
+The retained provider intake scan also exists in both places:
+- TUI: `/provider scan [--seconds <n>]`
+- headless: `cargo pylon-headless provider scan [--seconds <n>]`
+
+This first cut is bounded. It subscribes to retained `kind:5050` inbound requests on the configured relays, deduplicates them, classifies local matches versus dropped requests, and persists the intake decision in the local ledger. It does not execute the job yet.
+
 The retained wallet controls now also exist in both places:
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
@@ -108,6 +114,7 @@ cargo pylon-headless status
 cargo pylon-headless status --json
 cargo pylon-headless announce
 cargo pylon-headless announce publish
+cargo pylon-headless provider scan --seconds 5
 ```
 
 Inspect provider truth:

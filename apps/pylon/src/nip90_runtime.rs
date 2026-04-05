@@ -1,16 +1,19 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use nostr::nip89::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO, PricingInfo};
+use nostr::nip90::JobRequest;
 use nostr::{Event, EventTemplate, finalize_event};
-use nostr_client::{PoolConfig, RelayConfig, RelayPool};
+use nostr_client::{PoolConfig, RelayConfig, RelayMessage, RelayPool};
 use openagents_provider_substrate::ProviderAdvertisedProduct;
 use serde::Serialize;
+use serde_json::json;
 
 use crate::{
-    PylonConfig, PylonLedgerAnnouncement, ensure_identity, load_config_and_status, load_ledger,
-    mutate_ledger, products_from_status,
+    PylonConfig, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, ensure_identity,
+    load_config_and_status, load_ledger, mutate_ledger, products_from_status,
 };
 
 const ANNOUNCEMENT_KIND_TEXT_GENERATION: u16 = nostr::nip90::KIND_JOB_TEXT_GENERATION;
@@ -20,6 +23,30 @@ pub enum AnnouncementAction {
     Show,
     Publish,
     Refresh,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProviderIntakeEntry {
+    pub request_event_id: String,
+    pub requester_pubkey: String,
+    pub relay_url: Option<String>,
+    pub targeted: bool,
+    pub decision: String,
+    pub drop_reason: Option<String>,
+    pub prompt_preview: Option<String>,
+    pub model: Option<String>,
+    pub bid_msats: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProviderIntakeReport {
+    pub seconds: u64,
+    pub provider_pubkey: String,
+    pub local_ready: bool,
+    pub local_model: Option<String>,
+    pub matched_count: usize,
+    pub dropped_count: usize,
+    pub entries: Vec<ProviderIntakeEntry>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -161,6 +188,114 @@ pub fn render_announcement_report(report: &AnnouncementReport) -> String {
     ];
     if let Some(detail) = report.detail.as_deref() {
         lines.push(format!("detail: {detail}"));
+    }
+    lines.join("\n")
+}
+
+pub async fn scan_provider_requests(
+    config_path: &Path,
+    seconds: u64,
+) -> Result<ProviderIntakeReport> {
+    let config = crate::ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let (_, status) = load_config_and_status(config_path).await?;
+    let spec = announcement_spec(&config, &status);
+    let pool = build_relay_pool(&config, &identity).await?;
+    let subscription_id = format!("pylon-provider-scan-{}", crate::now_epoch_ms());
+    pool.subscribe_filters(
+        subscription_id.as_str(),
+        vec![json!({
+            "kinds": [ANNOUNCEMENT_KIND_TEXT_GENERATION],
+        })],
+    )
+    .await
+    .context("failed to subscribe for provider intake")?;
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(seconds.max(1));
+    let poll_step = Duration::from_millis(150);
+    let mut entries = BTreeMap::<String, ProviderIntakeEntry>::new();
+    while std::time::Instant::now() < deadline {
+        let relays = pool.relays().await;
+        for relay in relays {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let wait = remaining.min(poll_step);
+            let recv = tokio::time::timeout(wait, relay.recv()).await;
+            let message = match recv {
+                Ok(Ok(Some(message))) => message,
+                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => continue,
+            };
+            if let RelayMessage::Event(_, event) = message {
+                let entry = classify_provider_request(
+                    relay.url(),
+                    &identity.public_key_hex,
+                    spec.as_ref(),
+                    &event,
+                );
+                entries
+                    .entry(entry.request_event_id.clone())
+                    .or_insert(entry);
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+    let _ = pool.unsubscribe(subscription_id.as_str()).await;
+
+    let report = ProviderIntakeReport {
+        seconds,
+        provider_pubkey: identity.public_key_hex.clone(),
+        local_ready: spec.is_some(),
+        local_model: spec.as_ref().map(|spec| spec.model.clone()),
+        matched_count: entries
+            .values()
+            .filter(|entry| entry.decision == "match")
+            .count(),
+        dropped_count: entries
+            .values()
+            .filter(|entry| entry.decision == "drop")
+            .count(),
+        entries: entries.into_values().collect(),
+    };
+    persist_provider_intake(config_path, &report)?;
+    Ok(report)
+}
+
+pub fn render_provider_intake_report(report: &ProviderIntakeReport) -> String {
+    let mut lines = vec![
+        format!("provider_pubkey: {}", report.provider_pubkey),
+        format!("scan_seconds: {}", report.seconds),
+        format!("local_ready: {}", report.local_ready),
+        format!(
+            "local_model: {}",
+            report.local_model.as_deref().unwrap_or("none")
+        ),
+        format!("matched_count: {}", report.matched_count),
+        format!("dropped_count: {}", report.dropped_count),
+    ];
+    for entry in &report.entries {
+        lines.push(String::new());
+        lines.push(format!("request_event_id: {}", entry.request_event_id));
+        lines.push(format!("requester_pubkey: {}", entry.requester_pubkey));
+        lines.push(format!(
+            "relay_url: {}",
+            entry.relay_url.as_deref().unwrap_or("unknown")
+        ));
+        lines.push(format!("targeted: {}", entry.targeted));
+        lines.push(format!("decision: {}", entry.decision));
+        if let Some(reason) = entry.drop_reason.as_deref() {
+            lines.push(format!("drop_reason: {reason}"));
+        }
+        if let Some(prompt_preview) = entry.prompt_preview.as_deref() {
+            lines.push(format!("prompt_preview: {prompt_preview}"));
+        }
+        if let Some(model) = entry.model.as_deref() {
+            lines.push(format!("model: {model}"));
+        }
+        if let Some(bid_msats) = entry.bid_msats {
+            lines.push(format!("bid_msats: {bid_msats}"));
+        }
     }
     lines.join("\n")
 }
@@ -369,6 +504,139 @@ async fn build_relay_pool(
     Ok(pool)
 }
 
+fn classify_provider_request(
+    relay_url: &str,
+    provider_pubkey: &str,
+    spec: Option<&AnnouncementSpec>,
+    event: &Event,
+) -> ProviderIntakeEntry {
+    let default = ProviderIntakeEntry {
+        request_event_id: event.id.clone(),
+        requester_pubkey: event.pubkey.clone(),
+        relay_url: Some(relay_url.to_string()),
+        targeted: false,
+        decision: "drop".to_string(),
+        drop_reason: Some("invalid_request".to_string()),
+        prompt_preview: None,
+        model: None,
+        bid_msats: None,
+    };
+    let Ok(request) = JobRequest::from_event(event) else {
+        return default;
+    };
+    let targeted = !request.service_providers.is_empty();
+    let prompt_preview = request
+        .inputs
+        .iter()
+        .find(|input| input.input_type.as_str() == "text")
+        .map(|input| preview_text(input.data.as_str(), 72));
+    let model = request
+        .params
+        .iter()
+        .find(|param| param.key == "model")
+        .map(|param| param.value.clone());
+    if targeted
+        && !request
+            .service_providers
+            .iter()
+            .any(|pubkey| pubkey == provider_pubkey)
+    {
+        return ProviderIntakeEntry {
+            request_event_id: event.id.clone(),
+            requester_pubkey: event.pubkey.clone(),
+            relay_url: Some(relay_url.to_string()),
+            targeted,
+            decision: "drop".to_string(),
+            drop_reason: Some("targeted_elsewhere".to_string()),
+            prompt_preview,
+            model,
+            bid_msats: request.bid,
+        };
+    }
+    if spec.is_none() {
+        return ProviderIntakeEntry {
+            request_event_id: event.id.clone(),
+            requester_pubkey: event.pubkey.clone(),
+            relay_url: Some(relay_url.to_string()),
+            targeted,
+            decision: "drop".to_string(),
+            drop_reason: Some("no_local_supply".to_string()),
+            prompt_preview,
+            model,
+            bid_msats: request.bid,
+        };
+    }
+    ProviderIntakeEntry {
+        request_event_id: event.id.clone(),
+        requester_pubkey: event.pubkey.clone(),
+        relay_url: Some(relay_url.to_string()),
+        targeted,
+        decision: "match".to_string(),
+        drop_reason: None,
+        prompt_preview,
+        model,
+        bid_msats: request.bid,
+    }
+}
+
+fn persist_provider_intake(config_path: &Path, report: &ProviderIntakeReport) -> Result<()> {
+    mutate_ledger(config_path, |ledger| {
+        for entry in &report.entries {
+            let mut job = ledger
+                .jobs
+                .iter()
+                .find(|job| job.id == entry.request_event_id)
+                .cloned()
+                .unwrap_or_else(|| {
+                    PylonLedgerJob::new(
+                        entry.request_event_id.clone(),
+                        "provider",
+                        ANNOUNCEMENT_KIND_TEXT_GENERATION,
+                        if entry.decision == "match" {
+                            "observed_match"
+                        } else {
+                            "observed_drop"
+                        },
+                    )
+                });
+            job.request_event_id = Some(entry.request_event_id.clone());
+            job.customer_pubkey = Some(entry.requester_pubkey.clone());
+            job.provider_pubkey = Some(report.provider_pubkey.clone());
+            job.relay_url = entry.relay_url.clone();
+            job.prompt = entry.prompt_preview.clone();
+            job.model = entry.model.clone();
+            job.bid_msats = entry.bid_msats;
+            job.status = if entry.decision == "match" {
+                "observed_match".to_string()
+            } else {
+                "observed_drop".to_string()
+            };
+            job.error_detail = entry.drop_reason.clone();
+            ledger.upsert_job(job);
+            ledger.push_relay_activity(PylonRelayActivity {
+                at_ms: crate::now_epoch_ms() as u64,
+                url: entry.relay_url.clone(),
+                kind: if entry.decision == "match" {
+                    "nip90.request_matched".to_string()
+                } else {
+                    "nip90.request_dropped".to_string()
+                },
+                detail: if entry.decision == "match" {
+                    format!("matched request {}", entry.request_event_id)
+                } else {
+                    format!(
+                        "dropped request {} ({})",
+                        entry.request_event_id,
+                        entry.drop_reason.as_deref().unwrap_or("unknown")
+                    )
+                },
+            });
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+
 fn decode_private_key_hex(value: &str) -> Result<[u8; 32]> {
     let bytes = hex::decode(value).with_context(|| "invalid pylon private key hex")?;
     let bytes: [u8; 32] = bytes
@@ -383,4 +651,12 @@ fn comma_or_none(values: &[String]) -> String {
     } else {
         values.join(", ")
     }
+}
+
+fn preview_text(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+    trimmed.chars().take(max_chars).collect::<String>() + "..."
 }

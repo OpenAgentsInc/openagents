@@ -4,6 +4,7 @@ pub enum SlashCommandId {
     Chat,
     Download,
     Announce,
+    Provider,
     Relay,
     Wallet,
 }
@@ -54,6 +55,12 @@ const COMMANDS: &[SlashCommandSpec] = &[
         name: "announce",
         usage: "/announce [show|publish|refresh]",
         summary: "inspect or publish the retained NIP-89 provider announcement",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Provider,
+        name: "provider",
+        usage: "/provider scan [--seconds <n>]",
+        summary: "scan configured relays for retained inbound NIP-90 jobs",
     },
     SlashCommandSpec {
         id: SlashCommandId::Relay,
@@ -116,7 +123,9 @@ mod tests {
         let names = registry().iter().map(|spec| spec.name).collect::<Vec<_>>();
         assert_eq!(
             names,
-            vec!["help", "chat", "download", "announce", "relay", "wallet"]
+            vec![
+                "help", "chat", "download", "announce", "provider", "relay", "wallet"
+            ]
         );
     }
 
@@ -163,7 +172,8 @@ mod tests {
         );
         assert_eq!(registry()[1].id, SlashCommandId::Chat);
         assert_eq!(registry()[3].id, SlashCommandId::Announce);
-        assert_eq!(registry()[4].id, SlashCommandId::Relay);
-        assert_eq!(registry()[5].id, SlashCommandId::Wallet);
+        assert_eq!(registry()[4].id, SlashCommandId::Provider);
+        assert_eq!(registry()[5].id, SlashCommandId::Relay);
+        assert_eq!(registry()[6].id, SlashCommandId::Wallet);
     }
 }

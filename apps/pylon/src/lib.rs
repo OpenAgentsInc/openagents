@@ -35,8 +35,9 @@ pub use ledger::{
     load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
-    AnnouncementAction, AnnouncementReport, load_announcement_report, publish_announcement_report,
-    render_announcement_report,
+    AnnouncementAction, AnnouncementReport, ProviderIntakeReport, load_announcement_report,
+    publish_announcement_report, render_announcement_report, render_provider_intake_report,
+    scan_provider_requests,
 };
 pub use wallet_runtime::{
     WalletAddressReport, WalletBalanceSnapshot, WalletHistoryReport, WalletInvoiceReport,
@@ -123,6 +124,10 @@ pub enum Command {
     },
     Announcement {
         action: AnnouncementAction,
+        json: bool,
+    },
+    ProviderScan {
+        seconds: u64,
         json: bool,
     },
     Wallet {
@@ -751,6 +756,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_announcement_report(&report)))
         }
+        Command::ProviderScan { seconds, json } => {
+            let report = scan_provider_requests(cli.config_path.as_path(), seconds).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_provider_intake_report(&report)))
+        }
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
@@ -813,6 +825,7 @@ Commands:\n\
   relay remove <url>\n\
   relay refresh [--json]\n\
   announce [show|publish|refresh] [--json]\n\
+  provider scan [--seconds <n>] [--json]\n\
   wallet status [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
@@ -976,6 +989,18 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             }
             Some(other) => bail!("unknown announce command: {other}"),
         },
+        "provider" => match args.get(start_index + 1).map(String::as_str) {
+            Some("scan") => {
+                let (json, seconds) =
+                    parse_provider_scan_flags(args, start_index + 2, "provider scan")?;
+                Ok(Command::ProviderScan {
+                    seconds: seconds.unwrap_or(5),
+                    json,
+                })
+            }
+            Some(other) => bail!("unknown provider command: {other}"),
+            None => bail!("missing provider subcommand"),
+        },
         "wallet" => Ok(Command::Wallet {
             command: parse_wallet_command(args, start_index)?,
         }),
@@ -1074,6 +1099,37 @@ fn parse_json_only(args: &[String], start_index: usize, command: &str) -> Result
         }
         Some(other) => bail!("unexpected argument for {command}: {other}"),
     }
+}
+
+fn parse_provider_scan_flags(
+    args: &[String],
+    mut index: usize,
+    command: &str,
+) -> Result<(bool, Option<u64>)> {
+    let mut json = false;
+    let mut seconds = None;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--seconds" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --seconds"))?;
+                seconds = Some(
+                    value
+                        .parse::<u64>()
+                        .with_context(|| format!("invalid seconds for {command}: {value}"))?,
+                );
+                index += 1;
+            }
+            other => bail!("unexpected argument for {command}: {other}"),
+        }
+    }
+    Ok((json, seconds))
 }
 
 fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
@@ -3850,7 +3906,7 @@ mod tests {
         provider_admin_config, publish_announcement_report, refresh_relay_report,
         remove_configured_relay, render_human_status, render_sandbox_report,
         resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, save_config,
+        run_local_gemma_chat_stream, save_config, scan_provider_requests,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -4203,6 +4259,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_supports_provider_scan() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "provider".to_string(),
+                "scan".to_string(),
+                "--seconds".to_string(),
+                "9".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::ProviderScan {
+                    seconds: 9,
+                    json: true,
+                },
+            "provider scan should parse seconds and json flags",
+        )
+    }
+
+    #[test]
     fn parse_args_supports_wallet_commands() -> Result<(), Box<dyn std::error::Error>> {
         ensure(
             parse_args(vec![
@@ -4459,6 +4534,143 @@ mod tests {
             "publish should append a relay activity record",
         )?;
 
+        ollama_server.await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_scan_filters_targeted_requests() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let ollama_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let ollama_addr = ollama_listener.local_addr()?;
+        let ollama_server = tokio::spawn(async move {
+            let (mut stream, _) = ollama_listener.accept().await.expect("accept ollama");
+            let mut request = vec![0u8; 4096];
+            let _ = stream
+                .read(&mut request)
+                .await
+                .expect("read ollama request");
+            let body = json!({
+                "models": [{"name": "gemma4-e4b-local:latest"}]
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .expect("write ollama response");
+        });
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let provider_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"REQ\"") {
+                    continue;
+                }
+                let matching = json!(["EVENT", "scan", {
+                    "id": "match-job-001",
+                    "pubkey": "buyer-pubkey-001",
+                    "created_at": 1_760_000_100u64,
+                    "kind": 5050,
+                    "tags": [
+                        ["i", "hello from the mesh", "text"],
+                        ["bid", "2000"],
+                        ["p", provider_pubkey]
+                    ],
+                    "content": "",
+                    "sig": "00".repeat(64)
+                }]);
+                ws.send(Message::Text(matching.to_string().into()))
+                    .await
+                    .expect("send matching request");
+                let targeted_elsewhere = json!(["EVENT", "scan", {
+                    "id": "drop-job-001",
+                    "pubkey": "buyer-pubkey-002",
+                    "created_at": 1_760_000_101u64,
+                    "kind": 5050,
+                    "tags": [
+                        ["i", "hello elsewhere", "text"],
+                        ["bid", "3000"],
+                        ["p", "different-provider"]
+                    ],
+                    "content": "",
+                    "sig": "11".repeat(64)
+                }]);
+                ws.send(Message::Text(targeted_elsewhere.to_string().into()))
+                    .await
+                    .expect("send dropped request");
+                let broadcast = json!(["EVENT", "scan", {
+                    "id": "broadcast-job-001",
+                    "pubkey": "buyer-pubkey-003",
+                    "created_at": 1_760_000_102u64,
+                    "kind": 5050,
+                    "tags": [
+                        ["i", "hello broadcast", "text"],
+                        ["bid", "2500"]
+                    ],
+                    "content": "",
+                    "sig": "22".repeat(64)
+                }]);
+                ws.send(Message::Text(broadcast.to_string().into()))
+                    .await
+                    .expect("send broadcast request");
+                return;
+            }
+            panic!("relay did not receive a REQ frame");
+        });
+
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url];
+        config.ollama_base_url = format!("http://{ollama_addr}");
+        save_config(config_path.as_path(), &config)?;
+
+        let report = scan_provider_requests(config_path.as_path(), 1).await?;
+        ensure(
+            report.matched_count == 2,
+            "scan should keep matching and broadcast jobs",
+        )?;
+        ensure(
+            report.dropped_count == 1,
+            "scan should drop the job targeted at a different provider",
+        )?;
+        ensure(
+            report
+                .entries
+                .iter()
+                .any(|entry| entry.drop_reason.as_deref() == Some("targeted_elsewhere")),
+            "scan should surface the targeted_elsewhere reason",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        ensure(
+            ledger.jobs.len() == 3,
+            "scan should persist all observed jobs",
+        )?;
+        ensure(
+            ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "nip90.request_dropped"),
+            "scan should persist dropped-request activity",
+        )?;
+
+        relay_server.await?;
         ollama_server.await?;
         Ok(())
     }

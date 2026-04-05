@@ -161,6 +161,12 @@ enum WorkerEvent {
     AnnouncementFailed {
         error: String,
     },
+    ProviderScanFinished {
+        output: String,
+    },
+    ProviderScanFailed {
+        error: String,
+    },
     WalletCommandFinished {
         title: String,
         output: String,
@@ -352,6 +358,10 @@ impl AppShell {
                 }
                 SlashCommandId::Announce => {
                     self.handle_announce_command(args);
+                    return;
+                }
+                SlashCommandId::Provider => {
+                    self.handle_provider_command(args);
                     return;
                 }
                 SlashCommandId::Relay => {
@@ -679,6 +689,12 @@ impl AppShell {
             WorkerEvent::AnnouncementFailed { error } => {
                 self.push_system_message("Announcement Error", error);
             }
+            WorkerEvent::ProviderScanFinished { output } => {
+                self.push_system_lines("Provider Intake", text_body_lines(output.as_str()));
+            }
+            WorkerEvent::ProviderScanFailed { error } => {
+                self.push_system_message("Provider Error", error);
+            }
             WorkerEvent::WalletCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
             }
@@ -832,6 +848,86 @@ impl AppShell {
             }
         });
         self.push_system_message("Announcement", title);
+    }
+
+    fn handle_provider_command(&mut self, args: String) {
+        let mut parts = args.split_whitespace();
+        let Some(subcommand) = parts.next() else {
+            self.push_system_message("Provider Error", "Usage: /provider scan [--seconds <n>]");
+            return;
+        };
+        if subcommand != "scan" {
+            self.push_system_message(
+                "Provider Error",
+                format!("Unknown provider command `{subcommand}`. Use scan."),
+            );
+            return;
+        }
+
+        let mut seconds = 5u64;
+        while let Some(flag) = parts.next() {
+            match flag {
+                "--seconds" => {
+                    let Some(raw) = parts.next() else {
+                        self.push_system_message("Provider Error", "Missing value for --seconds.");
+                        return;
+                    };
+                    match raw.parse::<u64>() {
+                        Ok(value) if value > 0 => seconds = value,
+                        Ok(_) | Err(_) => {
+                            self.push_system_message(
+                                "Provider Error",
+                                format!("Invalid provider scan seconds `{raw}`."),
+                            );
+                            return;
+                        }
+                    }
+                }
+                other => {
+                    self.push_system_message(
+                        "Provider Error",
+                        format!("Unexpected provider flag `{other}`."),
+                    );
+                    return;
+                }
+            }
+        }
+
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::ProviderScanFailed {
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                let report = pylon::scan_provider_requests(config_path.as_path(), seconds).await?;
+                Ok::<String, anyhow::Error>(pylon::render_provider_intake_report(&report))
+            });
+            match result {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::ProviderScanFinished { output });
+                }
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::ProviderScanFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message(
+            "Provider Intake",
+            format!("Scanning configured relays for {}s...", seconds),
+        );
     }
 
     fn handle_wallet_command(&mut self, args: String) {
