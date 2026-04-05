@@ -1,4 +1,5 @@
 mod ledger;
+mod wallet_runtime;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -32,6 +33,15 @@ pub use ledger::{
     PylonWalletPaymentRecord, default_ledger_path, ensure_local_ledger, load_ledger,
     load_ledger_summary, mutate_ledger, save_ledger,
 };
+pub use wallet_runtime::{
+    WalletAddressReport, WalletBalanceSnapshot, WalletHistoryReport, WalletInvoiceReport,
+    WalletPayReport, WalletRuntimeSurface, WalletStatusReport, WalletSubcommand,
+    create_wallet_address_report, create_wallet_invoice_report, load_wallet_history_report,
+    load_wallet_status_report, parse_wallet_command, pay_wallet_invoice_report,
+    render_wallet_address_report, render_wallet_balance_report, render_wallet_history_report,
+    render_wallet_invoice_report, render_wallet_pay_report, render_wallet_status_report,
+    run_wallet_command,
+};
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
 pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
@@ -50,6 +60,11 @@ pub struct PylonConfig {
     pub relay_connect_timeout_seconds: u64,
     #[serde(default = "default_relay_auth_enabled")]
     pub relay_auth_enabled: bool,
+    #[serde(default = "default_wallet_network")]
+    pub wallet_network: String,
+    #[serde(default = "default_wallet_api_key_env")]
+    pub wallet_api_key_env: Option<String>,
+    pub wallet_storage_dir: PathBuf,
     pub ollama_base_url: String,
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
@@ -73,6 +88,7 @@ pub enum Command {
     RelayAdd { url: String },
     RelayRemove { url: String },
     RelayRefresh { json: bool },
+    Wallet { command: WalletSubcommand },
     Online,
     Offline,
     Pause,
@@ -676,6 +692,9 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_relay_report(&report)))
         }
+        Command::Wallet { command } => Ok(Some(
+            run_wallet_command(cli.config_path.as_path(), &command).await?,
+        )),
         Command::Online => {
             let status =
                 apply_control_command(cli.config_path.as_path(), ProviderControlAction::Online)
@@ -734,6 +753,12 @@ Commands:\n\
   relay add <url>\n\
   relay remove <url>\n\
   relay refresh [--json]\n\
+  wallet status [--json]\n\
+  wallet balance [--json]\n\
+  wallet address [--json]\n\
+  wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
+  wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
+  wallet history [--limit <n>] [--json]\n\
   online\n\
   offline\n\
   pause\n\
@@ -863,6 +888,9 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             Some(other) => bail!("unknown relay command: {other}"),
             None => bail!("missing relay subcommand"),
         },
+        "wallet" => Ok(Command::Wallet {
+            command: parse_wallet_command(args, start_index)?,
+        }),
         "online" => {
             if start_index + 1 != args.len() {
                 bail!("online does not accept positional arguments");
@@ -1002,6 +1030,9 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         relay_urls: default_relay_urls(),
         relay_connect_timeout_seconds: default_relay_connect_timeout_seconds(),
         relay_auth_enabled: default_relay_auth_enabled(),
+        wallet_network: default_wallet_network(),
+        wallet_api_key_env: default_wallet_api_key_env(),
+        wallet_storage_dir: base_dir.join("spark"),
         ollama_base_url: "http://127.0.0.1:11434".to_string(),
         apple_fm_base_url: None,
         inventory_controls: ProviderInventoryControls::default(),
@@ -1023,6 +1054,14 @@ const fn default_relay_connect_timeout_seconds() -> u64 {
 
 const fn default_relay_auth_enabled() -> bool {
     true
+}
+
+fn default_wallet_network() -> String {
+    "mainnet".to_string()
+}
+
+fn default_wallet_api_key_env() -> Option<String> {
+    Some("OPENAGENTS_SPARK_API_KEY".to_string())
 }
 
 pub fn default_config_path() -> PathBuf {
@@ -3638,6 +3677,15 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         "relay_auth_enabled" => {
             config.relay_auth_enabled = parse_bool(value)?;
         }
+        "wallet_network" => config.wallet_network = value.trim().to_string(),
+        "wallet_api_key_env" => {
+            config.wallet_api_key_env = if value.trim().is_empty() {
+                None
+            } else {
+                Some(value.trim().to_string())
+            };
+        }
+        "wallet_storage_dir" => config.wallet_storage_dir = PathBuf::from(value.trim()),
         "ollama_base_url" => config.ollama_base_url = value.to_string(),
         "apple_fm_base_url" => {
             config.apple_fm_base_url = if value.trim().is_empty() {
@@ -3691,8 +3739,8 @@ fn now_epoch_ms() -> i64 {
 mod tests {
     use super::{
         Command, GemmaDownloadEvent, LocalGemmaChatBackend, LocalGemmaChatEvent,
-        LocalGemmaChatMessage, PylonConfig, add_configured_relay, apply_config_set,
-        apply_control_command, build_snapshot_from_availability, default_config,
+        LocalGemmaChatMessage, PylonConfig, WalletSubcommand, add_configured_relay,
+        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
         download_gemma_model_from_base_url, ensure_identity, gemma_download_spec,
         gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
         load_inventory_report, load_jobs_report, load_ledger, load_or_create_config,
@@ -3784,6 +3832,26 @@ mod tests {
         ensure(
             !config.relay_auth_enabled,
             "config set should update the relay auth toggle",
+        )
+    }
+
+    #[test]
+    fn config_set_updates_wallet_fields() -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        apply_config_set(&mut config, "wallet_network", "regtest")?;
+        apply_config_set(&mut config, "wallet_api_key_env", "PYLON_SPARK_KEY")?;
+        apply_config_set(&mut config, "wallet_storage_dir", "/tmp/pylon-wallet")?;
+        ensure(
+            config.wallet_network == "regtest",
+            "config set should update wallet_network",
+        )?;
+        ensure(
+            config.wallet_api_key_env.as_deref() == Some("PYLON_SPARK_KEY"),
+            "config set should update wallet_api_key_env",
+        )?;
+        ensure(
+            config.wallet_storage_dir == std::path::Path::new("/tmp/pylon-wallet"),
+            "config set should update wallet_storage_dir",
         )
     }
 
@@ -3996,6 +4064,57 @@ mod tests {
             .command
                 == Command::RelayRefresh { json: true },
             "relay refresh should parse with --json",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_wallet_commands() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "status".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::Status { json: true },
+                },
+            "wallet status should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "invoice".to_string(),
+                "21".to_string(),
+                "--description".to_string(),
+                "earn".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::Invoice {
+                        amount_sats: 21,
+                        description: Some("earn".to_string()),
+                        expiry_seconds: None,
+                        json: false,
+                    },
+                },
+            "wallet invoice should parse with description",
+        )?;
+        ensure(
+            parse_args(vec![
+                "wallet".to_string(),
+                "history".to_string(),
+                "--limit".to_string(),
+                "5".to_string(),
+            ])?
+            .command
+                == Command::Wallet {
+                    command: WalletSubcommand::History {
+                        limit: Some(5),
+                        json: false,
+                    },
+                },
+            "wallet history should parse with a limit",
         )
     }
 

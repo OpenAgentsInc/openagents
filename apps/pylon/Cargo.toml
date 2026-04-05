@@ -16,8 +16,10 @@ bip39 = "2.2.0"
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
+openagents-spark = { path = "../../crates/spark" }
 rand.workspace = true
 reqwest.workspace = true
+rustls = { version = "0.23", features = ["ring"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

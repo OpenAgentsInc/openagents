@@ -110,6 +110,17 @@ cargo pylon-headless earnings
 cargo pylon-headless receipts
 ```
 
+Inspect or operate the standalone Spark wallet:
+
+```bash
+cargo pylon-headless wallet status
+cargo pylon-headless wallet balance
+cargo pylon-headless wallet address
+cargo pylon-headless wallet invoice 21 --description "pylon receive"
+cargo pylon-headless wallet pay <bolt11> --amount-sats 21
+cargo pylon-headless wallet history --limit 10
+```
+
 Move the node through explicit lifecycle controls:
 
 ```bash
@@ -153,6 +164,9 @@ The generated config currently includes:
 - identity path
 - admin sqlite path
 - admin listen address
+- wallet network
+- wallet API key env var
+- wallet storage dir
 - Ollama base URL
 - Apple FM base URL
 - inventory-control toggles
