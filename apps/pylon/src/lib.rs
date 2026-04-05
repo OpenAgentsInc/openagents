@@ -3,6 +3,7 @@ mod nip90_runtime;
 mod wallet_runtime;
 
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -27,6 +28,7 @@ use openagents_provider_substrate::{
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tokio::process::Command as TokioCommand;
 
 pub use ledger::{
     PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerPayout, PylonLedgerSummary,
@@ -58,6 +60,7 @@ pub use wallet_runtime::{
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
 pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
+pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
@@ -188,6 +191,9 @@ pub enum Command {
     Wallet {
         command: WalletSubcommand,
     },
+    Gemma {
+        command: GemmaCommand,
+    },
     Online,
     Offline,
     Pause,
@@ -197,6 +203,97 @@ pub enum Command {
         key: String,
         value: String,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GemmaCommand {
+    List {
+        json: bool,
+    },
+    Download {
+        selector: GemmaSelector,
+        json: bool,
+    },
+    Benchmark {
+        selector: GemmaBenchmarkSelector,
+        request: GemmaBenchmarkRequest,
+        json: bool,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GemmaSelector {
+    Model(String),
+    All,
+    Remaining,
+}
+
+impl GemmaSelector {
+    fn label(&self) -> String {
+        match self {
+            Self::Model(model_id) => model_id.clone(),
+            Self::All => String::from("all"),
+            Self::Remaining => String::from("remaining"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GemmaBenchmarkSelector {
+    Model(String),
+    All,
+}
+
+impl GemmaBenchmarkSelector {
+    fn label(&self) -> String {
+        match self {
+            Self::Model(model_id) => model_id.clone(),
+            Self::All => String::from("all"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum GemmaBenchmarkMode {
+    Single,
+    DistributedDense,
+    DistributedSparse,
+    Matrix,
+}
+
+impl GemmaBenchmarkMode {
+    fn parse(value: &str) -> Result<Self> {
+        match value.trim() {
+            "single" => Ok(Self::Single),
+            "distributed-dense" => Ok(Self::DistributedDense),
+            "distributed-sparse" => Ok(Self::DistributedSparse),
+            "matrix" => Ok(Self::Matrix),
+            other => bail!(
+                "unsupported Gemma benchmark mode `{other}`; expected one of: single, distributed-dense, distributed-sparse, matrix"
+            ),
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::DistributedDense => "distributed-dense",
+            Self::DistributedSparse => "distributed-sparse",
+            Self::Matrix => "matrix",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GemmaBenchmarkRequest {
+    pub mode: GemmaBenchmarkMode,
+    pub backend: Option<String>,
+    pub peer_base_url: Option<String>,
+    pub split_layer: Option<usize>,
+    pub prompt: String,
+    pub max_output_tokens: usize,
+    pub repeats: usize,
+    pub download_missing: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -446,8 +543,10 @@ pub struct GemmaDownloadSpec {
     pub id: &'static str,
     pub label: &'static str,
     pub quantization: &'static str,
+    pub psionic_model_id: &'static str,
     pub repo_id: &'static str,
     pub filename: &'static str,
+    pub runtime_shape: GemmaRuntimeShape,
 }
 
 impl GemmaDownloadSpec {
@@ -458,6 +557,47 @@ impl GemmaDownloadSpec {
             self.repo_id,
             self.filename,
         )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum GemmaRuntimeShape {
+    Dense,
+    SparseDistributedOnly,
+}
+
+impl GemmaRuntimeShape {
+    pub const fn supports_single_node(self) -> bool {
+        matches!(self, Self::Dense)
+    }
+
+    pub const fn supports_dense_split(self) -> bool {
+        matches!(self, Self::Dense)
+    }
+
+    pub const fn supports_sparse_distributed(self) -> bool {
+        matches!(self, Self::SparseDistributedOnly)
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Dense => "dense",
+            Self::SparseDistributedOnly => "sparse_distributed_only",
+        }
+    }
+
+    pub fn supported_mode_labels(self) -> Vec<String> {
+        let mut modes = Vec::new();
+        if self.supports_single_node() {
+            modes.push(String::from("single"));
+        }
+        if self.supports_dense_split() {
+            modes.push(String::from("distributed-dense"));
+        }
+        if self.supports_sparse_distributed() {
+            modes.push(String::from("distributed-sparse"));
+        }
+        modes
     }
 }
 
@@ -487,43 +627,139 @@ pub enum GemmaDownloadEvent {
     },
 }
 
-const GEMMA_DOWNLOAD_SPECS: [GemmaDownloadSpec; 5] = [
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct GemmaCatalogReport {
+    pub models_root: String,
+    pub models: Vec<GemmaCatalogEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct GemmaCatalogEntry {
+    pub id: String,
+    pub label: String,
+    pub psionic_model_id: String,
+    pub quantization: String,
+    pub runtime_shape: String,
+    pub supported_modes: Vec<String>,
+    pub installed: bool,
+    pub file_bytes: Option<u64>,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct GemmaDownloadReport {
+    pub selector: String,
+    pub models_root: String,
+    pub results: Vec<GemmaDownloadResult>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct GemmaDownloadResult {
+    pub model_id: String,
+    pub label: String,
+    pub status: String,
+    pub file_bytes: Option<u64>,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct GemmaBenchmarkReport {
+    pub selector: String,
+    pub psionic_repo: String,
+    pub results: Vec<GemmaBenchmarkResult>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct GemmaBenchmarkResult {
+    pub model_id: String,
+    pub label: String,
+    pub psionic_model_id: String,
+    pub runtime_shape: String,
+    pub mode: String,
+    pub status: String,
+    pub reason: Option<String>,
+    pub path: Option<String>,
+    pub command: Option<Vec<String>>,
+    pub receipt: Option<GemmaBenchReceipt>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GemmaBenchReceipt {
+    pub schema_version: u32,
+    pub report_kind: String,
+    pub mode: String,
+    pub model_id: String,
+    pub model_path: String,
+    pub runtime_backend: String,
+    pub sparse_expert_topology: bool,
+    pub peer_base_url: Option<String>,
+    pub split_layer: Option<usize>,
+    pub prompt: String,
+    pub max_output_tokens: usize,
+    pub repeats: usize,
+    pub load_s: f64,
+    pub cluster_topology: Option<String>,
+    pub runs: Vec<GemmaBenchRunReceipt>,
+    pub mean_output_tokens: f64,
+    pub mean_total_s: f64,
+    pub mean_ttft_s: Option<f64>,
+    pub mean_decode_tok_s: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GemmaBenchRunReceipt {
+    pub run_index: usize,
+    pub output_tokens: usize,
+    pub total_s: f64,
+    pub prompt_s: Option<f64>,
+    pub decode_s: Option<f64>,
+    pub ttft_s: Option<f64>,
+    pub decode_tok_s: Option<f64>,
+    pub termination: String,
+    pub output_text: String,
+}
+
+const GEMMA_DOWNLOAD_SPECS: [GemmaDownloadSpec; 4] = [
     GemmaDownloadSpec {
-        id: "gemma-3-1b",
-        label: "Gemma 3 1B",
-        quantization: "Q4_K_M",
-        repo_id: "ggml-org/gemma-3-1b-it-GGUF",
-        filename: "gemma-3-1b-it-Q4_K_M.gguf",
-    },
-    GemmaDownloadSpec {
-        id: "gemma-3n-e4b",
-        label: "Gemma 3n E4B",
+        id: "gemma-4-e2b",
+        label: "Gemma 4 E2B",
         quantization: "Q8_0",
-        repo_id: "ggml-org/gemma-3n-E4B-it-GGUF",
-        filename: "gemma-3n-E4B-it-Q8_0.gguf",
+        psionic_model_id: "gemma4:e2b",
+        repo_id: "ggml-org/gemma-4-E2B-it-GGUF",
+        filename: "gemma-4-e2b-it-Q8_0.gguf",
+        runtime_shape: GemmaRuntimeShape::Dense,
     },
     GemmaDownloadSpec {
-        id: "gemma-3-4b",
-        label: "Gemma 3 4B",
+        id: "gemma-4-e4b",
+        label: "Gemma 4 E4B",
         quantization: "Q4_K_M",
-        repo_id: "ggml-org/gemma-3-4b-it-GGUF",
-        filename: "gemma-3-4b-it-Q4_K_M.gguf",
+        psionic_model_id: "gemma4:e4b",
+        repo_id: "ggml-org/gemma-4-E4B-it-GGUF",
+        filename: "gemma-4-e4b-it-Q4_K_M.gguf",
+        runtime_shape: GemmaRuntimeShape::Dense,
     },
     GemmaDownloadSpec {
-        id: "gemma-3-12b",
-        label: "Gemma 3 12B",
+        id: "gemma-4-26b-a4b",
+        label: "Gemma 4 26B A4B",
         quantization: "Q4_K_M",
-        repo_id: "ggml-org/gemma-3-12b-it-GGUF",
-        filename: "gemma-3-12b-it-Q4_K_M.gguf",
+        psionic_model_id: "gemma4:26b",
+        repo_id: "ggml-org/gemma-4-26B-A4B-it-GGUF",
+        filename: "gemma-4-26B-A4B-it-Q4_K_M.gguf",
+        runtime_shape: GemmaRuntimeShape::SparseDistributedOnly,
     },
     GemmaDownloadSpec {
-        id: "gemma-3-27b",
-        label: "Gemma 3 27B",
+        id: "gemma-4-31b",
+        label: "Gemma 4 31B",
         quantization: "Q4_K_M",
-        repo_id: "ggml-org/gemma-3-27b-it-GGUF",
-        filename: "gemma-3-27b-it-Q4_K_M.gguf",
+        psionic_model_id: "gemma4:31b",
+        repo_id: "ggml-org/gemma-4-31B-it-GGUF",
+        filename: "gemma-4-31B-it-Q4_K_M.gguf",
+        runtime_shape: GemmaRuntimeShape::Dense,
     },
 ];
+
+const DEFAULT_GEMMA_BENCH_PROMPT: &str =
+    "Write one short sentence about decentralized Gemma inference.";
 
 pub fn gemma_download_specs() -> &'static [GemmaDownloadSpec] {
     &GEMMA_DOWNLOAD_SPECS
@@ -677,6 +913,490 @@ where
     }
     result?;
     Ok(final_path)
+}
+
+fn gemma_catalog_report(config_path: &Path) -> GemmaCatalogReport {
+    let models_root = gemma_models_root(config_path);
+    let models = gemma_local_installations(config_path)
+        .into_iter()
+        .map(|installation| GemmaCatalogEntry {
+            id: installation.spec.id.to_string(),
+            label: installation.spec.label.to_string(),
+            psionic_model_id: installation.spec.psionic_model_id.to_string(),
+            quantization: installation.spec.quantization.to_string(),
+            runtime_shape: installation.spec.runtime_shape.label().to_string(),
+            supported_modes: installation.spec.runtime_shape.supported_mode_labels(),
+            installed: installation.installed,
+            file_bytes: installation.file_bytes,
+            path: installation.path.display().to_string(),
+        })
+        .collect();
+    GemmaCatalogReport {
+        models_root: models_root.display().to_string(),
+        models,
+    }
+}
+
+fn render_gemma_catalog_report(report: &GemmaCatalogReport) -> String {
+    let mut lines = vec![
+        format!("Gemma models root: {}", report.models_root),
+        String::new(),
+    ];
+    for entry in &report.models {
+        let installed = if entry.installed {
+            "installed"
+        } else {
+            "missing"
+        };
+        let size = entry
+            .file_bytes
+            .map(render_byte_size)
+            .unwrap_or_else(|| String::from("n/a"));
+        lines.push(format!(
+            "{}  {}  {}  {}  modes={}  size={}",
+            entry.id,
+            installed,
+            entry.quantization,
+            entry.runtime_shape,
+            entry.supported_modes.join(","),
+            size
+        ));
+    }
+    lines.join("\n")
+}
+
+fn resolve_gemma_selector(
+    selector: &GemmaSelector,
+    config_path: &Path,
+) -> Result<Vec<GemmaDownloadSpec>> {
+    match selector {
+        GemmaSelector::Model(model_id) => {
+            Ok(vec![gemma_download_spec(model_id).ok_or_else(|| {
+                anyhow!("unknown Gemma model `{model_id}`")
+            })?])
+        }
+        GemmaSelector::All => Ok(gemma_download_specs().to_vec()),
+        GemmaSelector::Remaining => Ok(gemma_local_installations(config_path)
+            .into_iter()
+            .filter(|installation| !installation.installed)
+            .map(|installation| installation.spec)
+            .collect()),
+    }
+}
+
+fn resolve_gemma_benchmark_selector(
+    selector: &GemmaBenchmarkSelector,
+) -> Result<Vec<GemmaDownloadSpec>> {
+    match selector {
+        GemmaBenchmarkSelector::Model(model_id) => {
+            Ok(vec![gemma_download_spec(model_id).ok_or_else(|| {
+                anyhow!("unknown Gemma model `{model_id}`")
+            })?])
+        }
+        GemmaBenchmarkSelector::All => Ok(gemma_download_specs().to_vec()),
+    }
+}
+
+async fn run_gemma_download_command(
+    config_path: &Path,
+    selector: &GemmaSelector,
+) -> Result<GemmaDownloadReport> {
+    let _ = ensure_local_setup(config_path)?;
+    let mut results = Vec::new();
+    for spec in resolve_gemma_selector(selector, config_path)? {
+        let already_installed = gemma_model_path(config_path, spec).exists();
+        let final_path = download_gemma_model(config_path, spec.id, |_| {}).await?;
+        let file_bytes = tokio::fs::metadata(final_path.as_path())
+            .await
+            .ok()
+            .map(|value| value.len());
+        results.push(GemmaDownloadResult {
+            model_id: spec.id.to_string(),
+            label: spec.label.to_string(),
+            status: if already_installed {
+                String::from("already_installed")
+            } else {
+                String::from("downloaded")
+            },
+            file_bytes,
+            path: final_path.display().to_string(),
+        });
+    }
+    Ok(GemmaDownloadReport {
+        selector: selector.label(),
+        models_root: gemma_models_root(config_path).display().to_string(),
+        results,
+    })
+}
+
+fn render_gemma_download_report(report: &GemmaDownloadReport) -> String {
+    let mut lines = vec![format!("selector: {}", report.selector)];
+    for result in &report.results {
+        let size = result
+            .file_bytes
+            .map(render_byte_size)
+            .unwrap_or_else(|| String::from("n/a"));
+        lines.push(format!(
+            "{}  {}  size={}  {}",
+            result.model_id, result.status, size, result.path
+        ));
+    }
+    if report.results.is_empty() {
+        lines.push(String::from("no matching Gemma models"));
+    }
+    lines.join("\n")
+}
+
+fn default_psionic_repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../psionic")
+}
+
+fn resolve_psionic_repo_root() -> Result<PathBuf> {
+    let repo_root = std::env::var(ENV_PSIONIC_REPO)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(default_psionic_repo_root);
+    let manifest_path = repo_root.join("Cargo.toml");
+    if !manifest_path.exists() {
+        bail!(
+            "missing Psionic checkout at {}; clone ../psionic or set {}",
+            repo_root.display(),
+            ENV_PSIONIC_REPO
+        );
+    }
+    let example_path = repo_root
+        .join("crates")
+        .join("psionic-serve")
+        .join("examples")
+        .join("gemma4_bench.rs");
+    if !example_path.exists() {
+        bail!(
+            "Psionic checkout at {} does not contain crates/psionic-serve/examples/gemma4_bench.rs",
+            repo_root.display()
+        );
+    }
+    Ok(repo_root)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum GemmaBenchExecutionMode {
+    Single,
+    DistributedDense,
+    DistributedSparse,
+}
+
+impl GemmaBenchExecutionMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::DistributedDense => "distributed-dense",
+            Self::DistributedSparse => "distributed-sparse",
+        }
+    }
+}
+
+fn planned_gemma_benchmark_modes(
+    spec: GemmaDownloadSpec,
+    request: &GemmaBenchmarkRequest,
+) -> Result<Vec<(GemmaBenchExecutionMode, Option<String>)>> {
+    match request.mode {
+        GemmaBenchmarkMode::Single => {
+            if !spec.runtime_shape.supports_single_node() {
+                bail!("{} does not support single-node execution", spec.id);
+            }
+            Ok(vec![(GemmaBenchExecutionMode::Single, None)])
+        }
+        GemmaBenchmarkMode::DistributedDense => {
+            if !spec.runtime_shape.supports_dense_split() {
+                bail!("{} does not support distributed dense execution", spec.id);
+            }
+            if request.peer_base_url.is_none() {
+                bail!("distributed-dense benchmarks require --peer-base-url");
+            }
+            Ok(vec![(GemmaBenchExecutionMode::DistributedDense, None)])
+        }
+        GemmaBenchmarkMode::DistributedSparse => {
+            if !spec.runtime_shape.supports_sparse_distributed() {
+                bail!("{} does not support distributed sparse execution", spec.id);
+            }
+            if request.backend.is_some() {
+                bail!("distributed-sparse benchmarks do not accept --backend");
+            }
+            Ok(vec![(GemmaBenchExecutionMode::DistributedSparse, None)])
+        }
+        GemmaBenchmarkMode::Matrix => {
+            let mut plans = Vec::new();
+            if spec.runtime_shape.supports_single_node() {
+                plans.push((GemmaBenchExecutionMode::Single, None));
+            }
+            if spec.runtime_shape.supports_dense_split() {
+                let reason = request
+                    .peer_base_url
+                    .is_none()
+                    .then(|| String::from("distributed-dense requires --peer-base-url"));
+                plans.push((GemmaBenchExecutionMode::DistributedDense, reason));
+            }
+            if spec.runtime_shape.supports_sparse_distributed() {
+                plans.push((GemmaBenchExecutionMode::DistributedSparse, None));
+            }
+            Ok(plans)
+        }
+    }
+}
+
+async fn run_gemma_benchmark_command(
+    config_path: &Path,
+    selector: &GemmaBenchmarkSelector,
+    request: &GemmaBenchmarkRequest,
+) -> Result<GemmaBenchmarkReport> {
+    let _ = ensure_local_setup(config_path)?;
+    let psionic_repo = resolve_psionic_repo_root()?;
+    let mut results = Vec::new();
+    for spec in resolve_gemma_benchmark_selector(selector)? {
+        let model_path = gemma_model_path(config_path, spec);
+        if !model_path.exists() {
+            if request.download_missing {
+                let _ = download_gemma_model(config_path, spec.id, |_| {}).await?;
+            }
+            if !model_path.exists() {
+                results.push(GemmaBenchmarkResult {
+                    model_id: spec.id.to_string(),
+                    label: spec.label.to_string(),
+                    psionic_model_id: spec.psionic_model_id.to_string(),
+                    runtime_shape: spec.runtime_shape.label().to_string(),
+                    mode: request.mode.label().to_string(),
+                    status: String::from("skipped"),
+                    reason: Some(String::from("model is not installed")),
+                    path: Some(model_path.display().to_string()),
+                    command: None,
+                    receipt: None,
+                });
+                continue;
+            }
+        }
+
+        for (mode, skip_reason) in planned_gemma_benchmark_modes(spec, request)? {
+            if let Some(reason) = skip_reason {
+                results.push(GemmaBenchmarkResult {
+                    model_id: spec.id.to_string(),
+                    label: spec.label.to_string(),
+                    psionic_model_id: spec.psionic_model_id.to_string(),
+                    runtime_shape: spec.runtime_shape.label().to_string(),
+                    mode: mode.label().to_string(),
+                    status: String::from("skipped"),
+                    reason: Some(reason),
+                    path: Some(model_path.display().to_string()),
+                    command: None,
+                    receipt: None,
+                });
+                continue;
+            }
+            results.push(
+                run_psionic_gemma_benchmark(
+                    &psionic_repo,
+                    spec,
+                    model_path.as_path(),
+                    mode,
+                    request,
+                )
+                .await,
+            );
+        }
+    }
+    Ok(GemmaBenchmarkReport {
+        selector: selector.label(),
+        psionic_repo: psionic_repo.display().to_string(),
+        results,
+    })
+}
+
+async fn run_psionic_gemma_benchmark(
+    psionic_repo: &Path,
+    spec: GemmaDownloadSpec,
+    model_path: &Path,
+    mode: GemmaBenchExecutionMode,
+    request: &GemmaBenchmarkRequest,
+) -> GemmaBenchmarkResult {
+    let manifest_path = psionic_repo.join("Cargo.toml");
+    let mut args = vec![
+        String::from("run"),
+        String::from("--quiet"),
+        String::from("--manifest-path"),
+        manifest_path.display().to_string(),
+        String::from("-p"),
+        String::from("psionic-serve"),
+        String::from("--example"),
+        String::from("gemma4_bench"),
+        String::from("--"),
+        String::from("--model-path"),
+        model_path.display().to_string(),
+        String::from("--mode"),
+        mode.label().to_string(),
+        String::from("--prompt"),
+        request.prompt.clone(),
+        String::from("--max-output-tokens"),
+        request.max_output_tokens.to_string(),
+        String::from("--repeats"),
+        request.repeats.to_string(),
+    ];
+    if let Some(backend) = request.backend.as_ref() {
+        args.push(String::from("--backend"));
+        args.push(backend.clone());
+    }
+    if let Some(peer_base_url) = request.peer_base_url.as_ref() {
+        args.push(String::from("--peer-base-url"));
+        args.push(peer_base_url.clone());
+    }
+    if let Some(split_layer) = request.split_layer {
+        args.push(String::from("--split-layer"));
+        args.push(split_layer.to_string());
+    }
+    let receipt_path = std::env::temp_dir().join(format!(
+        "pylon-gemma-bench-{}-{}-{}-{}.json",
+        spec.id,
+        mode.label(),
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    ));
+    args.push(String::from("--json-out"));
+    args.push(receipt_path.display().to_string());
+
+    let output = TokioCommand::new("cargo")
+        .args(args.iter().skip(1))
+        .current_dir(psionic_repo)
+        .stdin(Stdio::null())
+        .output()
+        .await;
+    let command = Some(args);
+    match output {
+        Err(error) => GemmaBenchmarkResult {
+            model_id: spec.id.to_string(),
+            label: spec.label.to_string(),
+            psionic_model_id: spec.psionic_model_id.to_string(),
+            runtime_shape: spec.runtime_shape.label().to_string(),
+            mode: mode.label().to_string(),
+            status: String::from("failed"),
+            reason: Some(format!("failed to start cargo benchmark: {error}")),
+            path: Some(model_path.display().to_string()),
+            command,
+            receipt: None,
+        },
+        Ok(output) if !output.status.success() => {
+            let stderr = String::from_utf8_lossy(output.stderr.as_slice())
+                .trim()
+                .to_string();
+            let stdout = String::from_utf8_lossy(output.stdout.as_slice())
+                .trim()
+                .to_string();
+            let detail = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("cargo exited with status {}", output.status)
+            };
+            let _ = tokio::fs::remove_file(receipt_path.as_path()).await;
+            GemmaBenchmarkResult {
+                model_id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                psionic_model_id: spec.psionic_model_id.to_string(),
+                runtime_shape: spec.runtime_shape.label().to_string(),
+                mode: mode.label().to_string(),
+                status: String::from("failed"),
+                reason: Some(detail),
+                path: Some(model_path.display().to_string()),
+                command,
+                receipt: None,
+            }
+        }
+        Ok(_) => {
+            let receipt = tokio::fs::read(receipt_path.as_path())
+                .await
+                .ok()
+                .and_then(|bytes| {
+                    serde_json::from_slice::<GemmaBenchReceipt>(bytes.as_slice()).ok()
+                });
+            let _ = tokio::fs::remove_file(receipt_path.as_path()).await;
+            GemmaBenchmarkResult {
+                model_id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                psionic_model_id: spec.psionic_model_id.to_string(),
+                runtime_shape: spec.runtime_shape.label().to_string(),
+                mode: mode.label().to_string(),
+                status: if receipt.is_some() {
+                    String::from("completed")
+                } else {
+                    String::from("failed")
+                },
+                reason: receipt
+                    .is_none()
+                    .then(|| String::from("benchmark finished without a readable JSON receipt")),
+                path: Some(model_path.display().to_string()),
+                command,
+                receipt,
+            }
+        }
+    }
+}
+
+fn render_gemma_benchmark_report(report: &GemmaBenchmarkReport) -> String {
+    let mut lines = vec![
+        format!("selector: {}", report.selector),
+        format!("psionic: {}", report.psionic_repo),
+    ];
+    if report.results.is_empty() {
+        lines.push(String::from("no matching Gemma benchmark rows"));
+        return lines.join("\n");
+    }
+    for result in &report.results {
+        match result.receipt.as_ref() {
+            Some(receipt) => {
+                let ttft = receipt
+                    .mean_ttft_s
+                    .map(|value| format!("{value:.3}s"))
+                    .unwrap_or_else(|| String::from("n/a"));
+                let tok_s = receipt
+                    .mean_decode_tok_s
+                    .map(|value| format!("{value:.2} tok/s"))
+                    .unwrap_or_else(|| String::from("n/a"));
+                let topology = receipt.cluster_topology.as_deref().unwrap_or("single_node");
+                lines.push(format!(
+                    "{} {} {} total={:.3}s ttft={} tok/s={} backend={} topology={}",
+                    result.model_id,
+                    result.mode,
+                    result.status,
+                    receipt.mean_total_s,
+                    ttft,
+                    tok_s,
+                    receipt.runtime_backend,
+                    topology
+                ));
+            }
+            None => lines.push(format!(
+                "{} {} {} {}",
+                result.model_id,
+                result.mode,
+                result.status,
+                result.reason.as_deref().unwrap_or("no detail")
+            )),
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_byte_size(bytes: u64) -> String {
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    const MIB: f64 = 1024.0 * 1024.0;
+    if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.2} GiB", bytes as f64 / GIB)
+    } else {
+        format!("{:.2} MiB", bytes as f64 / MIB)
+    }
 }
 
 pub fn parse_args(args: Vec<String>) -> Result<Cli> {
@@ -958,6 +1678,37 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
+        Command::Gemma { command } => match command {
+            GemmaCommand::List { json } => {
+                let _ = ensure_local_setup(cli.config_path.as_path())?;
+                let report = gemma_catalog_report(cli.config_path.as_path());
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_gemma_catalog_report(&report)))
+            }
+            GemmaCommand::Download { selector, json } => {
+                let report =
+                    run_gemma_download_command(cli.config_path.as_path(), &selector).await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_gemma_download_report(&report)))
+            }
+            GemmaCommand::Benchmark {
+                selector,
+                request,
+                json,
+            } => {
+                let report =
+                    run_gemma_benchmark_command(cli.config_path.as_path(), &selector, &request)
+                        .await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_gemma_benchmark_report(&report)))
+            }
+        },
         Command::Online => {
             let status =
                 apply_control_command(cli.config_path.as_path(), ProviderControlAction::Online)
@@ -1035,6 +1786,9 @@ Commands:\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
+  gemma [list] [--json]\n\
+  gemma download <model|all|remaining> [--json]\n\
+  gemma benchmark <model|all> [--mode single|distributed-dense|distributed-sparse|matrix] [--backend auto|metal|cuda] [--peer-base-url <url>] [--split-layer <n>] [--prompt <text>] [--max-output-tokens <n>] [--repeats <n>] [--download-missing] [--json]\n\
   online\n\
   offline\n\
   pause\n\
@@ -1288,6 +2042,7 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
         "wallet" => Ok(Command::Wallet {
             command: parse_wallet_command(args, start_index)?,
         }),
+        "gemma" => parse_gemma_command(args, start_index + 1),
         "online" => {
             if start_index + 1 != args.len() {
                 bail!("online does not accept positional arguments");
@@ -1383,6 +2138,219 @@ fn parse_json_only(args: &[String], start_index: usize, command: &str) -> Result
         }
         Some(other) => bail!("unexpected argument for {command}: {other}"),
     }
+}
+
+fn parse_gemma_command(args: &[String], start_index: usize) -> Result<Command> {
+    match args.get(start_index).map(String::as_str) {
+        None => Ok(Command::Gemma {
+            command: GemmaCommand::List { json: false },
+        }),
+        Some("list") => Ok(Command::Gemma {
+            command: GemmaCommand::List {
+                json: parse_json_only(args, start_index + 1, "gemma list")?,
+            },
+        }),
+        Some("download") => {
+            let (selector, json) = parse_gemma_download_command(args, start_index + 1)?;
+            Ok(Command::Gemma {
+                command: GemmaCommand::Download { selector, json },
+            })
+        }
+        Some("benchmark") => {
+            let (selector, request, json) = parse_gemma_benchmark_command(args, start_index + 1)?;
+            Ok(Command::Gemma {
+                command: GemmaCommand::Benchmark {
+                    selector,
+                    request,
+                    json,
+                },
+            })
+        }
+        Some("--json") => {
+            if start_index + 1 != args.len() {
+                bail!("gemma --json does not accept additional arguments");
+            }
+            Ok(Command::Gemma {
+                command: GemmaCommand::List { json: true },
+            })
+        }
+        Some(other) => bail!("unknown gemma command: {other}"),
+    }
+}
+
+fn parse_gemma_download_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(GemmaSelector, bool)> {
+    let selector = parse_gemma_selector(
+        args.get(index)
+            .ok_or_else(|| anyhow!("missing <model|all|remaining> for gemma download"))?
+            .as_str(),
+    )?;
+    index += 1;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            other => bail!("unexpected argument for gemma download: {other}"),
+        }
+    }
+    Ok((selector, json))
+}
+
+fn parse_gemma_selector(value: &str) -> Result<GemmaSelector> {
+    match value.trim() {
+        "all" => Ok(GemmaSelector::All),
+        "remaining" => Ok(GemmaSelector::Remaining),
+        model_id => {
+            if gemma_download_spec(model_id).is_none() {
+                bail!("unknown Gemma model `{model_id}`");
+            }
+            Ok(GemmaSelector::Model(model_id.to_string()))
+        }
+    }
+}
+
+fn parse_gemma_benchmark_selector(value: &str) -> Result<GemmaBenchmarkSelector> {
+    match value.trim() {
+        "all" => Ok(GemmaBenchmarkSelector::All),
+        model_id => {
+            if gemma_download_spec(model_id).is_none() {
+                bail!("unknown Gemma model `{model_id}`");
+            }
+            Ok(GemmaBenchmarkSelector::Model(model_id.to_string()))
+        }
+    }
+}
+
+fn parse_gemma_benchmark_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(GemmaBenchmarkSelector, GemmaBenchmarkRequest, bool)> {
+    let selector = parse_gemma_benchmark_selector(
+        args.get(index)
+            .ok_or_else(|| anyhow!("missing <model|all> for gemma benchmark"))?
+            .as_str(),
+    )?;
+    index += 1;
+    let mut json = false;
+    let mut mode = GemmaBenchmarkMode::Matrix;
+    let mut backend = None::<String>;
+    let mut peer_base_url = None::<String>;
+    let mut split_layer = None::<usize>;
+    let mut prompt = String::from(DEFAULT_GEMMA_BENCH_PROMPT);
+    let mut max_output_tokens = 96usize;
+    let mut repeats = 3usize;
+    let mut download_missing = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--mode" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --mode"))?;
+                mode = GemmaBenchmarkMode::parse(value.as_str())?;
+                index += 1;
+            }
+            "--backend" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --backend"))?;
+                match value.as_str() {
+                    "auto" | "metal" | "cuda" => backend = Some(value.clone()),
+                    other => bail!(
+                        "unsupported Gemma benchmark backend `{other}`; expected one of: auto, metal, cuda"
+                    ),
+                }
+                index += 1;
+            }
+            "--peer-base-url" => {
+                index += 1;
+                peer_base_url = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --peer-base-url"))?
+                        .clone(),
+                );
+                index += 1;
+            }
+            "--split-layer" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --split-layer"))?;
+                split_layer = Some(
+                    value
+                        .parse::<usize>()
+                        .with_context(|| format!("invalid Gemma split layer: {value}"))?,
+                );
+                index += 1;
+            }
+            "--prompt" => {
+                index += 1;
+                prompt = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --prompt"))?
+                    .clone();
+                index += 1;
+            }
+            "--max-output-tokens" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --max-output-tokens"))?;
+                max_output_tokens = value
+                    .parse::<usize>()
+                    .with_context(|| format!("invalid Gemma max output tokens: {value}"))?;
+                index += 1;
+            }
+            "--repeats" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --repeats"))?;
+                repeats = value
+                    .parse::<usize>()
+                    .with_context(|| format!("invalid Gemma benchmark repeats: {value}"))?;
+                index += 1;
+            }
+            "--download-missing" => {
+                download_missing = true;
+                index += 1;
+            }
+            other => bail!("unexpected argument for gemma benchmark: {other}"),
+        }
+    }
+    if repeats == 0 {
+        bail!("Gemma benchmark repeats must be at least 1");
+    }
+    if matches!(mode, GemmaBenchmarkMode::DistributedDense) && peer_base_url.is_none() {
+        bail!("distributed-dense benchmarks require --peer-base-url");
+    }
+    if matches!(mode, GemmaBenchmarkMode::DistributedSparse) && backend.is_some() {
+        bail!("distributed-sparse benchmarks do not accept --backend");
+    }
+    Ok((
+        selector,
+        GemmaBenchmarkRequest {
+            mode,
+            backend,
+            peer_base_url,
+            split_layer,
+            prompt,
+            max_output_tokens,
+            repeats,
+            download_missing,
+        },
+        json,
+    ))
 }
 
 fn parse_job_submit_command(
@@ -1700,8 +2668,17 @@ pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
 fn load_config(path: &Path) -> Result<PylonConfig> {
     let payload = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read pylon config {}", path.display()))?;
-    serde_json::from_str(payload.as_str())
-        .with_context(|| format!("failed to parse pylon config {}", path.display()))
+    let base_dir = path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_home_dir);
+    let mut merged = serde_json::to_value(default_config(base_dir.as_path()))
+        .context("failed to serialize default pylon config")?;
+    let parsed = serde_json::from_str::<Value>(payload.as_str())
+        .with_context(|| format!("failed to parse pylon config {}", path.display()))?;
+    merge_json_value(&mut merged, &parsed);
+    serde_json::from_value(merged)
+        .with_context(|| format!("failed to hydrate pylon config {}", path.display()))
 }
 
 fn load_config_required(path: &Path) -> Result<PylonConfig> {
@@ -1719,6 +2696,24 @@ fn save_config(path: &Path, config: &PylonConfig) -> Result<()> {
     std::fs::write(path, format!("{}\n", serde_json::to_string_pretty(config)?))
         .with_context(|| format!("failed to write pylon config {}", path.display()))?;
     Ok(())
+}
+
+fn merge_json_value(target: &mut Value, source: &Value) {
+    match (target, source) {
+        (Value::Object(target), Value::Object(source)) => {
+            for (key, value) in source {
+                match target.get_mut(key) {
+                    Some(existing) => merge_json_value(existing, value),
+                    None => {
+                        target.insert(key.clone(), value.clone());
+                    }
+                }
+            }
+        }
+        (target, source) => {
+            *target = source.clone();
+        }
+    }
 }
 
 fn default_config(base_dir: &Path) -> PylonConfig {
@@ -4924,20 +5919,22 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AnnouncementAction, BuyerJobSubmitRequest, Command, GemmaDownloadEvent,
-        LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig,
-        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletInvoiceReport,
-        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
-        apply_control_command, build_snapshot_from_availability, default_config,
-        download_gemma_model_from_base_url, ensure_identity, gemma_download_spec,
-        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
-        load_inventory_report, load_jobs_report, load_ledger, load_or_create_config,
-        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
-        load_status_or_detect, mutate_ledger, parse_args, provider_admin_config,
-        publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
-        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
-        save_config, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
+        AnnouncementAction, BuyerJobSubmitRequest, Command, DEFAULT_GEMMA_BENCH_PROMPT,
+        GemmaBenchExecutionMode, GemmaBenchmarkMode, GemmaBenchmarkRequest, GemmaBenchmarkSelector,
+        GemmaCommand, GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend,
+        LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord,
+        PylonWalletPaymentRecord, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
+        add_configured_relay, apply_config_set, apply_control_command,
+        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
+        ensure_identity, gemma_download_spec, gemma_local_installations, inventory_rows,
+        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
+        load_ledger, load_or_create_config, load_product_report, load_receipts_report,
+        load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
+        planned_gemma_benchmark_modes, provider_admin_config, publish_announcement_report,
+        refresh_relay_report, remove_configured_relay, render_human_status, render_sandbox_report,
+        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
+        run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
+        submit_buyer_job, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -5051,6 +6048,37 @@ mod tests {
         ensure(
             config.buyer_auto_pay_enabled,
             "config set should update buyer_auto_pay_enabled",
+        )
+    }
+
+    #[test]
+    fn load_config_hydrates_missing_defaults() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        std::fs::write(
+            config_path.as_path(),
+            r#"{
+  "schema_version": 1,
+  "node_label": "pylon",
+  "payout_destination": null,
+  "identity_path": "/tmp/pylon-test/identity.mnemonic",
+  "admin_db_path": "/tmp/pylon-test/provider-admin.sqlite",
+  "admin_listen_addr": "127.0.0.1:9468",
+  "relay_urls": ["wss://relay.example.com"]
+}"#,
+        )?;
+        let config = super::load_config(config_path.as_path())?;
+        ensure(
+            config.wallet_storage_dir.ends_with("spark"),
+            "missing wallet storage should hydrate from the default config",
+        )?;
+        ensure(
+            config.ollama_base_url == "http://127.0.0.1:11434",
+            "missing Ollama config should hydrate from the default config",
+        )?;
+        ensure(
+            config.inventory_controls == ProviderInventoryControls::default(),
+            "missing inventory controls should hydrate from the default config",
         )
     }
 
@@ -5580,6 +6608,124 @@ mod tests {
                     },
                 },
             "wallet history should parse with a limit",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_gemma_commands() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec!["gemma".to_string()])?.command
+                == Command::Gemma {
+                    command: GemmaCommand::List { json: false },
+                },
+            "gemma should default to the catalog view",
+        )?;
+        ensure(
+            parse_args(vec![
+                "gemma".to_string(),
+                "download".to_string(),
+                "remaining".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Gemma {
+                    command: GemmaCommand::Download {
+                        selector: GemmaSelector::Remaining,
+                        json: true,
+                    },
+                },
+            "gemma download should parse the remaining selector",
+        )?;
+        ensure(
+            parse_args(vec![
+                "gemma".to_string(),
+                "benchmark".to_string(),
+                "all".to_string(),
+                "--mode".to_string(),
+                "matrix".to_string(),
+                "--peer-base-url".to_string(),
+                "http://127.0.0.1:18080".to_string(),
+                "--download-missing".to_string(),
+                "--repeats".to_string(),
+                "2".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Gemma {
+                    command: GemmaCommand::Benchmark {
+                        selector: GemmaBenchmarkSelector::All,
+                        request: GemmaBenchmarkRequest {
+                            mode: GemmaBenchmarkMode::Matrix,
+                            backend: None,
+                            peer_base_url: Some("http://127.0.0.1:18080".to_string()),
+                            split_layer: None,
+                            prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                            max_output_tokens: 96,
+                            repeats: 2,
+                            download_missing: true,
+                        },
+                        json: true,
+                    },
+                },
+            "gemma benchmark should parse matrix-mode orchestration flags",
+        )
+    }
+
+    #[test]
+    fn gemma_benchmark_matrix_marks_dense_split_without_peer_as_skipped()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let spec = gemma_download_spec("gemma-4-e4b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-4-e4b spec"))?;
+        let plans = planned_gemma_benchmark_modes(
+            spec,
+            &GemmaBenchmarkRequest {
+                mode: GemmaBenchmarkMode::Matrix,
+                backend: None,
+                peer_base_url: None,
+                split_layer: None,
+                prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                max_output_tokens: 96,
+                repeats: 1,
+                download_missing: false,
+            },
+        )?;
+        ensure(
+            plans
+                == vec![
+                    (GemmaBenchExecutionMode::Single, None),
+                    (
+                        GemmaBenchExecutionMode::DistributedDense,
+                        Some(String::from("distributed-dense requires --peer-base-url")),
+                    ),
+                ],
+            "matrix planning should keep the dense split row explicit when the peer is missing",
+        )
+    }
+
+    #[test]
+    fn gemma_benchmark_refuses_single_node_sparse_request() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let spec = gemma_download_spec("gemma-4-26b-a4b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-4-26b-a4b spec"))?;
+        let error = planned_gemma_benchmark_modes(
+            spec,
+            &GemmaBenchmarkRequest {
+                mode: GemmaBenchmarkMode::Single,
+                backend: None,
+                peer_base_url: None,
+                split_layer: None,
+                prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                max_output_tokens: 96,
+                repeats: 1,
+                download_missing: false,
+            },
+        )
+        .expect_err("sparse 26b should refuse single-node mode");
+        ensure(
+            error
+                .to_string()
+                .contains("does not support single-node execution"),
+            "sparse 26b should fail closed on single-node requests",
         )
     }
 
@@ -7771,8 +8917,8 @@ mod tests {
     fn gemma_local_installations_reflect_cached_files() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
-        let spec = gemma_download_spec("gemma-3-4b")
-            .ok_or_else(|| std::io::Error::other("missing gemma-3-4b spec"))?;
+        let spec = gemma_download_spec("gemma-4-e4b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-4-e4b spec"))?;
         let path = super::gemma_model_path(config_path.as_path(), spec);
         std::fs::create_dir_all(
             path.parent()
@@ -7783,8 +8929,8 @@ mod tests {
         let installations = gemma_local_installations(config_path.as_path());
         let found = installations
             .into_iter()
-            .find(|installation| installation.spec.id == "gemma-3-4b")
-            .ok_or_else(|| std::io::Error::other("gemma-3-4b installation missing"))?;
+            .find(|installation| installation.spec.id == "gemma-4-e4b")
+            .ok_or_else(|| std::io::Error::other("gemma-4-e4b installation missing"))?;
 
         ensure(
             found.installed,
@@ -7799,8 +8945,8 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn gemma_download_emits_progress_and_writes_cache()
     -> Result<(), Box<dyn std::error::Error>> {
-        let spec = gemma_download_spec("gemma-3-1b")
-            .ok_or_else(|| std::io::Error::other("missing gemma-3-1b spec"))?;
+        let spec = gemma_download_spec("gemma-4-e2b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-4-e2b spec"))?;
         let payload = "x".repeat(16_384);
         let expected_path = format!(
             "/{}/resolve/main/{}?download=true",
@@ -7837,7 +8983,7 @@ mod tests {
         ensure(
             events
                 .iter()
-                .any(|event| matches!(event, GemmaDownloadEvent::Started { spec, .. } if spec.id == "gemma-3-1b")),
+                .any(|event| matches!(event, GemmaDownloadEvent::Started { spec, .. } if spec.id == "gemma-4-e2b")),
             "download should emit a started event",
         )?;
         ensure(
@@ -7847,7 +8993,7 @@ mod tests {
                     spec,
                     downloaded_bytes,
                     total_bytes
-                } if spec.id == "gemma-3-1b" && *downloaded_bytes == 16_384 && *total_bytes == Some(16_384)
+                } if spec.id == "gemma-4-e2b" && *downloaded_bytes == 16_384 && *total_bytes == Some(16_384)
             )),
             "download should emit a progress event with byte totals",
         )?;
@@ -7859,7 +9005,7 @@ mod tests {
                         spec,
                         file_bytes,
                         ..
-                    } if spec.id == "gemma-3-1b" && *file_bytes == 16_384
+                    } if spec.id == "gemma-4-e2b" && *file_bytes == 16_384
                 )
             }),
             "download should emit a finished event",

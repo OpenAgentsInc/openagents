@@ -74,7 +74,15 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 - a retained transcript area for local shell activity
 - a bottom textbox where plain text submits a prompt, `/help` shows the retained shell commands, and `/download <model>` pulls a curated Gemma GGUF into the local Pylon cache
 
-The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now also shows a small curated Hugging Face catalog for `gemma-3-1b`, `gemma-3n-e4b`, `gemma-3-4b`, `gemma-3-12b`, and `gemma-3-27b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path still uses backend-visible Gemma models from the existing serving seam. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state but not direct watt draw. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path still uses backend-visible Gemma models from the existing serving seam. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+
+Headless Gemma operator commands now exist too:
+
+- `cargo pylon-headless gemma`
+- `cargo pylon-headless gemma download remaining`
+- `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
+
+Those commands keep Pylon as the operator entrypoint and shell into the sibling Psionic checkout for the real runtime benchmark. By default that means a local `../psionic` clone. Override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` when needed.
 
 Pylon now also keeps a focused local ledger at `~/.openagents/pylon/ledger.json`. That file is the retained standalone durability layer for relay state, NIP-90 jobs, invoices, payments, settlements, and local activity replay. It is intentionally narrower than the old archived Pylon database.
 
@@ -145,6 +153,9 @@ cargo pylon-headless provider scan --seconds 5
 cargo pylon-headless provider run --seconds 5
 cargo pylon-headless job submit --model gemma4:e4b --bid-msats 21000 "write a haiku about bitcoin"
 cargo pylon-headless job watch --seconds 30
+cargo pylon-headless gemma
+cargo pylon-headless gemma download remaining
+cargo pylon-headless gemma benchmark all --download-missing --mode matrix --peer-base-url http://127.0.0.1:18080
 ```
 
 Inspect provider truth:
