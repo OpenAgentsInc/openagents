@@ -4,6 +4,7 @@ pub enum SlashCommandId {
     Chat,
     Download,
     Relay,
+    Wallet,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -53,6 +54,12 @@ const COMMANDS: &[SlashCommandSpec] = &[
         usage: "/relay [list|add|remove|refresh]",
         summary: "inspect or update the retained relay set",
     },
+    SlashCommandSpec {
+        id: SlashCommandId::Wallet,
+        name: "wallet",
+        usage: "/wallet [status|balance|address|invoice|pay|history]",
+        summary: "run retained Spark wallet commands inside the shell",
+    },
 ];
 
 pub fn registry() -> &'static [SlashCommandSpec] {
@@ -100,7 +107,7 @@ mod tests {
     #[test]
     fn registry_includes_retained_commands() {
         let names = registry().iter().map(|spec| spec.name).collect::<Vec<_>>();
-        assert_eq!(names, vec!["help", "chat", "download", "relay"]);
+        assert_eq!(names, vec!["help", "chat", "download", "relay", "wallet"]);
     }
 
     #[test]
@@ -146,5 +153,6 @@ mod tests {
         );
         assert_eq!(registry()[1].id, SlashCommandId::Chat);
         assert_eq!(registry()[3].id, SlashCommandId::Relay);
+        assert_eq!(registry()[4].id, SlashCommandId::Wallet);
     }
 }

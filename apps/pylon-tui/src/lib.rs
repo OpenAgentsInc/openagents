@@ -155,6 +155,13 @@ enum WorkerEvent {
     RelayRefreshFailed {
         error: String,
     },
+    WalletCommandFinished {
+        title: String,
+        output: String,
+    },
+    WalletCommandFailed {
+        error: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -339,6 +346,10 @@ impl AppShell {
                 }
                 SlashCommandId::Relay => {
                     self.handle_relay_command(args);
+                    return;
+                }
+                SlashCommandId::Wallet => {
+                    self.handle_wallet_command(args);
                     return;
                 }
             },
@@ -652,6 +663,12 @@ impl AppShell {
             WorkerEvent::RelayRefreshFailed { error } => {
                 self.push_system_message("Relay Error", error);
             }
+            WorkerEvent::WalletCommandFinished { title, output } => {
+                self.push_system_lines(title, text_body_lines(output.as_str()));
+            }
+            WorkerEvent::WalletCommandFailed { error } => {
+                self.push_system_message("Wallet Error", error);
+            }
         }
         self.sync_transcript_scroll_after_update();
     }
@@ -733,6 +750,54 @@ impl AppShell {
                 );
             }
         }
+    }
+
+    fn handle_wallet_command(&mut self, args: String) {
+        let mut argv = vec![String::from("wallet")];
+        if args.trim().is_empty() {
+            argv.push(String::from("status"));
+        } else {
+            argv.extend(args.split_whitespace().map(ToString::to_string));
+        }
+        let command = match pylon::parse_wallet_command(argv.as_slice(), 0) {
+            Ok(command) => command,
+            Err(error) => {
+                self.push_system_message("Wallet Error", error.to_string());
+                return;
+            }
+        };
+        let title = wallet_command_title(&command);
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                pylon::run_wallet_command(config_path.as_path(), &command).await
+            });
+            match result {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::WalletCommandFinished { title, output });
+                }
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Wallet", "Running wallet command...");
     }
 
     async fn refresh(&mut self) {
@@ -1174,6 +1239,7 @@ Composer:\n\
   [prompt]  stream a reply from local Gemma when weights are loaded\n\
   /help  show available commands\n\
   /relay [list|add|remove|refresh]  inspect or update configured relays\n\
+  /wallet [status|balance|address|invoice|pay|history]  run retained Spark wallet commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
 }
 
@@ -1703,6 +1769,18 @@ fn relay_report_lines(report: &pylon::RelayReport) -> Vec<String> {
         }
     }
     lines
+}
+
+fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
+    match command {
+        pylon::WalletSubcommand::Status { .. } => "Wallet Status",
+        pylon::WalletSubcommand::Balance { .. } => "Wallet Balance",
+        pylon::WalletSubcommand::Address { .. } => "Wallet Address",
+        pylon::WalletSubcommand::Invoice { .. } => "Wallet Invoice",
+        pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
+        pylon::WalletSubcommand::History { .. } => "Wallet History",
+    }
+    .to_string()
 }
 
 fn transcript_wrap_width(area: Rect) -> u16 {
