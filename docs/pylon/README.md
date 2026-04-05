@@ -1,8 +1,20 @@
 # Pylon Standalone Operator Guide
 
-`Pylon` is the standalone provider binary for the OpenAgents Compute Market.
+`Pylon` is the standalone provider program for the OpenAgents Compute Market.
 
-It is a narrow, headless supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
+The default local repo entrypoint is the small terminal shell:
+
+```bash
+cargo pylon
+```
+
+The current provider automation stays in the explicit headless CLI:
+
+```bash
+cargo pylon-headless <command>
+```
+
+It is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
 
 ## Launch Truth
 
@@ -49,7 +61,7 @@ If neither backend is available, `Pylon` should still install and run, but it sh
 Open the local terminal shell:
 
 ```bash
-cargo run -p pylon-tui
+cargo pylon
 ```
 
 The first cut is intentionally small. It renders one full-screen status view with:
@@ -60,7 +72,7 @@ The first cut is intentionally small. It renders one full-screen status view wit
 - backend readiness summary
 - product, inventory, job, receipt, and earnings counts
 
-The shell is read-only. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below.
+The shell is read-only. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 Initialize a standalone config and identity:
 

@@ -12,7 +12,7 @@ The new definition is:
 
 **Pylon is the standalone provider binary for the OpenAgents Compute Market.**
 
-It is a narrow, installable, headless compute connector that can run on a spare laptop, desktop, workstation, or server, detect eligible local backends, expose standardized compute products, connect that supply to the OpenAgents network, execute supported jobs locally, emit delivery evidence, and track payouts.
+It is a narrow, installable compute connector that can run on a spare laptop, desktop, workstation, or server, detect eligible local backends, expose standardized compute products, connect that supply to the OpenAgents network, execute supported jobs locally, emit delivery evidence, and track payouts. The local repo default can be a small TUI operator shell; the provider and service path remains an explicit headless CLI.
 
 Pylon should also be shaped so bounded `sandbox_execution` can become the next compute family on the same provider substrate without reopening the product boundary. That means declared sandbox profiles, explicit resource and policy limits, and receiptable execution evidence. It does not mean arbitrary host access or labor-mode autonomous task execution.
 
