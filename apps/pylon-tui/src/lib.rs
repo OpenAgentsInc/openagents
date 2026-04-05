@@ -130,6 +130,12 @@ enum WorkerEvent {
     StreamFailed(String),
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ActiveChatMetrics {
+    started_at: Instant,
+    first_token_at: Option<Instant>,
+}
+
 struct AppShell {
     config_path: PathBuf,
     loaded: Option<LoadedState>,
@@ -150,6 +156,7 @@ struct AppShell {
     chat_in_flight: bool,
     active_chat_target: Option<String>,
     active_chat_text: String,
+    active_chat_metrics: Option<ActiveChatMetrics>,
     chat_history: Vec<pylon::LocalGemmaChatMessage>,
     pending_chat_prompt: Option<String>,
     transcript_follow_latest: bool,
@@ -192,6 +199,7 @@ impl AppShell {
             chat_in_flight: false,
             active_chat_target: None,
             active_chat_text: String::new(),
+            active_chat_metrics: None,
             chat_history: Vec::new(),
             pending_chat_prompt: None,
             transcript_follow_latest: true,
@@ -326,6 +334,10 @@ impl AppShell {
         self.chat_in_flight = true;
         self.active_chat_target = None;
         self.active_chat_text.clear();
+        self.active_chat_metrics = Some(ActiveChatMetrics {
+            started_at: Instant::now(),
+            first_token_at: None,
+        });
         self.pending_chat_prompt = Some(prompt);
         self.transcript.set_active_turn(ActiveTurn::new(
             TranscriptRole::Assistant,
@@ -388,17 +400,22 @@ impl AppShell {
                 self.active_chat_target = Some(model.clone());
                 self.transcript.set_active_turn(ActiveTurn::new(
                     TranscriptRole::Assistant,
-                    format!("Local Gemma {model}"),
+                    active_chat_title(model.as_str(), None),
                     vec![String::from("Waiting for tokens...")],
                 ));
             }
             WorkerEvent::StreamDelta(delta) => {
+                if let Some(metrics) = self.active_chat_metrics.as_mut() {
+                    if metrics.first_token_at.is_none() {
+                        metrics.first_token_at = Some(Instant::now());
+                    }
+                }
                 self.active_chat_text.push_str(delta.as_str());
                 self.transcript.set_active_turn(ActiveTurn::new(
                     TranscriptRole::Assistant,
-                    format!(
-                        "Local Gemma {}",
-                        self.active_chat_target.as_deref().unwrap_or("chat")
+                    active_chat_title(
+                        self.active_chat_target.as_deref().unwrap_or("chat"),
+                        None,
                     ),
                     text_body_lines(self.active_chat_text.as_str()),
                 ));
@@ -406,6 +423,10 @@ impl AppShell {
             WorkerEvent::StreamFinished => {
                 self.chat_in_flight = false;
                 self.transcript.clear_active_turn();
+                let metrics_summary = self
+                    .active_chat_metrics
+                    .take()
+                    .map(|metrics| summarize_chat_metrics(metrics, self.active_chat_text.as_str()));
                 if let Some(prompt) = self.pending_chat_prompt.take() {
                     self.chat_history
                         .push(pylon::LocalGemmaChatMessage::user(prompt));
@@ -418,9 +439,9 @@ impl AppShell {
                 }
                 self.transcript.push_entry(TranscriptEntry::new(
                     TranscriptRole::Assistant,
-                    format!(
-                        "Local Gemma {}",
-                        self.active_chat_target.as_deref().unwrap_or("chat")
+                    active_chat_title(
+                        self.active_chat_target.as_deref().unwrap_or("chat"),
+                        metrics_summary.as_ref(),
                     ),
                     text_body_lines(self.active_chat_text.as_str()),
                 ));
@@ -432,12 +453,13 @@ impl AppShell {
                 self.chat_in_flight = false;
                 self.pending_chat_prompt = None;
                 self.transcript.clear_active_turn();
+                self.active_chat_metrics = None;
                 if had_partial {
                     self.transcript.push_entry(TranscriptEntry::new(
                         TranscriptRole::Assistant,
-                        format!(
-                            "Local Gemma {}",
-                            self.active_chat_target.as_deref().unwrap_or("chat")
+                        active_chat_title(
+                            self.active_chat_target.as_deref().unwrap_or("chat"),
+                            None,
                         ),
                         text_body_lines(self.active_chat_text.as_str()),
                     ));
@@ -1317,10 +1339,68 @@ fn format_load_average((one, five, fifteen): (f64, f64, f64)) -> String {
     format!("{one:.2} / {five:.2} / {fifteen:.2}")
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct ChatMetricsSummary {
+    ttft_seconds: Option<f64>,
+    total_seconds: f64,
+    tokens_per_second: Option<f64>,
+}
+
+fn active_chat_title(model: &str, metrics: Option<&ChatMetricsSummary>) -> String {
+    let mut title = format!("Local Gemma {model}");
+    if let Some(metrics) = metrics {
+        if let Some(ttft_seconds) = metrics.ttft_seconds {
+            title.push_str(format!("  ttft {:.2}s", ttft_seconds).as_str());
+        }
+        title.push_str(format!("  total {:.2}s", metrics.total_seconds).as_str());
+        if let Some(tokens_per_second) = metrics.tokens_per_second {
+            title.push_str(format!("  {:.1} tok/s", tokens_per_second).as_str());
+        }
+    }
+    title
+}
+
+fn summarize_chat_metrics(metrics: ActiveChatMetrics, text: &str) -> ChatMetricsSummary {
+    let finished_at = Instant::now();
+    let total_seconds = finished_at
+        .saturating_duration_since(metrics.started_at)
+        .as_secs_f64();
+    let ttft_seconds = metrics
+        .first_token_at
+        .map(|first| first.saturating_duration_since(metrics.started_at).as_secs_f64());
+    let estimated_tokens = estimate_token_count(text);
+    let generation_seconds = metrics
+        .first_token_at
+        .map(|first| finished_at.saturating_duration_since(first).as_secs_f64())
+        .filter(|seconds| *seconds > 0.0);
+    let tokens_per_second = generation_seconds.and_then(|seconds| {
+        (estimated_tokens > 0).then_some(estimated_tokens as f64 / seconds)
+    });
+    ChatMetricsSummary {
+        ttft_seconds,
+        total_seconds,
+        tokens_per_second,
+    }
+}
+
+fn estimate_token_count(text: &str) -> usize {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return 0;
+    }
+    let whitespace_tokens = trimmed.split_whitespace().count();
+    let char_estimate = trimmed.chars().count().div_ceil(4);
+    whitespace_tokens.max(char_estimate)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AppShell, ComposerSubmission, WorkerEvent};
+    use super::{
+        ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
+        active_chat_title, estimate_token_count, summarize_chat_metrics,
+    };
     use std::path::PathBuf;
+    use std::time::{Duration, Instant};
 
     fn transcript_text(app: &AppShell) -> String {
         app.transcript
@@ -1364,6 +1444,10 @@ mod tests {
     fn stream_events_commit_assistant_reply() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         app.pending_chat_prompt = Some(String::from("hello"));
+        app.active_chat_metrics = Some(ActiveChatMetrics {
+            started_at: Instant::now() - Duration::from_secs(2),
+            first_token_at: Some(Instant::now() - Duration::from_secs(1)),
+        });
         app.handle_worker_event(WorkerEvent::StreamStarted(String::from("gemma4:e4b")));
         app.handle_worker_event(WorkerEvent::StreamDelta(String::from("hello ")));
         app.handle_worker_event(WorkerEvent::StreamDelta(String::from("world")));
@@ -1371,6 +1455,9 @@ mod tests {
 
         let transcript = transcript_text(&app);
         assert!(transcript.contains("[assistant] Local Gemma gemma4:e4b"));
+        assert!(transcript.contains("ttft "));
+        assert!(transcript.contains("total "));
+        assert!(transcript.contains("tok/s"));
         assert!(transcript.contains("hello world"));
         assert_eq!(
             app.chat_history,
@@ -1400,5 +1487,41 @@ mod tests {
         app.scroll_transcript_down(u16::MAX);
         assert!(app.transcript_follow_latest);
         assert_eq!(app.transcript_panel_title(), "Transcript");
+    }
+
+    #[test]
+    fn active_chat_title_formats_metrics_on_one_line() {
+        let title = active_chat_title(
+            "gemma4:e4b",
+            Some(&ChatMetricsSummary {
+                ttft_seconds: Some(0.42),
+                total_seconds: 3.18,
+                tokens_per_second: Some(27.6),
+            }),
+        );
+        assert_eq!(
+            title,
+            "Local Gemma gemma4:e4b  ttft 0.42s  total 3.18s  27.6 tok/s"
+        );
+    }
+
+    #[test]
+    fn estimate_token_count_uses_text_size_floor() {
+        assert_eq!(estimate_token_count(""), 0);
+        assert_eq!(estimate_token_count("hello world"), 3);
+    }
+
+    #[test]
+    fn summarize_chat_metrics_reports_ttft_total_and_rate() {
+        let summary = summarize_chat_metrics(
+            ActiveChatMetrics {
+                started_at: Instant::now() - Duration::from_millis(1400),
+                first_token_at: Some(Instant::now() - Duration::from_millis(900)),
+            },
+            "hello world from gemma",
+        );
+        assert!(summary.ttft_seconds.unwrap_or_default() >= 0.4);
+        assert!(summary.total_seconds >= 1.3);
+        assert!(summary.tokens_per_second.unwrap_or_default() > 0.0);
     }
 }
