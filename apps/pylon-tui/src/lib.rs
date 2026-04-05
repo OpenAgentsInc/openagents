@@ -4,6 +4,7 @@ mod transcript;
 use std::io::{self, Stdout};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
@@ -24,10 +25,9 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use serde_json::Value;
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
-use tokio::sync::mpsc;
 use transcript::{ActiveTurn, RetainedTranscript, TranscriptEntry, TranscriptRole};
 
-const TICK_RATE: Duration = Duration::from_millis(200);
+const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(2);
 const GPU_REFRESH_RATE: Duration = Duration::from_secs(30);
 
@@ -124,11 +124,13 @@ struct AppShell {
     should_quit: bool,
     transcript: RetainedTranscript,
     bottom_pane: BottomPane,
-    worker_tx: mpsc::UnboundedSender<WorkerEvent>,
-    worker_rx: mpsc::UnboundedReceiver<WorkerEvent>,
+    worker_tx: mpsc::Sender<WorkerEvent>,
+    worker_rx: mpsc::Receiver<WorkerEvent>,
     chat_in_flight: bool,
     active_chat_target: Option<String>,
     active_chat_text: String,
+    chat_history: Vec<pylon::LocalGemmaChatMessage>,
+    pending_chat_prompt: Option<String>,
 }
 
 impl AppShell {
@@ -138,7 +140,7 @@ impl AppShell {
                 .with_cpu(CpuRefreshKind::everything())
                 .with_memory(MemoryRefreshKind::everything()),
         );
-        let (worker_tx, worker_rx) = mpsc::unbounded_channel();
+        let (worker_tx, worker_rx) = mpsc::channel();
         let mut transcript = RetainedTranscript::new();
         transcript.push_entry(TranscriptEntry::new(
             TranscriptRole::System,
@@ -164,6 +166,8 @@ impl AppShell {
             chat_in_flight: false,
             active_chat_target: None,
             active_chat_text: String::new(),
+            chat_history: Vec::new(),
+            pending_chat_prompt: None,
         }
     }
 
@@ -273,9 +277,12 @@ impl AppShell {
             }
         };
 
+        let mut messages = self.chat_history.clone();
+        messages.push(pylon::LocalGemmaChatMessage::user(prompt.clone()));
         self.chat_in_flight = true;
         self.active_chat_target = None;
         self.active_chat_text.clear();
+        self.pending_chat_prompt = Some(prompt);
         self.transcript.set_active_turn(ActiveTurn::new(
             TranscriptRole::Assistant,
             "Local Gemma",
@@ -285,26 +292,41 @@ impl AppShell {
         let config_path = self.config_path.clone();
         let tx = self.worker_tx.clone();
         let target_for_task = target.clone();
-        tokio::task::spawn_local(async move {
-            let result = pylon::stream_local_gemma_chat_target(
-                config_path.as_path(),
-                &target_for_task,
-                prompt.as_str(),
-                |event| match event {
-                    pylon::LocalGemmaChatEvent::Started { target } => {
-                        let _ = tx.send(WorkerEvent::StreamStarted(target.model));
-                    }
-                    pylon::LocalGemmaChatEvent::Delta(delta) => {
-                        let _ = tx.send(WorkerEvent::StreamDelta(delta));
-                    }
-                    pylon::LocalGemmaChatEvent::Finished { .. } => {
-                        let _ = tx.send(WorkerEvent::StreamFinished);
-                    }
-                },
-            )
-            .await;
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::StreamFailed(error.to_string()));
+                    return;
+                }
+            };
+            let local = tokio::task::LocalSet::new();
+            let result = local.block_on(&runtime, async move {
+                let stream_tx = tx.clone();
+                pylon::stream_local_gemma_chat_messages_target(
+                    config_path.as_path(),
+                    &target_for_task,
+                    messages.as_slice(),
+                    |event| match event {
+                        pylon::LocalGemmaChatEvent::Started { target } => {
+                            let _ = stream_tx.send(WorkerEvent::StreamStarted(target.model));
+                        }
+                        pylon::LocalGemmaChatEvent::Delta(delta) => {
+                            let _ = stream_tx.send(WorkerEvent::StreamDelta(delta));
+                        }
+                        pylon::LocalGemmaChatEvent::Finished { .. } => {
+                            let _ = stream_tx.send(WorkerEvent::StreamFinished);
+                        }
+                    },
+                )
+                .await
+            });
             if let Err(error) = result {
-                let _ = tx.send(WorkerEvent::StreamFailed(error.to_string()));
+                let _ = error_tx.send(WorkerEvent::StreamFailed(error.to_string()));
             }
         });
     }
@@ -339,6 +361,16 @@ impl AppShell {
             WorkerEvent::StreamFinished => {
                 self.chat_in_flight = false;
                 self.transcript.clear_active_turn();
+                if let Some(prompt) = self.pending_chat_prompt.take() {
+                    self.chat_history
+                        .push(pylon::LocalGemmaChatMessage::user(prompt));
+                }
+                if !self.active_chat_text.trim().is_empty() {
+                    self.chat_history
+                        .push(pylon::LocalGemmaChatMessage::assistant(
+                            self.active_chat_text.clone(),
+                        ));
+                }
                 self.transcript.push_entry(TranscriptEntry::new(
                     TranscriptRole::Assistant,
                     format!(
@@ -353,6 +385,7 @@ impl AppShell {
             WorkerEvent::StreamFailed(error) => {
                 let had_partial = !self.active_chat_text.trim().is_empty();
                 self.chat_in_flight = false;
+                self.pending_chat_prompt = None;
                 self.transcript.clear_active_turn();
                 if had_partial {
                     self.transcript.push_entry(TranscriptEntry::new(
@@ -873,6 +906,7 @@ mod tests {
     #[test]
     fn stream_events_commit_assistant_reply() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.pending_chat_prompt = Some(String::from("hello"));
         app.handle_worker_event(WorkerEvent::StreamStarted(String::from("gemma4:e4b")));
         app.handle_worker_event(WorkerEvent::StreamDelta(String::from("hello ")));
         app.handle_worker_event(WorkerEvent::StreamDelta(String::from("world")));
@@ -881,5 +915,12 @@ mod tests {
         let transcript = transcript_text(&app);
         assert!(transcript.contains("[assistant] Local Gemma gemma4:e4b"));
         assert!(transcript.contains("hello world"));
+        assert_eq!(
+            app.chat_history,
+            vec![
+                pylon::LocalGemmaChatMessage::user("hello"),
+                pylon::LocalGemmaChatMessage::assistant("hello world"),
+            ]
+        );
     }
 }

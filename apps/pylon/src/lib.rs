@@ -193,6 +193,54 @@ pub struct LocalGemmaChatTarget {
     pub model: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalGemmaChatMessageRole {
+    System,
+    User,
+    Assistant,
+}
+
+impl LocalGemmaChatMessageRole {
+    fn api_label(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::User => "user",
+            Self::Assistant => "assistant",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalGemmaChatMessage {
+    pub role: LocalGemmaChatMessageRole,
+    pub content: String,
+}
+
+impl LocalGemmaChatMessage {
+    #[must_use]
+    pub fn new(role: LocalGemmaChatMessageRole, content: impl Into<String>) -> Self {
+        Self {
+            role,
+            content: content.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn system(content: impl Into<String>) -> Self {
+        Self::new(LocalGemmaChatMessageRole::System, content)
+    }
+
+    #[must_use]
+    pub fn user(content: impl Into<String>) -> Self {
+        Self::new(LocalGemmaChatMessageRole::User, content)
+    }
+
+    #[must_use]
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self::new(LocalGemmaChatMessageRole::Assistant, content)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LocalGemmaChatEvent {
     Started { target: LocalGemmaChatTarget },
@@ -1380,28 +1428,66 @@ pub async fn run_local_gemma_chat_stream<F>(
 where
     F: FnMut(LocalGemmaChatEvent),
 {
-    let trimmed_prompt = prompt.trim();
-    if trimmed_prompt.is_empty() {
+    run_local_gemma_chat_messages_stream(
+        config_path,
+        &[LocalGemmaChatMessage::user(prompt.trim())],
+        emit,
+    )
+    .await
+}
+
+pub async fn run_local_gemma_chat_messages_stream<F>(
+    config_path: &Path,
+    messages: &[LocalGemmaChatMessage],
+    emit: F,
+) -> Result<LocalGemmaChatTarget>
+where
+    F: FnMut(LocalGemmaChatEvent),
+{
+    if messages
+        .iter()
+        .all(|message| message.content.trim().is_empty())
+    {
         bail!("chat prompt is empty");
     }
 
     ensure_local_setup(config_path)?;
     let (config, status) = load_config_and_status(config_path).await?;
     let target = resolve_local_gemma_chat_target_from_status(&config, &status)?;
-    stream_local_gemma_chat_target(config_path, &target, trimmed_prompt, emit).await
+    stream_local_gemma_chat_messages_target(config_path, &target, messages, emit).await
 }
 
 pub async fn stream_local_gemma_chat_target<F>(
     config_path: &Path,
     target: &LocalGemmaChatTarget,
     prompt: &str,
+    emit: F,
+) -> Result<LocalGemmaChatTarget>
+where
+    F: FnMut(LocalGemmaChatEvent),
+{
+    stream_local_gemma_chat_messages_target(
+        config_path,
+        target,
+        &[LocalGemmaChatMessage::user(prompt.trim())],
+        emit,
+    )
+    .await
+}
+
+pub async fn stream_local_gemma_chat_messages_target<F>(
+    config_path: &Path,
+    target: &LocalGemmaChatTarget,
+    messages: &[LocalGemmaChatMessage],
     mut emit: F,
 ) -> Result<LocalGemmaChatTarget>
 where
     F: FnMut(LocalGemmaChatEvent),
 {
-    let trimmed_prompt = prompt.trim();
-    if trimmed_prompt.is_empty() {
+    if messages
+        .iter()
+        .all(|message| message.content.trim().is_empty())
+    {
         bail!("chat prompt is empty");
     }
 
@@ -1417,10 +1503,10 @@ where
     });
     match target.backend {
         LocalGemmaChatBackend::Ollama => {
-            stream_ollama_chat(&client, &config, &target, trimmed_prompt, &mut emit).await?;
+            stream_ollama_chat(&client, &config, target, messages, &mut emit).await?;
         }
         LocalGemmaChatBackend::OpenAiCompat => {
-            stream_openai_compat_chat(&client, &config, &target, trimmed_prompt, &mut emit).await?;
+            stream_openai_compat_chat(&client, &config, target, messages, &mut emit).await?;
         }
     }
     emit(LocalGemmaChatEvent::Finished {
@@ -1461,7 +1547,7 @@ async fn stream_ollama_chat<F>(
     client: &reqwest::Client,
     config: &PylonConfig,
     target: &LocalGemmaChatTarget,
-    prompt: &str,
+    messages: &[LocalGemmaChatMessage],
     emit: &mut F,
 ) -> Result<()>
 where
@@ -1470,9 +1556,15 @@ where
     let url = format!("{}/api/chat", config.ollama_base_url.trim_end_matches('/'));
     let payload = json!({
         "model": target.model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
+        "messages": messages
+            .iter()
+            .map(|message| {
+                json!({
+                    "role": message.role.api_label(),
+                    "content": message.content,
+                })
+            })
+            .collect::<Vec<_>>(),
         "stream": true,
     });
     let mut response = client
@@ -1522,7 +1614,7 @@ async fn stream_openai_compat_chat<F>(
     client: &reqwest::Client,
     config: &PylonConfig,
     target: &LocalGemmaChatTarget,
-    prompt: &str,
+    messages: &[LocalGemmaChatMessage],
     emit: &mut F,
 ) -> Result<()>
 where
@@ -1534,9 +1626,15 @@ where
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
     let payload = json!({
         "model": target.model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
+        "messages": messages
+            .iter()
+            .map(|message| {
+                json!({
+                    "role": message.role.api_label(),
+                    "content": message.content,
+                })
+            })
+            .collect::<Vec<_>>(),
         "stream": true,
     });
     let mut response = client
@@ -2817,12 +2915,13 @@ fn now_epoch_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, LocalGemmaChatBackend, LocalGemmaChatEvent, PylonConfig, apply_config_set,
-        apply_control_command, build_snapshot_from_availability, default_config, ensure_identity,
-        inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
-        load_jobs_report, load_or_create_config, load_product_report, load_receipts_report,
-        load_sandbox_report, load_status_or_detect, parse_args, provider_admin_config,
-        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
+        Command, LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig,
+        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
+        ensure_identity, inventory_rows, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_or_create_config, load_product_report,
+        load_receipts_report, load_sandbox_report, load_status_or_detect, parse_args,
+        provider_admin_config, render_human_status, render_sandbox_report,
+        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, save_config,
     };
     use openagents_provider_substrate::{
@@ -3502,6 +3601,77 @@ mod tests {
         ensure(
             collect_chat_deltas(events.as_slice()) == "hello world",
             "chat stream should emit the streamed Ollama deltas in order",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn local_ollama_gemma_chat_stream_sends_prior_messages()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let base_url =
+            start_mock_http_server(
+                |method, path, body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4:e4b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/api/chat") => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                        assert_eq!(request["messages"][0]["role"], json!("user"));
+                        assert_eq!(request["messages"][0]["content"], json!("who are you"));
+                        assert_eq!(request["messages"][1]["role"], json!("assistant"));
+                        assert_eq!(request["messages"][1]["content"], json!("I am Gemma 4."),);
+                        assert_eq!(request["messages"][2]["role"], json!("user"));
+                        assert_eq!(
+                            request["messages"][2]["content"],
+                            json!("say that in french"),
+                        );
+                        (
+                            200,
+                            "application/x-ndjson",
+                            concat!(
+                                "{\"message\":{\"content\":\"Je suis Gemma 4.\"},\"done\":false}\n",
+                                "{\"done\":true}\n"
+                            )
+                            .to_string(),
+                        )
+                    }
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.ollama_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+
+        let mut events = Vec::new();
+        let target = run_local_gemma_chat_messages_stream(
+            config_path.as_path(),
+            &[
+                LocalGemmaChatMessage::user("who are you"),
+                LocalGemmaChatMessage::assistant("I am Gemma 4."),
+                LocalGemmaChatMessage::user("say that in french"),
+            ],
+            |event| events.push(event),
+        )
+        .await?;
+
+        ensure(
+            target.backend == LocalGemmaChatBackend::Ollama && target.model == "gemma4:e4b",
+            "chat stream should still resolve the local Ollama Gemma target",
+        )?;
+        ensure(
+            collect_chat_deltas(events.as_slice()) == "Je suis Gemma 4.",
+            "chat stream should preserve the streamed reply when prior turns are present",
         )
     }
 
