@@ -12,11 +12,16 @@
 )]
 
 use anyhow::Result;
+use tokio::task::LocalSet;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match pylon_tui::run_pylon_tui_with_args(args).await {
+    let local = LocalSet::new();
+    match local
+        .run_until(pylon_tui::run_pylon_tui_with_args(args))
+        .await
+    {
         Ok(()) => Ok(()),
         Err(error) if error.to_string() == pylon_tui::usage() => {
             println!("{}", pylon_tui::usage());

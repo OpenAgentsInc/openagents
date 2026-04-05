@@ -24,7 +24,8 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use serde_json::Value;
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
-use transcript::{RetainedTranscript, TranscriptEntry, TranscriptRole};
+use tokio::sync::mpsc;
+use transcript::{ActiveTurn, RetainedTranscript, TranscriptEntry, TranscriptRole};
 
 const TICK_RATE: Duration = Duration::from_millis(200);
 const REFRESH_RATE: Duration = Duration::from_secs(2);
@@ -103,6 +104,14 @@ struct LiveSystemStats {
     gpu_summary: Option<String>,
 }
 
+#[derive(Debug)]
+enum WorkerEvent {
+    StreamStarted(String),
+    StreamDelta(String),
+    StreamFinished,
+    StreamFailed(String),
+}
+
 struct AppShell {
     config_path: PathBuf,
     loaded: Option<LoadedState>,
@@ -115,6 +124,11 @@ struct AppShell {
     should_quit: bool,
     transcript: RetainedTranscript,
     bottom_pane: BottomPane,
+    worker_tx: mpsc::UnboundedSender<WorkerEvent>,
+    worker_rx: mpsc::UnboundedReceiver<WorkerEvent>,
+    chat_in_flight: bool,
+    active_chat_target: Option<String>,
+    active_chat_text: String,
 }
 
 impl AppShell {
@@ -124,12 +138,13 @@ impl AppShell {
                 .with_cpu(CpuRefreshKind::everything())
                 .with_memory(MemoryRefreshKind::everything()),
         );
+        let (worker_tx, worker_rx) = mpsc::unbounded_channel();
         let mut transcript = RetainedTranscript::new();
         transcript.push_entry(TranscriptEntry::new(
             TranscriptRole::System,
             "Shell Ready",
             vec![String::from(
-                "Type /chat [prompt]. Submitted input stays here.",
+                "Type /chat [prompt]. Live local replies stay here.",
             )],
         ));
         Self {
@@ -144,6 +159,11 @@ impl AppShell {
             should_quit: false,
             transcript,
             bottom_pane: BottomPane::default(),
+            worker_tx,
+            worker_rx,
+            chat_in_flight: false,
+            active_chat_target: None,
+            active_chat_text: String::new(),
         }
     }
 
@@ -176,13 +196,13 @@ impl AppShell {
             } => self.schedule_refresh_now(),
             _ => {
                 if let Some(submission) = self.bottom_pane.handle_key(key) {
-                    self.apply_submission(submission);
+                    self.handle_submission(submission);
                 }
             }
         }
     }
 
-    fn apply_submission(&mut self, submission: ComposerSubmission) {
+    fn handle_submission(&mut self, submission: ComposerSubmission) {
         let title = match submission.slash_command.as_deref() {
             Some(command) => format!("Command /{command}"),
             None => String::from("Input"),
@@ -194,6 +214,141 @@ impl AppShell {
             .collect::<Vec<_>>();
         self.transcript
             .push_entry(TranscriptEntry::new(TranscriptRole::User, title, body));
+
+        let Some(command) = submission.slash_command.as_deref() else {
+            self.push_system_message("Input Error", "Only /chat [prompt] is available right now.");
+            return;
+        };
+        if command != "chat" {
+            self.push_system_message(
+                "Command Error",
+                format!("Unknown command /{command}. Only /chat is available."),
+            );
+            return;
+        }
+        if self.chat_in_flight {
+            self.push_system_message("Chat Busy", "A local Gemma chat is already running.");
+            return;
+        }
+
+        let prompt = submission
+            .text
+            .trim()
+            .strip_prefix("/chat")
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string();
+        if prompt.is_empty() {
+            self.push_system_message("Command Error", "Usage: /chat [prompt]");
+            return;
+        }
+
+        self.start_chat(prompt);
+    }
+
+    fn start_chat(&mut self, prompt: String) {
+        self.chat_in_flight = true;
+        self.active_chat_target = None;
+        self.active_chat_text.clear();
+        self.transcript.set_active_turn(ActiveTurn::new(
+            TranscriptRole::Assistant,
+            "Local Gemma",
+            vec![String::from("Connecting to local Gemma...")],
+        ));
+
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        tokio::task::spawn_local(async move {
+            let result = pylon::run_local_gemma_chat_stream(
+                config_path.as_path(),
+                prompt.as_str(),
+                |event| match event {
+                    pylon::LocalGemmaChatEvent::Started { target } => {
+                        let _ = tx.send(WorkerEvent::StreamStarted(target.model));
+                    }
+                    pylon::LocalGemmaChatEvent::Delta(delta) => {
+                        let _ = tx.send(WorkerEvent::StreamDelta(delta));
+                    }
+                    pylon::LocalGemmaChatEvent::Finished { .. } => {
+                        let _ = tx.send(WorkerEvent::StreamFinished);
+                    }
+                },
+            )
+            .await;
+            if let Err(error) = result {
+                let _ = tx.send(WorkerEvent::StreamFailed(error.to_string()));
+            }
+        });
+    }
+
+    fn drain_worker_events(&mut self) {
+        while let Ok(event) = self.worker_rx.try_recv() {
+            self.handle_worker_event(event);
+        }
+    }
+
+    fn handle_worker_event(&mut self, event: WorkerEvent) {
+        match event {
+            WorkerEvent::StreamStarted(model) => {
+                self.active_chat_target = Some(model.clone());
+                self.transcript.set_active_turn(ActiveTurn::new(
+                    TranscriptRole::Assistant,
+                    format!("Local Gemma {model}"),
+                    vec![String::from("Waiting for tokens...")],
+                ));
+            }
+            WorkerEvent::StreamDelta(delta) => {
+                self.active_chat_text.push_str(delta.as_str());
+                self.transcript.set_active_turn(ActiveTurn::new(
+                    TranscriptRole::Assistant,
+                    format!(
+                        "Local Gemma {}",
+                        self.active_chat_target.as_deref().unwrap_or("chat")
+                    ),
+                    text_body_lines(self.active_chat_text.as_str()),
+                ));
+            }
+            WorkerEvent::StreamFinished => {
+                self.chat_in_flight = false;
+                self.transcript.clear_active_turn();
+                self.transcript.push_entry(TranscriptEntry::new(
+                    TranscriptRole::Assistant,
+                    format!(
+                        "Local Gemma {}",
+                        self.active_chat_target.as_deref().unwrap_or("chat")
+                    ),
+                    text_body_lines(self.active_chat_text.as_str()),
+                ));
+                self.active_chat_target = None;
+                self.active_chat_text.clear();
+            }
+            WorkerEvent::StreamFailed(error) => {
+                let had_partial = !self.active_chat_text.trim().is_empty();
+                self.chat_in_flight = false;
+                self.transcript.clear_active_turn();
+                if had_partial {
+                    self.transcript.push_entry(TranscriptEntry::new(
+                        TranscriptRole::Assistant,
+                        format!(
+                            "Local Gemma {}",
+                            self.active_chat_target.as_deref().unwrap_or("chat")
+                        ),
+                        text_body_lines(self.active_chat_text.as_str()),
+                    ));
+                }
+                self.push_system_message("Chat Error", error);
+                self.active_chat_target = None;
+                self.active_chat_text.clear();
+            }
+        }
+    }
+
+    fn push_system_message(&mut self, title: impl Into<String>, message: impl Into<String>) {
+        self.transcript.push_entry(TranscriptEntry::new(
+            TranscriptRole::System,
+            title,
+            vec![message.into()],
+        ));
     }
 
     async fn refresh(&mut self) {
@@ -390,10 +545,12 @@ impl AppShell {
 pub fn usage() -> &'static str {
     "Usage: pylon-tui [--config-path <path>]\n\
 Controls:\n\
-  q / Esc  quit\n\
+  q / Esc / Ctrl+C  quit\n\
   r        refresh now\n\
   Enter    submit composer\n\
-  Ctrl+J   insert newline\n"
+  Ctrl+J   insert newline\n\
+Composer:\n\
+  /chat [prompt]  stream a reply from local Gemma when weights are loaded\n"
 }
 
 pub async fn run_pylon_tui() -> Result<()> {
@@ -431,6 +588,7 @@ async fn run_loop(
     app.refresh().await;
 
     while !app.should_quit() {
+        app.drain_worker_events();
         terminal.draw(|frame| app.render(frame))?;
         if event::poll(TICK_RATE)? {
             match event::read()? {
@@ -442,6 +600,7 @@ async fn run_loop(
         if app.should_refresh() {
             app.refresh().await;
         }
+        app.drain_worker_events();
     }
 
     Ok(())
@@ -452,6 +611,15 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
+}
+
+fn text_body_lines(value: &str) -> Vec<String> {
+    let lines = value.lines().map(ToString::to_string).collect::<Vec<_>>();
+    if lines.is_empty() {
+        vec![String::new()]
+    } else {
+        lines
+    }
 }
 
 fn gemma4_status(loaded: Option<&LoadedState>) -> Gemma4Status {
@@ -631,4 +799,59 @@ fn format_percent(value: f32) -> String {
 
 fn format_load_average((one, five, fifteen): (f64, f64, f64)) -> String {
     format!("{one:.2} / {five:.2} / {fifteen:.2}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppShell, ComposerSubmission, WorkerEvent};
+    use std::path::PathBuf;
+
+    fn transcript_text(app: &AppShell) -> String {
+        app.transcript
+            .as_text()
+            .lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn plain_text_submission_is_rejected_locally() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.handle_submission(ComposerSubmission {
+            text: String::from("hello"),
+            slash_command: None,
+        });
+
+        let transcript = transcript_text(&app);
+        assert!(transcript.contains("[user] Input"));
+        assert!(transcript.contains("[system] Input Error"));
+    }
+
+    #[test]
+    fn unknown_command_is_rejected_locally() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.handle_submission(ComposerSubmission {
+            text: String::from("/plan hello"),
+            slash_command: Some(String::from("plan")),
+        });
+
+        let transcript = transcript_text(&app);
+        assert!(transcript.contains("[user] Command /plan"));
+        assert!(transcript.contains("Unknown command /plan"));
+    }
+
+    #[test]
+    fn stream_events_commit_assistant_reply() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.handle_worker_event(WorkerEvent::StreamStarted(String::from("gemma4:e4b")));
+        app.handle_worker_event(WorkerEvent::StreamDelta(String::from("hello ")));
+        app.handle_worker_event(WorkerEvent::StreamDelta(String::from("world")));
+        app.handle_worker_event(WorkerEvent::StreamFinished);
+
+        let transcript = transcript_text(&app);
+        assert!(transcript.contains("[assistant] Local Gemma gemma4:e4b"));
+        assert!(transcript.contains("hello world"));
+    }
 }

@@ -72,9 +72,9 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 - live CPU and memory state
 - a basic GPU summary when the host can report one
 - a retained transcript area for local shell activity
-- a bottom textbox that accepts one submitted input at a time
+- a bottom textbox with one slash command: `/chat [prompt]`
 
-The shell now keeps submitted input in the transcript instead of showing only a static status panel. The local Gemma chat-stream adapter is already in `Pylon`; the next step is wiring the `/chat` command into this shell. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell keeps submitted input in the transcript and streams the local Gemma reply back into the same view when local Gemma weights are available. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 Initialize a standalone config and identity:
 
