@@ -3,6 +3,7 @@ pub enum SlashCommandId {
     Help,
     Chat,
     Download,
+    Relay,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,6 +46,12 @@ const COMMANDS: &[SlashCommandSpec] = &[
         name: "download",
         usage: "/download [model]",
         summary: "download a curated Gemma GGUF into the local cache",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Relay,
+        name: "relay",
+        usage: "/relay [list|add|remove|refresh]",
+        summary: "inspect or update the retained relay set",
     },
 ];
 
@@ -93,7 +100,7 @@ mod tests {
     #[test]
     fn registry_includes_retained_commands() {
         let names = registry().iter().map(|spec| spec.name).collect::<Vec<_>>();
-        assert_eq!(names, vec!["help", "chat", "download"]);
+        assert_eq!(names, vec!["help", "chat", "download", "relay"]);
     }
 
     #[test]
@@ -138,5 +145,6 @@ mod tests {
                 .any(|line| line.contains("Plain text without a slash"))
         );
         assert_eq!(registry()[1].id, SlashCommandId::Chat);
+        assert_eq!(registry()[3].id, SlashCommandId::Relay);
     }
 }

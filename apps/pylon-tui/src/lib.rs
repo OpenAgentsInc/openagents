@@ -149,6 +149,12 @@ enum WorkerEvent {
         spec: pylon::GemmaDownloadSpec,
         error: String,
     },
+    RelayRefreshFinished {
+        report: pylon::RelayReport,
+    },
+    RelayRefreshFailed {
+        error: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -329,6 +335,10 @@ impl AppShell {
                         return;
                     }
                     self.start_model_download(model_id);
+                    return;
+                }
+                SlashCommandId::Relay => {
+                    self.handle_relay_command(args);
                     return;
                 }
             },
@@ -636,17 +646,93 @@ impl AppShell {
                 self.gemma_downloads.remove(spec.id);
                 self.push_system_message("Download Error", format!("{}: {}", spec.id, error));
             }
+            WorkerEvent::RelayRefreshFinished { report } => {
+                self.push_system_lines("Relays", relay_report_lines(&report));
+            }
+            WorkerEvent::RelayRefreshFailed { error } => {
+                self.push_system_message("Relay Error", error);
+            }
         }
         self.sync_transcript_scroll_after_update();
     }
 
     fn push_system_message(&mut self, title: impl Into<String>, message: impl Into<String>) {
-        self.transcript.push_entry(TranscriptEntry::new(
-            TranscriptRole::System,
-            title,
-            vec![message.into()],
-        ));
+        self.push_system_lines(title, vec![message.into()]);
+    }
+
+    fn push_system_lines(&mut self, title: impl Into<String>, lines: Vec<String>) {
+        self.transcript
+            .push_entry(TranscriptEntry::new(TranscriptRole::System, title, lines));
         self.sync_transcript_scroll_after_update();
+    }
+
+    fn handle_relay_command(&mut self, args: String) {
+        let mut parts = args.split_whitespace();
+        match parts.next() {
+            None | Some("list") => match pylon::load_relay_report(self.config_path.as_path()) {
+                Ok(report) => self.push_system_lines("Relays", relay_report_lines(&report)),
+                Err(error) => self.push_system_message("Relay Error", error.to_string()),
+            },
+            Some("add") => {
+                let Some(url) = parts.next() else {
+                    self.push_system_message("Relay Error", "Usage: /relay add <ws://...>");
+                    return;
+                };
+                match pylon::add_configured_relay(self.config_path.as_path(), url) {
+                    Ok(report) => self.push_system_lines("Relays", relay_report_lines(&report)),
+                    Err(error) => self.push_system_message("Relay Error", error.to_string()),
+                }
+            }
+            Some("remove") => {
+                let Some(url) = parts.next() else {
+                    self.push_system_message("Relay Error", "Usage: /relay remove <ws://...>");
+                    return;
+                };
+                match pylon::remove_configured_relay(self.config_path.as_path(), url) {
+                    Ok(report) => self.push_system_lines("Relays", relay_report_lines(&report)),
+                    Err(error) => self.push_system_message("Relay Error", error.to_string()),
+                }
+            }
+            Some("refresh") => {
+                let config_path = self.config_path.clone();
+                let tx = self.worker_tx.clone();
+                std::thread::spawn(move || {
+                    let error_tx = tx.clone();
+                    let runtime = match tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        Ok(runtime) => runtime,
+                        Err(error) => {
+                            let _ = error_tx.send(WorkerEvent::RelayRefreshFailed {
+                                error: error.to_string(),
+                            });
+                            return;
+                        }
+                    };
+                    let result = runtime.block_on(async move {
+                        pylon::refresh_relay_report(config_path.as_path()).await
+                    });
+                    match result {
+                        Ok(report) => {
+                            let _ = tx.send(WorkerEvent::RelayRefreshFinished { report });
+                        }
+                        Err(error) => {
+                            let _ = error_tx.send(WorkerEvent::RelayRefreshFailed {
+                                error: error.to_string(),
+                            });
+                        }
+                    }
+                });
+                self.push_system_message("Relays", "Refreshing configured relay connectivity...");
+            }
+            Some(other) => {
+                self.push_system_message(
+                    "Relay Error",
+                    format!("Unknown relay command `{other}`. Use list, add, remove, or refresh."),
+                );
+            }
+        }
     }
 
     async fn refresh(&mut self) {
@@ -1087,6 +1173,7 @@ Controls:\n\
 Composer:\n\
   [prompt]  stream a reply from local Gemma when weights are loaded\n\
   /help  show available commands\n\
+  /relay [list|add|remove|refresh]  inspect or update configured relays\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
 }
 
@@ -1591,6 +1678,31 @@ fn download_progress_bar(progress: &GemmaDownloadProgressState, width: usize) ->
         "#".repeat(filled.min(width)),
         ".".repeat(width.saturating_sub(filled.min(width)))
     )
+}
+
+fn relay_report_lines(report: &pylon::RelayReport) -> Vec<String> {
+    let mut lines = vec![format!(
+        "connect timeout: {}s  ledger: {}",
+        report.relay_config.connect_timeout_seconds, report.relay_config.ledger_path
+    )];
+    if report.relays.is_empty() {
+        lines.push(String::from("no relays configured"));
+        return lines;
+    }
+    for relay in &report.relays {
+        lines.push(String::new());
+        lines.push(format!(
+            "{}  state={}  auth={}",
+            relay.url, relay.state, relay.auth_state
+        ));
+        if let Some(detail) = relay.detail.as_deref() {
+            lines.push(format!("  detail: {detail}"));
+        }
+        if let Some(last_error) = relay.last_error.as_deref() {
+            lines.push(format!("  error: {last_error}"));
+        }
+    }
+    lines
 }
 
 fn transcript_wrap_width(area: Rect) -> u16 {

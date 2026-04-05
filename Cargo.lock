@@ -7586,6 +7586,7 @@ dependencies = [
  "anyhow",
  "bip39",
  "nostr 0.1.1",
+ "nostr-client",
  "openagents-provider-substrate",
  "rand 0.9.2",
  "reqwest",

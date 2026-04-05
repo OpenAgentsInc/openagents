@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use nostr::{NostrIdentity, derive_keypair, load_identity_from_path};
+use nostr_client::{ConnectionState, RelayConfig, RelayConnection};
 use openagents_provider_substrate::{
     ProviderAdapterTrainingContributorAvailability, ProviderAdminConfig, ProviderAdminRuntime,
     ProviderAdminUpdate, ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
@@ -41,6 +42,10 @@ pub struct PylonConfig {
     pub identity_path: PathBuf,
     pub admin_db_path: PathBuf,
     pub admin_listen_addr: String,
+    #[serde(default = "default_relay_urls")]
+    pub relay_urls: Vec<String>,
+    #[serde(default = "default_relay_connect_timeout_seconds")]
+    pub relay_connect_timeout_seconds: u64,
     pub ollama_base_url: String,
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
@@ -56,10 +61,14 @@ pub enum Command {
     Backends { json: bool },
     Inventory { json: bool, limit: Option<usize> },
     Products { json: bool },
+    Relays { json: bool },
     Sandbox { json: bool, limit: Option<usize> },
     Jobs { json: bool, limit: Option<usize> },
     Earnings { json: bool },
     Receipts { json: bool, limit: Option<usize> },
+    RelayAdd { url: String },
+    RelayRemove { url: String },
+    RelayRefresh { json: bool },
     Online,
     Offline,
     Pause,
@@ -131,6 +140,29 @@ struct BackendEntry {
 struct ProductReport {
     context: ReportContext,
     products: Vec<ProductEntry>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct RelayReport {
+    pub relay_config: RelayConfigReport,
+    pub relays: Vec<RelayEntry>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct RelayConfigReport {
+    pub connect_timeout_seconds: u64,
+    pub ledger_path: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct RelayEntry {
+    pub url: String,
+    pub state: String,
+    pub auth_state: String,
+    pub detail: Option<String>,
+    pub last_error: Option<String>,
+    pub last_connected_at_ms: Option<u64>,
+    pub updated_at_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -589,6 +621,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_product_report(&report)))
         }
+        Command::Relays { json } => {
+            let report = load_relay_report(cli.config_path.as_path())?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_relay_report(&report)))
+        }
         Command::Sandbox { json, limit } => {
             let report = load_sandbox_report(cli.config_path.as_path(), limit).await?;
             if json {
@@ -616,6 +655,21 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 return Ok(Some(serde_json::to_string_pretty(&report)?));
             }
             Ok(Some(render_receipts_report(&report)))
+        }
+        Command::RelayAdd { url } => {
+            let report = add_configured_relay(cli.config_path.as_path(), url.as_str())?;
+            Ok(Some(render_relay_report(&report)))
+        }
+        Command::RelayRemove { url } => {
+            let report = remove_configured_relay(cli.config_path.as_path(), url.as_str())?;
+            Ok(Some(render_relay_report(&report)))
+        }
+        Command::RelayRefresh { json } => {
+            let report = refresh_relay_report(cli.config_path.as_path()).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_relay_report(&report)))
         }
         Command::Online => {
             let status =
@@ -667,10 +721,14 @@ Commands:\n\
   backends [--json]\n\
   inventory [--json] [--limit <n>]\n\
   products [--json]\n\
+  relays [--json]\n\
   sandbox [--json] [--limit <n>]\n\
   jobs [--json] [--limit <n>]\n\
   earnings [--json]\n\
   receipts [--json] [--limit <n>]\n\
+  relay add <url>\n\
+  relay remove <url>\n\
+  relay refresh [--json]\n\
   online\n\
   offline\n\
   pause\n\
@@ -737,6 +795,13 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             }
             Ok(Command::Products { json })
         }
+        "relays" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "relays", false)?;
+            if limit.is_some() {
+                bail!("relays does not support --limit");
+            }
+            Ok(Command::Relays { json })
+        }
         "sandbox" => {
             let (json, limit) = parse_observability_flags(args, start_index + 1, "sandbox", true)?;
             Ok(Command::Sandbox { json, limit })
@@ -757,6 +822,42 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             let (json, limit) = parse_observability_flags(args, start_index + 1, "receipts", true)?;
             Ok(Command::Receipts { json, limit })
         }
+        "relay" => match args.get(start_index + 1).map(String::as_str) {
+            Some("add") => {
+                let url = args
+                    .get(start_index + 2)
+                    .ok_or_else(|| anyhow!("missing <url> for relay add"))?;
+                if start_index + 3 != args.len() {
+                    bail!("relay add accepts exactly <url>");
+                }
+                Ok(Command::RelayAdd { url: url.clone() })
+            }
+            Some("remove") => {
+                let url = args
+                    .get(start_index + 2)
+                    .ok_or_else(|| anyhow!("missing <url> for relay remove"))?;
+                if start_index + 3 != args.len() {
+                    bail!("relay remove accepts exactly <url>");
+                }
+                Ok(Command::RelayRemove { url: url.clone() })
+            }
+            Some("refresh") => {
+                let json = match args.get(start_index + 2) {
+                    None => false,
+                    Some(value) if value == "--json" => true,
+                    Some(other) => bail!("unexpected argument for relay refresh: {other}"),
+                };
+                if json && start_index + 3 != args.len() {
+                    bail!("relay refresh --json does not accept additional arguments");
+                }
+                if !json && start_index + 2 != args.len() {
+                    bail!("relay refresh does not accept additional arguments");
+                }
+                Ok(Command::RelayRefresh { json })
+            }
+            Some(other) => bail!("unknown relay command: {other}"),
+            None => bail!("missing relay subcommand"),
+        },
         "online" => {
             if start_index + 1 != args.len() {
                 bail!("online does not accept positional arguments");
@@ -893,11 +994,25 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         identity_path: base_dir.join("identity.mnemonic"),
         admin_db_path: base_dir.join("provider-admin.sqlite"),
         admin_listen_addr: "127.0.0.1:9468".to_string(),
+        relay_urls: default_relay_urls(),
+        relay_connect_timeout_seconds: default_relay_connect_timeout_seconds(),
         ollama_base_url: "http://127.0.0.1:11434".to_string(),
         apple_fm_base_url: None,
         inventory_controls: ProviderInventoryControls::default(),
         declared_sandbox_profiles: Vec::new(),
     }
+}
+
+fn default_relay_urls() -> Vec<String> {
+    vec![
+        "wss://nexus.openagents.com".to_string(),
+        "wss://relay.damus.io".to_string(),
+        "wss://nos.lol".to_string(),
+    ]
+}
+
+const fn default_relay_connect_timeout_seconds() -> u64 {
+    10
 }
 
 pub fn default_config_path() -> PathBuf {
@@ -2349,6 +2464,223 @@ async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
     })
 }
 
+pub fn load_relay_report(config_path: &Path) -> Result<RelayReport> {
+    let config = load_or_create_config(config_path)?;
+    let ledger = load_ledger(config_path)?;
+    let mut relays = config
+        .relay_urls
+        .iter()
+        .map(|url| {
+            let state = ledger
+                .relay_state
+                .iter()
+                .find(|entry| entry.url == *url)
+                .cloned();
+            RelayEntry {
+                url: url.clone(),
+                state: state
+                    .as_ref()
+                    .map(|entry| entry.connection_state.clone())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                auth_state: state
+                    .as_ref()
+                    .map(|entry| entry.auth_state.clone())
+                    .unwrap_or_else(|| "disabled".to_string()),
+                detail: state.as_ref().and_then(|entry| entry.last_detail.clone()),
+                last_error: state.as_ref().and_then(|entry| entry.last_error.clone()),
+                last_connected_at_ms: state.as_ref().and_then(|entry| entry.last_connected_at_ms),
+                updated_at_ms: state.as_ref().map(|entry| entry.updated_at_ms),
+            }
+        })
+        .collect::<Vec<_>>();
+    relays.sort_by(|left, right| left.url.cmp(&right.url));
+    Ok(RelayReport {
+        relay_config: RelayConfigReport {
+            connect_timeout_seconds: config.relay_connect_timeout_seconds,
+            ledger_path: default_ledger_path(config_path).display().to_string(),
+        },
+        relays,
+    })
+}
+
+pub fn add_configured_relay(config_path: &Path, url: &str) -> Result<RelayReport> {
+    let mut config = load_or_create_config(config_path)?;
+    let normalized = validate_and_normalize_relay_url(url)?;
+    if config
+        .relay_urls
+        .iter()
+        .any(|existing| existing == &normalized)
+    {
+        bail!("relay already configured: {normalized}");
+    }
+    config.relay_urls.push(normalized.clone());
+    config.relay_urls.sort();
+    save_config(config_path, &config)?;
+    mutate_ledger(config_path, |ledger| {
+        ledger.set_relay_config(
+            config.relay_urls.clone(),
+            config.relay_connect_timeout_seconds,
+        );
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: Some(normalized.clone()),
+            kind: "relay.added".to_string(),
+            detail: "configured relay added".to_string(),
+        });
+        Ok(())
+    })?;
+    load_relay_report(config_path)
+}
+
+pub fn remove_configured_relay(config_path: &Path, url: &str) -> Result<RelayReport> {
+    let mut config = load_or_create_config(config_path)?;
+    let normalized = normalize_relay_url(url);
+    let original_len = config.relay_urls.len();
+    config.relay_urls.retain(|existing| existing != &normalized);
+    if config.relay_urls.len() == original_len {
+        bail!("relay is not configured: {normalized}");
+    }
+    save_config(config_path, &config)?;
+    mutate_ledger(config_path, |ledger| {
+        ledger.set_relay_config(
+            config.relay_urls.clone(),
+            config.relay_connect_timeout_seconds,
+        );
+        ledger.relay_state.retain(|entry| entry.url != normalized);
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: Some(normalized.clone()),
+            kind: "relay.removed".to_string(),
+            detail: "configured relay removed".to_string(),
+        });
+        Ok(())
+    })?;
+    load_relay_report(config_path)
+}
+
+pub async fn refresh_relay_report(config_path: &Path) -> Result<RelayReport> {
+    let config = ensure_local_setup(config_path)?;
+    mutate_ledger(config_path, |ledger| {
+        ledger.set_relay_config(
+            config.relay_urls.clone(),
+            config.relay_connect_timeout_seconds,
+        );
+        Ok(())
+    })?;
+
+    for relay_url in &config.relay_urls {
+        refresh_single_relay(config_path, &config, relay_url.as_str()).await?;
+    }
+
+    load_relay_report(config_path)
+}
+
+async fn refresh_single_relay(
+    config_path: &Path,
+    config: &PylonConfig,
+    relay_url: &str,
+) -> Result<()> {
+    let normalized = normalize_relay_url(relay_url);
+    mutate_ledger(config_path, |ledger| {
+        ledger.upsert_relay_state(PylonRelayState {
+            url: normalized.clone(),
+            connection_state: "connecting".to_string(),
+            auth_state: "disabled".to_string(),
+            last_detail: Some("attempting relay connection".to_string()),
+            last_error: None,
+            last_connected_at_ms: None,
+            updated_at_ms: now_epoch_ms() as u64,
+        });
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: Some(normalized.clone()),
+            kind: "relay.refresh".to_string(),
+            detail: "starting relay connectivity probe".to_string(),
+        });
+        Ok(())
+    })?;
+
+    let connection = RelayConnection::with_config(
+        normalized.as_str(),
+        RelayConfig {
+            connect_timeout: Duration::from_secs(config.relay_connect_timeout_seconds.max(1)),
+            nip42_identity: None,
+        },
+    );
+    match connection {
+        Ok(connection) => match connection.connect().await {
+            Ok(()) => {
+                let state = match connection.state().await {
+                    ConnectionState::Connected => "connected",
+                    ConnectionState::Connecting => "connecting",
+                    ConnectionState::Disconnected => "disconnected",
+                };
+                let _ = connection.disconnect().await;
+                mutate_ledger(config_path, |ledger| {
+                    ledger.upsert_relay_state(PylonRelayState {
+                        url: normalized.clone(),
+                        connection_state: state.to_string(),
+                        auth_state: "disabled".to_string(),
+                        last_detail: Some("connected on last refresh".to_string()),
+                        last_error: None,
+                        last_connected_at_ms: Some(now_epoch_ms() as u64),
+                        updated_at_ms: now_epoch_ms() as u64,
+                    });
+                    ledger.push_relay_activity(PylonRelayActivity {
+                        at_ms: now_epoch_ms() as u64,
+                        url: Some(normalized.clone()),
+                        kind: "relay.connected".to_string(),
+                        detail: "relay connectivity probe succeeded".to_string(),
+                    });
+                    Ok(())
+                })?;
+            }
+            Err(error) => {
+                mutate_ledger(config_path, |ledger| {
+                    ledger.upsert_relay_state(PylonRelayState {
+                        url: normalized.clone(),
+                        connection_state: "error".to_string(),
+                        auth_state: "disabled".to_string(),
+                        last_detail: Some("relay connectivity probe failed".to_string()),
+                        last_error: Some(error.to_string()),
+                        last_connected_at_ms: None,
+                        updated_at_ms: now_epoch_ms() as u64,
+                    });
+                    ledger.push_relay_activity(PylonRelayActivity {
+                        at_ms: now_epoch_ms() as u64,
+                        url: Some(normalized.clone()),
+                        kind: "relay.connect_error".to_string(),
+                        detail: error.to_string(),
+                    });
+                    Ok(())
+                })?;
+            }
+        },
+        Err(error) => {
+            mutate_ledger(config_path, |ledger| {
+                ledger.upsert_relay_state(PylonRelayState {
+                    url: normalized.clone(),
+                    connection_state: "error".to_string(),
+                    auth_state: "disabled".to_string(),
+                    last_detail: Some("relay URL is invalid".to_string()),
+                    last_error: Some(error.to_string()),
+                    last_connected_at_ms: None,
+                    updated_at_ms: now_epoch_ms() as u64,
+                });
+                ledger.push_relay_activity(PylonRelayActivity {
+                    at_ms: now_epoch_ms() as u64,
+                    url: Some(normalized.clone()),
+                    kind: "relay.invalid".to_string(),
+                    detail: error.to_string(),
+                });
+                Ok(())
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 async fn load_sandbox_report(config_path: &Path, limit: Option<usize>) -> Result<SandboxReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let (runtimes, profiles, last_scan_error) = if config_path.exists() {
@@ -2658,6 +2990,54 @@ fn render_product_report(report: &ProductReport) -> String {
         lines.push(format!("capability: {}", product.capability_summary));
     }
     lines.join("\n")
+}
+
+fn render_relay_report(report: &RelayReport) -> String {
+    let mut lines = vec![
+        format!(
+            "connect_timeout_seconds: {}",
+            report.relay_config.connect_timeout_seconds
+        ),
+        format!("ledger_path: {}", report.relay_config.ledger_path),
+    ];
+    if report.relays.is_empty() {
+        lines.push(String::new());
+        lines.push("relays: none configured".to_string());
+        return lines.join("\n");
+    }
+    for relay in &report.relays {
+        lines.push(String::new());
+        lines.push(format!("relay: {}", relay.url));
+        lines.push(format!("state: {}", relay.state));
+        lines.push(format!("auth_state: {}", relay.auth_state));
+        if let Some(detail) = relay.detail.as_deref() {
+            lines.push(format!("detail: {detail}"));
+        }
+        if let Some(last_error) = relay.last_error.as_deref() {
+            lines.push(format!("last_error: {last_error}"));
+        }
+        if let Some(last_connected_at_ms) = relay.last_connected_at_ms {
+            lines.push(format!("last_connected_at_ms: {last_connected_at_ms}"));
+        }
+        if let Some(updated_at_ms) = relay.updated_at_ms {
+            lines.push(format!("updated_at_ms: {updated_at_ms}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn normalize_relay_url(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_string()
+}
+
+fn validate_and_normalize_relay_url(url: &str) -> Result<String> {
+    let normalized = normalize_relay_url(url);
+    if normalized.is_empty() {
+        bail!("relay URL cannot be empty");
+    }
+    let _ = RelayConnection::with_config(normalized.as_str(), RelayConfig::default())
+        .with_context(|| format!("invalid relay URL: {normalized}"))?;
+    Ok(normalized)
 }
 
 fn render_jobs_report(report: &JobsReport) -> String {
@@ -3114,6 +3494,11 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
             };
         }
         "admin_listen_addr" => config.admin_listen_addr = value.to_string(),
+        "relay_connect_timeout_seconds" => {
+            config.relay_connect_timeout_seconds = value
+                .parse::<u64>()
+                .with_context(|| format!("invalid relay_connect_timeout_seconds: {value}"))?;
+        }
         "ollama_base_url" => config.ollama_base_url = value.to_string(),
         "apple_fm_base_url" => {
             config.apple_fm_base_url = if value.trim().is_empty() {
@@ -3167,13 +3552,14 @@ fn now_epoch_ms() -> i64 {
 mod tests {
     use super::{
         Command, GemmaDownloadEvent, LocalGemmaChatBackend, LocalGemmaChatEvent,
-        LocalGemmaChatMessage, PylonConfig, apply_config_set, apply_control_command,
-        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
-        ensure_identity, gemma_download_spec, gemma_local_installations, inventory_rows,
-        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
-        load_or_create_config, load_product_report, load_receipts_report, load_sandbox_report,
-        load_status_or_detect, parse_args, provider_admin_config, render_human_status,
-        render_sandbox_report, resolve_local_gemma_chat_target_from_status,
+        LocalGemmaChatMessage, PylonConfig, add_configured_relay, apply_config_set,
+        apply_control_command, build_snapshot_from_availability, default_config,
+        download_gemma_model_from_base_url, ensure_identity, gemma_download_spec,
+        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_or_create_config, load_product_report,
+        load_receipts_report, load_relay_report, load_sandbox_report, load_status_or_detect,
+        parse_args, provider_admin_config, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, save_config,
     };
     use openagents_provider_substrate::{
@@ -3415,6 +3801,109 @@ mod tests {
                     limit: Some(2),
                 },
             "sandbox should parse with json and limit flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_relay_commands() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec!["relays".to_string(), "--json".to_string()])?.command
+                == Command::Relays { json: true },
+            "relays should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "relay".to_string(),
+                "add".to_string(),
+                "wss://relay.damus.io".to_string(),
+            ])?
+            .command
+                == Command::RelayAdd {
+                    url: "wss://relay.damus.io".to_string(),
+                },
+            "relay add should parse the relay URL",
+        )?;
+        ensure(
+            parse_args(vec![
+                "relay".to_string(),
+                "remove".to_string(),
+                "wss://relay.damus.io".to_string(),
+            ])?
+            .command
+                == Command::RelayRemove {
+                    url: "wss://relay.damus.io".to_string(),
+                },
+            "relay remove should parse the relay URL",
+        )?;
+        ensure(
+            parse_args(vec![
+                "relay".to_string(),
+                "refresh".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::RelayRefresh { json: true },
+            "relay refresh should parse with --json",
+        )
+    }
+
+    #[test]
+    fn relay_config_commands_mutate_the_config_and_report() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+
+        let added = add_configured_relay(config_path.as_path(), "wss://relay.example.com/")?;
+        ensure(
+            added
+                .relays
+                .iter()
+                .any(|relay| relay.url == "wss://relay.example.com"),
+            "relay add should normalize and report the configured relay",
+        )?;
+
+        let removed = remove_configured_relay(config_path.as_path(), "wss://relay.example.com")?;
+        ensure(
+            !removed
+                .relays
+                .iter()
+                .any(|relay| relay.url == "wss://relay.example.com"),
+            "relay remove should remove the relay from the report",
+        )?;
+
+        let report = load_relay_report(config_path.as_path())?;
+        ensure(
+            report
+                .relays
+                .iter()
+                .all(|relay| relay.url != "wss://relay.example.com"),
+            "relay report should reflect the removed relay",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn relay_refresh_records_invalid_url_errors() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec!["not-a-url".to_string()];
+        save_config(config_path.as_path(), &config)?;
+
+        let report = refresh_relay_report(config_path.as_path()).await?;
+        let relay = report
+            .relays
+            .first()
+            .ok_or_else(|| std::io::Error::other("relay report missing invalid relay entry"))?;
+        ensure(
+            relay.state == "error",
+            "invalid relay refresh should record an error state",
+        )?;
+        ensure(
+            relay
+                .last_error
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            "invalid relay refresh should surface the validation failure",
         )
     }
 

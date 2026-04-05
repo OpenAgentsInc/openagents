@@ -14,6 +14,7 @@ workspace = true
 anyhow.workspace = true
 bip39 = "2.2.0"
 nostr = { path = "../../crates/nostr/core" }
+nostr-client = { path = "../../crates/nostr/client" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
 rand.workspace = true
 reqwest.workspace = true
