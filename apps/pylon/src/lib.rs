@@ -122,6 +122,10 @@ pub enum Command {
         json: bool,
         limit: Option<usize>,
     },
+    Activity {
+        json: bool,
+        limit: Option<usize>,
+    },
     RelayAdd {
         url: String,
     },
@@ -306,21 +310,26 @@ struct InventoryReport {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-struct JobsReport {
+pub struct JobsReport {
     context: ReportContext,
     jobs: Vec<ProviderRecentJob>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-struct EarningsReport {
+pub struct EarningsReport {
     context: ReportContext,
     earnings: Option<ProviderEarningsSummary>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-struct ReceiptsReport {
+pub struct ReceiptsReport {
     context: ReportContext,
     receipts: Vec<ProviderReceiptSummary>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct RelayActivityReport {
+    entries: Vec<PylonRelayActivity>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -798,6 +807,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_receipts_report(&report)))
         }
+        Command::Activity { json, limit } => {
+            let report = load_relay_activity_report(cli.config_path.as_path(), limit)?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_relay_activity_report(&report)))
+        }
         Command::RelayAdd { url } => {
             let report = add_configured_relay(cli.config_path.as_path(), url.as_str())?;
             Ok(Some(render_relay_report(&report)))
@@ -997,6 +1013,7 @@ Commands:\n\
   jobs [--json] [--limit <n>]\n\
   earnings [--json]\n\
   receipts [--json] [--limit <n>]\n\
+  activity [--json] [--limit <n>]\n\
   relay add <url>\n\
   relay remove <url>\n\
   relay refresh [--json]\n\
@@ -1110,6 +1127,10 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
         "receipts" => {
             let (json, limit) = parse_observability_flags(args, start_index + 1, "receipts", true)?;
             Ok(Command::Receipts { json, limit })
+        }
+        "activity" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "activity", true)?;
+            Ok(Command::Activity { json, limit })
         }
         "relay" => match args.get(start_index + 1).map(String::as_str) {
             Some("add") => {
@@ -3619,7 +3640,7 @@ async fn load_sandbox_report(config_path: &Path, limit: Option<usize>) -> Result
     })
 }
 
-async fn load_jobs_report(config_path: &Path, limit: Option<usize>) -> Result<JobsReport> {
+pub async fn load_jobs_report(config_path: &Path, limit: Option<usize>) -> Result<JobsReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let jobs = if config_path.exists() {
         if let Some(jobs) =
@@ -3648,7 +3669,7 @@ async fn load_jobs_report(config_path: &Path, limit: Option<usize>) -> Result<Jo
     })
 }
 
-async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> {
+pub async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let earnings = if config_path.exists() {
         if let Some(earnings) =
@@ -3681,7 +3702,10 @@ async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> {
     })
 }
 
-async fn load_receipts_report(config_path: &Path, limit: Option<usize>) -> Result<ReceiptsReport> {
+pub async fn load_receipts_report(
+    config_path: &Path,
+    limit: Option<usize>,
+) -> Result<ReceiptsReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let receipts = if config_path.exists() {
         if let Some(receipts) =
@@ -3713,6 +3737,18 @@ async fn load_receipts_report(config_path: &Path, limit: Option<usize>) -> Resul
         context: report_context(&status),
         receipts,
     })
+}
+
+pub fn load_relay_activity_report(
+    config_path: &Path,
+    limit: Option<usize>,
+) -> Result<RelayActivityReport> {
+    let mut entries = load_ledger(config_path).unwrap_or_default().relay_activity;
+    entries.sort_by(|left, right| right.at_ms.cmp(&left.at_ms));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(RelayActivityReport { entries })
 }
 
 pub async fn load_payout_report(config_path: &Path, limit: Option<u32>) -> Result<PayoutReport> {
@@ -4206,7 +4242,7 @@ fn render_product_report(report: &ProductReport) -> String {
     lines.join("\n")
 }
 
-fn render_relay_report(report: &RelayReport) -> String {
+pub fn render_relay_report(report: &RelayReport) -> String {
     let mut lines = vec![
         format!(
             "connect_timeout_seconds: {}",
@@ -4255,7 +4291,7 @@ fn validate_and_normalize_relay_url(url: &str) -> Result<String> {
     Ok(normalized)
 }
 
-fn render_jobs_report(report: &JobsReport) -> String {
+pub fn render_jobs_report(report: &JobsReport) -> String {
     let mut lines = render_report_context(&report.context);
     for job in &report.jobs {
         lines.push(String::new());
@@ -4292,7 +4328,7 @@ fn render_jobs_report(report: &JobsReport) -> String {
     lines.join("\n")
 }
 
-fn render_earnings_report(report: &EarningsReport) -> String {
+pub fn render_earnings_report(report: &EarningsReport) -> String {
     let mut lines = render_report_context(&report.context);
     match report.earnings.as_ref() {
         Some(earnings) => {
@@ -4390,7 +4426,7 @@ pub fn render_payout_withdrawal_report(report: &PayoutWithdrawalReport) -> Strin
     lines.join("\n")
 }
 
-fn render_receipts_report(report: &ReceiptsReport) -> String {
+pub fn render_receipts_report(report: &ReceiptsReport) -> String {
     let mut lines = render_report_context(&report.context);
     for receipt in &report.receipts {
         lines.push(String::new());
@@ -4425,6 +4461,24 @@ fn render_receipts_report(report: &ReceiptsReport) -> String {
         if let Some(notional_sats) = receipt.notional_sats {
             lines.push(format!("notional_sats: {notional_sats}"));
         }
+    }
+    lines.join("\n")
+}
+
+pub fn render_relay_activity_report(report: &RelayActivityReport) -> String {
+    if report.entries.is_empty() {
+        return "activity: none".to_string();
+    }
+    let mut lines = vec![format!("activity_entries: {}", report.entries.len())];
+    for entry in &report.entries {
+        lines.push(String::new());
+        lines.push(format!("at_ms: {}", entry.at_ms));
+        lines.push(format!("kind: {}", entry.kind));
+        lines.push(format!(
+            "relay: {}",
+            entry.url.as_deref().unwrap_or("local")
+        ));
+        lines.push(format!("detail: {}", entry.detail));
     }
     lines.join("\n")
 }
@@ -5155,6 +5209,20 @@ mod tests {
         )?;
         ensure(
             parse_args(vec![
+                "activity".to_string(),
+                "--json".to_string(),
+                "--limit".to_string(),
+                "4".to_string(),
+            ])?
+            .command
+                == Command::Activity {
+                    json: true,
+                    limit: Some(4),
+                },
+            "activity should parse with json and limit flags",
+        )?;
+        ensure(
+            parse_args(vec![
                 "sandbox".to_string(),
                 "--json".to_string(),
                 "--limit".to_string(),
@@ -5634,6 +5702,37 @@ mod tests {
 
         server.abort();
         Ok(())
+    }
+
+    #[test]
+    fn load_relay_activity_report_reads_retained_activity() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        load_or_create_config(config_path.as_path())?;
+        mutate_ledger(config_path.as_path(), |ledger| {
+            ledger.push_relay_activity(super::PylonRelayActivity {
+                at_ms: 10,
+                url: Some("wss://relay.example.com".to_string()),
+                kind: "nip90.job_submitted".to_string(),
+                detail: "submitted request relay-activity-001".to_string(),
+            });
+            ledger.push_relay_activity(super::PylonRelayActivity {
+                at_ms: 20,
+                url: None,
+                kind: "payout.withdrawal_submitted".to_string(),
+                detail: "provider withdrawal payment-001 submitted".to_string(),
+            });
+            Ok(())
+        })?;
+
+        let report = super::load_relay_activity_report(config_path.as_path(), Some(1))?;
+        ensure(
+            report.entries.len() == 1
+                && report.entries[0].kind == "payout.withdrawal_submitted"
+                && report.entries[0].detail == "provider withdrawal payment-001 submitted",
+            "relay activity report should project retained activity ordered by most recent update",
+        )
     }
 
     #[tokio::test(flavor = "current_thread")]

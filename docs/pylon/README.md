@@ -99,7 +99,7 @@ The current retained execution scope is narrow and honest. Pylon subscribes to r
 - for unpriced local work, it publishes a `kind:7000` processing update, executes accepted jobs locally, publishes the retained `kind:6050` result, and links those published event IDs back into the local ledger
 - for explicit paid requests, it stops at `payment-required`, creates a local Bolt11 invoice through the retained Spark wallet path, publishes that invoice in a `kind:7000` feedback event, and persists the amount plus Bolt11 string in the local ledger
 
-When that invoice is later marked paid in the local wallet, the next `provider run` picks the same job back up, records the settled payment, executes the work, publishes the retained result, and persists the settlement outcome. The retained `jobs`, `earnings`, and `receipts` views now project that local NIP-90 provider settlement state directly from the Pylon ledger instead of forcing the operator to reconstruct it from relay logs.
+When that invoice is later marked paid in the local wallet, the next `provider run` picks the same job back up, records the settled payment, executes the work, publishes the retained result, and persists the settlement outcome. The retained `jobs`, `earnings`, `receipts`, and `activity` views now project that local NIP-90 provider settlement state directly from the Pylon ledger instead of forcing the operator to reconstruct it from relay logs.
 
 If the local wallet cannot create an invoice, the provider path fails honestly instead of pretending the request is payable.
 
@@ -112,6 +112,12 @@ The retained provider payout controls now also exist in both places:
 - headless: `cargo pylon-headless payout [--limit <n>]`, `cargo pylon-headless payout withdraw <bolt11> [--amount-sats <n>]`
 
 That path projects retained provider earnings, current wallet balance, and prior withdrawal outcomes from the same local ledger. `payout withdraw` uses the retained wallet send path, persists the resulting withdrawal record locally, and appends a matching relay-activity fact so later transcript views can replay it honestly.
+
+The retained transcript observability commands now also exist in the shell:
+- TUI: `/jobs [--limit <n>]`, `/earnings`, `/receipts [--limit <n>]`, `/activity [--limit <n>]`
+- headless: `cargo pylon-headless jobs [--limit <n>]`, `cargo pylon-headless earnings`, `cargo pylon-headless receipts [--limit <n>]`, `cargo pylon-headless activity [--limit <n>]`
+
+Those views stay ledger-backed. They can still replay retained provider jobs, earnings, receipts, and relay activity even when there is no live provider service answering local HTTP routes.
 
 The first retained buyer controls now also exist in both places:
 - TUI: `/job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt>`, `/job watch [<request_event_id>] [--seconds <n>]`, `/job history [--limit <n>]`, `/job replay <request_event_id>`, `/job approve <request_event_id>`, `/job deny <request_event_id>`, `/job policy [show|auto|manual]`
@@ -151,6 +157,7 @@ cargo pylon-headless inventory
 cargo pylon-headless jobs
 cargo pylon-headless earnings
 cargo pylon-headless receipts
+cargo pylon-headless activity
 ```
 
 Inspect or operate the standalone Spark wallet:
@@ -224,7 +231,7 @@ The generated config currently includes:
 1. initialize once with `cargo pylon-headless init`
 2. set desired mode explicitly with `cargo pylon-headless online` or `cargo pylon-headless offline`
 3. run `cargo pylon-headless serve` under a local service manager
-4. use `cargo pylon-headless status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, and `receipts` for observability
+4. use `cargo pylon-headless status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, `receipts`, and `activity` for observability
 5. use `cargo pylon-headless sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
 
 ### `systemd` example

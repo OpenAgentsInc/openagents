@@ -6,6 +6,10 @@ pub enum SlashCommandId {
     Announce,
     Provider,
     Job,
+    Jobs,
+    Earnings,
+    Receipts,
+    Activity,
     Payout,
     Relay,
     Wallet,
@@ -69,6 +73,30 @@ const COMMANDS: &[SlashCommandSpec] = &[
         name: "job",
         usage: "/job [submit|watch|history|replay|approve|deny|policy] ...",
         summary: "submit, inspect, replay, or settle retained NIP-90 buyer jobs",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Jobs,
+        name: "jobs",
+        usage: "/jobs [--limit <n>]",
+        summary: "show retained provider job history in the transcript",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Earnings,
+        name: "earnings",
+        usage: "/earnings",
+        summary: "show retained provider earnings in the transcript",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Receipts,
+        name: "receipts",
+        usage: "/receipts [--limit <n>]",
+        summary: "show retained provider receipts in the transcript",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Activity,
+        name: "activity",
+        usage: "/activity [--limit <n>]",
+        summary: "show retained relay and settlement activity in the transcript",
     },
     SlashCommandSpec {
         id: SlashCommandId::Payout,
@@ -138,8 +166,8 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "help", "chat", "download", "announce", "provider", "job", "payout", "relay",
-                "wallet"
+                "help", "chat", "download", "announce", "provider", "job", "jobs", "earnings",
+                "receipts", "activity", "payout", "relay", "wallet"
             ]
         );
     }
@@ -189,8 +217,12 @@ mod tests {
         assert_eq!(registry()[3].id, SlashCommandId::Announce);
         assert_eq!(registry()[4].id, SlashCommandId::Provider);
         assert_eq!(registry()[5].id, SlashCommandId::Job);
-        assert_eq!(registry()[6].id, SlashCommandId::Payout);
-        assert_eq!(registry()[7].id, SlashCommandId::Relay);
-        assert_eq!(registry()[8].id, SlashCommandId::Wallet);
+        assert_eq!(registry()[6].id, SlashCommandId::Jobs);
+        assert_eq!(registry()[7].id, SlashCommandId::Earnings);
+        assert_eq!(registry()[8].id, SlashCommandId::Receipts);
+        assert_eq!(registry()[9].id, SlashCommandId::Activity);
+        assert_eq!(registry()[10].id, SlashCommandId::Payout);
+        assert_eq!(registry()[11].id, SlashCommandId::Relay);
+        assert_eq!(registry()[12].id, SlashCommandId::Wallet);
     }
 }

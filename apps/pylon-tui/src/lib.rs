@@ -189,6 +189,14 @@ enum WorkerEvent {
     BuyerJobCommandFailed {
         error: String,
     },
+    TranscriptReportFinished {
+        title: String,
+        output: String,
+    },
+    TranscriptReportFailed {
+        title: String,
+        error: String,
+    },
     PayoutCommandFinished {
         title: String,
         output: String,
@@ -395,6 +403,22 @@ impl AppShell {
                 }
                 SlashCommandId::Job => {
                     self.handle_job_command(args);
+                    return;
+                }
+                SlashCommandId::Jobs => {
+                    self.handle_jobs_command(args);
+                    return;
+                }
+                SlashCommandId::Earnings => {
+                    self.handle_earnings_command(args);
+                    return;
+                }
+                SlashCommandId::Receipts => {
+                    self.handle_receipts_command(args);
+                    return;
+                }
+                SlashCommandId::Activity => {
+                    self.handle_activity_command(args);
                     return;
                 }
                 SlashCommandId::Payout => {
@@ -764,6 +788,12 @@ impl AppShell {
             WorkerEvent::BuyerJobCommandFailed { error } => {
                 self.push_system_message("Buyer Job Error", error);
             }
+            WorkerEvent::TranscriptReportFinished { title, output } => {
+                self.push_system_lines(title, text_body_lines(output.as_str()));
+            }
+            WorkerEvent::TranscriptReportFailed { title, error } => {
+                self.push_system_message(title, error);
+            }
             WorkerEvent::PayoutCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
             }
@@ -788,6 +818,33 @@ impl AppShell {
         self.transcript
             .push_entry(TranscriptEntry::new(TranscriptRole::System, title, lines));
         self.sync_transcript_scroll_after_update();
+    }
+
+    fn spawn_transcript_report<F>(
+        &mut self,
+        title: &'static str,
+        progress: impl Into<String>,
+        job: F,
+    ) where
+        F: FnOnce(PathBuf) -> Result<String> + Send + 'static,
+    {
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || match job(config_path) {
+            Ok(output) => {
+                let _ = tx.send(WorkerEvent::TranscriptReportFinished {
+                    title: title.to_string(),
+                    output,
+                });
+            }
+            Err(error) => {
+                let _ = tx.send(WorkerEvent::TranscriptReportFailed {
+                    title: format!("{title} Error"),
+                    error: error.to_string(),
+                });
+            }
+        });
+        self.push_system_message(title, progress);
     }
 
     fn handle_relay_command(&mut self, args: String) {
@@ -1044,6 +1101,91 @@ impl AppShell {
                 format!("Running retained provider intake for {}s...", seconds)
             } else {
                 format!("Scanning configured relays for {}s...", seconds)
+            },
+        );
+    }
+
+    fn handle_jobs_command(&mut self, args: String) {
+        let limit = match parse_tui_optional_limit(args.as_str(), "jobs") {
+            Ok(limit) => limit.or(Some(10)),
+            Err(error) => {
+                self.push_system_message("Jobs Error", error.to_string());
+                return;
+            }
+        };
+        self.spawn_transcript_report(
+            "Jobs",
+            "Loading retained provider jobs...",
+            move |config_path| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()?;
+                let report = runtime.block_on(async move {
+                    pylon::load_jobs_report(config_path.as_path(), limit).await
+                })?;
+                Ok(pylon::render_jobs_report(&report))
+            },
+        );
+    }
+
+    fn handle_earnings_command(&mut self, args: String) {
+        let trimmed = args.trim();
+        if !(trimmed.is_empty() || trimmed == "show" || trimmed == "status") {
+            self.push_system_message("Earnings Error", "Usage: /earnings");
+            return;
+        }
+        self.spawn_transcript_report(
+            "Earnings",
+            "Loading retained provider earnings...",
+            move |config_path| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()?;
+                let report = runtime.block_on(async move {
+                    pylon::load_earnings_report(config_path.as_path()).await
+                })?;
+                Ok(pylon::render_earnings_report(&report))
+            },
+        );
+    }
+
+    fn handle_receipts_command(&mut self, args: String) {
+        let limit = match parse_tui_optional_limit(args.as_str(), "receipts") {
+            Ok(limit) => limit.or(Some(10)),
+            Err(error) => {
+                self.push_system_message("Receipts Error", error.to_string());
+                return;
+            }
+        };
+        self.spawn_transcript_report(
+            "Receipts",
+            "Loading retained provider receipts...",
+            move |config_path| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()?;
+                let report = runtime.block_on(async move {
+                    pylon::load_receipts_report(config_path.as_path(), limit).await
+                })?;
+                Ok(pylon::render_receipts_report(&report))
+            },
+        );
+    }
+
+    fn handle_activity_command(&mut self, args: String) {
+        let limit = match parse_tui_optional_limit(args.as_str(), "activity") {
+            Ok(limit) => limit.or(Some(10)),
+            Err(error) => {
+                self.push_system_message("Activity Error", error.to_string());
+                return;
+            }
+        };
+        self.spawn_transcript_report(
+            "Activity",
+            "Loading retained relay activity...",
+            move |config_path| {
+                let report = pylon::load_relay_activity_report(config_path.as_path(), limit)?;
+                Ok(pylon::render_relay_activity_report(&report))
             },
         );
     }
@@ -2063,6 +2205,33 @@ fn parse_tui_buyer_job_policy_mode(args: &str) -> Result<pylon::BuyerPaymentPoli
     }
 }
 
+fn parse_tui_optional_limit(args: &str, command: &str) -> Result<Option<usize>> {
+    let mut remainder = args.trim();
+    if let Some(tail) = remainder.strip_prefix("show") {
+        if !tail.is_empty() && !tail.starts_with(char::is_whitespace) {
+            bail!("unexpected {command} argument `{remainder}`");
+        }
+        remainder = tail.trim_start();
+    }
+    if remainder == "show" {
+        remainder = "";
+    }
+    let mut limit = None;
+    while !remainder.is_empty() {
+        if let Some(value) = remainder.strip_prefix("--limit ") {
+            let (raw, tail) = take_next_tui_word(value);
+            limit = Some(
+                raw.parse::<usize>()
+                    .map_err(|_| anyhow!("invalid {command} limit `{raw}`"))?,
+            );
+            remainder = tail;
+            continue;
+        }
+        bail!("unexpected {command} argument `{remainder}`");
+    }
+    Ok(limit)
+}
+
 fn parse_tui_payout_history_request(args: &str) -> Result<Option<u32>> {
     let mut remainder = args.trim();
     let mut limit = None;
@@ -2122,6 +2291,10 @@ Controls:\n\
   [prompt]  stream a reply from local Gemma when weights are loaded\n\
   /help  show available commands\n\
   /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
+  /jobs [--limit <n>]  show retained provider job history\n\
+  /earnings  show retained provider earnings\n\
+  /receipts [--limit <n>]  show retained provider receipts\n\
+  /activity [--limit <n>]  show retained relay and settlement activity\n\
   /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] <prompt>  publish a retained NIP-90 buyer request\n\
   /job watch [<request_event_id>] [--seconds <n>]  stream retained buyer feedback and results into the transcript\n\
   /job history [--limit <n>]  show retained buyer job history from the local ledger\n\
@@ -2788,9 +2961,10 @@ mod tests {
         active_chat_title, estimate_token_count, max_transcript_scroll_y,
         parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
         parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
-        parse_tui_buyer_job_watch_request, parse_tui_payout_history_request,
-        parse_tui_payout_withdraw_request, summarize_chat_metrics, transcript_viewport_height,
-        transcript_wrap_width, wrapped_row_count,
+        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
+        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
+        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
+        wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -2928,6 +3102,18 @@ mod tests {
             parse_tui_payout_withdraw_request("lnbc1test --amount-sats 21")
                 .expect("payout withdraw"),
             ("lnbc1test".to_string(), Some(21))
+        );
+    }
+
+    #[test]
+    fn tui_transcript_view_parser_supports_optional_limit() {
+        assert_eq!(
+            parse_tui_optional_limit("", "jobs").expect("no limit"),
+            None
+        );
+        assert_eq!(
+            parse_tui_optional_limit("show --limit 6", "activity").expect("activity limit"),
+            Some(6)
         );
     }
 
