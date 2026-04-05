@@ -7607,6 +7607,7 @@ dependencies = [
  "serde_json",
  "sysinfo",
  "tokio",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]

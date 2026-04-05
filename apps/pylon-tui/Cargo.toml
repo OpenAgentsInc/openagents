@@ -19,3 +19,4 @@ ratatui.workspace = true
 serde_json.workspace = true
 sysinfo.workspace = true
 tokio.workspace = true
+unicode-width = "0.2"

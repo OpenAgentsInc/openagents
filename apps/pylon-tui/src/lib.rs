@@ -19,7 +19,7 @@ use crossterm::terminal::{
 };
 use openagents_provider_substrate::{ProviderBackendHealth, ProviderPersistedSnapshot};
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
@@ -27,6 +27,7 @@ use ratatui::{Frame, Terminal};
 use serde_json::Value;
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, RefreshKind, System};
 use transcript::{ActiveTurn, RetainedTranscript, TranscriptEntry, TranscriptRole};
+use unicode_width::UnicodeWidthStr;
 
 const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(2);
@@ -160,8 +161,10 @@ struct AppShell {
     chat_history: Vec<pylon::LocalGemmaChatMessage>,
     pending_chat_prompt: Option<String>,
     transcript_follow_latest: bool,
-    transcript_scroll_from_bottom: u16,
-    transcript_line_count: usize,
+    transcript_scroll_y: u16,
+    transcript_wrap_width: u16,
+    transcript_viewport_height: u16,
+    transcript_max_scroll_y: u16,
 }
 
 impl AppShell {
@@ -178,7 +181,6 @@ impl AppShell {
             "Shell Ready",
             vec![String::from("Type a prompt. /chat [prompt] also works.")],
         ));
-        let transcript_line_count = transcript.as_text().lines.len();
         Self {
             config_path,
             loaded: None,
@@ -203,8 +205,10 @@ impl AppShell {
             chat_history: Vec::new(),
             pending_chat_prompt: None,
             transcript_follow_latest: true,
-            transcript_scroll_from_bottom: 0,
-            transcript_line_count,
+            transcript_scroll_y: 0,
+            transcript_wrap_width: 0,
+            transcript_viewport_height: 0,
+            transcript_max_scroll_y: 0,
         }
     }
 
@@ -407,10 +411,7 @@ impl AppShell {
                 self.active_chat_text.push_str(delta.as_str());
                 self.transcript.set_active_turn(ActiveTurn::new(
                     TranscriptRole::Assistant,
-                    active_chat_title(
-                        self.active_chat_target.as_deref().unwrap_or("chat"),
-                        None,
-                    ),
+                    active_chat_title(self.active_chat_target.as_deref().unwrap_or("chat"), None),
                     text_body_lines(self.active_chat_text.as_str()),
                 ));
             }
@@ -550,7 +551,7 @@ impl AppShell {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>) {
+    fn render(&mut self, frame: &mut Frame<'_>) {
         let shell = Block::default()
             .borders(Borders::ALL)
             .padding(Padding::horizontal(1))
@@ -572,9 +573,10 @@ impl AppShell {
         .split(inner);
         let middle = Layout::horizontal([Constraint::Percentage(67), Constraint::Percentage(33)])
             .split(vertical[1]);
+        self.update_transcript_layout(middle[0]);
 
         frame.render_widget(self.header_panel(), vertical[0]);
-        frame.render_widget(self.transcript_panel(middle[0].height), middle[0]);
+        frame.render_widget(self.transcript_panel(), middle[0]);
         frame.render_widget(self.summary_panel(), middle[1]);
         self.bottom_pane.render(
             frame,
@@ -617,11 +619,9 @@ impl AppShell {
         panel("Gemma + System", Text::from(self.summary_lines()))
     }
 
-    fn transcript_panel(&self, area_height: u16) -> Paragraph<'static> {
-        let body = self.transcript_body();
-        let scroll_y = self.transcript_scroll_y(body.lines.len(), area_height);
-        Paragraph::new(body)
-            .scroll((scroll_y, 0))
+    fn transcript_panel(&self) -> Paragraph<'static> {
+        Paragraph::new(self.transcript_body())
+            .scroll((self.transcript_scroll_y, 0))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
@@ -799,65 +799,58 @@ impl AppShell {
     }
 
     fn transcript_panel_title(&self) -> String {
-        if self.transcript_follow_latest || self.transcript_scroll_from_bottom == 0 {
+        if self.transcript_follow_latest || self.transcript_scroll_y >= self.transcript_max_scroll_y
+        {
             return String::from("Transcript");
         }
-        format!("Transcript v {} below", self.transcript_scroll_from_bottom)
+        let hidden_rows = self
+            .transcript_max_scroll_y
+            .saturating_sub(self.transcript_scroll_y);
+        format!("Transcript ^ {hidden_rows} rows above")
     }
 
     fn sync_transcript_scroll_after_update(&mut self) {
-        let line_count = self.transcript_body().lines.len();
         if self.transcript_follow_latest {
-            self.transcript_scroll_from_bottom = 0;
-        } else if line_count > self.transcript_line_count {
-            let added = line_count.saturating_sub(self.transcript_line_count);
-            self.transcript_scroll_from_bottom = self
-                .transcript_scroll_from_bottom
-                .saturating_add(added.min(u16::MAX as usize) as u16)
-                .min(self.max_transcript_scroll_from_bottom_for_line_count(line_count));
+            self.transcript_scroll_y = self.transcript_max_scroll_y;
         } else {
-            self.transcript_scroll_from_bottom = self
-                .transcript_scroll_from_bottom
-                .min(self.max_transcript_scroll_from_bottom_for_line_count(line_count));
+            self.transcript_scroll_y = self.transcript_scroll_y.min(self.transcript_max_scroll_y);
         }
-        self.transcript_line_count = line_count;
     }
 
     fn scroll_transcript_up(&mut self, amount: u16) {
-        let max = self.max_transcript_scroll_from_bottom();
-        self.transcript_scroll_from_bottom = self
-            .transcript_scroll_from_bottom
-            .saturating_add(amount)
-            .min(max);
-        self.transcript_follow_latest = self.transcript_scroll_from_bottom == 0;
-        self.transcript_line_count = self.transcript_body().lines.len();
+        self.transcript_follow_latest = false;
+        self.transcript_scroll_y = self.transcript_scroll_y.saturating_sub(amount);
     }
 
     fn scroll_transcript_down(&mut self, amount: u16) {
-        self.transcript_scroll_from_bottom =
-            self.transcript_scroll_from_bottom.saturating_sub(amount);
-        self.transcript_follow_latest = self.transcript_scroll_from_bottom == 0;
-        self.transcript_line_count = self.transcript_body().lines.len();
+        self.transcript_scroll_y = self
+            .transcript_scroll_y
+            .saturating_add(amount)
+            .min(self.transcript_max_scroll_y);
+        self.transcript_follow_latest = self.transcript_scroll_y >= self.transcript_max_scroll_y;
     }
 
-    fn max_transcript_scroll_from_bottom_for_line_count(&self, line_count: usize) -> u16 {
-        line_count.saturating_sub(1).min(u16::MAX as usize) as u16
-    }
-
-    fn max_transcript_scroll_from_bottom(&self) -> u16 {
-        self.max_transcript_scroll_from_bottom_for_line_count(self.transcript_body().lines.len())
-    }
-
-    fn transcript_scroll_y(&self, line_count: usize, panel_height: u16) -> u16 {
-        let viewport_height = panel_height.max(2).saturating_sub(2) as usize;
-        let max_top_scroll = line_count.saturating_sub(viewport_height);
-        let from_bottom = usize::from(
-            self.transcript_scroll_from_bottom
-                .min(max_top_scroll.min(u16::MAX as usize) as u16),
+    fn update_transcript_layout(&mut self, area: Rect) {
+        self.transcript_wrap_width = transcript_wrap_width(area);
+        self.transcript_viewport_height = transcript_viewport_height(area);
+        self.transcript_max_scroll_y = max_transcript_scroll_y(
+            self.rendered_transcript_row_count(self.transcript_wrap_width),
+            self.transcript_viewport_height,
         );
-        max_top_scroll
-            .saturating_sub(from_bottom)
-            .min(u16::MAX as usize) as u16
+        if self.transcript_follow_latest {
+            self.transcript_scroll_y = self.transcript_max_scroll_y;
+        } else {
+            self.transcript_scroll_y = self.transcript_scroll_y.min(self.transcript_max_scroll_y);
+        }
+    }
+
+    fn rendered_transcript_row_count(&self, wrap_width: u16) -> usize {
+        self.transcript_body()
+            .lines
+            .iter()
+            .map(ToString::to_string)
+            .map(|line| wrapped_row_count(line.as_str(), wrap_width))
+            .sum()
     }
 }
 
@@ -1328,6 +1321,26 @@ fn format_load_average((one, five, fifteen): (f64, f64, f64)) -> String {
     format!("{one:.2} / {five:.2} / {fifteen:.2}")
 }
 
+fn transcript_wrap_width(area: Rect) -> u16 {
+    area.width.saturating_sub(4).max(1)
+}
+
+fn transcript_viewport_height(area: Rect) -> u16 {
+    area.height.saturating_sub(2).max(1)
+}
+
+fn max_transcript_scroll_y(rendered_rows: usize, viewport_height: u16) -> u16 {
+    rendered_rows
+        .saturating_sub(usize::from(viewport_height))
+        .min(u16::MAX as usize) as u16
+}
+
+fn wrapped_row_count(line: &str, wrap_width: u16) -> usize {
+    let wrap_width = usize::from(wrap_width.max(1));
+    let display_width = UnicodeWidthStr::width(line);
+    display_width.max(1).div_ceil(wrap_width)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct ChatMetricsSummary {
     ttft_seconds: Option<f64>,
@@ -1354,17 +1367,18 @@ fn summarize_chat_metrics(metrics: ActiveChatMetrics, text: &str) -> ChatMetrics
     let total_seconds = finished_at
         .saturating_duration_since(metrics.started_at)
         .as_secs_f64();
-    let ttft_seconds = metrics
-        .first_token_at
-        .map(|first| first.saturating_duration_since(metrics.started_at).as_secs_f64());
+    let ttft_seconds = metrics.first_token_at.map(|first| {
+        first
+            .saturating_duration_since(metrics.started_at)
+            .as_secs_f64()
+    });
     let estimated_tokens = estimate_token_count(text);
     let generation_seconds = metrics
         .first_token_at
         .map(|first| finished_at.saturating_duration_since(first).as_secs_f64())
         .filter(|seconds| *seconds > 0.0);
-    let tokens_per_second = generation_seconds.and_then(|seconds| {
-        (estimated_tokens > 0).then_some(estimated_tokens as f64 / seconds)
-    });
+    let tokens_per_second = generation_seconds
+        .and_then(|seconds| (estimated_tokens > 0).then_some(estimated_tokens as f64 / seconds));
     ChatMetricsSummary {
         ttft_seconds,
         total_seconds,
@@ -1386,9 +1400,11 @@ fn estimate_token_count(text: &str) -> usize {
 mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
-        active_chat_title, estimate_token_count, summarize_chat_metrics,
+        active_chat_title, estimate_token_count, max_transcript_scroll_y, summarize_chat_metrics,
+        transcript_viewport_height, transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::layout::Rect;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
@@ -1464,14 +1480,15 @@ mod tests {
         for index in 0..40 {
             app.push_system_message("Line", format!("older line {index}"));
         }
+        app.update_transcript_layout(Rect::new(0, 0, 40, 12));
         app.scroll_transcript_up(6);
 
         assert!(!app.transcript_follow_latest);
-        assert!(app.transcript_panel_title().starts_with("Transcript v "));
+        assert!(app.transcript_panel_title().starts_with("Transcript ^ "));
 
-        let scrolled_offset = app.transcript_scroll_from_bottom;
+        let scrolled_offset = app.transcript_scroll_y;
         app.push_system_message("Line", "streaming marker");
-        assert!(app.transcript_scroll_from_bottom >= scrolled_offset);
+        assert_eq!(app.transcript_scroll_y, scrolled_offset);
         assert!(!app.transcript_follow_latest);
 
         app.scroll_transcript_down(u16::MAX);
@@ -1490,6 +1507,32 @@ mod tests {
         assert!(!app.should_quit());
         assert!(transcript.contains("[user] Prompt"));
         assert!(transcript.contains("qr"));
+    }
+
+    #[test]
+    fn wrapped_row_count_counts_visual_rows() {
+        assert_eq!(wrapped_row_count("", 10), 1);
+        assert_eq!(wrapped_row_count("hello", 10), 1);
+        assert_eq!(wrapped_row_count("abcdefghij", 10), 1);
+        assert_eq!(wrapped_row_count("abcdefghijk", 10), 2);
+    }
+
+    #[test]
+    fn transcript_layout_uses_inner_panel_size() {
+        let area = Rect::new(0, 0, 67, 20);
+        assert_eq!(transcript_wrap_width(area), 63);
+        assert_eq!(transcript_viewport_height(area), 18);
+        assert_eq!(max_transcript_scroll_y(40, 18), 22);
+    }
+
+    #[test]
+    fn long_wrapped_lines_extend_scroll_range() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.push_system_message("Line", "x".repeat(200));
+        app.update_transcript_layout(Rect::new(0, 0, 40, 10));
+
+        assert!(app.transcript_max_scroll_y > 0);
+        assert_eq!(app.transcript_scroll_y, app.transcript_max_scroll_y);
     }
 
     #[test]
