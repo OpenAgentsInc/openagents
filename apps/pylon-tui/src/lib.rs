@@ -1,6 +1,7 @@
 mod bottom_pane;
 mod transcript;
 
+use std::collections::BTreeMap;
 use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -129,12 +130,35 @@ enum WorkerEvent {
     StreamDelta(String),
     StreamFinished,
     StreamFailed(String),
+    ModelDownloadStarted {
+        spec: pylon::GemmaDownloadSpec,
+        total_bytes: Option<u64>,
+    },
+    ModelDownloadProgress {
+        spec: pylon::GemmaDownloadSpec,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+    },
+    ModelDownloadFinished {
+        spec: pylon::GemmaDownloadSpec,
+        file_bytes: u64,
+    },
+    ModelDownloadFailed {
+        spec: pylon::GemmaDownloadSpec,
+        error: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
 struct ActiveChatMetrics {
     started_at: Instant,
     first_token_at: Option<Instant>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct GemmaDownloadProgressState {
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
 }
 
 struct AppShell {
@@ -160,6 +184,8 @@ struct AppShell {
     active_chat_metrics: Option<ActiveChatMetrics>,
     chat_history: Vec<pylon::LocalGemmaChatMessage>,
     pending_chat_prompt: Option<String>,
+    installed_gemma_models: BTreeMap<String, u64>,
+    gemma_downloads: BTreeMap<String, GemmaDownloadProgressState>,
     transcript_follow_latest: bool,
     transcript_scroll_y: u16,
     transcript_wrap_width: u16,
@@ -179,9 +205,12 @@ impl AppShell {
         transcript.push_entry(TranscriptEntry::new(
             TranscriptRole::System,
             "Shell Ready",
-            vec![String::from("Type a prompt. /chat [prompt] also works.")],
+            vec![String::from(
+                "Type a prompt. /chat [prompt] also works. /download <model> pulls Gemma weights.",
+            )],
         ));
         Self {
+            installed_gemma_models: installed_gemma_models(config_path.as_path()),
             config_path,
             loaded: None,
             system,
@@ -204,6 +233,7 @@ impl AppShell {
             active_chat_metrics: None,
             chat_history: Vec::new(),
             pending_chat_prompt: None,
+            gemma_downloads: BTreeMap::new(),
             transcript_follow_latest: true,
             transcript_scroll_y: 0,
             transcript_wrap_width: 0,
@@ -279,10 +309,31 @@ impl AppShell {
                 .map(str::trim)
                 .unwrap_or_default()
                 .to_string(),
+            Some("download") => {
+                let model_id = submission
+                    .text
+                    .trim()
+                    .strip_prefix("/download")
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .to_string();
+                if model_id.is_empty() {
+                    self.push_system_message(
+                        "Command Error",
+                        format!(
+                            "Usage: /download <model>. Available: {}",
+                            available_download_ids()
+                        ),
+                    );
+                    return;
+                }
+                self.start_model_download(model_id);
+                return;
+            }
             Some(command) => {
                 self.push_system_message(
                     "Command Error",
-                    format!("Unknown command /{command}. Only /chat is available."),
+                    format!("Unknown command /{command}. Only /chat and /download are available."),
                 );
                 return;
             }
@@ -298,6 +349,84 @@ impl AppShell {
         }
 
         self.start_chat(prompt);
+    }
+
+    fn start_model_download(&mut self, model_id: String) {
+        let Some(spec) = pylon::gemma_download_spec(model_id.as_str()) else {
+            self.push_system_message(
+                "Download Error",
+                format!(
+                    "Unknown Gemma model `{model_id}`. Available: {}",
+                    available_download_ids()
+                ),
+            );
+            return;
+        };
+        if self.gemma_downloads.contains_key(spec.id) {
+            self.push_system_message(
+                "Download Busy",
+                format!("{} is already downloading.", spec.id),
+            );
+            return;
+        }
+        if self.installed_gemma_models.contains_key(spec.id) {
+            self.push_system_message(
+                "Already Installed",
+                format!("{} is already in the local Pylon cache.", spec.id),
+            );
+            return;
+        }
+
+        self.gemma_downloads
+            .insert(spec.id.to_string(), GemmaDownloadProgressState::default());
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::ModelDownloadFailed {
+                        spec,
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                pylon::download_gemma_model(config_path.as_path(), spec.id, |event| match event {
+                    pylon::GemmaDownloadEvent::Started { spec, total_bytes } => {
+                        let _ = tx.send(WorkerEvent::ModelDownloadStarted { spec, total_bytes });
+                    }
+                    pylon::GemmaDownloadEvent::Progress {
+                        spec,
+                        downloaded_bytes,
+                        total_bytes,
+                    } => {
+                        let _ = tx.send(WorkerEvent::ModelDownloadProgress {
+                            spec,
+                            downloaded_bytes,
+                            total_bytes,
+                        });
+                    }
+                    pylon::GemmaDownloadEvent::Finished {
+                        spec, file_bytes, ..
+                    } => {
+                        let _ = tx.send(WorkerEvent::ModelDownloadFinished { spec, file_bytes });
+                    }
+                })
+                .await
+            });
+            if let Err(error) = result {
+                let _ = error_tx.send(WorkerEvent::ModelDownloadFailed {
+                    spec,
+                    error: error.to_string(),
+                });
+            }
+        });
     }
 
     fn start_chat(&mut self, prompt: String) {
@@ -463,6 +592,49 @@ impl AppShell {
                 self.active_chat_target = None;
                 self.active_chat_text.clear();
             }
+            WorkerEvent::ModelDownloadStarted { spec, total_bytes } => {
+                self.gemma_downloads.insert(
+                    spec.id.to_string(),
+                    GemmaDownloadProgressState {
+                        downloaded_bytes: 0,
+                        total_bytes,
+                    },
+                );
+                self.push_system_message(
+                    "Download Started",
+                    format!("Downloading {} from Hugging Face.", spec.id),
+                );
+            }
+            WorkerEvent::ModelDownloadProgress {
+                spec,
+                downloaded_bytes,
+                total_bytes,
+            } => {
+                self.gemma_downloads.insert(
+                    spec.id.to_string(),
+                    GemmaDownloadProgressState {
+                        downloaded_bytes,
+                        total_bytes,
+                    },
+                );
+            }
+            WorkerEvent::ModelDownloadFinished { spec, file_bytes } => {
+                self.gemma_downloads.remove(spec.id);
+                self.installed_gemma_models
+                    .insert(spec.id.to_string(), file_bytes);
+                self.push_system_message(
+                    "Download Finished",
+                    format!(
+                        "{} installed at {}.",
+                        spec.id,
+                        pylon::gemma_model_path(self.config_path.as_path(), spec).display()
+                    ),
+                );
+            }
+            WorkerEvent::ModelDownloadFailed { spec, error } => {
+                self.gemma_downloads.remove(spec.id);
+                self.push_system_message("Download Error", format!("{}: {}", spec.id, error));
+            }
         }
         self.sync_transcript_scroll_after_update();
     }
@@ -478,6 +650,7 @@ impl AppShell {
 
     async fn refresh(&mut self) {
         self.refresh_system_stats();
+        self.installed_gemma_models = installed_gemma_models(self.config_path.as_path());
         match pylon::ensure_local_setup(self.config_path.as_path()) {
             Ok(_) => match pylon::load_config_and_status(self.config_path.as_path()).await {
                 Ok((_, status)) => {
@@ -574,16 +747,23 @@ impl AppShell {
         let middle = Layout::horizontal([Constraint::Percentage(67), Constraint::Percentage(33)])
             .split(vertical[1]);
         self.update_transcript_layout(middle[0]);
+        let system_height = (self.summary_lines().len() as u16 + 2).clamp(8, 16);
+        let right_column =
+            Layout::vertical([Constraint::Length(system_height), Constraint::Min(10)])
+                .split(middle[1]);
 
         frame.render_widget(self.header_panel(), vertical[0]);
         frame.render_widget(self.transcript_panel(), middle[0]);
-        frame.render_widget(self.summary_panel(), middle[1]);
+        frame.render_widget(self.summary_panel(), right_column[0]);
+        frame.render_widget(self.models_panel(), right_column[1]);
         self.bottom_pane.render(
             frame,
             vertical[2],
             shell_border(),
             shell_accent(),
-            Some("Type a prompt. /chat [prompt] also works. Enter submits. Ctrl+J inserts a newline."),
+            Some(
+                "Type a prompt. /chat [prompt] chats. /download <model> pulls Gemma weights. Enter submits. Ctrl+J inserts a newline.",
+            ),
         );
         frame.render_widget(self.footer_panel(), vertical[3]);
     }
@@ -619,6 +799,10 @@ impl AppShell {
         panel("Gemma + System", Text::from(self.summary_lines()))
     }
 
+    fn models_panel(&self) -> Paragraph<'static> {
+        panel("Gemma Models", Text::from(self.model_lines()))
+    }
+
     fn transcript_panel(&self) -> Paragraph<'static> {
         Paragraph::new(self.transcript_body())
             .scroll((self.transcript_scroll_y, 0))
@@ -639,7 +823,9 @@ impl AppShell {
             Span::styled(" PgUp/PgDn ", shell_accent()),
             Span::raw("scroll  "),
             Span::styled(" Enter ", shell_accent()),
-            Span::raw("submit"),
+            Span::raw("submit  "),
+            Span::styled(" /download ", shell_accent()),
+            Span::raw("pull weights"),
         ]))
         .block(Block::default().style(shell_border()))
     }
@@ -787,6 +973,44 @@ impl AppShell {
         lines
     }
 
+    fn model_lines(&self) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        for (index, spec) in pylon::gemma_download_specs().iter().enumerate() {
+            if index > 0 {
+                lines.push(Line::from(""));
+            }
+            let installed_bytes = self.installed_gemma_models.get(spec.id).copied();
+            if let Some(progress) = self.gemma_downloads.get(spec.id) {
+                lines.push(Line::from(format!("{}  downloading", spec.id)));
+                lines.push(Line::from(format!(
+                    "  {}  {}",
+                    spec.quantization,
+                    download_progress_label(progress)
+                )));
+                lines.push(Line::from(format!(
+                    "  {}",
+                    download_progress_bar(progress, 12)
+                )));
+                continue;
+            }
+            if let Some(file_bytes) = installed_bytes {
+                lines.push(Line::from(format!("{}  installed", spec.id)));
+                lines.push(Line::from(format!(
+                    "  {}  {}",
+                    spec.quantization,
+                    format_byte_size(file_bytes)
+                )));
+            } else {
+                lines.push(Line::from(format!("{}  missing", spec.id)));
+                lines.push(Line::from(format!(
+                    "  {}  /download {}",
+                    spec.quantization, spec.id
+                )));
+            }
+        }
+        lines
+    }
+
     fn transcript_body(&self) -> Text<'static> {
         if self.transcript.is_empty() {
             Text::from(vec![
@@ -862,7 +1086,8 @@ Controls:\n\
   Enter    submit composer\n\
   Ctrl+J   insert newline\n\
 Composer:\n\
-  [prompt] or /chat [prompt]  stream a reply from local Gemma when weights are loaded\n"
+  [prompt] or /chat [prompt]  stream a reply from local Gemma when weights are loaded\n\
+  /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
 }
 
 pub async fn run_pylon_tui() -> Result<()> {
@@ -1319,6 +1544,53 @@ fn format_percent(value: f32) -> String {
 
 fn format_load_average((one, five, fifteen): (f64, f64, f64)) -> String {
     format!("{one:.2} / {five:.2} / {fifteen:.2}")
+}
+
+fn installed_gemma_models(config_path: &Path) -> BTreeMap<String, u64> {
+    pylon::gemma_local_installations(config_path)
+        .into_iter()
+        .filter_map(|installation| {
+            installation
+                .file_bytes
+                .map(|file_bytes| (installation.spec.id.to_string(), file_bytes))
+        })
+        .collect()
+}
+
+fn available_download_ids() -> String {
+    pylon::gemma_download_specs()
+        .iter()
+        .map(|spec| spec.id)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn download_progress_label(progress: &GemmaDownloadProgressState) -> String {
+    match progress.total_bytes {
+        Some(total_bytes) if total_bytes > 0 => {
+            let percent = progress.downloaded_bytes as f64 / total_bytes as f64 * 100.0;
+            format!(
+                "{:.0}%  {}/{}",
+                percent,
+                format_byte_size(progress.downloaded_bytes),
+                format_byte_size(total_bytes)
+            )
+        }
+        _ => format!("{} downloaded", format_byte_size(progress.downloaded_bytes)),
+    }
+}
+
+fn download_progress_bar(progress: &GemmaDownloadProgressState, width: usize) -> String {
+    let Some(total_bytes) = progress.total_bytes.filter(|value| *value > 0) else {
+        return "[............]".to_string();
+    };
+    let ratio = (progress.downloaded_bytes as f64 / total_bytes as f64).clamp(0.0, 1.0);
+    let filled = (ratio * width as f64).round() as usize;
+    format!(
+        "[{}{}]",
+        "#".repeat(filled.min(width)),
+        ".".repeat(width.saturating_sub(filled.min(width)))
+    )
 }
 
 fn transcript_wrap_width(area: Rect) -> u16 {

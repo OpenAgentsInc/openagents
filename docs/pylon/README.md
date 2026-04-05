@@ -71,10 +71,11 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 - whether a Gemma 4-serving path is visible to the node
 - live host, CPU, memory, swap, uptime, disk, network, thermal, and power-source state
 - a GPU summary and NVIDIA power telemetry when the host can report it
+- a built-in Hugging Face Gemma GGUF catalog that shows which curated models are installed, missing, or actively downloading
 - a retained transcript area for local shell activity
-- a bottom textbox where plain text submits a prompt and `/chat [prompt]` remains an optional alias
+- a bottom textbox where plain text submits a prompt, `/chat [prompt]` remains an optional alias, and `/download <model>` pulls a curated Gemma GGUF into the local Pylon cache
 
-The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state but not direct watt draw. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now also shows a small curated Hugging Face catalog for `gemma-3-1b`, `gemma-3n-e4b`, `gemma-3-4b`, `gemma-3-12b`, and `gemma-3-27b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path still uses backend-visible Gemma models from the existing serving seam. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state but not direct watt draw. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 Initialize a standalone config and identity:
 

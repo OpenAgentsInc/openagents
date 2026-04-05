@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
@@ -246,6 +246,244 @@ pub enum LocalGemmaChatEvent {
     Started { target: LocalGemmaChatTarget },
     Delta(String),
     Finished { target: LocalGemmaChatTarget },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GemmaDownloadSpec {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub quantization: &'static str,
+    pub repo_id: &'static str,
+    pub filename: &'static str,
+}
+
+impl GemmaDownloadSpec {
+    fn download_url(self, base_url: &str) -> String {
+        format!(
+            "{}/{}/resolve/main/{}?download=true",
+            base_url.trim_end_matches('/'),
+            self.repo_id,
+            self.filename,
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GemmaLocalInstallation {
+    pub spec: GemmaDownloadSpec,
+    pub path: PathBuf,
+    pub installed: bool,
+    pub file_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GemmaDownloadEvent {
+    Started {
+        spec: GemmaDownloadSpec,
+        total_bytes: Option<u64>,
+    },
+    Progress {
+        spec: GemmaDownloadSpec,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+    },
+    Finished {
+        spec: GemmaDownloadSpec,
+        path: PathBuf,
+        file_bytes: u64,
+    },
+}
+
+const GEMMA_DOWNLOAD_SPECS: [GemmaDownloadSpec; 5] = [
+    GemmaDownloadSpec {
+        id: "gemma-3-1b",
+        label: "Gemma 3 1B",
+        quantization: "Q4_K_M",
+        repo_id: "ggml-org/gemma-3-1b-it-GGUF",
+        filename: "gemma-3-1b-it-Q4_K_M.gguf",
+    },
+    GemmaDownloadSpec {
+        id: "gemma-3n-e4b",
+        label: "Gemma 3n E4B",
+        quantization: "Q8_0",
+        repo_id: "ggml-org/gemma-3n-E4B-it-GGUF",
+        filename: "gemma-3n-E4B-it-Q8_0.gguf",
+    },
+    GemmaDownloadSpec {
+        id: "gemma-3-4b",
+        label: "Gemma 3 4B",
+        quantization: "Q4_K_M",
+        repo_id: "ggml-org/gemma-3-4b-it-GGUF",
+        filename: "gemma-3-4b-it-Q4_K_M.gguf",
+    },
+    GemmaDownloadSpec {
+        id: "gemma-3-12b",
+        label: "Gemma 3 12B",
+        quantization: "Q4_K_M",
+        repo_id: "ggml-org/gemma-3-12b-it-GGUF",
+        filename: "gemma-3-12b-it-Q4_K_M.gguf",
+    },
+    GemmaDownloadSpec {
+        id: "gemma-3-27b",
+        label: "Gemma 3 27B",
+        quantization: "Q4_K_M",
+        repo_id: "ggml-org/gemma-3-27b-it-GGUF",
+        filename: "gemma-3-27b-it-Q4_K_M.gguf",
+    },
+];
+
+pub fn gemma_download_specs() -> &'static [GemmaDownloadSpec] {
+    &GEMMA_DOWNLOAD_SPECS
+}
+
+pub fn gemma_download_spec(model_id: &str) -> Option<GemmaDownloadSpec> {
+    GEMMA_DOWNLOAD_SPECS
+        .iter()
+        .copied()
+        .find(|spec| spec.id == model_id.trim())
+}
+
+pub fn gemma_models_root(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_home_dir)
+        .join("models")
+        .join("huggingface")
+}
+
+pub fn gemma_model_path(config_path: &Path, spec: GemmaDownloadSpec) -> PathBuf {
+    gemma_models_root(config_path)
+        .join(spec.id)
+        .join(spec.filename)
+}
+
+pub fn gemma_local_installations(config_path: &Path) -> Vec<GemmaLocalInstallation> {
+    gemma_download_specs()
+        .iter()
+        .copied()
+        .map(|spec| {
+            let path = gemma_model_path(config_path, spec);
+            let file_bytes = std::fs::metadata(path.as_path())
+                .ok()
+                .map(|metadata| metadata.len());
+            GemmaLocalInstallation {
+                spec,
+                path,
+                installed: file_bytes.is_some(),
+                file_bytes,
+            }
+        })
+        .collect()
+}
+
+pub async fn download_gemma_model<F>(config_path: &Path, model_id: &str, emit: F) -> Result<PathBuf>
+where
+    F: FnMut(GemmaDownloadEvent),
+{
+    download_gemma_model_from_base_url(config_path, model_id, "https://huggingface.co", emit).await
+}
+
+async fn download_gemma_model_from_base_url<F>(
+    config_path: &Path,
+    model_id: &str,
+    base_url: &str,
+    mut emit: F,
+) -> Result<PathBuf>
+where
+    F: FnMut(GemmaDownloadEvent),
+{
+    use tokio::io::AsyncWriteExt;
+
+    let spec =
+        gemma_download_spec(model_id).ok_or_else(|| anyhow!("unknown Gemma model `{model_id}`"))?;
+    let final_path = gemma_model_path(config_path, spec);
+    if let Some(parent) = final_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    if final_path.exists() {
+        let file_bytes = tokio::fs::metadata(final_path.as_path())
+            .await
+            .with_context(|| format!("failed to stat {}", final_path.display()))?
+            .len();
+        emit(GemmaDownloadEvent::Finished {
+            spec,
+            path: final_path.clone(),
+            file_bytes,
+        });
+        return Ok(final_path);
+    }
+
+    let partial_path = final_path.with_extension(format!(
+        "{}.part",
+        final_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("download"),
+    ));
+    let client = reqwest::Client::builder()
+        .user_agent("openagents-pylon/0.1.1")
+        .build()?;
+
+    let result = async {
+        let mut response = client
+            .get(spec.download_url(base_url))
+            .send()
+            .await?
+            .error_for_status()?;
+        let total_bytes = response.content_length();
+        emit(GemmaDownloadEvent::Started { spec, total_bytes });
+
+        let mut file = tokio::fs::File::create(partial_path.as_path())
+            .await
+            .with_context(|| format!("failed to create {}", partial_path.display()))?;
+        let mut downloaded_bytes = 0_u64;
+        let mut last_progress_emit = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+
+        while let Some(chunk) = response.chunk().await? {
+            file.write_all(&chunk).await?;
+            downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
+            let should_emit = last_progress_emit.elapsed() >= Duration::from_millis(100)
+                || total_bytes == Some(downloaded_bytes);
+            if should_emit {
+                emit(GemmaDownloadEvent::Progress {
+                    spec,
+                    downloaded_bytes,
+                    total_bytes,
+                });
+                last_progress_emit = Instant::now();
+            }
+        }
+
+        file.flush().await?;
+        drop(file);
+        tokio::fs::rename(partial_path.as_path(), final_path.as_path())
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to move {} into {}",
+                    partial_path.display(),
+                    final_path.display()
+                )
+            })?;
+        emit(GemmaDownloadEvent::Finished {
+            spec,
+            path: final_path.clone(),
+            file_bytes: downloaded_bytes,
+        });
+        Ok::<(), anyhow::Error>(())
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(partial_path.as_path()).await;
+    }
+    result?;
+    Ok(final_path)
 }
 
 pub fn parse_args(args: Vec<String>) -> Result<Cli> {
@@ -2915,14 +3153,15 @@ fn now_epoch_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig,
-        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
-        ensure_identity, inventory_rows, load_backend_report, load_earnings_report,
-        load_inventory_report, load_jobs_report, load_or_create_config, load_product_report,
-        load_receipts_report, load_sandbox_report, load_status_or_detect, parse_args,
-        provider_admin_config, render_human_status, render_sandbox_report,
-        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, save_config,
+        Command, GemmaDownloadEvent, LocalGemmaChatBackend, LocalGemmaChatEvent,
+        LocalGemmaChatMessage, PylonConfig, apply_config_set, apply_control_command,
+        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
+        ensure_identity, gemma_download_spec, gemma_local_installations, inventory_rows,
+        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
+        load_or_create_config, load_product_report, load_receipts_report, load_sandbox_report,
+        load_status_or_detect, parse_args, provider_admin_config, render_human_status,
+        render_sandbox_report, resolve_local_gemma_chat_target_from_status,
+        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, save_config,
     };
     use openagents_provider_substrate::{
         ProviderAdapterTrainingContributorAvailability, ProviderAppleAdapterHostingAvailability,
@@ -3542,6 +3781,105 @@ mod tests {
         ensure(
             target.backend == LocalGemmaChatBackend::Ollama && target.model == "gemma4:e4b",
             "resolver should prefer the ready local Ollama Gemma target",
+        )
+    }
+
+    #[test]
+    fn gemma_local_installations_reflect_cached_files() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let spec = gemma_download_spec("gemma-3-4b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-3-4b spec"))?;
+        let path = super::gemma_model_path(config_path.as_path(), spec);
+        std::fs::create_dir_all(
+            path.parent()
+                .ok_or_else(|| std::io::Error::other("missing model parent"))?,
+        )?;
+        std::fs::write(path.as_path(), b"gguf")?;
+
+        let installations = gemma_local_installations(config_path.as_path());
+        let found = installations
+            .into_iter()
+            .find(|installation| installation.spec.id == "gemma-3-4b")
+            .ok_or_else(|| std::io::Error::other("gemma-3-4b installation missing"))?;
+
+        ensure(
+            found.installed,
+            "cached GGUF should mark the model installed",
+        )?;
+        ensure(
+            found.file_bytes == Some(4),
+            "cached GGUF should report its local file size",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn gemma_download_emits_progress_and_writes_cache()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let spec = gemma_download_spec("gemma-3-1b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-3-1b spec"))?;
+        let payload = "x".repeat(16_384);
+        let expected_path = format!(
+            "/{}/resolve/main/{}?download=true",
+            spec.repo_id, spec.filename
+        );
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            if method == "GET" && path == expected_path {
+                return (200, "application/octet-stream", payload.clone());
+            }
+            (500, "text/plain", "unexpected request".to_string())
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut events = Vec::new();
+        let final_path = download_gemma_model_from_base_url(
+            config_path.as_path(),
+            spec.id,
+            base_url.as_str(),
+            |event| events.push(event),
+        )
+        .await?;
+
+        ensure(
+            final_path.exists(),
+            "download should write the final GGUF file",
+        )?;
+        let file_bytes = std::fs::metadata(final_path.as_path())?.len();
+        ensure(
+            file_bytes == 16_384,
+            "downloaded GGUF should preserve the full response body",
+        )?;
+        ensure(
+            events
+                .iter()
+                .any(|event| matches!(event, GemmaDownloadEvent::Started { spec, .. } if spec.id == "gemma-3-1b")),
+            "download should emit a started event",
+        )?;
+        ensure(
+            events.iter().any(|event| matches!(
+                event,
+                GemmaDownloadEvent::Progress {
+                    spec,
+                    downloaded_bytes,
+                    total_bytes
+                } if spec.id == "gemma-3-1b" && *downloaded_bytes == 16_384 && *total_bytes == Some(16_384)
+            )),
+            "download should emit a progress event with byte totals",
+        )?;
+        ensure(
+            events.iter().any(|event| {
+                matches!(
+                    event,
+                    GemmaDownloadEvent::Finished {
+                        spec,
+                        file_bytes,
+                        ..
+                    } if spec.id == "gemma-3-1b" && *file_bytes == 16_384
+                )
+            }),
+            "download should emit a finished event",
         )
     }
 
