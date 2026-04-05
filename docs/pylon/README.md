@@ -77,6 +77,8 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 
 The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now also shows a small curated Hugging Face catalog for `gemma-3-1b`, `gemma-3n-e4b`, `gemma-3-4b`, `gemma-3-12b`, and `gemma-3-27b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path still uses backend-visible Gemma models from the existing serving seam. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state but not direct watt draw. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
+Pylon now also keeps a focused local ledger at `~/.openagents/pylon/ledger.json`. That file is the retained standalone durability layer for relay state, NIP-90 jobs, invoices, payments, settlements, and local activity replay. It is intentionally narrower than the old archived Pylon database.
+
 Initialize a standalone config and identity:
 
 ```bash

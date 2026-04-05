@@ -1,3 +1,5 @@
+mod ledger;
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -20,6 +22,13 @@ use openagents_provider_substrate::{
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+pub use ledger::{
+    PylonLedger, PylonLedgerJob, PylonLedgerSummary, PylonRelayActivity, PylonRelayConfigSnapshot,
+    PylonRelayState, PylonSettlementRecord, PylonWalletInvoiceRecord, PylonWalletLedger,
+    PylonWalletPaymentRecord, default_ledger_path, ensure_local_ledger, load_ledger,
+    load_ledger_summary, mutate_ledger, save_ledger,
+};
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
 pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
@@ -68,6 +77,7 @@ pub struct Cli {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct InitReport {
     config_path: String,
+    ledger_path: String,
     identity_path: String,
     npub: String,
     payout_destination: Option<String>,
@@ -522,8 +532,10 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         Command::Init => {
             let config = load_or_create_config(cli.config_path.as_path())?;
             let identity = ensure_identity(config.identity_path.as_path())?;
+            let ledger_path = ensure_local_ledger(cli.config_path.as_path())?;
             Ok(Some(serde_json::to_string_pretty(&InitReport {
                 config_path: cli.config_path.display().to_string(),
+                ledger_path: ledger_path.display().to_string(),
                 identity_path: config.identity_path.display().to_string(),
                 npub: identity.npub,
                 payout_destination: config.payout_destination.clone(),
@@ -845,6 +857,7 @@ fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
 pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
     let config = load_or_create_config(config_path)?;
     let _ = ensure_identity(config.identity_path.as_path())?;
+    let _ = ensure_local_ledger(config_path)?;
     Ok(config)
 }
 
