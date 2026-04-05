@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 bip39 = "2.2.0"
+hex = { workspace = true }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }

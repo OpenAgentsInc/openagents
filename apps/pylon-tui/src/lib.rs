@@ -155,6 +155,12 @@ enum WorkerEvent {
     RelayRefreshFailed {
         error: String,
     },
+    AnnouncementFinished {
+        output: String,
+    },
+    AnnouncementFailed {
+        error: String,
+    },
     WalletCommandFinished {
         title: String,
         output: String,
@@ -342,6 +348,10 @@ impl AppShell {
                         return;
                     }
                     self.start_model_download(model_id);
+                    return;
+                }
+                SlashCommandId::Announce => {
+                    self.handle_announce_command(args);
                     return;
                 }
                 SlashCommandId::Relay => {
@@ -663,6 +673,12 @@ impl AppShell {
             WorkerEvent::RelayRefreshFailed { error } => {
                 self.push_system_message("Relay Error", error);
             }
+            WorkerEvent::AnnouncementFinished { output } => {
+                self.push_system_lines("Announcement", text_body_lines(output.as_str()));
+            }
+            WorkerEvent::AnnouncementFailed { error } => {
+                self.push_system_message("Announcement Error", error);
+            }
             WorkerEvent::WalletCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
             }
@@ -750,6 +766,72 @@ impl AppShell {
                 );
             }
         }
+    }
+
+    fn handle_announce_command(&mut self, args: String) {
+        let (action, title) = match args.trim() {
+            "" | "show" => (
+                pylon::AnnouncementAction::Show,
+                "Loading announcement state...",
+            ),
+            "publish" => (
+                pylon::AnnouncementAction::Publish,
+                "Publishing provider announcement...",
+            ),
+            "refresh" => (
+                pylon::AnnouncementAction::Refresh,
+                "Refreshing provider announcement...",
+            ),
+            other => {
+                self.push_system_message(
+                    "Announcement Error",
+                    format!("Unknown announce command `{other}`. Use show, publish, or refresh."),
+                );
+                return;
+            }
+        };
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::AnnouncementFailed {
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                let report = match action {
+                    pylon::AnnouncementAction::Show => {
+                        pylon::load_announcement_report(config_path.as_path()).await
+                    }
+                    pylon::AnnouncementAction::Publish => {
+                        pylon::publish_announcement_report(config_path.as_path(), false).await
+                    }
+                    pylon::AnnouncementAction::Refresh => {
+                        pylon::publish_announcement_report(config_path.as_path(), true).await
+                    }
+                }?;
+                Ok::<String, anyhow::Error>(pylon::render_announcement_report(&report))
+            });
+            match result {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::AnnouncementFinished { output });
+                }
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::AnnouncementFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Announcement", title);
     }
 
     fn handle_wallet_command(&mut self, args: String) {

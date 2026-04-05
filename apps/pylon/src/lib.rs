@@ -1,4 +1,5 @@
 mod ledger;
+mod nip90_runtime;
 mod wallet_runtime;
 
 use std::path::{Path, PathBuf};
@@ -28,10 +29,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use ledger::{
-    PylonLedger, PylonLedgerJob, PylonLedgerSummary, PylonRelayActivity, PylonRelayConfigSnapshot,
-    PylonRelayState, PylonSettlementRecord, PylonWalletInvoiceRecord, PylonWalletLedger,
-    PylonWalletPaymentRecord, default_ledger_path, ensure_local_ledger, load_ledger,
-    load_ledger_summary, mutate_ledger, save_ledger,
+    PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerSummary, PylonRelayActivity,
+    PylonRelayConfigSnapshot, PylonRelayState, PylonSettlementRecord, PylonWalletInvoiceRecord,
+    PylonWalletLedger, PylonWalletPaymentRecord, default_ledger_path, ensure_local_ledger,
+    load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
+};
+pub use nip90_runtime::{
+    AnnouncementAction, AnnouncementReport, load_announcement_report, publish_announcement_report,
+    render_announcement_report,
 };
 pub use wallet_runtime::{
     WalletAddressReport, WalletBalanceSnapshot, WalletHistoryReport, WalletInvoiceReport,
@@ -76,25 +81,62 @@ pub enum Command {
     Init,
     Doctor,
     Serve,
-    Status { json: bool },
-    Backends { json: bool },
-    Inventory { json: bool, limit: Option<usize> },
-    Products { json: bool },
-    Relays { json: bool },
-    Sandbox { json: bool, limit: Option<usize> },
-    Jobs { json: bool, limit: Option<usize> },
-    Earnings { json: bool },
-    Receipts { json: bool, limit: Option<usize> },
-    RelayAdd { url: String },
-    RelayRemove { url: String },
-    RelayRefresh { json: bool },
-    Wallet { command: WalletSubcommand },
+    Status {
+        json: bool,
+    },
+    Backends {
+        json: bool,
+    },
+    Inventory {
+        json: bool,
+        limit: Option<usize>,
+    },
+    Products {
+        json: bool,
+    },
+    Relays {
+        json: bool,
+    },
+    Sandbox {
+        json: bool,
+        limit: Option<usize>,
+    },
+    Jobs {
+        json: bool,
+        limit: Option<usize>,
+    },
+    Earnings {
+        json: bool,
+    },
+    Receipts {
+        json: bool,
+        limit: Option<usize>,
+    },
+    RelayAdd {
+        url: String,
+    },
+    RelayRemove {
+        url: String,
+    },
+    RelayRefresh {
+        json: bool,
+    },
+    Announcement {
+        action: AnnouncementAction,
+        json: bool,
+    },
+    Wallet {
+        command: WalletSubcommand,
+    },
     Online,
     Offline,
     Pause,
     Resume,
     ConfigShow,
-    ConfigSet { key: String, value: String },
+    ConfigSet {
+        key: String,
+        value: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -692,6 +734,23 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_relay_report(&report)))
         }
+        Command::Announcement { action, json } => {
+            let report = match action {
+                AnnouncementAction::Show => {
+                    load_announcement_report(cli.config_path.as_path()).await?
+                }
+                AnnouncementAction::Publish => {
+                    publish_announcement_report(cli.config_path.as_path(), false).await?
+                }
+                AnnouncementAction::Refresh => {
+                    publish_announcement_report(cli.config_path.as_path(), true).await?
+                }
+            };
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_announcement_report(&report)))
+        }
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
@@ -753,6 +812,7 @@ Commands:\n\
   relay add <url>\n\
   relay remove <url>\n\
   relay refresh [--json]\n\
+  announce [show|publish|refresh] [--json]\n\
   wallet status [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
@@ -888,6 +948,34 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             Some(other) => bail!("unknown relay command: {other}"),
             None => bail!("missing relay subcommand"),
         },
+        "announce" => match args.get(start_index + 1).map(String::as_str) {
+            None => Ok(Command::Announcement {
+                action: AnnouncementAction::Show,
+                json: false,
+            }),
+            Some("show") => Ok(Command::Announcement {
+                action: AnnouncementAction::Show,
+                json: parse_json_only(args, start_index + 2, "announce show")?,
+            }),
+            Some("publish") => Ok(Command::Announcement {
+                action: AnnouncementAction::Publish,
+                json: parse_json_only(args, start_index + 2, "announce publish")?,
+            }),
+            Some("refresh") => Ok(Command::Announcement {
+                action: AnnouncementAction::Refresh,
+                json: parse_json_only(args, start_index + 2, "announce refresh")?,
+            }),
+            Some("--json") => {
+                if start_index + 2 != args.len() {
+                    bail!("announce --json does not accept additional arguments");
+                }
+                Ok(Command::Announcement {
+                    action: AnnouncementAction::Show,
+                    json: true,
+                })
+            }
+            Some(other) => bail!("unknown announce command: {other}"),
+        },
         "wallet" => Ok(Command::Wallet {
             command: parse_wallet_command(args, start_index)?,
         }),
@@ -973,6 +1061,19 @@ fn parse_observability_flags(
         }
     }
     Ok((json, limit))
+}
+
+fn parse_json_only(args: &[String], start_index: usize, command: &str) -> Result<bool> {
+    match args.get(start_index) {
+        None => Ok(false),
+        Some(value) if value == "--json" => {
+            if start_index + 1 != args.len() {
+                bail!("{command} --json does not accept additional arguments");
+            }
+            Ok(true)
+        }
+        Some(other) => bail!("unexpected argument for {command}: {other}"),
+    }
 }
 
 fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
@@ -3738,14 +3839,15 @@ fn now_epoch_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, GemmaDownloadEvent, LocalGemmaChatBackend, LocalGemmaChatEvent,
-        LocalGemmaChatMessage, PylonConfig, WalletSubcommand, add_configured_relay,
-        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
-        download_gemma_model_from_base_url, ensure_identity, gemma_download_spec,
-        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
-        load_inventory_report, load_jobs_report, load_ledger, load_or_create_config,
-        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
-        load_status_or_detect, parse_args, provider_admin_config, refresh_relay_report,
+        AnnouncementAction, Command, GemmaDownloadEvent, LocalGemmaChatBackend,
+        LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, WalletSubcommand,
+        add_configured_relay, apply_config_set, apply_control_command,
+        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
+        ensure_identity, gemma_download_spec, gemma_local_installations, inventory_rows,
+        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
+        load_ledger, load_or_create_config, load_product_report, load_receipts_report,
+        load_relay_report, load_sandbox_report, load_status_or_detect, parse_args,
+        provider_admin_config, publish_announcement_report, refresh_relay_report,
         remove_configured_relay, render_human_status, render_sandbox_report,
         resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, save_config,
@@ -3760,7 +3862,7 @@ mod tests {
         ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
         provider_runtime_state_label,
     };
-    use serde_json::json;
+    use serde_json::{Value, json};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio_tungstenite::{accept_async, tungstenite::Message};
@@ -4068,6 +4170,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_supports_announce_commands() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec!["announce".to_string()])?.command
+                == Command::Announcement {
+                    action: AnnouncementAction::Show,
+                    json: false,
+                },
+            "announce should default to show",
+        )?;
+        ensure(
+            parse_args(vec![
+                "announce".to_string(),
+                "publish".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Announcement {
+                    action: AnnouncementAction::Publish,
+                    json: true,
+                },
+            "announce publish should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec!["announce".to_string(), "refresh".to_string()])?.command
+                == Command::Announcement {
+                    action: AnnouncementAction::Refresh,
+                    json: false,
+                },
+            "announce refresh should parse",
+        )
+    }
+
+    #[test]
     fn parse_args_supports_wallet_commands() -> Result<(), Box<dyn std::error::Error>> {
         ensure(
             parse_args(vec![
@@ -4236,6 +4371,95 @@ mod tests {
         )?;
 
         server.abort();
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn publish_announcement_persists_handler_event() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let ollama_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let ollama_addr = ollama_listener.local_addr()?;
+        let ollama_server = tokio::spawn(async move {
+            let (mut stream, _) = ollama_listener.accept().await.expect("accept ollama");
+            let mut request = vec![0u8; 4096];
+            let _ = stream
+                .read(&mut request)
+                .await
+                .expect("read ollama request");
+            let body = json!({
+                "models": [{"name": "gemma4-e4b-local:latest"}]
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .expect("write ollama response");
+        });
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                let value: Value = serde_json::from_str(payload.as_str()).expect("parse event");
+                if value[0] == "EVENT" {
+                    return value;
+                }
+            }
+            panic!("relay did not receive an EVENT frame");
+        });
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url];
+        config.ollama_base_url = format!("http://{ollama_addr}");
+        save_config(config_path.as_path(), &config)?;
+
+        let report = publish_announcement_report(config_path.as_path(), false).await?;
+        ensure(
+            report.handler_event_id.is_some(),
+            "publish should return a handler event id",
+        )?;
+        ensure(
+            report.model.as_deref() == Some("gemma4-e4b-local:latest"),
+            "publish should advertise the ready Gemma model",
+        )?;
+
+        let payload = relay_server.await?;
+        ensure(
+            payload[0] == "EVENT",
+            "relay payload should be an EVENT frame",
+        )?;
+        ensure(
+            payload[1]["kind"] == 31990,
+            "announcement should publish a kind:31990 event",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        ensure(
+            ledger.announcements.len() == 1,
+            "publish should persist the handler announcement",
+        )?;
+        ensure(
+            ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "announcement.published"),
+            "publish should append a relay activity record",
+        )?;
+
+        ollama_server.await?;
         Ok(())
     }
 

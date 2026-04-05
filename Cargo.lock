@@ -7586,6 +7586,7 @@ dependencies = [
  "anyhow",
  "bip39",
  "futures-util",
+ "hex",
  "nostr 0.1.1",
  "nostr-client",
  "openagents-provider-substrate",

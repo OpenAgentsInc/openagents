@@ -85,6 +85,12 @@ The retained relay controls are now exposed in both places:
 
 Relay refresh now reuses the local Pylon node identity for NIP-42 `AUTH` challenges by default. If you need to disable that on a local node, use `cargo pylon-headless config set relay_auth_enabled false`.
 
+The retained provider announcement controls now also exist in both places:
+- TUI: `/announce`, `/announce publish`, `/announce refresh`
+- headless: `cargo pylon-headless announce`, `cargo pylon-headless announce publish`, `cargo pylon-headless announce refresh`
+
+The current retained announcement scope is one honest local text-generation handler for `kind:5050`. Pylon only publishes it when a local Gemma-backed text-generation path is actually eligible.
+
 The retained wallet controls now also exist in both places:
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
@@ -100,6 +106,8 @@ Inspect status:
 ```bash
 cargo pylon-headless status
 cargo pylon-headless status --json
+cargo pylon-headless announce
+cargo pylon-headless announce publish
 ```
 
 Inspect provider truth:

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 const LEDGER_SCHEMA_VERSION: u32 = 1;
 const MAX_RELAY_ACTIVITY: usize = 256;
+const MAX_ANNOUNCEMENTS: usize = 32;
 const MAX_JOBS: usize = 256;
 const MAX_INVOICES: usize = 128;
 const MAX_PAYMENTS: usize = 256;
@@ -14,6 +15,7 @@ const MAX_SETTLEMENTS: usize = 256;
 pub struct PylonLedgerSummary {
     pub relay_count: usize,
     pub relay_activity_count: usize,
+    pub announcement_count: usize,
     pub job_count: usize,
     pub invoice_count: usize,
     pub payment_count: usize,
@@ -54,6 +56,21 @@ pub struct PylonRelayActivity {
     pub url: Option<String>,
     pub kind: String,
     pub detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonLedgerAnnouncement {
+    pub announcement_id: String,
+    pub event_id: String,
+    pub request_kind: u16,
+    pub model: Option<String>,
+    pub backend: Option<String>,
+    pub capabilities: Vec<String>,
+    pub price_msats: Option<u64>,
+    pub relay_urls: Vec<String>,
+    pub fingerprint: String,
+    pub published_at_ms: u64,
+    pub updated_at_ms: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -192,6 +209,8 @@ pub struct PylonLedger {
     #[serde(default)]
     pub relay_activity: Vec<PylonRelayActivity>,
     #[serde(default)]
+    pub announcements: Vec<PylonLedgerAnnouncement>,
+    #[serde(default)]
     pub jobs: Vec<PylonLedgerJob>,
     #[serde(default)]
     pub wallet: PylonWalletLedger,
@@ -206,6 +225,7 @@ impl Default for PylonLedger {
             relay_config: PylonRelayConfigSnapshot::default(),
             relay_state: Vec::new(),
             relay_activity: Vec::new(),
+            announcements: Vec::new(),
             jobs: Vec::new(),
             wallet: PylonWalletLedger::default(),
             settlements: Vec::new(),
@@ -218,6 +238,7 @@ impl PylonLedger {
         PylonLedgerSummary {
             relay_count: self.relay_state.len(),
             relay_activity_count: self.relay_activity.len(),
+            announcement_count: self.announcements.len(),
             job_count: self.jobs.len(),
             invoice_count: self.wallet.invoices.len(),
             payment_count: self.wallet.payments.len(),
@@ -257,6 +278,24 @@ impl PylonLedger {
     pub fn push_relay_activity(&mut self, entry: PylonRelayActivity) {
         self.relay_activity.push(entry);
         trim_tail(&mut self.relay_activity, MAX_RELAY_ACTIVITY);
+    }
+
+    pub fn upsert_announcement(&mut self, mut entry: PylonLedgerAnnouncement) {
+        entry.updated_at_ms = now_epoch_ms();
+        if let Some(existing) = self
+            .announcements
+            .iter_mut()
+            .find(|existing| existing.announcement_id == entry.announcement_id)
+        {
+            let published_at_ms = existing.published_at_ms;
+            *existing = entry;
+            existing.published_at_ms = published_at_ms;
+            return;
+        }
+        self.announcements.push(entry);
+        self.announcements
+            .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
+        trim_tail(&mut self.announcements, MAX_ANNOUNCEMENTS);
     }
 
     pub fn upsert_job(&mut self, mut job: PylonLedgerJob) {
@@ -409,9 +448,9 @@ fn now_epoch_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        PylonLedger, PylonLedgerJob, PylonRelayActivity, PylonRelayState, PylonSettlementRecord,
-        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, ensure_local_ledger, load_ledger,
-        load_ledger_summary, mutate_ledger,
+        PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, PylonRelayState,
+        PylonSettlementRecord, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+        ensure_local_ledger, load_ledger, load_ledger_summary, mutate_ledger,
     };
     use tempfile::tempdir;
 
@@ -451,6 +490,19 @@ mod tests {
                 url: Some(String::from("wss://nexus.openagents.com")),
                 kind: String::from("connect"),
                 detail: String::from("connected"),
+            });
+            ledger.upsert_announcement(PylonLedgerAnnouncement {
+                announcement_id: String::from("handler:5050"),
+                event_id: String::from("handler-event-001"),
+                request_kind: 5050,
+                model: Some(String::from("gemma4-e4b-local:latest")),
+                backend: Some(String::from("gpt_oss")),
+                capabilities: vec![String::from("nip90.5050")],
+                price_msats: Some(42_000),
+                relay_urls: vec![String::from("wss://nexus.openagents.com")],
+                fingerprint: String::from("fingerprint-001"),
+                published_at_ms: 2,
+                updated_at_ms: 2,
             });
             let mut job = PylonLedgerJob::new("job-001", "buyer", 5050, "pending");
             job.prompt = Some(String::from("hello"));
@@ -501,6 +553,7 @@ mod tests {
             ]
         );
         assert_eq!(ledger.relay_state.len(), 1);
+        assert_eq!(ledger.announcements.len(), 1);
         assert_eq!(ledger.jobs.len(), 1);
         assert_eq!(ledger.wallet.invoices.len(), 1);
         assert_eq!(ledger.wallet.payments.len(), 1);
@@ -509,6 +562,7 @@ mod tests {
         let summary = load_ledger_summary(config_path.as_path()).expect("ledger summary");
         assert_eq!(summary.relay_count, 1);
         assert_eq!(summary.relay_activity_count, 1);
+        assert_eq!(summary.announcement_count, 1);
         assert_eq!(summary.job_count, 1);
         assert_eq!(summary.invoice_count, 1);
         assert_eq!(summary.payment_count, 1);
