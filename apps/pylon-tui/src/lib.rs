@@ -247,6 +247,32 @@ impl AppShell {
     }
 
     fn start_chat(&mut self, prompt: String) {
+        let config = match pylon::load_config_or_default(self.config_path.as_path()) {
+            Ok(config) => config,
+            Err(error) => {
+                self.push_system_message("Chat Error", error.to_string());
+                return;
+            }
+        };
+        let Some(snapshot) = self
+            .loaded
+            .as_ref()
+            .and_then(|loaded| loaded.snapshot.as_ref())
+        else {
+            self.push_system_message(
+                "Chat Error",
+                "No local Gemma weights are visible right now.",
+            );
+            return;
+        };
+        let target = match pylon::resolve_local_gemma_chat_target_from_snapshot(&config, snapshot) {
+            Ok(target) => target,
+            Err(error) => {
+                self.push_system_message("Chat Error", error.to_string());
+                return;
+            }
+        };
+
         self.chat_in_flight = true;
         self.active_chat_target = None;
         self.active_chat_text.clear();
@@ -258,9 +284,11 @@ impl AppShell {
 
         let config_path = self.config_path.clone();
         let tx = self.worker_tx.clone();
+        let target_for_task = target.clone();
         tokio::task::spawn_local(async move {
-            let result = pylon::run_local_gemma_chat_stream(
+            let result = pylon::stream_local_gemma_chat_target(
                 config_path.as_path(),
+                &target_for_task,
                 prompt.as_str(),
                 |event| match event {
                     pylon::LocalGemmaChatEvent::Started { target } => {

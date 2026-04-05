@@ -198,7 +198,7 @@ pub struct BottomPane {
 
 impl BottomPane {
     pub fn height(&self) -> u16 {
-        2 + self.composer.line_count().min(MAX_VISIBLE_COMPOSER_LINES) as u16
+        3 + self.composer.visible_line_count() as u16
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<ComposerSubmission> {
@@ -308,6 +308,12 @@ impl BottomPane {
     }
 }
 
+impl ComposerState {
+    fn visible_line_count(&self) -> usize {
+        self.line_count().min(MAX_VISIBLE_COMPOSER_LINES)
+    }
+}
+
 pub fn slash_command(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let command = trimmed.strip_prefix('/')?;
@@ -371,5 +377,11 @@ mod tests {
             .expect("expected submission");
         assert_eq!(submission.text, "/chat hi");
         assert_eq!(submission.slash_command.as_deref(), Some("chat"));
+    }
+
+    #[test]
+    fn composer_keeps_a_visible_input_row() {
+        let pane = BottomPane::default();
+        assert_eq!(pane.height(), 4);
     }
 }

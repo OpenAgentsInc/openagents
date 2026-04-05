@@ -1349,10 +1349,33 @@ pub async fn resolve_local_gemma_chat_target(config_path: &Path) -> Result<Local
     resolve_local_gemma_chat_target_from_status(&config, &status)
 }
 
+pub fn resolve_local_gemma_chat_target_from_snapshot(
+    config: &PylonConfig,
+    snapshot: &ProviderPersistedSnapshot,
+) -> Result<LocalGemmaChatTarget> {
+    if let Some(model) = gemma_ready_model(&snapshot.availability.gpt_oss) {
+        return Ok(LocalGemmaChatTarget {
+            backend: LocalGemmaChatBackend::Ollama,
+            model,
+        });
+    }
+
+    if config.apple_fm_base_url.is_some() {
+        if let Some(model) = gemma_ready_model(&snapshot.availability.apple_foundation_models) {
+            return Ok(LocalGemmaChatTarget {
+                backend: LocalGemmaChatBackend::OpenAiCompat,
+                model,
+            });
+        }
+    }
+
+    bail!("local Gemma weights are not loaded");
+}
+
 pub async fn run_local_gemma_chat_stream<F>(
     config_path: &Path,
     prompt: &str,
-    mut emit: F,
+    emit: F,
 ) -> Result<LocalGemmaChatTarget>
 where
     F: FnMut(LocalGemmaChatEvent),
@@ -1365,6 +1388,25 @@ where
     ensure_local_setup(config_path)?;
     let (config, status) = load_config_and_status(config_path).await?;
     let target = resolve_local_gemma_chat_target_from_status(&config, &status)?;
+    stream_local_gemma_chat_target(config_path, &target, trimmed_prompt, emit).await
+}
+
+pub async fn stream_local_gemma_chat_target<F>(
+    config_path: &Path,
+    target: &LocalGemmaChatTarget,
+    prompt: &str,
+    mut emit: F,
+) -> Result<LocalGemmaChatTarget>
+where
+    F: FnMut(LocalGemmaChatEvent),
+{
+    let trimmed_prompt = prompt.trim();
+    if trimmed_prompt.is_empty() {
+        bail!("chat prompt is empty");
+    }
+
+    ensure_local_setup(config_path)?;
+    let config = load_config_or_default(config_path)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
@@ -1384,7 +1426,7 @@ where
     emit(LocalGemmaChatEvent::Finished {
         target: target.clone(),
     });
-    Ok(target)
+    Ok(target.clone())
 }
 
 fn resolve_local_gemma_chat_target_from_status(
@@ -1394,24 +1436,7 @@ fn resolve_local_gemma_chat_target_from_status(
     let Some(snapshot) = status.snapshot.as_ref() else {
         bail!("local Gemma weights are not loaded");
     };
-
-    if let Some(model) = gemma_ready_model(&snapshot.availability.gpt_oss) {
-        return Ok(LocalGemmaChatTarget {
-            backend: LocalGemmaChatBackend::Ollama,
-            model,
-        });
-    }
-
-    if config.apple_fm_base_url.is_some() {
-        if let Some(model) = gemma_ready_model(&snapshot.availability.apple_foundation_models) {
-            return Ok(LocalGemmaChatTarget {
-                backend: LocalGemmaChatBackend::OpenAiCompat,
-                model,
-            });
-        }
-    }
-
-    bail!("local Gemma weights are not loaded");
+    resolve_local_gemma_chat_target_from_snapshot(config, snapshot)
 }
 
 fn gemma_ready_model(health: &ProviderBackendHealth) -> Option<String> {
