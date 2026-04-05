@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use nostr::{NostrIdentity, derive_keypair, load_identity_from_path};
-use nostr_client::{ConnectionState, RelayConfig, RelayConnection};
+use nostr_client::{
+    ConnectionState, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
+};
 use openagents_provider_substrate::{
     ProviderAdapterTrainingContributorAvailability, ProviderAdminConfig, ProviderAdminRuntime,
     ProviderAdminUpdate, ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
@@ -46,6 +48,8 @@ pub struct PylonConfig {
     pub relay_urls: Vec<String>,
     #[serde(default = "default_relay_connect_timeout_seconds")]
     pub relay_connect_timeout_seconds: u64,
+    #[serde(default = "default_relay_auth_enabled")]
+    pub relay_auth_enabled: bool,
     pub ollama_base_url: String,
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
@@ -151,6 +155,7 @@ pub struct RelayReport {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct RelayConfigReport {
     pub connect_timeout_seconds: u64,
+    pub auth_enabled: bool,
     pub ledger_path: String,
 }
 
@@ -996,6 +1001,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         admin_listen_addr: "127.0.0.1:9468".to_string(),
         relay_urls: default_relay_urls(),
         relay_connect_timeout_seconds: default_relay_connect_timeout_seconds(),
+        relay_auth_enabled: default_relay_auth_enabled(),
         ollama_base_url: "http://127.0.0.1:11434".to_string(),
         apple_fm_base_url: None,
         inventory_controls: ProviderInventoryControls::default(),
@@ -1013,6 +1019,10 @@ fn default_relay_urls() -> Vec<String> {
 
 const fn default_relay_connect_timeout_seconds() -> u64 {
     10
+}
+
+const fn default_relay_auth_enabled() -> bool {
+    true
 }
 
 pub fn default_config_path() -> PathBuf {
@@ -2497,6 +2507,7 @@ pub fn load_relay_report(config_path: &Path) -> Result<RelayReport> {
     Ok(RelayReport {
         relay_config: RelayConfigReport {
             connect_timeout_seconds: config.relay_connect_timeout_seconds,
+            auth_enabled: config.relay_auth_enabled,
             ledger_path: default_ledger_path(config_path).display().to_string(),
         },
         relays,
@@ -2560,6 +2571,11 @@ pub fn remove_configured_relay(config_path: &Path, url: &str) -> Result<RelayRep
 
 pub async fn refresh_relay_report(config_path: &Path) -> Result<RelayReport> {
     let config = ensure_local_setup(config_path)?;
+    let identity = if config.relay_auth_enabled {
+        Some(load_identity_from_path(config.identity_path.as_path())?)
+    } else {
+        None
+    };
     mutate_ledger(config_path, |ledger| {
         ledger.set_relay_config(
             config.relay_urls.clone(),
@@ -2569,7 +2585,7 @@ pub async fn refresh_relay_report(config_path: &Path) -> Result<RelayReport> {
     })?;
 
     for relay_url in &config.relay_urls {
-        refresh_single_relay(config_path, &config, relay_url.as_str()).await?;
+        refresh_single_relay(config_path, &config, identity.as_ref(), relay_url.as_str()).await?;
     }
 
     load_relay_report(config_path)
@@ -2578,6 +2594,7 @@ pub async fn refresh_relay_report(config_path: &Path) -> Result<RelayReport> {
 async fn refresh_single_relay(
     config_path: &Path,
     config: &PylonConfig,
+    identity: Option<&NostrIdentity>,
     relay_url: &str,
 ) -> Result<()> {
     let normalized = normalize_relay_url(relay_url);
@@ -2585,7 +2602,11 @@ async fn refresh_single_relay(
         ledger.upsert_relay_state(PylonRelayState {
             url: normalized.clone(),
             connection_state: "connecting".to_string(),
-            auth_state: "disabled".to_string(),
+            auth_state: if config.relay_auth_enabled {
+                "enabled".to_string()
+            } else {
+                "disabled".to_string()
+            },
             last_detail: Some("attempting relay connection".to_string()),
             last_error: None,
             last_connected_at_ms: None,
@@ -2604,64 +2625,125 @@ async fn refresh_single_relay(
         normalized.as_str(),
         RelayConfig {
             connect_timeout: Duration::from_secs(config.relay_connect_timeout_seconds.max(1)),
-            nip42_identity: None,
+            nip42_identity: identity.map(|identity| RelayAuthIdentity {
+                private_key_hex: identity.private_key_hex.clone(),
+            }),
         },
     );
     match connection {
-        Ok(connection) => match connection.connect().await {
-            Ok(()) => {
-                let state = match connection.state().await {
-                    ConnectionState::Connected => "connected",
-                    ConnectionState::Connecting => "connecting",
-                    ConnectionState::Disconnected => "disconnected",
-                };
-                let _ = connection.disconnect().await;
-                mutate_ledger(config_path, |ledger| {
-                    ledger.upsert_relay_state(PylonRelayState {
-                        url: normalized.clone(),
-                        connection_state: state.to_string(),
-                        auth_state: "disabled".to_string(),
-                        last_detail: Some("connected on last refresh".to_string()),
-                        last_error: None,
-                        last_connected_at_ms: Some(now_epoch_ms() as u64),
-                        updated_at_ms: now_epoch_ms() as u64,
-                    });
-                    ledger.push_relay_activity(PylonRelayActivity {
-                        at_ms: now_epoch_ms() as u64,
-                        url: Some(normalized.clone()),
-                        kind: "relay.connected".to_string(),
-                        detail: "relay connectivity probe succeeded".to_string(),
-                    });
-                    Ok(())
-                })?;
+        Ok(connection) => {
+            let mut attempt = 0_u8;
+            loop {
+                attempt = attempt.saturating_add(1);
+                match connection.connect().await {
+                    Ok(()) => {
+                        let state = match connection.state().await {
+                            ConnectionState::Connected => "connected",
+                            ConnectionState::Connecting => "connecting",
+                            ConnectionState::Disconnected => "disconnected",
+                        };
+                        let (auth_state, auth_detail, auth_error) =
+                            observe_relay_auth_state(&connection, config.relay_auth_enabled).await;
+                        let _ = connection.disconnect().await;
+                        mutate_ledger(config_path, |ledger| {
+                            ledger.upsert_relay_state(PylonRelayState {
+                                url: normalized.clone(),
+                                connection_state: if attempt > 1 {
+                                    "reconnected".to_string()
+                                } else {
+                                    state.to_string()
+                                },
+                                auth_state: auth_state.clone(),
+                                last_detail: Some(auth_detail.clone()),
+                                last_error: auth_error.clone(),
+                                last_connected_at_ms: Some(now_epoch_ms() as u64),
+                                updated_at_ms: now_epoch_ms() as u64,
+                            });
+                            ledger.push_relay_activity(PylonRelayActivity {
+                                at_ms: now_epoch_ms() as u64,
+                                url: Some(normalized.clone()),
+                                kind: if attempt > 1 {
+                                    "relay.reconnected".to_string()
+                                } else {
+                                    "relay.connected".to_string()
+                                },
+                                detail: auth_detail.clone(),
+                            });
+                            if auth_state == "challenged" {
+                                ledger.push_relay_activity(PylonRelayActivity {
+                                    at_ms: now_epoch_ms() as u64,
+                                    url: Some(normalized.clone()),
+                                    kind: "relay.auth_challenge".to_string(),
+                                    detail: "relay issued AUTH challenge and Pylon responded"
+                                        .to_string(),
+                                });
+                            }
+                            if let Some(auth_error) = auth_error.as_ref() {
+                                ledger.push_relay_activity(PylonRelayActivity {
+                                    at_ms: now_epoch_ms() as u64,
+                                    url: Some(normalized.clone()),
+                                    kind: "relay.auth_error".to_string(),
+                                    detail: auth_error.clone(),
+                                });
+                            }
+                            Ok(())
+                        })?;
+                        break;
+                    }
+                    Err(error) if attempt < 2 => {
+                        mutate_ledger(config_path, |ledger| {
+                            ledger.push_relay_activity(PylonRelayActivity {
+                                at_ms: now_epoch_ms() as u64,
+                                url: Some(normalized.clone()),
+                                kind: "relay.reconnect_attempt".to_string(),
+                                detail: error.to_string(),
+                            });
+                            Ok(())
+                        })?;
+                        tokio::time::sleep(Duration::from_millis(150)).await;
+                    }
+                    Err(error) => {
+                        mutate_ledger(config_path, |ledger| {
+                            ledger.upsert_relay_state(PylonRelayState {
+                                url: normalized.clone(),
+                                connection_state: "error".to_string(),
+                                auth_state: if config.relay_auth_enabled {
+                                    "enabled".to_string()
+                                } else {
+                                    "disabled".to_string()
+                                },
+                                last_detail: Some("relay connectivity probe failed".to_string()),
+                                last_error: Some(error.to_string()),
+                                last_connected_at_ms: None,
+                                updated_at_ms: now_epoch_ms() as u64,
+                            });
+                            ledger.push_relay_activity(PylonRelayActivity {
+                                at_ms: now_epoch_ms() as u64,
+                                url: Some(normalized.clone()),
+                                kind: if attempt > 1 {
+                                    "relay.reconnect_failed".to_string()
+                                } else {
+                                    "relay.connect_error".to_string()
+                                },
+                                detail: error.to_string(),
+                            });
+                            Ok(())
+                        })?;
+                        break;
+                    }
+                }
             }
-            Err(error) => {
-                mutate_ledger(config_path, |ledger| {
-                    ledger.upsert_relay_state(PylonRelayState {
-                        url: normalized.clone(),
-                        connection_state: "error".to_string(),
-                        auth_state: "disabled".to_string(),
-                        last_detail: Some("relay connectivity probe failed".to_string()),
-                        last_error: Some(error.to_string()),
-                        last_connected_at_ms: None,
-                        updated_at_ms: now_epoch_ms() as u64,
-                    });
-                    ledger.push_relay_activity(PylonRelayActivity {
-                        at_ms: now_epoch_ms() as u64,
-                        url: Some(normalized.clone()),
-                        kind: "relay.connect_error".to_string(),
-                        detail: error.to_string(),
-                    });
-                    Ok(())
-                })?;
-            }
-        },
+        }
         Err(error) => {
             mutate_ledger(config_path, |ledger| {
                 ledger.upsert_relay_state(PylonRelayState {
                     url: normalized.clone(),
                     connection_state: "error".to_string(),
-                    auth_state: "disabled".to_string(),
+                    auth_state: if config.relay_auth_enabled {
+                        "enabled".to_string()
+                    } else {
+                        "disabled".to_string()
+                    },
                     last_detail: Some("relay URL is invalid".to_string()),
                     last_error: Some(error.to_string()),
                     last_connected_at_ms: None,
@@ -2679,6 +2761,59 @@ async fn refresh_single_relay(
     }
 
     Ok(())
+}
+
+async fn observe_relay_auth_state(
+    connection: &RelayConnection,
+    auth_enabled: bool,
+) -> (String, String, Option<String>) {
+    if !auth_enabled {
+        return (
+            "disabled".to_string(),
+            "relay auth disabled in local config".to_string(),
+            None,
+        );
+    }
+
+    let deadline = Instant::now() + Duration::from_millis(250);
+    let mut challenged = false;
+    let mut auth_error = None;
+    while Instant::now() < deadline {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let wait = remaining.min(Duration::from_millis(50));
+        match tokio::time::timeout(wait, connection.recv()).await {
+            Ok(Ok(Some(RelayMessage::Auth(_)))) => {
+                challenged = true;
+            }
+            Ok(Ok(Some(RelayMessage::Notice(notice)))) => {
+                if notice.to_ascii_lowercase().contains("auth") {
+                    auth_error = Some(notice);
+                    break;
+                }
+            }
+            Ok(Ok(Some(_))) | Ok(Ok(None)) | Ok(Err(_)) | Err(_) => {}
+        }
+    }
+
+    if let Some(error) = auth_error {
+        return (
+            "failed".to_string(),
+            "relay auth failed during the last refresh".to_string(),
+            Some(error),
+        );
+    }
+    if challenged {
+        return (
+            "challenged".to_string(),
+            "relay issued AUTH and Pylon responded with the local node identity".to_string(),
+            None,
+        );
+    }
+    (
+        "enabled".to_string(),
+        "relay auth identity is ready for challenge flows".to_string(),
+        None,
+    )
 }
 
 async fn load_sandbox_report(config_path: &Path, limit: Option<usize>) -> Result<SandboxReport> {
@@ -2998,6 +3133,7 @@ fn render_relay_report(report: &RelayReport) -> String {
             "connect_timeout_seconds: {}",
             report.relay_config.connect_timeout_seconds
         ),
+        format!("auth_enabled: {}", report.relay_config.auth_enabled),
         format!("ledger_path: {}", report.relay_config.ledger_path),
     ];
     if report.relays.is_empty() {
@@ -3499,6 +3635,9 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
                 .parse::<u64>()
                 .with_context(|| format!("invalid relay_connect_timeout_seconds: {value}"))?;
         }
+        "relay_auth_enabled" => {
+            config.relay_auth_enabled = parse_bool(value)?;
+        }
         "ollama_base_url" => config.ollama_base_url = value.to_string(),
         "apple_fm_base_url" => {
             config.apple_fm_base_url = if value.trim().is_empty() {
@@ -3556,12 +3695,14 @@ mod tests {
         apply_control_command, build_snapshot_from_availability, default_config,
         download_gemma_model_from_base_url, ensure_identity, gemma_download_spec,
         gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
-        load_inventory_report, load_jobs_report, load_or_create_config, load_product_report,
-        load_receipts_report, load_relay_report, load_sandbox_report, load_status_or_detect,
-        parse_args, provider_admin_config, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
-        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, save_config,
+        load_inventory_report, load_jobs_report, load_ledger, load_or_create_config,
+        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
+        load_status_or_detect, parse_args, provider_admin_config, refresh_relay_report,
+        remove_configured_relay, render_human_status, render_sandbox_report,
+        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
+        run_local_gemma_chat_stream, save_config,
     };
+    use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
         ProviderAdapterTrainingContributorAvailability, ProviderAppleAdapterHostingAvailability,
         ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
@@ -3574,6 +3715,7 @@ mod tests {
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
+    use tokio_tungstenite::{accept_async, tungstenite::Message};
 
     fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         if condition {
@@ -3632,6 +3774,16 @@ mod tests {
         ensure(
             config.payout_destination.as_deref() == Some("lnurlp:alice"),
             "config set should update payout destination",
+        )
+    }
+
+    #[test]
+    fn config_set_updates_relay_auth_toggle() -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        apply_config_set(&mut config, "relay_auth_enabled", "false")?;
+        ensure(
+            !config.relay_auth_enabled,
+            "config set should update the relay auth toggle",
         )
     }
 
@@ -3905,6 +4057,67 @@ mod tests {
                 .is_some_and(|value| !value.trim().is_empty()),
             "invalid relay refresh should surface the validation failure",
         )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn relay_refresh_records_auth_challenges() -> Result<(), Box<dyn std::error::Error>> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let relay_url = format!("ws://{addr}");
+        let challenge = "pylon-auth-challenge".to_string();
+
+        let server = tokio::spawn({
+            let challenge = challenge.clone();
+            async move {
+                let (stream, _) = listener.accept().await.expect("accept websocket client");
+                let mut ws = accept_async(stream)
+                    .await
+                    .expect("upgrade websocket connection");
+                let auth_frame = serde_json::json!(["AUTH", challenge]);
+                ws.send(Message::Text(auth_frame.to_string().into()))
+                    .await
+                    .expect("send auth challenge");
+                while let Some(message) = ws.next().await {
+                    let Ok(Message::Text(_)) = message else {
+                        continue;
+                    };
+                    break;
+                }
+            }
+        });
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url];
+        config.relay_auth_enabled = true;
+        save_config(config_path.as_path(), &config)?;
+
+        let report = refresh_relay_report(config_path.as_path()).await?;
+        let relay = report
+            .relays
+            .first()
+            .ok_or_else(|| std::io::Error::other("relay report missing auth relay entry"))?;
+        ensure(
+            relay.auth_state == "challenged",
+            "relay refresh should record an auth challenge when the relay sends AUTH",
+        )?;
+        ensure(
+            relay.detail.as_deref()
+                == Some("relay issued AUTH and Pylon responded with the local node identity"),
+            "relay refresh should explain the auth challenge outcome",
+        )?;
+        let ledger = load_ledger(config_path.as_path())?;
+        ensure(
+            ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "relay.auth_challenge"),
+            "relay activity should retain an auth challenge record",
+        )?;
+
+        server.abort();
+        Ok(())
     }
 
     fn ready_health(
