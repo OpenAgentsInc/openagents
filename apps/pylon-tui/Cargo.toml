@@ -1,0 +1,19 @@
+[package]
+name = "pylon-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Minimal terminal UI for local Pylon operator status"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+crossterm.workspace = true
+openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
+pylon = { path = "../pylon" }
+ratatui.workspace = true
+tokio.workspace = true

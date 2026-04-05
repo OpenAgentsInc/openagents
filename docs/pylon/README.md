@@ -46,6 +46,22 @@ If neither backend is available, `Pylon` should still install and run, but it sh
 
 ## Quick Start
 
+Open the local terminal shell:
+
+```bash
+cargo run -p pylon-tui
+```
+
+The first cut is intentionally small. It renders one full-screen status view with:
+
+- node label
+- current provider state and desired mode
+- admin listen address
+- backend readiness summary
+- product, inventory, job, receipt, and earnings counts
+
+The shell is read-only. The current provider automation still lives in the explicit headless `pylon` CLI below.
+
 Initialize a standalone config and identity:
 
 ```bash

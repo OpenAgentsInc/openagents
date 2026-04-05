@@ -564,7 +564,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
     }
 }
 
-fn default_config_path() -> PathBuf {
+pub fn default_config_path() -> PathBuf {
     if let Ok(path) = std::env::var(ENV_PYLON_CONFIG_PATH) {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
@@ -1287,7 +1287,7 @@ fn render_human_status(status: &ProviderStatusResponse) -> String {
     lines.join("\n")
 }
 
-fn load_config_or_default(path: &Path) -> Result<PylonConfig> {
+pub fn load_config_or_default(path: &Path) -> Result<PylonConfig> {
     if path.exists() {
         return load_config(path);
     }
@@ -1298,7 +1298,7 @@ fn load_config_or_default(path: &Path) -> Result<PylonConfig> {
     Ok(default_config(base_dir.as_path()))
 }
 
-async fn load_config_and_status(
+pub async fn load_config_and_status(
     config_path: &Path,
 ) -> Result<(PylonConfig, ProviderStatusResponse)> {
     let config = load_config_or_default(config_path)?;
