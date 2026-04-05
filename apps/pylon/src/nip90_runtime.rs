@@ -16,9 +16,10 @@ use serde_json::json;
 
 use crate::{
     LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatTarget, PylonConfig,
-    PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, WalletInvoiceReport,
+    PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, PylonSettlementRecord,
+    PylonWalletPaymentRecord, WalletHistoryReport, WalletInvoiceReport,
     create_wallet_invoice_report, ensure_identity, load_config_and_status, load_ledger,
-    mutate_ledger, products_from_status,
+    load_wallet_history_report, mutate_ledger, now_epoch_ms, products_from_status,
 };
 
 const ANNOUNCEMENT_KIND_TEXT_GENERATION: u16 = nostr::nip90::KIND_JOB_TEXT_GENERATION;
@@ -65,6 +66,8 @@ pub struct ProviderRunEntry {
     pub bid_msats: Option<u64>,
     pub amount_msats: Option<u64>,
     pub bolt11: Option<String>,
+    pub payment_id: Option<String>,
+    pub settlement_id: Option<String>,
     pub result_preview: Option<String>,
     pub error_detail: Option<String>,
     pub feedback_event_ids: Vec<String>,
@@ -78,6 +81,7 @@ pub struct ProviderRunReport {
     pub local_model: Option<String>,
     pub accepted_count: usize,
     pub payment_required_count: usize,
+    pub settled_count: usize,
     pub completed_count: usize,
     pub failed_count: usize,
     pub dropped_count: usize,
@@ -134,8 +138,16 @@ type TestWalletInvoiceHook =
     Box<dyn Fn(u64, Option<String>, Option<u32>) -> Result<WalletInvoiceReport> + Send + Sync>;
 
 #[cfg(test)]
+type TestWalletPaymentsHook = Box<dyn Fn() -> Result<Vec<PylonWalletPaymentRecord>> + Send + Sync>;
+
+#[cfg(test)]
 static TEST_WALLET_INVOICE_HOOK: std::sync::OnceLock<
     std::sync::Mutex<Option<TestWalletInvoiceHook>>,
+> = std::sync::OnceLock::new();
+
+#[cfg(test)]
+static TEST_WALLET_PAYMENTS_HOOK: std::sync::OnceLock<
+    std::sync::Mutex<Option<TestWalletPaymentsHook>>,
 > = std::sync::OnceLock::new();
 
 #[cfg(test)]
@@ -145,6 +157,12 @@ static TEST_RUNTIME_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync:
 pub(crate) fn set_test_wallet_invoice_hook(hook: Option<TestWalletInvoiceHook>) {
     let slot = TEST_WALLET_INVOICE_HOOK.get_or_init(|| std::sync::Mutex::new(None));
     *slot.lock().expect("test wallet invoice hook lock") = hook;
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_wallet_payments_hook(hook: Option<TestWalletPaymentsHook>) {
+    let slot = TEST_WALLET_PAYMENTS_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().expect("test wallet payments hook lock") = hook;
 }
 
 #[cfg(test)]
@@ -350,23 +368,26 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
     let identity = ensure_identity(config.identity_path.as_path())?;
     let signer_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
     let mut publish_pool: Option<RelayPool> = None;
-    let mut known_statuses = load_ledger(config_path)?
+    let known_jobs = load_ledger(config_path)?
         .jobs
         .into_iter()
-        .map(|job| (job.id, job.status))
+        .map(|job| (job.id.clone(), job))
         .collect::<BTreeMap<_, _>>();
+    let mut wallet_payments: Option<Vec<PylonWalletPaymentRecord>> = None;
     let mut report_entries = Vec::new();
     let mut accepted_count = 0usize;
     let mut payment_required_count = 0usize;
+    let mut settled_count = 0usize;
     let mut completed_count = 0usize;
     let mut failed_count = 0usize;
     let mut dropped_count = 0usize;
 
     for observed in collected.observed {
         let request_event_id = observed.entry.request_event_id.clone();
-        if known_statuses
-            .get(request_event_id.as_str())
-            .is_some_and(|status| provider_job_blocks_reintake(status.as_str()))
+        let existing_job = known_jobs.get(request_event_id.as_str()).cloned();
+        if existing_job
+            .as_ref()
+            .is_some_and(|job| provider_job_blocks_reintake(job.status.as_str()))
         {
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
@@ -378,6 +399,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 amount_msats: None,
                 bolt11: None,
+                payment_id: existing_job.as_ref().and_then(|job| job.payment_id.clone()),
+                settlement_id: existing_job.as_ref().and_then(|job| job.settlement_id.clone()),
                 result_preview: None,
                 error_detail: Some("job already handled locally".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -400,7 +423,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
             )?;
-            known_statuses.insert(request_event_id.clone(), "observed_drop".to_string());
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -411,6 +433,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 amount_msats: None,
                 bolt11: None,
+                payment_id: None,
+                settlement_id: None,
                 result_preview: None,
                 error_detail: observed.entry.drop_reason.clone(),
                 feedback_event_ids: Vec::new(),
@@ -433,7 +457,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
             )?;
-            known_statuses.insert(request_event_id.clone(), "rejected_policy".to_string());
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -444,6 +467,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 amount_msats: None,
                 bolt11: None,
+                payment_id: None,
+                settlement_id: None,
                 result_preview: None,
                 error_detail: Some("provider_not_online".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -466,7 +491,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
             )?;
-            known_statuses.insert(request_event_id.clone(), "rejected_supply".to_string());
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -477,6 +501,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 amount_msats: None,
                 bolt11: None,
+                payment_id: None,
+                settlement_id: None,
                 result_preview: None,
                 error_detail: Some("no_local_supply".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -501,7 +527,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     None,
                 )?;
-                known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
                     requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -512,6 +537,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     amount_msats: None,
                     bolt11: None,
+                    payment_id: None,
+                    settlement_id: None,
                     result_preview: None,
                     error_detail: Some("invalid_request".to_string()),
                     feedback_event_ids: Vec::new(),
@@ -535,7 +562,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
             )?;
-            known_statuses.insert(request_event_id.clone(), "rejected_model".to_string());
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -546,6 +572,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 amount_msats: None,
                 bolt11: None,
+                payment_id: None,
+                settlement_id: None,
                 result_preview: None,
                 error_detail: Some("model_unavailable".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -568,7 +596,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 None,
                 None,
             )?;
-            known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -579,6 +606,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 amount_msats: None,
                 bolt11: None,
+                payment_id: None,
+                settlement_id: None,
                 result_preview: None,
                 error_detail: Some("missing_text_input".to_string()),
                 feedback_event_ids: Vec::new(),
@@ -587,10 +616,91 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             continue;
         };
 
+        let mut settled_payment = None::<PylonWalletPaymentRecord>;
+        let mut settlement_id = None::<String>;
+
         if let Some(price_msats) = price_msats
             .filter(|value| *value > 0)
             .filter(|_| observed.entry.bid_msats.is_some())
         {
+            if let Some(existing_job) = existing_job
+                .as_ref()
+                .filter(|job| job.status == "payment_required")
+            {
+                let Some(bolt11) = existing_job
+                    .bolt11
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                else {
+                    failed_count += 1;
+                    persist_provider_run_state(
+                        config_path,
+                        collected.provider_pubkey.as_str(),
+                        &observed.entry,
+                        "invoice_failed",
+                        Some("payment_required_job_missing_invoice"),
+                        None,
+                        None,
+                        None,
+                        Some(price_msats),
+                        None,
+                    )?;
+                    report_entries.push(ProviderRunEntry {
+                        request_event_id: observed.entry.request_event_id.clone(),
+                        requester_pubkey: observed.entry.requester_pubkey.clone(),
+                        relay_url: observed.entry.relay_url.clone(),
+                        status: "failed".to_string(),
+                        prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                        model: Some(target.model.clone()),
+                        bid_msats: observed.entry.bid_msats,
+                        amount_msats: Some(price_msats),
+                        bolt11: None,
+                        payment_id: None,
+                        settlement_id: None,
+                        result_preview: None,
+                        error_detail: Some("payment_required_job_missing_invoice".to_string()),
+                        feedback_event_ids: existing_job.feedback_event_ids.clone(),
+                        result_event_id: existing_job.result_event_id.clone(),
+                    });
+                    continue;
+                };
+                let payments = match wallet_payments.as_ref() {
+                    Some(payments) => payments.clone(),
+                    None => {
+                        let payments = load_provider_wallet_payments(config_path).await?;
+                        wallet_payments = Some(payments.clone());
+                        payments
+                    }
+                };
+                if let Some(payment) = find_settled_receive_payment(payments.as_slice(), bolt11) {
+                    settlement_id = Some(record_provider_payment_received(
+                        config_path,
+                        &observed.entry,
+                        payment.clone(),
+                        price_msats,
+                    )?);
+                    settled_payment = Some(payment);
+                } else {
+                    report_entries.push(ProviderRunEntry {
+                        request_event_id: observed.entry.request_event_id.clone(),
+                        requester_pubkey: observed.entry.requester_pubkey.clone(),
+                        relay_url: observed.entry.relay_url.clone(),
+                        status: "payment_required".to_string(),
+                        prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                        model: Some(target.model.clone()),
+                        bid_msats: observed.entry.bid_msats,
+                        amount_msats: Some(existing_job.amount_msats.unwrap_or(price_msats)),
+                        bolt11: Some(bolt11.to_string()),
+                        payment_id: existing_job.payment_id.clone(),
+                        settlement_id: existing_job.settlement_id.clone(),
+                        result_preview: None,
+                        error_detail: Some("awaiting_payment".to_string()),
+                        feedback_event_ids: existing_job.feedback_event_ids.clone(),
+                        result_event_id: existing_job.result_event_id.clone(),
+                    });
+                    continue;
+                }
+            } else {
             if observed
                 .entry
                 .bid_msats
@@ -609,7 +719,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     None,
                 )?;
-                known_statuses.insert(request_event_id.clone(), "rejected_policy".to_string());
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
                     requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -620,6 +729,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     bid_msats: observed.entry.bid_msats,
                     amount_msats: Some(price_msats),
                     bolt11: None,
+                    payment_id: None,
+                    settlement_id: None,
                     result_preview: None,
                     error_detail: Some("bid_below_price_floor".to_string()),
                     feedback_event_ids: Vec::new(),
@@ -652,7 +763,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                         Some(price_msats),
                         None,
                     )?;
-                    known_statuses.insert(request_event_id.clone(), "invoice_failed".to_string());
                     report_entries.push(ProviderRunEntry {
                         request_event_id: observed.entry.request_event_id.clone(),
                         requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -663,6 +773,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                         bid_msats: observed.entry.bid_msats,
                         amount_msats: Some(price_msats),
                         bolt11: None,
+                        payment_id: None,
+                        settlement_id: None,
                         result_preview: None,
                         error_detail: Some(error_string),
                         feedback_event_ids: Vec::new(),
@@ -704,7 +816,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                         Some(price_msats),
                         Some(payment_requirement.bolt11.as_str()),
                     )?;
-                    known_statuses.insert(request_event_id.clone(), "publish_failed".to_string());
                     report_entries.push(ProviderRunEntry {
                         request_event_id: observed.entry.request_event_id.clone(),
                         requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -715,6 +826,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                         bid_msats: observed.entry.bid_msats,
                         amount_msats: Some(price_msats),
                         bolt11: Some(payment_requirement.bolt11.clone()),
+                        payment_id: None,
+                        settlement_id: None,
                         result_preview: None,
                         error_detail: Some(error_string),
                         feedback_event_ids: Vec::new(),
@@ -736,7 +849,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 Some(price_msats),
                 Some(payment_requirement.bolt11.as_str()),
             )?;
-            known_statuses.insert(request_event_id.clone(), "payment_required".to_string());
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
                 requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -747,12 +859,15 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                 bid_msats: observed.entry.bid_msats,
                 amount_msats: Some(price_msats),
                 bolt11: Some(payment_requirement.bolt11),
+                payment_id: None,
+                settlement_id: None,
                 result_preview: None,
                 error_detail: None,
                 feedback_event_ids: vec![payment_event.id],
                 result_event_id: None,
             });
             continue;
+            }
         }
 
         accepted_count += 1;
@@ -800,7 +915,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     None,
                 )?;
-                known_statuses.insert(request_event_id.clone(), "publish_failed".to_string());
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
                     requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -809,8 +923,10 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                     model: Some(target.model.clone()),
                     bid_msats: observed.entry.bid_msats,
-                    amount_msats: None,
-                    bolt11: None,
+                    amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
+                    bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
+                    payment_id: settled_payment.as_ref().map(|payment| payment.payment_id.clone()),
+                    settlement_id: settlement_id.clone(),
                     result_preview: None,
                     error_detail: Some(error_string),
                     feedback_event_ids: Vec::new(),
@@ -831,7 +947,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             None,
             None,
         )?;
-        known_statuses.insert(request_event_id.clone(), "processing_local".to_string());
 
         let mut output = String::new();
         let result =
@@ -882,8 +997,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                             None,
                             None,
                         )?;
-                        known_statuses
-                            .insert(request_event_id.clone(), "publish_failed".to_string());
                         report_entries.push(ProviderRunEntry {
                             request_event_id: observed.entry.request_event_id.clone(),
                             requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -892,18 +1005,32 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                             prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                             model: Some(target.model.clone()),
                             bid_msats: observed.entry.bid_msats,
-                            amount_msats: None,
-                            bolt11: None,
+                            amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
+                            bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
+                            payment_id: settled_payment
+                                .as_ref()
+                                .map(|payment| payment.payment_id.clone()),
+                            settlement_id: settlement_id.clone(),
                             result_preview: Some(result_preview),
-                            error_detail: Some(error_string),
+                            error_detail: Some(error_string.clone()),
                             feedback_event_ids: vec![processing_event.id.clone()],
                             result_event_id: None,
                         });
+                        if let Some(payment) = settled_payment.as_ref() {
+                            let _ = record_provider_settlement_outcome(
+                                config_path,
+                                &observed.entry,
+                                payment,
+                                price_msats.unwrap_or(0),
+                                settlement_id.clone(),
+                                "delivery_failed_after_payment",
+                                error_string.as_str(),
+                            );
+                        }
                         continue;
                     }
                 };
                 completed_count += 1;
-                known_statuses.insert(request_event_id.clone(), "completed_local".to_string());
                 persist_provider_run_state(
                     config_path,
                     collected.provider_pubkey.as_str(),
@@ -916,16 +1043,34 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     None,
                 )?;
+                let final_status = if let Some(payment) = settled_payment.as_ref() {
+                    let recorded_settlement_id = record_provider_settlement_outcome(
+                        config_path,
+                        &observed.entry,
+                        payment,
+                        price_msats.unwrap_or(0),
+                        settlement_id.clone(),
+                        "settled",
+                        format!("published result {}", result_event.id).as_str(),
+                    )?;
+                    settlement_id = Some(recorded_settlement_id);
+                    settled_count += 1;
+                    "settled"
+                } else {
+                    "completed"
+                };
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
                     requester_pubkey: observed.entry.requester_pubkey.clone(),
                     relay_url: observed.entry.relay_url.clone(),
-                    status: "completed".to_string(),
+                    status: final_status.to_string(),
                     prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                     model: Some(target.model.clone()),
                     bid_msats: observed.entry.bid_msats,
-                    amount_msats: None,
-                    bolt11: None,
+                    amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
+                    bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
+                    payment_id: settled_payment.as_ref().map(|payment| payment.payment_id.clone()),
+                    settlement_id: settlement_id.clone(),
                     result_preview: Some(result_preview),
                     error_detail: None,
                     feedback_event_ids: vec![processing_event.id.clone()],
@@ -956,7 +1101,6 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     None,
                     None,
                 )?;
-                known_statuses.insert(request_event_id.clone(), "failed_local".to_string());
                 report_entries.push(ProviderRunEntry {
                     request_event_id: observed.entry.request_event_id.clone(),
                     requester_pubkey: observed.entry.requester_pubkey.clone(),
@@ -965,15 +1109,28 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                     prompt_preview: Some(preview_text(prompt.as_str(), 72)),
                     model: Some(target.model.clone()),
                     bid_msats: observed.entry.bid_msats,
-                    amount_msats: None,
-                    bolt11: None,
+                    amount_msats: settled_payment.as_ref().map(|_| price_msats.unwrap_or(0)),
+                    bolt11: existing_job.as_ref().and_then(|job| job.bolt11.clone()),
+                    payment_id: settled_payment.as_ref().map(|payment| payment.payment_id.clone()),
+                    settlement_id: settlement_id.clone(),
                     result_preview: None,
-                    error_detail: Some(error_string),
+                    error_detail: Some(error_string.clone()),
                     feedback_event_ids: error_feedback
                         .map(|event| vec![processing_event.id.clone(), event.id])
                         .unwrap_or_else(|| vec![processing_event.id.clone()]),
                     result_event_id: None,
                 });
+                if let Some(payment) = settled_payment.as_ref() {
+                    let _ = record_provider_settlement_outcome(
+                        config_path,
+                        &observed.entry,
+                        payment,
+                        price_msats.unwrap_or(0),
+                        settlement_id.clone(),
+                        "delivery_failed_after_payment",
+                        error_string.as_str(),
+                    );
+                }
             }
         }
     }
@@ -984,6 +1141,7 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
         local_model: local_target.map(|target| target.model),
         accepted_count,
         payment_required_count,
+        settled_count,
         completed_count,
         failed_count,
         dropped_count,
@@ -1001,6 +1159,7 @@ pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
         ),
         format!("accepted_count: {}", report.accepted_count),
         format!("payment_required_count: {}", report.payment_required_count),
+        format!("settled_count: {}", report.settled_count),
         format!("completed_count: {}", report.completed_count),
         format!("failed_count: {}", report.failed_count),
         format!("dropped_count: {}", report.dropped_count),
@@ -1028,6 +1187,12 @@ pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
         }
         if let Some(bolt11) = entry.bolt11.as_deref() {
             lines.push(format!("bolt11: {bolt11}"));
+        }
+        if let Some(payment_id) = entry.payment_id.as_deref() {
+            lines.push(format!("payment_id: {payment_id}"));
+        }
+        if let Some(settlement_id) = entry.settlement_id.as_deref() {
+            lines.push(format!("settlement_id: {settlement_id}"));
         }
         if let Some(result_preview) = entry.result_preview.as_deref() {
             lines.push(format!("result_preview: {result_preview}"));
@@ -1430,7 +1595,6 @@ fn provider_job_blocks_reintake(status: &str) -> bool {
             | "processing_local"
             | "completed_local"
             | "failed_local"
-            | "payment_required"
             | "settled"
             | "result_published"
             | "publish_failed"
@@ -1570,6 +1734,179 @@ fn persist_provider_run_state(
         Ok(())
     })?;
     Ok(())
+}
+
+fn record_provider_payment_received(
+    config_path: &Path,
+    entry: &ProviderIntakeEntry,
+    payment: PylonWalletPaymentRecord,
+    amount_msats: u64,
+) -> Result<String> {
+    let settlement_id = format!("provider-settlement:{}", entry.request_event_id);
+    mutate_ledger(config_path, |ledger| {
+        let mut settlement = ledger
+            .settlements
+            .iter()
+            .find(|existing| existing.settlement_id == settlement_id)
+            .cloned()
+            .unwrap_or(PylonSettlementRecord {
+                settlement_id: settlement_id.clone(),
+                job_id: entry.request_event_id.clone(),
+                direction: "provider".to_string(),
+                status: "payment_received".to_string(),
+                amount_msats,
+                payment_reference: Some(payment.payment_id.clone()),
+                receipt_detail: Some("invoice completed in local wallet".to_string()),
+                created_at_ms: now_epoch_ms() as u64,
+                updated_at_ms: now_epoch_ms() as u64,
+            });
+        settlement.status = "payment_received".to_string();
+        settlement.amount_msats = amount_msats;
+        settlement.payment_reference = Some(payment.payment_id.clone());
+        settlement.receipt_detail = Some("invoice completed in local wallet".to_string());
+        ledger.upsert_settlement(settlement);
+        ledger.upsert_wallet_payment(payment.clone());
+        if let Some(invoice) = payment.invoice.as_deref() {
+            if let Some(existing_invoice) = ledger
+                .wallet
+                .invoices
+                .iter()
+                .find(|existing| existing.payment_request == invoice)
+                .cloned()
+            {
+                let mut updated_invoice = existing_invoice;
+                updated_invoice.status = payment.status.clone();
+                ledger.upsert_wallet_invoice(updated_invoice);
+            }
+        }
+        if let Some(job) = ledger
+            .jobs
+            .iter()
+            .find(|existing| existing.id == entry.request_event_id)
+            .cloned()
+        {
+            let mut updated_job = job;
+            updated_job.payment_id = Some(payment.payment_id.clone());
+            updated_job.settlement_id = Some(settlement_id.clone());
+            updated_job.status = "payment_settled".to_string();
+            ledger.upsert_job(updated_job);
+        }
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: entry.relay_url.clone(),
+            kind: "nip90.payment_settled".to_string(),
+            detail: format!(
+                "invoice settled for request {} via payment {}",
+                entry.request_event_id, payment.payment_id
+            ),
+        });
+        Ok(())
+    })?;
+    Ok(settlement_id)
+}
+
+fn record_provider_settlement_outcome(
+    config_path: &Path,
+    entry: &ProviderIntakeEntry,
+    payment: &PylonWalletPaymentRecord,
+    amount_msats: u64,
+    settlement_id: Option<String>,
+    status: &str,
+    detail: &str,
+) -> Result<String> {
+    let settlement_id =
+        settlement_id.unwrap_or_else(|| format!("provider-settlement:{}", entry.request_event_id));
+    mutate_ledger(config_path, |ledger| {
+        let mut settlement = ledger
+            .settlements
+            .iter()
+            .find(|existing| existing.settlement_id == settlement_id)
+            .cloned()
+            .unwrap_or(PylonSettlementRecord {
+                settlement_id: settlement_id.clone(),
+                job_id: entry.request_event_id.clone(),
+                direction: "provider".to_string(),
+                status: status.to_string(),
+                amount_msats,
+                payment_reference: Some(payment.payment_id.clone()),
+                receipt_detail: Some(detail.to_string()),
+                created_at_ms: now_epoch_ms() as u64,
+                updated_at_ms: now_epoch_ms() as u64,
+            });
+        settlement.status = status.to_string();
+        settlement.amount_msats = amount_msats;
+        settlement.payment_reference = Some(payment.payment_id.clone());
+        settlement.receipt_detail = Some(detail.to_string());
+        ledger.upsert_settlement(settlement);
+        if let Some(job) = ledger
+            .jobs
+            .iter()
+            .find(|existing| existing.id == entry.request_event_id)
+            .cloned()
+        {
+            let mut updated_job = job;
+            updated_job.payment_id = Some(payment.payment_id.clone());
+            updated_job.settlement_id = Some(settlement_id.clone());
+            if status.eq_ignore_ascii_case("settled") {
+                updated_job.status = "settled".to_string();
+            }
+            ledger.upsert_job(updated_job);
+        }
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: entry.relay_url.clone(),
+            kind: "nip90.settlement_updated".to_string(),
+            detail: format!(
+                "settlement {} for request {} ({detail})",
+                status, entry.request_event_id
+            ),
+        });
+        Ok(())
+    })?;
+    Ok(settlement_id)
+}
+
+async fn load_provider_wallet_payments(config_path: &Path) -> Result<Vec<PylonWalletPaymentRecord>> {
+    #[cfg(test)]
+    {
+        if let Some(slot) = TEST_WALLET_PAYMENTS_HOOK.get() {
+            if let Some(hook) = slot
+                .lock()
+                .expect("test wallet payments hook lock")
+                .as_ref()
+            {
+                return hook();
+            }
+        }
+    }
+    let report: WalletHistoryReport = load_wallet_history_report(config_path, Some(100)).await?;
+    Ok(report.payments)
+}
+
+fn find_settled_receive_payment(
+    payments: &[PylonWalletPaymentRecord],
+    bolt11: &str,
+) -> Option<PylonWalletPaymentRecord> {
+    payments.iter().find_map(|payment| {
+        if payment.direction.eq_ignore_ascii_case("receive")
+            && is_settled_wallet_payment_status(payment.status.as_str())
+            && payment
+                .invoice
+                .as_deref()
+                .is_some_and(|invoice| invoice == bolt11)
+        {
+            Some(payment.clone())
+        } else {
+            None
+        }
+    })
+}
+
+fn is_settled_wallet_payment_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "succeeded" | "success" | "settled" | "completed" | "confirmed"
+    )
 }
 
 async fn create_provider_payment_requirement(

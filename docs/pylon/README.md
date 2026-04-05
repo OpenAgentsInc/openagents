@@ -100,6 +100,8 @@ The current retained execution scope is narrow and honest. Pylon subscribes to r
 - for unpriced local work, it publishes a `kind:7000` processing update, executes accepted jobs locally, publishes the retained `kind:6050` result, and links those published event IDs back into the local ledger
 - for explicit paid requests, it stops at `payment-required`, creates a local Bolt11 invoice through the retained Spark wallet path, publishes that invoice in a `kind:7000` feedback event, and persists the amount plus Bolt11 string in the local ledger
 
+When that invoice is later marked paid in the local wallet, the next `provider run` picks the same job back up, records the settled payment, executes the work, publishes the retained result, and persists the settlement outcome. The retained `jobs`, `earnings`, and `receipts` views now project that local NIP-90 provider settlement state directly from the Pylon ledger instead of forcing the operator to reconstruct it from relay logs.
+
 If the local wallet cannot create an invoice, the provider path fails honestly instead of pretending the request is payable.
 
 The retained wallet controls now also exist in both places:

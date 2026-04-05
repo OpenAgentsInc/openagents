@@ -23,6 +23,7 @@ reqwest.workspace = true
 rustls = { version = "0.23", features = ["ring"] }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]

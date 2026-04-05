@@ -3133,6 +3133,7 @@ async fn load_jobs_report(config_path: &Path, limit: Option<usize>) -> Result<Jo
     } else {
         Vec::new()
     };
+    let jobs = merge_ledger_recent_jobs(jobs, &load_ledger(config_path).unwrap_or_default(), limit);
     Ok(JobsReport {
         context: report_context(&status),
         jobs,
@@ -3161,6 +3162,11 @@ async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> {
     } else {
         None
     };
+    let earnings = merge_ledger_earnings(
+        earnings,
+        &load_ledger(config_path).unwrap_or_default(),
+        &status,
+    );
     Ok(EarningsReport {
         context: report_context(&status),
         earnings,
@@ -3190,10 +3196,221 @@ async fn load_receipts_report(config_path: &Path, limit: Option<usize>) -> Resul
     } else {
         Vec::new()
     };
+    let receipts =
+        merge_ledger_receipts(receipts, &load_ledger(config_path).unwrap_or_default(), limit);
     Ok(ReceiptsReport {
         context: report_context(&status),
         receipts,
     })
+}
+
+fn merge_ledger_recent_jobs(
+    mut jobs: Vec<ProviderRecentJob>,
+    ledger: &PylonLedger,
+    limit: Option<usize>,
+) -> Vec<ProviderRecentJob> {
+    let mut seen = jobs
+        .iter()
+        .map(|job| job.job_id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    for job in ledger_provider_recent_jobs(ledger) {
+        if seen.insert(job.job_id.clone()) {
+            jobs.push(job);
+        }
+    }
+    jobs.sort_by(|left, right| right.completed_at_epoch_seconds.cmp(&left.completed_at_epoch_seconds));
+    take_limited_rows(jobs, limit)
+}
+
+fn merge_ledger_earnings(
+    base: Option<ProviderEarningsSummary>,
+    ledger: &PylonLedger,
+    status: &ProviderStatusResponse,
+) -> Option<ProviderEarningsSummary> {
+    if !ledger.jobs.iter().any(|job| job.direction == "provider")
+        && !ledger.settlements.iter().any(|settlement| settlement.direction == "provider")
+    {
+        return base;
+    }
+    let mut earnings = base
+        .or_else(|| {
+            status
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.earnings.clone())
+        })
+        .unwrap_or_else(default_earnings_summary);
+    let current_day = (now_epoch_ms() as u64) / 86_400_000;
+    let provider_jobs = ledger
+        .jobs
+        .iter()
+        .filter(|job| job.direction == "provider")
+        .collect::<Vec<_>>();
+    let settled = ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider" && settlement.status == "settled")
+        .collect::<Vec<_>>();
+    earnings.lifetime_sats = settled
+        .iter()
+        .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
+        .sum();
+    earnings.sats_today = settled
+        .iter()
+        .filter(|settlement| settlement.updated_at_ms / 86_400_000 == current_day)
+        .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
+        .sum();
+    earnings.jobs_today = settled
+        .iter()
+        .filter(|settlement| settlement.updated_at_ms / 86_400_000 == current_day)
+        .count() as u64;
+    if let Some(latest_job) = provider_jobs.first() {
+        earnings.last_job_result = latest_job.status.clone();
+    }
+    let terminal_jobs = provider_jobs
+        .iter()
+        .filter(|job| {
+            matches!(
+                job.status.as_str(),
+                "settled"
+                    | "completed_local"
+                    | "failed_local"
+                    | "publish_failed"
+                    | "invoice_failed"
+                    | "delivery_failed_after_payment"
+            )
+        })
+        .count();
+    let successful_jobs = provider_jobs
+        .iter()
+        .filter(|job| matches!(job.status.as_str(), "settled" | "completed_local"))
+        .count();
+    if terminal_jobs > 0 {
+        earnings.completion_ratio_bps =
+            Some(((successful_jobs * 10_000) / terminal_jobs).min(10_000) as u16);
+    }
+    let payable_jobs = provider_jobs
+        .iter()
+        .filter(|job| job.bid_msats.is_some())
+        .count();
+    if payable_jobs > 0 {
+        earnings.payout_success_ratio_bps =
+            Some(((settled.len() * 10_000) / payable_jobs).min(10_000) as u16);
+    }
+    Some(earnings)
+}
+
+fn merge_ledger_receipts(
+    mut receipts: Vec<ProviderReceiptSummary>,
+    ledger: &PylonLedger,
+    limit: Option<usize>,
+) -> Vec<ProviderReceiptSummary> {
+    let mut seen = receipts
+        .iter()
+        .map(|receipt| receipt.receipt_id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    for receipt in ledger_receipt_summaries(ledger) {
+        if seen.insert(receipt.receipt_id.clone()) {
+            receipts.push(receipt);
+        }
+    }
+    receipts.sort_by(|left, right| right.created_at_ms.cmp(&left.created_at_ms));
+    take_limited_rows(receipts, limit)
+}
+
+fn ledger_provider_recent_jobs(ledger: &PylonLedger) -> Vec<ProviderRecentJob> {
+    ledger
+        .jobs
+        .iter()
+        .filter(|job| job.direction == "provider")
+        .map(|job| ProviderRecentJob {
+            job_id: job.id.clone(),
+            request_id: job.request_event_id.clone(),
+            status: job.status.clone(),
+            demand_source: "nostr_nip90".to_string(),
+            product_id: None,
+            compute_family: Some("text_generation".to_string()),
+            backend_family: None,
+            sandbox_execution_class: None,
+            sandbox_profile_id: None,
+            sandbox_profile_digest: None,
+            sandbox_termination_reason: None,
+            completed_at_epoch_seconds: job.updated_at_ms / 1000,
+            payout_sats: if job.status == "settled" {
+                msats_to_sats_rounded_up(job.amount_msats.unwrap_or(0))
+            } else {
+                0
+            },
+            payment_pointer: job
+                .payment_id
+                .clone()
+                .or_else(|| job.bolt11.clone())
+                .unwrap_or_else(|| "none".to_string()),
+            failure_reason: job.error_detail.clone(),
+            delivery_proof_id: job.result_event_id.clone(),
+        })
+        .collect()
+}
+
+fn ledger_receipt_summaries(ledger: &PylonLedger) -> Vec<ProviderReceiptSummary> {
+    ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider")
+        .map(|settlement| {
+            let reason_code = settlement.status.to_ascii_uppercase();
+            let failed = settlement.status.contains("failed");
+            ProviderReceiptSummary {
+                receipt_id: settlement.settlement_id.clone(),
+                receipt_type: match settlement.status.as_str() {
+                    "settled" => "earn.job.settled.v1".to_string(),
+                    "payment_received" => "nip90.provider.payment_received.v1".to_string(),
+                    _ => "nip90.provider.settlement.v1".to_string(),
+                },
+                created_at_ms: settlement.updated_at_ms as i64,
+                canonical_hash: settlement_canonical_hash(settlement),
+                compute_family: Some("text_generation".to_string()),
+                backend_family: None,
+                sandbox_execution_class: None,
+                sandbox_profile_id: None,
+                sandbox_profile_digest: None,
+                sandbox_termination_reason: None,
+                reason_code: Some(reason_code),
+                failure_reason: failed.then(|| {
+                    settlement
+                        .receipt_detail
+                        .clone()
+                        .unwrap_or_else(|| "delivery failed after payment".to_string())
+                }),
+                severity: Some(if failed { "warn" } else { "low" }.to_string()),
+                notional_sats: Some(msats_to_sats_rounded_up(settlement.amount_msats)),
+                liability_premium_sats: Some(0),
+                work_unit_id: Some(settlement.job_id.clone()),
+            }
+        })
+        .collect()
+}
+
+fn settlement_canonical_hash(settlement: &PylonSettlementRecord) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(settlement.settlement_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(settlement.job_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(settlement.status.as_bytes());
+    hasher.update(b"|");
+    hasher.update(settlement.amount_msats.to_string().as_bytes());
+    if let Some(payment_reference) = settlement.payment_reference.as_deref() {
+        hasher.update(b"|");
+        hasher.update(payment_reference.as_bytes());
+    }
+    format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
+fn msats_to_sats_rounded_up(amount_msats: u64) -> u64 {
+    amount_msats.saturating_add(999) / 1000
 }
 
 fn open_existing_store(config: &PylonConfig) -> Result<Option<ProviderPersistenceStore>> {
@@ -3928,7 +4145,8 @@ mod tests {
         remove_configured_relay, render_human_status, render_sandbox_report,
         resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
-        PylonWalletInvoiceRecord, WalletInvoiceReport, WalletRuntimeSurface,
+        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletInvoiceReport,
+        WalletRuntimeSurface,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -5072,6 +5290,285 @@ mod tests {
         )?;
 
         super::nip90_runtime::set_test_wallet_invoice_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_run_settles_paid_request_and_projects_retained_views()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
+        super::nip90_runtime::set_test_wallet_invoice_hook(Some(Box::new(
+            |amount_sats, description, _expiry_seconds| {
+                Ok(WalletInvoiceReport {
+                    runtime: WalletRuntimeSurface::default(),
+                    invoice: PylonWalletInvoiceRecord {
+                        invoice_id: "invoice-002".to_string(),
+                        amount_sats,
+                        status: "created".to_string(),
+                        payment_request: "lnbc21000n1pyloninvoice".to_string(),
+                        description,
+                        created_at_ms: 1_762_000_100_000,
+                        updated_at_ms: 1_762_000_100_000,
+                    },
+                })
+            },
+        )));
+        super::nip90_runtime::set_test_wallet_payments_hook(Some(Box::new(|| Ok(Vec::new()))));
+
+        let base_url =
+            start_mock_http_server(
+                |method, path, body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4:e4b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/api/chat") => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                        assert_eq!(request["model"], json!("gemma4:e4b"));
+                        assert_eq!(request["messages"][0]["content"], json!("paid run"));
+                        (
+                            200,
+                            "application/x-ndjson",
+                            concat!(
+                                "{\"message\":{\"content\":\"paid \"},\"done\":false}\n",
+                                "{\"message\":{\"content\":\"reply\"},\"done\":false}\n",
+                                "{\"done\":true}\n"
+                            )
+                            .to_string(),
+                        )
+                    }
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let provider_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let matching = || {
+                json!(["EVENT", "run", {
+                    "id": "run-job-pay-002",
+                    "pubkey": "buyer-pubkey-002",
+                    "created_at": 1_760_000_220u64,
+                    "kind": 5050,
+                    "tags": [
+                        ["i", "paid run", "text"],
+                        ["param", "model", "gemma4:e4b"],
+                        ["bid", "24000"],
+                        ["p", provider_pubkey]
+                    ],
+                    "content": "",
+                    "sig": "55".repeat(64)
+                }])
+            };
+
+            let (scan_stream_1, _) = relay_listener.accept().await.expect("accept scan client 1");
+            let mut scan_ws_1 = accept_async(scan_stream_1)
+                .await
+                .expect("upgrade scan websocket 1");
+            while let Some(message) = scan_ws_1.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if payload.contains("\"REQ\"") {
+                    scan_ws_1
+                        .send(Message::Text(matching().to_string().into()))
+                        .await
+                        .expect("send first matching request");
+                    break;
+                }
+            }
+            drop(scan_ws_1);
+
+            let (publish_stream_1, _) = relay_listener
+                .accept()
+                .await
+                .expect("accept publish client 1");
+            let mut publish_ws_1 = accept_async(publish_stream_1)
+                .await
+                .expect("upgrade publish websocket 1");
+            let first_published = loop {
+                let Some(message) = publish_ws_1.next().await else {
+                    panic!("missing first publish");
+                };
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"EVENT\"") {
+                    continue;
+                }
+                let value: serde_json::Value =
+                    serde_json::from_str(payload.as_str()).expect("parse first published event");
+                break value[1].clone();
+            };
+            drop(publish_ws_1);
+
+            let (scan_stream_2, _) = relay_listener.accept().await.expect("accept scan client 2");
+            let mut scan_ws_2 = accept_async(scan_stream_2)
+                .await
+                .expect("upgrade scan websocket 2");
+            while let Some(message) = scan_ws_2.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if payload.contains("\"REQ\"") {
+                    scan_ws_2
+                        .send(Message::Text(matching().to_string().into()))
+                        .await
+                        .expect("send second matching request");
+                    break;
+                }
+            }
+            drop(scan_ws_2);
+
+            let (publish_stream_2, _) = relay_listener
+                .accept()
+                .await
+                .expect("accept publish client 2");
+            let mut publish_ws_2 = accept_async(publish_stream_2)
+                .await
+                .expect("upgrade publish websocket 2");
+            let mut second_published = Vec::new();
+            while let Some(message) = publish_ws_2.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"EVENT\"") {
+                    continue;
+                }
+                let value: serde_json::Value =
+                    serde_json::from_str(payload.as_str()).expect("parse second published event");
+                second_published.push(value[1].clone());
+                if second_published.len() == 2 {
+                    break;
+                }
+            }
+            (first_published, second_published)
+        });
+
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url];
+        config.ollama_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
+
+        let first_report = run_provider_requests(config_path.as_path(), 1).await?;
+        ensure(
+            first_report.payment_required_count == 1 && first_report.completed_count == 0,
+            "first provider run should stop at payment-required",
+        )?;
+
+        super::nip90_runtime::set_test_wallet_payments_hook(Some(Box::new(|| {
+            Ok(vec![PylonWalletPaymentRecord {
+                payment_id: "payment-recv-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 21,
+                fees_sats: 0,
+                method: "lightning".to_string(),
+                description: Some("pylon nip90 run-job-pay-002".to_string()),
+                invoice: Some("lnbc21000n1pyloninvoice".to_string()),
+                created_at_ms: 1_762_000_120_000,
+                updated_at_ms: 1_762_000_120_000,
+            }])
+        })));
+
+        let second_report = run_provider_requests(config_path.as_path(), 1).await?;
+        ensure(
+            second_report.completed_count == 1 && second_report.settled_count == 1,
+            "second provider run should complete and settle the paid request",
+        )?;
+        ensure(
+            second_report.entries.iter().any(|entry| {
+                entry.request_event_id == "run-job-pay-002"
+                    && entry.status == "settled"
+                    && entry.payment_id.as_deref() == Some("payment-recv-001")
+                    && entry.settlement_id.is_some()
+                    && entry
+                        .result_preview
+                        .as_deref()
+                        .is_some_and(|value| value.contains("paid reply"))
+                    && entry.result_event_id.is_some()
+            }),
+            "second provider run should surface settled payment and result publication",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == "run-job-pay-002")
+            .ok_or_else(|| std::io::Error::other("missing settled provider job"))?;
+        ensure(
+            job.status == "settled"
+                && job.payment_id.as_deref() == Some("payment-recv-001")
+                && job.settlement_id.is_some()
+                && job.result_event_id.is_some(),
+            "ledger should persist settled provider job state",
+        )?;
+
+        let jobs_report = load_jobs_report(config_path.as_path(), Some(4)).await?;
+        ensure(
+            jobs_report.jobs.iter().any(|job| {
+                job.job_id == "run-job-pay-002"
+                    && job.status == "settled"
+                    && job.payout_sats == 21
+                    && job.payment_pointer == "payment-recv-001"
+            }),
+            "jobs report should include the retained settled provider job",
+        )?;
+
+        let earnings_report = load_earnings_report(config_path.as_path()).await?;
+        ensure(
+            earnings_report
+                .earnings
+                .as_ref()
+                .is_some_and(|earnings| {
+                    earnings.lifetime_sats == 21
+                        && earnings.jobs_today == 1
+                        && earnings.last_job_result == "settled"
+                }),
+            "earnings report should project retained provider settlement totals",
+        )?;
+
+        let receipts_report = load_receipts_report(config_path.as_path(), Some(4)).await?;
+        ensure(
+            receipts_report.receipts.iter().any(|receipt| {
+                receipt.work_unit_id.as_deref() == Some("run-job-pay-002")
+                    && receipt.reason_code.as_deref() == Some("SETTLED")
+                    && receipt.notional_sats == Some(21)
+            }),
+            "receipts report should include the retained settlement receipt",
+        )?;
+
+        let (first_published, second_published) = relay_server.await?;
+        ensure(
+            first_published["kind"] == 7000,
+            "first publish should be payment-required feedback",
+        )?;
+        ensure(
+            second_published.len() == 2
+                && second_published.iter().any(|event| event["kind"] == 7000)
+                && second_published.iter().any(|event| event["kind"] == 6050),
+            "second publish should include processing feedback and a result event",
+        )?;
+
+        super::nip90_runtime::set_test_wallet_invoice_hook(None);
+        super::nip90_runtime::set_test_wallet_payments_hook(None);
         Ok(())
     }
 
