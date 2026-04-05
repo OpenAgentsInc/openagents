@@ -5,7 +5,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
-const PLACEHOLDER: &str = "Type /chat [prompt]. Enter submits. Ctrl+J inserts a newline.";
+const PLACEHOLDER: &str =
+    "Type a prompt. /help shows commands. Enter submits. Ctrl+J inserts a newline.";
 const MAX_VISIBLE_COMPOSER_LINES: usize = 4;
 const MAX_HISTORY_ENTRIES: usize = 24;
 
@@ -383,5 +384,10 @@ mod tests {
     fn composer_keeps_a_visible_input_row() {
         let pane = BottomPane::default();
         assert_eq!(pane.height(), 4);
+    }
+
+    #[test]
+    fn slash_command_extracts_help_command() {
+        assert_eq!(slash_command("/help").as_deref(), Some("help"));
     }
 }

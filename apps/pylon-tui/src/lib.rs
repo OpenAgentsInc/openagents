@@ -1,4 +1,5 @@
 mod bottom_pane;
+mod slash_commands;
 mod transcript;
 
 use std::collections::BTreeMap;
@@ -26,6 +27,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use serde_json::Value;
+use slash_commands::{ParsedSubmission, SlashCommandId};
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, RefreshKind, System};
 use transcript::{ActiveTurn, RetainedTranscript, TranscriptEntry, TranscriptRole};
 use unicode_width::UnicodeWidthStr;
@@ -205,9 +207,7 @@ impl AppShell {
         transcript.push_entry(TranscriptEntry::new(
             TranscriptRole::System,
             "Shell Ready",
-            vec![String::from(
-                "Type a prompt. /download <model> pulls Gemma weights.",
-            )],
+            vec![String::from("Type a prompt. /help shows commands.")],
         ));
         Self {
             installed_gemma_models: installed_gemma_models(config_path.as_path()),
@@ -288,9 +288,11 @@ impl AppShell {
     }
 
     fn handle_submission(&mut self, submission: ComposerSubmission) {
-        let title = match submission.slash_command.as_deref() {
-            Some(command) => format!("Command /{command}"),
-            None => String::from("Prompt"),
+        let parsed = slash_commands::parse_submission(submission.text.as_str());
+        let title = match &parsed {
+            ParsedSubmission::Prompt(_) => String::from("Prompt"),
+            ParsedSubmission::Command { spec, .. } => format!("Command /{}", spec.name),
+            ParsedSubmission::UnknownCommand { name, .. } => format!("Command /{name}"),
         };
         let body = submission
             .text
@@ -301,43 +303,42 @@ impl AppShell {
             .push_entry(TranscriptEntry::new(TranscriptRole::User, title, body));
         self.sync_transcript_scroll_after_update();
 
-        let prompt = match submission.slash_command.as_deref() {
-            Some("chat") => submission
-                .text
-                .trim()
-                .strip_prefix("/chat")
-                .map(str::trim)
-                .unwrap_or_default()
-                .to_string(),
-            Some("download") => {
-                let model_id = submission
-                    .text
-                    .trim()
-                    .strip_prefix("/download")
-                    .map(str::trim)
-                    .unwrap_or_default()
-                    .to_string();
-                if model_id.is_empty() {
-                    self.push_system_message(
-                        "Command Error",
-                        format!(
-                            "Usage: /download <model>. Available: {}",
-                            available_download_ids()
-                        ),
-                    );
+        let prompt = match parsed {
+            ParsedSubmission::Prompt(prompt) => prompt,
+            ParsedSubmission::Command { spec, args, .. } => match spec.id {
+                SlashCommandId::Help => {
+                    self.transcript.push_entry(TranscriptEntry::new(
+                        TranscriptRole::System,
+                        "Pylon Commands",
+                        slash_commands::help_lines(),
+                    ));
+                    self.sync_transcript_scroll_after_update();
                     return;
                 }
-                self.start_model_download(model_id);
-                return;
-            }
-            Some(command) => {
+                SlashCommandId::Chat => args,
+                SlashCommandId::Download => {
+                    let model_id = args;
+                    if model_id.is_empty() {
+                        self.push_system_message(
+                            "Command Error",
+                            format!(
+                                "Usage: /download <model>. Available: {}",
+                                available_download_ids()
+                            ),
+                        );
+                        return;
+                    }
+                    self.start_model_download(model_id);
+                    return;
+                }
+            },
+            ParsedSubmission::UnknownCommand { name, .. } => {
                 self.push_system_message(
                     "Command Error",
-                    format!("Unknown command /{command}. Only /chat and /download are available."),
+                    format!("Unknown command /{name}. Type /help."),
                 );
                 return;
             }
-            None => submission.text.trim().to_string(),
         };
         if self.chat_in_flight {
             self.push_system_message("Chat Busy", "A local Gemma chat is already running.");
@@ -761,9 +762,7 @@ impl AppShell {
             vertical[2],
             shell_border(),
             shell_accent(),
-            Some(
-                "Type a prompt. /download <model> pulls Gemma weights. Enter submits. Ctrl+J inserts a newline.",
-            ),
+            Some("Type a prompt. /help shows commands. Enter submits. Ctrl+J inserts a newline."),
         );
         frame.render_widget(self.footer_panel(), vertical[3]);
     }
@@ -1087,6 +1086,7 @@ Controls:\n\
   Ctrl+J   insert newline\n\
 Composer:\n\
   [prompt]  stream a reply from local Gemma when weights are loaded\n\
+  /help  show available commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
 }
 
