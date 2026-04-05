@@ -12,7 +12,8 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    PylonConfig, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, ensure_identity,
+    LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatTarget, PylonConfig,
+    PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, ensure_identity,
     load_config_and_status, load_ledger, mutate_ledger, products_from_status,
 };
 
@@ -50,6 +51,31 @@ pub struct ProviderIntakeReport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProviderRunEntry {
+    pub request_event_id: String,
+    pub requester_pubkey: String,
+    pub relay_url: Option<String>,
+    pub status: String,
+    pub prompt_preview: Option<String>,
+    pub model: Option<String>,
+    pub bid_msats: Option<u64>,
+    pub result_preview: Option<String>,
+    pub error_detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProviderRunReport {
+    pub seconds: u64,
+    pub provider_pubkey: String,
+    pub local_model: Option<String>,
+    pub accepted_count: usize,
+    pub completed_count: usize,
+    pub failed_count: usize,
+    pub dropped_count: usize,
+    pub entries: Vec<ProviderRunEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AnnouncementReport {
     pub node_label: String,
     pub provider_pubkey: String,
@@ -73,6 +99,20 @@ struct AnnouncementSpec {
     capabilities: Vec<String>,
     price_msats: Option<u64>,
     fingerprint: String,
+}
+
+#[derive(Clone, Debug)]
+struct ObservedProviderRequest {
+    event: Event,
+    entry: ProviderIntakeEntry,
+}
+
+#[derive(Clone, Debug)]
+struct ProviderRequestCollection {
+    provider_pubkey: String,
+    desired_mode: openagents_provider_substrate::ProviderDesiredMode,
+    spec: Option<AnnouncementSpec>,
+    observed: Vec<ObservedProviderRequest>,
 }
 
 pub async fn load_announcement_report(config_path: &Path) -> Result<AnnouncementReport> {
@@ -196,67 +236,29 @@ pub async fn scan_provider_requests(
     config_path: &Path,
     seconds: u64,
 ) -> Result<ProviderIntakeReport> {
-    let config = crate::ensure_local_setup(config_path)?;
-    let identity = ensure_identity(config.identity_path.as_path())?;
-    let (_, status) = load_config_and_status(config_path).await?;
-    let spec = announcement_spec(&config, &status);
-    let pool = build_relay_pool(&config, &identity).await?;
-    let subscription_id = format!("pylon-provider-scan-{}", crate::now_epoch_ms());
-    pool.subscribe_filters(
-        subscription_id.as_str(),
-        vec![json!({
-            "kinds": [ANNOUNCEMENT_KIND_TEXT_GENERATION],
-        })],
-    )
-    .await
-    .context("failed to subscribe for provider intake")?;
-
-    let deadline = std::time::Instant::now() + Duration::from_secs(seconds.max(1));
-    let poll_step = Duration::from_millis(150);
-    let mut entries = BTreeMap::<String, ProviderIntakeEntry>::new();
-    while std::time::Instant::now() < deadline {
-        let relays = pool.relays().await;
-        for relay in relays {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            let wait = remaining.min(poll_step);
-            let recv = tokio::time::timeout(wait, relay.recv()).await;
-            let message = match recv {
-                Ok(Ok(Some(message))) => message,
-                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => continue,
-            };
-            if let RelayMessage::Event(_, event) = message {
-                let entry = classify_provider_request(
-                    relay.url(),
-                    &identity.public_key_hex,
-                    spec.as_ref(),
-                    &event,
-                );
-                entries
-                    .entry(entry.request_event_id.clone())
-                    .or_insert(entry);
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(30)).await;
-    }
-    let _ = pool.unsubscribe(subscription_id.as_str()).await;
-
+    let collected = collect_provider_requests(config_path, seconds).await?;
     let report = ProviderIntakeReport {
         seconds,
-        provider_pubkey: identity.public_key_hex.clone(),
-        local_ready: spec.is_some(),
-        local_model: spec.as_ref().map(|spec| spec.model.clone()),
-        matched_count: entries
-            .values()
+        provider_pubkey: collected.provider_pubkey.clone(),
+        local_ready: collected.spec.is_some(),
+        local_model: collected.spec.as_ref().map(|spec| spec.model.clone()),
+        matched_count: collected
+            .observed
+            .iter()
+            .map(|observed| &observed.entry)
             .filter(|entry| entry.decision == "match")
             .count(),
-        dropped_count: entries
-            .values()
+        dropped_count: collected
+            .observed
+            .iter()
+            .map(|observed| &observed.entry)
             .filter(|entry| entry.decision == "drop")
             .count(),
-        entries: entries.into_values().collect(),
+        entries: collected
+            .observed
+            .into_iter()
+            .map(|observed| observed.entry)
+            .collect(),
     };
     persist_provider_intake(config_path, &report)?;
     Ok(report)
@@ -295,6 +297,325 @@ pub fn render_provider_intake_report(report: &ProviderIntakeReport) -> String {
         }
         if let Some(bid_msats) = entry.bid_msats {
             lines.push(format!("bid_msats: {bid_msats}"));
+        }
+    }
+    lines.join("\n")
+}
+
+pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<ProviderRunReport> {
+    let collected = collect_provider_requests(config_path, seconds).await?;
+    let local_target = collected.spec.as_ref().map(spec_to_local_target);
+    let mut known_statuses = load_ledger(config_path)?
+        .jobs
+        .into_iter()
+        .map(|job| (job.id, job.status))
+        .collect::<BTreeMap<_, _>>();
+    let mut report_entries = Vec::new();
+    let mut accepted_count = 0usize;
+    let mut completed_count = 0usize;
+    let mut failed_count = 0usize;
+    let mut dropped_count = 0usize;
+
+    for observed in collected.observed {
+        let request_event_id = observed.entry.request_event_id.clone();
+        if known_statuses
+            .get(request_event_id.as_str())
+            .is_some_and(|status| provider_job_blocks_reintake(status.as_str()))
+        {
+            report_entries.push(ProviderRunEntry {
+                request_event_id: observed.entry.request_event_id.clone(),
+                requester_pubkey: observed.entry.requester_pubkey.clone(),
+                relay_url: observed.entry.relay_url.clone(),
+                status: "skipped_duplicate".to_string(),
+                prompt_preview: observed.entry.prompt_preview.clone(),
+                model: observed.entry.model.clone(),
+                bid_msats: observed.entry.bid_msats,
+                result_preview: None,
+                error_detail: Some("job already handled locally".to_string()),
+            });
+            continue;
+        }
+
+        if observed.entry.decision != "match" {
+            dropped_count += 1;
+            persist_provider_run_state(
+                config_path,
+                collected.provider_pubkey.as_str(),
+                &observed.entry,
+                "observed_drop",
+                observed.entry.drop_reason.as_deref(),
+                None,
+            )?;
+            known_statuses.insert(request_event_id.clone(), "observed_drop".to_string());
+            report_entries.push(ProviderRunEntry {
+                request_event_id: observed.entry.request_event_id.clone(),
+                requester_pubkey: observed.entry.requester_pubkey.clone(),
+                relay_url: observed.entry.relay_url.clone(),
+                status: "dropped".to_string(),
+                prompt_preview: observed.entry.prompt_preview.clone(),
+                model: observed.entry.model.clone(),
+                bid_msats: observed.entry.bid_msats,
+                result_preview: None,
+                error_detail: observed.entry.drop_reason.clone(),
+            });
+            continue;
+        }
+
+        if collected.desired_mode != openagents_provider_substrate::ProviderDesiredMode::Online {
+            dropped_count += 1;
+            persist_provider_run_state(
+                config_path,
+                collected.provider_pubkey.as_str(),
+                &observed.entry,
+                "rejected_policy",
+                Some("provider_not_online"),
+                None,
+            )?;
+            known_statuses.insert(request_event_id.clone(), "rejected_policy".to_string());
+            report_entries.push(ProviderRunEntry {
+                request_event_id: observed.entry.request_event_id.clone(),
+                requester_pubkey: observed.entry.requester_pubkey.clone(),
+                relay_url: observed.entry.relay_url.clone(),
+                status: "dropped".to_string(),
+                prompt_preview: observed.entry.prompt_preview.clone(),
+                model: observed.entry.model.clone(),
+                bid_msats: observed.entry.bid_msats,
+                result_preview: None,
+                error_detail: Some("provider_not_online".to_string()),
+            });
+            continue;
+        }
+
+        let Some(target) = local_target.clone() else {
+            dropped_count += 1;
+            persist_provider_run_state(
+                config_path,
+                collected.provider_pubkey.as_str(),
+                &observed.entry,
+                "rejected_supply",
+                Some("no_local_supply"),
+                None,
+            )?;
+            known_statuses.insert(request_event_id.clone(), "rejected_supply".to_string());
+            report_entries.push(ProviderRunEntry {
+                request_event_id: observed.entry.request_event_id.clone(),
+                requester_pubkey: observed.entry.requester_pubkey.clone(),
+                relay_url: observed.entry.relay_url.clone(),
+                status: "dropped".to_string(),
+                prompt_preview: observed.entry.prompt_preview.clone(),
+                model: observed.entry.model.clone(),
+                bid_msats: observed.entry.bid_msats,
+                result_preview: None,
+                error_detail: Some("no_local_supply".to_string()),
+            });
+            continue;
+        };
+
+        let request = match JobRequest::from_event(&observed.event) {
+            Ok(request) => request,
+            Err(_) => {
+                dropped_count += 1;
+                persist_provider_run_state(
+                    config_path,
+                    collected.provider_pubkey.as_str(),
+                    &observed.entry,
+                    "rejected_input",
+                    Some("invalid_request"),
+                    None,
+                )?;
+                known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
+                report_entries.push(ProviderRunEntry {
+                    request_event_id: observed.entry.request_event_id.clone(),
+                    requester_pubkey: observed.entry.requester_pubkey.clone(),
+                    relay_url: observed.entry.relay_url.clone(),
+                    status: "dropped".to_string(),
+                    prompt_preview: observed.entry.prompt_preview.clone(),
+                    model: observed.entry.model.clone(),
+                    bid_msats: observed.entry.bid_msats,
+                    result_preview: None,
+                    error_detail: Some("invalid_request".to_string()),
+                });
+                continue;
+            }
+        };
+
+        if !request_model_matches_target(observed.entry.model.as_deref(), target.model.as_str()) {
+            dropped_count += 1;
+            persist_provider_run_state(
+                config_path,
+                collected.provider_pubkey.as_str(),
+                &observed.entry,
+                "rejected_model",
+                Some("model_unavailable"),
+                None,
+            )?;
+            known_statuses.insert(request_event_id.clone(), "rejected_model".to_string());
+            report_entries.push(ProviderRunEntry {
+                request_event_id: observed.entry.request_event_id.clone(),
+                requester_pubkey: observed.entry.requester_pubkey.clone(),
+                relay_url: observed.entry.relay_url.clone(),
+                status: "dropped".to_string(),
+                prompt_preview: observed.entry.prompt_preview.clone(),
+                model: Some(target.model.clone()),
+                bid_msats: observed.entry.bid_msats,
+                result_preview: None,
+                error_detail: Some("model_unavailable".to_string()),
+            });
+            continue;
+        }
+
+        let Some(prompt) = request_prompt(&request) else {
+            dropped_count += 1;
+            persist_provider_run_state(
+                config_path,
+                collected.provider_pubkey.as_str(),
+                &observed.entry,
+                "rejected_input",
+                Some("missing_text_input"),
+                None,
+            )?;
+            known_statuses.insert(request_event_id.clone(), "rejected_input".to_string());
+            report_entries.push(ProviderRunEntry {
+                request_event_id: observed.entry.request_event_id.clone(),
+                requester_pubkey: observed.entry.requester_pubkey.clone(),
+                relay_url: observed.entry.relay_url.clone(),
+                status: "dropped".to_string(),
+                prompt_preview: observed.entry.prompt_preview.clone(),
+                model: Some(target.model.clone()),
+                bid_msats: observed.entry.bid_msats,
+                result_preview: None,
+                error_detail: Some("missing_text_input".to_string()),
+            });
+            continue;
+        };
+
+        accepted_count += 1;
+        persist_provider_run_state(
+            config_path,
+            collected.provider_pubkey.as_str(),
+            &observed.entry,
+            "accepted_local",
+            None,
+            None,
+        )?;
+        persist_provider_run_state(
+            config_path,
+            collected.provider_pubkey.as_str(),
+            &observed.entry,
+            "processing_local",
+            None,
+            None,
+        )?;
+        known_statuses.insert(request_event_id.clone(), "processing_local".to_string());
+
+        let mut output = String::new();
+        let result =
+            crate::stream_local_gemma_chat_target(config_path, &target, prompt.as_str(), |event| {
+                if let LocalGemmaChatEvent::Delta(delta) = event {
+                    output.push_str(delta.as_str());
+                }
+            })
+            .await;
+        match result {
+            Ok(_) => {
+                completed_count += 1;
+                let result_preview = preview_text(output.as_str(), 280);
+                persist_provider_run_state(
+                    config_path,
+                    collected.provider_pubkey.as_str(),
+                    &observed.entry,
+                    "completed_local",
+                    None,
+                    Some(result_preview.as_str()),
+                )?;
+                known_statuses.insert(request_event_id.clone(), "completed_local".to_string());
+                report_entries.push(ProviderRunEntry {
+                    request_event_id: observed.entry.request_event_id.clone(),
+                    requester_pubkey: observed.entry.requester_pubkey.clone(),
+                    relay_url: observed.entry.relay_url.clone(),
+                    status: "completed".to_string(),
+                    prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                    model: Some(target.model.clone()),
+                    bid_msats: observed.entry.bid_msats,
+                    result_preview: Some(result_preview),
+                    error_detail: None,
+                });
+            }
+            Err(error) => {
+                failed_count += 1;
+                let error_string = error.to_string();
+                persist_provider_run_state(
+                    config_path,
+                    collected.provider_pubkey.as_str(),
+                    &observed.entry,
+                    "failed_local",
+                    Some(error_string.as_str()),
+                    None,
+                )?;
+                known_statuses.insert(request_event_id.clone(), "failed_local".to_string());
+                report_entries.push(ProviderRunEntry {
+                    request_event_id: observed.entry.request_event_id.clone(),
+                    requester_pubkey: observed.entry.requester_pubkey.clone(),
+                    relay_url: observed.entry.relay_url.clone(),
+                    status: "failed".to_string(),
+                    prompt_preview: Some(preview_text(prompt.as_str(), 72)),
+                    model: Some(target.model.clone()),
+                    bid_msats: observed.entry.bid_msats,
+                    result_preview: None,
+                    error_detail: Some(error_string),
+                });
+            }
+        }
+    }
+
+    Ok(ProviderRunReport {
+        seconds,
+        provider_pubkey: collected.provider_pubkey,
+        local_model: local_target.map(|target| target.model),
+        accepted_count,
+        completed_count,
+        failed_count,
+        dropped_count,
+        entries: report_entries,
+    })
+}
+
+pub fn render_provider_run_report(report: &ProviderRunReport) -> String {
+    let mut lines = vec![
+        format!("provider_pubkey: {}", report.provider_pubkey),
+        format!("run_seconds: {}", report.seconds),
+        format!(
+            "local_model: {}",
+            report.local_model.as_deref().unwrap_or("none")
+        ),
+        format!("accepted_count: {}", report.accepted_count),
+        format!("completed_count: {}", report.completed_count),
+        format!("failed_count: {}", report.failed_count),
+        format!("dropped_count: {}", report.dropped_count),
+    ];
+    for entry in &report.entries {
+        lines.push(String::new());
+        lines.push(format!("request_event_id: {}", entry.request_event_id));
+        lines.push(format!("requester_pubkey: {}", entry.requester_pubkey));
+        lines.push(format!(
+            "relay_url: {}",
+            entry.relay_url.as_deref().unwrap_or("unknown")
+        ));
+        lines.push(format!("status: {}", entry.status));
+        if let Some(prompt_preview) = entry.prompt_preview.as_deref() {
+            lines.push(format!("prompt_preview: {prompt_preview}"));
+        }
+        if let Some(model) = entry.model.as_deref() {
+            lines.push(format!("model: {model}"));
+        }
+        if let Some(bid_msats) = entry.bid_msats {
+            lines.push(format!("bid_msats: {bid_msats}"));
+        }
+        if let Some(result_preview) = entry.result_preview.as_deref() {
+            lines.push(format!("result_preview: {result_preview}"));
+        }
+        if let Some(error_detail) = entry.error_detail.as_deref() {
+            lines.push(format!("error_detail: {error_detail}"));
         }
     }
     lines.join("\n")
@@ -504,6 +825,65 @@ async fn build_relay_pool(
     Ok(pool)
 }
 
+async fn collect_provider_requests(
+    config_path: &Path,
+    seconds: u64,
+) -> Result<ProviderRequestCollection> {
+    let config = crate::ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let (_, status) = load_config_and_status(config_path).await?;
+    let spec = announcement_spec(&config, &status);
+    let pool = build_relay_pool(&config, &identity).await?;
+    let subscription_id = format!("pylon-provider-{}", crate::now_epoch_ms());
+    pool.subscribe_filters(
+        subscription_id.as_str(),
+        vec![json!({
+            "kinds": [ANNOUNCEMENT_KIND_TEXT_GENERATION],
+        })],
+    )
+    .await
+    .context("failed to subscribe for provider intake")?;
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(seconds.max(1));
+    let poll_step = Duration::from_millis(150);
+    let mut observed = BTreeMap::<String, ObservedProviderRequest>::new();
+    while std::time::Instant::now() < deadline {
+        let relays = pool.relays().await;
+        for relay in relays {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let wait = remaining.min(poll_step);
+            let recv = tokio::time::timeout(wait, relay.recv()).await;
+            let message = match recv {
+                Ok(Ok(Some(message))) => message,
+                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => continue,
+            };
+            if let RelayMessage::Event(_, event) = message {
+                let entry = classify_provider_request(
+                    relay.url(),
+                    &identity.public_key_hex,
+                    spec.as_ref(),
+                    &event,
+                );
+                observed
+                    .entry(entry.request_event_id.clone())
+                    .or_insert(ObservedProviderRequest { event, entry });
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+    let _ = pool.unsubscribe(subscription_id.as_str()).await;
+
+    Ok(ProviderRequestCollection {
+        provider_pubkey: identity.public_key_hex,
+        desired_mode: status.desired_mode,
+        spec,
+        observed: observed.into_values().collect(),
+    })
+}
+
 fn classify_provider_request(
     relay_url: &str,
     provider_pubkey: &str,
@@ -577,6 +957,134 @@ fn classify_provider_request(
         model,
         bid_msats: request.bid,
     }
+}
+
+fn spec_to_local_target(spec: &AnnouncementSpec) -> LocalGemmaChatTarget {
+    LocalGemmaChatTarget {
+        backend: match spec.backend.as_str() {
+            "apple_foundation_models" => LocalGemmaChatBackend::OpenAiCompat,
+            _ => LocalGemmaChatBackend::Ollama,
+        },
+        model: spec.model.clone(),
+    }
+}
+
+fn request_prompt(request: &JobRequest) -> Option<String> {
+    let prompts = request
+        .inputs
+        .iter()
+        .filter(|input| input.input_type.as_str() == "text")
+        .map(|input| input.data.trim())
+        .filter(|input| !input.is_empty())
+        .collect::<Vec<_>>();
+    if prompts.is_empty() {
+        None
+    } else {
+        Some(prompts.join("\n\n"))
+    }
+}
+
+fn request_model_matches_target(requested: Option<&str>, target_model: &str) -> bool {
+    let Some(requested) = requested.map(str::trim).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    let requested = requested.to_ascii_lowercase();
+    let target = target_model.trim().to_ascii_lowercase();
+    target == requested
+        || target.contains(requested.as_str())
+        || requested.contains(target.as_str())
+        || (requested.contains("gemma") && target.contains("gemma"))
+}
+
+fn provider_job_blocks_reintake(status: &str) -> bool {
+    matches!(
+        status,
+        "accepted_local"
+            | "processing_local"
+            | "completed_local"
+            | "payment_required"
+            | "settled"
+            | "result_published"
+    )
+}
+
+fn persist_provider_run_state(
+    config_path: &Path,
+    provider_pubkey: &str,
+    entry: &ProviderIntakeEntry,
+    status: &str,
+    error_detail: Option<&str>,
+    result_preview: Option<&str>,
+) -> Result<()> {
+    mutate_ledger(config_path, |ledger| {
+        let mut job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == entry.request_event_id)
+            .cloned()
+            .unwrap_or_else(|| {
+                PylonLedgerJob::new(
+                    entry.request_event_id.clone(),
+                    "provider",
+                    ANNOUNCEMENT_KIND_TEXT_GENERATION,
+                    status,
+                )
+            });
+        job.request_event_id = Some(entry.request_event_id.clone());
+        job.customer_pubkey = Some(entry.requester_pubkey.clone());
+        job.provider_pubkey = Some(provider_pubkey.to_string());
+        job.relay_url = entry.relay_url.clone();
+        job.prompt = entry.prompt_preview.clone();
+        job.model = entry.model.clone();
+        job.bid_msats = entry.bid_msats;
+        job.status = status.to_string();
+        job.error_detail = error_detail.map(ToString::to_string);
+        if let Some(result_preview) = result_preview {
+            job.result_preview = Some(result_preview.to_string());
+        }
+        ledger.upsert_job(job);
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: crate::now_epoch_ms() as u64,
+            url: entry.relay_url.clone(),
+            kind: match status {
+                "accepted_local" => "nip90.job_accepted",
+                "processing_local" => "nip90.job_processing",
+                "completed_local" => "nip90.job_completed",
+                "failed_local" => "nip90.job_failed",
+                "rejected_policy" | "rejected_supply" | "rejected_model" | "rejected_input" => {
+                    "nip90.job_rejected"
+                }
+                "observed_drop" => "nip90.request_dropped",
+                _ => "nip90.job_updated",
+            }
+            .to_string(),
+            detail: match status {
+                "accepted_local" => format!("accepted request {}", entry.request_event_id),
+                "processing_local" => format!("processing request {}", entry.request_event_id),
+                "completed_local" => format!("completed request {}", entry.request_event_id),
+                "failed_local" => format!(
+                    "failed request {} ({})",
+                    entry.request_event_id,
+                    error_detail.unwrap_or("unknown")
+                ),
+                "rejected_policy" | "rejected_supply" | "rejected_model" | "rejected_input" => {
+                    format!(
+                        "rejected request {} ({})",
+                        entry.request_event_id,
+                        error_detail.unwrap_or("unknown")
+                    )
+                }
+                "observed_drop" => format!(
+                    "dropped request {} ({})",
+                    entry.request_event_id,
+                    error_detail.unwrap_or("unknown")
+                ),
+                _ => format!("updated request {}", entry.request_event_id),
+            },
+        });
+        Ok(())
+    })?;
+    Ok(())
 }
 
 fn persist_provider_intake(config_path: &Path, report: &ProviderIntakeReport) -> Result<()> {

@@ -35,8 +35,9 @@ pub use ledger::{
     load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
-    AnnouncementAction, AnnouncementReport, ProviderIntakeReport, load_announcement_report,
-    publish_announcement_report, render_announcement_report, render_provider_intake_report,
+    AnnouncementAction, AnnouncementReport, ProviderIntakeReport, ProviderRunReport,
+    load_announcement_report, publish_announcement_report, render_announcement_report,
+    render_provider_intake_report, render_provider_run_report, run_provider_requests,
     scan_provider_requests,
 };
 pub use wallet_runtime::{
@@ -127,6 +128,10 @@ pub enum Command {
         json: bool,
     },
     ProviderScan {
+        seconds: u64,
+        json: bool,
+    },
+    ProviderRun {
         seconds: u64,
         json: bool,
     },
@@ -763,6 +768,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_provider_intake_report(&report)))
         }
+        Command::ProviderRun { seconds, json } => {
+            let report = run_provider_requests(cli.config_path.as_path(), seconds).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_provider_run_report(&report)))
+        }
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
@@ -826,6 +838,7 @@ Commands:\n\
   relay refresh [--json]\n\
   announce [show|publish|refresh] [--json]\n\
   provider scan [--seconds <n>] [--json]\n\
+  provider run [--seconds <n>] [--json]\n\
   wallet status [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
@@ -994,6 +1007,14 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
                 let (json, seconds) =
                     parse_provider_scan_flags(args, start_index + 2, "provider scan")?;
                 Ok(Command::ProviderScan {
+                    seconds: seconds.unwrap_or(5),
+                    json,
+                })
+            }
+            Some("run") => {
+                let (json, seconds) =
+                    parse_provider_scan_flags(args, start_index + 2, "provider run")?;
+                Ok(Command::ProviderRun {
                     seconds: seconds.unwrap_or(5),
                     json,
                 })
@@ -3906,7 +3927,7 @@ mod tests {
         provider_admin_config, publish_announcement_report, refresh_relay_report,
         remove_configured_relay, render_human_status, render_sandbox_report,
         resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, save_config, scan_provider_requests,
+        run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -4274,6 +4295,24 @@ mod tests {
                     json: true,
                 },
             "provider scan should parse seconds and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_provider_run() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "provider".to_string(),
+                "run".to_string(),
+                "--seconds".to_string(),
+                "7".to_string(),
+            ])?
+            .command
+                == Command::ProviderRun {
+                    seconds: 7,
+                    json: false,
+                },
+            "provider run should parse seconds",
         )
     }
 
@@ -4672,6 +4711,128 @@ mod tests {
 
         relay_server.await?;
         ollama_server.await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_run_processes_matching_request_locally()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let base_url =
+            start_mock_http_server(
+                |method, path, body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4:e4b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/api/chat") => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                        assert_eq!(request["model"], json!("gemma4:e4b"));
+                        assert_eq!(request["messages"][0]["content"], json!("hello from buyer"));
+                        (
+                            200,
+                            "application/x-ndjson",
+                            concat!(
+                                "{\"message\":{\"content\":\"mesh \"},\"done\":false}\n",
+                                "{\"message\":{\"content\":\"reply\"},\"done\":false}\n",
+                                "{\"done\":true}\n"
+                            )
+                            .to_string(),
+                        )
+                    }
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let provider_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"REQ\"") {
+                    continue;
+                }
+                let matching = json!(["EVENT", "run", {
+                    "id": "run-job-001",
+                    "pubkey": "buyer-pubkey-001",
+                    "created_at": 1_760_000_200u64,
+                    "kind": 5050,
+                    "tags": [
+                        ["i", "hello from buyer", "text"],
+                        ["param", "model", "gemma4:e4b"],
+                        ["bid", "2400"],
+                        ["p", provider_pubkey]
+                    ],
+                    "content": "",
+                    "sig": "33".repeat(64)
+                }]);
+                ws.send(Message::Text(matching.to_string().into()))
+                    .await
+                    .expect("send matching request");
+                return;
+            }
+            panic!("relay did not receive a REQ frame");
+        });
+
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.relay_urls = vec![relay_url];
+        config.ollama_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
+
+        let report = run_provider_requests(config_path.as_path(), 1).await?;
+        ensure(
+            report.accepted_count == 1 && report.completed_count == 1,
+            "provider run should accept and complete the matching request",
+        )?;
+        ensure(
+            report.entries.iter().any(|entry| {
+                entry.request_event_id == "run-job-001"
+                    && entry.status == "completed"
+                    && entry
+                        .result_preview
+                        .as_deref()
+                        .is_some_and(|value| value.contains("mesh reply"))
+            }),
+            "provider run report should surface the local result preview",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == "run-job-001")
+            .ok_or_else(|| std::io::Error::other("missing processed provider job"))?;
+        ensure(
+            job.status == "completed_local",
+            "provider run should persist the completed local lifecycle state",
+        )?;
+        ensure(
+            job.result_preview
+                .as_deref()
+                .is_some_and(|value| value.contains("mesh reply")),
+            "provider run should persist the streamed local result preview",
+        )?;
+
+        relay_server.await?;
         Ok(())
     }
 

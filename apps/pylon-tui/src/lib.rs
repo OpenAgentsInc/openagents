@@ -167,6 +167,12 @@ enum WorkerEvent {
     ProviderScanFailed {
         error: String,
     },
+    ProviderRunFinished {
+        output: String,
+    },
+    ProviderRunFailed {
+        error: String,
+    },
     WalletCommandFinished {
         title: String,
         output: String,
@@ -695,6 +701,12 @@ impl AppShell {
             WorkerEvent::ProviderScanFailed { error } => {
                 self.push_system_message("Provider Error", error);
             }
+            WorkerEvent::ProviderRunFinished { output } => {
+                self.push_system_lines("Provider Run", text_body_lines(output.as_str()));
+            }
+            WorkerEvent::ProviderRunFailed { error } => {
+                self.push_system_message("Provider Error", error);
+            }
             WorkerEvent::WalletCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
             }
@@ -853,13 +865,17 @@ impl AppShell {
     fn handle_provider_command(&mut self, args: String) {
         let mut parts = args.split_whitespace();
         let Some(subcommand) = parts.next() else {
-            self.push_system_message("Provider Error", "Usage: /provider scan [--seconds <n>]");
-            return;
-        };
-        if subcommand != "scan" {
             self.push_system_message(
                 "Provider Error",
-                format!("Unknown provider command `{subcommand}`. Use scan."),
+                "Usage: /provider [scan|run] [--seconds <n>]",
+            );
+            return;
+        };
+        let action = subcommand.to_string();
+        if !matches!(action.as_str(), "scan" | "run") {
+            self.push_system_message(
+                "Provider Error",
+                format!("Unknown provider command `{action}`. Use scan or run."),
             );
             return;
         }
@@ -877,7 +893,7 @@ impl AppShell {
                         Ok(_) | Err(_) => {
                             self.push_system_message(
                                 "Provider Error",
-                                format!("Invalid provider scan seconds `{raw}`."),
+                                format!("Invalid provider window seconds `{raw}`."),
                             );
                             return;
                         }
@@ -895,8 +911,10 @@ impl AppShell {
 
         let config_path = self.config_path.clone();
         let tx = self.worker_tx.clone();
+        let action_for_thread = action.clone();
         std::thread::spawn(move || {
             let error_tx = tx.clone();
+            let is_run = action_for_thread == "run";
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -910,23 +928,60 @@ impl AppShell {
                 }
             };
             let result = runtime.block_on(async move {
-                let report = pylon::scan_provider_requests(config_path.as_path(), seconds).await?;
-                Ok::<String, anyhow::Error>(pylon::render_provider_intake_report(&report))
+                match if is_run { "run" } else { "scan" } {
+                    "scan" => {
+                        let report =
+                            pylon::scan_provider_requests(config_path.as_path(), seconds).await?;
+                        Ok::<(bool, String), anyhow::Error>((
+                            false,
+                            pylon::render_provider_intake_report(&report),
+                        ))
+                    }
+                    "run" => {
+                        let report =
+                            pylon::run_provider_requests(config_path.as_path(), seconds).await?;
+                        Ok::<(bool, String), anyhow::Error>((
+                            true,
+                            pylon::render_provider_run_report(&report),
+                        ))
+                    }
+                    other => Err(anyhow::anyhow!(
+                        "Unknown provider command `{other}`. Use scan or run."
+                    )),
+                }
             });
             match result {
-                Ok(output) => {
-                    let _ = tx.send(WorkerEvent::ProviderScanFinished { output });
+                Ok((is_run, output)) => {
+                    let _ = tx.send(if is_run {
+                        WorkerEvent::ProviderRunFinished { output }
+                    } else {
+                        WorkerEvent::ProviderScanFinished { output }
+                    });
                 }
                 Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::ProviderScanFailed {
-                        error: error.to_string(),
+                    let _ = error_tx.send(if is_run {
+                        WorkerEvent::ProviderRunFailed {
+                            error: error.to_string(),
+                        }
+                    } else {
+                        WorkerEvent::ProviderScanFailed {
+                            error: error.to_string(),
+                        }
                     });
                 }
             }
         });
         self.push_system_message(
-            "Provider Intake",
-            format!("Scanning configured relays for {}s...", seconds),
+            if action == "run" {
+                "Provider Run"
+            } else {
+                "Provider Intake"
+            },
+            if action == "run" {
+                format!("Running retained provider intake for {}s...", seconds)
+            } else {
+                format!("Scanning configured relays for {}s...", seconds)
+            },
         );
     }
 
@@ -1413,9 +1468,10 @@ Controls:\n\
   PgUp/PgDn / wheel  scroll transcript\n\
   Enter    submit composer\n\
   Ctrl+J   insert newline\n\
-Composer:\n\
+  Composer:\n\
   [prompt]  stream a reply from local Gemma when weights are loaded\n\
   /help  show available commands\n\
+  /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
   /relay [list|add|remove|refresh]  inspect or update configured relays\n\
   /wallet [status|balance|address|invoice|pay|history]  run retained Spark wallet commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"

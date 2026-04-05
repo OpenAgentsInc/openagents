@@ -91,11 +91,11 @@ The retained provider announcement controls now also exist in both places:
 
 The current retained announcement scope is one honest local text-generation handler for `kind:5050`. Pylon only publishes it when a local Gemma-backed text-generation path is actually eligible.
 
-The retained provider intake scan also exists in both places:
-- TUI: `/provider scan [--seconds <n>]`
-- headless: `cargo pylon-headless provider scan [--seconds <n>]`
+The retained provider intake controls also exist in both places:
+- TUI: `/provider scan [--seconds <n>]`, `/provider run [--seconds <n>]`
+- headless: `cargo pylon-headless provider scan [--seconds <n>]`, `cargo pylon-headless provider run [--seconds <n>]`
 
-This first cut is bounded. It subscribes to retained `kind:5050` inbound requests on the configured relays, deduplicates them, classifies local matches versus dropped requests, and persists the intake decision in the local ledger. It does not execute the job yet.
+The current retained execution scope is narrow and honest. Pylon subscribes to retained inbound `kind:5050` requests on the configured relays, filters targeted jobs, and only accepts work when the provider is online and a local Gemma text-generation path is actually ready. `scan` records intake decisions without executing. `run` executes accepted jobs locally and persists the provider-side lifecycle in the local ledger.
 
 The retained wallet controls now also exist in both places:
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
@@ -112,9 +112,11 @@ Inspect status:
 ```bash
 cargo pylon-headless status
 cargo pylon-headless status --json
+cargo pylon-headless online
 cargo pylon-headless announce
 cargo pylon-headless announce publish
 cargo pylon-headless provider scan --seconds 5
+cargo pylon-headless provider run --seconds 5
 ```
 
 Inspect provider truth:

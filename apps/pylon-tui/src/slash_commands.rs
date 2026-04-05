@@ -59,8 +59,8 @@ const COMMANDS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
         id: SlashCommandId::Provider,
         name: "provider",
-        usage: "/provider scan [--seconds <n>]",
-        summary: "scan configured relays for retained inbound NIP-90 jobs",
+        usage: "/provider [scan|run] [--seconds <n>]",
+        summary: "scan or process retained inbound NIP-90 jobs",
     },
     SlashCommandSpec {
         id: SlashCommandId::Relay,
