@@ -206,7 +206,7 @@ impl AppShell {
             TranscriptRole::System,
             "Shell Ready",
             vec![String::from(
-                "Type a prompt. /chat [prompt] also works. /download <model> pulls Gemma weights.",
+                "Type a prompt. /download <model> pulls Gemma weights.",
             )],
         ));
         Self {
@@ -344,7 +344,7 @@ impl AppShell {
             return;
         }
         if prompt.is_empty() {
-            self.push_system_message("Prompt Error", "Type a prompt or use /chat [prompt].");
+            self.push_system_message("Prompt Error", "Type a prompt.");
             return;
         }
 
@@ -762,7 +762,7 @@ impl AppShell {
             shell_border(),
             shell_accent(),
             Some(
-                "Type a prompt. /chat [prompt] chats. /download <model> pulls Gemma weights. Enter submits. Ctrl+J inserts a newline.",
+                "Type a prompt. /download <model> pulls Gemma weights. Enter submits. Ctrl+J inserts a newline.",
             ),
         );
         frame.render_widget(self.footer_panel(), vertical[3]);
@@ -1086,7 +1086,7 @@ Controls:\n\
   Enter    submit composer\n\
   Ctrl+J   insert newline\n\
 Composer:\n\
-  [prompt] or /chat [prompt]  stream a reply from local Gemma when weights are loaded\n\
+  [prompt]  stream a reply from local Gemma when weights are loaded\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
 }
 
