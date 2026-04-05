@@ -35,6 +35,8 @@ If any release note, marketing text, or operator doc violates one of those state
 | Jobs | `cargo run -p pylon -- jobs` | shows recent jobs or an empty truthful list, including sandbox family/profile/failure detail when present |
 | Earnings | `cargo run -p pylon -- earnings` | shows earnings summary or explicit none-state |
 | Receipts | `cargo run -p pylon -- receipts` | shows receipt summaries or an empty truthful list, including sandbox profile/termination/failure detail when present |
+| Activity | `cargo run -p pylon -- activity` | shows retained relay and settlement activity, or an explicit none-state |
+| Regtest config surface | `cargo run -p pylon -- config set wallet_network regtest` then `config show` | persists `regtest` as the retained wallet network without changing unrelated local state |
 | Online transition | `cargo run -p pylon -- online` | desired mode becomes `online`; unhealthy supply becomes `degraded`, not falsely healthy |
 | Pause/resume | `cargo run -p pylon -- pause` then `resume` | transitions are explicit and truthful |
 | Offline transition | `cargo run -p pylon -- offline` | desired mode becomes `offline` |
@@ -57,6 +59,7 @@ cargo clippy -p autopilot-desktop --all-targets -- -D warnings
 scripts/lint/ownership-boundary-check.sh
 scripts/lint/workspace-dependency-drift-check.sh
 scripts/pylon/verify_standalone.sh
+scripts/pylon/verify_nip90_wallet.sh
 ```
 
 Sandbox-specific evidence that should remain green:
@@ -86,6 +89,21 @@ cargo run -p pylon -- offline
 ```
 
 If those commands do not run cleanly and report truthful state transitions, the release is not ready.
+
+The retained NIP-90 and wallet lane has its own local verification script:
+
+```bash
+scripts/pylon/verify_nip90_wallet.sh
+```
+
+That script is intentionally local and honest. It does four things:
+
+- initializes a fresh standalone Pylon home
+- pins the retained wallet config to `regtest`
+- checks the retained headless report surfaces for jobs, earnings, receipts, payout, and activity
+- runs the focused local websocket-relay and wallet-hook roundtrip tests for relay auth, announcement publish, provider intake, provider payment-required flow, provider settlement, buyer submit/watch/pay, payout withdrawal persistence, and retained activity replay
+
+It does not claim a live funded external Spark regtest backend. The current retained release gate is local relay plus regtest-shaped wallet configuration, with wallet send and invoice roundtrips proven through the checked-in focused tests.
 
 ## Packaging and Service Expectations
 
@@ -123,6 +141,7 @@ Release candidate:
 - run the standalone smoke path on at least one Apple FM-capable machine if Apple FM is part of the candidate
 - run the sandbox-specific evidence commands on at least one machine with declared sandbox profiles
 - confirm persisted status, jobs, earnings, and receipts survive a restart
+- run `scripts/pylon/verify_nip90_wallet.sh`
 
 Launch approval:
 

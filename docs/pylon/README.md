@@ -266,6 +266,7 @@ Before calling it launch-ready, use:
 
 - [PYLON_VERIFICATION_MATRIX.md](./PYLON_VERIFICATION_MATRIX.md)
 - [`scripts/pylon/verify_standalone.sh`](../../scripts/pylon/verify_standalone.sh)
+- [`scripts/pylon/verify_nip90_wallet.sh`](../../scripts/pylon/verify_nip90_wallet.sh)
 
 Those materials cover:
 
@@ -275,6 +276,9 @@ Those materials cover:
 - lifecycle transitions
 - restart and replay expectations
 - local observability surfaces
+- local relay and wallet roundtrip coverage for the retained NIP-90 lane
 - receipt and earnings visibility, including sandbox failure and termination detail
 - Autopilot parity checks
 - rollout and launch-truth gates
+
+The retained NIP-90 and wallet verification lane is local and explicit. `scripts/pylon/verify_nip90_wallet.sh` sets a fresh standalone Pylon home to `wallet_network=regtest`, checks the retained headless report commands, and then runs the focused local websocket-relay and wallet-hook tests that cover provider intake, buyer submit/watch/pay, payout persistence, and retained activity replay. It does not claim a live funded external Spark regtest backend.
