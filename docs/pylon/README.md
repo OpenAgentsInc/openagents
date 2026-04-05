@@ -72,9 +72,9 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 - live host, CPU, memory, swap, uptime, disk, network, thermal, and power-source state
 - a GPU summary and NVIDIA power telemetry when the host can report it
 - a retained transcript area for local shell activity
-- a bottom textbox with one slash command: `/chat [prompt]`
+- a bottom textbox where plain text submits a prompt and `/chat [prompt]` remains an optional alias
 
-The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next `/chat` request when local Gemma weights are available. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state but not direct watt draw. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state but not direct watt draw. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 Initialize a standalone config and identity:
 

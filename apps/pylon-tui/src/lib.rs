@@ -169,9 +169,7 @@ impl AppShell {
         transcript.push_entry(TranscriptEntry::new(
             TranscriptRole::System,
             "Shell Ready",
-            vec![String::from(
-                "Type /chat [prompt]. Live local replies stay here.",
-            )],
+            vec![String::from("Type a prompt. /chat [prompt] also works.")],
         ));
         let transcript_line_count = transcript.as_text().lines.len();
         Self {
@@ -256,7 +254,7 @@ impl AppShell {
     fn handle_submission(&mut self, submission: ComposerSubmission) {
         let title = match submission.slash_command.as_deref() {
             Some(command) => format!("Command /{command}"),
-            None => String::from("Input"),
+            None => String::from("Prompt"),
         };
         let body = submission
             .text
@@ -267,31 +265,29 @@ impl AppShell {
             .push_entry(TranscriptEntry::new(TranscriptRole::User, title, body));
         self.sync_transcript_scroll_after_update();
 
-        let Some(command) = submission.slash_command.as_deref() else {
-            self.push_system_message("Input Error", "Only /chat [prompt] is available right now.");
-            return;
+        let prompt = match submission.slash_command.as_deref() {
+            Some("chat") => submission
+                .text
+                .trim()
+                .strip_prefix("/chat")
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_string(),
+            Some(command) => {
+                self.push_system_message(
+                    "Command Error",
+                    format!("Unknown command /{command}. Only /chat is available."),
+                );
+                return;
+            }
+            None => submission.text.trim().to_string(),
         };
-        if command != "chat" {
-            self.push_system_message(
-                "Command Error",
-                format!("Unknown command /{command}. Only /chat is available."),
-            );
-            return;
-        }
         if self.chat_in_flight {
             self.push_system_message("Chat Busy", "A local Gemma chat is already running.");
             return;
         }
-
-        let prompt = submission
-            .text
-            .trim()
-            .strip_prefix("/chat")
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
         if prompt.is_empty() {
-            self.push_system_message("Command Error", "Usage: /chat [prompt]");
+            self.push_system_message("Prompt Error", "Type a prompt or use /chat [prompt].");
             return;
         }
 
@@ -569,7 +565,7 @@ impl AppShell {
             vertical[2],
             shell_border(),
             shell_accent(),
-            Some("Type /chat [prompt]. Enter submits. Ctrl+J inserts a newline."),
+            Some("Type a prompt. /chat [prompt] also works. Enter submits. Ctrl+J inserts a newline."),
         );
         frame.render_widget(self.footer_panel(), vertical[3]);
     }
@@ -862,7 +858,7 @@ Controls:\n\
   Enter    submit composer\n\
   Ctrl+J   insert newline\n\
 Composer:\n\
-  /chat [prompt]  stream a reply from local Gemma when weights are loaded\n"
+  [prompt] or /chat [prompt]  stream a reply from local Gemma when weights are loaded\n"
 }
 
 pub async fn run_pylon_tui() -> Result<()> {
@@ -1337,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn plain_text_submission_is_rejected_locally() {
+    fn plain_text_submission_starts_chat_prompt() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         app.handle_submission(ComposerSubmission {
             text: String::from("hello"),
@@ -1345,8 +1341,10 @@ mod tests {
         });
 
         let transcript = transcript_text(&app);
-        assert!(transcript.contains("[user] Input"));
-        assert!(transcript.contains("[system] Input Error"));
+        assert!(transcript.contains("[user] Prompt"));
+        assert!(transcript.contains("hello"));
+        assert!(transcript.contains("[system] Chat Error"));
+        assert!(transcript.contains("No local Gemma weights are visible right now."));
     }
 
     #[test]
