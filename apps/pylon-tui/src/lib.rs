@@ -221,33 +221,27 @@ impl AppShell {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
-        match key {
+        if matches!(
+            key,
             KeyEvent {
                 code: KeyCode::Char('c'),
                 modifiers,
                 ..
-            } if modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
-            KeyEvent {
-                code: KeyCode::Char('q') | KeyCode::Esc,
-                ..
-            } => self.should_quit = true,
-            KeyEvent {
-                code: KeyCode::Char('r'),
-                ..
-            } => self.schedule_refresh_now(),
-            KeyEvent {
-                code: KeyCode::PageUp,
-                ..
-            } => self.scroll_transcript_up(10),
-            KeyEvent {
-                code: KeyCode::PageDown,
-                ..
-            } => self.scroll_transcript_down(10),
-            _ => {
-                if let Some(submission) = self.bottom_pane.handle_key(key) {
-                    self.handle_submission(submission);
-                }
-            }
+            } if modifiers.contains(KeyModifiers::CONTROL)
+        ) {
+            self.should_quit = true;
+            return;
+        }
+
+        if let Some(submission) = self.bottom_pane.handle_key(key) {
+            self.handle_submission(submission);
+            return;
+        }
+
+        match key.code {
+            KeyCode::PageUp => self.scroll_transcript_up(10),
+            KeyCode::PageDown => self.scroll_transcript_down(10),
+            _ => {}
         }
     }
 
@@ -640,12 +634,8 @@ impl AppShell {
 
     fn footer_panel(&self) -> Paragraph<'static> {
         Paragraph::new(Line::from(vec![
-            Span::styled(" q ", shell_accent()),
-            Span::raw("quit  "),
             Span::styled(" Ctrl+C ", shell_accent()),
             Span::raw("quit  "),
-            Span::styled(" r ", shell_accent()),
-            Span::raw("refresh  "),
             Span::styled(" PgUp/PgDn ", shell_accent()),
             Span::raw("scroll  "),
             Span::styled(" Enter ", shell_accent()),
@@ -874,8 +864,7 @@ impl AppShell {
 pub fn usage() -> &'static str {
     "Usage: pylon-tui [--config-path <path>]\n\
 Controls:\n\
-  q / Esc / Ctrl+C  quit\n\
-  r        refresh now\n\
+  Ctrl+C   quit\n\
   PgUp/PgDn / wheel  scroll transcript\n\
   Enter    submit composer\n\
   Ctrl+J   insert newline\n\
@@ -1399,6 +1388,7 @@ mod tests {
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
         active_chat_title, estimate_token_count, summarize_chat_metrics,
     };
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
@@ -1487,6 +1477,19 @@ mod tests {
         app.scroll_transcript_down(u16::MAX);
         assert!(app.transcript_follow_latest);
         assert_eq!(app.transcript_panel_title(), "Transcript");
+    }
+
+    #[test]
+    fn plain_character_keys_do_not_trigger_global_hotkeys() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let transcript = transcript_text(&app);
+        assert!(!app.should_quit());
+        assert!(transcript.contains("[user] Prompt"));
+        assert!(transcript.contains("qr"));
     }
 
     #[test]
