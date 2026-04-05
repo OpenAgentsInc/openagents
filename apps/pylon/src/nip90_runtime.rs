@@ -19,9 +19,10 @@ use serde_json::json;
 use crate::{
     LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatTarget, PylonConfig,
     PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, PylonSettlementRecord,
-    PylonWalletPaymentRecord, WalletHistoryReport, WalletInvoiceReport,
+    PylonWalletPaymentRecord, WalletHistoryReport, WalletInvoiceReport, WalletPayReport,
     create_wallet_invoice_report, ensure_identity, load_config_and_status, load_ledger,
-    load_wallet_history_report, mutate_ledger, now_epoch_ms, products_from_status,
+    load_wallet_history_report, mutate_ledger, now_epoch_ms, pay_wallet_invoice_report,
+    products_from_status,
 };
 
 const ANNOUNCEMENT_KIND_TEXT_GENERATION: u16 = nostr::nip90::KIND_JOB_TEXT_GENERATION;
@@ -163,6 +164,7 @@ pub struct BuyerJobSubmitReport {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct BuyerJobWatchEntry {
     pub request_event_id: String,
+    pub provider_pubkey: Option<String>,
     pub relay_url: Option<String>,
     pub event_id: String,
     pub event_kind: String,
@@ -180,6 +182,30 @@ pub struct BuyerJobWatchReport {
     pub feedback_count: usize,
     pub result_count: usize,
     pub entries: Vec<BuyerJobWatchEntry>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuyerPaymentPolicyMode {
+    Show,
+    Auto,
+    Manual,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerPaymentPolicyReport {
+    pub auto_pay_enabled: bool,
+    pub detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct BuyerJobPaymentReport {
+    pub request_event_id: String,
+    pub provider_pubkey: Option<String>,
+    pub status: String,
+    pub amount_msats: Option<u64>,
+    pub bolt11: Option<String>,
+    pub payment_id: Option<String>,
+    pub detail: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
@@ -219,6 +245,9 @@ type TestWalletInvoiceHook =
 type TestWalletPaymentsHook = Box<dyn Fn() -> Result<Vec<PylonWalletPaymentRecord>> + Send + Sync>;
 
 #[cfg(test)]
+type TestWalletPayHook = Box<dyn Fn(&str, Option<u64>) -> Result<WalletPayReport> + Send + Sync>;
+
+#[cfg(test)]
 static TEST_WALLET_INVOICE_HOOK: std::sync::OnceLock<
     std::sync::Mutex<Option<TestWalletInvoiceHook>>,
 > = std::sync::OnceLock::new();
@@ -227,6 +256,10 @@ static TEST_WALLET_INVOICE_HOOK: std::sync::OnceLock<
 static TEST_WALLET_PAYMENTS_HOOK: std::sync::OnceLock<
     std::sync::Mutex<Option<TestWalletPaymentsHook>>,
 > = std::sync::OnceLock::new();
+
+#[cfg(test)]
+static TEST_WALLET_PAY_HOOK: std::sync::OnceLock<std::sync::Mutex<Option<TestWalletPayHook>>> =
+    std::sync::OnceLock::new();
 
 #[cfg(test)]
 static TEST_RUNTIME_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -241,6 +274,12 @@ pub(crate) fn set_test_wallet_invoice_hook(hook: Option<TestWalletInvoiceHook>) 
 pub(crate) fn set_test_wallet_payments_hook(hook: Option<TestWalletPaymentsHook>) {
     let slot = TEST_WALLET_PAYMENTS_HOOK.get_or_init(|| std::sync::Mutex::new(None));
     *slot.lock().expect("test wallet payments hook lock") = hook;
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_wallet_pay_hook(hook: Option<TestWalletPayHook>) {
+    let slot = TEST_WALLET_PAY_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().expect("test wallet pay hook lock") = hook;
 }
 
 #[cfg(test)]
@@ -1398,6 +1437,7 @@ where
     F: FnMut(BuyerJobWatchEntry),
 {
     let config = crate::ensure_local_setup(config_path)?;
+    let auto_pay_enabled = config.buyer_auto_pay_enabled;
     let identity = ensure_identity(config.identity_path.as_path())?;
     let tracked_request_ids = tracked_buyer_request_ids(config_path, request_event_id)?;
     if tracked_request_ids.is_empty() {
@@ -1456,6 +1496,46 @@ where
             }
             on_event(entry.clone());
             entries.push(entry);
+            if auto_pay_enabled
+                && entries.last().is_some_and(|entry| {
+                    entry.event_kind == "feedback" && entry.status == "payment-required"
+                })
+            {
+                let latest = entries.last().cloned().expect("latest entry");
+                match approve_buyer_job_payment(config_path, latest.request_event_id.as_str()).await
+                {
+                    Ok(report) => {
+                        let payment_entry = BuyerJobWatchEntry {
+                            request_event_id: report.request_event_id.clone(),
+                            provider_pubkey: latest.provider_pubkey.clone(),
+                            relay_url: None,
+                            event_id: report
+                                .payment_id
+                                .clone()
+                                .unwrap_or_else(|| format!("payment:{}", report.request_event_id)),
+                            event_kind: "payment".to_string(),
+                            status: report.status.clone(),
+                            amount_msats: report.amount_msats,
+                            bolt11: report.bolt11.clone(),
+                            result_preview: None,
+                            detail: report.detail.clone(),
+                        };
+                        on_event(payment_entry.clone());
+                        entries.push(payment_entry);
+                    }
+                    Err(error) => {
+                        let payment_entry = record_buyer_payment_failure(
+                            config_path,
+                            latest.request_event_id.as_str(),
+                            latest.amount_msats,
+                            latest.bolt11.as_deref(),
+                            error.to_string().as_str(),
+                        )?;
+                        on_event(payment_entry.clone());
+                        entries.push(payment_entry);
+                    }
+                }
+            }
         }
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
@@ -1483,6 +1563,9 @@ pub fn render_buyer_job_watch_report(report: &BuyerJobWatchReport) -> String {
     for entry in &report.entries {
         lines.push(String::new());
         lines.push(format!("request_event_id: {}", entry.request_event_id));
+        if let Some(provider_pubkey) = entry.provider_pubkey.as_deref() {
+            lines.push(format!("provider_pubkey: {provider_pubkey}"));
+        }
         lines.push(format!(
             "relay_url: {}",
             entry.relay_url.as_deref().unwrap_or("unknown")
@@ -1502,6 +1585,173 @@ pub fn render_buyer_job_watch_report(report: &BuyerJobWatchReport) -> String {
         if let Some(detail) = entry.detail.as_deref() {
             lines.push(format!("detail: {detail}"));
         }
+    }
+    lines.join("\n")
+}
+
+pub fn apply_buyer_payment_policy(
+    config_path: &Path,
+    mode: BuyerPaymentPolicyMode,
+) -> Result<BuyerPaymentPolicyReport> {
+    let mut config = crate::load_or_create_config(config_path)?;
+    let detail = match mode {
+        BuyerPaymentPolicyMode::Show => None,
+        BuyerPaymentPolicyMode::Auto => {
+            config.buyer_auto_pay_enabled = true;
+            crate::save_config(config_path, &config)?;
+            Some("buyer auto-pay enabled".to_string())
+        }
+        BuyerPaymentPolicyMode::Manual => {
+            config.buyer_auto_pay_enabled = false;
+            crate::save_config(config_path, &config)?;
+            Some("buyer auto-pay disabled".to_string())
+        }
+    };
+    Ok(BuyerPaymentPolicyReport {
+        auto_pay_enabled: config.buyer_auto_pay_enabled,
+        detail,
+    })
+}
+
+pub fn render_buyer_payment_policy_report(report: &BuyerPaymentPolicyReport) -> String {
+    let mut lines = vec![format!("auto_pay_enabled: {}", report.auto_pay_enabled)];
+    if let Some(detail) = report.detail.as_deref() {
+        lines.push(format!("detail: {detail}"));
+    }
+    lines.join("\n")
+}
+
+pub async fn approve_buyer_job_payment(
+    config_path: &Path,
+    request_event_id: &str,
+) -> Result<BuyerJobPaymentReport> {
+    let request_event_id = request_event_id.trim();
+    if request_event_id.is_empty() {
+        bail!("buyer approve requires a request event id");
+    }
+    let ledger = load_ledger(config_path)?;
+    let job = ledger
+        .jobs
+        .iter()
+        .find(|job| {
+            job.direction == "buyer"
+                && job
+                    .request_event_id
+                    .as_deref()
+                    .is_some_and(|value| value == request_event_id)
+        })
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("unknown buyer job `{request_event_id}`"))?;
+    let bolt11 = job
+        .bolt11
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("buyer job `{request_event_id}` has no pending invoice"))?;
+    let amount_msats = job.amount_msats;
+    let amount_sats = amount_msats.map(msats_to_sats_rounded_up);
+    let pay_report = pay_buyer_invoice_report(config_path, bolt11.as_str(), amount_sats).await?;
+    let payment_report = record_buyer_payment_submission(
+        config_path,
+        request_event_id,
+        amount_msats,
+        bolt11.as_str(),
+        &pay_report,
+        "buyer approved and submitted invoice payment",
+    )?;
+    Ok(payment_report)
+}
+
+pub fn deny_buyer_job_payment(
+    config_path: &Path,
+    request_event_id: &str,
+) -> Result<BuyerJobPaymentReport> {
+    let request_event_id = request_event_id.trim();
+    if request_event_id.is_empty() {
+        bail!("buyer deny requires a request event id");
+    }
+    let ledger = load_ledger(config_path)?;
+    let job = ledger
+        .jobs
+        .iter()
+        .find(|job| {
+            job.direction == "buyer"
+                && job
+                    .request_event_id
+                    .as_deref()
+                    .is_some_and(|value| value == request_event_id)
+        })
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("unknown buyer job `{request_event_id}`"))?;
+    mutate_ledger(config_path, |ledger| {
+        if let Some(existing_job) = ledger
+            .jobs
+            .iter()
+            .find(|existing| {
+                existing.direction == "buyer"
+                    && existing
+                        .request_event_id
+                        .as_deref()
+                        .is_some_and(|value| value == request_event_id)
+            })
+            .cloned()
+        {
+            let mut updated_job = existing_job;
+            updated_job.status = "payment_denied".to_string();
+            updated_job.error_detail = Some("buyer denied invoice".to_string());
+            ledger.upsert_job(updated_job);
+        }
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: format!("buyer-settlement:{request_event_id}"),
+            job_id: request_event_id.to_string(),
+            direction: "buyer".to_string(),
+            status: "payment_denied".to_string(),
+            amount_msats: job.amount_msats.unwrap_or(0),
+            payment_reference: None,
+            receipt_detail: Some("buyer denied invoice".to_string()),
+            created_at_ms: now_epoch_ms() as u64,
+            updated_at_ms: now_epoch_ms() as u64,
+        });
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: None,
+            kind: "nip90.payment_denied".to_string(),
+            detail: format!("buyer denied invoice for request {request_event_id}"),
+        });
+        Ok(())
+    })?;
+    Ok(BuyerJobPaymentReport {
+        request_event_id: request_event_id.to_string(),
+        provider_pubkey: job.provider_pubkey,
+        status: "payment_denied".to_string(),
+        amount_msats: job.amount_msats,
+        bolt11: job.bolt11,
+        payment_id: None,
+        detail: Some("buyer denied invoice".to_string()),
+    })
+}
+
+pub fn render_buyer_job_payment_report(report: &BuyerJobPaymentReport) -> String {
+    let mut lines = vec![
+        format!("request_event_id: {}", report.request_event_id),
+        format!(
+            "provider_pubkey: {}",
+            report.provider_pubkey.as_deref().unwrap_or("none")
+        ),
+        format!("status: {}", report.status),
+        format!(
+            "amount_msats: {}",
+            report
+                .amount_msats
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ),
+        format!("bolt11: {}", report.bolt11.as_deref().unwrap_or("none")),
+        format!(
+            "payment_id: {}",
+            report.payment_id.as_deref().unwrap_or("none")
+        ),
+    ];
+    if let Some(detail) = report.detail.as_deref() {
+        lines.push(format!("detail: {detail}"));
     }
     lines.join("\n")
 }
@@ -1648,6 +1898,7 @@ fn classify_buyer_job_event(
         }
         return Some(BuyerJobWatchEntry {
             request_event_id: feedback.request_id,
+            provider_pubkey: Some(event.pubkey.clone()),
             relay_url: Some(relay_url.to_string()),
             event_id: event.id.clone(),
             event_kind: "feedback".to_string(),
@@ -1666,6 +1917,7 @@ fn classify_buyer_job_event(
         }
         return Some(BuyerJobWatchEntry {
             request_event_id: result.request_id,
+            provider_pubkey: Some(event.pubkey.clone()),
             relay_url: Some(relay_url.to_string()),
             event_id: event.id.clone(),
             event_kind: "result".to_string(),
@@ -2649,6 +2901,10 @@ fn persist_buyer_job_event(config_path: &Path, entry: &BuyerJobWatchEntry) -> Re
                 job.request_event_id = Some(entry.request_event_id.clone());
                 job
             });
+        job.provider_pubkey = entry
+            .provider_pubkey
+            .clone()
+            .or(job.provider_pubkey.clone());
         job.relay_url = entry.relay_url.clone().or(job.relay_url);
         if entry.event_kind == "feedback" {
             if !job
@@ -2690,6 +2946,132 @@ fn persist_buyer_job_event(config_path: &Path, entry: &BuyerJobWatchEntry) -> Re
         Ok(())
     })?;
     Ok(())
+}
+
+fn record_buyer_payment_submission(
+    config_path: &Path,
+    request_event_id: &str,
+    amount_msats: Option<u64>,
+    bolt11: &str,
+    pay_report: &WalletPayReport,
+    detail: &str,
+) -> Result<BuyerJobPaymentReport> {
+    let mut provider_pubkey = None;
+    mutate_ledger(config_path, |ledger| {
+        if let Some(existing_job) = ledger
+            .jobs
+            .iter()
+            .find(|existing| {
+                existing.direction == "buyer"
+                    && existing
+                        .request_event_id
+                        .as_deref()
+                        .is_some_and(|value| value == request_event_id)
+            })
+            .cloned()
+        {
+            provider_pubkey = existing_job.provider_pubkey.clone();
+            let mut updated_job = existing_job;
+            updated_job.status = "payment_submitted".to_string();
+            updated_job.amount_msats = amount_msats.or(updated_job.amount_msats);
+            updated_job.bolt11 = Some(bolt11.to_string());
+            updated_job.payment_id = Some(pay_report.payment_id.clone());
+            updated_job.error_detail = Some(detail.to_string());
+            ledger.upsert_job(updated_job);
+        }
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: format!("buyer-settlement:{request_event_id}"),
+            job_id: request_event_id.to_string(),
+            direction: "buyer".to_string(),
+            status: "payment_submitted".to_string(),
+            amount_msats: amount_msats.unwrap_or(0),
+            payment_reference: Some(pay_report.payment_id.clone()),
+            receipt_detail: Some(detail.to_string()),
+            created_at_ms: now_epoch_ms() as u64,
+            updated_at_ms: now_epoch_ms() as u64,
+        });
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: None,
+            kind: "nip90.payment_submitted".to_string(),
+            detail: format!(
+                "submitted buyer payment {} for request {}",
+                pay_report.payment_id, request_event_id
+            ),
+        });
+        Ok(())
+    })?;
+    Ok(BuyerJobPaymentReport {
+        request_event_id: request_event_id.to_string(),
+        provider_pubkey,
+        status: "payment_submitted".to_string(),
+        amount_msats,
+        bolt11: Some(bolt11.to_string()),
+        payment_id: Some(pay_report.payment_id.clone()),
+        detail: Some(detail.to_string()),
+    })
+}
+
+fn record_buyer_payment_failure(
+    config_path: &Path,
+    request_event_id: &str,
+    amount_msats: Option<u64>,
+    bolt11: Option<&str>,
+    detail: &str,
+) -> Result<BuyerJobWatchEntry> {
+    mutate_ledger(config_path, |ledger| {
+        if let Some(existing_job) = ledger
+            .jobs
+            .iter()
+            .find(|existing| {
+                existing.direction == "buyer"
+                    && existing
+                        .request_event_id
+                        .as_deref()
+                        .is_some_and(|value| value == request_event_id)
+            })
+            .cloned()
+        {
+            let mut updated_job = existing_job;
+            updated_job.status = "payment_failed".to_string();
+            updated_job.amount_msats = amount_msats.or(updated_job.amount_msats);
+            updated_job.bolt11 = bolt11
+                .map(ToString::to_string)
+                .or(updated_job.bolt11.clone());
+            updated_job.error_detail = Some(detail.to_string());
+            ledger.upsert_job(updated_job);
+        }
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: format!("buyer-settlement:{request_event_id}"),
+            job_id: request_event_id.to_string(),
+            direction: "buyer".to_string(),
+            status: "payment_failed".to_string(),
+            amount_msats: amount_msats.unwrap_or(0),
+            payment_reference: None,
+            receipt_detail: Some(detail.to_string()),
+            created_at_ms: now_epoch_ms() as u64,
+            updated_at_ms: now_epoch_ms() as u64,
+        });
+        ledger.push_relay_activity(PylonRelayActivity {
+            at_ms: now_epoch_ms() as u64,
+            url: None,
+            kind: "nip90.payment_failed".to_string(),
+            detail: format!("buyer payment failed for request {request_event_id}: {detail}"),
+        });
+        Ok(())
+    })?;
+    Ok(BuyerJobWatchEntry {
+        request_event_id: request_event_id.to_string(),
+        provider_pubkey: None,
+        relay_url: None,
+        event_id: format!("payment-failed:{request_event_id}"),
+        event_kind: "payment".to_string(),
+        status: "payment_failed".to_string(),
+        amount_msats,
+        bolt11: bolt11.map(ToString::to_string),
+        result_preview: None,
+        detail: Some(detail.to_string()),
+    })
 }
 
 fn decode_private_key_hex(value: &str) -> Result<[u8; 32]> {
@@ -2741,6 +3123,22 @@ async fn create_provider_invoice_report(
         expiry_seconds,
     )
     .await
+}
+
+async fn pay_buyer_invoice_report(
+    config_path: &Path,
+    bolt11: &str,
+    amount_sats: Option<u64>,
+) -> Result<WalletPayReport> {
+    #[cfg(test)]
+    {
+        if let Some(slot) = TEST_WALLET_PAY_HOOK.get() {
+            if let Some(hook) = slot.lock().expect("test wallet pay hook lock").as_ref() {
+                return hook(bolt11, amount_sats);
+            }
+        }
+    }
+    pay_wallet_invoice_report(config_path, bolt11, amount_sats).await
 }
 
 fn msats_to_sats_rounded_up(amount_msats: u64) -> u64 {

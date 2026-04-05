@@ -66,8 +66,8 @@ const COMMANDS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
         id: SlashCommandId::Job,
         name: "job",
-        usage: "/job [submit|watch] ...",
-        summary: "publish or watch retained NIP-90 buyer jobs on the configured relays",
+        usage: "/job [submit|watch|approve|deny|policy] ...",
+        summary: "submit, watch, or settle retained NIP-90 buyer jobs on the configured relays",
     },
     SlashCommandSpec {
         id: SlashCommandId::Relay,

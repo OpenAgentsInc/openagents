@@ -35,12 +35,14 @@ pub use ledger::{
     load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
-    AnnouncementAction, AnnouncementReport, BuyerJobSubmitReport, BuyerJobSubmitRequest,
-    BuyerJobWatchEntry, BuyerJobWatchReport, ProviderIntakeReport, ProviderRunReport,
-    load_announcement_report, publish_announcement_report, render_announcement_report,
-    render_buyer_job_submit_report, render_buyer_job_watch_report, render_provider_intake_report,
-    render_provider_run_report, run_provider_requests, scan_provider_requests, submit_buyer_job,
-    watch_buyer_jobs,
+    AnnouncementAction, AnnouncementReport, BuyerJobPaymentReport, BuyerJobSubmitReport,
+    BuyerJobSubmitRequest, BuyerJobWatchEntry, BuyerJobWatchReport, BuyerPaymentPolicyMode,
+    BuyerPaymentPolicyReport, ProviderIntakeReport, ProviderRunReport, apply_buyer_payment_policy,
+    approve_buyer_job_payment, deny_buyer_job_payment, load_announcement_report,
+    publish_announcement_report, render_announcement_report, render_buyer_job_payment_report,
+    render_buyer_job_submit_report, render_buyer_job_watch_report,
+    render_buyer_payment_policy_report, render_provider_intake_report, render_provider_run_report,
+    run_provider_requests, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
 };
 pub use wallet_runtime::{
     WalletAddressReport, WalletBalanceSnapshot, WalletHistoryReport, WalletInvoiceReport,
@@ -73,6 +75,8 @@ pub struct PylonConfig {
     pub wallet_network: String,
     #[serde(default = "default_wallet_api_key_env")]
     pub wallet_api_key_env: Option<String>,
+    #[serde(default = "default_buyer_auto_pay_enabled")]
+    pub buyer_auto_pay_enabled: bool,
     pub wallet_storage_dir: PathBuf,
     pub ollama_base_url: String,
     pub apple_fm_base_url: Option<String>,
@@ -144,6 +148,18 @@ pub enum Command {
     JobWatch {
         request_event_id: Option<String>,
         seconds: u64,
+        json: bool,
+    },
+    JobApprove {
+        request_event_id: String,
+        json: bool,
+    },
+    JobDeny {
+        request_event_id: String,
+        json: bool,
+    },
+    JobPolicy {
+        mode: BuyerPaymentPolicyMode,
         json: bool,
     },
     Wallet {
@@ -810,6 +826,36 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_buyer_job_watch_report(&report)))
         }
+        Command::JobApprove {
+            request_event_id,
+            json,
+        } => {
+            let report =
+                approve_buyer_job_payment(cli.config_path.as_path(), request_event_id.as_str())
+                    .await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_buyer_job_payment_report(&report)))
+        }
+        Command::JobDeny {
+            request_event_id,
+            json,
+        } => {
+            let report =
+                deny_buyer_job_payment(cli.config_path.as_path(), request_event_id.as_str())?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_buyer_job_payment_report(&report)))
+        }
+        Command::JobPolicy { mode, json } => {
+            let report = apply_buyer_payment_policy(cli.config_path.as_path(), mode)?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_buyer_payment_policy_report(&report)))
+        }
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
@@ -876,6 +922,9 @@ Commands:\n\
   provider run [--seconds <n>] [--json]\n\
   job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt> [--json]\n\
   job watch [<request_event_id>] [--seconds <n>] [--json]\n\
+  job approve <request_event_id> [--json]\n\
+  job deny <request_event_id> [--json]\n\
+  job policy [show|auto|manual] [--json]\n\
   wallet status [--json]\n\
   wallet balance [--json]\n\
   wallet address [--json]\n\
@@ -1072,6 +1121,26 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
                     seconds,
                     json,
                 })
+            }
+            Some("approve") => {
+                let (request_event_id, json) =
+                    parse_job_request_id_with_json(args, start_index + 2, "job approve")?;
+                Ok(Command::JobApprove {
+                    request_event_id,
+                    json,
+                })
+            }
+            Some("deny") => {
+                let (request_event_id, json) =
+                    parse_job_request_id_with_json(args, start_index + 2, "job deny")?;
+                Ok(Command::JobDeny {
+                    request_event_id,
+                    json,
+                })
+            }
+            Some("policy") => {
+                let (mode, json) = parse_job_policy_command(args, start_index + 2)?;
+                Ok(Command::JobPolicy { mode, json })
             }
             Some(other) => bail!("unknown job command: {other}"),
             None => bail!("missing job subcommand"),
@@ -1304,6 +1373,47 @@ fn parse_job_watch_command(
     Ok((request_event_id, seconds.max(1), json))
 }
 
+fn parse_job_request_id_with_json(
+    args: &[String],
+    start_index: usize,
+    command: &str,
+) -> Result<(String, bool)> {
+    let request_event_id = args
+        .get(start_index)
+        .ok_or_else(|| anyhow!("missing <request_event_id> for {command}"))?
+        .clone();
+    let json = parse_json_only(args, start_index + 1, command)?;
+    Ok((request_event_id, json))
+}
+
+fn parse_job_policy_command(
+    args: &[String],
+    start_index: usize,
+) -> Result<(BuyerPaymentPolicyMode, bool)> {
+    match args.get(start_index).map(String::as_str) {
+        None => Ok((BuyerPaymentPolicyMode::Show, false)),
+        Some("show") => Ok((
+            BuyerPaymentPolicyMode::Show,
+            parse_json_only(args, start_index + 1, "job policy show")?,
+        )),
+        Some("auto") => Ok((
+            BuyerPaymentPolicyMode::Auto,
+            parse_json_only(args, start_index + 1, "job policy auto")?,
+        )),
+        Some("manual") => Ok((
+            BuyerPaymentPolicyMode::Manual,
+            parse_json_only(args, start_index + 1, "job policy manual")?,
+        )),
+        Some("--json") => {
+            if start_index + 1 != args.len() {
+                bail!("job policy --json does not accept additional arguments");
+            }
+            Ok((BuyerPaymentPolicyMode::Show, true))
+        }
+        Some(other) => bail!("unknown job policy mode: {other}"),
+    }
+}
+
 fn parse_provider_scan_flags(
     args: &[String],
     mut index: usize,
@@ -1392,6 +1502,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         relay_auth_enabled: default_relay_auth_enabled(),
         wallet_network: default_wallet_network(),
         wallet_api_key_env: default_wallet_api_key_env(),
+        buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
         wallet_storage_dir: base_dir.join("spark"),
         ollama_base_url: "http://127.0.0.1:11434".to_string(),
         apple_fm_base_url: None,
@@ -1422,6 +1533,10 @@ fn default_wallet_network() -> String {
 
 fn default_wallet_api_key_env() -> Option<String> {
     Some("OPENAGENTS_SPARK_API_KEY".to_string())
+}
+
+const fn default_buyer_auto_pay_enabled() -> bool {
+    false
 }
 
 pub fn default_config_path() -> PathBuf {
@@ -4272,6 +4387,9 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
                 Some(value.trim().to_string())
             };
         }
+        "buyer_auto_pay_enabled" => {
+            config.buyer_auto_pay_enabled = parse_bool(value)?;
+        }
         "wallet_storage_dir" => config.wallet_storage_dir = PathBuf::from(value.trim()),
         "ollama_base_url" => config.ollama_base_url = value.to_string(),
         "apple_fm_base_url" => {
@@ -4442,6 +4560,16 @@ mod tests {
         ensure(
             config.wallet_storage_dir == std::path::Path::new("/tmp/pylon-wallet"),
             "config set should update wallet_storage_dir",
+        )
+    }
+
+    #[test]
+    fn config_set_updates_buyer_auto_pay_toggle() -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        apply_config_set(&mut config, "buyer_auto_pay_enabled", "true")?;
+        ensure(
+            config.buyer_auto_pay_enabled,
+            "config set should update buyer_auto_pay_enabled",
         )
     }
 
@@ -4798,6 +4926,51 @@ mod tests {
                     json: true,
                 },
             "job watch should parse request id, seconds, and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_job_payment_controls() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
+                "approve".to_string(),
+                "job-approve-001".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::JobApprove {
+                    request_event_id: "job-approve-001".to_string(),
+                    json: true,
+                },
+            "job approve should parse request id and json flag",
+        )?;
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
+                "deny".to_string(),
+                "job-deny-001".to_string(),
+            ])?
+            .command
+                == Command::JobDeny {
+                    request_event_id: "job-deny-001".to_string(),
+                    json: false,
+                },
+            "job deny should parse request id",
+        )?;
+        ensure(
+            parse_args(vec![
+                "job".to_string(),
+                "policy".to_string(),
+                "auto".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::JobPolicy {
+                    mode: super::BuyerPaymentPolicyMode::Auto,
+                    json: true,
+                },
+            "job policy should parse mode and json flag",
         )
     }
 
@@ -5397,6 +5570,262 @@ mod tests {
         )?;
 
         relay_server.await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn approve_buyer_job_payment_submits_wallet_payment_and_persists_outcome()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
+        super::nip90_runtime::set_test_wallet_pay_hook(Some(Box::new(|bolt11, amount_sats| {
+            if bolt11 != "lnbc21000n1buyerapprove" || amount_sats != Some(21) {
+                return Err(std::io::Error::other(
+                    "buyer approve should pass the retained invoice and rounded sats",
+                )
+                .into());
+            }
+            Ok(super::WalletPayReport {
+                runtime: WalletRuntimeSurface::default(),
+                payment_id: "payment-send-001".to_string(),
+                payment: PylonWalletPaymentRecord {
+                    payment_id: "payment-send-001".to_string(),
+                    direction: "send".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 21,
+                    fees_sats: 1,
+                    method: "lightning".to_string(),
+                    description: Some("buyer invoice approval".to_string()),
+                    invoice: Some(bolt11.to_string()),
+                    created_at_ms: 1_762_100_000_000,
+                    updated_at_ms: 1_762_100_000_000,
+                },
+                post_balance: super::WalletBalanceSnapshot::default(),
+            })
+        })));
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        load_or_create_config(config_path.as_path())?;
+        mutate_ledger(config_path.as_path(), |ledger| {
+            let mut job =
+                super::PylonLedgerJob::new("buyer-approve-001", "buyer", 5050, "payment_required");
+            job.request_event_id = Some("buyer-approve-001".to_string());
+            job.provider_pubkey = Some("provider-pubkey-approve".to_string());
+            job.amount_msats = Some(21_000);
+            job.bolt11 = Some("lnbc21000n1buyerapprove".to_string());
+            ledger.upsert_job(job);
+            Ok(())
+        })?;
+
+        let report =
+            super::approve_buyer_job_payment(config_path.as_path(), "buyer-approve-001").await?;
+        ensure(
+            report.provider_pubkey.as_deref() == Some("provider-pubkey-approve")
+                && report.status == "payment_submitted"
+                && report.amount_msats == Some(21_000)
+                && report.bolt11.as_deref() == Some("lnbc21000n1buyerapprove")
+                && report.payment_id.as_deref() == Some("payment-send-001"),
+            "buyer approve should surface the provider, invoice, and payment outcome",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == "buyer-approve-001")
+            .ok_or_else(|| std::io::Error::other("missing approved buyer job"))?;
+        ensure(
+            job.status == "payment_submitted"
+                && job.payment_id.as_deref() == Some("payment-send-001")
+                && job.provider_pubkey.as_deref() == Some("provider-pubkey-approve"),
+            "buyer approve should persist payment submission on the retained job",
+        )?;
+        ensure(
+            ledger.settlements.iter().any(|settlement| {
+                settlement.job_id == "buyer-approve-001"
+                    && settlement.direction == "buyer"
+                    && settlement.status == "payment_submitted"
+                    && settlement.payment_reference.as_deref() == Some("payment-send-001")
+            }) && ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "nip90.payment_submitted"),
+            "buyer approve should persist settlement and relay activity",
+        )?;
+
+        super::nip90_runtime::set_test_wallet_pay_hook(None);
+        Ok(())
+    }
+
+    #[test]
+    fn deny_buyer_job_payment_persists_denial() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        load_or_create_config(config_path.as_path())?;
+        mutate_ledger(config_path.as_path(), |ledger| {
+            let mut job =
+                super::PylonLedgerJob::new("buyer-deny-001", "buyer", 5050, "payment_required");
+            job.request_event_id = Some("buyer-deny-001".to_string());
+            job.provider_pubkey = Some("provider-pubkey-deny".to_string());
+            job.amount_msats = Some(34_000);
+            job.bolt11 = Some("lnbc34000n1buyerdeny".to_string());
+            ledger.upsert_job(job);
+            Ok(())
+        })?;
+
+        let report = super::deny_buyer_job_payment(config_path.as_path(), "buyer-deny-001")?;
+        ensure(
+            report.provider_pubkey.as_deref() == Some("provider-pubkey-deny")
+                && report.status == "payment_denied"
+                && report.bolt11.as_deref() == Some("lnbc34000n1buyerdeny"),
+            "buyer deny should surface the retained invoice and provider",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == "buyer-deny-001")
+            .ok_or_else(|| std::io::Error::other("missing denied buyer job"))?;
+        ensure(
+            job.status == "payment_denied"
+                && job.error_detail.as_deref() == Some("buyer denied invoice"),
+            "buyer deny should persist the denied state",
+        )?;
+        ensure(
+            ledger.settlements.iter().any(|settlement| {
+                settlement.job_id == "buyer-deny-001"
+                    && settlement.direction == "buyer"
+                    && settlement.status == "payment_denied"
+            }) && ledger
+                .relay_activity
+                .iter()
+                .any(|entry| entry.kind == "nip90.payment_denied"),
+            "buyer deny should persist settlement and relay activity",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn watch_buyer_jobs_auto_pays_when_policy_is_enabled()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
+        super::nip90_runtime::set_test_wallet_pay_hook(Some(Box::new(|bolt11, amount_sats| {
+            if bolt11 != "lnbc21000n1buyerauto" || amount_sats != Some(21) {
+                return Err(std::io::Error::other(
+                    "auto-pay should forward the retained invoice and rounded sats",
+                )
+                .into());
+            }
+            Ok(super::WalletPayReport {
+                runtime: WalletRuntimeSurface::default(),
+                payment_id: "payment-auto-001".to_string(),
+                payment: PylonWalletPaymentRecord {
+                    payment_id: "payment-auto-001".to_string(),
+                    direction: "send".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 21,
+                    fees_sats: 1,
+                    method: "lightning".to_string(),
+                    description: Some("buyer auto pay".to_string()),
+                    invoice: Some(bolt11.to_string()),
+                    created_at_ms: 1_762_100_100_000,
+                    updated_at_ms: 1_762_100_100_000,
+                },
+                post_balance: super::WalletBalanceSnapshot::default(),
+            })
+        })));
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        config.relay_urls = vec![relay_url];
+        config.buyer_auto_pay_enabled = true;
+        save_config(config_path.as_path(), &config)?;
+
+        mutate_ledger(config_path.as_path(), |ledger| {
+            let mut job = super::PylonLedgerJob::new("buyer-auto-001", "buyer", 5050, "submitted");
+            job.request_event_id = Some("buyer-auto-001".to_string());
+            job.customer_pubkey = Some(identity.public_key_hex.clone());
+            ledger.upsert_job(job);
+            Ok(())
+        })?;
+
+        let customer_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"REQ\"") {
+                    continue;
+                }
+                let payment_required = json!(["EVENT", "watch", {
+                    "id": "buyer-feedback-auto-001",
+                    "pubkey": "provider-pubkey-auto",
+                    "created_at": 1_760_000_600u64,
+                    "kind": 7000,
+                    "tags": [
+                        ["status", "payment-required", "lightning settlement required"],
+                        ["e", "buyer-auto-001", "wss://relay.example.com"],
+                        ["p", customer_pubkey],
+                        ["amount", "21000", "lnbc21000n1buyerauto"]
+                    ],
+                    "content": "",
+                    "sig": "88".repeat(64)
+                }]);
+                ws.send(Message::Text(payment_required.to_string().into()))
+                    .await
+                    .expect("send auto-pay feedback");
+                break;
+            }
+        });
+
+        let report =
+            watch_buyer_jobs(config_path.as_path(), Some("buyer-auto-001"), 1, |_| {}).await?;
+        ensure(
+            report.entries.iter().any(|entry| {
+                entry.event_kind == "feedback"
+                    && entry.status == "payment-required"
+                    && entry.provider_pubkey.as_deref() == Some("provider-pubkey-auto")
+            }) && report.entries.iter().any(|entry| {
+                entry.event_kind == "payment"
+                    && entry.status == "payment_submitted"
+                    && entry.event_id == "payment-auto-001"
+                    && entry.provider_pubkey.as_deref() == Some("provider-pubkey-auto")
+            }),
+            "buyer watch should append an auto-pay payment entry after payment-required feedback",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        let job = ledger
+            .jobs
+            .iter()
+            .find(|job| job.id == "buyer-auto-001")
+            .ok_or_else(|| std::io::Error::other("missing auto-paid buyer job"))?;
+        ensure(
+            job.status == "payment_submitted"
+                && job.provider_pubkey.as_deref() == Some("provider-pubkey-auto")
+                && job.payment_id.as_deref() == Some("payment-auto-001"),
+            "buyer auto-pay should persist submitted payment state on the retained job",
+        )?;
+        ensure(
+            ledger.settlements.iter().any(|settlement| {
+                settlement.job_id == "buyer-auto-001"
+                    && settlement.status == "payment_submitted"
+                    && settlement.payment_reference.as_deref() == Some("payment-auto-001")
+            }),
+            "buyer auto-pay should persist a retained settlement record",
+        )?;
+
+        relay_server.await?;
+        super::nip90_runtime::set_test_wallet_pay_hook(None);
         Ok(())
     }
 

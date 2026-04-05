@@ -182,6 +182,10 @@ enum WorkerEvent {
     BuyerJobWatchFinished {
         report: pylon::BuyerJobWatchReport,
     },
+    BuyerJobCommandFinished {
+        title: String,
+        output: String,
+    },
     BuyerJobCommandFailed {
         error: String,
     },
@@ -743,6 +747,9 @@ impl AppShell {
                     text_body_lines(pylon::render_buyer_job_watch_report(&report).as_str()),
                 );
             }
+            WorkerEvent::BuyerJobCommandFinished { title, output } => {
+                self.push_system_lines(title, text_body_lines(output.as_str()));
+            }
             WorkerEvent::BuyerJobCommandFailed { error } => {
                 self.push_system_message("Buyer Job Error", error);
             }
@@ -1076,9 +1083,116 @@ impl AppShell {
             }
             return;
         }
+        if let Some(remainder) = trimmed.strip_prefix("approve") {
+            let request_event_id = match parse_tui_buyer_job_request_id(remainder, "job approve") {
+                Ok(request_event_id) => request_event_id,
+                Err(error) => {
+                    self.push_system_message("Buyer Job Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                let error_tx = tx.clone();
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+                let result = runtime.block_on(async move {
+                    pylon::approve_buyer_job_payment(
+                        config_path.as_path(),
+                        request_event_id.as_str(),
+                    )
+                    .await
+                });
+                match result {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
+                            title: "Buyer Payment".to_string(),
+                            output: pylon::render_buyer_job_payment_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Buyer Payment", "Submitting buyer invoice payment...");
+            return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("deny") {
+            let request_event_id = match parse_tui_buyer_job_request_id(remainder, "job deny") {
+                Ok(request_event_id) => request_event_id,
+                Err(error) => {
+                    self.push_system_message("Buyer Job Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                match pylon::deny_buyer_job_payment(
+                    config_path.as_path(),
+                    request_event_id.as_str(),
+                ) {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
+                            title: "Buyer Payment".to_string(),
+                            output: pylon::render_buyer_job_payment_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Buyer Payment", "Denying buyer invoice payment...");
+            return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("policy") {
+            let mode = match parse_tui_buyer_job_policy_mode(remainder) {
+                Ok(mode) => mode,
+                Err(error) => {
+                    self.push_system_message("Buyer Job Error", error.to_string());
+                    return;
+                }
+            };
+            let config_path = self.config_path.clone();
+            let tx = self.worker_tx.clone();
+            std::thread::spawn(move || {
+                match pylon::apply_buyer_payment_policy(config_path.as_path(), mode) {
+                    Ok(report) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
+                            title: "Buyer Payment Policy".to_string(),
+                            output: pylon::render_buyer_payment_policy_report(&report),
+                        });
+                    }
+                    Err(error) => {
+                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
+                            error: error.to_string(),
+                        });
+                    }
+                }
+            });
+            self.push_system_message("Buyer Payment Policy", "Updating buyer payment policy...");
+            return;
+        }
         self.push_system_message(
             "Buyer Job Error",
-            "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt> | /job watch [<request_event_id>] [--seconds <n>]",
+            "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt> | /job watch [<request_event_id>] [--seconds <n>] | /job approve <request_event_id> | /job deny <request_event_id> | /job policy [show|auto|manual]",
         );
     }
 
@@ -1697,6 +1811,27 @@ fn parse_tui_buyer_job_watch_request(args: &str) -> Result<(Option<String>, u64)
     Ok((request_event_id, seconds.max(1)))
 }
 
+fn parse_tui_buyer_job_request_id(args: &str, command: &str) -> Result<String> {
+    let trimmed = args.trim();
+    if trimmed.is_empty() {
+        bail!("{command} requires <request_event_id>");
+    }
+    let (request_event_id, remainder) = take_next_tui_word(trimmed);
+    if !remainder.is_empty() {
+        bail!("unexpected {command} argument `{remainder}`");
+    }
+    Ok(request_event_id.to_string())
+}
+
+fn parse_tui_buyer_job_policy_mode(args: &str) -> Result<pylon::BuyerPaymentPolicyMode> {
+    match args.trim() {
+        "" | "show" => Ok(pylon::BuyerPaymentPolicyMode::Show),
+        "auto" => Ok(pylon::BuyerPaymentPolicyMode::Auto),
+        "manual" => Ok(pylon::BuyerPaymentPolicyMode::Manual),
+        other => bail!("unknown buyer payment policy mode `{other}`"),
+    }
+}
+
 fn take_next_tui_word(value: &str) -> (&str, &str) {
     let trimmed = value.trim_start();
     match trimmed.find(char::is_whitespace) {
@@ -1718,6 +1853,9 @@ Controls:\n\
   /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
   /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] <prompt>  publish a retained NIP-90 buyer request\n\
   /job watch [<request_event_id>] [--seconds <n>]  stream retained buyer feedback and results into the transcript\n\
+  /job approve <request_event_id>  pay one retained buyer invoice\n\
+  /job deny <request_event_id>  deny one retained buyer invoice locally\n\
+  /job policy [show|auto|manual]  inspect or set buyer auto-pay policy\n\
   /relay [list|add|remove|refresh]  inspect or update configured relays\n\
   /wallet [status|balance|address|invoice|pay|history]  run retained Spark wallet commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
@@ -1810,6 +1948,9 @@ fn buyer_job_entry_lines(entry: &pylon::BuyerJobWatchEntry) -> Vec<String> {
         format!("relay: {}", entry.relay_url.as_deref().unwrap_or("unknown")),
         format!("event_id: {}", entry.event_id),
     ];
+    if let Some(provider_pubkey) = entry.provider_pubkey.as_deref() {
+        lines.push(format!("provider: {provider_pubkey}"));
+    }
     if let Some(amount_msats) = entry.amount_msats {
         lines.push(format!("amount_msats: {amount_msats}"));
     }
@@ -2371,6 +2512,7 @@ mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
         active_chat_title, estimate_token_count, max_transcript_scroll_y,
+        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
         parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
         summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
         wrapped_row_count,
@@ -2459,6 +2601,34 @@ mod tests {
         let parsed =
             parse_tui_buyer_job_watch_request("job-001 --seconds 12").expect("parse watch args");
         assert_eq!(parsed, (Some("job-001".to_string()), 12));
+    }
+
+    #[test]
+    fn tui_job_request_id_parser_supports_approve_and_deny() {
+        assert_eq!(
+            parse_tui_buyer_job_request_id("job-001", "job approve").expect("approve id"),
+            "job-001"
+        );
+        assert_eq!(
+            parse_tui_buyer_job_request_id("job-002", "job deny").expect("deny id"),
+            "job-002"
+        );
+    }
+
+    #[test]
+    fn tui_job_policy_parser_supports_show_auto_and_manual() {
+        assert_eq!(
+            parse_tui_buyer_job_policy_mode("").expect("show"),
+            pylon::BuyerPaymentPolicyMode::Show
+        );
+        assert_eq!(
+            parse_tui_buyer_job_policy_mode("auto").expect("auto"),
+            pylon::BuyerPaymentPolicyMode::Auto
+        );
+        assert_eq!(
+            parse_tui_buyer_job_policy_mode("manual").expect("manual"),
+            pylon::BuyerPaymentPolicyMode::Manual
+        );
     }
 
     #[test]
