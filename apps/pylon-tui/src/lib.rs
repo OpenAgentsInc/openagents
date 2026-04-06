@@ -2429,7 +2429,7 @@ fn gemma4_status(loaded: Option<&LoadedState>) -> Gemma4Status {
     };
 
     let mut models = Vec::new();
-    collect_gemma4_backend_models(&snapshot.availability.gpt_oss, &mut models);
+    collect_gemma4_backend_models(&snapshot.availability.local_gemma, &mut models);
     collect_gemma4_backend_models(&snapshot.availability.apple_foundation_models, &mut models);
 
     if let Some(default_model) = snapshot
