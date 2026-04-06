@@ -269,12 +269,21 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             }
         }
     }
-    if !nip28_relay_events.is_empty() {
+    let had_relay_events = !nip28_relay_events.is_empty();
+    if had_relay_events {
         state
             .autopilot_chat
             .managed_chat_projection
             .record_relay_events(nip28_relay_events);
+    }
 
+    // Flush deferred projection rebuild once per frame (after all relay events recorded).
+    state
+        .autopilot_chat
+        .managed_chat_projection
+        .flush_if_dirty();
+
+    if had_relay_events {
         // Trigger kind-0 fetch for any author pubkeys not yet requested
         let author_pubkeys: Vec<String> = state
             .autopilot_chat
@@ -339,6 +348,12 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
                     crate::nip28_chat_lane::NIP28_CHAT_BACKFILL_OVERLAP_SECS,
                 ),
         );
+
+    // Throttled persistence — writes at most once per PERSIST_THROTTLE interval.
+    state
+        .autopilot_chat
+        .managed_chat_projection
+        .persist_if_dirty();
 
     changed
 }

@@ -32,6 +32,7 @@ This doc is intentionally narrower than the older default-channel performance no
 |-------|--------|-------|
 | P1 | ✅ Done | Reducer-side pre-send dedupe landed in `Nip28ChatLaneWorker`. `sync_managed_chat_subscriptions(&mut self, ...)` now normalizes inputs, compares against cached `ManagedChatSubscriptionSyncRequest`, and suppresses identical dispatches. Worker-side dedupe in `handle_command()` kept as second line of defense. 7 unit tests pass: `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests::sync_managed_chat_subscriptions`. |
 | P2 | ✅ Done | `handle_command()` no longer sets `subscriptions_dirty` on cursor-only changes. `since_created_at` still updates in worker state for future reconnect backfill, but only relay or channel set changes trigger `replace_subscription()`. Reconnect-on-error and missing-subscription paths unchanged. 4 unit tests pass: `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests::handle_command`. |
+| P3 | ✅ Done | `record_relay_events()` no longer triggers full rebuild+persist inline. Sets `projection_dirty` flag instead; `flush_if_dirty()` runs once per frame in the reducer after all events are recorded. Persistence decoupled from `refresh_projection()` via `persist_dirty` flag with 2s throttle in `persist_if_dirty()`. Redundant normalize removed from `persist_managed_chat_projection_document()`. Shutdown path calls `flush_persist()`. 19 tests pass: `cargo test -p autopilot-desktop --lib -- chat_projection::tests managed_chat_projection chat_regression_tests chat_state_browses`. |
 
 ---
 
@@ -190,6 +191,7 @@ This is more expensive than duplicate no-op command traffic. Once the cursor mov
 **Type:** Performance
 **Priority:** P1 — High
 **Estimate:** L
+**Status:** Done
 
 ### Summary
 
