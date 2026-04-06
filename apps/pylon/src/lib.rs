@@ -464,15 +464,13 @@ struct SandboxReport {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LocalGemmaChatBackend {
-    Ollama,
-    OpenAiCompat,
+    LocalRuntime,
 }
 
 impl LocalGemmaChatBackend {
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Ollama => "ollama",
-            Self::OpenAiCompat => "openai_compat",
+            Self::LocalRuntime => "local_runtime",
         }
     }
 }
@@ -2734,6 +2732,9 @@ fn merge_json_value(target: &mut Value, source: &Value) {
 }
 
 fn default_config(base_dir: &Path) -> PylonConfig {
+    let mut inventory_controls = ProviderInventoryControls::default();
+    inventory_controls.apple_fm_inference_enabled = false;
+    inventory_controls.apple_fm_adapter_hosting_enabled = false;
     PylonConfig {
         schema_version: 1,
         node_label: "pylon".to_string(),
@@ -2750,7 +2751,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         wallet_storage_dir: base_dir.join("spark"),
         ollama_base_url: "http://127.0.0.1:11434".to_string(),
         apple_fm_base_url: None,
-        inventory_controls: ProviderInventoryControls::default(),
+        inventory_controls,
         declared_sandbox_profiles: Vec::new(),
     }
 }
@@ -3106,7 +3107,7 @@ fn build_snapshot_from_availability(
     runtime_error: Option<String>,
 ) -> ProviderPersistedSnapshot {
     let captured_at_ms = now_epoch_ms();
-    let products = derive_provider_products(&availability, &config.inventory_controls);
+    let products = products_from_availability(config, &availability);
     let runtime = derive_runtime_snapshot(
         desired_mode,
         previous_snapshot.map(|snapshot| &snapshot.runtime),
@@ -3383,10 +3384,7 @@ fn provider_blocker_codes(
 ) -> Vec<String> {
     let mut codes = Vec::new();
     if !availability.gpt_oss.ready {
-        codes.push("GPT_OSS_UNAVAILABLE".to_string());
-    }
-    if !availability.apple_foundation_models.ready {
-        codes.push("APPLE_FM_UNAVAILABLE".to_string());
+        codes.push("LOCAL_GEMMA_UNAVAILABLE".to_string());
     }
     if !products.iter().any(|product| product.eligible)
         && matches!(state, "degraded" | "draining" | "offline")
@@ -3400,9 +3398,12 @@ fn execution_backend_label(
     availability: &ProviderAvailability,
     products: &[ProviderAdvertisedProduct],
 ) -> String {
-    let label = availability.execution_backend_label();
-    if label != "no active inference backend" {
-        return label.to_string();
+    if products.iter().any(|product| {
+        product.eligible
+            && product.product.compute_family_label() == "inference"
+            && product.product.backend_label() == "local_gemma"
+    }) {
+        return availability.execution_backend_label().to_string();
     }
     if products
         .iter()
@@ -3418,7 +3419,6 @@ fn first_backend_error(availability: &ProviderAvailability) -> Option<String> {
         .gpt_oss
         .last_error
         .clone()
-        .or_else(|| availability.apple_foundation_models.last_error.clone())
         .or_else(|| availability.sandbox.last_scan_error.clone())
 }
 
@@ -3535,20 +3535,12 @@ pub fn resolve_local_gemma_chat_target_from_snapshot(
     config: &PylonConfig,
     snapshot: &ProviderPersistedSnapshot,
 ) -> Result<LocalGemmaChatTarget> {
+    let _ = config;
     if let Some(model) = gemma_ready_model(&snapshot.availability.gpt_oss) {
         return Ok(LocalGemmaChatTarget {
-            backend: LocalGemmaChatBackend::Ollama,
+            backend: LocalGemmaChatBackend::LocalRuntime,
             model,
         });
-    }
-
-    if config.apple_fm_base_url.is_some() {
-        if let Some(model) = gemma_ready_model(&snapshot.availability.apple_foundation_models) {
-            return Ok(LocalGemmaChatTarget {
-                backend: LocalGemmaChatBackend::OpenAiCompat,
-                model,
-            });
-        }
     }
 
     bail!("local Gemma weights are not loaded");
@@ -3636,11 +3628,8 @@ where
         target: target.clone(),
     });
     match target.backend {
-        LocalGemmaChatBackend::Ollama => {
-            stream_ollama_chat(&client, &config, target, messages, &mut emit).await?;
-        }
-        LocalGemmaChatBackend::OpenAiCompat => {
-            stream_openai_compat_chat(&client, &config, target, messages, &mut emit).await?;
+        LocalGemmaChatBackend::LocalRuntime => {
+            stream_local_gemma_chat(&client, &config, target, messages, &mut emit).await?;
         }
     }
     emit(LocalGemmaChatEvent::Finished {
@@ -3677,7 +3666,7 @@ fn is_gemma_model(value: &str) -> bool {
     normalized.contains("gemma")
 }
 
-async fn stream_ollama_chat<F>(
+async fn stream_local_gemma_chat<F>(
     client: &reqwest::Client,
     config: &PylonConfig,
     target: &LocalGemmaChatTarget,
@@ -3744,74 +3733,6 @@ where
     Ok(())
 }
 
-async fn stream_openai_compat_chat<F>(
-    client: &reqwest::Client,
-    config: &PylonConfig,
-    target: &LocalGemmaChatTarget,
-    messages: &[LocalGemmaChatMessage],
-    emit: &mut F,
-) -> Result<()>
-where
-    F: FnMut(LocalGemmaChatEvent),
-{
-    let Some(base_url) = config.apple_fm_base_url.as_deref() else {
-        bail!("local Gemma weights are not loaded");
-    };
-    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-    let payload = json!({
-        "model": target.model,
-        "messages": messages
-            .iter()
-            .map(|message| {
-                json!({
-                    "role": message.role.api_label(),
-                    "content": message.content,
-                })
-            })
-            .collect::<Vec<_>>(),
-        "stream": true,
-    });
-    let mut response = client
-        .post(url)
-        .header(reqwest::header::ACCEPT, "text/event-stream")
-        .json(&payload)
-        .send()
-        .await
-        .context("failed to send local Gemma chat request")?;
-    if !response.status().is_success() {
-        let body = response.text().await.unwrap_or_default();
-        bail!(
-            "local Gemma chat failed: {}",
-            http_error_message(body.as_str())
-        );
-    }
-
-    let mut pending = String::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .context("failed reading local Gemma chat stream")?
-    {
-        pending.push_str(String::from_utf8_lossy(&chunk).as_ref());
-        while let Some(event) = take_sse_event(&mut pending) {
-            match decode_openai_sse_event(event.as_str())? {
-                OpenAiSseEvent::Delta(delta) => emit(LocalGemmaChatEvent::Delta(delta)),
-                OpenAiSseEvent::Done => return Ok(()),
-                OpenAiSseEvent::Ignored => {}
-            }
-        }
-    }
-
-    if !pending.trim().is_empty() {
-        match decode_openai_sse_event(pending.trim())? {
-            OpenAiSseEvent::Delta(delta) => emit(LocalGemmaChatEvent::Delta(delta)),
-            OpenAiSseEvent::Done | OpenAiSseEvent::Ignored => {}
-        }
-    }
-
-    Ok(())
-}
-
 fn decode_ollama_chat_delta(line: &str) -> Result<Option<String>> {
     let payload = serde_json::from_str::<Value>(line)
         .with_context(|| format!("invalid local Gemma stream chunk: {line}"))?;
@@ -3824,67 +3745,6 @@ fn decode_ollama_chat_delta(line: &str) -> Result<Option<String>> {
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string))
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum OpenAiSseEvent {
-    Delta(String),
-    Done,
-    Ignored,
-}
-
-fn decode_openai_sse_event(event: &str) -> Result<OpenAiSseEvent> {
-    let mut payload_lines = Vec::new();
-    for line in event.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with(':') || trimmed.starts_with("event:") {
-            continue;
-        }
-        if let Some(value) = trimmed.strip_prefix("data:") {
-            payload_lines.push(value.trim().to_string());
-        }
-    }
-
-    if payload_lines.is_empty() {
-        return Ok(OpenAiSseEvent::Ignored);
-    }
-
-    let payload = payload_lines.join("\n");
-    if payload == "[DONE]" {
-        return Ok(OpenAiSseEvent::Done);
-    }
-
-    let value = serde_json::from_str::<Value>(payload.as_str())
-        .with_context(|| format!("invalid local Gemma SSE chunk: {payload}"))?;
-    let delta = value
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| {
-            choice
-                .get("delta")
-                .and_then(|delta| delta.get("content"))
-                .or_else(|| {
-                    choice
-                        .get("message")
-                        .and_then(|message| message.get("content"))
-                })
-        })
-        .and_then(Value::as_str)
-        .filter(|content| !content.is_empty())
-        .map(ToString::to_string);
-    Ok(delta.map_or(OpenAiSseEvent::Ignored, OpenAiSseEvent::Delta))
-}
-
-fn take_sse_event(buffer: &mut String) -> Option<String> {
-    let delimiter = if let Some(index) = buffer.find("\r\n\r\n") {
-        Some((index, 4))
-    } else {
-        buffer.find("\n\n").map(|index| (index, 2))
-    }?;
-    let event = buffer[..delimiter.0].to_string();
-    buffer.drain(..delimiter.0 + delimiter.1);
-    Some(event)
 }
 
 fn http_error_message(body: &str) -> String {
@@ -3924,10 +3784,18 @@ fn products_from_status(
     status
         .snapshot
         .as_ref()
-        .map(|snapshot| {
-            derive_provider_products(&snapshot.availability, &config.inventory_controls)
-        })
+        .map(|snapshot| products_from_availability(config, &snapshot.availability))
         .unwrap_or_default()
+}
+
+fn products_from_availability(
+    config: &PylonConfig,
+    availability: &ProviderAvailability,
+) -> Vec<ProviderAdvertisedProduct> {
+    derive_provider_products(availability, &config.inventory_controls)
+        .into_iter()
+        .filter(|product| product.product.backend_label() != "apple_foundation_models")
+        .collect()
 }
 
 fn backend_entry(
@@ -3966,7 +3834,7 @@ fn backend_entry(
     }
 }
 
-fn gpt_oss_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
+fn local_gemma_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
     if !config.inventory_controls.gpt_oss_inference_enabled
         && !config.inventory_controls.gpt_oss_embeddings_enabled
     {
@@ -3980,29 +3848,6 @@ fn gpt_oss_health_state(config: &PylonConfig, health: &ProviderBackendHealth) ->
     }
     if !health.reachable || health.last_error.is_some() {
         return "unavailable".to_string();
-    }
-    "misconfigured".to_string()
-}
-
-fn apple_fm_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
-    if !config.inventory_controls.apple_fm_inference_enabled {
-        return "disabled".to_string();
-    }
-    if health.ready {
-        return "healthy".to_string();
-    }
-    if config.apple_fm_base_url.is_none() {
-        return if std::env::consts::OS == "macos" {
-            "misconfigured".to_string()
-        } else {
-            "unsupported".to_string()
-        };
-    }
-    if !health.reachable || health.last_error.is_some() {
-        return "unavailable".to_string();
-    }
-    if health.available_models.is_empty() {
-        return "misconfigured".to_string();
     }
     "misconfigured".to_string()
 }
@@ -4136,15 +3981,10 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
     } else {
         ProviderAvailability::default()
     };
-    let products = derive_provider_products(&availability, &config.inventory_controls);
-    let gpt_oss_products = products
+    let products = products_from_availability(&config, &availability);
+    let local_gemma_products = products
         .iter()
-        .filter(|product| product.product.backend_label() == "gpt_oss")
-        .cloned()
-        .collect::<Vec<_>>();
-    let apple_fm_products = products
-        .iter()
-        .filter(|product| product.product.backend_label() == "apple_foundation_models")
+        .filter(|product| product.product.backend_label() == "local_gemma")
         .cloned()
         .collect::<Vec<_>>();
     let sandbox_products = products
@@ -4156,18 +3996,11 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
         context: report_context(&status),
         backends: vec![
             backend_entry(
-                "gpt_oss",
-                "GPT-OSS",
-                gpt_oss_health_state(&config, &availability.gpt_oss),
+                "local_gemma",
+                "Local Gemma",
+                local_gemma_health_state(&config, &availability.gpt_oss),
                 &availability.gpt_oss,
-                gpt_oss_products.as_slice(),
-            ),
-            backend_entry(
-                "apple_foundation_models",
-                "Apple Foundation Models",
-                apple_fm_health_state(&config, &availability.apple_foundation_models),
-                &availability.apple_foundation_models,
-                apple_fm_products.as_slice(),
+                local_gemma_products.as_slice(),
             ),
             sandbox_backend_entry(&config, &availability, sandbox_products.as_slice()),
         ],
@@ -5693,14 +5526,17 @@ async fn detect_availability(config: &PylonConfig) -> Result<ProviderAvailabilit
         .build()
         .context("failed to build pylon health-check client")?;
     let gpt_oss = detect_ollama(&client, config).await;
-    let apple_foundation_models = detect_apple_fm(&client, config).await;
     let sandbox = detect_sandbox_supply(
         &ProviderSandboxDetectionConfig::default()
             .with_declared_profiles(config.declared_sandbox_profiles.clone()),
     );
     Ok(ProviderAvailability {
         gpt_oss,
-        apple_foundation_models,
+        apple_foundation_models: ProviderBackendHealth {
+            last_action: Some("not part of the current Pylon flow".to_string()),
+            availability_message: Some("disabled".to_string()),
+            ..ProviderBackendHealth::default()
+        },
         apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
         adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
         pooled_inference: ProviderPooledInferenceAvailability::default(),
@@ -5737,7 +5573,7 @@ async fn detect_ollama(client: &reqwest::Client, config: &PylonConfig) -> Provid
                 reachable: true,
                 ready: false,
                 last_error: Some(error.to_string()),
-                last_action: Some("invalid gpt-oss health payload".to_string()),
+                last_action: Some("invalid local Gemma health payload".to_string()),
                 ..ProviderBackendHealth::default()
             };
         }
@@ -5757,85 +5593,27 @@ async fn detect_ollama(client: &reqwest::Client, config: &PylonConfig) -> Provid
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    let gemma_models = models
+        .into_iter()
+        .filter(|model| is_gemma_model(model))
+        .collect::<Vec<_>>();
+    let ready = !gemma_models.is_empty();
     ProviderBackendHealth {
         reachable: true,
-        ready: !models.is_empty(),
-        configured_model: models.first().cloned(),
-        ready_model: models.first().cloned(),
-        available_models: models,
-        last_action: Some("health check ready".to_string()),
-        ..ProviderBackendHealth::default()
-    }
-}
-
-async fn detect_apple_fm(client: &reqwest::Client, config: &PylonConfig) -> ProviderBackendHealth {
-    let Some(base_url) = config.apple_fm_base_url.as_deref() else {
-        return ProviderBackendHealth {
-            last_action: Some("not configured".to_string()),
-            availability_message: Some("not_configured".to_string()),
-            ..ProviderBackendHealth::default()
-        };
-    };
-    if !config.inventory_controls.apple_fm_inference_enabled {
-        return ProviderBackendHealth {
-            last_action: Some("disabled by config".to_string()),
-            availability_message: Some("disabled".to_string()),
-            ..ProviderBackendHealth::default()
-        };
-    }
-    let health_url = format!("{}/health", base_url.trim_end_matches('/'));
-    let health_response = match client.get(health_url.as_str()).send().await {
-        Ok(response) => response,
-        Err(error) => {
-            return ProviderBackendHealth {
-                reachable: false,
-                ready: false,
-                last_error: Some(error.to_string()),
-                last_action: Some("health check failed".to_string()),
-                availability_message: Some("bridge_unreachable".to_string()),
-                ..ProviderBackendHealth::default()
-            };
-        }
-    };
-    if !health_response.status().is_success() {
-        return ProviderBackendHealth {
-            reachable: true,
-            ready: false,
-            last_error: Some(format!("bridge returned {}", health_response.status())),
-            last_action: Some("health check failed".to_string()),
-            availability_message: Some("bridge_unhealthy".to_string()),
-            ..ProviderBackendHealth::default()
-        };
-    }
-    let models_url = format!("{}/v1/models", base_url.trim_end_matches('/'));
-    let models = match client.get(models_url.as_str()).send().await {
-        Ok(response) => match response.json::<Value>().await {
-            Ok(payload) => payload
-                .get("data")
-                .and_then(Value::as_array)
-                .map(|models| {
-                    models
-                        .iter()
-                        .filter_map(|model| {
-                            model
-                                .get("id")
-                                .and_then(Value::as_str)
-                                .map(ToString::to_string)
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default(),
-            Err(_) => Vec::new(),
-        },
-        Err(_) => Vec::new(),
-    };
-    ProviderBackendHealth {
-        reachable: true,
-        ready: !models.is_empty(),
-        ready_model: models.first().cloned(),
-        available_models: models,
-        last_action: Some("health check ready".to_string()),
-        availability_message: Some("bridge_ready".to_string()),
+        ready,
+        configured_model: gemma_models.first().cloned(),
+        ready_model: gemma_models.first().cloned(),
+        available_models: gemma_models,
+        last_action: Some(if ready {
+            "health check ready".to_string()
+        } else {
+            "gemma models not loaded".to_string()
+        }),
+        availability_message: Some(if ready {
+            "gemma_ready".to_string()
+        } else {
+            "gemma_missing".to_string()
+        }),
         ..ProviderBackendHealth::default()
     }
 }
@@ -6091,11 +5869,13 @@ mod tests {
         )?;
         ensure(
             config.ollama_base_url == "http://127.0.0.1:11434",
-            "missing Ollama config should hydrate from the default config",
+            "missing local Gemma endpoint config should hydrate from the default config",
         )?;
         ensure(
-            config.inventory_controls == ProviderInventoryControls::default(),
-            "missing inventory controls should hydrate from the default config",
+            config.inventory_controls.gpt_oss_inference_enabled
+                && !config.inventory_controls.apple_fm_inference_enabled
+                && !config.inventory_controls.apple_fm_adapter_hosting_enabled,
+            "missing inventory controls should hydrate the Gemma-first Pylon defaults",
         )
     }
 
@@ -6135,7 +5915,9 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
-        let config = load_or_create_config(config_path.as_path())?;
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.ollama_base_url = "http://127.0.0.1:9".to_string();
+        save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
         let pause_error = match apply_control_command(
@@ -8641,16 +8423,8 @@ mod tests {
         save_config(config_path, &config)?;
 
         let availability = ProviderAvailability {
-            gpt_oss: ready_health(
-                "llama3.2:latest",
-                &["llama3.2:latest", "nomic-embed-text:latest"],
-                None,
-            ),
-            apple_foundation_models: ready_health(
-                "apple-foundation-model",
-                &["apple-foundation-model"],
-                Some("bridge_ready"),
-            ),
+            gpt_oss: ready_health("gemma4:e4b", &["gemma4:e4b"], Some("gemma_ready")),
+            apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             pooled_inference: ProviderPooledInferenceAvailability::default(),
@@ -8707,7 +8481,7 @@ mod tests {
             None,
         );
         snapshot.inventory_rows = inventory_rows(
-            &super::derive_provider_products(&availability, &config.inventory_controls),
+            &super::products_from_availability(&config, &availability),
             ProviderDesiredMode::Online,
         );
         snapshot.recent_jobs = vec![
@@ -8716,9 +8490,9 @@ mod tests {
                 request_id: Some("req-1".to_string()),
                 status: "settled".to_string(),
                 demand_source: "open_network".to_string(),
-                product_id: Some("gpt_oss.embeddings".to_string()),
-                compute_family: Some("embeddings".to_string()),
-                backend_family: Some("gpt_oss".to_string()),
+                product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
+                compute_family: Some("inference".to_string()),
+                backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -8754,8 +8528,8 @@ mod tests {
                 receipt_type: "earn.job.settled.v1".to_string(),
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
-                compute_family: Some("embeddings".to_string()),
-                backend_family: Some("gpt_oss".to_string()),
+                compute_family: Some("inference".to_string()),
+                backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -8931,17 +8705,15 @@ mod tests {
     }
 
     #[test]
-    fn resolve_local_gemma_chat_target_prefers_ollama_gemma()
+    fn resolve_local_gemma_chat_target_prefers_ready_local_gemma_runtime()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
-        let mut config = load_or_create_config(config_path.as_path())?;
-        config.apple_fm_base_url = Some("http://127.0.0.1:9999".to_string());
-        save_config(config_path.as_path(), &config)?;
+        let config = load_or_create_config(config_path.as_path())?;
         let identity = ensure_identity(config.identity_path.as_path())?;
         let availability = ProviderAvailability {
             gpt_oss: ready_health("gemma4:e4b", &["gemma4:e4b"], None),
-            apple_foundation_models: ready_health("gemma4:26b", &["gemma4:26b"], None),
+            apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             pooled_inference: ProviderPooledInferenceAvailability::default(),
@@ -8962,8 +8734,8 @@ mod tests {
 
         let target = resolve_local_gemma_chat_target_from_status(&config, &status)?;
         ensure(
-            target.backend == LocalGemmaChatBackend::Ollama && target.model == "gemma4:e4b",
-            "resolver should prefer the ready local Ollama Gemma target",
+            target.backend == LocalGemmaChatBackend::LocalRuntime && target.model == "gemma4:e4b",
+            "resolver should use the ready local Gemma runtime",
         )
     }
 
@@ -9067,8 +8839,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn local_ollama_gemma_chat_stream_emits_deltas() -> Result<(), Box<dyn std::error::Error>>
-    {
+    async fn local_gemma_chat_stream_emits_deltas() -> Result<(), Box<dyn std::error::Error>> {
         let base_url =
             start_mock_http_server(
                 |method, path, body| match (method.as_str(), path.as_str()) {
@@ -9116,18 +8887,18 @@ mod tests {
         .await?;
 
         ensure(
-            target.backend == LocalGemmaChatBackend::Ollama && target.model == "gemma4:e4b",
-            "chat stream should resolve the local Ollama Gemma target",
+            target.backend == LocalGemmaChatBackend::LocalRuntime && target.model == "gemma4:e4b",
+            "chat stream should resolve the local Gemma runtime target",
         )?;
         ensure(
             collect_chat_deltas(events.as_slice()) == "hello world",
-            "chat stream should emit the streamed Ollama deltas in order",
+            "chat stream should emit the streamed local runtime deltas in order",
         )
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn local_ollama_gemma_chat_stream_sends_prior_messages()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn local_gemma_chat_stream_sends_prior_messages() -> Result<(), Box<dyn std::error::Error>>
+    {
         let base_url =
             start_mock_http_server(
                 |method, path, body| match (method.as_str(), path.as_str()) {
@@ -9187,8 +8958,8 @@ mod tests {
         .await?;
 
         ensure(
-            target.backend == LocalGemmaChatBackend::Ollama && target.model == "gemma4:e4b",
-            "chat stream should still resolve the local Ollama Gemma target",
+            target.backend == LocalGemmaChatBackend::LocalRuntime && target.model == "gemma4:e4b",
+            "chat stream should still resolve the local Gemma runtime target",
         )?;
         ensure(
             collect_chat_deltas(events.as_slice()) == "Je suis Gemma 4.",
@@ -9197,50 +8968,22 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn local_openai_compat_gemma_chat_stream_emits_sse_deltas()
+    async fn local_gemma_detection_ignores_non_gemma_models()
     -> Result<(), Box<dyn std::error::Error>> {
         let base_url =
             start_mock_http_server(
-                |method, path, body| match (method.as_str(), path.as_str()) {
+                |method, path, _body| match (method.as_str(), path.as_str()) {
                     ("GET", "/api/tags") => (
                         200,
                         "application/json",
                         json!({
                             "models": [
-                                {"name": "llama3.2:latest"}
+                                {"name": "qwen35-27b-local:latest"},
+                                {"name": "nomic-embed-text:latest"}
                             ]
                         })
                         .to_string(),
                     ),
-                    ("GET", "/health") => {
-                        (200, "application/json", json!({"ok": true}).to_string())
-                    }
-                    ("GET", "/v1/models") => (
-                        200,
-                        "application/json",
-                        json!({
-                            "data": [
-                                {"id": "gemma4:26b"}
-                            ]
-                        })
-                        .to_string(),
-                    ),
-                    ("POST", "/v1/chat/completions") => {
-                        let request: serde_json::Value =
-                            serde_json::from_str(body.as_str()).expect("valid openai chat body");
-                        assert_eq!(request["model"], json!("gemma4:26b"));
-                        assert_eq!(request["messages"][0]["content"], json!("hello"));
-                        (
-                            200,
-                            "text/event-stream",
-                            concat!(
-                                "data: {\"choices\":[{\"delta\":{\"content\":\"hello \"}}]}\n\n",
-                                "data: {\"choices\":[{\"delta\":{\"content\":\"world\"}}]}\n\n",
-                                "data: [DONE]\n\n"
-                            )
-                            .to_string(),
-                        )
-                    }
                     _ => (500, "text/plain", "unexpected request".to_string()),
                 },
             )
@@ -9249,23 +8992,21 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
-        config.ollama_base_url = base_url.clone();
-        config.apple_fm_base_url = Some(base_url);
+        config.ollama_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
 
-        let mut events = Vec::new();
-        let target = run_local_gemma_chat_stream(config_path.as_path(), "hello", |event| {
-            events.push(event);
-        })
-        .await?;
-
+        let status = load_status_or_detect(config_path.as_path()).await?;
         ensure(
-            target.backend == LocalGemmaChatBackend::OpenAiCompat && target.model == "gemma4:26b",
-            "chat stream should resolve the local OpenAI-compatible Gemma target",
+            status.snapshot.as_ref().is_some_and(|snapshot| {
+                !snapshot.availability.gpt_oss.ready
+                    && snapshot.availability.gpt_oss.available_models.is_empty()
+            }),
+            "non-Gemma models should not mark local Gemma supply ready",
         )?;
         ensure(
-            collect_chat_deltas(events.as_slice()) == "hello world",
-            "chat stream should emit streamed SSE deltas in order",
+            render_human_status(&status).contains("LOCAL_GEMMA_UNAVAILABLE"),
+            "status should surface the local Gemma blocker when only non-Gemma models are present",
         )
     }
 
@@ -9279,43 +9020,29 @@ mod tests {
         let backend_report = load_backend_report(config_path.as_path()).await?;
         let product_report = load_product_report(config_path.as_path()).await?;
 
-        let gpt_oss = backend_report
+        let local_gemma = backend_report
             .backends
             .iter()
-            .find(|backend| backend.backend_id == "gpt_oss")
-            .ok_or_else(|| std::io::Error::other("missing gpt_oss backend entry"))?;
+            .find(|backend| backend.backend_id == "local_gemma")
+            .ok_or_else(|| std::io::Error::other("missing local_gemma backend entry"))?;
         ensure(
-            gpt_oss.launch_product_ids
-                == vec![
-                    "gpt_oss.text_generation".to_string(),
-                    "gpt_oss.embeddings".to_string(),
-                ],
-            "gpt_oss backend should expose inference and embeddings launch products",
-        )?;
-
-        let apple_fm = backend_report
-            .backends
-            .iter()
-            .find(|backend| backend.backend_id == "apple_foundation_models")
-            .ok_or_else(|| std::io::Error::other("missing apple fm backend entry"))?;
-        ensure(
-            apple_fm.launch_product_ids
-                == vec!["apple_foundation_models.text_generation".to_string()],
-            "apple fm backend should only expose inference at launch",
+            local_gemma.launch_product_ids
+                == vec!["psionic.local.inference.gemma.single_node".to_string()],
+            "local Gemma backend should expose the canonical Gemma inference product",
         )?;
         ensure(
             product_report
                 .products
                 .iter()
-                .all(|product| product.product_id != "apple_foundation_models.embeddings"),
-            "product report must not overclaim Apple FM embeddings support",
+                .all(|product| product.backend != "apple_foundation_models"),
+            "product report should hide the legacy Apple FM backend from Pylon",
         )?;
         ensure(
             product_report.products.iter().any(|product| {
-                product.product_id == "gpt_oss.embeddings"
-                    && product.capability_summary.contains("family=embeddings")
+                product.product_id == "psionic.local.inference.gemma.single_node"
+                    && product.capability_summary.contains("backend=local_gemma")
             }),
-            "product report should preserve capability-envelope qualifiers for embeddings",
+            "product report should preserve the local Gemma capability summary",
         )?;
         let sandbox = backend_report
             .backends
@@ -9345,25 +9072,25 @@ mod tests {
         let receipts_report = load_receipts_report(config_path.as_path(), Some(2)).await?;
 
         ensure(
-            inventory_report
-                .rows
-                .iter()
-                .any(|row| row.target.product_id() == "gpt_oss.embeddings" && row.eligible),
-            "inventory report should show eligible embedding supply",
+            inventory_report.rows.iter().any(|row| {
+                row.target.product_id() == "psionic.local.inference.gemma.single_node"
+                    && row.eligible
+            }),
+            "inventory report should show eligible local Gemma supply",
         )?;
         ensure(
-            inventory_report
-                .rows
-                .iter()
-                .any(|row| row.target.product_id() == "sandbox.python.exec" && row.eligible),
+            inventory_report.rows.iter().any(|row| {
+                row.target.product_id()
+                    == "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
+                    && row.eligible
+            }),
             "inventory report should show eligible sandbox supply when profiles are declared",
         )?;
         ensure(
             jobs_report.jobs.len() == 2
-                && jobs_report
-                    .jobs
-                    .iter()
-                    .any(|job| job.product_id.as_deref() == Some("gpt_oss.embeddings")),
+                && jobs_report.jobs.iter().any(|job| {
+                    job.product_id.as_deref() == Some("psionic.local.inference.gemma.single_node")
+                }),
             "jobs report should surface persisted recent jobs",
         )?;
         let sandbox_job = jobs_report

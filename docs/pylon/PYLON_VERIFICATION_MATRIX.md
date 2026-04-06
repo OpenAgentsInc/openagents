@@ -13,8 +13,8 @@ These statements must remain true in docs, code, and operator guidance:
 - `Pylon` is a standalone provider connector, not the whole product.
 - The market is still the **OpenAgents Compute Market**.
 - Launch compute product families are `inference` and `embeddings`.
-- `Ollama` can back `inference` and `embeddings`.
-- `Apple Foundation Models` is `inference` only at launch.
+- The current standalone `Pylon` operator lane is one honest local Gemma inference product.
+- Non-Gemma local models must not make the node look sellable.
 - Raw accelerator trading is not live at launch.
 - Capability-envelope fields refine supply; they are not the primary product identity.
 - `sandbox_execution` is the next planned family, not the current generally released launch family.
@@ -27,8 +27,8 @@ If any release note, marketing text, or operator doc violates one of those state
 | --- | --- | --- |
 | Install/init | `cargo run -p pylon -- init` | config and identity are created without `Autopilot` |
 | Unconfigured truth | `cargo run -p pylon -- status` before init | reports `unconfigured` |
-| Backend visibility | `cargo run -p pylon -- backends --json` | returns backend entries for `ollama` and `apple_foundation_models` with explicit health states |
-| Launch products | `cargo run -p pylon -- products --json` | shows launch products only; no `apple_foundation_models.embeddings` |
+| Backend visibility | `cargo run -p pylon -- backends --json` | returns a `local_gemma` backend entry plus any declared sandbox backend state |
+| Launch products | `cargo run -p pylon -- products --json` | shows the canonical Gemma inference product and does not expose the legacy Apple FM lane |
 | Sandbox status truth | `cargo run -p pylon -- status` on a node with declared sandbox profiles | status includes sandbox execution classes, profile IDs, and scan/runtime errors when relevant |
 | Sandbox runtime/profile view | `cargo run -p pylon -- sandbox --json` | returns declared runtimes/profiles, ready execution classes, and profile digests |
 | Inventory | `cargo run -p pylon -- inventory` | shows inventory rows with capability summaries and explicit eligibility |
@@ -128,7 +128,7 @@ This is sufficient for a truthful first standalone release. It is not necessary 
 Pre-release:
 
 - verify launch truth statements in docs and user-facing messaging
-- verify `Apple Foundation Models` is not described as embeddings-capable
+- verify legacy Apple FM references are clearly marked disabled or historical
 - verify `Pylon` still reads as a provider connector, not a monolithic local runtime
 - verify lifecycle remains explicit and not hidden behind `serve`
 - verify backend-health and product surfaces distinguish healthy vs degraded vs unsupported vs misconfigured vs disabled states plainly
@@ -137,8 +137,7 @@ Pre-release:
 Release candidate:
 
 - run the full repo-level checks above
-- run the standalone smoke path on at least one Ollama-capable machine
-- run the standalone smoke path on at least one Apple FM-capable machine if Apple FM is part of the candidate
+- run the standalone smoke path on at least one machine with local Gemma supply
 - run the sandbox-specific evidence commands on at least one machine with declared sandbox profiles
 - confirm persisted status, jobs, earnings, and receipts survive a restart
 - run `scripts/pylon/verify_nip90_wallet.sh`

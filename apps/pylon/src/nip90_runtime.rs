@@ -2229,23 +2229,16 @@ fn announcement_spec(
     let products = products_from_status(config, status);
     let product = first_text_generation_product(products.as_slice())?;
     let backend = product.product.backend_label().to_string();
-    let model = match backend.as_str() {
-        "gpt_oss" => status
-            .snapshot
-            .as_ref()?
-            .availability
-            .gpt_oss
-            .ready_model
-            .clone()?,
-        "apple_foundation_models" => status
-            .snapshot
-            .as_ref()?
-            .availability
-            .apple_foundation_models
-            .ready_model
-            .clone()?,
-        _ => return None,
-    };
+    if backend != "local_gemma" {
+        return None;
+    }
+    let model = status
+        .snapshot
+        .as_ref()?
+        .availability
+        .gpt_oss
+        .ready_model
+        .clone()?;
     let price_msats = product.price_floor_sats.checked_mul(1000);
     let capabilities = vec![
         "nip90.5050".to_string(),
@@ -2278,10 +2271,7 @@ fn first_text_generation_product(
         .find(|product| {
             product.eligible
                 && product.product.compute_family_label() == "inference"
-                && matches!(
-                    product.product.backend_label(),
-                    "gpt_oss" | "apple_foundation_models"
-                )
+                && product.product.backend_label() == "local_gemma"
         })
         .cloned()
 }
@@ -2514,10 +2504,7 @@ fn classify_provider_request(
 
 fn spec_to_local_target(spec: &AnnouncementSpec) -> LocalGemmaChatTarget {
     LocalGemmaChatTarget {
-        backend: match spec.backend.as_str() {
-            "apple_foundation_models" => LocalGemmaChatBackend::OpenAiCompat,
-            _ => LocalGemmaChatBackend::Ollama,
-        },
+        backend: LocalGemmaChatBackend::LocalRuntime,
         model: spec.model.clone(),
     }
 }

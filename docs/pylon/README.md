@@ -22,23 +22,18 @@ It is still a narrow supply connector. It is not a buyer shell, not a labor runt
 
 The market is still the **OpenAgents Compute Market**.
 
-At launch, the first live compute product families are:
+At launch, the first standalone `Pylon` sellable lane is:
 
-- `inference`
-- `embeddings`
+- `psionic.local.inference.gemma.single_node`
 
-The first backend-specific launch products are:
-
-- `ollama.text_generation`
-- `ollama.embeddings`
-- `apple_foundation_models.text_generation`
+The broader market direction still includes `inference`, `embeddings`, and later bounded execution. The current operator bring-up in this repo is narrower on purpose: get one honest local Gemma inference lane online first.
 
 Do not describe launch as raw GPU or raw accelerator trading. Accelerator, memory, and platform facts remain capability-envelope qualifiers that refine supply rather than replace product identity.
 
 Current planned-but-not-live surfaces:
 
-- raw hardware spot or futures markets
-- Apple Foundation Models embeddings
+- broader embeddings lanes
+- pooled inference routing
 - broad wallet-shell UX
 - sandbox execution as a generally released family
 
@@ -50,12 +45,12 @@ Minimum local requirements:
 - repo checkout available locally
 - a writable local home/config path
 
-Backend-specific requirements:
+Runtime-specific requirements:
 
-- `Ollama` for launch inference and embeddings supply
-- `Apple Foundation Models` bridge for Apple FM inference supply
+- curated Gemma 4 weights downloaded through the built-in catalog or headless Gemma commands
+- sibling `psionic` checkout available for the benchmark and validation lane
 
-If neither backend is available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
+If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
 
 ## Quick Start
 
@@ -74,7 +69,7 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 - a retained transcript area for local shell activity
 - a bottom textbox where plain text submits a prompt, `/help` shows the retained shell commands, and `/download <model>` pulls a curated Gemma GGUF into the local Pylon cache
 
-The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path still uses backend-visible Gemma models from the existing serving seam. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path only accepts Gemma models visible through the configured local runtime endpoint. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 Headless Gemma operator commands now exist too:
 
@@ -230,8 +225,8 @@ The generated config currently includes:
 - wallet network
 - wallet API key env var
 - wallet storage dir
-- Ollama base URL
-- Apple FM base URL
+- local Gemma runtime base URL (`ollama_base_url`)
+- legacy Apple bridge base URL (`apple_fm_base_url`, disabled by default)
 - inventory-control toggles
 - declared sandbox profiles
 

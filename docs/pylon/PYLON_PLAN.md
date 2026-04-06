@@ -125,7 +125,7 @@ The first compute-market groundwork slice is already closed:
 
 - `#3104` launch taxonomy, product families, and capability envelope
 - `#3105` canonical earn-loop linkage
-- `#3106` Apple Foundation Models launch backend work
+- `#3106` legacy alternate-backend groundwork
 - `#3107` durable compute authority persistence and read models
 - `#3108` expanded proto packages and generated authority clients
 
@@ -176,15 +176,14 @@ The new Pylon should inherit the same launch compute-market truth already being 
 
 ### Launch backend products
 
-- `ollama.text_generation`
-- `ollama.embeddings`
-- `apple_foundation_models.text_generation`
+- `psionic.local.inference.gemma.single_node`
 
 ### Explicitly not launch scope unless the repo truth changes
 
-- `apple_foundation_models.embeddings`
+- broader embeddings lanes
+- legacy Apple FM launch claims
 
-Issue `#3116` and `docs/plans/compute-market-full-implementation-plan.md` currently frame Apple Foundation Models as an inference backend at launch. Pylon should not overclaim beyond that.
+Issue `#3116` and `docs/plans/compute-market-full-implementation-plan.md` describe the broader compute-market direction. The standalone `Pylon` operator lane in this repo should not overclaim beyond the current Gemma-first flow.
 
 ### Capability envelope, not product identity
 
@@ -337,7 +336,7 @@ The standalone Pylon path should be developed alongside the parts of `#3116` tha
 
 - `#3104` launch compute taxonomy, product families, and capability envelope
 - `#3105` canonicalize the current earn loop into compute-market inventory, receipts, and delivery linkage
-- `#3106` revive or replace the Apple Foundation Models bridge for the launch inference backend
+- `#3106` legacy alternate-backend groundwork
 - `#3107` durable authority persistence and read models
 - `#3108` generated compute-market proto packages and clients
 

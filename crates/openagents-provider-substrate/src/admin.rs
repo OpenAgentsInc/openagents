@@ -1448,7 +1448,7 @@ mod tests {
                 inventory_session_started_at_ms: Some(1_762_300_000_000),
                 last_completed_job_at_epoch_ms: Some(1_762_300_030_000),
                 last_authoritative_event_id: Some("evt-1".to_string()),
-                execution_backend_label: "local GPT-OSS runtime".to_string(),
+                execution_backend_label: "local Gemma runtime".to_string(),
                 provider_blocker_codes: Vec::new(),
             },
             availability: ProviderAvailability {
@@ -1517,7 +1517,8 @@ mod tests {
                 backend_ready: true,
                 eligible: true,
                 capability_summary:
-                    "backend=gpt_oss execution=local_inference family=inference".to_string(),
+                    "backend=local_gemma execution=local_inference family=inference"
+                        .to_string(),
                 market_receipt_class: "accepted_delivery".to_string(),
                 earnings_summary:
                     "Earns when local delivery is accepted and wallet settlement is confirmed."
@@ -1542,9 +1543,9 @@ mod tests {
                 request_id: Some("req-1".to_string()),
                 status: "succeeded".to_string(),
                 demand_source: "open_network".to_string(),
-                product_id: Some("gpt_oss.text_generation".to_string()),
+                product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
                 compute_family: Some("inference".to_string()),
-                backend_family: Some("gpt_oss".to_string()),
+                backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -1561,7 +1562,7 @@ mod tests {
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
                 compute_family: Some("inference".to_string()),
-                backend_family: Some("gpt_oss".to_string()),
+                backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -1633,7 +1634,7 @@ mod tests {
                 .receipts
                 .first()
                 .and_then(|receipt| receipt.backend_family.as_deref()),
-            Some("gpt_oss")
+            Some("local_gemma")
         );
         assert_eq!(
             snapshot

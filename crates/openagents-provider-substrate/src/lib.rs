@@ -31,7 +31,7 @@ pub enum ProviderBackendKind {
 impl ProviderBackendKind {
     pub const fn label(self) -> &'static str {
         match self {
-            Self::GptOss => "local GPT-OSS runtime",
+            Self::GptOss => "local Gemma runtime",
             Self::AppleFoundationModels => "Apple Foundation Models bridge",
             Self::PsionicTrain => "Psionic train contributor runtime",
         }
@@ -88,8 +88,8 @@ impl ProviderBlocker {
             Self::WalletError => "WALLET_ERROR",
             Self::SkillTrustUnavailable => "SKL_TRUST_UNAVAILABLE",
             Self::CreditLaneUnavailable => "AC_CREDIT_UNAVAILABLE",
-            Self::GptOssUnavailable => "GPT_OSS_UNAVAILABLE",
-            Self::GptOssModelUnavailable => "GPT_OSS_MODEL_UNAVAILABLE",
+            Self::GptOssUnavailable => "LOCAL_GEMMA_UNAVAILABLE",
+            Self::GptOssModelUnavailable => "LOCAL_GEMMA_MODEL_UNAVAILABLE",
             Self::AppleFoundationModelsUnavailable => "APPLE_FM_UNAVAILABLE",
             Self::AppleFoundationModelsModelUnavailable => "APPLE_FM_MODEL_UNAVAILABLE",
         }
@@ -101,8 +101,8 @@ impl ProviderBlocker {
             Self::WalletError => "Spark wallet reports an error",
             Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
             Self::CreditLaneUnavailable => "AC credit lane is not available",
-            Self::GptOssUnavailable => "Local GPT-OSS backend is unavailable",
-            Self::GptOssModelUnavailable => "No local GPT-OSS serving model is ready",
+            Self::GptOssUnavailable => "Local Gemma runtime is unavailable",
+            Self::GptOssModelUnavailable => "No local Gemma serving model is ready",
             Self::AppleFoundationModelsUnavailable => {
                 "Apple Foundation Models backend is unavailable"
             }
@@ -1081,8 +1081,8 @@ impl ProviderComputeProduct {
 
     pub const fn product_id(self) -> &'static str {
         match self {
-            Self::GptOssInference => "psionic.local.inference.gpt_oss.single_node",
-            Self::GptOssEmbeddings => "psionic.local.embeddings.gpt_oss.single_node",
+            Self::GptOssInference => "psionic.local.inference.gemma.single_node",
+            Self::GptOssEmbeddings => "psionic.local.embeddings.gemma.single_node",
             Self::PooledInferenceRemoteWholeRequest => {
                 "psionic.cluster.inference.pooled.remote_whole_request"
             }
@@ -1115,8 +1115,8 @@ impl ProviderComputeProduct {
 
     pub const fn display_label(self) -> &'static str {
         match self {
-            Self::GptOssInference => "GPT-OSS inference",
-            Self::GptOssEmbeddings => "GPT-OSS embeddings",
+            Self::GptOssInference => "Gemma inference",
+            Self::GptOssEmbeddings => "Gemma embeddings",
             Self::PooledInferenceRemoteWholeRequest => "Pooled remote serving",
             Self::PooledInferenceReplicatedServing => "Pooled standby replicas",
             Self::PooledInferenceDenseSplit => "Pooled split inference",
@@ -1151,7 +1151,7 @@ impl ProviderComputeProduct {
 
     pub const fn backend_label(self) -> &'static str {
         match self {
-            Self::GptOssInference | Self::GptOssEmbeddings => "gpt_oss",
+            Self::GptOssInference | Self::GptOssEmbeddings => "local_gemma",
             Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 "apple_foundation_models"
             }
@@ -1205,9 +1205,11 @@ impl ProviderComputeProduct {
 
     pub const fn capability_summary_base(self) -> &'static str {
         match self {
-            Self::GptOssInference => "backend=gpt_oss execution=local_inference family=inference",
+            Self::GptOssInference => {
+                "backend=local_gemma execution=local_inference family=inference"
+            }
             Self::GptOssEmbeddings => {
-                "backend=gpt_oss execution=local_inference family=embeddings status=unsupported"
+                "backend=local_gemma execution=local_inference family=embeddings status=unsupported"
             }
             Self::PooledInferenceRemoteWholeRequest => {
                 "backend=pooled_inference execution=clustered_inference family=inference mode=remote_whole_request"
@@ -1445,10 +1447,14 @@ impl ProviderComputeProduct {
 
     pub fn for_product_id(product_id: &str) -> Option<Self> {
         match product_id.trim() {
-            "psionic.local.inference.gpt_oss.single_node"
+            "psionic.local.inference.gemma.single_node"
+            | "psionic.local.inference.gpt_oss.single_node"
+            | "local_gemma.text_generation"
             | "ollama.text_generation"
             | "gpt_oss.text_generation" => Some(Self::GptOssInference),
-            "psionic.local.embeddings.gpt_oss.single_node"
+            "psionic.local.embeddings.gemma.single_node"
+            | "psionic.local.embeddings.gpt_oss.single_node"
+            | "local_gemma.embeddings"
             | "ollama.embeddings"
             | "gpt_oss.embeddings" => Some(Self::GptOssEmbeddings),
             "psionic.cluster.inference.pooled.remote_whole_request"
@@ -1516,7 +1522,7 @@ impl ProviderComputeProduct {
                 revenue_summary: if availability.gpt_oss.is_ready() {
                     "Earns when local delivery is accepted and wallet settlement is confirmed."
                 } else {
-                    "No single-node revenue yet because the local GPT-OSS runtime is not ready."
+                    "No single-node revenue yet because the local Gemma runtime is not ready."
                 }
                 .to_string(),
             },
@@ -1556,7 +1562,7 @@ impl ProviderComputeProduct {
                 market_receipt_class: "unsupported".to_string(),
                 earnings_trigger: "unsupported".to_string(),
                 revenue_posture: "unsupported".to_string(),
-                revenue_summary: "GPT-OSS embeddings are not a supported market lane.".to_string(),
+                revenue_summary: "Gemma embeddings are not a supported market lane.".to_string(),
             },
             Self::AppleFoundationModelsAdapterHosting => ProviderProductMarketSemantics {
                 contribution_class: "single_node_adapter_hosting".to_string(),
@@ -2057,8 +2063,8 @@ mod tests {
     #[test]
     fn controls_gate_products_by_product_id() {
         let mut controls = ProviderInventoryControls::default();
-        assert!(controls.is_product_advertised("psionic.local.inference.gpt_oss.single_node"));
-        assert!(!controls.is_product_advertised("psionic.local.embeddings.gpt_oss.single_node"));
+        assert!(controls.is_product_advertised("psionic.local.inference.gemma.single_node"));
+        assert!(!controls.is_product_advertised("psionic.local.embeddings.gemma.single_node"));
         assert!(
             controls.is_product_advertised("psionic.cluster.inference.pooled.remote_whole_request")
         );
@@ -2079,33 +2085,33 @@ mod tests {
 
         let enabled = controls.toggle(ProviderComputeProduct::GptOssEmbeddings);
         assert!(!enabled);
-        assert!(!controls.is_product_advertised("psionic.local.embeddings.gpt_oss.single_node"));
+        assert!(!controls.is_product_advertised("psionic.local.embeddings.gemma.single_node"));
     }
 
     #[test]
-    fn gpt_oss_product_ids_and_aliases_preserve_truthful_backend_identity() {
+    fn local_gemma_product_ids_and_aliases_preserve_truthful_backend_identity() {
         let inference = ProviderComputeProduct::GptOssInference;
         let descriptor = inference.descriptor();
 
         assert_eq!(
             inference.product_id(),
-            "psionic.local.inference.gpt_oss.single_node"
+            "psionic.local.inference.gemma.single_node"
         );
         assert_eq!(inference.backend_kind(), Some(ProviderBackendKind::GptOss));
-        assert_eq!(inference.backend_label(), "gpt_oss");
+        assert_eq!(inference.backend_label(), "local_gemma");
         assert_eq!(
             descriptor.product_id,
-            "psionic.local.inference.gpt_oss.single_node"
+            "psionic.local.inference.gemma.single_node"
         );
         assert_eq!(descriptor.compute_family, "inference");
-        assert_eq!(descriptor.backend_family, "gpt_oss");
+        assert_eq!(descriptor.backend_family, "local_gemma");
 
         assert_eq!(
             ProviderComputeProduct::for_product_id("gpt_oss.text_generation"),
             Some(ProviderComputeProduct::GptOssInference)
         );
         assert_eq!(
-            ProviderComputeProduct::for_product_id("psionic.local.inference.gpt_oss.single_node"),
+            ProviderComputeProduct::for_product_id("psionic.local.inference.gemma.single_node"),
             Some(ProviderComputeProduct::GptOssInference)
         );
         assert_eq!(
@@ -2117,9 +2123,9 @@ mod tests {
             describe_provider_product_id("ollama.text_generation").expect("legacy alias");
         assert_eq!(
             legacy_descriptor.product_id,
-            "psionic.local.inference.gpt_oss.single_node"
+            "psionic.local.inference.gemma.single_node"
         );
-        assert_eq!(legacy_descriptor.backend_family, "gpt_oss");
+        assert_eq!(legacy_descriptor.backend_family, "local_gemma");
     }
 
     #[test]
@@ -2324,7 +2330,7 @@ mod tests {
             embeddings
                 .as_ref()
                 .map(|descriptor| descriptor.backend_family.as_str()),
-            Some("gpt_oss")
+            Some("local_gemma")
         );
         assert_eq!(
             embeddings
@@ -2336,7 +2342,7 @@ mod tests {
             embeddings
                 .as_ref()
                 .map(|descriptor| descriptor.product_id.as_str()),
-            Some("psionic.local.embeddings.gpt_oss.single_node")
+            Some("psionic.local.embeddings.gemma.single_node")
         );
 
         let sandbox = describe_provider_product_id("sandbox.python.exec");
