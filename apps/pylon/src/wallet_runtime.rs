@@ -12,6 +12,9 @@ use crate::{
     now_epoch_ms,
 };
 
+// Release fallback so standalone Pylon boots without requiring shell env injection.
+const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WalletSubcommand {
     Status {
@@ -98,7 +101,7 @@ enum WalletApiKeySource {
     ConfigEnv,
     OpenAgentsEnv,
     BreezEnv,
-    None,
+    EmbeddedDefault,
 }
 
 impl WalletApiKeySource {
@@ -110,7 +113,7 @@ impl WalletApiKeySource {
             ),
             Self::OpenAgentsEnv => "env:OPENAGENTS_SPARK_API_KEY".to_string(),
             Self::BreezEnv => "env:BREEZ_API_KEY".to_string(),
-            Self::None => "none".to_string(),
+            Self::EmbeddedDefault => "embedded:openagents-default".to_string(),
         }
     }
 }
@@ -785,7 +788,10 @@ fn resolve_wallet_api_key(config_env: Option<&str>) -> (Option<String>, WalletAp
     if let Some(value) = read_env_nonempty("BREEZ_API_KEY") {
         return (Some(value), WalletApiKeySource::BreezEnv);
     }
-    (None, WalletApiKeySource::None)
+    (
+        Some(DEFAULT_OPENAGENTS_SPARK_API_KEY.to_string()),
+        WalletApiKeySource::EmbeddedDefault,
+    )
 }
 
 fn read_env_nonempty(name: &str) -> Option<String> {
@@ -979,5 +985,20 @@ mod tests {
         unsafe {
             std::env::remove_var("PYLON_TEST_SPARK_KEY");
         }
+    }
+
+    #[test]
+    fn resolve_wallet_api_key_defaults_to_embedded_release_key() {
+        unsafe {
+            std::env::remove_var("OPENAGENTS_SPARK_API_KEY");
+            std::env::remove_var("BREEZ_API_KEY");
+        }
+        let (api_key, source) = resolve_wallet_api_key(Some("OPENAGENTS_SPARK_API_KEY"));
+        assert_eq!(api_key.as_deref(), Some(DEFAULT_OPENAGENTS_SPARK_API_KEY));
+        assert_eq!(source, WalletApiKeySource::EmbeddedDefault);
+        assert_eq!(
+            source.label(Some("OPENAGENTS_SPARK_API_KEY")),
+            "embedded:openagents-default"
+        );
     }
 }
