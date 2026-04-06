@@ -30,7 +30,8 @@ This doc is intentionally narrower than the older default-channel performance no
 
 | Ticket | Status | Notes |
 |-------|--------|-------|
-| P1 | 🟡 In progress | Worker-local pre-send dedupe landed in `nip28_chat_lane.rs`. Added normalized request caching plus unit coverage for duplicate suppression, normalization, changed-field resend, and retry-after-send-failure. Targeted `cargo test -p autopilot-desktop sync_managed_chat_subscriptions` is currently blocked by unrelated existing test compile errors in `apps/autopilot-desktop/src/pane_system.rs` for missing `psionic_remote_training_*` imports. |
+| P1 | ✅ Done | Reducer-side pre-send dedupe landed in `Nip28ChatLaneWorker`. `sync_managed_chat_subscriptions(&mut self, ...)` now normalizes inputs, compares against cached `ManagedChatSubscriptionSyncRequest`, and suppresses identical dispatches. Worker-side dedupe in `handle_command()` kept as second line of defense. 7 unit tests pass: `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests::sync_managed_chat_subscriptions`. |
+| P2 | ✅ Done | `handle_command()` no longer sets `subscriptions_dirty` on cursor-only changes. `since_created_at` still updates in worker state for future reconnect backfill, but only relay or channel set changes trigger `replace_subscription()`. Reconnect-on-error and missing-subscription paths unchanged. 4 unit tests pass: `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests::handle_command`. |
 
 ---
 
@@ -39,26 +40,29 @@ This doc is intentionally narrower than the older default-channel performance no
 **Type:** Performance / Bug
 **Priority:** P0 — Critical
 **Estimate:** S
-**Status:** In progress
+**Status:** Done
 
-### Implementation update
+### Implementation
 
-- Implemented as worker-local pre-send dedupe in `Nip28ChatLaneWorker`, not as reducer-owned state.
-- Added `ManagedChatSubscriptionSyncRequest` as a normalized internal request type.
-- `sync_managed_chat_subscriptions(...)` now takes `&mut self`, normalizes inputs, suppresses duplicate sends, and only caches the request after a successful enqueue.
-- Existing reducer and harness call sites continue to use the same method with no extra dedupe logic added at the call site.
-- Unit tests were added in `nip28_chat_lane.rs` for:
-  - first-send behavior
-  - identical-request suppression
-  - equivalent-input suppression after normalization
-  - resend when relays, channels, or `since_created_at` change
-  - retry after send failure
+- Added `ManagedChatSubscriptionSyncRequest` as a normalized internal request type with `PartialEq`/`Eq`.
+- Added `last_sync_request: Option<ManagedChatSubscriptionSyncRequest>` to `Nip28ChatLaneWorker`.
+- `sync_managed_chat_subscriptions(&mut self, ...)` normalizes inputs via existing `normalize_relay_urls()` and `normalize_channel_ids()`, compares against the cached request, and skips dispatch when identical.
+- Request is only cached after a successful `command_tx.send()`, so send failures are retried on the next call.
+- Worker-side dedupe in `handle_command()` is preserved as a second line of defense.
+- Reducer call site in `drain_runtime_lane_updates()` required no changes — `state` is already `&mut`.
 
-### Verification update
+### Verification
 
-- Targeted worker tests were added.
-- `cargo test -p autopilot-desktop sync_managed_chat_subscriptions` is currently blocked by unrelated pre-existing test compile failures in `apps/autopilot-desktop/src/pane_system.rs`.
-- Full crate verification is still pending after that unrelated blocker is fixed or isolated.
+- 7 unit tests added and passing:
+  - `sync_managed_chat_subscriptions_first_send_dispatches`
+  - `sync_managed_chat_subscriptions_identical_request_suppressed`
+  - `sync_managed_chat_subscriptions_equivalent_input_suppressed_after_normalization`
+  - `sync_managed_chat_subscriptions_resend_when_relays_change`
+  - `sync_managed_chat_subscriptions_resend_when_channels_change`
+  - `sync_managed_chat_subscriptions_resend_when_since_changes`
+  - `sync_managed_chat_subscriptions_retry_after_send_failure`
+- `cargo check -p autopilot-desktop` — clean
+- `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests::sync_managed_chat_subscriptions` — 7/7 pass
 
 ### Summary
 
@@ -113,6 +117,26 @@ even when the derived tuple is unchanged.
 **Type:** Performance / Bug
 **Priority:** P0 — Critical
 **Estimate:** M
+**Status:** Done
+
+### Implementation
+
+- Changed `handle_command()` in `nip28_chat_lane.rs` so that `subscriptions_dirty` is
+  only set when `relay_changed || channel_changed`, not on `since_changed` alone.
+- `state.since_created_at` still updates on cursor-only changes so future reconnects
+  use the latest backfill cursor.
+- Reconnect-on-error path (`poll_events()` recv error handler) and
+  `missing_subscription` cold-start path remain unchanged — both correctly trigger
+  resubscription.
+- 4 unit tests added: `handle_command_since_only_change_does_not_set_dirty`,
+  `handle_command_relay_change_sets_dirty`, `handle_command_channel_change_sets_dirty`,
+  `handle_command_since_only_change_still_updates_cursor`.
+
+### Verification
+
+- `cargo check -p autopilot-desktop` — clean
+- `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests` — 14/14 pass
+  (3 existing + 7 P1 + 4 P2)
 
 ### Summary
 
