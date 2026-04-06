@@ -1473,13 +1473,16 @@ fn rebuild_managed_chat_projection(
             let channel_ids = ordered_group_channel_ids
                 .remove(&group_id)
                 .unwrap_or_default();
+            let system_channel_id = super::DefaultNip28ChannelConfig::from_env_or_default().channel_id;
             let unread_count = channel_ids
                 .iter()
+                .filter(|channel_id| **channel_id != system_channel_id)
                 .filter_map(|channel_id| channel_lookup.get(channel_id))
                 .map(|channel| channel.unread_count)
                 .sum();
             let mention_count = channel_ids
                 .iter()
+                .filter(|channel_id| **channel_id != system_channel_id)
                 .filter_map(|channel_id| channel_lookup.get(channel_id))
                 .map(|channel| channel.mention_count)
                 .sum();

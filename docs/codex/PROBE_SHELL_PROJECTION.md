@@ -78,8 +78,27 @@ Current local-first rules:
 - the shared session records the local human and the local Probe agent as
   explicit participants
 - the current control owner is stored separately from raw Probe runtime status
-- explicit handoffs persist summary, provenance, and timestamp in the desktop
-  artifact projection
+- the current controller is now tracked explicitly by participant id, not only
+  by coarse owner kind
+- explicit handoffs persist summary, provenance, timestamp, and participant
+  attribution in the desktop artifact projection
+- the shared session can also persist:
+  - one pending handoff request
+  - a short collaboration timeline of requests, accepts, take-control actions,
+    notes, and handoffs
+- the collaboration layer is no longer only local:
+  - app-owned shared-session, evidence, delivery, bounty, settlement,
+    campaign, promotion, and hosted-audit objects can now also persist in a
+    separate shared Forge state document
+  - the boring internal configuration point is
+    `OPENAGENTS_FORGE_SHARED_STATE_PATH`
+  - the desktop reload path merges that shared document deterministically by
+    object id and `updated_at_epoch_ms`, so a second operator desktop can load
+    the same shared session state without copying local artifact files by hand
+  - the same shared document now also drives a hosted-session directory and
+    attach flow, so a teammate can discover an already-running hosted Forge
+    session and attach by shared-session id or Probe session id without first
+    owning a local transcript file
 - reducer-level interrupt and resume events also update control-owner posture so
   the shell does not lose lineage when control flips between the operator and
   the background agent
@@ -91,10 +110,24 @@ Current local-first rules:
   - execution host kind and host identity
   - operator handoff posture derived from the current control owner
 
-The first operator-facing control is the chat command:
+The operator-facing control set now includes:
 
+- `/handoff status`
+- `/handoff request <summary>`
+- `/handoff accept <summary>`
+- `/handoff take <summary>`
+- `/handoff note <summary>`
 - `/handoff human <summary>`
 - `/handoff agent <summary>`
+
+Current shell behavior:
+
+- the shared-session card shows the current controller, the local operator role
+  as `controlling` or `watching`, any pending handoff request, and recent
+  collaboration events
+- hosted attach now also upserts the local operator into the shared-session
+  participant roster, so multiple desktops can see who is attached to the
+  same hosted session even before full external identity/auth work exists
 
 When Probe exposes delegated child sessions, Autopilot now projects them as
 app-owned cards inside the shared session instead of leaving them buried in the
@@ -202,6 +235,58 @@ Current local-first behavior:
   transcript history
 - GitHub-specific PR and CI details stay app-owned in the delivery receipt
   instead of leaking browser-provider semantics into Probe runtime truth
+
+## Hosted Audit Bundle Layer
+
+Autopilot now also keeps app-owned hosted audit bundles above the shared
+session, evidence bundle, delivery receipt, hosted Probe runtime projection,
+and the bookkeeping objects linked to the same hosted run.
+
+Current local-first behavior:
+
+- one hosted coding audit bundle and one hosted bookkeeping rehearsal bundle
+  can be linked from the Forge shared session
+- the bundle snapshots:
+  - the latest hosted preflight report and exported preflight artifact path
+  - environment summary
+  - session location
+  - Probe session ids
+  - workspace root and base repo identity
+  - routed and mounted pack ids plus unsupported-route reasons
+  - hosted Probe receipts for auth, checkout, worker ownership, cost, and
+    cleanup when Probe reports them
+  - linked evidence bundle and delivery receipt state
+- operators can extend the bundle through:
+  - `/hosted sessions`
+  - `/hosted attach shared <shared-session-id>`
+  - `/hosted attach probe <probe-session-id>`
+  - `/hosted preflight [path]`
+  - `/hosted coding <environment-summary>`
+  - `/hosted bookkeeping <environment-summary>`
+  - `/hosted note coding <summary>`
+  - `/hosted recovery coding <summary>`
+  - `/hosted defect coding <summary>`
+  - `/hosted note bookkeeping <summary>`
+  - `/hosted recovery bookkeeping <summary>`
+  - `/hosted defect bookkeeping <summary>`
+  - `/hosted export <coding|bookkeeping> [path]`
+  - `/hosted status`
+- the shell renders the audit as a first-class card so the operator can review
+  hosted closeout truth without spelunking the raw transcript or detached Probe
+  session JSON
+- the operator can export the active hosted coding or bookkeeping bundle into a
+  deterministic Markdown or JSON artifact with the concrete shared-session,
+  mounted-pack, hosted-receipt, preflight, evidence, delivery, campaign,
+  promotion, bounty, claim, and settlement ids and statuses for review or
+  check-in
+- bookkeeping rehearsal bundles also snapshot the linked campaign,
+  promotion-ledger, bounty-contract, bounty-claim, and settlement-receipt ids
+  and statuses so the operator can see which bookkeeping steps were actually
+  tied to the hosted run versus which steps still required manual intervention
+
+This keeps Probe as the source of hosted runtime truth while keeping the closeout
+story, reviewer-facing notes, bookkeeping linkage, and operator defect
+accounting app-owned.
 
 ## Campaign Layer
 

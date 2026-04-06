@@ -57,6 +57,11 @@ Default to:
 - Prefer deletion/simplification over expansion unless requested.
 - Keep changes small, verifiable, and directly tied to current MVP goals.
 - Do not add `.github/workflows/` automation in this repo.
+- The public `openagents.com` website does not live in this repo. It lives in
+  the sibling checkout at `/Users/christopherdavid/work/openagents.com`.
+- If the task is about the main website, homepage, landing pages, or public
+  domain entry flows, switch repos. Do not edit or recreate
+  `apps/openagents.com/` here.
 
 ## Psionic Specs
 
@@ -86,6 +91,14 @@ Default to:
 - The running desktop app now has an app-owned control plane plus a thin CLI:
   - implementation: `apps/autopilot-desktop/src/desktop_control.rs`
   - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- The narrow user/agent-facing guide for the current internal Forge CLI lives
+  in `docs/codex/AUTOPILOTCTL_FORGE_CLI.md`.
+- The agent-specific runbook for how to operate shared Forge sessions lives in
+  `docs/codex/FORGE_AGENT_INSTRUCTIONS.md`.
+- Forge also has a no-window host at
+  `apps/autopilot-desktop/src/bin/autopilot_headless_forge.rs`, and
+  `autopilotctl forge ...` will autostart that host when the resolved
+  desktop-control target is missing or stale.
 - Full operator/testing docs for `autopilotctl`, headless compute, packaged
   app roundtrips, and log artifacts live in `docs/headless-compute.md`.
 - The current release-cut/product-scope truth, including the seller-first role

@@ -54,10 +54,18 @@ pub enum Nip28ChatLaneUpdate {
     Snapshot(Nip28ChatLaneSnapshot),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManagedChatSubscriptionSyncRequest {
+    relay_urls: Vec<String>,
+    channel_ids: Vec<String>,
+    since_created_at: u64,
+}
+
 pub struct Nip28ChatLaneWorker {
     update_rx: Receiver<Nip28ChatLaneUpdate>,
     command_tx: Sender<Nip28ChatLaneCommand>,
     dispatched_ids: HashSet<String>,
+    last_sync_request: Option<ManagedChatSubscriptionSyncRequest>,
 }
 
 impl Nip28ChatLaneWorker {
@@ -73,6 +81,7 @@ impl Nip28ChatLaneWorker {
             update_rx,
             command_tx,
             dispatched_ids: HashSet::new(),
+            last_sync_request: None,
         }
     }
 
@@ -95,18 +104,30 @@ impl Nip28ChatLaneWorker {
     }
 
     pub fn sync_managed_chat_subscriptions(
-        &self,
+        &mut self,
         relay_urls: Vec<String>,
         channel_ids: Vec<String>,
         since_created_at: u64,
     ) {
-        let _ = self
+        let request = ManagedChatSubscriptionSyncRequest {
+            relay_urls: normalize_relay_urls(relay_urls),
+            channel_ids: normalize_channel_ids(channel_ids),
+            since_created_at,
+        };
+        if self.last_sync_request.as_ref() == Some(&request) {
+            return;
+        }
+        if self
             .command_tx
             .send(Nip28ChatLaneCommand::SyncManagedChatSubscriptions {
-                relay_urls,
-                channel_ids,
-                since_created_at,
-            });
+                relay_urls: request.relay_urls.clone(),
+                channel_ids: request.channel_ids.clone(),
+                since_created_at: request.since_created_at,
+            })
+            .is_ok()
+        {
+            self.last_sync_request = Some(request);
+        }
     }
 
     pub fn clear_dispatched(&mut self, event_id: &str) {
@@ -296,7 +317,12 @@ fn handle_command(
             if relay_changed {
                 disconnect_pool(runtime, state);
             }
-            state.subscriptions_dirty = true;
+            // Only resubscribe when relays or channels change structurally.
+            // A cursor-only change updates state.since_created_at for future
+            // reconnect backfill but does not trigger a live resubscription.
+            if relay_changed || channel_changed {
+                state.subscriptions_dirty = true;
+            }
         }
         Nip28ChatLaneCommand::FetchKind0Metadata { pubkeys } => {
             let new_pubkeys: Vec<String> = pubkeys
@@ -546,9 +572,24 @@ async fn poll_events(state: &mut Nip28ChatLaneState, update_tx: &Sender<Nip28Cha
 #[cfg(test)]
 mod tests {
     use super::{
-        NIP28_CHAT_BACKFILL_OVERLAP_SECS, build_filters, normalize_channel_ids,
-        normalize_relay_urls,
+        NIP28_CHAT_BACKFILL_OVERLAP_SECS, Nip28ChatLaneCommand, Nip28ChatLaneUpdate,
+        Nip28ChatLaneWorker, build_filters, normalize_channel_ids, normalize_relay_urls,
     };
+    use std::collections::HashSet;
+    use std::sync::mpsc;
+
+    fn make_test_worker() -> (Nip28ChatLaneWorker, mpsc::Receiver<Nip28ChatLaneCommand>) {
+        let (update_tx, update_rx) = mpsc::channel::<Nip28ChatLaneUpdate>();
+        let (command_tx, command_rx) = mpsc::channel::<Nip28ChatLaneCommand>();
+        let _ = update_tx; // keep sender alive so worker doesn't see a disconnected rx
+        let worker = Nip28ChatLaneWorker {
+            update_rx,
+            command_tx,
+            dispatched_ids: HashSet::new(),
+            last_sync_request: None,
+        };
+        (worker, command_rx)
+    }
 
     #[test]
     fn normalize_relay_urls_dedupes_and_trims() {
@@ -583,5 +624,300 @@ mod tests {
         assert_eq!(filters.len(), 3);
         assert_eq!(filters[2]["since"].as_u64(), Some(42));
         assert_eq!(NIP28_CHAT_BACKFILL_OVERLAP_SECS, 120);
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_first_send_dispatches() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_identical_request_suppressed() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_equivalent_input_suppressed_after_normalization() {
+        let (mut worker, rx) = make_test_worker();
+        let channel = "ab".repeat(32);
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        // Same values with whitespace, uppercase, and duplicates
+        worker.sync_managed_chat_subscriptions(
+            vec![" wss://relay.one ".into(), "wss://relay.one".into()],
+            vec![channel.to_uppercase(), channel.clone()],
+            100,
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_resend_when_relays_change() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.two".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_resend_when_channels_change() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["cd".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_resend_when_since_changes() {
+        let (mut worker, rx) = make_test_worker();
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        assert!(rx.try_recv().is_ok());
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            200,
+        );
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn sync_managed_chat_subscriptions_retry_after_send_failure() {
+        let (update_tx, update_rx) = mpsc::channel::<Nip28ChatLaneUpdate>();
+        let (command_tx, _command_rx) = mpsc::channel::<Nip28ChatLaneCommand>();
+        let _ = update_tx;
+        // Drop the receiver so sends fail
+        drop(_command_rx);
+        let mut worker = Nip28ChatLaneWorker {
+            update_rx,
+            command_tx,
+            dispatched_ids: HashSet::new(),
+            last_sync_request: None,
+        };
+        worker.sync_managed_chat_subscriptions(
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        // Request was NOT cached because send failed
+        assert!(worker.last_sync_request.is_none());
+    }
+
+    // --- P2 tests: handle_command subscriptions_dirty behavior ---
+
+    use super::{Nip28ChatLaneSnapshot, Nip28ChatLaneState, handle_command};
+    use std::collections::HashMap;
+
+    fn make_test_state() -> Nip28ChatLaneState {
+        Nip28ChatLaneState {
+            pool: None,
+            desired_relays: Vec::new(),
+            desired_channel_ids: Vec::new(),
+            since_created_at: 0,
+            relay_subscription_ids: HashMap::new(),
+            next_subscription_seq: 0,
+            fetched_kind0_pubkeys: HashSet::new(),
+            snapshot: Nip28ChatLaneSnapshot {
+                configured_relays: Vec::new(),
+                subscribed_channel_ids: Vec::new(),
+                connected_relay_count: 0,
+                last_inbound_event_at_epoch_secs: None,
+                last_eose_at_epoch_secs: None,
+                reconnecting: false,
+                last_error: None,
+            },
+            last_emitted_snapshot: None,
+            subscriptions_dirty: false,
+        }
+    }
+
+    fn send_sync_command(
+        runtime: &tokio::runtime::Runtime,
+        state: &mut Nip28ChatLaneState,
+        update_tx: &mpsc::Sender<super::Nip28ChatLaneUpdate>,
+        relays: Vec<String>,
+        channels: Vec<String>,
+        since: u64,
+    ) {
+        handle_command(
+            runtime,
+            state,
+            update_tx,
+            Nip28ChatLaneCommand::SyncManagedChatSubscriptions {
+                relay_urls: relays,
+                channel_ids: channels,
+                since_created_at: since,
+            },
+        );
+    }
+
+    #[test]
+    fn handle_command_since_only_change_does_not_set_dirty() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+        let channel = "ab".repeat(32);
+
+        // Initial command sets dirty
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        assert!(state.subscriptions_dirty);
+
+        // Reset dirty flag (simulating reconcile_connections clearing it)
+        state.subscriptions_dirty = false;
+
+        // Cursor-only change: same relays+channels, different since
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            200,
+        );
+        assert!(!state.subscriptions_dirty);
+    }
+
+    #[test]
+    fn handle_command_relay_change_sets_dirty() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+        let channel = "ab".repeat(32);
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        state.subscriptions_dirty = false;
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.two".into()],
+            vec![channel.clone()],
+            100,
+        );
+        assert!(state.subscriptions_dirty);
+    }
+
+    #[test]
+    fn handle_command_channel_change_sets_dirty() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec!["ab".repeat(32)],
+            100,
+        );
+        state.subscriptions_dirty = false;
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec!["cd".repeat(32)],
+            100,
+        );
+        assert!(state.subscriptions_dirty);
+    }
+
+    #[test]
+    fn handle_command_since_only_change_still_updates_cursor() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (update_tx, _update_rx) = mpsc::channel();
+        let mut state = make_test_state();
+        let channel = "ab".repeat(32);
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            100,
+        );
+        state.subscriptions_dirty = false;
+
+        send_sync_command(
+            &runtime,
+            &mut state,
+            &update_tx,
+            vec!["wss://relay.one".into()],
+            vec![channel.clone()],
+            300,
+        );
+        // Cursor updated for future reconnect use
+        assert_eq!(state.since_created_at, 300);
+        // But no resubscription triggered
+        assert!(!state.subscriptions_dirty);
     }
 }

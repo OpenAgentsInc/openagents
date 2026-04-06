@@ -23,7 +23,7 @@ const SECTION_PADDING: f32 = 16.0;
 const SECTION_HEADER_HEIGHT: f32 = 26.0;
 const PANEL_RADIUS: f32 = 3.0;
 const METRIC_CARD_HEIGHT: f32 = 68.0;
-const PREVIEW_ROW_HEIGHT: f32 = 40.0;
+const PREVIEW_ROW_HEIGHT: f32 = 54.0;
 const DETAIL_ROW_LABEL_WIDTH: f32 = 156.0;
 const SECTION_SCROLLBAR_GUTTER: f32 = 10.0;
 const SECTION_SCROLLBAR_WIDTH: f32 = 3.0;
@@ -542,7 +542,8 @@ fn paint_earnings_section(
     let scroll_offset = earnings_scoreboard.clamp_scroll_offset(max_scroll);
     let mut y = bounds.origin.y + SECTION_HEADER_HEIGHT + 16.0 - scroll_offset;
     let card_gap = 10.0;
-    let card_width = ((viewport.size.width - SECTION_PADDING * 2.0 - card_gap * 2.0) / 3.0).max(0.0);
+    let card_width =
+        ((viewport.size.width - SECTION_PADDING * 2.0 - card_gap * 2.0) / 3.0).max(0.0);
     let today_display = earnings_scoreboard_amount_display(
         earnings_scoreboard.load_state,
         format_sats_amount(earnings_scoreboard.sats_today),
@@ -883,8 +884,9 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
         ));
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "completed={} payer_nostr={} payee_nostr={}",
+                "completed={} receipt={} payer_nostr={} payee_nostr={}",
                 row.completed_at_epoch_seconds,
+                row.market_receipt_class.as_deref().unwrap_or("none"),
                 compact_identity(row.requester_nostr_pubkey.as_deref()),
                 compact_identity(row.provider_nostr_pubkey.as_deref())
             ),
@@ -892,6 +894,14 @@ fn paint_history_section(bounds: Bounds, job_history: &JobHistoryState, paint: &
             8.8,
             theme::text::MUTED,
         ));
+        if let Some(earnings_summary) = row.earnings_summary.as_deref() {
+            paint.scene.draw_text(paint.text.layout(
+                earnings_summary,
+                Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 38.0),
+                8.4,
+                theme::text::MUTED,
+            ));
+        }
     }
 
     paint.scene.draw_text(paint.text.layout(
@@ -1045,7 +1055,10 @@ fn paint_earnings_detail_row(
     ));
 
     let mut line_y = y;
-    for chunk in split_text_for_display(value, wrap_chars).into_iter().take(2) {
+    for chunk in split_text_for_display(value, wrap_chars)
+        .into_iter()
+        .take(2)
+    {
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
             Point::new(value_x, line_y),

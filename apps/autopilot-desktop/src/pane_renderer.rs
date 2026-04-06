@@ -7,8 +7,8 @@ use crate::app_state::{
     AppleFmWorkbenchPaneState, AttnResLabPaneState, AutopilotChatState, BuyModePaymentsPaneState,
     CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs,
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
-    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, ContributorBetaPaneState,
-    CreateInvoicePaneInputs,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CodingProjectPaneInputs,
+    CodingProjectPaneState, ContributorBetaPaneState, CreateInvoicePaneInputs,
     CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
     DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState, DesktopPane,
     EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
@@ -25,9 +25,8 @@ use crate::app_state::{
     SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState, StarterJobStatus,
     StarterJobsState, SyncHealthPaneState, SyncHealthState, TailnetStatusPaneState,
     TassadarLabPaneState, TrajectoryAuditPaneState, VoicePlaygroundPaneInputs,
-    VoicePlaygroundPaneState, mission_control_local_runtime_is_ready,
+    VoicePlaygroundPaneState, XtrainExplorerPaneState, mission_control_local_runtime_is_ready,
     mission_control_local_runtime_lane, mission_control_show_local_model_button,
-    XtrainExplorerPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -101,8 +100,8 @@ use crate::panes::{
     apple_fm_workbench as apple_fm_workbench_pane, attnres_lab as attnres_lab_pane,
     buy_mode as buy_mode_pane, buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane,
     calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
-    contributor_beta as contributor_beta_pane, credit as credit_pane,
-    data_buyer as data_buyer_pane, data_market as data_market_pane,
+    coding_project as coding_project_pane, contributor_beta as contributor_beta_pane,
+    credit as credit_pane, data_buyer as data_buyer_pane, data_market as data_market_pane,
     data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
     frame_debugger as frame_debugger_pane, key_ledger as key_ledger_pane,
     local_inference as local_inference_pane, log_stream as log_stream_pane,
@@ -255,6 +254,7 @@ impl PaneRenderer {
         credentials_inputs: &mut CredentialsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
+        coding_project_inputs: &mut CodingProjectPaneInputs,
         data_seller_inputs: &mut crate::app_state::DataSellerPaneInputs,
         calculator_inputs: &mut CalculatorPaneInputs,
         sidebar: &SidebarState,
@@ -271,6 +271,7 @@ impl PaneRenderer {
         data_seller: &DataSellerPaneState,
         data_buyer: &DataBuyerPaneState,
         data_market: &DataMarketPaneState,
+        coding_project: &CodingProjectPaneState,
         spark_replay: &mut SparkReplayPaneState,
         paint: &mut PaintContext,
     ) -> PanePaintReport {
@@ -405,6 +406,16 @@ impl PaneRenderer {
                         codex_account,
                         spacetime_presence,
                         chat_inputs,
+                        paint,
+                    );
+                }
+                PaneKind::CodingProject => {
+                    coding_project_pane::paint_coding_project_pane(
+                        content_bounds,
+                        autopilot_chat,
+                        coding_project,
+                        chat_inputs,
+                        coding_project_inputs,
                         paint,
                     );
                 }
@@ -6512,6 +6523,7 @@ fn paint_network_requests_pane(
                             order.product_id,
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => "pooled_inference",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
@@ -6661,6 +6673,7 @@ fn paint_network_requests_pane(
                             order.product_id,
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => "pooled_inference",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
@@ -10022,10 +10035,12 @@ fn paint_job_history_pane(
                 .with_corner_radius(6.0),
         );
         let row_line = format!(
-            "{} {} src:{} payer_nostr:{} payee_nostr:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
+            "{} {} src:{} product:{} receipt:{} payer_nostr:{} payee_nostr:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} earnings:{} {} {}",
             row.job_id,
             row.status.label(),
             row.demand_source.label(),
+            row.compute_product_id.as_deref().unwrap_or("none"),
+            row.market_receipt_class.as_deref().unwrap_or("none"),
             row.requester_nostr_pubkey.as_deref().unwrap_or("unknown"),
             row.provider_nostr_pubkey.as_deref().unwrap_or("unknown"),
             row.completed_at_epoch_seconds,
@@ -10042,6 +10057,7 @@ fn paint_job_history_pane(
             row.delivery_rejection_reason_label
                 .as_deref()
                 .unwrap_or("none"),
+            row.earnings_summary.as_deref().unwrap_or("none"),
             row.result_hash,
             row.payment_pointer
         );

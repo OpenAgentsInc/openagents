@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -57,6 +58,7 @@ pub struct ProbeLaneConfig {
     pub client_version: Option<String>,
     pub server_binary: Option<PathBuf>,
     pub prefer_local_daemon: bool,
+    pub hosted_tcp_address: Option<String>,
 }
 
 impl Default for ProbeLaneConfig {
@@ -69,6 +71,7 @@ impl Default for ProbeLaneConfig {
             client_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             server_binary: None,
             prefer_local_daemon: true,
+            hosted_tcp_address: probe_hosted_tcp_address_from_env(),
         }
     }
 }
@@ -315,6 +318,7 @@ enum ProbeTransportMessage {
 enum ProbeTransportKind {
     LocalDaemon,
     SpawnedStdio,
+    HostedTcp,
 }
 
 impl ProbeTransportKind {
@@ -322,6 +326,7 @@ impl ProbeTransportKind {
         match self {
             Self::LocalDaemon => "Probe lane connected via local daemon",
             Self::SpawnedStdio => "Probe lane connected via direct server fallback",
+            Self::HostedTcp => "Probe lane connected via hosted TCP",
         }
     }
 }
@@ -1509,6 +1514,12 @@ fn establish_probe_transport(
 
 impl ProbeTransport {
     fn spawn(config: &ProbeLaneConfig) -> Result<Self, String> {
+        if let Some(address) = config.hosted_tcp_address.as_deref() {
+            let transport = connect_hosted_tcp_transport(address)?;
+            initialize_probe_transport(transport.handle(), config)?;
+            return Ok(transport);
+        }
+
         if config.prefer_local_daemon {
             match connect_or_autostart_local_daemon_transport(config) {
                 Ok(transport) => {
@@ -1838,6 +1849,23 @@ fn connect_or_autostart_local_daemon_transport(
     }
 }
 
+fn connect_hosted_tcp_transport(address: &str) -> Result<ProbeTransport, String> {
+    let address = normalize_hosted_tcp_address(address)?;
+    let stream = TcpStream::connect(address.as_str())
+        .map_err(|error| format!("failed to connect to hosted Probe transport at {address}: {error}"))?;
+    let writer = stream
+        .try_clone()
+        .map_err(|error| format!("failed to clone hosted Probe transport stream: {error}"))?;
+    let reader = Box::new(BufReader::new(stream)) as Box<dyn BufRead + Send>;
+    build_transport_from_streams(
+        ProbeTransportKind::HostedTcp,
+        Box::new(writer),
+        reader,
+        None,
+        false,
+    )
+}
+
 #[cfg(unix)]
 fn connect_local_daemon_transport(
     config: &ProbeLaneConfig,
@@ -1966,6 +1994,7 @@ fn sibling_named_binary_path(current_exe: &Path, binary_name: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
+        normalize_hosted_tcp_address, probe_hosted_tcp_address_from_env,
         resolve_daemon_command_plan_from, resolve_server_command_plan_from,
         sibling_named_binary_path,
     };
@@ -2061,6 +2090,32 @@ mod tests {
             vec![OsString::from(probe_client::INTERNAL_DAEMON_SUBCOMMAND)]
         );
     }
+
+    #[test]
+    fn hosted_tcp_address_normalization_accepts_plain_and_prefixed_values() {
+        assert_eq!(
+            normalize_hosted_tcp_address("127.0.0.1:17777").expect("plain address"),
+            "127.0.0.1:17777"
+        );
+        assert_eq!(
+            normalize_hosted_tcp_address("tcp://127.0.0.1:17777").expect("prefixed address"),
+            "127.0.0.1:17777"
+        );
+    }
+
+    #[test]
+    fn hosted_tcp_address_env_reads_and_normalizes_value() {
+        unsafe {
+            std::env::set_var("OPENAGENTS_PROBE_HOSTED_TCP_ADDRESS", "tcp://127.0.0.1:17777");
+        }
+        assert_eq!(
+            probe_hosted_tcp_address_from_env(),
+            Some(String::from("127.0.0.1:17777"))
+        );
+        unsafe {
+            std::env::remove_var("OPENAGENTS_PROBE_HOSTED_TCP_ADDRESS");
+        }
+    }
 }
 
 fn tool_loop_recipe_from_config(config: &ToolLoopConfig) -> Result<ToolLoopRecipe, String> {
@@ -2115,6 +2170,24 @@ fn default_probe_home_path() -> PathBuf {
         .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
         .join("openagents")
         .join("probe")
+}
+
+fn probe_hosted_tcp_address_from_env() -> Option<String> {
+    env::var("OPENAGENTS_PROBE_HOSTED_TCP_ADDRESS")
+        .ok()
+        .and_then(|value| normalize_hosted_tcp_address(value).ok())
+}
+
+fn normalize_hosted_tcp_address(value: impl AsRef<str>) -> Result<String, String> {
+    let trimmed = value.as_ref().trim();
+    if trimmed.is_empty() {
+        return Err(String::from("hosted Probe TCP address cannot be empty"));
+    }
+    Ok(trimmed
+        .strip_prefix("tcp://")
+        .unwrap_or(trimmed)
+        .trim()
+        .to_string())
 }
 
 fn select_workspace_session<'a>(

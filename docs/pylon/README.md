@@ -1,31 +1,60 @@
 # Pylon Standalone Operator Guide
 
-`Pylon` is the standalone provider binary for the OpenAgents Compute Market.
+`Pylon` is the standalone provider program for the OpenAgents Compute Market.
 
-It is a narrow, headless supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
+The default local repo entrypoint is the small terminal shell:
+
+```bash
+cargo pylon
+```
+
+On first launch, the TUI bootstraps its own local Pylon config and identity under the normal Pylon home path. It does not ask the user to run a manual init step first.
+
+The current provider automation stays in the explicit headless CLI:
+
+```bash
+cargo pylon-headless <command>
+```
+
+It is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
+
+## Install Paths
+
+Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
+
+For a release asset install:
+
+```bash
+./pylon --help
+./pylon init
+./pylon status --json
+./pylon inventory --json
+./pylon config show
+./pylon-tui
+```
+
+Use a source checkout only when:
+
+- no matching official release asset exists for the machine
+- the operator needs the retained Psionic benchmark path and wants to work from source
+- the operator is modifying or validating the code itself
 
 ## Launch Truth
 
 The market is still the **OpenAgents Compute Market**.
 
-At launch, the first live compute product families are:
+At launch, the first standalone `Pylon` sellable lane is:
 
-- `inference`
-- `embeddings`
+- `psionic.local.inference.gemma.single_node`
 
-The first backend-specific launch products are:
-
-- `ollama.text_generation`
-- `ollama.embeddings`
-- `apple_foundation_models.text_generation`
+The broader market direction still includes `inference`, `embeddings`, and later bounded execution. The current operator bring-up in this repo is narrower on purpose: get one honest local Gemma inference lane online first.
 
 Do not describe launch as raw GPU or raw accelerator trading. Accelerator, memory, and platform facts remain capability-envelope qualifiers that refine supply rather than replace product identity.
 
 Current planned-but-not-live surfaces:
 
-- raw hardware spot or futures markets
-- Apple Foundation Models embeddings
-- buyer mode in `Pylon`
+- broader embeddings lanes
+- pooled inference routing
 - broad wallet-shell UX
 - sandbox execution as a generally released family
 
@@ -33,57 +62,179 @@ Current planned-but-not-live surfaces:
 
 Minimum local requirements:
 
-- Rust toolchain installed (`cargo`, `rustc`)
-- repo checkout available locally
+- either an official `Pylon` release asset for the local platform, or a local source checkout plus Rust
 - a writable local home/config path
 
-Backend-specific requirements:
+Runtime-specific requirements:
 
-- `Ollama` for launch inference and embeddings supply
-- `Apple Foundation Models` bridge for Apple FM inference supply
+- curated Gemma 4 weights downloaded through the built-in catalog or headless Gemma commands
+- sibling `psionic` checkout only if the operator explicitly needs the retained benchmark and validation lane
 
-If neither backend is available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
+If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
 
 ## Quick Start
+
+Open the local terminal shell:
+
+```bash
+cargo pylon
+```
+
+If you installed from a release asset instead of a source checkout, run:
+
+```bash
+./pylon-tui
+```
+
+The first cut is intentionally small. It renders one full-screen transcript shell with:
+
+- whether a Gemma 4-serving path is visible to the node
+- live host, CPU, memory, swap, uptime, disk, network, thermal, and power-source state
+- a GPU summary and NVIDIA power telemetry when the host can report it
+- a built-in Hugging Face Gemma GGUF catalog that shows which curated models are installed, missing, or actively downloading
+- a retained transcript area for local shell activity
+- a bottom textbox where plain text submits a prompt, `/help` shows the retained shell commands, and `/download <model>` pulls a curated Gemma GGUF into the local Pylon cache
+
+The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path only accepts Gemma models visible through the configured local runtime endpoint. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+
+Headless Gemma operator commands now exist too:
+
+- `cargo pylon-headless gemma`
+- `cargo pylon-headless gemma download remaining`
+- `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
+
+Use the first two commands for normal onboarding. They bring Gemma supply online without requiring a sibling `psionic` checkout.
+
+Treat the full `gemma benchmark` matrix as a retained validation lane, not as required bring-up. That command shells into a sibling Psionic checkout for the real runtime benchmark. By default that means a local `../psionic` clone. Override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` when needed. If an existing sibling checkout is stale or missing the retained Gemma benchmark entrypoints, refresh it or clone a clean compatible `psionic` checkout and point `OPENAGENTS_PSIONIC_REPO` there.
+
+Pylon now also keeps a focused local ledger at `~/.openagents/pylon/ledger.json`. That file is the retained standalone durability layer for relay state, NIP-90 jobs, invoices, payments, settlements, and local activity replay. It is intentionally narrower than the old archived Pylon database.
+
+The retained relay controls are now exposed in both places:
+- TUI: `/relay list`, `/relay add <wss://...>`, `/relay remove <wss://...>`, `/relay refresh`
+- headless: `cargo pylon-headless relays`, `cargo pylon-headless relay add <wss://...>`, `cargo pylon-headless relay remove <wss://...>`, `cargo pylon-headless relay refresh`
+
+Relay refresh now reuses the local Pylon node identity for NIP-42 `AUTH` challenges by default. If you need to disable that on a local node, use `cargo pylon-headless config set relay_auth_enabled false`.
+
+The retained provider announcement controls now also exist in both places:
+- TUI: `/announce`, `/announce publish`, `/announce refresh`
+- headless: `cargo pylon-headless announce`, `cargo pylon-headless announce publish`, `cargo pylon-headless announce refresh`
+
+The current retained announcement scope is one honest local text-generation handler for `kind:5050`. Pylon only publishes it when a local Gemma-backed text-generation path is actually eligible.
+
+The retained provider intake controls also exist in both places:
+- TUI: `/provider scan [--seconds <n>]`, `/provider run [--seconds <n>]`
+- headless: `cargo pylon-headless provider scan [--seconds <n>]`, `cargo pylon-headless provider run [--seconds <n>]`
+
+The current retained execution scope is narrow and honest. Pylon subscribes to retained inbound `kind:5050` requests on the configured relays, filters targeted jobs, and only accepts work when the provider is online and a local Gemma text-generation path is actually ready. `scan` records intake decisions without executing. `run` has two honest paths:
+
+- for unpriced local work, it publishes a `kind:7000` processing update, executes accepted jobs locally, publishes the retained `kind:6050` result, and links those published event IDs back into the local ledger
+- for explicit paid requests, it stops at `payment-required`, creates a local Bolt11 invoice through the retained Spark wallet path, publishes that invoice in a `kind:7000` feedback event, and persists the amount plus Bolt11 string in the local ledger
+
+When that invoice is later marked paid in the local wallet, the next `provider run` picks the same job back up, records the settled payment, executes the work, publishes the retained result, and persists the settlement outcome. The retained `jobs`, `earnings`, `receipts`, and `activity` views now project that local NIP-90 provider settlement state directly from the Pylon ledger instead of forcing the operator to reconstruct it from relay logs.
+
+If the local wallet cannot create an invoice, the provider path fails honestly instead of pretending the request is payable.
+
+The retained wallet controls now also exist in both places:
+- TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
+- headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
+
+The retained provider payout controls now also exist in both places:
+- TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11> [--amount-sats <n>]`
+- headless: `cargo pylon-headless payout [--limit <n>]`, `cargo pylon-headless payout withdraw <bolt11> [--amount-sats <n>]`
+
+That path projects retained provider earnings, current wallet balance, and prior withdrawal outcomes from the same local ledger. `payout withdraw` uses the retained wallet send path, persists the resulting withdrawal record locally, and appends a matching relay-activity fact so later transcript views can replay it honestly.
+
+The retained transcript observability commands now also exist in the shell:
+- TUI: `/jobs [--limit <n>]`, `/earnings`, `/receipts [--limit <n>]`, `/activity [--limit <n>]`
+- headless: `cargo pylon-headless jobs [--limit <n>]`, `cargo pylon-headless earnings`, `cargo pylon-headless receipts [--limit <n>]`, `cargo pylon-headless activity [--limit <n>]`
+
+Those views stay ledger-backed. They can still replay retained provider jobs, earnings, receipts, and relay activity even when there is no live provider service answering local HTTP routes.
+
+The first retained buyer controls now also exist in both places:
+- TUI: `/job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt>`, `/job watch [<request_event_id>] [--seconds <n>]`, `/job history [--limit <n>]`, `/job replay <request_event_id>`, `/job approve <request_event_id>`, `/job deny <request_event_id>`, `/job policy [show|auto|manual]`
+- headless: `cargo pylon-headless job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt>`, `cargo pylon-headless job watch [<request_event_id>] [--seconds <n>]`, `cargo pylon-headless job history [--limit <n>]`, `cargo pylon-headless job replay <request_event_id>`, `cargo pylon-headless job approve <request_event_id>`, `cargo pylon-headless job deny <request_event_id>`, `cargo pylon-headless job policy [show|auto|manual]`
+
+That path publishes a retained `kind:5050` buyer request to the configured relays and persists the outbound request locally in the Pylon ledger. It already supports plain prompt text and structured JSON payload mode. The watch path subscribes to retained `kind:7000` feedback and `kind:6050` results for local buyer jobs, streams those updates into the transcript, and persists the observed payment-required and result state back into the same retained ledger record. `job history` projects the retained buyer ledger back into a short local summary list. `job replay` expands one retained request back into its stored lifecycle, settlement state, and matching relay activity.
+
+When a provider returns `payment-required`, Pylon now keeps the invoice amount, provider pubkey, Bolt11 string, and final payment outcome in the same retained buyer record. Manual buyer mode uses `/job approve <request_event_id>` or `/job deny <request_event_id>`. Auto-pay mode is explicit and off by default. Use `/job policy auto` or `cargo pylon-headless job policy auto` to enable it, and `/job policy manual` to turn it back off.
 
 Initialize a standalone config and identity:
 
 ```bash
-cargo run -p pylon -- init
+cargo pylon-headless init
+```
+
+With a release asset install, use the same commands through the shipped binary:
+
+```bash
+./pylon init
+./pylon status --json
+./pylon inventory --json
+./pylon config show
+./pylon online
 ```
 
 Inspect status:
 
 ```bash
-cargo run -p pylon -- status
-cargo run -p pylon -- status --json
+cargo pylon-headless status
+cargo pylon-headless status --json
+cargo pylon-headless online
+cargo pylon-headless announce
+cargo pylon-headless announce publish
+cargo pylon-headless provider scan --seconds 5
+cargo pylon-headless provider run --seconds 5
+cargo pylon-headless job submit --model gemma4:e4b --bid-msats 21000 "write a haiku about bitcoin"
+cargo pylon-headless job watch --seconds 30
+cargo pylon-headless gemma
+cargo pylon-headless gemma download remaining
+```
+
+Run the retained Psionic benchmark lane only when the operator explicitly needs it:
+
+```bash
+cargo pylon-headless gemma benchmark all --download-missing --mode matrix --peer-base-url http://127.0.0.1:18080
 ```
 
 Inspect provider truth:
 
 ```bash
-cargo run -p pylon -- backends
-cargo run -p pylon -- products
-cargo run -p pylon -- sandbox
-cargo run -p pylon -- inventory
-cargo run -p pylon -- jobs
-cargo run -p pylon -- earnings
-cargo run -p pylon -- receipts
+cargo pylon-headless backends
+cargo pylon-headless products
+cargo pylon-headless sandbox
+cargo pylon-headless inventory
+cargo pylon-headless jobs
+cargo pylon-headless earnings
+cargo pylon-headless receipts
+cargo pylon-headless activity
+```
+
+Inspect or operate the standalone Spark wallet:
+
+```bash
+cargo pylon-headless wallet status
+cargo pylon-headless wallet balance
+cargo pylon-headless wallet address
+cargo pylon-headless wallet invoice 21 --description "pylon receive"
+cargo pylon-headless wallet pay <bolt11> --amount-sats 21
+cargo pylon-headless wallet history --limit 10
+cargo pylon-headless payout --limit 10
+cargo pylon-headless payout withdraw <bolt11> --amount-sats 21
 ```
 
 Move the node through explicit lifecycle controls:
 
 ```bash
-cargo run -p pylon -- online
-cargo run -p pylon -- pause
-cargo run -p pylon -- resume
-cargo run -p pylon -- offline
+cargo pylon-headless online
+cargo pylon-headless pause
+cargo pylon-headless resume
+cargo pylon-headless offline
 ```
 
 Run the local admin/status loop:
 
 ```bash
-cargo run -p pylon -- serve
+cargo pylon-headless serve
 ```
 
 Important:
@@ -92,6 +243,7 @@ Important:
 - lifecycle is explicit; use `pylon online` / `offline` / `pause` / `resume`
 - status should show `unconfigured`, `ready`, `online`, `paused`, `draining`, `degraded`, `offline`, or `error` truthfully
 - when sandbox supply is declared, `status`, `backends`, `sandbox`, `jobs`, and `receipts` should surface execution classes, profile IDs, termination reasons, and failure reasons without inventing a separate sandbox-only provider model
+- `cargo run -p pylon -- <command>` remains a direct fallback if you do not want the alias
 
 ## Config and Paths
 
@@ -113,20 +265,22 @@ The generated config currently includes:
 - identity path
 - admin sqlite path
 - admin listen address
-- Ollama base URL
-- Apple FM base URL
-- inventory-control toggles
+- wallet network
+- wallet API key env var
+- wallet storage dir
+- local Gemma runtime base URL (`local_gemma_base_url`; legacy `ollama_base_url` still loads on read)
+- inventory-control toggles with `local_gemma_*` names; legacy `gpt_oss_*` and `ollama_*` names still load on read
 - declared sandbox profiles
 
 ## Headless Service Guidance
 
 `Pylon` is service-style. The simplest supported operational pattern is:
 
-1. initialize once with `pylon init`
-2. set desired mode explicitly with `pylon online` or `pylon offline`
-3. run `pylon serve` under a local service manager
-4. use `pylon status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, and `receipts` for observability
-5. use `pylon sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
+1. initialize once with `cargo pylon-headless init`
+2. set desired mode explicitly with `cargo pylon-headless online` or `cargo pylon-headless offline`
+3. run `cargo pylon-headless serve` under a local service manager
+4. use `cargo pylon-headless status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, `receipts`, and `activity` for observability
+5. use `cargo pylon-headless sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
 
 ### `systemd` example
 
@@ -140,7 +294,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/path/to/openagents
 Environment=OPENAGENTS_PYLON_HOME=/var/lib/openagents/pylon
-ExecStart=/usr/bin/env cargo run -p pylon -- serve
+ExecStart=/usr/bin/env cargo pylon-headless serve
 Restart=on-failure
 RestartSec=5
 
@@ -150,7 +304,9 @@ WantedBy=multi-user.target
 
 ### `launchd` / user-session guidance
 
-On macOS, run the same `pylon serve` command under `launchd`, `tmux`, or another persistent user-session manager. The operational requirement is explicit lifecycle control plus a stable long-running `serve` process, not a specific packaging format.
+On macOS, run the same `cargo pylon-headless serve` command under `launchd`, `tmux`, or another persistent user-session manager. The operational requirement is explicit lifecycle control plus a stable long-running `serve` process, not a specific packaging format.
+
+The current binary-first distribution lane is GitHub Releases with per-platform archives. Source checkout plus Cargo remains the fallback for unsupported platforms and local development.
 
 ## Verification and Release Discipline
 
@@ -160,6 +316,7 @@ Before calling it launch-ready, use:
 
 - [PYLON_VERIFICATION_MATRIX.md](./PYLON_VERIFICATION_MATRIX.md)
 - [`scripts/pylon/verify_standalone.sh`](../../scripts/pylon/verify_standalone.sh)
+- [`scripts/pylon/verify_nip90_wallet.sh`](../../scripts/pylon/verify_nip90_wallet.sh)
 
 Those materials cover:
 
@@ -169,6 +326,9 @@ Those materials cover:
 - lifecycle transitions
 - restart and replay expectations
 - local observability surfaces
+- local relay and wallet roundtrip coverage for the retained NIP-90 lane
 - receipt and earnings visibility, including sandbox failure and termination detail
 - Autopilot parity checks
 - rollout and launch-truth gates
+
+The retained NIP-90 and wallet verification lane is local and explicit. `scripts/pylon/verify_nip90_wallet.sh` sets a fresh standalone Pylon home to `wallet_network=regtest`, checks the retained headless report commands, and then runs the focused local websocket-relay and wallet-hook tests that cover provider intake, buyer submit/watch/pay, payout persistence, and retained activity replay. It does not claim a live funded external Spark regtest backend.

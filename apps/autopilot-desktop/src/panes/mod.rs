@@ -9,6 +9,7 @@ pub mod calculator;
 pub mod cast;
 pub mod chat;
 pub mod codex;
+pub mod coding_project;
 pub mod contributor_beta;
 pub mod credit;
 pub mod data_buyer;

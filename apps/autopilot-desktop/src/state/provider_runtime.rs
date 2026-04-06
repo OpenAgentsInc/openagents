@@ -452,6 +452,8 @@ impl ProviderRuntimeState {
             apple_foundation_models: self.apple_fm.substrate_health(),
             apple_adapter_hosting: self.apple_fm.substrate_adapter_hosting(),
             adapter_training_contributor: self.apple_fm.substrate_training_contributor(),
+            pooled_inference:
+                openagents_provider_substrate::ProviderPooledInferenceAvailability::default(),
             sandbox: self.sandbox.clone(),
         }
     }
