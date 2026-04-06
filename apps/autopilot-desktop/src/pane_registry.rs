@@ -84,50 +84,17 @@ impl PaneSearchFilter {
 
 pub const fn pane_search_tier(kind: PaneKind) -> PaneSearchTier {
     match kind {
-        PaneKind::CodingProject
-        | PaneKind::ProjectOps
-        | PaneKind::CodexAccount
-        | PaneKind::CodexModels
-        | PaneKind::CodexConfig
-        | PaneKind::CodexMcp
-        | PaneKind::CodexApps
-        | PaneKind::CodexLabs
-        | PaneKind::CodexDiagnostics
-        | PaneKind::PsionicViz
-        | PaneKind::PsionicRemoteTraining
-        | PaneKind::XtrainExplorer
-        | PaneKind::ContributorBeta
-        | PaneKind::AttnResLab
-        | PaneKind::TassadarLab
-        | PaneKind::RivePreview
-        | PaneKind::Presentation
-        | PaneKind::FrameDebugger
-        | PaneKind::AppleFmWorkbench
-        | PaneKind::AppleAdapterTraining
-        | PaneKind::NetworkRequests
-        | PaneKind::StarterJobs
-        | PaneKind::ReciprocalLoop
-        | PaneKind::ActivityFeed
-        | PaneKind::AlertsRecovery
-        | PaneKind::Settings
-        | PaneKind::Credentials
-        | PaneKind::AgentProfileState
-        | PaneKind::AgentScheduleTick
-        | PaneKind::TrajectoryAudit
-        | PaneKind::CastControl
-        | PaneKind::SkillRegistry
-        | PaneKind::SkillTrustRevocation
-        | PaneKind::CreditDesk
-        | PaneKind::CreditSettlementLedger
-        | PaneKind::Calculator
-        | PaneKind::CadDemo
-        | PaneKind::BuyerRaceMatrix
-        | PaneKind::SellerEarningsTimeline
-        | PaneKind::SettlementLadder
-        | PaneKind::KeyLedger
-        | PaneKind::SettlementAtlas
-        | PaneKind::RelayChoreography => PaneSearchTier::Experimental,
-        _ => PaneSearchTier::Release,
+        PaneKind::GoOnline
+        | PaneKind::ProviderControl
+        | PaneKind::AutopilotChat
+        | PaneKind::SparkWallet
+        | PaneKind::Nip90SentPayments
+        | PaneKind::EarningsScoreboard
+        | PaneKind::LogStream
+        | PaneKind::JobInbox
+        | PaneKind::ActiveJob
+        | PaneKind::NostrIdentity => PaneSearchTier::Release,
+        _ => PaneSearchTier::Experimental,
     }
 }
 
