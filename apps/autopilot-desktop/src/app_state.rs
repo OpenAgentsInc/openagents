@@ -14,7 +14,7 @@ use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
 };
 use probe_protocol::session::{
-    SessionExecutionHostKind as ProbeSessionExecutionHostKind,
+    SessionExecutionHostKind as ProbeSessionExecutionHostKind, SessionHostedReceipts,
     SessionMountKind as ProbeSessionMountKind, SessionMountProvenance, SessionMountRef,
     SessionPreparedBaselineStatus as ProbeSessionPreparedBaselineStatus, SessionRuntimeOwner,
     SessionRuntimeOwnerKind, SessionSummaryArtifact, SessionSummaryArtifactRef,
@@ -8581,7 +8581,58 @@ pub struct ForgeSharedSessionParticipant {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ForgeSharedSessionHandoff {
     pub from_owner: ForgeSharedSessionControlOwner,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_display_name: Option<String>,
     pub to_owner: ForgeSharedSessionControlOwner,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_display_name: Option<String>,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeSharedSessionTimelineEntryKind {
+    Note,
+    ControlRequest,
+    ControlAccepted,
+    TakeControl,
+    Handoff,
+}
+
+impl ForgeSharedSessionTimelineEntryKind {
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Note => "note",
+            Self::ControlRequest => "control request",
+            Self::ControlAccepted => "control accepted",
+            Self::TakeControl => "take control",
+            Self::Handoff => "handoff",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionTimelineEntry {
+    pub kind: ForgeSharedSessionTimelineEntryKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeSharedSessionControlRequest {
+    pub participant_id: String,
+    pub display_name: String,
     pub summary: String,
     pub provenance: String,
     pub recorded_at_epoch_ms: u64,
@@ -8729,6 +8780,8 @@ pub struct ForgeProbeRemoteSessionProjection {
     pub execution_host_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_provenance_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_receipts: Option<SessionHostedReceipts>,
     #[serde(default)]
     pub operator_handoff_state: ForgeProbeOperatorHandoffState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9007,7 +9060,8 @@ impl ForgeEvidenceProductArtifactKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ForgeEvidenceBundleStatus {
     Missing,
     Partial,
@@ -9685,6 +9739,236 @@ pub struct ForgeSettlementReceipt {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ForgeHostedAuditKind {
+    CodingCloseout,
+    BookkeepingRehearsal,
+}
+
+impl ForgeHostedAuditKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::CodingCloseout => "coding_closeout",
+            Self::BookkeepingRehearsal => "bookkeeping_rehearsal",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::CodingCloseout => "hosted coding closeout",
+            Self::BookkeepingRehearsal => "hosted bookkeeping rehearsal",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeHostedAuditNoteKind {
+    OperatorNote,
+    RecoveryStep,
+    Defect,
+}
+
+impl ForgeHostedAuditNoteKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::OperatorNote => "operator_note",
+            Self::RecoveryStep => "recovery_step",
+            Self::Defect => "defect",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::OperatorNote => "operator note",
+            Self::RecoveryStep => "recovery step",
+            Self::Defect => "defect",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedAuditNote {
+    pub kind: ForgeHostedAuditNoteKind,
+    pub body: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeHostedPreflightDisposition {
+    Ready,
+    Blocked,
+}
+
+impl ForgeHostedPreflightDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Blocked => "blocked",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgeHostedPreflightCheckStatus {
+    Ok,
+    Warning,
+    Blocker,
+}
+
+impl ForgeHostedPreflightCheckStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Warning => "warning",
+            Self::Blocker => "blocker",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Warning => "warning",
+            Self::Blocker => "blocker",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedPreflightCheck {
+    pub label: String,
+    pub status: ForgeHostedPreflightCheckStatus,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedPreflightReport {
+    pub preflight_id: String,
+    pub disposition: ForgeHostedPreflightDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_remote_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gcp_project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gcp_region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_baseline: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<ForgeHostedPreflightCheck>,
+    pub recorded_at_epoch_ms: u64,
+}
+
+impl ForgeHostedPreflightReport {
+    pub fn blocker_count(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|check| check.status == ForgeHostedPreflightCheckStatus::Blocker)
+            .count()
+    }
+
+    pub fn warning_count(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|check| check.status == ForgeHostedPreflightCheckStatus::Warning)
+            .count()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedAuditBundle {
+    pub audit_bundle_id: String,
+    pub shared_session_id: String,
+    pub kind: ForgeHostedAuditKind,
+    pub environment_summary: String,
+    pub session_location_kind: ForgeProbeSessionLocationKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_session_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_remote_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_git_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_head_commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routed_pack_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounted_pack_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsupported_route_reasons: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_receipts: Option<SessionHostedReceipts>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preflight: Option<ForgeHostedPreflightReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_status: Option<ForgeEvidenceBundleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_status: Option<ForgeDeliveryReceiptStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign_status: Option<ForgeCampaignStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_ledger_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_status: Option<ForgePromotionLedgerStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty_contract_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty_status: Option<ForgeBountyLifecycleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounty_claim_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_status: Option<ForgeSettlementReceiptStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<ForgeHostedAuditNote>,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+}
+
+const FORGE_HOSTED_AUDIT_EXPORT_SCHEMA_VERSION: u32 = 1;
+const FORGE_HOSTED_PREFLIGHT_EXPORT_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedAuditExportDocumentV1 {
+    pub schema_version: u32,
+    pub thread_id: String,
+    pub exported_at_epoch_ms: u64,
+    pub bundle: ForgeHostedAuditBundle,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ForgeHostedPreflightExportDocumentV1 {
+    pub schema_version: u32,
+    pub thread_id: String,
+    pub exported_at_epoch_ms: u64,
+    pub report: ForgeHostedPreflightReport,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ForgeCampaignStatus {
     Draft,
     Scoped,
@@ -10080,13 +10364,21 @@ pub struct ForgeSharedSession {
     pub archived_in_shell: bool,
     pub control_owner: ForgeSharedSessionControlOwner,
     pub participants: Vec<ForgeSharedSessionParticipant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controller_participant_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_handoff_request: Option<ForgeSharedSessionControlRequest>,
     pub last_handoff: Option<ForgeSharedSessionHandoff>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collaboration_timeline: Vec<ForgeSharedSessionTimelineEntry>,
     #[serde(default)]
     pub remote_session: ForgeProbeRemoteSessionProjection,
     #[serde(default)]
     pub workspace_restore: ForgeWorkspaceRestoreProvenance,
     #[serde(default)]
     pub knowledge_mounts: ForgeKnowledgeMountProjection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_preflight: Option<ForgeHostedPreflightReport>,
     #[serde(default)]
     pub workspace_snapshot_id: Option<String>,
     #[serde(default)]
@@ -10099,10 +10391,44 @@ pub struct ForgeSharedSession {
     pub bounty_claim_id: Option<String>,
     #[serde(default)]
     pub settlement_receipt_id: Option<String>,
+    #[serde(default)]
+    pub hosted_coding_audit_bundle_id: Option<String>,
+    #[serde(default)]
+    pub hosted_bookkeeping_audit_bundle_id: Option<String>,
     pub evidence_bundle_id: Option<String>,
     pub delivery_receipt_id: Option<String>,
     pub created_at_epoch_ms: u64,
     pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgeHostedSessionDirectoryEntry {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub sibling_probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub prepared_baseline_id: Option<String>,
+    pub prepared_baseline_status: Option<ForgeProbePreparedBaselineStatus>,
+    pub control_owner: ForgeSharedSessionControlOwner,
+    pub controller_label: Option<String>,
+    pub participants: Vec<ForgeSharedSessionParticipant>,
+    pub location_kind: ForgeProbeSessionLocationKind,
+    pub owner_label: Option<String>,
+    pub execution_host_label: Option<String>,
+    pub attach_target: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgeHostedSessionAttachTarget {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub workspace_label: String,
+    pub project_name: Option<String>,
+    pub attach_target: Option<String>,
+    pub reused_local_thread: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -10560,6 +10886,7 @@ pub struct AutopilotChatState {
     forge_settlement_receipts: std::collections::HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: std::collections::HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: std::collections::HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: std::collections::HashMap<String, ForgeHostedAuditBundle>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
@@ -10571,6 +10898,7 @@ pub struct AutopilotChatState {
     next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_probe_turn_attachment_forwarding:
         std::collections::HashMap<String, ProbeTurnAttachmentForwarding>,
@@ -10647,6 +10975,8 @@ pub struct AutopilotChatState {
     autopilot_peer_roster_cache: RefCell<Option<AutopilotPeerRosterCacheEntry>>,
     buy_mode_target_selection_cache: RefCell<Option<AutopilotBuyModeTargetSelectionCacheEntry>>,
     artifact_projection_file_path: PathBuf,
+    forge_shared_state_file_path: Option<PathBuf>,
+    system_channel_id: String,
 }
 
 #[derive(Clone)]
@@ -10687,6 +11017,7 @@ struct AutopilotBuyModeTargetSelectionCacheEntry {
 impl Default for AutopilotChatState {
     fn default() -> Self {
         let artifact_projection_file_path = codex_artifact_projection_file_path();
+        let forge_shared_state_file_path = forge_shared_state_file_path();
         let (
             thread_diff_artifacts,
             thread_review_artifacts,
@@ -10702,6 +11033,7 @@ impl Default for AutopilotChatState {
             forge_settlement_receipts,
             forge_evidence_bundles,
             forge_delivery_receipts,
+            forge_hosted_audit_bundles,
             next_forge_shared_session_seq,
             next_forge_workspace_snapshot_seq,
             next_forge_restore_manifest_seq,
@@ -10713,6 +11045,7 @@ impl Default for AutopilotChatState {
             next_forge_settlement_receipt_seq,
             next_forge_evidence_bundle_seq,
             next_forge_delivery_receipt_seq,
+            next_forge_hosted_audit_bundle_seq,
             review_thread_source_map,
             artifact_load_error,
         ) = match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -10731,6 +11064,7 @@ impl Default for AutopilotChatState {
                 projection.forge_settlement_receipts,
                 projection.forge_evidence_bundles,
                 projection.forge_delivery_receipts,
+                projection.forge_hosted_audit_bundles,
                 projection.next_forge_shared_session_seq,
                 projection.next_forge_workspace_snapshot_seq,
                 projection.next_forge_restore_manifest_seq,
@@ -10742,6 +11076,7 @@ impl Default for AutopilotChatState {
                 projection.next_forge_settlement_receipt_seq,
                 projection.next_forge_evidence_bundle_seq,
                 projection.next_forge_delivery_receipt_seq,
+                projection.next_forge_hosted_audit_bundle_seq,
                 projection.review_thread_source_map,
                 None,
             ),
@@ -10760,6 +11095,8 @@ impl Default for AutopilotChatState {
                 HashMap::new(),
                 HashMap::new(),
                 HashMap::new(),
+                HashMap::new(),
+                1,
                 1,
                 1,
                 1,
@@ -10775,7 +11112,7 @@ impl Default for AutopilotChatState {
                 Some(error),
             ),
         };
-        Self {
+        let mut state = Self {
             connection_status: "ready".to_string(),
             // "auto" means "let app-server pick the current default model".
             models: vec!["auto".to_string()],
@@ -10806,6 +11143,7 @@ impl Default for AutopilotChatState {
             forge_settlement_receipts,
             forge_evidence_bundles,
             forge_delivery_receipts,
+            forge_hosted_audit_bundles,
             next_forge_shared_session_seq: next_forge_shared_session_seq.max(1),
             next_forge_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
             next_forge_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
@@ -10817,6 +11155,7 @@ impl Default for AutopilotChatState {
             next_forge_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
             next_forge_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
             next_forge_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
+            next_forge_hosted_audit_bundle_seq: next_forge_hosted_audit_bundle_seq.max(1),
             review_thread_source_map,
             thread_probe_turn_attachment_forwarding: std::collections::HashMap::new(),
             pending_probe_session_start_knowledge_routes: std::collections::HashMap::new(),
@@ -10891,7 +11230,13 @@ impl Default for AutopilotChatState {
             autopilot_peer_roster_cache: RefCell::new(None),
             buy_mode_target_selection_cache: RefCell::new(None),
             artifact_projection_file_path,
+            forge_shared_state_file_path,
+            system_channel_id: DefaultNip28ChannelConfig::from_env_or_default().channel_id,
+        };
+        if let Err(error) = state.refresh_forge_shared_state_from_backing_store() {
+            state.push_projection_load_error(error);
         }
+        state
     }
 }
 
@@ -10899,6 +11244,8 @@ const CODEX_ARTIFACT_PROJECTION_SCHEMA_VERSION: u16 = 2;
 const CODEX_ARTIFACT_PROJECTION_STREAM_ID: &str = "stream.codex_artifacts.v2";
 const CODEX_ARTIFACT_PROJECTION_STREAM_ID_V1: &str = "stream.codex_artifacts.v1";
 const CODEX_DIFF_ARTIFACT_LIMIT_PER_THREAD: usize = 8;
+const FORGE_SHARED_STATE_SCHEMA_VERSION: u16 = 1;
+const FORGE_SHARED_STATE_STREAM_ID: &str = "stream.forge_shared_state.v1";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CodexArtifactProjectionDocumentV1 {
@@ -10938,6 +11285,8 @@ struct CodexArtifactProjectionDocumentV2 {
     evidence_bundles: Vec<ForgeEvidenceBundle>,
     #[serde(default)]
     delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    #[serde(default)]
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
     #[serde(default = "default_next_forge_shared_session_seq")]
     next_shared_session_seq: u64,
     #[serde(default = "default_next_forge_workspace_snapshot_seq")]
@@ -10960,6 +11309,50 @@ struct CodexArtifactProjectionDocumentV2 {
     next_evidence_bundle_seq: u64,
     #[serde(default = "default_next_forge_delivery_receipt_seq")]
     next_delivery_receipt_seq: u64,
+    #[serde(default = "default_next_forge_hosted_audit_bundle_seq")]
+    next_hosted_audit_bundle_seq: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ForgeSharedStateDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    #[serde(default)]
+    shared_sessions: Vec<ForgeSharedSession>,
+    #[serde(default)]
+    campaigns: Vec<ForgeCampaign>,
+    #[serde(default)]
+    promotion_ledgers: Vec<ForgePromotionLedger>,
+    #[serde(default)]
+    bounty_contracts: Vec<ForgeBountyContract>,
+    #[serde(default)]
+    bounty_claims: Vec<ForgeBountyClaim>,
+    #[serde(default)]
+    settlement_receipts: Vec<ForgeSettlementReceipt>,
+    #[serde(default)]
+    evidence_bundles: Vec<ForgeEvidenceBundle>,
+    #[serde(default)]
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    #[serde(default)]
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
+    #[serde(default = "default_next_forge_shared_session_seq")]
+    next_shared_session_seq: u64,
+    #[serde(default = "default_next_forge_campaign_seq")]
+    next_campaign_seq: u64,
+    #[serde(default = "default_next_forge_promotion_ledger_seq")]
+    next_promotion_ledger_seq: u64,
+    #[serde(default = "default_next_forge_bounty_contract_seq")]
+    next_bounty_contract_seq: u64,
+    #[serde(default = "default_next_forge_bounty_claim_seq")]
+    next_bounty_claim_seq: u64,
+    #[serde(default = "default_next_forge_settlement_receipt_seq")]
+    next_settlement_receipt_seq: u64,
+    #[serde(default = "default_next_forge_evidence_bundle_seq")]
+    next_evidence_bundle_seq: u64,
+    #[serde(default = "default_next_forge_delivery_receipt_seq")]
+    next_delivery_receipt_seq: u64,
+    #[serde(default = "default_next_forge_hosted_audit_bundle_seq")]
+    next_hosted_audit_bundle_seq: u64,
 }
 
 struct LoadedCodexArtifactProjection {
@@ -10977,6 +11370,7 @@ struct LoadedCodexArtifactProjection {
     forge_settlement_receipts: HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: HashMap<String, ForgeHostedAuditBundle>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
@@ -10988,7 +11382,30 @@ struct LoadedCodexArtifactProjection {
     next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
     review_thread_source_map: HashMap<String, String>,
+}
+
+#[derive(Default)]
+struct LoadedForgeSharedState {
+    forge_shared_sessions: HashMap<String, ForgeSharedSession>,
+    forge_campaigns: HashMap<String, ForgeCampaign>,
+    forge_promotion_ledgers: HashMap<String, ForgePromotionLedger>,
+    forge_bounty_contracts: HashMap<String, ForgeBountyContract>,
+    forge_bounty_claims: HashMap<String, ForgeBountyClaim>,
+    forge_settlement_receipts: HashMap<String, ForgeSettlementReceipt>,
+    forge_evidence_bundles: HashMap<String, ForgeEvidenceBundle>,
+    forge_delivery_receipts: HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: HashMap<String, ForgeHostedAuditBundle>,
+    next_forge_shared_session_seq: u64,
+    next_forge_campaign_seq: u64,
+    next_forge_promotion_ledger_seq: u64,
+    next_forge_bounty_contract_seq: u64,
+    next_forge_bounty_claim_seq: u64,
+    next_forge_settlement_receipt_seq: u64,
+    next_forge_evidence_bundle_seq: u64,
+    next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
 }
 
 fn default_next_forge_shared_session_seq() -> u64 {
@@ -11035,6 +11452,10 @@ fn default_next_forge_delivery_receipt_seq() -> u64 {
     1
 }
 
+fn default_next_forge_hosted_audit_bundle_seq() -> u64 {
+    1
+}
+
 fn codex_artifact_projection_file_path() -> PathBuf {
     if let Ok(override_path) = std::env::var("OPENAGENTS_CODEX_ARTIFACT_PROJECTION_PATH") {
         if !override_path.trim().is_empty() {
@@ -11060,6 +11481,14 @@ fn codex_artifact_projection_file_path() -> PathBuf {
             .join(".openagents")
             .join("autopilot-codex-artifacts-v1.json")
     }
+}
+
+fn forge_shared_state_file_path() -> Option<PathBuf> {
+    std::env::var("OPENAGENTS_FORGE_SHARED_STATE_PATH")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 fn review_artifact_thread_keys(source_thread_id: &str, review_thread_id: &str) -> Vec<String> {
@@ -11163,6 +11592,314 @@ fn default_forge_shared_session_participants() -> Vec<ForgeSharedSessionParticip
     ]
 }
 
+fn normalize_forge_shared_session_participants(
+    mut participants: Vec<ForgeSharedSessionParticipant>,
+) -> Vec<ForgeSharedSessionParticipant> {
+    participants.retain(|participant| {
+        !participant.participant_id.trim().is_empty() && !participant.display_name.trim().is_empty()
+    });
+    participants.sort_by(|lhs, rhs| {
+        lhs.participant_id
+            .cmp(&rhs.participant_id)
+            .then_with(|| lhs.display_name.cmp(&rhs.display_name))
+    });
+    participants.dedup_by(|lhs, rhs| lhs.participant_id == rhs.participant_id);
+    participants
+}
+
+fn normalize_forge_shared_session_timeline(
+    mut timeline: Vec<ForgeSharedSessionTimelineEntry>,
+) -> Vec<ForgeSharedSessionTimelineEntry> {
+    timeline.retain(|entry| !entry.summary.trim().is_empty());
+    timeline.sort_by(|lhs, rhs| {
+        rhs.recorded_at_epoch_ms
+            .cmp(&lhs.recorded_at_epoch_ms)
+            .then_with(|| lhs.summary.cmp(&rhs.summary))
+            .then_with(|| lhs.provenance.cmp(&rhs.provenance))
+    });
+    timeline.dedup_by(|lhs, rhs| {
+        lhs.kind == rhs.kind
+            && lhs.participant_id == rhs.participant_id
+            && lhs.summary == rhs.summary
+            && lhs.provenance == rhs.provenance
+            && lhs.recorded_at_epoch_ms == rhs.recorded_at_epoch_ms
+    });
+    if timeline.len() > 24 {
+        timeline.truncate(24);
+    }
+    timeline
+}
+
+fn forge_local_operator_display_name() -> String {
+    if let Ok(label) = std::env::var("OPENAGENTS_FORGE_OPERATOR_LABEL") {
+        let label = label.trim();
+        if !label.is_empty() {
+            return label.to_string();
+        }
+    }
+    let user = std::env::var("USER")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .or_else(|| std::env::var("HOST").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    match (user, host) {
+        (Some(user), Some(host)) => format!("{user}@{host}"),
+        (Some(user), None) => user,
+        (None, Some(host)) => host,
+        (None, None) => "Local operator".to_string(),
+    }
+}
+
+pub fn current_forge_local_operator_display_name() -> String {
+    forge_local_operator_display_name()
+}
+
+fn forge_local_operator_participant_id(display_name: &str) -> String {
+    let slug = forge_reference_slug(display_name);
+    if slug.is_empty() {
+        "human-local-operator".to_string()
+    } else {
+        format!("human-{slug}")
+    }
+}
+
+pub fn current_forge_local_operator_participant_id() -> String {
+    let display_name = forge_local_operator_display_name();
+    forge_local_operator_participant_id(display_name.as_str())
+}
+
+fn forge_probe_agent_participant_id(session: &ForgeSharedSession) -> Option<String> {
+    session
+        .participants
+        .iter()
+        .find(|participant| participant.kind == ForgeSharedSessionControlOwner::ProbeLocalAgent)
+        .map(|participant| participant.participant_id.clone())
+}
+
+fn forge_primary_human_participant_id(session: &ForgeSharedSession) -> Option<String> {
+    session
+        .participants
+        .iter()
+        .find(|participant| participant.kind == ForgeSharedSessionControlOwner::HumanLocal)
+        .map(|participant| participant.participant_id.clone())
+}
+
+fn forge_participant_display_name(
+    session: &ForgeSharedSession,
+    participant_id: Option<&str>,
+) -> Option<String> {
+    let participant_id = participant_id?;
+    session
+        .participants
+        .iter()
+        .find(|participant| participant.participant_id == participant_id)
+        .map(|participant| participant.display_name.clone())
+}
+
+pub fn forge_shared_session_controller_label(session: &ForgeSharedSession) -> String {
+    forge_participant_display_name(session, session.controller_participant_id.as_deref())
+        .or_else(|| {
+            session
+                .last_handoff
+                .as_ref()
+                .and_then(|handoff| handoff.to_display_name.clone())
+        })
+        .unwrap_or_else(|| session.control_owner.display_label().to_string())
+}
+
+pub fn forge_shared_session_local_role_label(session: &ForgeSharedSession) -> &'static str {
+    let local_participant_id = current_forge_local_operator_participant_id();
+    if session.control_owner == ForgeSharedSessionControlOwner::HumanLocal
+        && session.controller_participant_id.as_deref() == Some(local_participant_id.as_str())
+    {
+        "controlling"
+    } else {
+        "watching"
+    }
+}
+
+fn ensure_local_operator_participant_for_shared_session(
+    session: &mut ForgeSharedSession,
+) -> (String, String) {
+    let display_name = forge_local_operator_display_name();
+    let participant_id = forge_local_operator_participant_id(display_name.as_str());
+
+    if let Some(existing) = session.participants.iter_mut().find(|participant| {
+        participant.participant_id == participant_id
+            || participant
+                .display_name
+                .eq_ignore_ascii_case(display_name.as_str())
+    }) {
+        existing.kind = ForgeSharedSessionControlOwner::HumanLocal;
+        existing.display_name = display_name.clone();
+        existing.participant_id = participant_id.clone();
+        session.participants =
+            normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
+        return (participant_id, display_name);
+    }
+
+    if let Some(existing) = session.participants.iter_mut().find(|participant| {
+        participant.participant_id == "local-human" && participant.display_name == "Local human"
+    }) {
+        existing.kind = ForgeSharedSessionControlOwner::HumanLocal;
+        existing.display_name = display_name.clone();
+        existing.participant_id = participant_id.clone();
+        session.participants =
+            normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
+        return (participant_id, display_name);
+    }
+
+    session.participants.push(ForgeSharedSessionParticipant {
+        participant_id: participant_id.clone(),
+        kind: ForgeSharedSessionControlOwner::HumanLocal,
+        display_name: display_name.clone(),
+    });
+    session.participants =
+        normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
+    (participant_id, display_name)
+}
+
+fn sync_forge_shared_session_controller(session: &mut ForgeSharedSession) {
+    session.participants =
+        normalize_forge_shared_session_participants(std::mem::take(&mut session.participants));
+    let desired_controller = session
+        .controller_participant_id
+        .as_deref()
+        .and_then(|participant_id| {
+            session
+                .participants
+                .iter()
+                .find(|participant| participant.participant_id == participant_id)
+        })
+        .filter(|participant| participant.kind == session.control_owner)
+        .map(|participant| participant.participant_id.clone())
+        .or_else(|| match session.control_owner {
+            ForgeSharedSessionControlOwner::HumanLocal => {
+                forge_primary_human_participant_id(session)
+            }
+            ForgeSharedSessionControlOwner::ProbeLocalAgent => {
+                forge_probe_agent_participant_id(session)
+            }
+        });
+    let participant_display_names = session
+        .participants
+        .iter()
+        .map(|participant| {
+            (
+                participant.participant_id.clone(),
+                participant.display_name.clone(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    if let Some(handoff) = session.last_handoff.as_mut() {
+        handoff.summary = handoff.summary.trim().to_string();
+        handoff.provenance = handoff.provenance.trim().to_string();
+        handoff.from_participant_id = handoff
+            .from_participant_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| {
+                session
+                    .participants
+                    .iter()
+                    .any(|participant| participant.participant_id == *value)
+            });
+        handoff.to_participant_id = handoff
+            .to_participant_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| {
+                session
+                    .participants
+                    .iter()
+                    .any(|participant| participant.participant_id == *value)
+            });
+        handoff.from_display_name = handoff
+            .from_participant_id
+            .as_deref()
+            .and_then(|participant_id| participant_display_names.get(participant_id).cloned())
+            .or_else(|| {
+                handoff
+                    .from_display_name
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            });
+        handoff.to_display_name = handoff
+            .to_participant_id
+            .as_deref()
+            .and_then(|participant_id| participant_display_names.get(participant_id).cloned())
+            .or_else(|| {
+                handoff
+                    .to_display_name
+                    .take()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            });
+        if handoff.summary.is_empty() || handoff.provenance.is_empty() {
+            session.last_handoff = None;
+        }
+    };
+    if desired_controller.is_some() {
+        session.controller_participant_id = desired_controller;
+    } else if let Some(current_controller_id) = session.controller_participant_id.as_deref() {
+        if !session
+            .participants
+            .iter()
+            .any(|participant| participant.participant_id == current_controller_id)
+        {
+            session.controller_participant_id = None;
+        }
+    }
+    if let Some(request) = session.pending_handoff_request.as_mut() {
+        request.participant_id = request.participant_id.trim().to_string();
+        request.display_name = request.display_name.trim().to_string();
+        request.summary = request.summary.trim().to_string();
+        request.provenance = request.provenance.trim().to_string();
+        if request.participant_id.is_empty()
+            || request.display_name.is_empty()
+            || request.summary.is_empty()
+            || !session
+                .participants
+                .iter()
+                .any(|participant| participant.participant_id == request.participant_id)
+        {
+            session.pending_handoff_request = None;
+        }
+    }
+    session.collaboration_timeline = normalize_forge_shared_session_timeline(std::mem::take(
+        &mut session.collaboration_timeline,
+    ));
+}
+
+fn push_forge_shared_session_timeline_entry(
+    session: &mut ForgeSharedSession,
+    kind: ForgeSharedSessionTimelineEntryKind,
+    participant_id: Option<String>,
+    display_name: Option<String>,
+    summary: String,
+    provenance: String,
+    recorded_at_epoch_ms: u64,
+) {
+    session
+        .collaboration_timeline
+        .push(ForgeSharedSessionTimelineEntry {
+            kind,
+            participant_id,
+            display_name,
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        });
+    session.collaboration_timeline = normalize_forge_shared_session_timeline(std::mem::take(
+        &mut session.collaboration_timeline,
+    ));
+}
+
 fn default_bounty_credit_role_for_participant(
     kind: ForgeSharedSessionControlOwner,
 ) -> ForgeBountyCreditRole {
@@ -11256,6 +11993,24 @@ fn normalize_probe_session_ids(mut session_ids: Vec<String>) -> Vec<String> {
     session_ids.sort();
     session_ids.dedup();
     session_ids
+}
+
+fn preferred_probe_session_id_for_shared_session(session: &ForgeSharedSession) -> Option<String> {
+    let mut session_ids = normalize_probe_session_ids(session.probe_session_ids.clone());
+    session_ids.pop()
+}
+
+fn is_hosted_forge_shared_session(session: &ForgeSharedSession) -> bool {
+    session.remote_session.location_kind == ForgeProbeSessionLocationKind::HostedWorkspace
+        || session.remote_session.owner_kind == Some(ForgeProbeSessionOwnerKind::HostedControlPlane)
+        || session.remote_session.execution_host_kind
+            == Some(ForgeProbeExecutionHostKind::HostedWorker)
+        || session
+            .remote_session
+            .attach_target
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || session.remote_session.hosted_receipts.is_some()
 }
 
 fn normalize_forge_knowledge_pack_route_issues(
@@ -11361,15 +12116,30 @@ fn normalize_forge_shared_sessions(
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        session.hosted_coding_audit_bundle_id = session
+            .hosted_coding_audit_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        session.hosted_bookkeeping_audit_bundle_id = session
+            .hosted_bookkeeping_audit_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         session.remote_session = normalize_forge_probe_remote_session_projection(std::mem::take(
             &mut session.remote_session,
         ));
         session.knowledge_mounts = normalize_forge_knowledge_mount_projection(std::mem::take(
             &mut session.knowledge_mounts,
         ));
+        session.hosted_preflight = session
+            .hosted_preflight
+            .take()
+            .and_then(normalize_forge_hosted_preflight_report);
         if session.participants.is_empty() {
             session.participants = default_forge_shared_session_participants();
         }
+        sync_forge_shared_session_controller(session);
         if session.workspace_restore.snapshot_ref.is_some() {
             session.workspace_restore.snapshot_ref_status =
                 ForgeWorkspaceSnapshotRefStatus::Available;
@@ -11457,6 +12227,58 @@ fn normalize_forge_reference_list(mut refs: Vec<String>) -> Vec<String> {
     refs.sort();
     refs.dedup();
     refs
+}
+
+fn normalize_forge_hosted_preflight_report(
+    mut report: ForgeHostedPreflightReport,
+) -> Option<ForgeHostedPreflightReport> {
+    report.preflight_id = report.preflight_id.trim().to_string();
+    report.workspace_root = report
+        .workspace_root
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.repo_remote_url = report
+        .repo_remote_url
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.gcp_project = report
+        .gcp_project
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.gcp_region = report
+        .gcp_region
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.worker_baseline = report
+        .worker_baseline
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.report_path = report
+        .report_path
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    report.checks = report
+        .checks
+        .drain(..)
+        .filter_map(|mut check| {
+            check.label = check.label.trim().to_string();
+            check.summary = check.summary.trim().to_string();
+            check.detail = check
+                .detail
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            (!check.label.is_empty() && !check.summary.is_empty()).then_some(check)
+        })
+        .collect();
+    report.checks.sort_by(|lhs, rhs| lhs.label.cmp(&rhs.label));
+    (!report.preflight_id.is_empty() && !report.checks.is_empty()).then_some(report)
 }
 
 fn normalize_forge_knowledge_pack_source_refs(
@@ -12704,6 +13526,122 @@ fn normalize_forge_delivery_receipts(
     receipts
 }
 
+fn normalize_forge_hosted_audit_bundles(
+    mut bundles: Vec<ForgeHostedAuditBundle>,
+) -> Vec<ForgeHostedAuditBundle> {
+    bundles.sort_by(|lhs, rhs| {
+        rhs.updated_at_epoch_ms
+            .cmp(&lhs.updated_at_epoch_ms)
+            .then_with(|| lhs.audit_bundle_id.cmp(&rhs.audit_bundle_id))
+    });
+    let mut seen_ids = HashSet::new();
+    bundles.retain(|bundle| {
+        let audit_bundle_id = bundle.audit_bundle_id.trim();
+        !audit_bundle_id.is_empty() && seen_ids.insert(audit_bundle_id.to_string())
+    });
+    for bundle in &mut bundles {
+        bundle.audit_bundle_id = bundle.audit_bundle_id.trim().to_string();
+        bundle.shared_session_id = bundle.shared_session_id.trim().to_string();
+        bundle.environment_summary = bundle.environment_summary.trim().to_string();
+        bundle.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut bundle.probe_session_ids));
+        bundle.workspace_root = bundle
+            .workspace_root
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.repo_remote_url = bundle
+            .repo_remote_url
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.repo_git_branch = bundle
+            .repo_git_branch
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.repo_head_commit = bundle
+            .repo_head_commit
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.routed_pack_ids =
+            normalize_forge_reference_list(std::mem::take(&mut bundle.routed_pack_ids));
+        bundle.mounted_pack_ids =
+            normalize_forge_reference_list(std::mem::take(&mut bundle.mounted_pack_ids));
+        bundle.unsupported_route_reasons = bundle
+            .unsupported_route_reasons
+            .drain(..)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        bundle.unsupported_route_reasons.sort();
+        bundle.unsupported_route_reasons.dedup();
+        bundle.preflight = bundle
+            .preflight
+            .take()
+            .and_then(normalize_forge_hosted_preflight_report);
+        bundle.evidence_bundle_id = bundle
+            .evidence_bundle_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.delivery_receipt_id = bundle
+            .delivery_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.campaign_id = bundle
+            .campaign_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.promotion_ledger_id = bundle
+            .promotion_ledger_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.bounty_contract_id = bundle
+            .bounty_contract_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.bounty_claim_id = bundle
+            .bounty_claim_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.settlement_receipt_id = bundle
+            .settlement_receipt_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        bundle.notes = bundle
+            .notes
+            .drain(..)
+            .filter_map(|mut note| {
+                note.body = note.body.trim().to_string();
+                note.provenance = note.provenance.trim().to_string();
+                (!note.body.is_empty() && !note.provenance.is_empty()).then_some(note)
+            })
+            .collect();
+        bundle.notes.sort_by(|lhs, rhs| {
+            rhs.recorded_at_epoch_ms
+                .cmp(&lhs.recorded_at_epoch_ms)
+                .then_with(|| lhs.body.cmp(&rhs.body))
+        });
+        if bundle.notes.len() > 32 {
+            bundle.notes.truncate(32);
+        }
+    }
+    bundles.retain(|bundle| {
+        !bundle.shared_session_id.is_empty()
+            && !bundle.probe_session_ids.is_empty()
+            && !bundle.environment_summary.is_empty()
+    });
+    bundles
+}
+
 fn persist_codex_artifact_projection(
     path: &Path,
     diff_artifacts: &HashMap<String, Vec<AutopilotDiffArtifact>>,
@@ -12720,6 +13658,7 @@ fn persist_codex_artifact_projection(
     forge_settlement_receipts: &HashMap<String, ForgeSettlementReceipt>,
     forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
     forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: &HashMap<String, ForgeHostedAuditBundle>,
     next_forge_shared_session_seq: u64,
     next_forge_workspace_snapshot_seq: u64,
     next_forge_restore_manifest_seq: u64,
@@ -12731,6 +13670,7 @@ fn persist_codex_artifact_projection(
     next_forge_settlement_receipt_seq: u64,
     next_forge_evidence_bundle_seq: u64,
     next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -12782,6 +13722,9 @@ fn persist_codex_artifact_projection(
         delivery_receipts: normalize_forge_delivery_receipts(
             forge_delivery_receipts.values().cloned().collect(),
         ),
+        hosted_audit_bundles: normalize_forge_hosted_audit_bundles(
+            forge_hosted_audit_bundles.values().cloned().collect(),
+        ),
         next_shared_session_seq: next_forge_shared_session_seq.max(1),
         next_workspace_snapshot_seq: next_forge_workspace_snapshot_seq.max(1),
         next_restore_manifest_seq: next_forge_restore_manifest_seq.max(1),
@@ -12793,6 +13736,7 @@ fn persist_codex_artifact_projection(
         next_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
         next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
         next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
+        next_hosted_audit_bundle_seq: next_forge_hosted_audit_bundle_seq.max(1),
     };
     let payload = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("Failed to encode Codex artifacts: {error}"))?;
@@ -12823,6 +13767,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 forge_settlement_receipts: HashMap::new(),
                 forge_evidence_bundles: HashMap::new(),
                 forge_delivery_receipts: HashMap::new(),
+                forge_hosted_audit_bundles: HashMap::new(),
                 next_forge_shared_session_seq: 1,
                 next_forge_workspace_snapshot_seq: 1,
                 next_forge_restore_manifest_seq: 1,
@@ -12834,6 +13779,7 @@ fn load_codex_artifact_projection(path: &Path) -> Result<LoadedCodexArtifactProj
                 next_forge_settlement_receipt_seq: 1,
                 next_forge_evidence_bundle_seq: 1,
                 next_forge_delivery_receipt_seq: 1,
+                next_forge_hosted_audit_bundle_seq: 1,
                 review_thread_source_map: HashMap::new(),
             });
         }
@@ -12881,17 +13827,19 @@ fn load_codex_artifact_projection_v1(
         Vec::new(),
         Vec::new(),
         Vec::new(),
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
-        1,
         Vec::new(),
+        Vec::new(),
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
         1,
     ))
 }
@@ -12921,6 +13869,8 @@ fn load_codex_artifact_projection_v2(
         document.bounty_claims,
         document.settlement_receipts,
         document.evidence_bundles,
+        document.delivery_receipts,
+        document.hosted_audit_bundles,
         document.next_shared_session_seq,
         document.next_workspace_snapshot_seq,
         document.next_restore_manifest_seq,
@@ -12931,8 +13881,8 @@ fn load_codex_artifact_projection_v2(
         document.next_bounty_claim_seq,
         document.next_settlement_receipt_seq,
         document.next_evidence_bundle_seq,
-        document.delivery_receipts,
         document.next_delivery_receipt_seq,
+        document.next_hosted_audit_bundle_seq,
     ))
 }
 
@@ -12950,6 +13900,8 @@ fn build_loaded_codex_artifact_projection(
     bounty_claims: Vec<ForgeBountyClaim>,
     settlement_receipts: Vec<ForgeSettlementReceipt>,
     evidence_bundles: Vec<ForgeEvidenceBundle>,
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
     next_shared_session_seq: u64,
     next_workspace_snapshot_seq: u64,
     next_restore_manifest_seq: u64,
@@ -12960,8 +13912,8 @@ fn build_loaded_codex_artifact_projection(
     next_bounty_claim_seq: u64,
     next_settlement_receipt_seq: u64,
     next_evidence_bundle_seq: u64,
-    delivery_receipts: Vec<ForgeDeliveryReceipt>,
     next_delivery_receipt_seq: u64,
+    next_hosted_audit_bundle_seq: u64,
 ) -> LoadedCodexArtifactProjection {
     let mut thread_diff_artifacts = HashMap::<String, Vec<AutopilotDiffArtifact>>::new();
     for artifact in normalize_codex_diff_artifacts(diff_artifacts) {
@@ -13040,6 +13992,10 @@ fn build_loaded_codex_artifact_projection(
     for receipt in normalize_forge_delivery_receipts(delivery_receipts) {
         forge_delivery_receipts.insert(receipt.delivery_receipt_id.clone(), receipt);
     }
+    let mut forge_hosted_audit_bundles = HashMap::<String, ForgeHostedAuditBundle>::new();
+    for bundle in normalize_forge_hosted_audit_bundles(hosted_audit_bundles) {
+        forge_hosted_audit_bundles.insert(bundle.audit_bundle_id.clone(), bundle);
+    }
 
     LoadedCodexArtifactProjection {
         thread_diff_artifacts,
@@ -13056,6 +14012,7 @@ fn build_loaded_codex_artifact_projection(
         forge_settlement_receipts,
         forge_evidence_bundles,
         forge_delivery_receipts,
+        forge_hosted_audit_bundles,
         next_forge_shared_session_seq: next_shared_session_seq.max(1),
         next_forge_workspace_snapshot_seq: next_workspace_snapshot_seq.max(1),
         next_forge_restore_manifest_seq: next_restore_manifest_seq.max(1),
@@ -13067,8 +14024,259 @@ fn build_loaded_codex_artifact_projection(
         next_forge_settlement_receipt_seq: next_settlement_receipt_seq.max(1),
         next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
         next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
+        next_forge_hosted_audit_bundle_seq: next_hosted_audit_bundle_seq.max(1),
         review_thread_source_map,
     }
+}
+
+fn persist_forge_shared_state(
+    path: &Path,
+    forge_shared_sessions: &HashMap<String, ForgeSharedSession>,
+    forge_campaigns: &HashMap<String, ForgeCampaign>,
+    forge_promotion_ledgers: &HashMap<String, ForgePromotionLedger>,
+    forge_bounty_contracts: &HashMap<String, ForgeBountyContract>,
+    forge_bounty_claims: &HashMap<String, ForgeBountyClaim>,
+    forge_settlement_receipts: &HashMap<String, ForgeSettlementReceipt>,
+    forge_evidence_bundles: &HashMap<String, ForgeEvidenceBundle>,
+    forge_delivery_receipts: &HashMap<String, ForgeDeliveryReceipt>,
+    forge_hosted_audit_bundles: &HashMap<String, ForgeHostedAuditBundle>,
+    next_forge_shared_session_seq: u64,
+    next_forge_campaign_seq: u64,
+    next_forge_promotion_ledger_seq: u64,
+    next_forge_bounty_contract_seq: u64,
+    next_forge_bounty_claim_seq: u64,
+    next_forge_settlement_receipt_seq: u64,
+    next_forge_evidence_bundle_seq: u64,
+    next_forge_delivery_receipt_seq: u64,
+    next_forge_hosted_audit_bundle_seq: u64,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create Forge shared state dir: {error}"))?;
+    }
+    let document = ForgeSharedStateDocumentV1 {
+        schema_version: FORGE_SHARED_STATE_SCHEMA_VERSION,
+        stream_id: FORGE_SHARED_STATE_STREAM_ID.to_string(),
+        shared_sessions: normalize_forge_shared_sessions(
+            forge_shared_sessions.values().cloned().collect(),
+        ),
+        campaigns: normalize_forge_campaigns(forge_campaigns.values().cloned().collect()),
+        promotion_ledgers: normalize_forge_promotion_ledgers(
+            forge_promotion_ledgers.values().cloned().collect(),
+        ),
+        bounty_contracts: normalize_forge_bounty_contracts(
+            forge_bounty_contracts.values().cloned().collect(),
+        ),
+        bounty_claims: normalize_forge_bounty_claims(
+            forge_bounty_claims.values().cloned().collect(),
+        ),
+        settlement_receipts: normalize_forge_settlement_receipts(
+            forge_settlement_receipts.values().cloned().collect(),
+        ),
+        evidence_bundles: normalize_forge_evidence_bundles(
+            forge_evidence_bundles.values().cloned().collect(),
+        ),
+        delivery_receipts: normalize_forge_delivery_receipts(
+            forge_delivery_receipts.values().cloned().collect(),
+        ),
+        hosted_audit_bundles: normalize_forge_hosted_audit_bundles(
+            forge_hosted_audit_bundles.values().cloned().collect(),
+        ),
+        next_shared_session_seq: next_forge_shared_session_seq.max(1),
+        next_campaign_seq: next_forge_campaign_seq.max(1),
+        next_promotion_ledger_seq: next_forge_promotion_ledger_seq.max(1),
+        next_bounty_contract_seq: next_forge_bounty_contract_seq.max(1),
+        next_bounty_claim_seq: next_forge_bounty_claim_seq.max(1),
+        next_settlement_receipt_seq: next_forge_settlement_receipt_seq.max(1),
+        next_evidence_bundle_seq: next_forge_evidence_bundle_seq.max(1),
+        next_delivery_receipt_seq: next_forge_delivery_receipt_seq.max(1),
+        next_hosted_audit_bundle_seq: next_forge_hosted_audit_bundle_seq.max(1),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode Forge shared state: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write Forge shared state temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist Forge shared state: {error}"))?;
+    Ok(())
+}
+
+fn load_forge_shared_state(path: &Path) -> Result<LoadedForgeSharedState, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LoadedForgeSharedState {
+                next_forge_shared_session_seq: 1,
+                next_forge_campaign_seq: 1,
+                next_forge_promotion_ledger_seq: 1,
+                next_forge_bounty_contract_seq: 1,
+                next_forge_bounty_claim_seq: 1,
+                next_forge_settlement_receipt_seq: 1,
+                next_forge_evidence_bundle_seq: 1,
+                next_forge_delivery_receipt_seq: 1,
+                next_forge_hosted_audit_bundle_seq: 1,
+                ..LoadedForgeSharedState::default()
+            });
+        }
+        Err(error) => return Err(format!("Failed to read Forge shared state: {error}")),
+    };
+    let document = serde_json::from_str::<serde_json::Value>(&raw)
+        .map_err(|error| format!("Failed to parse Forge shared state: {error}"))?;
+    let schema_version = document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "Missing Forge shared state schema version".to_string())?
+        as u16;
+    match schema_version {
+        FORGE_SHARED_STATE_SCHEMA_VERSION => load_forge_shared_state_v1(document),
+        other => Err(format!(
+            "Unsupported Forge shared state schema version: {other}"
+        )),
+    }
+}
+
+fn load_forge_shared_state_v1(value: serde_json::Value) -> Result<LoadedForgeSharedState, String> {
+    let document = serde_json::from_value::<ForgeSharedStateDocumentV1>(value)
+        .map_err(|error| format!("Failed to decode Forge shared state: {error}"))?;
+    if document.stream_id != FORGE_SHARED_STATE_STREAM_ID {
+        return Err(format!(
+            "Unsupported Forge shared state stream id: {}",
+            document.stream_id
+        ));
+    }
+    Ok(build_loaded_forge_shared_state(
+        document.shared_sessions,
+        document.campaigns,
+        document.promotion_ledgers,
+        document.bounty_contracts,
+        document.bounty_claims,
+        document.settlement_receipts,
+        document.evidence_bundles,
+        document.delivery_receipts,
+        document.hosted_audit_bundles,
+        document.next_shared_session_seq,
+        document.next_campaign_seq,
+        document.next_promotion_ledger_seq,
+        document.next_bounty_contract_seq,
+        document.next_bounty_claim_seq,
+        document.next_settlement_receipt_seq,
+        document.next_evidence_bundle_seq,
+        document.next_delivery_receipt_seq,
+        document.next_hosted_audit_bundle_seq,
+    ))
+}
+
+fn build_loaded_forge_shared_state(
+    shared_sessions: Vec<ForgeSharedSession>,
+    campaigns: Vec<ForgeCampaign>,
+    promotion_ledgers: Vec<ForgePromotionLedger>,
+    bounty_contracts: Vec<ForgeBountyContract>,
+    bounty_claims: Vec<ForgeBountyClaim>,
+    settlement_receipts: Vec<ForgeSettlementReceipt>,
+    evidence_bundles: Vec<ForgeEvidenceBundle>,
+    delivery_receipts: Vec<ForgeDeliveryReceipt>,
+    hosted_audit_bundles: Vec<ForgeHostedAuditBundle>,
+    next_shared_session_seq: u64,
+    next_campaign_seq: u64,
+    next_promotion_ledger_seq: u64,
+    next_bounty_contract_seq: u64,
+    next_bounty_claim_seq: u64,
+    next_settlement_receipt_seq: u64,
+    next_evidence_bundle_seq: u64,
+    next_delivery_receipt_seq: u64,
+    next_hosted_audit_bundle_seq: u64,
+) -> LoadedForgeSharedState {
+    let mut forge_shared_sessions = HashMap::<String, ForgeSharedSession>::new();
+    for session in normalize_forge_shared_sessions(shared_sessions) {
+        forge_shared_sessions.insert(session.shared_session_id.clone(), session);
+    }
+    let mut forge_campaigns = HashMap::<String, ForgeCampaign>::new();
+    for campaign in normalize_forge_campaigns(campaigns) {
+        forge_campaigns.insert(campaign.campaign_id.clone(), campaign);
+    }
+    let mut forge_promotion_ledgers = HashMap::<String, ForgePromotionLedger>::new();
+    for ledger in normalize_forge_promotion_ledgers(promotion_ledgers) {
+        forge_promotion_ledgers.insert(ledger.promotion_ledger_id.clone(), ledger);
+    }
+    let mut forge_bounty_contracts = HashMap::<String, ForgeBountyContract>::new();
+    for contract in normalize_forge_bounty_contracts(bounty_contracts) {
+        forge_bounty_contracts.insert(contract.bounty_contract_id.clone(), contract);
+    }
+    let mut forge_bounty_claims = HashMap::<String, ForgeBountyClaim>::new();
+    for claim in normalize_forge_bounty_claims(bounty_claims) {
+        forge_bounty_claims.insert(claim.bounty_claim_id.clone(), claim);
+    }
+    let mut forge_settlement_receipts = HashMap::<String, ForgeSettlementReceipt>::new();
+    for receipt in normalize_forge_settlement_receipts(settlement_receipts) {
+        forge_settlement_receipts.insert(receipt.settlement_receipt_id.clone(), receipt);
+    }
+    let mut forge_evidence_bundles = HashMap::<String, ForgeEvidenceBundle>::new();
+    for bundle in normalize_forge_evidence_bundles(evidence_bundles) {
+        forge_evidence_bundles.insert(bundle.evidence_bundle_id.clone(), bundle);
+    }
+    let mut forge_delivery_receipts = HashMap::<String, ForgeDeliveryReceipt>::new();
+    for receipt in normalize_forge_delivery_receipts(delivery_receipts) {
+        forge_delivery_receipts.insert(receipt.delivery_receipt_id.clone(), receipt);
+    }
+    let mut forge_hosted_audit_bundles = HashMap::<String, ForgeHostedAuditBundle>::new();
+    for bundle in normalize_forge_hosted_audit_bundles(hosted_audit_bundles) {
+        forge_hosted_audit_bundles.insert(bundle.audit_bundle_id.clone(), bundle);
+    }
+    LoadedForgeSharedState {
+        forge_shared_sessions,
+        forge_campaigns,
+        forge_promotion_ledgers,
+        forge_bounty_contracts,
+        forge_bounty_claims,
+        forge_settlement_receipts,
+        forge_evidence_bundles,
+        forge_delivery_receipts,
+        forge_hosted_audit_bundles,
+        next_forge_shared_session_seq: next_shared_session_seq.max(1),
+        next_forge_campaign_seq: next_campaign_seq.max(1),
+        next_forge_promotion_ledger_seq: next_promotion_ledger_seq.max(1),
+        next_forge_bounty_contract_seq: next_bounty_contract_seq.max(1),
+        next_forge_bounty_claim_seq: next_bounty_claim_seq.max(1),
+        next_forge_settlement_receipt_seq: next_settlement_receipt_seq.max(1),
+        next_forge_evidence_bundle_seq: next_evidence_bundle_seq.max(1),
+        next_forge_delivery_receipt_seq: next_delivery_receipt_seq.max(1),
+        next_forge_hosted_audit_bundle_seq: next_hosted_audit_bundle_seq.max(1),
+    }
+}
+
+fn merge_versioned_maps<T, F>(
+    mut current: HashMap<String, T>,
+    incoming: HashMap<String, T>,
+    updated_at: F,
+) -> HashMap<String, T>
+where
+    T: Clone + Serialize,
+    F: Fn(&T) -> u64 + Copy,
+{
+    for (key, candidate) in incoming {
+        match current.get(&key) {
+            Some(existing) if !incoming_version_wins(existing, &candidate, updated_at) => {}
+            _ => {
+                current.insert(key, candidate);
+            }
+        }
+    }
+    current
+}
+
+fn incoming_version_wins<T, F>(current: &T, incoming: &T, updated_at: F) -> bool
+where
+    T: Serialize,
+    F: Fn(&T) -> u64,
+{
+    let current_updated_at = updated_at(current);
+    let incoming_updated_at = updated_at(incoming);
+    if incoming_updated_at != current_updated_at {
+        return incoming_updated_at > current_updated_at;
+    }
+    serde_json::to_string(incoming).unwrap_or_default()
+        > serde_json::to_string(current).unwrap_or_default()
 }
 
 fn parse_diff_file_artifacts(raw_diff: &str) -> Vec<AutopilotDiffFileArtifact> {
@@ -13513,8 +14721,19 @@ impl SidebarState {
 }
 
 impl AutopilotChatState {
-    #[cfg(test)]
-    fn from_artifact_projection_path_for_tests(artifact_projection_file_path: PathBuf) -> Self {
+    fn push_projection_load_error(&mut self, error: impl Into<String>) {
+        let error = error.into();
+        match self.last_error.as_mut() {
+            Some(existing) if !existing.is_empty() => {
+                existing.push('\n');
+                existing.push_str(error.as_str());
+            }
+            Some(existing) => *existing = error,
+            None => self.last_error = Some(error),
+        }
+    }
+
+    pub(crate) fn from_artifact_projection_path(artifact_projection_file_path: PathBuf) -> Self {
         let mut state = Self::default();
         state.artifact_projection_file_path = artifact_projection_file_path.clone();
         match load_codex_artifact_projection(artifact_projection_file_path.as_path()) {
@@ -13533,6 +14752,7 @@ impl AutopilotChatState {
                 state.forge_settlement_receipts = projection.forge_settlement_receipts;
                 state.forge_evidence_bundles = projection.forge_evidence_bundles;
                 state.forge_delivery_receipts = projection.forge_delivery_receipts;
+                state.forge_hosted_audit_bundles = projection.forge_hosted_audit_bundles;
                 state.next_forge_shared_session_seq = projection.next_forge_shared_session_seq;
                 state.next_forge_workspace_snapshot_seq =
                     projection.next_forge_workspace_snapshot_seq;
@@ -13546,6 +14766,8 @@ impl AutopilotChatState {
                     projection.next_forge_settlement_receipt_seq;
                 state.next_forge_evidence_bundle_seq = projection.next_forge_evidence_bundle_seq;
                 state.next_forge_delivery_receipt_seq = projection.next_forge_delivery_receipt_seq;
+                state.next_forge_hosted_audit_bundle_seq =
+                    projection.next_forge_hosted_audit_bundle_seq;
                 state.review_thread_source_map = projection.review_thread_source_map;
                 state.last_error = None;
             }
@@ -13564,6 +14786,7 @@ impl AutopilotChatState {
                 state.forge_settlement_receipts.clear();
                 state.forge_evidence_bundles.clear();
                 state.forge_delivery_receipts.clear();
+                state.forge_hosted_audit_bundles.clear();
                 state.next_forge_shared_session_seq = 1;
                 state.next_forge_workspace_snapshot_seq = 1;
                 state.next_forge_restore_manifest_seq = 1;
@@ -13575,9 +14798,13 @@ impl AutopilotChatState {
                 state.next_forge_settlement_receipt_seq = 1;
                 state.next_forge_evidence_bundle_seq = 1;
                 state.next_forge_delivery_receipt_seq = 1;
+                state.next_forge_hosted_audit_bundle_seq = 1;
                 state.review_thread_source_map.clear();
                 state.last_error = Some(error);
             }
+        }
+        if let Err(error) = state.refresh_forge_shared_state_from_backing_store() {
+            state.push_projection_load_error(error);
         }
         state
     }
@@ -13601,6 +14828,133 @@ impl AutopilotChatState {
             max_scroll
         } else {
             self.transcript_scroll_offset.clamp(0.0, max_scroll)
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_artifact_projection_path_for_tests(
+        artifact_projection_file_path: PathBuf,
+    ) -> Self {
+        Self::from_artifact_projection_path(artifact_projection_file_path)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_projection_paths_for_tests(
+        artifact_projection_file_path: PathBuf,
+        forge_shared_state_file_path: Option<PathBuf>,
+    ) -> Self {
+        let mut state = Self::from_artifact_projection_path(artifact_projection_file_path);
+        state.forge_shared_state_file_path = forge_shared_state_file_path;
+        if let Err(error) = state.refresh_forge_shared_state_from_backing_store() {
+            state.push_projection_load_error(error);
+        }
+        state
+    }
+
+    fn refresh_forge_shared_state_from_backing_store(&mut self) -> Result<(), String> {
+        let Some(path) = self.forge_shared_state_file_path.clone() else {
+            return Ok(());
+        };
+        let shared = load_forge_shared_state(path.as_path())?;
+        self.apply_loaded_forge_shared_state(shared);
+        Ok(())
+    }
+
+    fn apply_loaded_forge_shared_state(&mut self, shared: LoadedForgeSharedState) {
+        self.forge_shared_sessions = merge_versioned_maps(
+            std::mem::take(&mut self.forge_shared_sessions),
+            shared.forge_shared_sessions,
+            |session| session.updated_at_epoch_ms,
+        );
+        self.forge_campaigns = merge_versioned_maps(
+            std::mem::take(&mut self.forge_campaigns),
+            shared.forge_campaigns,
+            |campaign| campaign.updated_at_epoch_ms,
+        );
+        self.forge_promotion_ledgers = merge_versioned_maps(
+            std::mem::take(&mut self.forge_promotion_ledgers),
+            shared.forge_promotion_ledgers,
+            |ledger| ledger.updated_at_epoch_ms,
+        );
+        self.forge_bounty_contracts = merge_versioned_maps(
+            std::mem::take(&mut self.forge_bounty_contracts),
+            shared.forge_bounty_contracts,
+            |contract| contract.updated_at_epoch_ms,
+        );
+        self.forge_bounty_claims = merge_versioned_maps(
+            std::mem::take(&mut self.forge_bounty_claims),
+            shared.forge_bounty_claims,
+            |claim| claim.updated_at_epoch_ms,
+        );
+        self.forge_settlement_receipts = merge_versioned_maps(
+            std::mem::take(&mut self.forge_settlement_receipts),
+            shared.forge_settlement_receipts,
+            |receipt| receipt.updated_at_epoch_ms,
+        );
+        self.forge_evidence_bundles = merge_versioned_maps(
+            std::mem::take(&mut self.forge_evidence_bundles),
+            shared.forge_evidence_bundles,
+            |bundle| bundle.updated_at_epoch_ms,
+        );
+        self.forge_delivery_receipts = merge_versioned_maps(
+            std::mem::take(&mut self.forge_delivery_receipts),
+            shared.forge_delivery_receipts,
+            |receipt| receipt.updated_at_epoch_ms,
+        );
+        self.forge_hosted_audit_bundles = merge_versioned_maps(
+            std::mem::take(&mut self.forge_hosted_audit_bundles),
+            shared.forge_hosted_audit_bundles,
+            |bundle| bundle.updated_at_epoch_ms,
+        );
+        self.next_forge_shared_session_seq = self
+            .next_forge_shared_session_seq
+            .max(shared.next_forge_shared_session_seq);
+        self.next_forge_campaign_seq = self
+            .next_forge_campaign_seq
+            .max(shared.next_forge_campaign_seq);
+        self.next_forge_promotion_ledger_seq = self
+            .next_forge_promotion_ledger_seq
+            .max(shared.next_forge_promotion_ledger_seq);
+        self.next_forge_bounty_contract_seq = self
+            .next_forge_bounty_contract_seq
+            .max(shared.next_forge_bounty_contract_seq);
+        self.next_forge_bounty_claim_seq = self
+            .next_forge_bounty_claim_seq
+            .max(shared.next_forge_bounty_claim_seq);
+        self.next_forge_settlement_receipt_seq = self
+            .next_forge_settlement_receipt_seq
+            .max(shared.next_forge_settlement_receipt_seq);
+        self.next_forge_evidence_bundle_seq = self
+            .next_forge_evidence_bundle_seq
+            .max(shared.next_forge_evidence_bundle_seq);
+        self.next_forge_delivery_receipt_seq = self
+            .next_forge_delivery_receipt_seq
+            .max(shared.next_forge_delivery_receipt_seq);
+        self.next_forge_hosted_audit_bundle_seq = self
+            .next_forge_hosted_audit_bundle_seq
+            .max(shared.next_forge_hosted_audit_bundle_seq);
+    }
+
+    fn build_loaded_forge_shared_state(&self) -> LoadedForgeSharedState {
+        LoadedForgeSharedState {
+            forge_shared_sessions: self.forge_shared_sessions.clone(),
+            forge_campaigns: self.forge_campaigns.clone(),
+            forge_promotion_ledgers: self.forge_promotion_ledgers.clone(),
+            forge_bounty_contracts: self.forge_bounty_contracts.clone(),
+            forge_bounty_claims: self.forge_bounty_claims.clone(),
+            forge_settlement_receipts: self.forge_settlement_receipts.clone(),
+            forge_evidence_bundles: self.forge_evidence_bundles.clone(),
+            forge_delivery_receipts: self.forge_delivery_receipts.clone(),
+            forge_hosted_audit_bundles: self.forge_hosted_audit_bundles.clone(),
+            next_forge_shared_session_seq: self.next_forge_shared_session_seq.max(1),
+            next_forge_campaign_seq: self.next_forge_campaign_seq.max(1),
+            next_forge_promotion_ledger_seq: self.next_forge_promotion_ledger_seq.max(1),
+            next_forge_bounty_contract_seq: self.next_forge_bounty_contract_seq.max(1),
+            next_forge_bounty_claim_seq: self.next_forge_bounty_claim_seq.max(1),
+            next_forge_settlement_receipt_seq: self.next_forge_settlement_receipt_seq.max(1),
+            next_forge_evidence_bundle_seq: self.next_forge_evidence_bundle_seq.max(1),
+            next_forge_delivery_receipt_seq: self.next_forge_delivery_receipt_seq.max(1),
+            next_forge_hosted_audit_bundle_seq: self.next_forge_hosted_audit_bundle_seq.max(1),
         }
     }
 
@@ -13736,6 +15090,8 @@ impl AutopilotChatState {
         let active_thread_id = self.active_thread_id.clone();
         let mut project_threads = HashMap::<String, Vec<String>>::new();
         let mut git_state_by_project = HashMap::<String, (Option<String>, Option<bool>)>::new();
+        let mut preserved_git_state_by_project =
+            HashMap::<String, (Option<String>, Option<bool>)>::new();
 
         for (thread_id, metadata) in self.thread_metadata.iter_mut() {
             let workspace_root =
@@ -13746,6 +15102,15 @@ impl AutopilotChatState {
                 .as_deref()
                 .map(project_name_for_workspace_root);
             if let Some(project_id) = metadata.project_id.as_ref() {
+                let preserved = preserved_git_state_by_project
+                    .entry(project_id.clone())
+                    .or_insert((None, None));
+                if preserved.0.is_none() {
+                    preserved.0 = metadata.git_branch.clone();
+                }
+                if preserved.1.is_none() {
+                    preserved.1 = metadata.git_dirty;
+                }
                 project_threads
                     .entry(project_id.clone())
                     .or_default()
@@ -13759,7 +15124,17 @@ impl AutopilotChatState {
         for project_id in project_threads.keys() {
             let git_branch = git_branch_for_workspace_root(project_id);
             let git_dirty = git_dirty_for_workspace_root(project_id);
-            git_state_by_project.insert(project_id.clone(), (git_branch, git_dirty));
+            let (preserved_branch, preserved_dirty) = preserved_git_state_by_project
+                .get(project_id)
+                .cloned()
+                .unwrap_or((None, None));
+            git_state_by_project.insert(
+                project_id.clone(),
+                (
+                    git_branch.or(preserved_branch),
+                    git_dirty.or(preserved_dirty),
+                ),
+            );
         }
 
         for metadata in self.thread_metadata.values_mut() {
@@ -14234,6 +15609,571 @@ impl AutopilotChatState {
         self.active_thread_id
             .as_deref()
             .and_then(|thread_id| self.settlement_receipt_for_thread(thread_id))
+    }
+
+    fn hosted_audit_bundle_for_thread(
+        &self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+    ) -> Option<&ForgeHostedAuditBundle> {
+        let shared_session = self.shared_session_for_thread(thread_id)?;
+        let audit_bundle_id = match kind {
+            ForgeHostedAuditKind::CodingCloseout => {
+                shared_session.hosted_coding_audit_bundle_id.as_deref()?
+            }
+            ForgeHostedAuditKind::BookkeepingRehearsal => shared_session
+                .hosted_bookkeeping_audit_bundle_id
+                .as_deref()?,
+        };
+        self.forge_hosted_audit_bundles.get(audit_bundle_id)
+    }
+
+    pub fn active_hosted_coding_audit_bundle(&self) -> Option<&ForgeHostedAuditBundle> {
+        self.active_thread_id.as_deref().and_then(|thread_id| {
+            self.hosted_audit_bundle_for_thread(thread_id, ForgeHostedAuditKind::CodingCloseout)
+        })
+    }
+
+    pub fn active_hosted_bookkeeping_audit_bundle(&self) -> Option<&ForgeHostedAuditBundle> {
+        self.active_thread_id.as_deref().and_then(|thread_id| {
+            self.hosted_audit_bundle_for_thread(
+                thread_id,
+                ForgeHostedAuditKind::BookkeepingRehearsal,
+            )
+        })
+    }
+
+    pub fn active_hosted_preflight(&self) -> Option<&ForgeHostedPreflightReport> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.shared_session_for_thread(thread_id))
+            .and_then(|shared_session| shared_session.hosted_preflight.as_ref())
+    }
+
+    fn hosted_audit_export_base_dir_for_thread(
+        &self,
+        thread_id: &str,
+        bundle: &ForgeHostedAuditBundle,
+    ) -> PathBuf {
+        bundle
+            .workspace_root
+            .as_deref()
+            .map(PathBuf::from)
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.as_deref())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| {
+                self.artifact_projection_file_path
+                    .parent()
+                    .map(Path::to_path_buf)
+            })
+            .unwrap_or_else(std::env::temp_dir)
+    }
+
+    fn resolve_hosted_audit_export_path_for_thread(
+        &self,
+        thread_id: &str,
+        bundle: &ForgeHostedAuditBundle,
+        output_path: Option<&str>,
+    ) -> PathBuf {
+        let base_dir = self.hosted_audit_export_base_dir_for_thread(thread_id, bundle);
+        let Some(raw_output_path) = output_path.map(str::trim).filter(|value| !value.is_empty())
+        else {
+            return base_dir.join(format!(
+                "forge-hosted-{}-{}.md",
+                bundle.kind.label(),
+                bundle.audit_bundle_id
+            ));
+        };
+        let normalized = raw_output_path
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .or_else(|| {
+                raw_output_path
+                    .strip_prefix('\'')
+                    .and_then(|value| value.strip_suffix('\''))
+            })
+            .unwrap_or(raw_output_path);
+        if let Some(home_relative) = normalized.strip_prefix("~/")
+            && let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+        {
+            return home.join(home_relative);
+        }
+        let path = PathBuf::from(normalized);
+        if path.is_absolute() {
+            path
+        } else {
+            base_dir.join(path)
+        }
+    }
+
+    fn build_hosted_audit_export_document_for_thread(
+        &self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        exported_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedAuditExportDocumentV1, String> {
+        let bundle = self
+            .hosted_audit_bundle_for_thread(thread_id, kind)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Record {} first with `/hosted {}`.",
+                    kind.display_label(),
+                    match kind {
+                        ForgeHostedAuditKind::CodingCloseout => "coding <environment-summary>",
+                        ForgeHostedAuditKind::BookkeepingRehearsal => {
+                            "bookkeeping <environment-summary>"
+                        }
+                    }
+                )
+            })?;
+        Ok(ForgeHostedAuditExportDocumentV1 {
+            schema_version: FORGE_HOSTED_AUDIT_EXPORT_SCHEMA_VERSION,
+            thread_id: thread_id.to_string(),
+            exported_at_epoch_ms,
+            bundle,
+        })
+    }
+
+    fn hosted_preflight_export_base_dir_for_thread(
+        &self,
+        thread_id: &str,
+        report: &ForgeHostedPreflightReport,
+    ) -> PathBuf {
+        report
+            .workspace_root
+            .as_deref()
+            .map(PathBuf::from)
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.cwd.as_deref())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| {
+                self.artifact_projection_file_path
+                    .parent()
+                    .map(Path::to_path_buf)
+            })
+            .unwrap_or_else(std::env::temp_dir)
+    }
+
+    fn resolve_hosted_preflight_export_path_for_thread(
+        &self,
+        thread_id: &str,
+        report: &ForgeHostedPreflightReport,
+        output_path: Option<&str>,
+    ) -> PathBuf {
+        let base_dir = self.hosted_preflight_export_base_dir_for_thread(thread_id, report);
+        let Some(raw_output_path) = output_path.map(str::trim).filter(|value| !value.is_empty())
+        else {
+            return base_dir.join(format!("forge-hosted-preflight-{}.md", report.preflight_id));
+        };
+        let normalized = raw_output_path
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .or_else(|| {
+                raw_output_path
+                    .strip_prefix('\'')
+                    .and_then(|value| value.strip_suffix('\''))
+            })
+            .unwrap_or(raw_output_path);
+        if let Some(home_relative) = normalized.strip_prefix("~/")
+            && let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+        {
+            return home.join(home_relative);
+        }
+        let path = PathBuf::from(normalized);
+        if path.is_absolute() {
+            path
+        } else {
+            base_dir.join(path)
+        }
+    }
+
+    fn build_hosted_preflight_export_document_for_thread(
+        &self,
+        thread_id: &str,
+        report: ForgeHostedPreflightReport,
+        exported_at_epoch_ms: u64,
+    ) -> ForgeHostedPreflightExportDocumentV1 {
+        ForgeHostedPreflightExportDocumentV1 {
+            schema_version: FORGE_HOSTED_PREFLIGHT_EXPORT_SCHEMA_VERSION,
+            thread_id: thread_id.to_string(),
+            exported_at_epoch_ms,
+            report,
+        }
+    }
+
+    fn render_hosted_audit_export_markdown(
+        document: &ForgeHostedAuditExportDocumentV1,
+    ) -> Result<String, String> {
+        let bundle = &document.bundle;
+        let payload = serde_json::to_string_pretty(document)
+            .map_err(|error| format!("Failed to encode hosted audit export JSON: {error}"))?;
+        let mut lines = vec![
+            format!("# {}", bundle.kind.display_label()),
+            String::new(),
+            format!("- schema_version: {}", document.schema_version),
+            format!("- thread_id: `{}`", document.thread_id),
+            format!("- audit_bundle_id: `{}`", bundle.audit_bundle_id),
+            format!("- shared_session_id: `{}`", bundle.shared_session_id),
+            format!("- exported_at_epoch_ms: {}", document.exported_at_epoch_ms),
+            format!(
+                "- session_location_kind: {}",
+                bundle.session_location_kind.label()
+            ),
+            format!("- environment_summary: {}", bundle.environment_summary),
+            format!("- created_at_epoch_ms: {}", bundle.created_at_epoch_ms),
+            format!("- updated_at_epoch_ms: {}", bundle.updated_at_epoch_ms),
+        ];
+        if let Some(workspace_root) = bundle.workspace_root.as_deref() {
+            lines.push(format!("- workspace_root: `{workspace_root}`"));
+        }
+        if let Some(repo_remote_url) = bundle.repo_remote_url.as_deref() {
+            lines.push(format!("- repo_remote_url: `{repo_remote_url}`"));
+        }
+        if let Some(repo_git_branch) = bundle.repo_git_branch.as_deref() {
+            lines.push(format!("- repo_git_branch: `{repo_git_branch}`"));
+        }
+        if let Some(repo_head_commit) = bundle.repo_head_commit.as_deref() {
+            lines.push(format!("- repo_head_commit: `{repo_head_commit}`"));
+        }
+        lines.push(format!(
+            "- probe_session_ids: {}",
+            if bundle.probe_session_ids.is_empty() {
+                "none".to_string()
+            } else {
+                bundle
+                    .probe_session_ids
+                    .iter()
+                    .map(|session_id| format!("`{session_id}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines.push(format!(
+            "- routed_pack_ids: {}",
+            if bundle.routed_pack_ids.is_empty() {
+                "none".to_string()
+            } else {
+                bundle
+                    .routed_pack_ids
+                    .iter()
+                    .map(|pack_id| format!("`{pack_id}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines.push(format!(
+            "- mounted_pack_ids: {}",
+            if bundle.mounted_pack_ids.is_empty() {
+                "none".to_string()
+            } else {
+                bundle
+                    .mounted_pack_ids
+                    .iter()
+                    .map(|pack_id| format!("`{pack_id}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines.push(format!(
+            "- unsupported_route_reasons: {}",
+            if bundle.unsupported_route_reasons.is_empty() {
+                "none".to_string()
+            } else {
+                bundle.unsupported_route_reasons.join(" | ")
+            }
+        ));
+        lines.push(format!(
+            "- evidence: {}",
+            bundle
+                .evidence_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.evidence_bundle_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- delivery: {}",
+            bundle
+                .delivery_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.delivery_receipt_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- campaign: {}",
+            bundle
+                .campaign_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.campaign_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- promotion: {}",
+            bundle
+                .promotion_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.promotion_ledger_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        lines.push(format!(
+            "- bounty: {}",
+            bundle
+                .bounty_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.bounty_contract_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        if let Some(bounty_claim_id) = bundle.bounty_claim_id.as_deref() {
+            lines.push(format!("- bounty_claim_id: `{bounty_claim_id}`"));
+        }
+        lines.push(format!(
+            "- settlement: {}",
+            bundle
+                .settlement_status
+                .map(|status| {
+                    format!(
+                        "{} ({})",
+                        status.label(),
+                        bundle.settlement_receipt_id.as_deref().unwrap_or("-")
+                    )
+                })
+                .unwrap_or_else(|| "none".to_string())
+        ));
+        if let Some(hosted_receipts) = bundle.hosted_receipts.as_ref() {
+            let mut receipt_parts = Vec::new();
+            if hosted_receipts.auth.is_some() {
+                receipt_parts.push("auth");
+            }
+            if hosted_receipts.checkout.is_some() {
+                receipt_parts.push("checkout");
+            }
+            if hosted_receipts.worker.is_some() {
+                receipt_parts.push("worker");
+            }
+            if hosted_receipts.cost.is_some() {
+                receipt_parts.push("cost");
+            }
+            if hosted_receipts.cleanup.is_some() {
+                receipt_parts.push("cleanup");
+            }
+            lines.push(format!(
+                "- hosted_receipts: {}",
+                if receipt_parts.is_empty() {
+                    "none".to_string()
+                } else {
+                    receipt_parts.join(", ")
+                }
+            ));
+            lines.push(format!(
+                "- hosted_receipt_history_count: {}",
+                hosted_receipts.history.len()
+            ));
+        } else {
+            lines.push("- hosted_receipts: none".to_string());
+        }
+        if let Some(preflight) = bundle.preflight.as_ref() {
+            lines.push(format!(
+                "- preflight: {} ({})",
+                preflight.disposition.label(),
+                preflight.preflight_id
+            ));
+            lines.push(format!(
+                "- preflight_blockers: {}",
+                preflight.blocker_count()
+            ));
+            lines.push(format!(
+                "- preflight_warnings: {}",
+                preflight.warning_count()
+            ));
+            if let Some(report_path) = preflight.report_path.as_deref() {
+                lines.push(format!("- preflight_report_path: `{report_path}`"));
+            }
+        } else {
+            lines.push("- preflight: none".to_string());
+        }
+        lines.push(format!("- note_count: {}", bundle.notes.len()));
+        lines.push(String::new());
+        lines.push("## JSON".to_string());
+        lines.push("```json".to_string());
+        lines.push(payload);
+        lines.push("```".to_string());
+        Ok(lines.join("\n"))
+    }
+
+    fn render_hosted_preflight_export_markdown(
+        document: &ForgeHostedPreflightExportDocumentV1,
+    ) -> Result<String, String> {
+        let report = &document.report;
+        let payload = serde_json::to_string_pretty(document)
+            .map_err(|error| format!("Failed to encode hosted preflight export JSON: {error}"))?;
+        let mut lines = vec![
+            "# hosted preflight".to_string(),
+            String::new(),
+            format!("- schema_version: {}", document.schema_version),
+            format!("- thread_id: `{}`", document.thread_id),
+            format!("- preflight_id: `{}`", report.preflight_id),
+            format!("- exported_at_epoch_ms: {}", document.exported_at_epoch_ms),
+            format!("- disposition: {}", report.disposition.label()),
+            format!("- blocker_count: {}", report.blocker_count()),
+            format!("- warning_count: {}", report.warning_count()),
+            format!("- recorded_at_epoch_ms: {}", report.recorded_at_epoch_ms),
+        ];
+        if let Some(workspace_root) = report.workspace_root.as_deref() {
+            lines.push(format!("- workspace_root: `{workspace_root}`"));
+        }
+        if let Some(repo_remote_url) = report.repo_remote_url.as_deref() {
+            lines.push(format!("- repo_remote_url: `{repo_remote_url}`"));
+        }
+        if let Some(gcp_project) = report.gcp_project.as_deref() {
+            lines.push(format!("- gcp_project: `{gcp_project}`"));
+        }
+        if let Some(gcp_region) = report.gcp_region.as_deref() {
+            lines.push(format!("- gcp_region: `{gcp_region}`"));
+        }
+        if let Some(worker_baseline) = report.worker_baseline.as_deref() {
+            lines.push(format!("- worker_baseline: `{worker_baseline}`"));
+        }
+        if let Some(report_path) = report.report_path.as_deref() {
+            lines.push(format!("- report_path: `{report_path}`"));
+        }
+        lines.push(String::new());
+        lines.push("## Checks".to_string());
+        for check in &report.checks {
+            lines.push(format!(
+                "- {}: {}",
+                check.label,
+                check.status.display_label()
+            ));
+            lines.push(format!("  - {}", check.summary));
+            if let Some(detail) = check.detail.as_deref() {
+                lines.push(format!("  - {}", detail));
+            }
+        }
+        lines.push(String::new());
+        lines.push("## JSON".to_string());
+        lines.push("```json".to_string());
+        lines.push(payload);
+        lines.push("```".to_string());
+        Ok(lines.join("\n"))
+    }
+
+    fn persist_hosted_audit_export(path: &Path, payload: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "Failed to create hosted audit export dir `{}`: {error}",
+                    parent.display()
+                )
+            })?;
+        }
+        let temp_path = path.with_extension("tmp");
+        std::fs::write(&temp_path, payload).map_err(|error| {
+            format!(
+                "Failed to write hosted audit export temp file `{}`: {error}",
+                temp_path.display()
+            )
+        })?;
+        std::fs::rename(&temp_path, path).map_err(|error| {
+            format!(
+                "Failed to persist hosted audit export `{}`: {error}",
+                path.display()
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn export_probe_hosted_audit_bundle_for_thread(
+        &self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        output_path: Option<&str>,
+        exported_at_epoch_ms: u64,
+    ) -> Result<PathBuf, String> {
+        let document = self.build_hosted_audit_export_document_for_thread(
+            thread_id,
+            kind,
+            exported_at_epoch_ms,
+        )?;
+        let export_path = self.resolve_hosted_audit_export_path_for_thread(
+            thread_id,
+            &document.bundle,
+            output_path,
+        );
+        let payload = if export_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("json"))
+        {
+            serde_json::to_string_pretty(&document)
+                .map_err(|error| format!("Failed to encode hosted audit export JSON: {error}"))?
+        } else {
+            Self::render_hosted_audit_export_markdown(&document)?
+        };
+        Self::persist_hosted_audit_export(export_path.as_path(), payload.as_str())?;
+        Ok(export_path)
+    }
+
+    pub fn export_probe_hosted_preflight_report_for_thread(
+        &self,
+        thread_id: &str,
+        report: ForgeHostedPreflightReport,
+        output_path: Option<&str>,
+        exported_at_epoch_ms: u64,
+    ) -> Result<PathBuf, String> {
+        let export_path =
+            self.resolve_hosted_preflight_export_path_for_thread(thread_id, &report, output_path);
+        let mut report = report;
+        report.report_path = Some(export_path.display().to_string());
+        let document = self.build_hosted_preflight_export_document_for_thread(
+            thread_id,
+            report,
+            exported_at_epoch_ms,
+        );
+        let payload = if export_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("json"))
+        {
+            serde_json::to_string_pretty(&document).map_err(|error| {
+                format!("Failed to encode hosted preflight export JSON: {error}")
+            })?
+        } else {
+            Self::render_hosted_preflight_export_markdown(&document)?
+        };
+        Self::persist_hosted_audit_export(export_path.as_path(), payload.as_str())?;
+        Ok(export_path)
     }
 
     fn workspace_snapshot_for_thread(&self, thread_id: &str) -> Option<&ForgeWorkspaceSnapshot> {
@@ -14814,6 +16754,247 @@ impl AutopilotChatState {
             .and_then(|thread_id| self.shared_session_for_thread(thread_id))
     }
 
+    pub fn hosted_shared_session_directory(&self) -> Vec<ForgeHostedSessionDirectoryEntry> {
+        let mut entries = self
+            .forge_shared_sessions
+            .values()
+            .filter(|session| !session.archived_in_shell)
+            .filter(|session| is_hosted_forge_shared_session(session))
+            .filter_map(|session| {
+                let probe_session_id = preferred_probe_session_id_for_shared_session(session)?;
+                let sibling_probe_session_ids = session
+                    .probe_session_ids
+                    .iter()
+                    .filter(|session_id| *session_id != &probe_session_id)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let git_branch = session
+                    .delivery_receipt_id
+                    .as_deref()
+                    .and_then(|receipt_id| self.forge_delivery_receipts.get(receipt_id))
+                    .map(|receipt| receipt.head_branch.clone())
+                    .or_else(|| session.workspace_restore.base_repo.git_branch.clone());
+                Some(ForgeHostedSessionDirectoryEntry {
+                    shared_session_id: session.shared_session_id.clone(),
+                    probe_session_id,
+                    sibling_probe_session_ids,
+                    workspace_root: session.workspace_root.clone(),
+                    project_name: session
+                        .project_name
+                        .clone()
+                        .or_else(|| session.shell_title.clone()),
+                    git_branch,
+                    prepared_baseline_id: session.remote_session.prepared_baseline_id.clone(),
+                    prepared_baseline_status: session.remote_session.prepared_baseline_status,
+                    control_owner: session.control_owner,
+                    controller_label: Some(forge_shared_session_controller_label(session)),
+                    participants: session.participants.clone(),
+                    location_kind: session.remote_session.location_kind,
+                    owner_label: session
+                        .remote_session
+                        .owner_label
+                        .clone()
+                        .or_else(|| session.remote_session.owner_id.clone()),
+                    execution_host_label: session
+                        .remote_session
+                        .execution_host_label
+                        .clone()
+                        .or_else(|| session.remote_session.execution_host_id.clone()),
+                    attach_target: session.remote_session.attach_target.clone(),
+                    updated_at_epoch_ms: session.updated_at_epoch_ms,
+                })
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by(|lhs, rhs| {
+            rhs.updated_at_epoch_ms
+                .cmp(&lhs.updated_at_epoch_ms)
+                .then_with(|| lhs.shared_session_id.cmp(&rhs.shared_session_id))
+        });
+        entries
+    }
+
+    pub fn prepare_hosted_probe_attach_by_shared_session_id(
+        &mut self,
+        shared_session_id: &str,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedSessionAttachTarget, String> {
+        let shared_session_id = shared_session_id.trim();
+        if shared_session_id.is_empty() {
+            return Err("Hosted shared session id cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .forge_shared_sessions
+            .get(shared_session_id)
+            .cloned()
+            .ok_or_else(|| format!("No hosted shared session matched `{shared_session_id}`."))?;
+        if shared_session.archived_in_shell {
+            return Err(format!(
+                "Hosted shared session `{shared_session_id}` is archived in the shell."
+            ));
+        }
+        if !is_hosted_forge_shared_session(&shared_session) {
+            return Err(format!(
+                "Shared session `{shared_session_id}` is not recorded as a hosted Forge session."
+            ));
+        }
+        let probe_session_id = preferred_probe_session_id_for_shared_session(&shared_session)
+            .ok_or_else(|| {
+                format!(
+                    "Hosted shared session `{shared_session_id}` does not expose a Probe session id yet."
+                )
+            })?;
+        self.prepare_hosted_probe_attach_target(
+            shared_session,
+            probe_session_id.as_str(),
+            recorded_at_epoch_ms,
+        )
+    }
+
+    pub fn prepare_hosted_probe_attach_by_probe_session_id(
+        &mut self,
+        probe_session_id: &str,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedSessionAttachTarget, String> {
+        let probe_session_id = probe_session_id.trim();
+        if probe_session_id.is_empty() {
+            return Err("Hosted Probe session id cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .forge_shared_sessions
+            .values()
+            .find(|session| {
+                !session.archived_in_shell
+                    && is_hosted_forge_shared_session(session)
+                    && session
+                        .probe_session_ids
+                        .iter()
+                        .any(|session_id| session_id == probe_session_id)
+            })
+            .cloned()
+            .ok_or_else(|| format!("No hosted Forge session matched `{probe_session_id}`."))?;
+        self.prepare_hosted_probe_attach_target(
+            shared_session,
+            probe_session_id,
+            recorded_at_epoch_ms,
+        )
+    }
+
+    fn prepare_hosted_probe_attach_target(
+        &mut self,
+        shared_session: ForgeSharedSession,
+        probe_session_id: &str,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<ForgeHostedSessionAttachTarget, String> {
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let reused_local_thread = self.thread_metadata.contains_key(probe_session_id);
+        let workspace_root = shared_session.workspace_root.clone();
+        let project_name = shared_session
+            .project_name
+            .clone()
+            .or_else(|| shared_session.shell_title.clone());
+        let git_branch = shared_session
+            .delivery_receipt_id
+            .as_deref()
+            .and_then(|receipt_id| self.forge_delivery_receipts.get(receipt_id))
+            .map(|receipt| receipt.head_branch.clone())
+            .or_else(|| {
+                shared_session
+                    .workspace_restore
+                    .base_repo
+                    .git_branch
+                    .clone()
+            })
+            .or_else(|| {
+                self.forge_delivery_receipts
+                    .values()
+                    .find(|receipt| receipt.shared_session_id == shared_session_id)
+                    .map(|receipt| receipt.head_branch.clone())
+            })
+            .or_else(|| {
+                self.forge_shared_sessions
+                    .get(&shared_session_id)
+                    .and_then(|session| session.workspace_restore.base_repo.git_branch.clone())
+            });
+        let preview = shared_session
+            .last_handoff
+            .as_ref()
+            .map(|handoff| handoff.summary.clone())
+            .or_else(|| {
+                shared_session
+                    .remote_session
+                    .operator_handoff_summary
+                    .clone()
+            })
+            .or_else(|| {
+                project_name
+                    .as_ref()
+                    .map(|label| format!("Hosted Forge session for {label}."))
+            });
+        let workspace_label = workspace_root
+            .clone()
+            .or_else(|| project_name.clone())
+            .or_else(|| shared_session.remote_session.attach_target.clone())
+            .unwrap_or_else(|| probe_session_id.to_string());
+        let next_updated_at_epoch_ms = recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+
+        let session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Hosted shared session `{shared_session_id}` disappeared before it could be attached."
+                )
+            })?;
+        let _ = ensure_local_operator_participant_for_shared_session(session);
+        sync_forge_shared_session_controller(session);
+        session.probe_session_ids.push(probe_session_id.to_string());
+        session.probe_session_ids =
+            normalize_probe_session_ids(std::mem::take(&mut session.probe_session_ids));
+        session.updated_at_epoch_ms = next_updated_at_epoch_ms;
+
+        self.ensure_thread(probe_session_id.to_string());
+        let metadata = self
+            .thread_metadata
+            .entry(probe_session_id.to_string())
+            .or_default();
+        if let Some(thread_name) = shared_session
+            .shell_title
+            .clone()
+            .or_else(|| project_name.clone())
+        {
+            metadata.thread_name = Some(thread_name);
+        }
+        if let Some(preview) = preview {
+            metadata.preview = Some(preview);
+        }
+        metadata.status = Some(compose_probe_thread_status(Some("idle"), false, true));
+        metadata.probe_runtime_status = Some("idle".to_string());
+        metadata.probe_archived = false;
+        metadata.loaded = false;
+        metadata.cwd = workspace_root.clone().or(metadata.cwd.clone());
+        metadata.workspace_root = workspace_root.clone().or(metadata.workspace_root.clone());
+        metadata.project_id = shared_session
+            .project_id
+            .clone()
+            .or(metadata.project_id.clone());
+        metadata.project_name = project_name.clone().or(metadata.project_name.clone());
+        metadata.git_branch = git_branch.or(metadata.git_branch.clone());
+        metadata.created_at = Some(shared_session.created_at_epoch_ms as i64);
+        metadata.updated_at = Some(next_updated_at_epoch_ms as i64);
+
+        self.rebuild_project_registry();
+        self.persist_codex_artifact_projection();
+
+        Ok(ForgeHostedSessionAttachTarget {
+            shared_session_id,
+            probe_session_id: probe_session_id.to_string(),
+            workspace_label,
+            project_name,
+            attach_target: shared_session.remote_session.attach_target.clone(),
+            reused_local_thread,
+        })
+    }
+
     pub fn remember_pending_probe_session_start_mount_plan(
         &mut self,
         workspace_root: &str,
@@ -14991,6 +17172,16 @@ impl AutopilotChatState {
         self.next_forge_delivery_receipt_seq =
             self.next_forge_delivery_receipt_seq.saturating_add(1);
         delivery_receipt_id
+    }
+
+    fn next_hosted_audit_bundle_id(&mut self) -> String {
+        let audit_bundle_id = format!(
+            "forge-hosted-audit-{}",
+            self.next_forge_hosted_audit_bundle_seq
+        );
+        self.next_forge_hosted_audit_bundle_seq =
+            self.next_forge_hosted_audit_bundle_seq.saturating_add(1);
+        audit_bundle_id
     }
 
     fn sync_shared_session_fields_for_thread(
@@ -17277,6 +19468,315 @@ impl AutopilotChatState {
         Ok(settlement_receipt_id)
     }
 
+    fn hosted_audit_bundle_id_for_kind(
+        shared_session: &ForgeSharedSession,
+        kind: ForgeHostedAuditKind,
+    ) -> Option<&str> {
+        match kind {
+            ForgeHostedAuditKind::CodingCloseout => {
+                shared_session.hosted_coding_audit_bundle_id.as_deref()
+            }
+            ForgeHostedAuditKind::BookkeepingRehearsal => {
+                shared_session.hosted_bookkeeping_audit_bundle_id.as_deref()
+            }
+        }
+    }
+
+    fn snapshot_hosted_audit_bundle(
+        &self,
+        shared_session: &ForgeSharedSession,
+        kind: ForgeHostedAuditKind,
+        audit_bundle_id: String,
+        environment_summary: String,
+        notes: Vec<ForgeHostedAuditNote>,
+        created_at_epoch_ms: u64,
+        updated_at_epoch_ms: u64,
+    ) -> ForgeHostedAuditBundle {
+        let evidence_bundle = shared_session
+            .evidence_bundle_id
+            .as_deref()
+            .and_then(|bundle_id| self.forge_evidence_bundles.get(bundle_id));
+        let delivery_receipt = shared_session
+            .delivery_receipt_id
+            .as_deref()
+            .and_then(|receipt_id| self.forge_delivery_receipts.get(receipt_id));
+        let campaign = shared_session
+            .campaign_id
+            .as_deref()
+            .and_then(|campaign_id| self.forge_campaigns.get(campaign_id));
+        let promotion_ledger = campaign
+            .and_then(|campaign| campaign.promotion_ledger_id.as_deref())
+            .and_then(|ledger_id| self.forge_promotion_ledgers.get(ledger_id));
+        let bounty_contract = shared_session
+            .bounty_contract_id
+            .as_deref()
+            .and_then(|contract_id| self.forge_bounty_contracts.get(contract_id));
+        let settlement_receipt = shared_session
+            .settlement_receipt_id
+            .as_deref()
+            .and_then(|receipt_id| self.forge_settlement_receipts.get(receipt_id));
+        ForgeHostedAuditBundle {
+            audit_bundle_id,
+            shared_session_id: shared_session.shared_session_id.clone(),
+            kind,
+            environment_summary,
+            session_location_kind: shared_session.remote_session.location_kind,
+            probe_session_ids: shared_session.probe_session_ids.clone(),
+            workspace_root: shared_session.workspace_root.clone(),
+            repo_remote_url: shared_session
+                .workspace_restore
+                .base_repo
+                .remote_url
+                .clone(),
+            repo_git_branch: shared_session
+                .workspace_restore
+                .base_repo
+                .git_branch
+                .clone(),
+            repo_head_commit: shared_session
+                .workspace_restore
+                .base_repo
+                .head_commit
+                .clone(),
+            routed_pack_ids: shared_session.knowledge_mounts.routed_pack_ids.clone(),
+            mounted_pack_ids: shared_session.knowledge_mounts.mounted_pack_ids.clone(),
+            unsupported_route_reasons: shared_session
+                .knowledge_mounts
+                .unsupported_routes
+                .iter()
+                .map(|issue| issue.reason.clone())
+                .collect(),
+            hosted_receipts: shared_session.remote_session.hosted_receipts.clone(),
+            preflight: shared_session.hosted_preflight.clone(),
+            evidence_bundle_id: evidence_bundle.map(|bundle| bundle.evidence_bundle_id.clone()),
+            evidence_status: evidence_bundle.map(ForgeEvidenceBundle::reviewer_status),
+            delivery_receipt_id: delivery_receipt
+                .map(|receipt| receipt.delivery_receipt_id.clone()),
+            delivery_status: delivery_receipt.map(|receipt| receipt.status),
+            campaign_id: campaign.map(|campaign| campaign.campaign_id.clone()),
+            campaign_status: campaign.map(|campaign| campaign.status),
+            promotion_ledger_id: promotion_ledger.map(|ledger| ledger.promotion_ledger_id.clone()),
+            promotion_status: promotion_ledger.map(|ledger| ledger.status),
+            bounty_contract_id: bounty_contract.map(|contract| contract.bounty_contract_id.clone()),
+            bounty_status: bounty_contract.map(|contract| contract.lifecycle_status),
+            bounty_claim_id: shared_session.bounty_claim_id.clone(),
+            settlement_receipt_id: settlement_receipt
+                .map(|receipt| receipt.settlement_receipt_id.clone()),
+            settlement_status: settlement_receipt.map(|receipt| receipt.status),
+            notes,
+            created_at_epoch_ms,
+            updated_at_epoch_ms,
+        }
+    }
+
+    fn refresh_hosted_audit_bundles_for_shared_session(
+        &mut self,
+        shared_session_id: &str,
+        updated_at_epoch_ms: u64,
+    ) {
+        let Some(shared_session) = self.forge_shared_sessions.get(shared_session_id).cloned()
+        else {
+            return;
+        };
+        for kind in [
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditKind::BookkeepingRehearsal,
+        ] {
+            let Some(audit_bundle_id) =
+                Self::hosted_audit_bundle_id_for_kind(&shared_session, kind).map(str::to_string)
+            else {
+                continue;
+            };
+            let Some(existing_bundle) = self
+                .forge_hosted_audit_bundles
+                .get(&audit_bundle_id)
+                .cloned()
+            else {
+                continue;
+            };
+            let bundle = self.snapshot_hosted_audit_bundle(
+                &shared_session,
+                kind,
+                audit_bundle_id.clone(),
+                existing_bundle.environment_summary,
+                existing_bundle.notes,
+                existing_bundle.created_at_epoch_ms,
+                updated_at_epoch_ms.max(existing_bundle.updated_at_epoch_ms),
+            );
+            self.forge_hosted_audit_bundles
+                .insert(audit_bundle_id, bundle);
+        }
+    }
+
+    pub fn record_probe_hosted_audit_bundle_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        environment_summary: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let environment_summary = environment_summary.into().trim().to_string();
+        if environment_summary.is_empty() {
+            return Err("Hosted environment summary cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let existing_bundle_id =
+            Self::hosted_audit_bundle_id_for_kind(&shared_session, kind).map(ToString::to_string);
+        let existing_bundle = existing_bundle_id
+            .as_deref()
+            .and_then(|bundle_id| self.forge_hosted_audit_bundles.get(bundle_id))
+            .cloned();
+        let audit_bundle_id =
+            existing_bundle_id.unwrap_or_else(|| self.next_hosted_audit_bundle_id());
+        let created_at_epoch_ms = existing_bundle
+            .as_ref()
+            .map(|bundle| bundle.created_at_epoch_ms)
+            .unwrap_or(updated_at_epoch_ms);
+        let notes = existing_bundle
+            .map(|bundle| bundle.notes)
+            .unwrap_or_default();
+        let bundle = self.snapshot_hosted_audit_bundle(
+            &shared_session,
+            kind,
+            audit_bundle_id.clone(),
+            environment_summary,
+            notes,
+            created_at_epoch_ms,
+            updated_at_epoch_ms,
+        );
+        self.forge_hosted_audit_bundles
+            .insert(audit_bundle_id.clone(), bundle);
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before hosted audit linkage could be recorded."
+                )
+            })?;
+        match kind {
+            ForgeHostedAuditKind::CodingCloseout => {
+                shared_session.hosted_coding_audit_bundle_id = Some(audit_bundle_id.clone());
+            }
+            ForgeHostedAuditKind::BookkeepingRehearsal => {
+                shared_session.hosted_bookkeeping_audit_bundle_id = Some(audit_bundle_id.clone());
+            }
+        }
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        self.persist_codex_artifact_projection();
+        Ok(audit_bundle_id)
+    }
+
+    pub fn record_probe_hosted_preflight_for_thread(
+        &mut self,
+        thread_id: &str,
+        report: ForgeHostedPreflightReport,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let preflight_id = report.preflight_id.trim().to_string();
+        if preflight_id.is_empty() {
+            return Err("Hosted preflight id cannot be empty.".to_string());
+        }
+        let mut report = report;
+        report.preflight_id = preflight_id.clone();
+        let shared_session_id = shared_session.shared_session_id.clone();
+        let shared_session = self
+            .forge_shared_sessions
+            .get_mut(&shared_session_id)
+            .ok_or_else(|| {
+                format!(
+                    "Shared session `{shared_session_id}` disappeared before hosted preflight linkage could be recorded."
+                )
+            })?;
+        shared_session.hosted_preflight = Some(report);
+        shared_session.updated_at_epoch_ms =
+            updated_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        self.refresh_hosted_audit_bundles_for_shared_session(
+            shared_session_id.as_str(),
+            updated_at_epoch_ms,
+        );
+        self.persist_codex_artifact_projection();
+        Ok(preflight_id)
+    }
+
+    pub fn record_probe_hosted_audit_note_for_thread(
+        &mut self,
+        thread_id: &str,
+        kind: ForgeHostedAuditKind,
+        note_kind: ForgeHostedAuditNoteKind,
+        body: impl Into<String>,
+        provenance: impl Into<String>,
+        updated_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let body = body.into().trim().to_string();
+        if body.is_empty() {
+            return Err(format!(
+                "Hosted {} cannot be empty.",
+                note_kind.display_label()
+            ));
+        }
+        let provenance = provenance.into().trim().to_string();
+        if provenance.is_empty() {
+            return Err("Hosted audit note provenance cannot be empty.".to_string());
+        }
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .cloned()
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let audit_bundle_id = Self::hosted_audit_bundle_id_for_kind(&shared_session, kind)
+            .ok_or_else(|| {
+                format!(
+                    "Record {} first with `/hosted {}`.",
+                    kind.display_label(),
+                    match kind {
+                        ForgeHostedAuditKind::CodingCloseout => "coding <environment-summary>",
+                        ForgeHostedAuditKind::BookkeepingRehearsal => {
+                            "bookkeeping <environment-summary>"
+                        }
+                    }
+                )
+            })?
+            .to_string();
+        let existing_bundle = self
+            .forge_hosted_audit_bundles
+            .get(&audit_bundle_id)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Hosted audit bundle `{audit_bundle_id}` disappeared before the note could be recorded."
+                )
+            })?;
+        let mut notes = existing_bundle.notes;
+        notes.push(ForgeHostedAuditNote {
+            kind: note_kind,
+            body,
+            provenance,
+            recorded_at_epoch_ms: updated_at_epoch_ms,
+        });
+        let bundle = self.snapshot_hosted_audit_bundle(
+            &shared_session,
+            kind,
+            audit_bundle_id.clone(),
+            existing_bundle.environment_summary,
+            notes,
+            existing_bundle.created_at_epoch_ms,
+            updated_at_epoch_ms,
+        );
+        self.forge_hosted_audit_bundles
+            .insert(audit_bundle_id.clone(), bundle);
+        self.persist_codex_artifact_projection();
+        Ok(audit_bundle_id)
+    }
+
     fn delivery_contributors_for_shared_session(
         &self,
         shared_session: &ForgeSharedSession,
@@ -17924,7 +20424,17 @@ impl AutopilotChatState {
                     archived_in_shell: false,
                     control_owner,
                     participants: default_forge_shared_session_participants(),
+                    controller_participant_id: match control_owner {
+                        ForgeSharedSessionControlOwner::HumanLocal => {
+                            Some("local-human".to_string())
+                        }
+                        ForgeSharedSessionControlOwner::ProbeLocalAgent => {
+                            Some("local-probe-agent".to_string())
+                        }
+                    },
+                    pending_handoff_request: None,
                     last_handoff: None,
+                    collaboration_timeline: Vec::new(),
                     remote_session: ForgeProbeRemoteSessionProjection::default(),
                     workspace_restore: ForgeWorkspaceRestoreProvenance {
                         startup_kind: ForgeWorkspaceStartupKind::ColdStart,
@@ -17936,12 +20446,15 @@ impl AutopilotChatState {
                         updated_at_epoch_ms: created_at_epoch_ms,
                     },
                     knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                    hosted_preflight: None,
                     workspace_snapshot_id: None,
                     restore_manifest_id: None,
                     campaign_id: None,
                     bounty_contract_id: None,
                     bounty_claim_id: None,
                     settlement_receipt_id: None,
+                    hosted_coding_audit_bundle_id: None,
+                    hosted_bookkeeping_audit_bundle_id: None,
                     evidence_bundle_id: None,
                     delivery_receipt_id: None,
                     created_at_epoch_ms,
@@ -18048,16 +20561,48 @@ impl AutopilotChatState {
             ));
         };
         let previous_owner = shared_session.control_owner;
+        let previous_participant_id = shared_session.controller_participant_id.clone();
+        let previous_display_name =
+            forge_participant_display_name(shared_session, previous_participant_id.as_deref());
         shared_session.control_owner = next_owner;
+        let next_participant_id = match next_owner {
+            ForgeSharedSessionControlOwner::HumanLocal => {
+                let (participant_id, _) =
+                    ensure_local_operator_participant_for_shared_session(shared_session);
+                Some(participant_id)
+            }
+            ForgeSharedSessionControlOwner::ProbeLocalAgent => {
+                forge_probe_agent_participant_id(shared_session)
+            }
+        };
+        let next_display_name =
+            forge_participant_display_name(shared_session, next_participant_id.as_deref());
+        shared_session.controller_participant_id = next_participant_id.clone();
+        shared_session.pending_handoff_request = None;
         shared_session.updated_at_epoch_ms =
             recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
         shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
             from_owner: previous_owner,
+            from_participant_id: previous_participant_id,
+            from_display_name: previous_display_name,
             to_owner: next_owner,
+            to_participant_id: next_participant_id.clone(),
+            to_display_name: next_display_name.clone(),
             summary,
             provenance: provenance.into().trim().to_string(),
             recorded_at_epoch_ms,
         });
+        if let Some(handoff) = shared_session.last_handoff.as_ref() {
+            push_forge_shared_session_timeline_entry(
+                shared_session,
+                ForgeSharedSessionTimelineEntryKind::Handoff,
+                handoff.to_participant_id.clone(),
+                handoff.to_display_name.clone(),
+                handoff.summary.clone(),
+                handoff.provenance.clone(),
+                handoff.recorded_at_epoch_ms,
+            );
+        }
         shared_session.remote_session.operator_handoff_state = forge_probe_operator_handoff_state(
             shared_session.remote_session.location_kind,
             shared_session.control_owner,
@@ -18072,8 +20617,303 @@ impl AutopilotChatState {
             .map(|handoff| handoff.provenance.clone());
         shared_session.remote_session.updated_at_epoch_ms =
             recorded_at_epoch_ms.max(shared_session.remote_session.updated_at_epoch_ms);
+        sync_forge_shared_session_controller(shared_session);
         self.persist_codex_artifact_projection();
         Ok(shared_session_id)
+    }
+
+    pub fn request_shared_session_control_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff request summary cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before a handoff request could be recorded."
+            ));
+        };
+        let (participant_id, display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        if shared_session.control_owner == ForgeSharedSessionControlOwner::HumanLocal
+            && shared_session.controller_participant_id.as_deref() == Some(participant_id.as_str())
+        {
+            return Err(format!(
+                "{display_name} already controls the hosted Forge session."
+            ));
+        }
+        shared_session.pending_handoff_request = Some(ForgeSharedSessionControlRequest {
+            participant_id: participant_id.clone(),
+            display_name: display_name.clone(),
+            summary: summary.clone(),
+            provenance: provenance.clone(),
+            recorded_at_epoch_ms,
+        });
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::ControlRequest,
+            Some(participant_id),
+            Some(display_name),
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        );
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn accept_shared_session_control_request_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff acceptance summary cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before a handoff request could be accepted."
+            ));
+        };
+        let (actor_participant_id, actor_display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        let request = shared_session
+            .pending_handoff_request
+            .clone()
+            .ok_or_else(|| {
+                "No pending handoff request is recorded for this shared session.".to_string()
+            })?;
+        let previous_owner = shared_session.control_owner;
+        let previous_participant_id = shared_session.controller_participant_id.clone();
+        let previous_display_name =
+            forge_participant_display_name(shared_session, previous_participant_id.as_deref());
+        shared_session.control_owner = ForgeSharedSessionControlOwner::HumanLocal;
+        shared_session.controller_participant_id = Some(request.participant_id.clone());
+        shared_session.pending_handoff_request = None;
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
+            from_owner: previous_owner,
+            from_participant_id: previous_participant_id,
+            from_display_name: previous_display_name,
+            to_owner: ForgeSharedSessionControlOwner::HumanLocal,
+            to_participant_id: Some(request.participant_id.clone()),
+            to_display_name: Some(request.display_name.clone()),
+            summary: summary.clone(),
+            provenance: provenance.clone(),
+            recorded_at_epoch_ms,
+        });
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::ControlAccepted,
+            Some(actor_participant_id),
+            Some(actor_display_name),
+            summary.clone(),
+            provenance.clone(),
+            recorded_at_epoch_ms,
+        );
+        shared_session.remote_session.operator_handoff_state = forge_probe_operator_handoff_state(
+            shared_session.remote_session.location_kind,
+            shared_session.control_owner,
+        );
+        shared_session.remote_session.operator_handoff_summary = Some(summary);
+        shared_session.remote_session.operator_handoff_provenance = Some(provenance);
+        shared_session.remote_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.remote_session.updated_at_epoch_ms);
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn take_shared_session_control_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session take-control summary cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before take-control state could be recorded."
+            ));
+        };
+        let (participant_id, display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        let previous_owner = shared_session.control_owner;
+        let previous_participant_id = shared_session.controller_participant_id.clone();
+        let previous_display_name =
+            forge_participant_display_name(shared_session, previous_participant_id.as_deref());
+        shared_session.control_owner = ForgeSharedSessionControlOwner::HumanLocal;
+        shared_session.controller_participant_id = Some(participant_id.clone());
+        shared_session.pending_handoff_request = None;
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        shared_session.last_handoff = Some(ForgeSharedSessionHandoff {
+            from_owner: previous_owner,
+            from_participant_id: previous_participant_id,
+            from_display_name: previous_display_name,
+            to_owner: ForgeSharedSessionControlOwner::HumanLocal,
+            to_participant_id: Some(participant_id.clone()),
+            to_display_name: Some(display_name.clone()),
+            summary: summary.clone(),
+            provenance: provenance.clone(),
+            recorded_at_epoch_ms,
+        });
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::TakeControl,
+            Some(participant_id),
+            Some(display_name),
+            summary.clone(),
+            provenance.clone(),
+            recorded_at_epoch_ms,
+        );
+        shared_session.remote_session.operator_handoff_state = forge_probe_operator_handoff_state(
+            shared_session.remote_session.location_kind,
+            shared_session.control_owner,
+        );
+        shared_session.remote_session.operator_handoff_summary = Some(summary);
+        shared_session.remote_session.operator_handoff_provenance = Some(provenance);
+        shared_session.remote_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.remote_session.updated_at_epoch_ms);
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn record_shared_session_note_for_thread(
+        &mut self,
+        thread_id: &str,
+        summary: impl Into<String>,
+        provenance: impl Into<String>,
+        recorded_at_epoch_ms: u64,
+    ) -> Result<String, String> {
+        let summary = summary.into().trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session note cannot be empty.".to_string());
+        }
+        let provenance = provenance.into().trim().to_string();
+        let shared_session_id = self
+            .ensure_probe_shared_session_for_thread(thread_id, recorded_at_epoch_ms)
+            .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+        let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
+            return Err(format!(
+                "Shared session `{shared_session_id}` disappeared before a collaboration note could be recorded."
+            ));
+        };
+        let (participant_id, display_name) =
+            ensure_local_operator_participant_for_shared_session(shared_session);
+        shared_session.updated_at_epoch_ms =
+            recorded_at_epoch_ms.max(shared_session.updated_at_epoch_ms);
+        push_forge_shared_session_timeline_entry(
+            shared_session,
+            ForgeSharedSessionTimelineEntryKind::Note,
+            Some(participant_id),
+            Some(display_name),
+            summary,
+            provenance,
+            recorded_at_epoch_ms,
+        );
+        sync_forge_shared_session_controller(shared_session);
+        self.persist_codex_artifact_projection();
+        Ok(shared_session_id)
+    }
+
+    pub fn shared_session_handoff_status_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<String, String> {
+        let shared_session = self
+            .shared_session_for_thread(thread_id)
+            .ok_or_else(|| format!("No shared Forge session is available for `{thread_id}`."))?;
+        let controller_label = forge_shared_session_controller_label(shared_session);
+        let local_operator = current_forge_local_operator_display_name();
+        let local_role = forge_shared_session_local_role_label(shared_session);
+        let mut lines = vec![
+            format!("Shared session: `{}`", shared_session.shared_session_id),
+            format!("Current controller: {controller_label}"),
+            format!("Local operator: {local_operator} ({local_role})"),
+        ];
+        if let Some(request) = shared_session.pending_handoff_request.as_ref() {
+            lines.push(format!(
+                "Pending request: {} — {}",
+                request.display_name, request.summary
+            ));
+        } else {
+            lines.push("Pending request: none".to_string());
+        }
+        if !shared_session.participants.is_empty() {
+            lines.push(String::new());
+            lines.push("Participants:".to_string());
+            for participant in &shared_session.participants {
+                let mut labels = Vec::new();
+                if shared_session.controller_participant_id.as_deref()
+                    == Some(participant.participant_id.as_str())
+                {
+                    labels.push("control");
+                }
+                if shared_session
+                    .pending_handoff_request
+                    .as_ref()
+                    .is_some_and(|request| request.participant_id == participant.participant_id)
+                {
+                    labels.push("requested");
+                }
+                if current_forge_local_operator_participant_id() == participant.participant_id {
+                    labels.push("local");
+                }
+                let suffix = if labels.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [{}]", labels.join(", "))
+                };
+                lines.push(format!("- {}{}", participant.display_name, suffix));
+            }
+        }
+        if !shared_session.collaboration_timeline.is_empty() {
+            lines.push(String::new());
+            lines.push("Recent collaboration:".to_string());
+            for entry in shared_session.collaboration_timeline.iter().take(4) {
+                let actor = entry
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
+                lines.push(format!(
+                    "- {}: {} — {}",
+                    entry.kind.display_label(),
+                    actor,
+                    entry.summary
+                ));
+            }
+        }
+        Ok(lines.join("\n"))
     }
 
     pub fn sync_probe_remote_session_projection_for_thread(
@@ -18081,6 +20921,7 @@ impl AutopilotChatState {
         thread_id: &str,
         runtime_owner: Option<&SessionRuntimeOwner>,
         workspace_state: Option<&SessionWorkspaceState>,
+        hosted_receipts: Option<&SessionHostedReceipts>,
         updated_at_epoch_ms: u64,
     ) -> Result<String, String> {
         let shared_session_id = self
@@ -18088,6 +20929,7 @@ impl AutopilotChatState {
             .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
         let runtime_owner = runtime_owner.cloned();
         let workspace_state = workspace_state.cloned();
+        let hosted_receipts = hosted_receipts.cloned();
         let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) else {
             return Err(format!(
                 "Shared session `{shared_session_id}` disappeared before remote session state could be recorded."
@@ -18195,6 +21037,7 @@ impl AutopilotChatState {
                 .as_ref()
                 .and_then(|state| state.provenance_note.clone())
                 .or(existing_remote.workspace_provenance_note),
+            hosted_receipts: hosted_receipts.or(existing_remote.hosted_receipts),
             operator_handoff_state: forge_probe_operator_handoff_state(
                 location_kind,
                 control_owner,
@@ -19207,6 +22050,10 @@ impl AutopilotChatState {
         })
     }
 
+    pub fn is_system_channel(&self, channel_id: &str) -> bool {
+        channel_id == self.system_channel_id
+    }
+
     pub fn active_managed_chat_channels(&self) -> Vec<&ManagedChatChannelProjection> {
         if self.chat_browse_mode() != ChatBrowseMode::Managed {
             return Vec::new();
@@ -19224,6 +22071,7 @@ impl AutopilotChatState {
                     .iter()
                     .find(|channel| channel.channel_id == *channel_id)
             })
+            .filter(|channel| !self.is_system_channel(&channel.channel_id))
             .collect()
     }
 
@@ -19550,6 +22398,7 @@ impl AutopilotChatState {
                             .iter()
                             .find(|channel| channel.channel_id == *channel_id)
                     })
+                    .filter(|channel| !self.is_system_channel(&channel.channel_id))
                     .filter(|candidate| {
                         candidate
                             .hints
@@ -19569,6 +22418,7 @@ impl AutopilotChatState {
                             .iter()
                             .find(|channel| channel.channel_id == *channel_id)
                     })
+                    .filter(|channel| !self.is_system_channel(&channel.channel_id))
                     .filter(|candidate| {
                         candidate
                             .hints
@@ -19589,6 +22439,7 @@ impl AutopilotChatState {
                             .iter()
                             .find(|channel| channel.channel_id == *channel_id)
                     })
+                    .filter(|channel| !self.is_system_channel(&channel.channel_id))
                     .filter(|candidate| {
                         candidate
                             .hints
@@ -21545,6 +24396,7 @@ impl AutopilotChatState {
             &self.forge_settlement_receipts,
             &self.forge_evidence_bundles,
             &self.forge_delivery_receipts,
+            &self.forge_hosted_audit_bundles,
             self.next_forge_shared_session_seq,
             self.next_forge_workspace_snapshot_seq,
             self.next_forge_restore_manifest_seq,
@@ -21556,8 +24408,117 @@ impl AutopilotChatState {
             self.next_forge_settlement_receipt_seq,
             self.next_forge_evidence_bundle_seq,
             self.next_forge_delivery_receipt_seq,
+            self.next_forge_hosted_audit_bundle_seq,
         ) {
             tracing::warn!("failed to persist codex artifacts: {error}");
+        }
+        let Some(path) = self.forge_shared_state_file_path.clone() else {
+            return;
+        };
+        let merged = match load_forge_shared_state(path.as_path()) {
+            Ok(existing) => {
+                let mut merged = self.build_loaded_forge_shared_state();
+                merged.forge_shared_sessions = merge_versioned_maps(
+                    existing.forge_shared_sessions,
+                    merged.forge_shared_sessions,
+                    |session| session.updated_at_epoch_ms,
+                );
+                merged.forge_campaigns = merge_versioned_maps(
+                    existing.forge_campaigns,
+                    merged.forge_campaigns,
+                    |campaign| campaign.updated_at_epoch_ms,
+                );
+                merged.forge_promotion_ledgers = merge_versioned_maps(
+                    existing.forge_promotion_ledgers,
+                    merged.forge_promotion_ledgers,
+                    |ledger| ledger.updated_at_epoch_ms,
+                );
+                merged.forge_bounty_contracts = merge_versioned_maps(
+                    existing.forge_bounty_contracts,
+                    merged.forge_bounty_contracts,
+                    |contract| contract.updated_at_epoch_ms,
+                );
+                merged.forge_bounty_claims = merge_versioned_maps(
+                    existing.forge_bounty_claims,
+                    merged.forge_bounty_claims,
+                    |claim| claim.updated_at_epoch_ms,
+                );
+                merged.forge_settlement_receipts = merge_versioned_maps(
+                    existing.forge_settlement_receipts,
+                    merged.forge_settlement_receipts,
+                    |receipt| receipt.updated_at_epoch_ms,
+                );
+                merged.forge_evidence_bundles = merge_versioned_maps(
+                    existing.forge_evidence_bundles,
+                    merged.forge_evidence_bundles,
+                    |bundle| bundle.updated_at_epoch_ms,
+                );
+                merged.forge_delivery_receipts = merge_versioned_maps(
+                    existing.forge_delivery_receipts,
+                    merged.forge_delivery_receipts,
+                    |receipt| receipt.updated_at_epoch_ms,
+                );
+                merged.forge_hosted_audit_bundles = merge_versioned_maps(
+                    existing.forge_hosted_audit_bundles,
+                    merged.forge_hosted_audit_bundles,
+                    |bundle| bundle.updated_at_epoch_ms,
+                );
+                merged.next_forge_shared_session_seq = merged
+                    .next_forge_shared_session_seq
+                    .max(existing.next_forge_shared_session_seq);
+                merged.next_forge_campaign_seq = merged
+                    .next_forge_campaign_seq
+                    .max(existing.next_forge_campaign_seq);
+                merged.next_forge_promotion_ledger_seq = merged
+                    .next_forge_promotion_ledger_seq
+                    .max(existing.next_forge_promotion_ledger_seq);
+                merged.next_forge_bounty_contract_seq = merged
+                    .next_forge_bounty_contract_seq
+                    .max(existing.next_forge_bounty_contract_seq);
+                merged.next_forge_bounty_claim_seq = merged
+                    .next_forge_bounty_claim_seq
+                    .max(existing.next_forge_bounty_claim_seq);
+                merged.next_forge_settlement_receipt_seq = merged
+                    .next_forge_settlement_receipt_seq
+                    .max(existing.next_forge_settlement_receipt_seq);
+                merged.next_forge_evidence_bundle_seq = merged
+                    .next_forge_evidence_bundle_seq
+                    .max(existing.next_forge_evidence_bundle_seq);
+                merged.next_forge_delivery_receipt_seq = merged
+                    .next_forge_delivery_receipt_seq
+                    .max(existing.next_forge_delivery_receipt_seq);
+                merged.next_forge_hosted_audit_bundle_seq = merged
+                    .next_forge_hosted_audit_bundle_seq
+                    .max(existing.next_forge_hosted_audit_bundle_seq);
+                merged
+            }
+            Err(error) => {
+                tracing::warn!("failed to load Forge shared state before persist: {error}");
+                return;
+            }
+        };
+        if let Err(error) = persist_forge_shared_state(
+            path.as_path(),
+            &merged.forge_shared_sessions,
+            &merged.forge_campaigns,
+            &merged.forge_promotion_ledgers,
+            &merged.forge_bounty_contracts,
+            &merged.forge_bounty_claims,
+            &merged.forge_settlement_receipts,
+            &merged.forge_evidence_bundles,
+            &merged.forge_delivery_receipts,
+            &merged.forge_hosted_audit_bundles,
+            merged.next_forge_shared_session_seq,
+            merged.next_forge_campaign_seq,
+            merged.next_forge_promotion_ledger_seq,
+            merged.next_forge_bounty_contract_seq,
+            merged.next_forge_bounty_claim_seq,
+            merged.next_forge_settlement_receipt_seq,
+            merged.next_forge_evidence_bundle_seq,
+            merged.next_forge_delivery_receipt_seq,
+            merged.next_forge_hosted_audit_bundle_seq,
+        ) {
+            tracing::warn!("failed to persist Forge shared state: {error}");
         }
     }
 
@@ -21618,6 +24579,7 @@ impl AutopilotChatState {
             if let Some(shared_session) = self.forge_shared_sessions.get_mut(&shared_session_id) {
                 shared_session.control_owner =
                     forge_shared_session_owner_for_runtime_status(runtime_status.as_deref());
+                sync_forge_shared_session_controller(shared_session);
                 shared_session.updated_at_epoch_ms =
                     current_epoch_millis_for_state().max(shared_session.updated_at_epoch_ms);
             }
@@ -23105,6 +26067,8 @@ pub struct ActiveJobRecord {
     pub ac_settlement_event_id: Option<String>,
     pub ac_default_event_id: Option<String>,
     pub compute_product_id: Option<String>,
+    pub market_receipt_class: Option<String>,
+    pub earnings_summary: Option<String>,
     pub capacity_lot_id: Option<String>,
     pub capacity_instrument_id: Option<String>,
     pub delivery_proof_id: Option<String>,
@@ -23241,6 +26205,8 @@ impl ActiveJobState {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             capacity_lot_id: None,
             capacity_instrument_id: None,
             delivery_proof_id: None,
@@ -23518,6 +26484,9 @@ pub struct JobHistoryReceiptRow {
     pub ac_envelope_event_id: Option<String>,
     pub ac_settlement_event_id: Option<String>,
     pub ac_default_event_id: Option<String>,
+    pub compute_product_id: Option<String>,
+    pub market_receipt_class: Option<String>,
+    pub earnings_summary: Option<String>,
     pub delivery_proof_id: Option<String>,
     pub delivery_metering_rule_id: Option<String>,
     pub delivery_proof_status_label: Option<String>,
@@ -23720,6 +26689,9 @@ impl JobHistoryState {
             ac_envelope_event_id: job.ac_envelope_event_id.clone(),
             ac_settlement_event_id: job.ac_settlement_event_id.clone(),
             ac_default_event_id: job.ac_default_event_id.clone(),
+            compute_product_id: job.compute_product_id.clone(),
+            market_receipt_class: job.market_receipt_class.clone(),
+            earnings_summary: job.earnings_summary.clone(),
             delivery_proof_id: job.delivery_proof_id.clone(),
             delivery_metering_rule_id: job.delivery_metering_rule_id.clone(),
             delivery_proof_status_label: job.delivery_proof_status_label.clone(),
@@ -25264,24 +28236,39 @@ impl RenderState {
 mod tests {
     use probe_protocol::session::{
         SessionAttachTransport, SessionExecutionHost, SessionExecutionHostKind,
-        SessionPreparedBaselineRef, SessionPreparedBaselineStatus, SessionRuntimeOwner,
-        SessionRuntimeOwnerKind, SessionWorkspaceBootMode, SessionWorkspaceSnapshotRef,
-        SessionWorkspaceState,
+        SessionHostedAuthKind, SessionHostedAuthReceipt, SessionHostedCheckoutKind,
+        SessionHostedCheckoutReceipt, SessionHostedCleanupReceipt, SessionHostedCleanupStatus,
+        SessionHostedCostReceipt, SessionHostedLifecycleEvent, SessionHostedReceipts,
+        SessionHostedWorkerReceipt, SessionPreparedBaselineRef, SessionPreparedBaselineStatus,
+        SessionRuntimeOwner, SessionRuntimeOwnerKind, SessionWorkspaceBootMode,
+        SessionWorkspaceSnapshotRef, SessionWorkspaceState,
     };
 
     use crate::app_state::{
-        ForgeBountyCreditRole, ForgeBountyLifecycleStatus, ForgeBountyObjectiveKind,
+        ForgeBountyClaim, ForgeBountyContract, ForgeBountyCreditRole, ForgeBountyLifecycleStatus,
+        ForgeBountyObjectiveKind, ForgeBountyParticipantCreditEnvelope, ForgeCampaign,
+        ForgeCampaignArtifactKind, ForgeCampaignArtifactRef, ForgeCampaignStatus,
         ForgeDelegatedChildDeliveryStatus, ForgeDelegatedChildSessionCard,
         ForgeDelegatedChildSessionStatus, ForgeDeliveryBranchWatch, ForgeDeliveryCiCheckWatch,
         ForgeDeliveryCiStatus, ForgeDeliveryCiWatch, ForgeDeliveryComparePosture,
-        ForgeDeliveryCompareWatch, ForgeDeliveryContributorRole, ForgeDeliveryPullRequestState,
-        ForgeDeliveryPullRequestWatch, ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome,
-        ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifactKind,
-        ForgeEvidenceVerificationStatus, ForgeProbeOperatorHandoffState,
-        ForgeProbePreparedBaselineStatus, ForgeProbeSessionLocationKind,
-        ForgeProbeSessionOwnerKind, ForgePromotionLedgerStatus, ForgeSettlementClosurePath,
-        ForgeSettlementReceiptStatus, ForgeSharedSessionControlOwner,
+        ForgeDeliveryCompareWatch, ForgeDeliveryContributor, ForgeDeliveryContributorRole,
+        ForgeDeliveryPullRequestState, ForgeDeliveryPullRequestWatch, ForgeDeliveryReceipt,
+        ForgeDeliveryReceiptStatus, ForgeDeliveryReviewerOutcome, ForgeEvidenceBundle,
+        ForgeEvidenceBundleStatus, ForgeEvidenceProductArtifact, ForgeEvidenceProductArtifactKind,
+        ForgeEvidenceVerificationStatus, ForgeHostedAuditBundle, ForgeHostedAuditKind,
+        ForgeHostedAuditNote, ForgeHostedAuditNoteKind, ForgeHostedPreflightCheck,
+        ForgeHostedPreflightCheckStatus, ForgeHostedPreflightDisposition,
+        ForgeHostedPreflightReport, ForgeKnowledgeMountProjection, ForgeProbeExecutionHostKind,
+        ForgeProbeOperatorHandoffState, ForgeProbePreparedBaselineStatus,
+        ForgeProbeRemoteSessionProjection, ForgeProbeSessionLocationKind,
+        ForgeProbeSessionOwnerKind, ForgePromotionLedger, ForgePromotionLedgerStatus,
+        ForgePromotionRevision, ForgeSettlementClosurePath, ForgeSettlementReceipt,
+        ForgeSettlementReceiptStatus, ForgeSharedSession, ForgeSharedSessionControlOwner,
+        ForgeSharedSessionControlRequest, ForgeSharedSessionHandoff, ForgeSharedSessionParticipant,
+        ForgeSharedSessionTimelineEntry, ForgeSharedSessionTimelineEntryKind,
+        ForgeWorkspaceBaseRepoRef, ForgeWorkspaceRestoreProvenance,
         ForgeWorkspaceSnapshotRefStatus, ForgeWorkspaceStartupKind,
+        current_forge_local_operator_participant_id,
     };
 
     use super::{
@@ -25304,7 +28291,7 @@ mod tests {
         ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
         SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
         StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-        SyncRecoveryPhase,
+        SyncRecoveryPhase, sync_forge_shared_session_controller,
     };
     use chrono::TimeZone;
     use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -28419,6 +31406,9 @@ mod tests {
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
+            compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             delivery_proof_id: None,
             delivery_metering_rule_id: None,
             delivery_proof_status_label: None,
@@ -30111,6 +33101,873 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_reloads_shared_forge_collaboration_state_across_desktops() {
+        let desktop_a_projection = unique_codex_artifact_projection_path("forge-shared-desktop-a");
+        let desktop_b_projection = unique_codex_artifact_projection_path("forge-shared-desktop-b");
+        let shared_state_path = unique_codex_artifact_projection_path("forge-shared-state");
+
+        let mut desktop_a = AutopilotChatState::from_projection_paths_for_tests(
+            desktop_a_projection.clone(),
+            Some(shared_state_path.clone()),
+        );
+        desktop_a.forge_shared_sessions.insert(
+            "forge-session-1".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/openagents".to_string()),
+                project_id: Some("project-openagents".to_string()),
+                project_name: Some("openagents".to_string()),
+                shell_title: Some("OpenAgents shared fix".to_string()),
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![ForgeSharedSessionParticipant {
+                    participant_id: "alice".to_string(),
+                    kind: ForgeSharedSessionControlOwner::HumanLocal,
+                    display_name: "Alice".to_string(),
+                }],
+                controller_participant_id: Some("alice".to_string()),
+                pending_handoff_request: None,
+                last_handoff: Some(ForgeSharedSessionHandoff {
+                    from_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    from_participant_id: Some("alice".to_string()),
+                    from_display_name: Some("Alice".to_string()),
+                    to_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    to_participant_id: Some("local-probe-agent".to_string()),
+                    to_display_name: Some("Local Probe agent".to_string()),
+                    summary: "Continue implementation while Bob reviews.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_000,
+                }),
+                collaboration_timeline: vec![ForgeSharedSessionTimelineEntry {
+                    kind: ForgeSharedSessionTimelineEntryKind::Handoff,
+                    participant_id: Some("local-probe-agent".to_string()),
+                    display_name: Some("Local Probe agent".to_string()),
+                    summary: "Continue implementation while Bob reviews.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_000,
+                }],
+                remote_session: ForgeProbeRemoteSessionProjection {
+                    location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                    owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
+                    owner_id: Some("forge-hosted".to_string()),
+                    owner_label: Some("Forge hosted worker".to_string()),
+                    attach_target: Some("probe-hosted-forge-1:7447".to_string()),
+                    execution_host_kind: Some(ForgeProbeExecutionHostKind::HostedWorker),
+                    execution_host_id: Some("probe-hosted-forge-1".to_string()),
+                    execution_host_label: Some("probe-hosted-forge-1".to_string()),
+                    operator_handoff_state: ForgeProbeOperatorHandoffState::HumanOperatorAttached,
+                    operator_handoff_summary: Some("Alice is driving the next turn.".to_string()),
+                    operator_handoff_provenance: Some("probe.hosted.receipt".to_string()),
+                    updated_at_epoch_ms: 1_700_002_040,
+                    ..ForgeProbeRemoteSessionProjection::default()
+                },
+                workspace_restore: ForgeWorkspaceRestoreProvenance::default(),
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: Some("campaign-1".to_string()),
+                bounty_contract_id: Some("contract-1".to_string()),
+                bounty_claim_id: Some("claim-1".to_string()),
+                settlement_receipt_id: Some("settlement-1".to_string()),
+                hosted_coding_audit_bundle_id: Some("audit-1".to_string()),
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                created_at_epoch_ms: 1_700_002_000,
+                updated_at_epoch_ms: 1_700_002_050,
+            },
+        );
+        desktop_a.forge_evidence_bundles.insert(
+            "evidence-1".to_string(),
+            ForgeEvidenceBundle {
+                evidence_bundle_id: "evidence-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_session_ids: Vec::new(),
+                diff_ref: None,
+                review_ref: None,
+                verification_runs: Vec::new(),
+                log_refs: Vec::new(),
+                product_artifacts: vec![ForgeEvidenceProductArtifact {
+                    kind: ForgeEvidenceProductArtifactKind::Other,
+                    label: "accepted patch summary".to_string(),
+                    reference: "probe://summary/accepted-1".to_string(),
+                    summary: Some("Accepted patch summary for hosted fix".to_string()),
+                    recorded_at_epoch_ms: 1_700_002_060,
+                }],
+                updated_at_epoch_ms: 1_700_002_060,
+            },
+        );
+        desktop_a.forge_delivery_receipts.insert(
+            "delivery-1".to_string(),
+            ForgeDeliveryReceipt {
+                delivery_receipt_id: "delivery-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_session_ids: Vec::new(),
+                status: ForgeDeliveryReceiptStatus::Opened,
+                base_branch: "main".to_string(),
+                base_commit: Some("abc123".to_string()),
+                head_branch: "alice/internal-mvp".to_string(),
+                head_commit: "def456".to_string(),
+                compare_url: Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...alice/internal-mvp"
+                        .to_string(),
+                ),
+                pr_url: Some("https://github.com/OpenAgentsInc/openagents/pull/4111".to_string()),
+                branch_watch: None,
+                compare_watch: None,
+                pull_request_watch: None,
+                ci_watch: None,
+                suggested_title: "Internal Forge shared session MVP".to_string(),
+                suggested_body: "Implements the shared state seam.".to_string(),
+                contributors: vec![ForgeDeliveryContributor {
+                    participant_id: "alice".to_string(),
+                    display_name: "Alice".to_string(),
+                    kind: ForgeSharedSessionControlOwner::HumanLocal,
+                    role: ForgeDeliveryContributorRole::Operator,
+                    summary: Some("Opened the PR and attached the hosted audit.".to_string()),
+                }],
+                latest_review_decision: None,
+                merged_at_epoch_ms: None,
+                updated_at_epoch_ms: 1_700_002_070,
+            },
+        );
+        desktop_a.forge_bounty_contracts.insert(
+            "contract-1".to_string(),
+            ForgeBountyContract {
+                bounty_contract_id: "contract-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                objective_kind: ForgeBountyObjectiveKind::AcceptedMerge,
+                title: "Ship internal shared-session MVP".to_string(),
+                objective_summary: Some(
+                    "Get shared hosted sessions working for the team.".to_string(),
+                ),
+                lifecycle_status: ForgeBountyLifecycleStatus::Claimed,
+                active_claim_id: Some("claim-1".to_string()),
+                settlement_receipt_id: Some("settlement-1".to_string()),
+                claim_ids: vec!["claim-1".to_string()],
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                knowledge_pack_refs: Vec::new(),
+                eval_pack_refs: Vec::new(),
+                participant_credit_envelopes: vec![ForgeBountyParticipantCreditEnvelope {
+                    participant_id: "alice".to_string(),
+                    display_name: "Alice".to_string(),
+                    role: ForgeBountyCreditRole::Implementation,
+                    credit_basis_points: Some(10_000),
+                }],
+                provenance: "operator.command:/bounty claim".to_string(),
+                created_at_epoch_ms: 1_700_002_080,
+                updated_at_epoch_ms: 1_700_002_080,
+            },
+        );
+        desktop_a.forge_bounty_claims.insert(
+            "claim-1".to_string(),
+            ForgeBountyClaim {
+                bounty_claim_id: "claim-1".to_string(),
+                bounty_contract_id: "contract-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                claimant_id: "alice".to_string(),
+                claimant_label: "Alice".to_string(),
+                lifecycle_status: ForgeBountyLifecycleStatus::Claimed,
+                summary: Some("Alice is driving the implementation.".to_string()),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                knowledge_pack_refs: Vec::new(),
+                eval_pack_refs: Vec::new(),
+                provenance: "operator.command:/bounty claim".to_string(),
+                created_at_epoch_ms: 1_700_002_090,
+                updated_at_epoch_ms: 1_700_002_090,
+            },
+        );
+        desktop_a.forge_settlement_receipts.insert(
+            "settlement-1".to_string(),
+            ForgeSettlementReceipt {
+                settlement_receipt_id: "settlement-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                bounty_contract_id: "contract-1".to_string(),
+                bounty_claim_id: Some("claim-1".to_string()),
+                objective_kind: ForgeBountyObjectiveKind::AcceptedMerge,
+                closure_path: Some(ForgeSettlementClosurePath::AcceptedMerge),
+                status: ForgeSettlementReceiptStatus::Recorded,
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                reviewer_ref: None,
+                evaluator_ref: None,
+                outcome_summary: Some(
+                    "Merge accepted for the internal shared-session MVP.".to_string(),
+                ),
+                dispute_window_started_at_epoch_ms: 1_700_002_100,
+                dispute_window_closes_at_epoch_ms: 1_700_088_500,
+                disputed_by_label: None,
+                dispute_summary: None,
+                disputed_at_epoch_ms: None,
+                cancel_reason: None,
+                provenance: "operator.command:/settle merge".to_string(),
+                created_at_epoch_ms: 1_700_002_100,
+                updated_at_epoch_ms: 1_700_002_100,
+            },
+        );
+        desktop_a.forge_campaigns.insert(
+            "campaign-1".to_string(),
+            ForgeCampaign {
+                campaign_id: "campaign-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                status: ForgeCampaignStatus::Scoped,
+                title: "Internal shared-session dogfood".to_string(),
+                goal_summary: Some("Prove attach and handoff across desktops.".to_string()),
+                scope_summary: Some("Only internal hosted Forge sessions.".to_string()),
+                candidate_refs: vec![ForgeCampaignArtifactRef {
+                    artifact_ref_id: "candidate-1".to_string(),
+                    kind: ForgeCampaignArtifactKind::ProbeSummary,
+                    reference: "probe://summary/retained-1".to_string(),
+                    summary: Some("Retained session summary".to_string()),
+                    linked_thread_id: Some("thread-a".to_string()),
+                    linked_source_turn_id: Some("turn-1".to_string()),
+                    linked_evidence_bundle_id: Some("evidence-1".to_string()),
+                    linked_delivery_receipt_id: Some("delivery-1".to_string()),
+                    recorded_at_epoch_ms: 1_700_002_110,
+                }],
+                retained_case_selections: Vec::new(),
+                verification_refs: Vec::new(),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                promotion_ledger_id: Some("ledger-1".to_string()),
+                created_at_epoch_ms: 1_700_002_110,
+                updated_at_epoch_ms: 1_700_002_110,
+            },
+        );
+        desktop_a.forge_promotion_ledgers.insert(
+            "ledger-1".to_string(),
+            ForgePromotionLedger {
+                promotion_ledger_id: "ledger-1".to_string(),
+                campaign_id: "campaign-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                status: ForgePromotionLedgerStatus::Shadow,
+                active_revision_id: Some("rev-1".to_string()),
+                shadow_revision_id: Some("rev-1".to_string()),
+                promoted_revision_id: None,
+                revisions: vec![ForgePromotionRevision {
+                    revision_id: "rev-1".to_string(),
+                    source_kind: ForgeCampaignArtifactKind::ProbeSummary,
+                    source_reference: "probe://summary/retained-1".to_string(),
+                    admitted_by_label: "Alice".to_string(),
+                    admitted_summary: Some(
+                        "Shadow the internal shared-session workflow.".to_string(),
+                    ),
+                    admitted_provenance: "operator.command:/promote shadow".to_string(),
+                    admitted_at_epoch_ms: 1_700_002_120,
+                    promoted_by_label: None,
+                    promoted_summary: None,
+                    promoted_provenance: None,
+                    promoted_at_epoch_ms: None,
+                    rolled_back_at_epoch_ms: None,
+                    rollback_reason: None,
+                }],
+                rollback_history: Vec::new(),
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                created_at_epoch_ms: 1_700_002_120,
+                updated_at_epoch_ms: 1_700_002_120,
+            },
+        );
+        desktop_a.forge_hosted_audit_bundles.insert(
+            "audit-1".to_string(),
+            ForgeHostedAuditBundle {
+                audit_bundle_id: "audit-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                kind: ForgeHostedAuditKind::CodingCloseout,
+                environment_summary: "GCP hosted internal session".to_string(),
+                session_location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                workspace_root: Some("/tmp/openagents".to_string()),
+                repo_remote_url: Some(
+                    "https://github.com/OpenAgentsInc/openagents.git".to_string(),
+                ),
+                repo_git_branch: Some("alice/internal-mvp".to_string()),
+                repo_head_commit: Some("def456".to_string()),
+                routed_pack_ids: vec!["pack-1".to_string()],
+                mounted_pack_ids: vec!["pack-1".to_string()],
+                unsupported_route_reasons: Vec::new(),
+                hosted_receipts: None,
+                preflight: None,
+                evidence_bundle_id: Some("evidence-1".to_string()),
+                evidence_status: Some(ForgeEvidenceBundleStatus::Partial),
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                delivery_status: Some(ForgeDeliveryReceiptStatus::Opened),
+                campaign_id: Some("campaign-1".to_string()),
+                campaign_status: Some(ForgeCampaignStatus::Scoped),
+                promotion_ledger_id: Some("ledger-1".to_string()),
+                promotion_status: Some(ForgePromotionLedgerStatus::Shadow),
+                bounty_contract_id: Some("contract-1".to_string()),
+                bounty_status: Some(ForgeBountyLifecycleStatus::Claimed),
+                bounty_claim_id: Some("claim-1".to_string()),
+                settlement_receipt_id: Some("settlement-1".to_string()),
+                settlement_status: Some(ForgeSettlementReceiptStatus::Recorded),
+                notes: vec![ForgeHostedAuditNote {
+                    kind: ForgeHostedAuditNoteKind::OperatorNote,
+                    body: "Internal attach and handoff rehearsal succeeded.".to_string(),
+                    provenance: "operator.note".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_130,
+                }],
+                created_at_epoch_ms: 1_700_002_130,
+                updated_at_epoch_ms: 1_700_002_130,
+            },
+        );
+        desktop_a.next_forge_shared_session_seq = 2;
+        desktop_a.next_forge_campaign_seq = 2;
+        desktop_a.next_forge_promotion_ledger_seq = 2;
+        desktop_a.next_forge_bounty_contract_seq = 2;
+        desktop_a.next_forge_bounty_claim_seq = 2;
+        desktop_a.next_forge_settlement_receipt_seq = 2;
+        desktop_a.next_forge_evidence_bundle_seq = 2;
+        desktop_a.next_forge_delivery_receipt_seq = 2;
+        desktop_a.next_forge_hosted_audit_bundle_seq = 2;
+        desktop_a.persist_codex_artifact_projection();
+
+        let desktop_b = AutopilotChatState::from_projection_paths_for_tests(
+            desktop_b_projection.clone(),
+            Some(shared_state_path.clone()),
+        );
+        let reloaded_session = desktop_b
+            .forge_shared_sessions
+            .get("forge-session-1")
+            .expect("reloaded shared session");
+        assert_eq!(reloaded_session.project_name.as_deref(), Some("openagents"));
+        assert_eq!(
+            reloaded_session
+                .last_handoff
+                .as_ref()
+                .map(|handoff| handoff.summary.as_str()),
+            Some("Continue implementation while Bob reviews.")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_evidence_bundles
+                .get("evidence-1")
+                .expect("reloaded evidence bundle")
+                .product_artifacts
+                .len(),
+            1
+        );
+        assert_eq!(
+            desktop_b
+                .forge_delivery_receipts
+                .get("delivery-1")
+                .expect("reloaded delivery receipt")
+                .pr_url
+                .as_deref(),
+            Some("https://github.com/OpenAgentsInc/openagents/pull/4111")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_bounty_contracts
+                .get("contract-1")
+                .expect("reloaded bounty contract")
+                .active_claim_id
+                .as_deref(),
+            Some("claim-1")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_bounty_claims
+                .get("claim-1")
+                .expect("reloaded bounty claim")
+                .claimant_label,
+            "Alice"
+        );
+        assert_eq!(
+            desktop_b
+                .forge_settlement_receipts
+                .get("settlement-1")
+                .expect("reloaded settlement receipt")
+                .status,
+            ForgeSettlementReceiptStatus::Recorded
+        );
+        assert_eq!(
+            desktop_b
+                .forge_campaigns
+                .get("campaign-1")
+                .expect("reloaded campaign")
+                .promotion_ledger_id
+                .as_deref(),
+            Some("ledger-1")
+        );
+        assert_eq!(
+            desktop_b
+                .forge_promotion_ledgers
+                .get("ledger-1")
+                .expect("reloaded promotion ledger")
+                .status,
+            ForgePromotionLedgerStatus::Shadow
+        );
+        assert_eq!(
+            desktop_b
+                .forge_hosted_audit_bundles
+                .get("audit-1")
+                .expect("reloaded hosted audit bundle")
+                .notes
+                .len(),
+            1
+        );
+        assert_eq!(desktop_b.next_forge_shared_session_seq, 2);
+        assert_eq!(desktop_b.next_forge_delivery_receipt_seq, 2);
+
+        let _ = std::fs::remove_file(desktop_a_projection);
+        let _ = std::fs::remove_file(desktop_b_projection);
+        let _ = std::fs::remove_file(shared_state_path);
+    }
+
+    #[test]
+    fn chat_state_lists_hosted_shared_sessions_for_internal_attach() {
+        let mut chat = AutopilotChatState::default();
+        chat.forge_shared_sessions.insert(
+            "local-session".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "local-session".to_string(),
+                probe_session_ids: vec!["probe-local".to_string()],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/local".to_string()),
+                project_id: Some("project-local".to_string()),
+                project_name: Some("local".to_string()),
+                shell_title: None,
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![
+                    ForgeSharedSessionParticipant {
+                        participant_id: "local-human".to_string(),
+                        kind: ForgeSharedSessionControlOwner::HumanLocal,
+                        display_name: "Local human".to_string(),
+                    },
+                    ForgeSharedSessionParticipant {
+                        participant_id: "local-probe-agent".to_string(),
+                        kind: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                        display_name: "Local Probe agent".to_string(),
+                    },
+                ],
+                controller_participant_id: Some("local-human".to_string()),
+                pending_handoff_request: None,
+                last_handoff: None,
+                collaboration_timeline: Vec::new(),
+                remote_session: ForgeProbeRemoteSessionProjection::default(),
+                workspace_restore: ForgeWorkspaceRestoreProvenance::default(),
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: None,
+                bounty_contract_id: None,
+                bounty_claim_id: None,
+                settlement_receipt_id: None,
+                hosted_coding_audit_bundle_id: None,
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: None,
+                delivery_receipt_id: None,
+                created_at_epoch_ms: 1_700_002_000,
+                updated_at_epoch_ms: 1_700_002_000,
+            },
+        );
+        chat.forge_shared_sessions.insert(
+            "forge-session-1".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec![
+                    "probe-session-1".to_string(),
+                    "probe-session-2".to_string(),
+                ],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/openagents".to_string()),
+                project_id: Some("project-openagents".to_string()),
+                project_name: Some("openagents".to_string()),
+                shell_title: Some("OpenAgents hosted session".to_string()),
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![
+                    ForgeSharedSessionParticipant {
+                        participant_id: "alice".to_string(),
+                        kind: ForgeSharedSessionControlOwner::HumanLocal,
+                        display_name: "Alice".to_string(),
+                    },
+                    ForgeSharedSessionParticipant {
+                        participant_id: "probe".to_string(),
+                        kind: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                        display_name: "Probe".to_string(),
+                    },
+                ],
+                controller_participant_id: Some("alice".to_string()),
+                pending_handoff_request: None,
+                last_handoff: None,
+                collaboration_timeline: Vec::new(),
+                remote_session: ForgeProbeRemoteSessionProjection {
+                    location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                    owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
+                    owner_label: Some("Forge hosted worker".to_string()),
+                    attach_target: Some("probe-hosted-forge-1:7447".to_string()),
+                    execution_host_kind: Some(ForgeProbeExecutionHostKind::HostedWorker),
+                    execution_host_label: Some("probe-hosted-forge-1".to_string()),
+                    prepared_baseline_id: Some("baseline-42".to_string()),
+                    prepared_baseline_status: Some(ForgeProbePreparedBaselineStatus::Ready),
+                    updated_at_epoch_ms: 1_700_002_040,
+                    ..ForgeProbeRemoteSessionProjection::default()
+                },
+                workspace_restore: ForgeWorkspaceRestoreProvenance {
+                    base_repo: ForgeWorkspaceBaseRepoRef {
+                        git_branch: Some("feature/from-restore".to_string()),
+                        ..ForgeWorkspaceBaseRepoRef::default()
+                    },
+                    ..ForgeWorkspaceRestoreProvenance::default()
+                },
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: None,
+                bounty_contract_id: None,
+                bounty_claim_id: None,
+                settlement_receipt_id: None,
+                hosted_coding_audit_bundle_id: None,
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: None,
+                delivery_receipt_id: Some("delivery-1".to_string()),
+                created_at_epoch_ms: 1_700_002_010,
+                updated_at_epoch_ms: 1_700_002_050,
+            },
+        );
+        chat.forge_delivery_receipts.insert(
+            "delivery-1".to_string(),
+            ForgeDeliveryReceipt {
+                delivery_receipt_id: "delivery-1".to_string(),
+                shared_session_id: "forge-session-1".to_string(),
+                evidence_bundle_id: None,
+                probe_session_ids: vec![
+                    "probe-session-1".to_string(),
+                    "probe-session-2".to_string(),
+                ],
+                delegated_child_session_ids: Vec::new(),
+                status: ForgeDeliveryReceiptStatus::Opened,
+                base_branch: "main".to_string(),
+                base_commit: None,
+                head_branch: "alice/internal-mvp".to_string(),
+                head_commit: "def456".to_string(),
+                compare_url: None,
+                pr_url: None,
+                branch_watch: None,
+                compare_watch: None,
+                pull_request_watch: None,
+                ci_watch: None,
+                suggested_title: "Internal hosted attach".to_string(),
+                suggested_body: "Drive attach from shared state.".to_string(),
+                contributors: Vec::new(),
+                latest_review_decision: None,
+                merged_at_epoch_ms: None,
+                updated_at_epoch_ms: 1_700_002_060,
+            },
+        );
+
+        let sessions = chat.hosted_shared_session_directory();
+        assert_eq!(sessions.len(), 1);
+        let session = &sessions[0];
+        assert_eq!(session.shared_session_id, "forge-session-1");
+        assert_eq!(session.probe_session_id, "probe-session-2");
+        assert_eq!(
+            session.sibling_probe_session_ids,
+            vec!["probe-session-1".to_string()]
+        );
+        assert_eq!(session.project_name.as_deref(), Some("openagents"));
+        assert_eq!(session.workspace_root.as_deref(), Some("/tmp/openagents"));
+        assert_eq!(session.git_branch.as_deref(), Some("alice/internal-mvp"));
+        assert_eq!(session.prepared_baseline_id.as_deref(), Some("baseline-42"));
+        assert_eq!(
+            session.prepared_baseline_status,
+            Some(ForgeProbePreparedBaselineStatus::Ready)
+        );
+        assert_eq!(
+            session.control_owner,
+            ForgeSharedSessionControlOwner::HumanLocal
+        );
+        assert_eq!(session.controller_label.as_deref(), Some("Alice"));
+        assert_eq!(
+            session.location_kind,
+            ForgeProbeSessionLocationKind::HostedWorkspace
+        );
+        assert_eq!(
+            session.attach_target.as_deref(),
+            Some("probe-hosted-forge-1:7447")
+        );
+    }
+
+    #[test]
+    fn chat_state_prepares_hosted_attach_without_parallel_shared_session() {
+        let mut chat = AutopilotChatState::default();
+        chat.forge_shared_sessions.insert(
+            "forge-session-1".to_string(),
+            ForgeSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+                probe_session_ids: vec!["probe-session-1".to_string()],
+                delegated_child_sessions: Vec::new(),
+                workspace_root: Some("/tmp/openagents".to_string()),
+                project_id: Some("project-openagents".to_string()),
+                project_name: Some("openagents".to_string()),
+                shell_title: Some("OpenAgents hosted session".to_string()),
+                archived_in_shell: false,
+                control_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                participants: vec![ForgeSharedSessionParticipant {
+                    participant_id: "alice".to_string(),
+                    kind: ForgeSharedSessionControlOwner::HumanLocal,
+                    display_name: "Alice".to_string(),
+                }],
+                controller_participant_id: Some("alice".to_string()),
+                pending_handoff_request: None,
+                last_handoff: Some(ForgeSharedSessionHandoff {
+                    from_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    from_participant_id: Some("local-probe-agent".to_string()),
+                    from_display_name: Some("Local Probe agent".to_string()),
+                    to_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    to_participant_id: Some("alice".to_string()),
+                    to_display_name: Some("Alice".to_string()),
+                    summary: "Alice is taking over the hosted session.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_060,
+                }),
+                collaboration_timeline: vec![ForgeSharedSessionTimelineEntry {
+                    kind: ForgeSharedSessionTimelineEntryKind::TakeControl,
+                    participant_id: Some("alice".to_string()),
+                    display_name: Some("Alice".to_string()),
+                    summary: "Alice is taking over the hosted session.".to_string(),
+                    provenance: "operator.command:/handoff".to_string(),
+                    recorded_at_epoch_ms: 1_700_002_060,
+                }],
+                remote_session: ForgeProbeRemoteSessionProjection {
+                    location_kind: ForgeProbeSessionLocationKind::HostedWorkspace,
+                    owner_kind: Some(ForgeProbeSessionOwnerKind::HostedControlPlane),
+                    owner_label: Some("Forge hosted worker".to_string()),
+                    attach_target: Some("probe-hosted-forge-1:7447".to_string()),
+                    execution_host_kind: Some(ForgeProbeExecutionHostKind::HostedWorker),
+                    execution_host_label: Some("probe-hosted-forge-1".to_string()),
+                    updated_at_epoch_ms: 1_700_002_070,
+                    ..ForgeProbeRemoteSessionProjection::default()
+                },
+                workspace_restore: ForgeWorkspaceRestoreProvenance {
+                    base_repo: ForgeWorkspaceBaseRepoRef {
+                        git_branch: Some("alice/internal-mvp".to_string()),
+                        ..ForgeWorkspaceBaseRepoRef::default()
+                    },
+                    ..ForgeWorkspaceRestoreProvenance::default()
+                },
+                knowledge_mounts: ForgeKnowledgeMountProjection::default(),
+                hosted_preflight: None,
+                workspace_snapshot_id: None,
+                restore_manifest_id: None,
+                campaign_id: None,
+                bounty_contract_id: None,
+                bounty_claim_id: None,
+                settlement_receipt_id: None,
+                hosted_coding_audit_bundle_id: None,
+                hosted_bookkeeping_audit_bundle_id: None,
+                evidence_bundle_id: None,
+                delivery_receipt_id: None,
+                created_at_epoch_ms: 1_700_002_000,
+                updated_at_epoch_ms: 1_700_002_080,
+            },
+        );
+
+        let target = chat
+            .prepare_hosted_probe_attach_by_shared_session_id("forge-session-1", 1_700_002_090)
+            .expect("shared attach should prepare");
+        assert_eq!(target.shared_session_id, "forge-session-1");
+        assert_eq!(target.probe_session_id, "probe-session-1");
+        assert_eq!(target.workspace_label, "/tmp/openagents");
+        assert!(!target.reused_local_thread);
+
+        let metadata = chat
+            .thread_metadata
+            .get("probe-session-1")
+            .expect("local metadata for attached hosted session");
+        assert_eq!(
+            metadata.thread_name.as_deref(),
+            Some("OpenAgents hosted session")
+        );
+        assert_eq!(
+            metadata.preview.as_deref(),
+            Some("Alice is taking over the hosted session.")
+        );
+        assert_eq!(metadata.status.as_deref(), Some("attached"));
+        assert_eq!(metadata.probe_runtime_status.as_deref(), Some("idle"));
+        assert_eq!(metadata.workspace_root.as_deref(), Some("/tmp/openagents"));
+        assert_eq!(metadata.project_name.as_deref(), Some("openagents"));
+        assert_eq!(metadata.git_branch.as_deref(), Some("alice/internal-mvp"));
+        assert_eq!(chat.active_thread_id.as_deref(), Some("probe-session-1"));
+        assert!(
+            chat.shared_session_for_thread("probe-session-1")
+                .expect("attached shared session")
+                .participants
+                .iter()
+                .any(|participant| {
+                    participant.participant_id == current_forge_local_operator_participant_id()
+                })
+        );
+
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("probe-session-1", 1_700_002_100)
+            .expect("shared session should still resolve");
+        assert_eq!(shared_session_id, "forge-session-1");
+        assert_eq!(chat.forge_shared_sessions.len(), 1);
+
+        let second_target = chat
+            .prepare_hosted_probe_attach_by_probe_session_id("probe-session-1", 1_700_002_110)
+            .expect("probe attach should prepare");
+        assert_eq!(second_target.shared_session_id, "forge-session-1");
+        assert!(second_target.reused_local_thread);
+    }
+
+    #[test]
+    fn chat_state_persists_shared_session_controller_requests_and_notes() {
+        let projection_path = unique_codex_artifact_projection_path("shared-session-control");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "shared session".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some("/tmp/a".to_string()),
+            path: Some("/tmp/a.jsonl".to_string()),
+            created_at: 1_700_100_000,
+            updated_at: 1_700_100_010,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        let shared_session_id = chat
+            .ensure_probe_shared_session_for_thread("thread-a", 1_700_100_020)
+            .expect("shared session");
+        {
+            let session = chat
+                .forge_shared_sessions
+                .get_mut(&shared_session_id)
+                .expect("mutable shared session");
+            session.participants.push(ForgeSharedSessionParticipant {
+                participant_id: "bob".to_string(),
+                kind: ForgeSharedSessionControlOwner::HumanLocal,
+                display_name: "Bob".to_string(),
+            });
+            session.pending_handoff_request = Some(ForgeSharedSessionControlRequest {
+                participant_id: "bob".to_string(),
+                display_name: "Bob".to_string(),
+                summary: "I can take the next review pass.".to_string(),
+                provenance: "desktop-b:/handoff request".to_string(),
+                recorded_at_epoch_ms: 1_700_100_030,
+            });
+            sync_forge_shared_session_controller(session);
+        }
+
+        chat.accept_shared_session_control_request_for_thread(
+            "thread-a",
+            "Handing the next turn to Bob.",
+            "operator.command:/handoff accept",
+            1_700_100_040,
+        )
+        .expect("accept should succeed");
+        let after_accept = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session after accept");
+        assert_eq!(
+            after_accept.controller_participant_id.as_deref(),
+            Some("bob")
+        );
+        assert!(after_accept.pending_handoff_request.is_none());
+        assert_eq!(
+            after_accept
+                .last_handoff
+                .as_ref()
+                .and_then(|handoff| handoff.to_display_name.as_deref()),
+            Some("Bob")
+        );
+
+        chat.request_shared_session_control_for_thread(
+            "thread-a",
+            "I can take the implementation back after Bob's review.",
+            "operator.command:/handoff request",
+            1_700_100_050,
+        )
+        .expect("request should succeed");
+        let local_participant_id = current_forge_local_operator_participant_id();
+        let after_request = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session after request");
+        assert_eq!(
+            after_request
+                .pending_handoff_request
+                .as_ref()
+                .map(|request| request.participant_id.as_str()),
+            Some(local_participant_id.as_str())
+        );
+
+        chat.record_shared_session_note_for_thread(
+            "thread-a",
+            "Waiting on Bob to finish the reviewer pass.",
+            "operator.command:/handoff note",
+            1_700_100_060,
+        )
+        .expect("note should record");
+        chat.take_shared_session_control_for_thread(
+            "thread-a",
+            "Taking the next turn back locally.",
+            "operator.command:/handoff take",
+            1_700_100_070,
+        )
+        .expect("take control should succeed");
+
+        let final_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("final shared session");
+        assert_eq!(
+            final_session.controller_participant_id.as_deref(),
+            Some(local_participant_id.as_str())
+        );
+        assert!(final_session.pending_handoff_request.is_none());
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::ControlAccepted
+                && entry.summary == "Handing the next turn to Bob."
+        }));
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::ControlRequest
+                && entry.summary == "I can take the implementation back after Bob's review."
+        }));
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::Note
+                && entry.summary == "Waiting on Bob to finish the reviewer pass."
+        }));
+        assert!(final_session.collaboration_timeline.iter().any(|entry| {
+            entry.kind == ForgeSharedSessionTimelineEntryKind::TakeControl
+                && entry.summary == "Taking the next turn back locally."
+        }));
+        let status = chat
+            .shared_session_handoff_status_for_thread("thread-a")
+            .expect("handoff status should format");
+        assert!(status.contains("Current controller:"));
+        assert!(status.contains("Participants:"));
+        assert!(status.contains("Recent collaboration:"));
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.controller_participant_id.as_deref(),
+            Some(local_participant_id.as_str())
+        );
+        assert!(reloaded_session.collaboration_timeline.len() >= 4);
+
+        let _ = std::fs::remove_file(projection_path);
+    }
+
+    #[test]
     fn chat_state_tracks_workspace_restore_provenance() {
         let repo = init_git_workspace("workspace-restore");
         let remote_add_status = std::process::Command::new("git")
@@ -30361,6 +34218,14 @@ mod tests {
                 }),
                 provenance_note: Some("restored from prepared workspace snapshot".to_string()),
             }),
+            Some(&SessionHostedReceipts {
+                auth: None,
+                checkout: None,
+                worker: None,
+                cost: None,
+                cleanup: None,
+                history: Vec::new(),
+            }),
             1_700_000_130,
         )
         .expect("remote session projection should record");
@@ -30452,6 +34317,845 @@ mod tests {
         assert_eq!(
             reloaded_session.remote_session.operator_handoff_state,
             ForgeProbeOperatorHandoffState::ProbeAgentActive
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_hosted_coding_audit_bundle_summary() {
+        let repo = init_git_workspace("hosted-coding-audit");
+        let projection_path = unique_codex_artifact_projection_path("hosted-coding-audit");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Hosted".to_string()),
+            preview: "hosted coding closeout".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"hosted\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Hosted closeout looks consistent.",
+            1_700_000_130,
+            false,
+        );
+        chat.record_probe_evidence_verification_for_thread(
+            "thread-a",
+            "cargo-test",
+            ForgeEvidenceVerificationStatus::Passed,
+            Some("target/hosted-closeout.log".to_string()),
+            Some("Hosted GCP closeout passed".to_string()),
+            1_700_000_135,
+        )
+        .expect("verification evidence should record");
+        chat.sync_probe_remote_session_projection_for_thread(
+            "thread-a",
+            Some(&SessionRuntimeOwner {
+                kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                owner_id: "probe-hosted-control".to_string(),
+                attach_transport: SessionAttachTransport::TcpJsonl,
+                display_name: Some("Probe hosted control".to_string()),
+                attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+            }),
+            Some(&SessionWorkspaceState {
+                boot_mode: SessionWorkspaceBootMode::PreparedBaseline,
+                baseline: Some(SessionPreparedBaselineRef {
+                    baseline_id: "repo-main".to_string(),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    base_ref: Some("main".to_string()),
+                    status: SessionPreparedBaselineStatus::Ready,
+                }),
+                snapshot: Some(SessionWorkspaceSnapshotRef {
+                    snapshot_id: "snap-9".to_string(),
+                    restore_manifest_id: Some("restore-manifest-9".to_string()),
+                    source_baseline_id: Some("repo-main".to_string()),
+                }),
+                execution_host: Some(SessionExecutionHost {
+                    kind: SessionExecutionHostKind::HostedWorker,
+                    host_id: "gce-worker-17".to_string(),
+                    display_name: Some("gce-worker-17".to_string()),
+                    location: Some("us-central1".to_string()),
+                }),
+                provenance_note: Some("restored from hosted prepared baseline".to_string()),
+            }),
+            Some(&SessionHostedReceipts {
+                auth: Some(SessionHostedAuthReceipt {
+                    authority: "forge-gcp-control".to_string(),
+                    subject: "operator:christopher".to_string(),
+                    auth_kind: SessionHostedAuthKind::ControlPlaneAssertion,
+                    scope: Some("forge.hosted.closeout".to_string()),
+                    recorded_at_ms: 1_700_000_136,
+                }),
+                checkout: Some(SessionHostedCheckoutReceipt {
+                    kind: SessionHostedCheckoutKind::GitRepository,
+                    workspace_root: repo.clone(),
+                    repo_root: Some(repo.clone()),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    head_ref: Some("feature/hosted-closeout".to_string()),
+                    head_commit: Some("def456abc789".to_string()),
+                    note: Some("checked out from hosted workspace rehearsal".to_string()),
+                    recorded_at_ms: 1_700_000_137,
+                }),
+                worker: Some(SessionHostedWorkerReceipt {
+                    owner_kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                    owner_id: "probe-hosted-control".to_string(),
+                    attach_transport: SessionAttachTransport::TcpJsonl,
+                    attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+                    execution_host_kind: SessionExecutionHostKind::HostedWorker,
+                    execution_host_id: "gce-worker-17".to_string(),
+                    execution_host_label: Some("gce-worker-17".to_string()),
+                    recorded_at_ms: 1_700_000_138,
+                }),
+                cost: Some(SessionHostedCostReceipt {
+                    observed_turn_count: 3,
+                    wallclock_ms: 42_000,
+                    prompt_tokens: Some(1_400),
+                    completion_tokens: Some(620),
+                    total_tokens: Some(2_020),
+                    note: Some("closeout run plus explicit delivery confirmation".to_string()),
+                    recorded_at_ms: 1_700_000_139,
+                }),
+                cleanup: Some(SessionHostedCleanupReceipt {
+                    status: SessionHostedCleanupStatus::Completed,
+                    workspace_root: repo.clone(),
+                    strategy: "worktree-remove".to_string(),
+                    note: Some("hosted workspace reclaimed after closeout".to_string()),
+                    recorded_at_ms: 1_700_000_140,
+                }),
+                history: vec![
+                    SessionHostedLifecycleEvent::RunningTurnFailedOnRestart {
+                        turn_id: "turn-3".to_string(),
+                        session_owner_id: "probe-hosted-control".to_string(),
+                        execution_host_id: "gce-worker-17".to_string(),
+                        summary:
+                            "Hosted restart interrupted an active turn before delivery refresh."
+                                .to_string(),
+                        recorded_at_ms: 1_700_000_141,
+                    },
+                    SessionHostedLifecycleEvent::CleanupStateChanged {
+                        previous_status: Some(SessionHostedCleanupStatus::Pending),
+                        status: SessionHostedCleanupStatus::Completed,
+                        workspace_root: repo.clone(),
+                        strategy: "worktree-remove".to_string(),
+                        execution_host_id: Some("gce-worker-17".to_string()),
+                        summary: "Hosted cleanup finished after operator confirmation.".to_string(),
+                        recorded_at_ms: 1_700_000_142,
+                    },
+                ],
+            }),
+            1_700_000_140,
+        )
+        .expect("remote session projection should record");
+        chat.record_probe_delivery_pr_for_thread(
+            "thread-a",
+            "main",
+            Some("abc123".to_string()),
+            "feature/hosted-closeout",
+            "def456abc789",
+            Some(
+                "https://github.com/OpenAgentsInc/openagents/compare/main...feature/hosted-closeout?expand=1"
+                    .to_string(),
+            ),
+            Some("https://github.com/OpenAgentsInc/openagents/pull/4101".to_string()),
+            "Hosted closeout",
+            "## Summary\n- close out hosted GCP run\n- capture evidence and delivery state",
+            1_700_000_145,
+        )
+        .expect("delivery receipt should record");
+        chat.record_probe_delivery_merge_for_thread(
+            "thread-a",
+            "reviewer-a",
+            Some("Merged from the hosted closeout rehearsal.".to_string()),
+            1_700_000_150,
+        )
+        .expect("merge should record");
+
+        let audit_bundle_id = chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::CodingCloseout,
+                "GCP us-central1 coding closeout on probe hosted worker gce-worker-17",
+                1_700_000_160,
+            )
+            .expect("hosted audit should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditNoteKind::OperatorNote,
+            "Captured mounted-pack, evidence, and delivery state in the shared closeout shell.",
+            "operator.command:/hosted note",
+            1_700_000_165,
+        )
+        .expect("hosted operator note should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditNoteKind::RecoveryStep,
+            "Reattached after a hosted control-plane restart and verified the same session id.",
+            "operator.command:/hosted recovery",
+            1_700_000_170,
+        )
+        .expect("hosted recovery note should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::CodingCloseout,
+            ForgeHostedAuditNoteKind::Defect,
+            "Need a more explicit cleanup receipt when the worker exits before operator refresh.",
+            "operator.command:/hosted defect",
+            1_700_000_175,
+        )
+        .expect("hosted defect note should record");
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session");
+        assert_eq!(
+            shared_session.hosted_coding_audit_bundle_id.as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let bundle = chat
+            .active_hosted_coding_audit_bundle()
+            .expect("active hosted coding audit bundle should exist");
+        assert_eq!(bundle.audit_bundle_id, audit_bundle_id);
+        assert_eq!(bundle.kind, ForgeHostedAuditKind::CodingCloseout);
+        assert_eq!(
+            bundle.delivery_status,
+            Some(ForgeDeliveryReceiptStatus::Merged)
+        );
+        assert_eq!(
+            bundle.evidence_status,
+            Some(ForgeEvidenceBundleStatus::Complete)
+        );
+        assert_eq!(bundle.notes.len(), 3);
+        assert_eq!(
+            bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.auth.as_ref())
+                .map(|receipt| receipt.auth_kind),
+            Some(SessionHostedAuthKind::ControlPlaneAssertion)
+        );
+        assert_eq!(
+            bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.cleanup.as_ref())
+                .map(|receipt| receipt.status),
+            Some(SessionHostedCleanupStatus::Completed)
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session.hosted_coding_audit_bundle_id.as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.hosted_coding_audit_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_hosted_audit_bundles.get(bundle_id))
+            .expect("reloaded hosted coding audit bundle should exist");
+        assert_eq!(
+            reloaded_bundle.environment_summary,
+            "GCP us-central1 coding closeout on probe hosted worker gce-worker-17"
+        );
+        assert_eq!(reloaded_bundle.notes.len(), 3);
+        assert_eq!(
+            reloaded_bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.worker.as_ref())
+                .map(|receipt| receipt.execution_host_id.as_str()),
+            Some("gce-worker-17")
+        );
+        assert_eq!(
+            reloaded_bundle.delivery_status,
+            Some(ForgeDeliveryReceiptStatus::Merged)
+        );
+        let export_path = repo.join("artifacts/hosted-coding-audit.md");
+        let exported_path = chat
+            .export_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::CodingCloseout,
+                Some(export_path.to_str().expect("utf8 export path")),
+                1_700_000_180,
+            )
+            .expect("hosted coding export should persist");
+        assert_eq!(exported_path, export_path);
+        let exported = std::fs::read_to_string(exported_path.as_path())
+            .expect("hosted coding export should read");
+        assert!(exported.contains("# hosted coding closeout"));
+        assert!(exported.contains(&audit_bundle_id));
+        assert!(exported.contains(&shared_session.shared_session_id));
+        assert!(exported.contains("forge-evidence-"));
+        assert!(exported.contains("forge-delivery-"));
+        assert!(exported.contains("running_turn_failed_on_restart"));
+        assert!(exported.contains("cleanup_state_changed"));
+        assert!(exported.contains("\"history\": ["));
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_hosted_bookkeeping_audit_bundle_summary() {
+        let repo = init_git_workspace("hosted-bookkeeping-audit");
+        let projection_path = unique_codex_artifact_projection_path("hosted-bookkeeping-audit");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Hosted".to_string()),
+            preview: "hosted bookkeeping rehearsal".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        chat.set_diff_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-println!(\"old\");\n+println!(\"bookkeeping\");\n".to_string(),
+            1_700_000_120,
+        );
+        chat.complete_review_artifact(
+            "thread-a",
+            "turn-diff-1",
+            "Hosted bookkeeping rehearsal looks consistent.",
+            1_700_000_130,
+            false,
+        );
+        let (evidence_bundle_id, _) = chat
+            .record_probe_evidence_verification_for_thread(
+                "thread-a",
+                "cargo-test",
+                ForgeEvidenceVerificationStatus::Passed,
+                Some("target/hosted-bookkeeping.log".to_string()),
+                Some("Hosted bookkeeping rehearsal passed".to_string()),
+                1_700_000_140,
+            )
+            .expect("verification evidence should record");
+        chat.sync_probe_remote_session_projection_for_thread(
+            "thread-a",
+            Some(&SessionRuntimeOwner {
+                kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                owner_id: "probe-hosted-control".to_string(),
+                attach_transport: SessionAttachTransport::TcpJsonl,
+                display_name: Some("Probe hosted control".to_string()),
+                attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+            }),
+            Some(&SessionWorkspaceState {
+                boot_mode: SessionWorkspaceBootMode::PreparedBaseline,
+                baseline: Some(SessionPreparedBaselineRef {
+                    baseline_id: "repo-main".to_string(),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    base_ref: Some("main".to_string()),
+                    status: SessionPreparedBaselineStatus::Ready,
+                }),
+                snapshot: Some(SessionWorkspaceSnapshotRef {
+                    snapshot_id: "snap-11".to_string(),
+                    restore_manifest_id: Some("restore-manifest-11".to_string()),
+                    source_baseline_id: Some("repo-main".to_string()),
+                }),
+                execution_host: Some(SessionExecutionHost {
+                    kind: SessionExecutionHostKind::HostedWorker,
+                    host_id: "gce-worker-42".to_string(),
+                    display_name: Some("gce-worker-42".to_string()),
+                    location: Some("us-central1".to_string()),
+                }),
+                provenance_note: Some("restored from hosted prepared baseline".to_string()),
+            }),
+            Some(&SessionHostedReceipts {
+                auth: Some(SessionHostedAuthReceipt {
+                    authority: "forge-gcp-control".to_string(),
+                    subject: "operator:christopher".to_string(),
+                    auth_kind: SessionHostedAuthKind::ControlPlaneAssertion,
+                    scope: Some("forge.hosted.bookkeeping".to_string()),
+                    recorded_at_ms: 1_700_000_141,
+                }),
+                checkout: Some(SessionHostedCheckoutReceipt {
+                    kind: SessionHostedCheckoutKind::GitRepository,
+                    workspace_root: repo.clone(),
+                    repo_root: Some(repo.clone()),
+                    repo_identity: Some("github.com/OpenAgentsInc/openagents".to_string()),
+                    head_ref: Some("feature/hosted-bookkeeping".to_string()),
+                    head_commit: Some("fedcba987654".to_string()),
+                    note: Some("checked out from hosted bookkeeping rehearsal".to_string()),
+                    recorded_at_ms: 1_700_000_142,
+                }),
+                worker: Some(SessionHostedWorkerReceipt {
+                    owner_kind: SessionRuntimeOwnerKind::HostedControlPlane,
+                    owner_id: "probe-hosted-control".to_string(),
+                    attach_transport: SessionAttachTransport::TcpJsonl,
+                    attach_target: Some("tcp://10.0.0.5:7777".to_string()),
+                    execution_host_kind: SessionExecutionHostKind::HostedWorker,
+                    execution_host_id: "gce-worker-42".to_string(),
+                    execution_host_label: Some("gce-worker-42".to_string()),
+                    recorded_at_ms: 1_700_000_143,
+                }),
+                cost: Some(SessionHostedCostReceipt {
+                    observed_turn_count: 4,
+                    wallclock_ms: 56_000,
+                    prompt_tokens: Some(1_600),
+                    completion_tokens: Some(710),
+                    total_tokens: Some(2_310),
+                    note: Some("bookkeeping rehearsal plus settlement confirmation".to_string()),
+                    recorded_at_ms: 1_700_000_144,
+                }),
+                cleanup: Some(SessionHostedCleanupReceipt {
+                    status: SessionHostedCleanupStatus::Completed,
+                    workspace_root: repo.clone(),
+                    strategy: "worktree-remove".to_string(),
+                    note: Some("hosted workspace reclaimed after bookkeeping rehearsal".to_string()),
+                    recorded_at_ms: 1_700_000_145,
+                }),
+                history: vec![SessionHostedLifecycleEvent::ApprovalPausedTakeoverAvailable {
+                    turn_id: "turn-4".to_string(),
+                    session_owner_id: "probe-hosted-control".to_string(),
+                    execution_host_id: "gce-worker-42".to_string(),
+                    pending_approval_count: 1,
+                    summary:
+                        "Hosted control plane exposed the paused approval for explicit operator takeover."
+                            .to_string(),
+                    recorded_at_ms: 1_700_000_146,
+                }],
+            }),
+            1_700_000_145,
+        )
+        .expect("remote session projection should record");
+        let (delivery_receipt_id, _) = chat
+            .record_probe_delivery_pr_for_thread(
+                "thread-a",
+                "main",
+                Some("abc123".to_string()),
+                "feature/hosted-bookkeeping",
+                "fedcba987654",
+                Some(
+                    "https://github.com/OpenAgentsInc/openagents/compare/main...feature/hosted-bookkeeping?expand=1"
+                        .to_string(),
+                ),
+                Some("https://github.com/OpenAgentsInc/openagents/pull/4102".to_string()),
+                "Hosted bookkeeping rehearsal",
+                "## Summary\n- exercise hosted bounty, campaign, and settlement bookkeeping",
+                1_700_000_150,
+            )
+            .expect("delivery receipt should record");
+        chat.record_probe_delivery_merge_for_thread(
+            "thread-a",
+            "reviewer-a",
+            Some("Merged from the hosted bookkeeping rehearsal.".to_string()),
+            1_700_000_160,
+        )
+        .expect("merge should record");
+
+        let bounty_contract_id = chat
+            .record_probe_bounty_contract_for_thread(
+                "thread-a",
+                ForgeBountyObjectiveKind::AcceptedMerge,
+                "Hosted bookkeeping rehearsal bounty",
+                Some(
+                    "Verify hosted receipts and settlement linkage from the merged result."
+                        .to_string(),
+                ),
+                "operator.command:/bounty open",
+                1_700_000_170,
+            )
+            .expect("bounty contract should record");
+        chat.record_probe_bounty_credit_for_thread("thread-a", "human", 2_500, 1_700_000_175)
+            .expect("operator credit should record");
+        chat.record_probe_bounty_credit_for_thread("thread-a", "agent", 7_500, 1_700_000_180)
+            .expect("agent credit should record");
+        let (_, bounty_claim_id) = chat
+            .record_probe_bounty_claim_for_thread(
+                "thread-a",
+                "agent",
+                Some("Probe agent carried the hosted bookkeeping rehearsal.".to_string()),
+                "operator.command:/bounty claim",
+                1_700_000_185,
+            )
+            .expect("bounty claim should record");
+        chat.record_probe_bounty_lifecycle_for_thread(
+            "thread-a",
+            ForgeBountyLifecycleStatus::Admitted,
+            Some("Hosted merge admitted as the rehearsal objective.".to_string()),
+            "operator.command:/bounty advance",
+            1_700_000_190,
+        )
+        .expect("bounty admission should record");
+        chat.record_probe_bounty_lifecycle_for_thread(
+            "thread-a",
+            ForgeBountyLifecycleStatus::Completed,
+            Some("Hosted merge completed the bookkeeping rehearsal.".to_string()),
+            "operator.command:/bounty advance",
+            1_700_000_195,
+        )
+        .expect("bounty completion should record");
+        let settlement_receipt_id = chat
+            .record_probe_settlement_merge_for_thread(
+                "thread-a",
+                "reviewer-a",
+                Some("Open the dispute window from the hosted merged result.".to_string()),
+                "operator.command:/settlement merge",
+                1_700_000_200,
+            )
+            .expect("settlement receipt should record");
+        let settlement_receipt = chat
+            .active_settlement_receipt()
+            .expect("settlement receipt should exist");
+        assert_eq!(
+            settlement_receipt.status,
+            ForgeSettlementReceiptStatus::Recorded
+        );
+        assert_eq!(
+            settlement_receipt.delivery_receipt_id,
+            Some(delivery_receipt_id.clone())
+        );
+        assert!(
+            settlement_receipt.dispute_window_closes_at_epoch_ms
+                >= settlement_receipt.dispute_window_started_at_epoch_ms
+        );
+
+        let campaign_id = chat
+            .record_probe_campaign_for_thread(
+                "thread-a",
+                "Hosted retained-case bookkeeping",
+                1_700_000_210,
+            )
+            .expect("campaign should record");
+        chat.record_probe_campaign_candidate_for_thread(
+            "thread-a",
+            crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+            "latest",
+            Some("accepted patch survived the hosted rehearsal".to_string()),
+            1_700_000_220,
+        )
+        .expect("accepted patch candidate should record");
+        let (promotion_ledger_id, revision_id) = chat
+            .record_probe_promotion_shadow_for_thread(
+                "thread-a",
+                crate::app_state::ForgeCampaignArtifactKind::AcceptedPatchSummary,
+                "latest",
+                "reviewer-a",
+                Some("shadow the hosted bookkeeping winner".to_string()),
+                "operator.command:/promote shadow",
+                1_700_000_230,
+            )
+            .expect("shadow revision should record");
+        let (promoted_ledger_id, promoted_revision_id) = chat
+            .record_probe_promotion_promote_for_thread(
+                "thread-a",
+                "reviewer-a",
+                Some("promote after hosted bookkeeping rehearsal".to_string()),
+                "operator.command:/promote promote",
+                1_700_000_240,
+            )
+            .expect("promotion should record");
+        assert_eq!(promoted_ledger_id, promotion_ledger_id);
+        assert_eq!(promoted_revision_id, revision_id);
+
+        let audit_bundle_id = chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::BookkeepingRehearsal,
+                "GCP us-central1 hosted bookkeeping rehearsal on probe worker gce-worker-42",
+                1_700_000_250,
+            )
+            .expect("hosted bookkeeping audit should record");
+        chat.record_probe_hosted_audit_note_for_thread(
+            "thread-a",
+            ForgeHostedAuditKind::BookkeepingRehearsal,
+            ForgeHostedAuditNoteKind::OperatorNote,
+            "Claim admission, settlement creation, and campaign promotion are still explicit operator steps in the hosted rehearsal.",
+            "operator.command:/hosted note",
+            1_700_000_255,
+        )
+        .expect("hosted bookkeeping note should record");
+
+        let shared_session = chat
+            .shared_session_for_thread("thread-a")
+            .expect("shared session should exist");
+        assert_eq!(
+            shared_session.hosted_bookkeeping_audit_bundle_id.as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let bundle = chat
+            .active_hosted_bookkeeping_audit_bundle()
+            .expect("active hosted bookkeeping audit bundle should exist");
+        assert_eq!(bundle.audit_bundle_id, audit_bundle_id);
+        assert_eq!(bundle.kind, ForgeHostedAuditKind::BookkeepingRehearsal);
+        assert_eq!(
+            bundle.evidence_bundle_id.as_deref(),
+            Some(evidence_bundle_id.as_str())
+        );
+        assert_eq!(
+            bundle.delivery_receipt_id.as_deref(),
+            Some(delivery_receipt_id.as_str())
+        );
+        assert_eq!(bundle.campaign_id.as_deref(), Some(campaign_id.as_str()));
+        assert_eq!(
+            bundle.promotion_ledger_id.as_deref(),
+            Some(promotion_ledger_id.as_str())
+        );
+        assert_eq!(
+            bundle.bounty_contract_id.as_deref(),
+            Some(bounty_contract_id.as_str())
+        );
+        assert_eq!(
+            bundle.bounty_claim_id.as_deref(),
+            Some(bounty_claim_id.as_str())
+        );
+        assert_eq!(
+            bundle.settlement_receipt_id.as_deref(),
+            Some(settlement_receipt_id.as_str())
+        );
+        assert_eq!(
+            bundle.promotion_status,
+            Some(ForgePromotionLedgerStatus::Promoted)
+        );
+        assert_eq!(
+            bundle.bounty_status,
+            Some(ForgeBountyLifecycleStatus::Completed)
+        );
+        assert_eq!(
+            bundle.settlement_status,
+            Some(ForgeSettlementReceiptStatus::Recorded)
+        );
+        assert_eq!(bundle.notes.len(), 1);
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session
+                .hosted_bookkeeping_audit_bundle_id
+                .as_deref(),
+            Some(audit_bundle_id.as_str())
+        );
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.hosted_bookkeeping_audit_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_hosted_audit_bundles.get(bundle_id))
+            .expect("reloaded hosted bookkeeping audit bundle should exist");
+        assert_eq!(
+            reloaded_bundle.environment_summary,
+            "GCP us-central1 hosted bookkeeping rehearsal on probe worker gce-worker-42"
+        );
+        assert_eq!(
+            reloaded_bundle.promotion_status,
+            Some(ForgePromotionLedgerStatus::Promoted)
+        );
+        assert_eq!(
+            reloaded_bundle.bounty_status,
+            Some(ForgeBountyLifecycleStatus::Completed)
+        );
+        assert_eq!(
+            reloaded_bundle.settlement_status,
+            Some(ForgeSettlementReceiptStatus::Recorded)
+        );
+        assert_eq!(
+            reloaded_bundle
+                .hosted_receipts
+                .as_ref()
+                .and_then(|receipts| receipts.worker.as_ref())
+                .map(|receipt| receipt.execution_host_id.as_str()),
+            Some("gce-worker-42")
+        );
+        let export_path = repo.join("artifacts/hosted-bookkeeping-audit.json");
+        let exported_path = chat
+            .export_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::BookkeepingRehearsal,
+                Some(export_path.to_str().expect("utf8 export path")),
+                1_700_000_260,
+            )
+            .expect("hosted bookkeeping export should persist");
+        assert_eq!(exported_path, export_path);
+        let exported = std::fs::read_to_string(exported_path.as_path())
+            .expect("hosted bookkeeping export should read");
+        let exported_json: Value =
+            serde_json::from_str(exported.as_str()).expect("bookkeeping export should parse");
+        assert_eq!(exported_json["schema_version"], 1);
+        assert_eq!(exported_json["thread_id"], "thread-a");
+        assert_eq!(exported_json["bundle"]["audit_bundle_id"], audit_bundle_id);
+        assert_eq!(
+            exported_json["bundle"]["promotion_ledger_id"],
+            promotion_ledger_id
+        );
+        assert_eq!(
+            exported_json["bundle"]["settlement_receipt_id"],
+            settlement_receipt_id
+        );
+        assert_eq!(
+            exported_json["bundle"]["hosted_receipts"]["history"][0]["kind"],
+            "approval_paused_takeover_available"
+        );
+
+        let _ = std::fs::remove_file(projection_path);
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_persists_probe_hosted_preflight_and_refreshes_audit_bundle() {
+        let repo = init_git_workspace("hosted-preflight");
+        let projection_path = unique_codex_artifact_projection_path("hosted-preflight");
+        let transcript_path = repo.join("thread-a.jsonl");
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Hosted".to_string()),
+            preview: "hosted preflight".to_string(),
+            status: Some("idle".to_string()),
+            loaded: true,
+            cwd: Some(repo.display().to_string()),
+            path: Some(transcript_path.display().to_string()),
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+        chat.set_probe_thread_projection_state("thread-a", Some("idle".to_string()), false, true);
+        chat.ensure_probe_shared_session_for_thread("thread-a", 1_700_000_110)
+            .expect("shared session");
+        let audit_bundle_id = chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                "thread-a",
+                ForgeHostedAuditKind::CodingCloseout,
+                "GCP us-central1 hosted coding closeout",
+                1_700_000_120,
+            )
+            .expect("hosted audit should record");
+
+        let report = ForgeHostedPreflightReport {
+            preflight_id: "forge-hosted-preflight-1700000130".to_string(),
+            disposition: ForgeHostedPreflightDisposition::Blocked,
+            workspace_root: Some(repo.display().to_string()),
+            repo_remote_url: Some("https://github.com/OpenAgentsInc/openagents.git".to_string()),
+            gcp_project: Some("forge-dev".to_string()),
+            gcp_region: Some("us-central1".to_string()),
+            worker_baseline: Some("repo-main".to_string()),
+            report_path: None,
+            checks: vec![
+                ForgeHostedPreflightCheck {
+                    label: "repo access".to_string(),
+                    status: ForgeHostedPreflightCheckStatus::Ok,
+                    summary: "Verified `git ls-remote origin HEAD`.".to_string(),
+                    detail: None,
+                },
+                ForgeHostedPreflightCheck {
+                    label: "repo secret".to_string(),
+                    status: ForgeHostedPreflightCheckStatus::Blocker,
+                    summary: "Set `OPENAGENTS_FORGE_HOSTED_REPO_SECRET` before launch.".to_string(),
+                    detail: None,
+                },
+                ForgeHostedPreflightCheck {
+                    label: "pack routing".to_string(),
+                    status: ForgeHostedPreflightCheckStatus::Warning,
+                    summary: "One routed pack is still unsupported on this worker.".to_string(),
+                    detail: Some("pack:forge-pack-1".to_string()),
+                },
+            ],
+            recorded_at_epoch_ms: 1_700_000_130,
+        };
+        let export_path = repo.join("artifacts/hosted-preflight.md");
+        let exported_path = chat
+            .export_probe_hosted_preflight_report_for_thread(
+                "thread-a",
+                report.clone(),
+                Some(export_path.to_str().expect("utf8 export path")),
+                1_700_000_131,
+            )
+            .expect("hosted preflight export should persist");
+        assert_eq!(exported_path, export_path);
+        let exported = std::fs::read_to_string(exported_path.as_path())
+            .expect("hosted preflight export should read");
+        assert!(exported.contains("# hosted preflight"));
+        assert!(exported.contains("forge-hosted-preflight-1700000130"));
+        assert!(exported.contains("OPENAGENTS_FORGE_HOSTED_REPO_SECRET"));
+
+        let mut stored_report = report.clone();
+        stored_report.report_path = Some(exported_path.display().to_string());
+        chat.record_probe_hosted_preflight_for_thread("thread-a", stored_report, 1_700_000_132)
+            .expect("hosted preflight should record");
+
+        let active_preflight = chat
+            .active_hosted_preflight()
+            .expect("active hosted preflight should exist");
+        assert_eq!(
+            active_preflight.disposition,
+            ForgeHostedPreflightDisposition::Blocked
+        );
+        assert_eq!(active_preflight.blocker_count(), 1);
+        assert_eq!(active_preflight.warning_count(), 1);
+        let bundle = chat
+            .active_hosted_coding_audit_bundle()
+            .expect("active hosted coding audit bundle should exist");
+        assert_eq!(bundle.audit_bundle_id, audit_bundle_id);
+        assert_eq!(
+            bundle
+                .preflight
+                .as_ref()
+                .map(|preflight| preflight.preflight_id.as_str()),
+            Some("forge-hosted-preflight-1700000130")
+        );
+        assert_eq!(
+            bundle
+                .preflight
+                .as_ref()
+                .and_then(|preflight| preflight.report_path.as_deref()),
+            Some(exported_path.display().to_string().as_str())
+        );
+
+        let reloaded =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
+        let reloaded_session = reloaded
+            .shared_session_for_thread("thread-a")
+            .expect("reloaded shared session");
+        assert_eq!(
+            reloaded_session
+                .hosted_preflight
+                .as_ref()
+                .map(|preflight| preflight.preflight_id.as_str()),
+            Some("forge-hosted-preflight-1700000130")
+        );
+        let reloaded_bundle = reloaded
+            .shared_session_for_thread("thread-a")
+            .and_then(|session| session.hosted_coding_audit_bundle_id.as_deref())
+            .and_then(|bundle_id| reloaded.forge_hosted_audit_bundles.get(bundle_id))
+            .expect("reloaded hosted coding audit bundle should exist");
+        assert_eq!(
+            reloaded_bundle
+                .preflight
+                .as_ref()
+                .map(|preflight| preflight.blocker_count()),
+            Some(1)
         );
 
         let _ = std::fs::remove_file(projection_path);
@@ -34722,6 +39426,9 @@ mod tests {
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
+            compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             delivery_proof_id: None,
             delivery_metering_rule_id: None,
             delivery_proof_status_label: None,

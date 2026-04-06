@@ -83,9 +83,221 @@ pub(crate) fn desktop_control_signature(state: &RenderState) -> String {
     append_desktop_control_shell_signature(&mut builder, state);
     append_desktop_control_buy_mode_signature(&mut builder, state);
     append_desktop_control_compute_history_signature(&mut builder, state);
+    append_desktop_control_gemma_finetune_signature(&mut builder);
     append_desktop_control_remote_training_signature(&mut builder, state);
     append_desktop_control_log_signature(&mut builder, state);
     builder.finish()
+}
+
+fn append_desktop_control_gemma_finetune_signature(builder: &mut SignatureBuilder) {
+    let status = crate::gemma_finetune_control::status().unwrap_or_default();
+    builder.bool("gemma_finetune_available", status.available);
+    builder.field("gemma_finetune_view_scope", status.view_scope.as_str());
+    builder.opt_str(
+        "gemma_finetune_scope_tenant_id",
+        status.scope_tenant_id.as_deref(),
+    );
+    builder.field("gemma_finetune_tenant_count", status.tenant_count);
+    builder.field("gemma_finetune_project_count", status.project_count);
+    builder.field("gemma_finetune_dataset_count", status.dataset_count);
+    builder.field(
+        "gemma_finetune_validation_receipt_count",
+        status.validation_receipt_count,
+    );
+    builder.field("gemma_finetune_job_count", status.job_count);
+    builder.field(
+        "gemma_finetune_promoted_model_count",
+        status.promoted_model_count,
+    );
+    builder.field(
+        "gemma_finetune_accepted_outcome_count",
+        status.accepted_outcome_count,
+    );
+    builder.field(
+        "gemma_finetune_model_inventory_count",
+        status.model_inventory_count,
+    );
+    builder.field(
+        "gemma_finetune_quota_blocked_tenant_count",
+        status.quota_blocked_tenant_count,
+    );
+    builder.opt_str(
+        "gemma_finetune_storage_path",
+        status.storage_path.as_deref(),
+    );
+    builder.opt_str("gemma_finetune_last_action", status.last_action.as_deref());
+    builder.opt_str("gemma_finetune_last_error", status.last_error.as_deref());
+    for tenant in &status.tenants {
+        builder.field("gemma_finetune_tenant_id", tenant.tenant_id.as_str());
+        builder.field(
+            "gemma_finetune_tenant_display_name",
+            tenant.display_name.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_tenant_api_key_preview",
+            tenant.api_key_preview.as_str(),
+        );
+        builder.bool("gemma_finetune_tenant_quota_ready", tenant.quota_ready);
+        builder.field(
+            "gemma_finetune_tenant_project_usage",
+            tenant.usage.project_count,
+        );
+        builder.field(
+            "gemma_finetune_tenant_dataset_usage",
+            tenant.usage.dataset_count,
+        );
+        builder.field("gemma_finetune_tenant_job_usage", tenant.usage.job_count);
+        builder.field(
+            "gemma_finetune_tenant_active_job_usage",
+            tenant.usage.active_job_count,
+        );
+        builder.field(
+            "gemma_finetune_tenant_promoted_model_usage",
+            tenant.usage.promoted_model_count,
+        );
+        for blocker in &tenant.quota_blockers {
+            builder.field("gemma_finetune_tenant_quota_blocker", blocker.as_str());
+        }
+    }
+    for project in &status.projects {
+        builder.field("gemma_finetune_project_id", project.project_id.as_str());
+        builder.field("gemma_finetune_project_tenant", project.tenant_id.as_str());
+        builder.opt_str(
+            "gemma_finetune_project_active_dataset",
+            project.active_dataset_id.as_deref(),
+        );
+        builder.field(
+            "gemma_finetune_project_base_digest",
+            project.base_served_artifact_digest.as_str(),
+        );
+        builder.opt_str(
+            "gemma_finetune_project_last_error",
+            project.last_error.as_deref(),
+        );
+    }
+    for dataset in &status.datasets {
+        builder.field("gemma_finetune_dataset_id", dataset.dataset_id.as_str());
+        builder.field(
+            "gemma_finetune_dataset_project",
+            dataset.project_id.as_str(),
+        );
+        builder.field("gemma_finetune_dataset_ref", dataset.dataset_ref.as_str());
+        builder.field(
+            "gemma_finetune_dataset_receipt_status",
+            dataset.validation_receipt.status.as_str(),
+        );
+        builder.bool(
+            "gemma_finetune_dataset_template_compatible",
+            dataset.validation_receipt.template_compatible,
+        );
+        builder.bool(
+            "gemma_finetune_dataset_tokenizer_compatible",
+            dataset.validation_receipt.tokenizer_compatible,
+        );
+        builder.field(
+            "gemma_finetune_dataset_train_count",
+            dataset.train_split.sample_count,
+        );
+        builder.field(
+            "gemma_finetune_dataset_validation_count",
+            dataset.held_out_validation_split.sample_count,
+        );
+        builder.field(
+            "gemma_finetune_dataset_holdout_count",
+            dataset.final_report_split.sample_count,
+        );
+        builder.opt_str(
+            "gemma_finetune_dataset_last_error",
+            dataset.last_error.as_deref(),
+        );
+    }
+    for job in &status.jobs {
+        builder.field("gemma_finetune_job_id", job.job_id.as_str());
+        builder.field("gemma_finetune_job_project", job.project_id.as_str());
+        builder.field("gemma_finetune_job_dataset", job.dataset_id.as_str());
+        builder.field("gemma_finetune_job_state", job.state.label());
+        builder.field("gemma_finetune_job_phase", job.phase.label());
+        builder.bool("gemma_finetune_job_cancel_requested", job.cancel_requested);
+        builder.field("gemma_finetune_job_completed_steps", job.completed_steps);
+        builder.opt_str(
+            "gemma_finetune_job_selected_candidate",
+            job.selected_candidate_id.as_deref(),
+        );
+        builder.opt_str("gemma_finetune_job_last_error", job.last_error.as_deref());
+        if let Some(promotion) = job.promotion.as_ref() {
+            builder.field(
+                "gemma_finetune_job_promotion_checkpoint",
+                promotion.checkpoint_id.as_str(),
+            );
+            builder.opt_str(
+                "gemma_finetune_job_promoted_model_ref",
+                promotion.promoted_model_ref.as_deref(),
+            );
+            builder.field(
+                "gemma_finetune_job_promotion_state",
+                match promotion.decision.decision_state {
+                    psionic_train::GemmaE4bPromotionDecisionState::Promote => "promote",
+                    psionic_train::GemmaE4bPromotionDecisionState::HoldForReview => {
+                        "hold_for_review"
+                    }
+                    psionic_train::GemmaE4bPromotionDecisionState::Reject => "reject",
+                },
+            );
+        }
+    }
+    for model in &status.promoted_models {
+        builder.field(
+            "gemma_finetune_promoted_model_ref",
+            model.model_ref.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_promoted_model_project",
+            model.project_id.as_str(),
+        );
+        builder.field("gemma_finetune_promoted_model_job", model.job_id.as_str());
+        builder.field(
+            "gemma_finetune_promoted_model_checkpoint",
+            model.checkpoint_id.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_promoted_model_digest",
+            model.adapter_artifact_digest.as_str(),
+        );
+    }
+    for outcome in &status.accepted_outcomes {
+        builder.field("gemma_finetune_outcome_id", outcome.outcome_id.as_str());
+        builder.field("gemma_finetune_outcome_tenant", outcome.tenant_id.as_str());
+        builder.field(
+            "gemma_finetune_outcome_model_ref",
+            outcome.model_ref.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_outcome_inventory_model_id",
+            outcome.inventory_model_id.as_str(),
+        );
+    }
+    for inventory_model in &status.model_inventory {
+        builder.field(
+            "gemma_finetune_inventory_model_id",
+            inventory_model.inventory_model_id.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_inventory_model_tenant",
+            inventory_model.tenant_id.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_inventory_model_ref",
+            inventory_model.model_ref.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_inventory_publication_state",
+            inventory_model.publication_state.as_str(),
+        );
+        builder.field(
+            "gemma_finetune_inventory_serving_posture",
+            inventory_model.serving_posture.as_str(),
+        );
+    }
 }
 
 fn append_provider_runtime_signature(builder: &mut SignatureBuilder, state: &RenderState) {

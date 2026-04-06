@@ -141,9 +141,8 @@ Tradable compute product family and runtime shape.
 
 Examples:
 
-* `ollama.text_generation`
-* `ollama.embeddings`
-* `apple_foundation_models.text_generation`
+* `psionic.local.inference.gemma.single_node`
+* `psionic.local.embeddings.gemma.single_node`
 * `sandbox.container.exec`
 * `sandbox.python.exec`
 * `sandbox.node.exec`

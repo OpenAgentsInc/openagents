@@ -35,12 +35,19 @@ It can:
   app-owned snapshot the desktop uses, including delivery acceptance,
   validator outcomes, accepted training outcomes, checkpoint lineage, and
   settlement history when kernel authority is configured
+- inspect and mutate the bounded `gemma4:e4b` finetuning surface through
+  authenticated desktop control, including project binding, explicit split
+  identity, tokenizer/template compatibility receipts, async jobs, checkpoint
+  and artifact truth, and bounded promotion state
 - list, open, focus, close, and inspect panes in the running desktop shell
 - inspect the bounded contributor-beta control surface and its governed
   submission state through the same pane snapshot contract as the GUI
 - emit structured desktop perf snapshots from the app-owned `Frame Debugger`
   surface through `autopilotctl perf`
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
+- inspect the pooled-inference mesh surface the desktop currently sees, including
+  local serving versus proxy posture, routed model inventory, warm replicas, and
+  mesh membership
 - refresh the active local runtime and wallet state
 - inspect Apple FM adapter inventory and current session attachment truth from the
   same desktop snapshot the workbench uses
@@ -61,6 +68,11 @@ It can:
 - select the managed NIP-28 main channel
 - list NIP-28 groups, channels, and recent messages
 - send or retry NIP-28 chat messages
+- inspect and operate the current internal Forge shared-session lane through
+  `autopilotctl forge`, including hosted session discovery, hosted attach, and
+  controller handoff commands for the Probe-backed coding shell, with
+  no-window Forge-host autostart when no live desktop-control target is
+  reachable
 - start and stop Buy Mode against the same in-app state used by the GUI
 - pull a daily or explicit-window NIP-90 sent-payments report backed by the
   app-owned buyer payment-attempt ledger instead of raw relay rows
@@ -110,6 +122,10 @@ autopilotctl apple-fm status
 autopilotctl apple-fm list
 autopilotctl gpt-oss status
 autopilotctl gpt-oss warm --wait
+autopilotctl pooled-inference status
+autopilotctl pooled-inference topology
+autopilotctl pooled-inference export-join-bundle /tmp/mesh-home.join.json --mesh-root /tmp/mesh-home
+autopilotctl pooled-inference import-join-bundle /tmp/mesh-home.join.json --mesh-root /tmp/mesh-joiner
 autopilotctl wait gpt-oss-ready
 autopilotctl attnres status
 autopilotctl attnres start
@@ -121,6 +137,11 @@ autopilotctl wait attnres-completed
 autopilotctl provider online
 autopilotctl chat status
 autopilotctl chat messages --tail 20
+autopilotctl forge status
+autopilotctl forge hosted sessions
+autopilotctl forge hosted attach-shared forge-session-1
+autopilotctl forge handoff request "taking over triage"
+autopilotctl forge handoff accept "accepted from desktop-b"
 autopilotctl buy-mode status
 autopilotctl nip90-payments daily --date 2026-03-14
 autopilotctl nip90-payments window --start 2026-03-14T05:00:00+00:00 --end 2026-03-15T05:00:00+00:00 --json
@@ -129,6 +150,15 @@ autopilotctl tunnels status
 autopilotctl cluster status
 autopilotctl sandbox status
 autopilotctl training status
+autopilotctl gemma-finetune status
+autopilotctl gemma-finetune tenant create design-partner --display-name "Design Partner"
+autopilotctl gemma-finetune tenant status --api-key <tenant-api-key>
+autopilotctl gemma-finetune project create "Support agent" --tenant-id design-partner --api-key <tenant-api-key> --base-served-artifact-digest sha256:gemma4-e4b-base --hidden-size <hidden-state-width>
+autopilotctl gemma-finetune dataset register support-agent-1760000000000 dataset://openagents/support-agent@2026.04 --api-key <tenant-api-key> /tmp/train.jsonl /tmp/validation.jsonl /tmp/holdout.jsonl --baseline-short-path /tmp/baseline-short.jsonl --final-report-path /tmp/final-report.jsonl --chat-template-digest sha256:gemma4-e4b-template --benchmark-ref benchmark://psionic/gemma4/e4b/finetune_eval
+autopilotctl gemma-finetune job create support-agent-1760000000000 --api-key <tenant-api-key> --dataset-id support-agent-2026-04-1760000000500
+autopilotctl gemma-finetune job get support-agent-1760000000000-1760000000600 --api-key <tenant-api-key>
+autopilotctl gemma-finetune job cancel support-agent-1760000000000-1760000000600 --api-key <tenant-api-key>
+autopilotctl gemma-finetune promote support-agent-1760000000000-1760000000600 --api-key <tenant-api-key> --checkpoint-id support-agent-r1760000000600-final --reviewer-id operator-1 --review-state approved
 autopilotctl remote-training status
 autopilotctl remote-training list
 autopilotctl remote-training run parameter-golf-runpod-single-h100-live-sample
@@ -150,6 +180,55 @@ autopilotctl pane status contributor_beta --json
 autopilotctl pane close provider_control
 autopilotctl pane open provider_control
 ```
+
+`autopilotctl forge` is the first honest programmatic control surface for the
+current internal Forge MVP. It does not try to expose every future Forge object
+yet. It covers the shared coding-session seam that already exists in the app:
+
+For a narrow user-facing and agent-facing reference focused only on that Forge
+CLI, use [`docs/codex/AUTOPILOTCTL_FORGE_CLI.md`](./codex/AUTOPILOTCTL_FORGE_CLI.md).
+
+The repo now also ships a no-window Forge host:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilot_headless_forge -- \
+  --manifest-path /tmp/openagents-forge-desktop-control.json
+```
+
+`autopilotctl forge ...` will autostart that host shape automatically when:
+
+- you did not pass an explicit `--base-url` and `--auth-token`
+- the resolved manifest is missing or stale
+- no desktop-control target is reachable at the recorded endpoint
+
+If you want the hidden host isolated from a normal desktop session, pass an
+explicit `--manifest` path to `autopilotctl` or start
+`autopilot_headless_forge` manually with `--manifest-path`.
+
+The repo-owned smoke script for that path is:
+
+```bash
+scripts/autopilot/headless-forge-smoke.sh
+```
+
+- `autopilotctl forge status [--thread-id <probe-session-id>]`
+  - prints the current shared-session/controller state for the active or named
+    Probe thread
+- `autopilotctl forge hosted sessions`
+  - lists visible hosted Forge sessions from the shared shell state
+- `autopilotctl forge hosted attach-shared <shared-session-id>`
+- `autopilotctl forge hosted attach-probe <probe-session-id>`
+  - binds the current desktop to a hosted shared session and loads its Probe
+    session through the same attach flow the UI uses
+- `autopilotctl forge handoff status [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff request <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff accept <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff take <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff note <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff human <summary> [--thread-id <probe-session-id>]`
+- `autopilotctl forge handoff agent <summary> [--thread-id <probe-session-id>]`
+  - all of these operate on the same app-owned participant roster and
+    controller-lease truth the desktop shell already projects
 
 The AttnRes command group drives the same persisted Psionic-backed lab state the
 desktop pane uses. `autopilotctl attnres status` hydrates the current lab state
@@ -204,6 +283,142 @@ quotes, including the active quote mode, selected quote IDs, and the quoted
 backend, topology, proof posture, environment ref, and sandbox profile where
 those fields are present.
 
+`autopilotctl pooled-inference status` is the first dedicated operator view for
+the Psionic mesh-backed pooled-inference lane. Set
+`OPENAGENTS_PSIONIC_MESH_MANAGEMENT_BASE_URL` to the Psionic management host,
+then use the command to inspect the local machine's current pooled-inference
+posture: whether this node is serving locally, standing by, or proxying into
+the pool, which models are currently warm and targetable, how many warm
+replicas exist across the visible mesh, and which reasons are currently driving
+the local contribution posture. `autopilotctl pooled-inference topology`
+extends that same view with the visible member list and per-node warm-model
+inventory.
+
+That same pooled-inference status now feeds the desktop provider inventory and
+kernel-market launch product identity. When the mesh is configured, the cluster
+inventory section no longer shows a placeholder. Instead it projects four
+distinct pooled inference products:
+
+- `psionic.cluster.inference.pooled.remote_whole_request`
+- `psionic.cluster.inference.pooled.replicated`
+- `psionic.cluster.inference.pooled.dense_split`
+- `psionic.cluster.inference.pooled.sparse_expert`
+
+Those product IDs are published as generic pooled-inference products rather
+than `gpt_oss`-only products. Each one carries explicit clustered-execution
+truth, topology, provisioning, and live mesh state. The desktop and
+`autopilotctl pooled-inference status` surfaces now show the models that are
+actually targetable through the pool, the execution modes each model supports,
+the topology used for that mode, and the participating machines currently
+behind it.
+
+The four pooled products map to plain operator-visible behaviors:
+
+- `psionic.cluster.inference.pooled.remote_whole_request`
+  One machine in the pool handles the full request, even if the request entered
+  through a different machine.
+- `psionic.cluster.inference.pooled.replicated`
+  The pool keeps multiple warm copies of the same model ready so requests can
+  fail over or be promoted into serving faster.
+- `psionic.cluster.inference.pooled.dense_split`
+  One dense model request is split across multiple machines instead of requiring
+  a single machine to hold the whole serving workload.
+- `psionic.cluster.inference.pooled.sparse_expert`
+  An expert-sharded model runs across multiple machines, with different
+  machines responsible for different expert shards.
+
+The inventory and active-job surfaces also spell out the current revenue rule
+for each product:
+
+- `psionic.local.inference.*.single_node` earns when a local delivery is
+  accepted and wallet settlement is confirmed.
+- `psionic.cluster.inference.pooled.remote_whole_request` earns when the pool
+  serves the request and the clustered delivery proof is accepted.
+- `psionic.cluster.inference.pooled.replicated` publishes standby capacity, but
+  warm replicas alone do not earn. Revenue starts only when a reserve window
+  sells or a replica is promoted into accepted delivery.
+- `psionic.cluster.inference.pooled.dense_split` earns when a single request is
+  actually split across multiple machines and the clustered delivery proof is
+  accepted.
+- `psionic.cluster.inference.pooled.sparse_expert` earns when an expert-sharded
+  request is executed across the pool and the clustered delivery proof is
+  accepted.
+
+When an active job or a persisted history row already carries pooled product
+identity, the desktop now preserves the same `compute_product_id`,
+`market_receipt_class`, and earnings summary through the live status view,
+kernel receipt tags, and authoritative history rehydrate. `autopilotctl status`
+and `autopilotctl pooled-inference status` therefore tell the operator whether
+the current contribution is direct local serving, whole-request pooled serving,
+standby replica capacity, split-across-machines serving, or expert-sharded
+pooled serving.
+
+The same command group now also owns the multi-machine join and invite path
+above Psionic mesh-lane truth:
+
+- `autopilotctl pooled-inference export-join-bundle <output-path>`
+- `autopilotctl pooled-inference import-join-bundle <input-path>`
+
+Those commands shell out to `psionic-mesh-lane`, read or update the file-backed
+lane root, and then project the resulting join state back through the normal
+desktop-control snapshot. The desktop and CLI keep Psionic as the source of
+truth for:
+
+- the owned pooled-inference service binary and management surface; this path
+  does not depend on a separate external mesh sidecar runtime
+- whether the local lane is still `standalone` or has `joined`
+- the last selected mesh preference, including label, namespace, cluster id,
+  trust digest, and advertised control-plane addresses
+- the last imported join bundle, including admission kind, trust posture,
+  discovery posture, trust-bundle version, and export/import timestamps
+
+Configure the lane root with either:
+
+- `--mesh-root /absolute/path/to/mesh-root`
+- `OPENAGENTS_PSIONIC_MESH_LANE_ROOT=/absolute/path/to/mesh-root`
+
+If `autopilotctl` cannot find a colocated `psionic-mesh-lane` binary, point it
+at one explicitly with:
+
+- `OPENAGENTS_PSIONIC_MESH_LANE_BIN=/absolute/path/to/psionic-mesh-lane`
+
+Otherwise it first looks for a sibling binary beside the current desktop
+artifacts and then falls back to running the sibling `../psionic` checkout with
+`cargo run -p psionic-serve --bin psionic-mesh-lane -- ...`.
+
+Join-bundle export uses the mesh lane's configured service port and derives
+advertised control-plane addresses from the current Tailnet self-device IPs
+when you do not pass explicit `--advertise <ip:port>` values. That keeps the
+common "share this machine with another machine on my Tailnet" path short:
+
+```bash
+export OPENAGENTS_PSIONIC_MESH_LANE_ROOT=/tmp/mesh-home
+autopilotctl pooled-inference export-join-bundle /tmp/mesh-home.join.json
+```
+
+If you need to publish a different address set, override it directly:
+
+```bash
+autopilotctl pooled-inference export-join-bundle /tmp/mesh-home.join.json \
+  --mesh-root /tmp/mesh-home \
+  --mesh-label mesh-home \
+  --advertise 100.90.1.10:47470 \
+  --advertise 100.90.1.11:47470
+```
+
+Import records the join bundle into the target lane root by running
+`psionic-mesh-lane install --join-bundle ...`. If the local pooled-inference
+lane is already running, the file-backed join state may require a lane restart
+before the management host reflects the new posture. `autopilotctl` reports
+that explicitly through `restart_required` and `restart_hint` so operators do
+not mistake "bundle recorded" for "running process already reloaded."
+
+```bash
+export OPENAGENTS_PSIONIC_MESH_LANE_ROOT=/tmp/mesh-joiner
+autopilotctl pooled-inference import-join-bundle /tmp/mesh-home.join.json
+autopilotctl pooled-inference status
+```
+
 `autopilotctl tailnet status` is the focused operator view for the same Tailnet
 roster now surfaced in the desktop `Tailnet Status` pane. It shells out to
 `tailscale status --json`, normalizes the local node plus peer devices into the
@@ -232,6 +447,86 @@ training read model. It includes:
 - a contributor-focused summary for the current desktop node so operators can
   see whether the local runtime is blocked, awaiting assignment, submitted,
   accepted, quarantined, replay-required, or settlement-ready
+
+Desktop control now also carries a separate bounded `gemma_finetune` surface
+for the first `gemma4:e4b` adapter-SFT MVP. This is intentionally narrower than
+the Apple adapter operator and narrower than a general finetuning platform:
+
+- it is a design-partner and operator-facing prep surface for the bounded
+  CUDA-only `gemma4:e4b` lane
+- it now has an app-owned tenant registry with one provisioned API key per
+  design partner, explicit quota state, and fail-closed auth on tenant-scoped
+  project, dataset, job, and promotion actions
+- it records project identity, tenant identity, served-base binding, and the
+  frozen Psionic training-family and eval-pack contract the project targets
+- it records explicit `train`, `held_out_validation`, `baseline_short`, and
+  `final_report` split identity before a job exists
+- it surfaces tokenizer/template compatibility, assistant-mask posture, overlap
+  review refs, and validation receipts through the same authenticated snapshot
+  contract as the desktop shell
+- it projects accepted finetune outcomes and customer-visible promoted-model
+  inventory rows once a checkpoint clears the bounded promotion gate
+
+This surface does not yet claim broad upload or raw conversation ingestion.
+Today the bounded lane expects preprocessed hidden-state supervision files in
+the Psionic `GemmaE4bLmHeadSupervisionSample` shape, provided either as JSON
+arrays or JSONL. The operator must declare train, validation, and holdout files
+explicitly, and the desktop-control layer truthfully rejects template drift
+before any training job is created.
+
+The new desktop-control actions are:
+
+- `gemma-finetune-status`
+  - returns the operator aggregate view: tenant quota rows, current project and
+    dataset state, visible validation receipts, jobs, accepted-outcome rows,
+    and promoted-model inventory
+- `gemma-finetune-tenant-provision`
+  - creates one bounded design-partner tenant record and returns the single
+    API key used for tenant-scoped Gemma actions
+- `gemma-finetune-tenant-view`
+  - returns the authenticated tenant-scoped read model, including quota usage,
+    projects, jobs, accepted outcomes, and published inventory rows
+- `gemma-finetune-project-create`
+  - binds one design-partner project to the bounded `gemma4:e4b` training lane
+    and its canonical eval pack, but only when the supplied tenant API key is
+    valid for that tenant and the bounded quota is still open
+- `gemma-finetune-dataset-register`
+  - registers explicit split files, computes split digests and counts, and
+    records a validation receipt that captures tokenizer/template compatibility
+    plus overlap-review posture under the authenticated tenant
+- `gemma-finetune-job-create`
+  - queues one bounded async Gemma job against the admitted dataset bound to a
+    project, but fails closed if the tenant or the single-lane bounded runtime
+    is already saturated
+- `gemma-finetune-job-get`
+  - returns per-job state, recent events, checkpoints, exported artifacts, and
+    the current promotion record if one exists, scoped by the tenant API key
+- `gemma-finetune-job-cancel`
+  - requests cancellation and leaves the job in explicit `cancel_requested` or
+    terminal `cancelled` truth instead of hiding the operator intent
+- `gemma-finetune-checkpoint-promote`
+  - records the operator review, scores the bounded Psionic promotion decision,
+    and either publishes a discoverable promoted-model ref plus accepted-outcome
+    and model-inventory truth or leaves the job in explicit `hold_for_review` /
+    `reject` posture
+
+`autopilotctl status` now prints a top-level `gemma finetune:` line alongside
+the broader desktop snapshot, and `autopilotctl gemma-finetune status` expands
+that into per-tenant quota, per-project, per-dataset, per-job, accepted-outcome,
+and inventory detail. `autopilotctl gemma-finetune tenant status --api-key ...`
+returns the same read model but scoped to one design partner. The job getter
+prints recent events plus checkpoint and artifact rows. The create, register,
+queue, cancel, and promote commands all operate against the same state the
+desktop keeps on disk under
+`~/.openagents/logs/autopilot/gemma-finetune.json`.
+
+The current promotion path is intentionally narrow. OpenAgents now records the
+real Psionic baseline sweep, trainer progress, checkpoint digests, exported
+adapter digests, and operator review packet. The public Psionic scorer is not
+yet exported through this repo, so the current eval receipts are explicitly
+derived from the bounded held-out loss lane plus the frozen dataset/template
+contract checks. The promotion decision surfaces that truth directly instead of
+pretending the desktop already owns a broader finetune control plane.
 
 Desktop control now also carries a separate `remote_training` mirror for the
 Psionic Google and RunPod lanes. That surface is app-owned and provider-neutral:

@@ -9,12 +9,15 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 3. [`PROBE_LOCAL_SIDECAR_ADOPTION.md`](./PROBE_LOCAL_SIDECAR_ADOPTION.md)
 4. [`PROBE_SHELL_PROJECTION.md`](./PROBE_SHELL_PROJECTION.md)
 5. [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
-6. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](./CAD_CHAT_BUILD_IMPLEMENTATION.md)
-7. [`CODEX_PANE_CAD_TOOLING.md`](./CODEX_PANE_CAD_TOOLING.md)
-8. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](./CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
-9. [`CAD_PHASE2_DEMO_RUNBOOK.md`](./CAD_PHASE2_DEMO_RUNBOOK.md)
-10. [`EXEC.md`](./EXEC.md)
-11. [`REMOTE.md`](./REMOTE.md)
+6. [`AUTOPILOTCTL_FORGE_CLI.md`](./AUTOPILOTCTL_FORGE_CLI.md)
+7. [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
+8. [`FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md`](./FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md)
+9. [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](./CAD_CHAT_BUILD_IMPLEMENTATION.md)
+10. [`CODEX_PANE_CAD_TOOLING.md`](./CODEX_PANE_CAD_TOOLING.md)
+11. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](./CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
+12. [`CAD_PHASE2_DEMO_RUNBOOK.md`](./CAD_PHASE2_DEMO_RUNBOOK.md)
+13. [`EXEC.md`](./EXEC.md)
+14. [`REMOTE.md`](./REMOTE.md)
 
 ## Documents
 
@@ -37,13 +40,38 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
     provenance, hosted runtime ownership plus execution-host projection, and
     reviewer evidence bundle plus delivery-receipt state, active campaigns,
     promotion ledgers, scoped knowledge-pack catalogs, bounty contracts, claim
-    lifecycle, settlement receipts, and participant credit envelopes.
+    lifecycle, settlement receipts, hosted audit bundles, hosted audit export,
+    participant credit envelopes, the new internal shared Forge-state backing
+    store for cross-desktop collaboration, the hosted-session directory and
+    attach seam above that shared state, and the new participant-roster plus
+    controller-handoff collaboration layer for internal team sessions.
 - [`PROBE_OPERATOR_CONTROLS.md`](./PROBE_OPERATOR_CONTROLS.md)
   - the current desktop operator loop above Probe sessions, including queued
-    follow-ups, interrupt, approval resolution, queued-turn cancel, Probe
-    mounted-pack routing and projection, and evidence, knowledge-pack authoring,
-    campaign, promotion, delivery, and settlement recording plus delivery-watch
-    refresh commands.
+  follow-ups, interrupt, approval resolution, queued-turn cancel, Probe
+  mounted-pack routing and projection, and evidence, knowledge-pack authoring,
+  campaign, promotion, delivery, settlement, hosted preflight, hosted-audit
+  recording and export, delivery-watch refresh commands, the new
+  `autopilotctl forge ...` programmatic control path, and hosted session
+  discovery plus attach commands for internal shared-session collaboration.
+- [`AUTOPILOTCTL_FORGE_CLI.md`](./AUTOPILOTCTL_FORGE_CLI.md)
+  - the narrow user-facing and agent-facing command reference for scripting the
+    current internal Forge shared-session lane through `autopilotctl`,
+    including the standalone no-window Forge host and autostart behavior.
+- [`FORGE_AGENT_INSTRUCTIONS.md`](./FORGE_AGENT_INSTRUCTIONS.md)
+  - the one-document agent runbook for OpenAgents engineers who want their
+    agent to discover, attach, hand off, and report on the current internal
+    Forge shared coding lane.
+- [`FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md`](./FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md)
+  - operator runbook for the boring GCP-hosted Forge lane, now updated with
+  the first successful live run, the repo-owned hosted harness entrypoint,
+  the exact proved GCP footprint, the shared-state config needed for
+    multi-desktop internal dogfood, the hosted session directory and attach
+    flow for internal teammates, the controller-handoff commands for shared
+    team sessions, and the concrete lessons from the live dogfood pass.
+- [`FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md`](./FORGE_HOSTED_CLOSEOUT_AUDIT_BUNDLE.md)
+  - the first checked-in hosted closeout bundle for the successful April 2,
+    2026 live GCP run, including session identity, exported artifact paths,
+    fixes required to make the lane pass, and the remaining operational gaps.
 - [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md)
   - comprehensive shipped architecture, runtime flow, state model, retries/failure classes, tests, and operator controls.
 - [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)

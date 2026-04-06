@@ -16,12 +16,12 @@ grep -q '^state: unconfigured$' <<<"$status_before_init"
 cargo run -p pylon -- --config-path "$CONFIG_PATH" init >/dev/null
 
 backends_json="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" backends --json)"
-grep -q '"backend_id": "ollama"' <<<"$backends_json"
+grep -q '"backend_id": "gpt_oss"' <<<"$backends_json"
 grep -q '"backend_id": "apple_foundation_models"' <<<"$backends_json"
 
 products_output="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" products)"
-grep -q '^product: ollama.text_generation$' <<<"$products_output"
-grep -q '^product: ollama.embeddings$' <<<"$products_output"
+grep -q '^product: psionic.local.inference.gpt_oss.single_node$' <<<"$products_output"
+grep -q '^product: psionic.local.inference.apple_foundation_models.single_node$' <<<"$products_output"
 if grep -q 'apple_foundation_models.embeddings' <<<"$products_output"; then
   echo "unexpected Apple FM embeddings product surfaced" >&2
   exit 1
@@ -48,6 +48,8 @@ grep -q '^desired_mode: offline$' <<<"$offline_output"
 cargo run -p pylon -- --config-path "$CONFIG_PATH" jobs >/dev/null
 cargo run -p pylon -- --config-path "$CONFIG_PATH" earnings >/dev/null
 cargo run -p pylon -- --config-path "$CONFIG_PATH" receipts >/dev/null
+cargo run -p pylon -- --config-path "$CONFIG_PATH" activity >/dev/null
+cargo run -p pylon -- --config-path "$CONFIG_PATH" payout >/dev/null
 
 cargo test -p openagents-provider-substrate sandbox_execution::tests::policy_rejection_is_receipted -- --nocapture
 cargo test -p openagents-provider-substrate sandbox_execution::tests::local_subprocess_success_emits_receipt_and_artifacts -- --nocapture

@@ -155,6 +155,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                     thread_id.as_str(),
                     snapshot.session.runtime_owner.as_ref(),
                     snapshot.session.workspace_state.as_ref(),
+                    snapshot.session.hosted_receipts.as_ref(),
                     snapshot.session.updated_at_ms,
                 );
             let _ = state.autopilot_chat.sync_probe_child_sessions_for_thread(
@@ -252,6 +253,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: ProbeLan
                     session_id.as_str(),
                     None,
                     workspace_state.as_ref(),
+                    None,
                     current_epoch_millis(),
                 );
             let delivery_watch_updated_at_ms = probe_delivery_watch_updated_at_ms(

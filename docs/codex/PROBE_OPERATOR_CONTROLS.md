@@ -50,6 +50,55 @@ This document records the current app-owned operator loop for Probe-backed Autop
   - `/settle dispute <actor-label> [summary]`
   - `/settle cancel <reason>`
   - `/settle status`
+- The desktop command surface now also exposes hosted coding closeout audit
+  capture through:
+  - `/hosted sessions`
+  - lists the internal hosted Forge session directory from shared shell state
+  - `/hosted attach shared <shared-session-id>`
+  - binds the current desktop to the hosted shared session and loads its Probe
+    session
+  - `/hosted attach probe <probe-session-id>`
+  - attaches directly when the operator already has the hosted Probe session id
+  - `/hosted preflight [path]`
+  - `/hosted coding <environment-summary>`
+  - `/hosted bookkeeping <environment-summary>`
+  - `/hosted note <coding|bookkeeping> <summary>`
+  - `/hosted recovery <coding|bookkeeping> <summary>`
+  - `/hosted defect <coding|bookkeeping> <summary>`
+  - `/hosted export <coding|bookkeeping> [path]`
+  - `/hosted status`
+  - the same internal hosted-session directory and attach flow is now
+    available programmatically through:
+  - `autopilotctl forge hosted sessions`
+  - `autopilotctl forge hosted attach-shared <shared-session-id>`
+  - `autopilotctl forge hosted attach-probe <probe-session-id>`
+- Shared-session collaboration control now also runs through:
+  - `/handoff status`
+  - shows the current controller, local watch-vs-control posture, pending
+    request, participant roster, and recent collaboration events
+  - `/handoff request <summary>`
+  - records a handoff request from the current desktop operator without
+    changing control yet
+  - `/handoff accept <summary>`
+  - accepts the pending request and moves controller ownership to the
+    requesting participant
+  - `/handoff take <summary>`
+  - immediately moves controller ownership to the current desktop operator
+  - `/handoff note <summary>`
+  - records a shared operator note on the collaboration timeline
+  - `/handoff human <summary>` and `/handoff agent <summary>`
+  - keep the coarse explicit owner flip for cases where the operator wants to
+    hand the next turn directly to the human lane or the Probe agent
+  - the same shared-session controller state is now available programmatically
+    through:
+  - `autopilotctl forge status [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff status [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff request <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff accept <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff take <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff note <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff human <summary> [--thread-id <probe-session-id>]`
+  - `autopilotctl forge handoff agent <summary> [--thread-id <probe-session-id>]`
 - The header actions for Probe-backed threads now use app-owned parity where the
   runtime seam is still narrower:
   - rename and archive or unarchive persist as shared-session shell overlays
@@ -85,6 +134,15 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - settlement commands also stay app-owned: Probe is not the hidden home for
   dispute windows, settlement cancel reasons, evaluator references, or payout
   closure posture
+- hosted audit commands also stay app-owned: Probe remains the source of
+  hosted receipts, mounted refs, session ownership, and execution-host truth,
+  while the desktop runs the hosted preflight, persists the preflight report,
+  and groups that runtime truth into one reviewer-facing closeout or
+  bookkeeping audit bundle above the shared session
+- shared-session collaboration posture also stays app-owned for now: Probe
+  supplies runtime truth, while Autopilot keeps the participant roster,
+  controller lease presentation, pending handoff request, and collaboration
+  timeline above that runtime
 - local branch and compare watch now refresh automatically from Probe session
   load and detached workspace-state events when a delivery receipt already
   exists
@@ -113,6 +171,13 @@ This document records the current app-owned operator loop for Probe-backed Autop
 - Settlement receipts are also local-first. They close the current shared
   session truth for review or retained-metric purposes, but they are not yet a
   money-movement system or a hosted claims database.
+- Hosted audit bundles are also local-first. They persist operator-facing
+  closeout or bookkeeping notes, recovery steps, defects, and linked Probe
+  hosted receipts in the desktop shell rather than pretending we already have a
+  separate hosted audit registry.
+- Hosted preflight checks are also local-first. They verify repo auth, GitHub
+  auth, GCP config, required env, worker baseline readiness, and routed-pack
+  warnings from the operator desktop before a hosted dogfood launch.
 - GitHub watch refresh depends on a working local `gh` installation plus repo
   access. If that is missing, the shell keeps the last recorded watch state and
   reports the refresh failure honestly.

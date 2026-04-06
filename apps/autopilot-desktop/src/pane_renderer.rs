@@ -6523,6 +6523,7 @@ fn paint_network_requests_pane(
                             order.product_id,
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => "pooled_inference",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
@@ -6672,6 +6673,7 @@ fn paint_network_requests_pane(
                             order.product_id,
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => "pooled_inference",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
@@ -10033,10 +10035,12 @@ fn paint_job_history_pane(
                 .with_corner_radius(6.0),
         );
         let row_line = format!(
-            "{} {} src:{} payer_nostr:{} payee_nostr:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
+            "{} {} src:{} product:{} receipt:{} payer_nostr:{} payee_nostr:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} earnings:{} {} {}",
             row.job_id,
             row.status.label(),
             row.demand_source.label(),
+            row.compute_product_id.as_deref().unwrap_or("none"),
+            row.market_receipt_class.as_deref().unwrap_or("none"),
             row.requester_nostr_pubkey.as_deref().unwrap_or("unknown"),
             row.provider_nostr_pubkey.as_deref().unwrap_or("unknown"),
             row.completed_at_epoch_seconds,
@@ -10053,6 +10057,7 @@ fn paint_job_history_pane(
             row.delivery_rejection_reason_label
                 .as_deref()
                 .unwrap_or("none"),
+            row.earnings_summary.as_deref().unwrap_or("none"),
             row.result_hash,
             row.payment_pointer
         );

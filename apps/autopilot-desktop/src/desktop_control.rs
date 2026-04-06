@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::ffi::OsString;
 use std::fs;
 use std::net::{IpAddr, SocketAddr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
@@ -55,6 +57,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
 
+pub use crate::app_state::ForgeSharedSessionControlOwner;
 pub use crate::provider_inventory::{
     DesktopControlInventoryProductStatus, DesktopControlInventoryProjectionStatus,
     DesktopControlInventorySectionStatus, DesktopControlInventoryStatus,
@@ -65,7 +68,8 @@ use crate::app_state::{
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
     MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, PaneKind, PanePresentation,
     RenderState, SnapshotTimingSample, TassadarLabReplayFamily, TassadarLabSourceMode,
-    TassadarLabViewMode, mission_control_buy_mode_interval_label,
+    TassadarLabViewMode, forge_shared_session_controller_label,
+    forge_shared_session_local_role_label, mission_control_buy_mode_interval_label,
     mission_control_local_runtime_view_model,
 };
 use crate::apple_adapter_training_control::{
@@ -102,7 +106,7 @@ use wgpui::{
     capture_scene, theme,
 };
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 20;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 23;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -113,11 +117,19 @@ const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
 const DESKTOP_CONTROL_ACTION_TIMEOUT: Duration = Duration::from_secs(30);
 const DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS: u64 = 15_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT: usize = 8;
+const DESKTOP_CONTROL_POOLED_INFERENCE_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 const DESKTOP_CONTROL_TAILNET_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+const DESKTOP_CONTROL_POOLED_INFERENCE_LOCAL_WORKER_ID: &str = "openai_compat";
 
 pub const DESKTOP_CONTROL_MANIFEST_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_MANIFEST";
 pub const DESKTOP_CONTROL_BIND_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_BIND";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV: &str =
+    "OPENAGENTS_PSIONIC_MESH_MANAGEMENT_BASE_URL";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV: &str = "OPENAGENTS_PSIONIC_MESH_LANE_BIN";
+pub const DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV: &str = "OPENAGENTS_PSIONIC_MESH_LANE_ROOT";
 
+static DESKTOP_CONTROL_POOLED_INFERENCE_CACHE: OnceLock<Mutex<DesktopControlPooledInferenceCache>> =
+    OnceLock::new();
 static DESKTOP_CONTROL_TAILNET_CACHE: OnceLock<Mutex<DesktopControlTailnetCache>> = OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -140,6 +152,7 @@ pub struct DesktopControlSnapshot {
     pub gpt_oss: DesktopControlGptOssStatus,
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
+    pub pooled_inference: DesktopControlPooledInferenceStatus,
     pub tailnet: DesktopControlTailnetStatus,
     pub tunnels: DesktopControlTunnelsStatus,
     pub inventory: DesktopControlInventoryStatus,
@@ -147,6 +160,7 @@ pub struct DesktopControlSnapshot {
     pub cluster: DesktopControlClusterStatus,
     pub sandbox: DesktopControlSandboxStatus,
     pub training: DesktopControlTrainingStatus,
+    pub gemma_finetune: crate::gemma_finetune_control::GemmaFinetuneStatus,
     pub remote_training: DesktopControlRemoteTrainingStatus,
     pub proofs: DesktopControlProofStatus,
     pub challenges: DesktopControlChallengeStatus,
@@ -169,6 +183,81 @@ pub struct DesktopControlPaneCaptureArtifactStatus {
     pub height: u32,
     pub scale_factor: f32,
     pub capture_target: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeParticipantStatus {
+    pub participant_id: String,
+    pub display_name: String,
+    pub kind: String,
+    pub local: bool,
+    pub controller: bool,
+    pub pending_request: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeTimelineStatus {
+    pub kind: String,
+    pub actor: String,
+    pub summary: String,
+    pub provenance: String,
+    pub recorded_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeStatusPayload {
+    pub thread_id: String,
+    pub shared_session_id: String,
+    pub project_name: Option<String>,
+    pub workspace_root: Option<String>,
+    pub probe_session_ids: Vec<String>,
+    pub control_owner: String,
+    pub controller_label: String,
+    pub local_role_label: String,
+    pub location_kind: String,
+    pub execution_host_label: Option<String>,
+    pub attach_target: Option<String>,
+    pub pending_request_summary: Option<String>,
+    pub participants: Vec<DesktopControlForgeParticipantStatus>,
+    pub recent_collaboration: Vec<DesktopControlForgeTimelineStatus>,
+    pub shared_session: Value,
+    pub status_text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeHostedSessionStatus {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub sibling_probe_session_ids: Vec<String>,
+    pub workspace_root: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub prepared_baseline_id: Option<String>,
+    pub prepared_baseline_status: Option<String>,
+    pub control_owner: String,
+    pub controller_label: Option<String>,
+    pub participants: Vec<DesktopControlForgeParticipantStatus>,
+    pub location_kind: String,
+    pub owner_label: Option<String>,
+    pub execution_host_label: Option<String>,
+    pub attach_target: Option<String>,
+    pub updated_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeHostedSessionsPayload {
+    pub sessions: Vec<DesktopControlForgeHostedSessionStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlForgeAttachPayload {
+    pub shared_session_id: String,
+    pub probe_session_id: String,
+    pub workspace_label: String,
+    pub project_name: Option<String>,
+    pub attach_target: Option<String>,
+    pub reused_local_thread: bool,
+    pub status_text: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -215,6 +304,144 @@ struct DesktopControlTailnetCache {
     snapshot: DesktopControlTailnetStatus,
     refreshed_at: Option<Instant>,
     last_attempt_at: Option<Instant>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct DesktopControlPooledInferenceCache {
+    snapshot: DesktopControlPooledInferenceStatus,
+    refreshed_at: Option<Instant>,
+    last_attempt_at: Option<Instant>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DesktopControlMeshLaneCommandPlan {
+    program: PathBuf,
+    args: Vec<OsString>,
+}
+
+impl DesktopControlMeshLaneCommandPlan {
+    fn into_command(self) -> Command {
+        let mut command = Command::new(self.program);
+        command.args(self.args);
+        command
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlMeshLaneConfig {
+    service_name: String,
+    mesh_bind_addr: SocketAddr,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementStatusResponse {
+    topology_digest: String,
+    default_model: String,
+    #[serde(default)]
+    join_state: DesktopControlPooledInferenceManagementJoinStateResponse,
+    #[serde(default)]
+    nodes: Vec<DesktopControlPooledInferenceManagementNodeStatus>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinStateResponse {
+    #[serde(default = "default_pooled_inference_join_posture")]
+    posture: String,
+    #[serde(default)]
+    last_joined_mesh_preference:
+        Option<DesktopControlPooledInferenceManagementJoinedMeshPreference>,
+    #[serde(default)]
+    last_imported_join_bundle: Option<DesktopControlPooledInferenceManagementImportedJoinBundle>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinedMeshPreference {
+    mesh_label: String,
+    namespace: String,
+    cluster_id: String,
+    #[serde(default)]
+    advertised_control_plane_addrs: Vec<String>,
+    trust_policy_digest: String,
+    selected_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementImportedJoinBundle {
+    bundle: DesktopControlPooledInferenceManagementJoinBundle,
+    imported_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinBundle {
+    mesh_label: String,
+    namespace: String,
+    cluster_id: String,
+    #[serde(default)]
+    advertised_control_plane_addrs: Vec<String>,
+    trust_metadata: DesktopControlPooledInferenceManagementJoinBundleTrustMetadata,
+    admission: Value,
+    exported_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementJoinBundleTrustMetadata {
+    trust_policy_digest: String,
+    trust_posture: String,
+    discovery_posture: String,
+    trust_bundle_version: u64,
+    #[serde(default)]
+    accepted_trust_bundle_versions: Vec<u64>,
+    #[serde(default)]
+    introduction_policy_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceJoinBundleFile {
+    mesh_label: String,
+    namespace: String,
+    cluster_id: String,
+    #[serde(default)]
+    advertised_control_plane_addrs: Vec<String>,
+    trust_metadata: DesktopControlPooledInferenceManagementJoinBundleTrustMetadata,
+    admission: Value,
+    exported_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementNodeStatus {
+    worker_id: String,
+    served_mesh_role: DesktopControlPooledInferenceManagementRoleState,
+    execution_mode_label: String,
+    execution_engine_label: String,
+    #[serde(default)]
+    models: Vec<DesktopControlPooledInferenceManagementModelStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementRoleState {
+    role: String,
+    posture: String,
+    #[serde(default)]
+    reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopControlPooledInferenceManagementModelStatus {
+    canonical_name: String,
+    family: String,
+    #[serde(default)]
+    supported_endpoints: Vec<String>,
+    warm_state: String,
+    #[serde(default)]
+    structured_outputs: bool,
+    #[serde(default)]
+    tool_calling: bool,
+    #[serde(default)]
+    response_state: bool,
+    #[serde(default)]
+    cluster_execution_modes: Vec<String>,
+    #[serde(default)]
+    cluster_execution_topologies: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -666,6 +893,132 @@ pub struct DesktopControlClusterStatus {
     pub member_count: usize,
     pub members: Vec<DesktopControlClusterMemberStatus>,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceTargetStatus {
+    pub model: String,
+    pub family: String,
+    pub supported_endpoints: Vec<String>,
+    pub structured_outputs: bool,
+    pub tool_calling: bool,
+    pub response_state: bool,
+    pub warm_replica_count: usize,
+    pub local_warm_replica: bool,
+    pub cluster_execution_modes: Vec<String>,
+    pub cluster_execution_topologies: Vec<String>,
+    pub participating_workers: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceNodeStatus {
+    pub worker_id: String,
+    pub served_mesh_role: String,
+    pub served_mesh_posture: String,
+    pub served_mesh_reasons: Vec<String>,
+    pub execution_mode: String,
+    pub execution_engine: String,
+    pub warm_model_count: usize,
+    pub targetable_model_count: usize,
+    pub warm_models: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceJoinBundleStatus {
+    pub mesh_label: String,
+    pub namespace: String,
+    pub cluster_id: String,
+    pub advertised_control_plane_addrs: Vec<String>,
+    pub trust_policy_digest: String,
+    pub trust_posture: String,
+    pub discovery_posture: String,
+    pub trust_bundle_version: u64,
+    pub accepted_trust_bundle_versions: Vec<u64>,
+    pub introduction_policy_digest: Option<String>,
+    pub admission_kind: String,
+    pub exported_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+    pub mesh_label: String,
+    pub namespace: String,
+    pub cluster_id: String,
+    pub advertised_control_plane_addrs: Vec<String>,
+    pub trust_policy_digest: String,
+    pub selected_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceImportedJoinBundleStatus {
+    pub bundle: DesktopControlPooledInferenceJoinBundleStatus,
+    pub imported_at_epoch_ms: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceJoinStatus {
+    pub posture: String,
+    pub last_joined_mesh_preference:
+        Option<DesktopControlPooledInferenceJoinedMeshPreferenceStatus>,
+    pub last_imported_join_bundle: Option<DesktopControlPooledInferenceImportedJoinBundleStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlPooledInferenceStatus {
+    pub available: bool,
+    pub source: String,
+    pub management_base_url: Option<String>,
+    pub topology_digest: Option<String>,
+    pub default_model: Option<String>,
+    pub membership_state: String,
+    pub member_count: usize,
+    pub targetable_model_count: usize,
+    pub warm_replica_count: usize,
+    pub local_worker_id: Option<String>,
+    pub local_serving_state: String,
+    pub served_mesh_role: Option<String>,
+    pub served_mesh_posture: Option<String>,
+    pub served_mesh_reasons: Vec<String>,
+    pub execution_mode: Option<String>,
+    pub execution_engine: Option<String>,
+    pub fallback_posture: Option<String>,
+    pub last_refreshed_at_epoch_ms: Option<u64>,
+    pub last_error: Option<String>,
+    pub targetable_models: Vec<DesktopControlPooledInferenceTargetStatus>,
+    pub members: Vec<DesktopControlPooledInferenceNodeStatus>,
+    pub join: DesktopControlPooledInferenceJoinStatus,
+}
+
+impl Default for DesktopControlPooledInferenceStatus {
+    fn default() -> Self {
+        Self {
+            available: false,
+            source: "not_configured".to_string(),
+            management_base_url: None,
+            topology_digest: None,
+            default_model: None,
+            membership_state: "unconfigured".to_string(),
+            member_count: 0,
+            targetable_model_count: 0,
+            warm_replica_count: 0,
+            local_worker_id: None,
+            local_serving_state: "unconfigured".to_string(),
+            served_mesh_role: None,
+            served_mesh_posture: None,
+            served_mesh_reasons: Vec::new(),
+            execution_mode: None,
+            execution_engine: None,
+            fallback_posture: None,
+            last_refreshed_at_epoch_ms: None,
+            last_error: None,
+            targetable_models: Vec::new(),
+            members: Vec::new(),
+            join: DesktopControlPooledInferenceJoinStatus {
+                posture: default_pooled_inference_join_posture(),
+                ..DesktopControlPooledInferenceJoinStatus::default()
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1333,6 +1686,9 @@ pub struct DesktopControlActiveJobStatus {
     pub job_id: String,
     pub request_id: String,
     pub capability: String,
+    pub compute_product_id: Option<String>,
+    pub market_receipt_class: Option<String>,
+    pub earnings_summary: Option<String>,
     pub stage: String,
     pub projection_stage: String,
     pub phase: String,
@@ -1448,6 +1804,16 @@ pub enum DesktopControlActionRequest {
     GetSnapshot,
     GetClusterStatus,
     GetClusterTopology,
+    ExportPooledInferenceJoinBundle {
+        mesh_root: Option<String>,
+        output_path: String,
+        mesh_label: Option<String>,
+        advertise_addrs: Vec<String>,
+    },
+    ImportPooledInferenceJoinBundle {
+        mesh_root: Option<String>,
+        join_bundle_path: String,
+    },
     GetSandboxStatus,
     CreateSandboxJob {
         profile_id: String,
@@ -1490,11 +1856,68 @@ pub enum DesktopControlActionRequest {
     GetResearchStatus,
     ResetResearchState,
     GetTrainingStatus,
+    GetGemmaFinetuneStatus,
+    GetGemmaFinetuneTenantView {
+        api_key: String,
+    },
+    GetGemmaFinetuneJob {
+        job_id: String,
+        api_key: Option<String>,
+    },
     GetRemoteTrainingStatus,
     GetRemoteTrainingRun {
         run_id: Option<String>,
     },
     RefreshRemoteTrainingStatus,
+    ProvisionGemmaFinetuneTenant {
+        tenant_id: String,
+        display_name: Option<String>,
+        max_projects: usize,
+        max_datasets: usize,
+        max_jobs: usize,
+        max_active_jobs: usize,
+        max_promoted_models: usize,
+    },
+    CreateGemmaFinetuneProject {
+        api_key: String,
+        project_name: String,
+        tenant_id: Option<String>,
+        base_served_artifact_digest: String,
+        hidden_size: usize,
+    },
+    RegisterGemmaFinetuneDataset {
+        api_key: String,
+        project_id: String,
+        dataset_ref: String,
+        train_path: String,
+        validation_path: String,
+        holdout_path: String,
+        baseline_short_path: Option<String>,
+        final_report_path: Option<String>,
+        chat_template_digest: Option<String>,
+        assistant_mask_coverage_bps: u32,
+        overlap_check_id: Option<String>,
+        overlap_detail: Option<String>,
+        compared_benchmark_refs: Vec<String>,
+    },
+    CreateGemmaFinetuneJob {
+        api_key: String,
+        project_id: String,
+        dataset_id: Option<String>,
+    },
+    CancelGemmaFinetuneJob {
+        job_id: String,
+        api_key: String,
+    },
+    PromoteGemmaFinetuneCheckpoint {
+        api_key: String,
+        job_id: String,
+        checkpoint_id: Option<String>,
+        reviewer_id: String,
+        review_state: Option<String>,
+        failed_case_ids: Vec<String>,
+        summary: Option<String>,
+    },
     LaunchAppleAdapterTraining {
         train_dataset_path: String,
         held_out_dataset_path: String,
@@ -1664,6 +2087,37 @@ pub enum DesktopControlActionRequest {
     StartBuyMode,
     StopBuyMode,
     GetActiveJob,
+    GetForgeStatus {
+        thread_id: Option<String>,
+    },
+    ListForgeHostedSessions,
+    AttachForgeHostedSessionBySharedSessionId {
+        shared_session_id: String,
+    },
+    AttachForgeHostedSessionByProbeSessionId {
+        probe_session_id: String,
+    },
+    RecordForgeSharedSessionHandoff {
+        thread_id: Option<String>,
+        next_owner: ForgeSharedSessionControlOwner,
+        summary: String,
+    },
+    RequestForgeSharedSessionControl {
+        thread_id: Option<String>,
+        summary: String,
+    },
+    AcceptForgeSharedSessionControlRequest {
+        thread_id: Option<String>,
+        summary: String,
+    },
+    TakeForgeSharedSessionControl {
+        thread_id: Option<String>,
+        summary: String,
+    },
+    RecordForgeSharedSessionNote {
+        thread_id: Option<String>,
+        summary: String,
+    },
     SelectNip28MainChannel,
     SelectNip28Group {
         group_id: String,
@@ -1696,6 +2150,8 @@ impl DesktopControlActionRequest {
             Self::GetSnapshot => "get-snapshot",
             Self::GetClusterStatus => "cluster-status",
             Self::GetClusterTopology => "cluster-topology",
+            Self::ExportPooledInferenceJoinBundle { .. } => "pooled-inference-export-join-bundle",
+            Self::ImportPooledInferenceJoinBundle { .. } => "pooled-inference-import-join-bundle",
             Self::GetSandboxStatus => "sandbox-status",
             Self::CreateSandboxJob { .. } => "sandbox-create",
             Self::GetSandboxJob { .. } => "sandbox-get",
@@ -1707,9 +2163,18 @@ impl DesktopControlActionRequest {
             Self::GetResearchStatus => "research-status",
             Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
+            Self::GetGemmaFinetuneStatus => "gemma-finetune-status",
+            Self::GetGemmaFinetuneTenantView { .. } => "gemma-finetune-tenant-view",
+            Self::GetGemmaFinetuneJob { .. } => "gemma-finetune-job-get",
             Self::GetRemoteTrainingStatus => "remote-training-status",
             Self::GetRemoteTrainingRun { .. } => "remote-training-run",
             Self::RefreshRemoteTrainingStatus => "remote-training-refresh",
+            Self::ProvisionGemmaFinetuneTenant { .. } => "gemma-finetune-tenant-provision",
+            Self::CreateGemmaFinetuneProject { .. } => "gemma-finetune-project-create",
+            Self::RegisterGemmaFinetuneDataset { .. } => "gemma-finetune-dataset-register",
+            Self::CreateGemmaFinetuneJob { .. } => "gemma-finetune-job-create",
+            Self::CancelGemmaFinetuneJob { .. } => "gemma-finetune-job-cancel",
+            Self::PromoteGemmaFinetuneCheckpoint { .. } => "gemma-finetune-checkpoint-promote",
             Self::LaunchAppleAdapterTraining { .. } => "training-launch-apple-adapter",
             Self::ExportAppleAdapterTraining { .. } => "training-export-apple-adapter",
             Self::AcceptAppleAdapterTraining { .. } => "training-accept-apple-adapter",
@@ -1794,6 +2259,15 @@ impl DesktopControlActionRequest {
             Self::StartBuyMode => "buy-mode-start",
             Self::StopBuyMode => "buy-mode-stop",
             Self::GetActiveJob => "active-job",
+            Self::GetForgeStatus { .. } => "forge-status",
+            Self::ListForgeHostedSessions => "forge-hosted-sessions",
+            Self::AttachForgeHostedSessionBySharedSessionId { .. } => "forge-hosted-attach-shared",
+            Self::AttachForgeHostedSessionByProbeSessionId { .. } => "forge-hosted-attach-probe",
+            Self::RecordForgeSharedSessionHandoff { .. } => "forge-handoff",
+            Self::RequestForgeSharedSessionControl { .. } => "forge-handoff-request",
+            Self::AcceptForgeSharedSessionControlRequest { .. } => "forge-handoff-accept",
+            Self::TakeForgeSharedSessionControl { .. } => "forge-handoff-take",
+            Self::RecordForgeSharedSessionNote { .. } => "forge-handoff-note",
             Self::SelectNip28MainChannel => "nip28-main",
             Self::SelectNip28Group { .. } => "nip28-select-group",
             Self::SelectNip28Channel { .. } => "nip28-select-channel",
@@ -2503,12 +2977,137 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetResearchStatus
         | DesktopControlActionRequest::ResetResearchState
         | DesktopControlActionRequest::GetTrainingStatus
+        | DesktopControlActionRequest::GetGemmaFinetuneStatus
         | DesktopControlActionRequest::GetRemoteTrainingStatus
         | DesktopControlActionRequest::RefreshRemoteTrainingStatus
         | DesktopControlActionRequest::GetProofStatus
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::GetGemmaFinetuneTenantView { api_key } => json!({
+            "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
+        }),
+        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id, api_key } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+            "api_key_preview": api_key.as_deref().map(mask_secret),
+        }),
+        DesktopControlActionRequest::ProvisionGemmaFinetuneTenant {
+            tenant_id,
+            display_name,
+            max_projects,
+            max_datasets,
+            max_jobs,
+            max_active_jobs,
+            max_promoted_models,
+        } => json!({
+            "command_label": action.label(),
+            "tenant_id": tenant_id,
+            "display_name": display_name,
+            "max_projects": max_projects,
+            "max_datasets": max_datasets,
+            "max_jobs": max_jobs,
+            "max_active_jobs": max_active_jobs,
+            "max_promoted_models": max_promoted_models,
+        }),
+        DesktopControlActionRequest::CreateGemmaFinetuneProject {
+            api_key,
+            project_name,
+            tenant_id,
+            base_served_artifact_digest,
+            hidden_size,
+        } => json!({
+            "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
+            "project_name": project_name,
+            "tenant_id": tenant_id,
+            "base_served_artifact_digest": base_served_artifact_digest,
+            "hidden_size": hidden_size,
+        }),
+        DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+            api_key,
+            project_id,
+            dataset_ref,
+            train_path,
+            validation_path,
+            holdout_path,
+            baseline_short_path,
+            final_report_path,
+            chat_template_digest,
+            assistant_mask_coverage_bps,
+            overlap_check_id,
+            overlap_detail,
+            compared_benchmark_refs,
+        } => json!({
+            "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
+            "project_id": project_id,
+            "dataset_ref": dataset_ref,
+            "train_path": train_path,
+            "validation_path": validation_path,
+            "holdout_path": holdout_path,
+            "baseline_short_path": baseline_short_path,
+            "final_report_path": final_report_path,
+            "chat_template_digest": chat_template_digest,
+            "assistant_mask_coverage_bps": assistant_mask_coverage_bps,
+            "overlap_check_id": overlap_check_id,
+            "overlap_detail": overlap_detail,
+            "compared_benchmark_refs": compared_benchmark_refs,
+        }),
+        DesktopControlActionRequest::CreateGemmaFinetuneJob {
+            api_key,
+            project_id,
+            dataset_id,
+        } => json!({
+            "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
+            "project_id": project_id,
+            "dataset_id": dataset_id,
+        }),
+        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id, api_key } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+            "api_key_preview": mask_secret(api_key.as_str()),
+        }),
+        DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+            api_key,
+            job_id,
+            checkpoint_id,
+            reviewer_id,
+            review_state,
+            failed_case_ids,
+            summary,
+        } => json!({
+            "command_label": action.label(),
+            "api_key_preview": mask_secret(api_key.as_str()),
+            "job_id": job_id,
+            "checkpoint_id": checkpoint_id,
+            "reviewer_id": reviewer_id,
+            "review_state": review_state,
+            "failed_case_ids": failed_case_ids,
+            "summary": summary,
+        }),
+        DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+            mesh_root,
+            output_path,
+            mesh_label,
+            advertise_addrs,
+        } => json!({
+            "command_label": action.label(),
+            "mesh_root": mesh_root,
+            "output_path": output_path,
+            "mesh_label": mesh_label,
+            "advertise_addrs": advertise_addrs,
+        }),
+        DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+            mesh_root,
+            join_bundle_path,
+        } => json!({
+            "command_label": action.label(),
+            "mesh_root": mesh_root,
+            "join_bundle_path": join_bundle_path,
+        }),
         DesktopControlActionRequest::GetRemoteTrainingRun { run_id } => json!({
             "command_label": action.label(),
             "run_id": run_id,
@@ -2765,8 +3364,48 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::StartBuyMode
         | DesktopControlActionRequest::StopBuyMode
         | DesktopControlActionRequest::GetActiveJob
+        | DesktopControlActionRequest::ListForgeHostedSessions
         | DesktopControlActionRequest::SelectNip28MainChannel => {
             json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::GetForgeStatus { thread_id } => json!({
+            "command_label": action.label(),
+            "thread_id": thread_id,
+        }),
+        DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+            shared_session_id,
+        } => json!({
+            "command_label": action.label(),
+            "shared_session_id": shared_session_id,
+        }),
+        DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+            probe_session_id,
+        } => json!({
+            "command_label": action.label(),
+            "probe_session_id": probe_session_id,
+        }),
+        DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+            thread_id,
+            next_owner,
+            summary,
+        } => json!({
+            "command_label": action.label(),
+            "thread_id": thread_id,
+            "next_owner": next_owner.label(),
+            "summary_length": summary.trim().len(),
+        }),
+        DesktopControlActionRequest::RequestForgeSharedSessionControl { thread_id, summary }
+        | DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+            thread_id,
+            summary,
+        }
+        | DesktopControlActionRequest::TakeForgeSharedSessionControl { thread_id, summary }
+        | DesktopControlActionRequest::RecordForgeSharedSessionNote { thread_id, summary } => {
+            json!({
+                "command_label": action.label(),
+                "thread_id": thread_id,
+                "summary_length": summary.trim().len(),
+            })
         }
         DesktopControlActionRequest::LoadAppleFmAdapter {
             package_path,
@@ -2906,6 +3545,16 @@ fn snapshot_change_events(
             command_label: None,
             success: None,
             payload: serde_json::to_value(&current.wallet).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.pooled_inference != current.pooled_inference) {
+        changed_domains.push("pooled_inference");
+        events.push(DesktopControlEventDraft {
+            event_type: "pooled_inference.state.changed".to_string(),
+            summary: pooled_inference_status_summary(&current.pooled_inference),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.pooled_inference).ok(),
         });
     }
     if previous.is_none_or(|snapshot| snapshot.inventory != current.inventory) {
@@ -3312,6 +3961,19 @@ fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
     )
 }
 
+fn pooled_inference_status_summary(status: &DesktopControlPooledInferenceStatus) -> String {
+    format!(
+        "pooled inference available={} local_state={} role={} posture={} members={} targets={} warm_replicas={}",
+        status.available,
+        status.local_serving_state,
+        status.served_mesh_role.as_deref().unwrap_or("unknown"),
+        status.served_mesh_posture.as_deref().unwrap_or("unknown"),
+        status.member_count,
+        status.targetable_model_count,
+        status.warm_replica_count
+    )
+}
+
 fn inventory_status_summary(status: &DesktopControlInventoryStatus) -> String {
     crate::provider_inventory::inventory_status_summary(status)
 }
@@ -3531,8 +4193,10 @@ fn active_job_status_summary(active_job: Option<&DesktopControlActiveJobStatus>)
         return "no active job".to_string();
     };
     format!(
-        "active job request={} stage={} next={}",
+        "active job request={} product={} receipt={} stage={} next={}",
         short_request_id(active_job.request_id.as_str()),
+        active_job.compute_product_id.as_deref().unwrap_or("-"),
+        active_job.market_receipt_class.as_deref().unwrap_or("-"),
         active_job.stage,
         active_job.next_expected_event
     )
@@ -3606,6 +4270,9 @@ fn active_job_status_changed(
             previous.job_id != current.job_id
                 || previous.request_id != current.request_id
                 || previous.capability != current.capability
+                || previous.compute_product_id != current.compute_product_id
+                || previous.market_receipt_class != current.market_receipt_class
+                || previous.earnings_summary != current.earnings_summary
                 || previous.stage != current.stage
                 || previous.projection_stage != current.projection_stage
                 || previous.phase != current.phase
@@ -3688,10 +4355,39 @@ fn apply_action_request(
         }
         DesktopControlActionRequest::GetClusterStatus
         | DesktopControlActionRequest::GetClusterTopology => cluster_payload_response(state),
+        DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+            mesh_root,
+            output_path,
+            mesh_label,
+            advertise_addrs,
+        } => export_pooled_inference_join_bundle_action(
+            mesh_root.as_deref(),
+            output_path.as_str(),
+            mesh_label.as_deref(),
+            advertise_addrs.as_slice(),
+        )
+        .into(),
+        DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+            mesh_root,
+            join_bundle_path,
+        } => import_pooled_inference_join_bundle_action(
+            mesh_root.as_deref(),
+            join_bundle_path.as_str(),
+        )
+        .into(),
         DesktopControlActionRequest::GetSandboxStatus => sandbox_status_payload_response(state),
         DesktopControlActionRequest::GetResearchStatus => research_payload_response().into(),
         DesktopControlActionRequest::ResetResearchState => reset_research_action().into(),
         DesktopControlActionRequest::GetTrainingStatus => training_payload_response(state).into(),
+        DesktopControlActionRequest::GetGemmaFinetuneStatus => {
+            gemma_finetune_payload_response().into()
+        }
+        DesktopControlActionRequest::GetGemmaFinetuneTenantView { api_key } => {
+            gemma_finetune_tenant_view_payload_response(api_key.as_str()).into()
+        }
+        DesktopControlActionRequest::GetGemmaFinetuneJob { job_id, api_key } => {
+            gemma_finetune_job_payload_response(job_id.as_str(), api_key.as_deref()).into()
+        }
         DesktopControlActionRequest::GetRemoteTrainingStatus => {
             remote_training_payload_response(state, false).into()
         }
@@ -3701,6 +4397,99 @@ fn apply_action_request(
         DesktopControlActionRequest::RefreshRemoteTrainingStatus => {
             remote_training_payload_response(state, true).into()
         }
+        DesktopControlActionRequest::ProvisionGemmaFinetuneTenant {
+            tenant_id,
+            display_name,
+            max_projects,
+            max_datasets,
+            max_jobs,
+            max_active_jobs,
+            max_promoted_models,
+        } => provision_gemma_finetune_tenant_action(
+            tenant_id.as_str(),
+            display_name.as_deref(),
+            *max_projects,
+            *max_datasets,
+            *max_jobs,
+            *max_active_jobs,
+            *max_promoted_models,
+        )
+        .into(),
+        DesktopControlActionRequest::CreateGemmaFinetuneProject {
+            api_key,
+            project_name,
+            tenant_id,
+            base_served_artifact_digest,
+            hidden_size,
+        } => create_gemma_finetune_project_action(
+            api_key.as_str(),
+            project_name.as_str(),
+            tenant_id.as_deref(),
+            base_served_artifact_digest.as_str(),
+            *hidden_size,
+        )
+        .into(),
+        DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+            api_key,
+            project_id,
+            dataset_ref,
+            train_path,
+            validation_path,
+            holdout_path,
+            baseline_short_path,
+            final_report_path,
+            chat_template_digest,
+            assistant_mask_coverage_bps,
+            overlap_check_id,
+            overlap_detail,
+            compared_benchmark_refs,
+        } => register_gemma_finetune_dataset_action(
+            api_key.as_str(),
+            project_id.as_str(),
+            dataset_ref.as_str(),
+            train_path.as_str(),
+            validation_path.as_str(),
+            holdout_path.as_str(),
+            baseline_short_path.as_deref(),
+            final_report_path.as_deref(),
+            chat_template_digest.as_deref(),
+            *assistant_mask_coverage_bps,
+            overlap_check_id.as_deref(),
+            overlap_detail.as_deref(),
+            compared_benchmark_refs.as_slice(),
+        )
+        .into(),
+        DesktopControlActionRequest::CreateGemmaFinetuneJob {
+            api_key,
+            project_id,
+            dataset_id,
+        } => create_gemma_finetune_job_action(
+            api_key.as_str(),
+            project_id.as_str(),
+            dataset_id.as_deref(),
+        )
+        .into(),
+        DesktopControlActionRequest::CancelGemmaFinetuneJob { job_id, api_key } => {
+            cancel_gemma_finetune_job_action(job_id.as_str(), api_key.as_str()).into()
+        }
+        DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+            api_key,
+            job_id,
+            checkpoint_id,
+            reviewer_id,
+            review_state,
+            failed_case_ids,
+            summary,
+        } => promote_gemma_finetune_checkpoint_action(
+            api_key.as_str(),
+            job_id.as_str(),
+            checkpoint_id.as_deref(),
+            reviewer_id.as_str(),
+            review_state.as_deref(),
+            failed_case_ids.as_slice(),
+            summary.as_deref(),
+        )
+        .into(),
         DesktopControlActionRequest::LaunchAppleAdapterTraining {
             train_dataset_path,
             held_out_dataset_path,
@@ -4076,6 +4865,54 @@ fn apply_action_request(
         )
         .into(),
         DesktopControlActionRequest::GetActiveJob => active_job_payload_response(state),
+        DesktopControlActionRequest::GetForgeStatus { thread_id } => {
+            forge_status_payload_response(state, thread_id.as_deref()).into()
+        }
+        DesktopControlActionRequest::ListForgeHostedSessions => {
+            forge_hosted_sessions_payload_response(state).into()
+        }
+        DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+            shared_session_id,
+        } => attach_hosted_forge_shared_session_action(state, shared_session_id.as_str()).into(),
+        DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+            probe_session_id,
+        } => attach_hosted_forge_probe_session_action(state, probe_session_id.as_str()).into(),
+        DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+            thread_id,
+            next_owner,
+            summary,
+        } => record_forge_shared_session_handoff_action(
+            state,
+            thread_id.as_deref(),
+            *next_owner,
+            summary.as_str(),
+        )
+        .into(),
+        DesktopControlActionRequest::RequestForgeSharedSessionControl { thread_id, summary } => {
+            request_forge_shared_session_control_action(
+                state,
+                thread_id.as_deref(),
+                summary.as_str(),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+            thread_id,
+            summary,
+        } => accept_forge_shared_session_control_request_action(
+            state,
+            thread_id.as_deref(),
+            summary.as_str(),
+        )
+        .into(),
+        DesktopControlActionRequest::TakeForgeSharedSessionControl { thread_id, summary } => {
+            take_forge_shared_session_control_action(state, thread_id.as_deref(), summary.as_str())
+                .into()
+        }
+        DesktopControlActionRequest::RecordForgeSharedSessionNote { thread_id, summary } => {
+            record_forge_shared_session_note_action(state, thread_id.as_deref(), summary.as_str())
+                .into()
+        }
         DesktopControlActionRequest::SelectNip28MainChannel => {
             select_nip28_main_channel_action(state).into()
         }
@@ -5733,6 +6570,447 @@ fn active_job_payload_response(state: &RenderState) -> DesktopControlActionOutco
     }
 }
 
+fn resolve_forge_thread_id(
+    state: &RenderState,
+    requested_thread_id: Option<&str>,
+) -> Result<String, String> {
+    if let Some(thread_id) = requested_thread_id {
+        let trimmed = thread_id.trim();
+        if trimmed.is_empty() {
+            return Err("Forge thread id cannot be empty.".to_string());
+        }
+        return Ok(trimmed.to_string());
+    }
+    state
+        .autopilot_chat
+        .active_thread_id
+        .clone()
+        .ok_or_else(|| {
+            "No Forge thread id was supplied and the desktop has no active thread.".to_string()
+        })
+}
+
+fn forge_participant_statuses(
+    shared_session: &crate::app_state::ForgeSharedSession,
+) -> Vec<DesktopControlForgeParticipantStatus> {
+    let local_participant_id = crate::app_state::current_forge_local_operator_participant_id();
+    shared_session
+        .participants
+        .iter()
+        .map(|participant| DesktopControlForgeParticipantStatus {
+            participant_id: participant.participant_id.clone(),
+            display_name: participant.display_name.clone(),
+            kind: participant.kind.label().to_string(),
+            local: participant.participant_id == local_participant_id,
+            controller: shared_session.controller_participant_id.as_deref()
+                == Some(participant.participant_id.as_str()),
+            pending_request: shared_session
+                .pending_handoff_request
+                .as_ref()
+                .is_some_and(|request| request.participant_id == participant.participant_id),
+        })
+        .collect()
+}
+
+fn forge_timeline_statuses(
+    shared_session: &crate::app_state::ForgeSharedSession,
+) -> Vec<DesktopControlForgeTimelineStatus> {
+    shared_session
+        .collaboration_timeline
+        .iter()
+        .take(8)
+        .map(|entry| DesktopControlForgeTimelineStatus {
+            kind: entry.kind.display_label().to_string(),
+            actor: entry
+                .display_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            summary: entry.summary.clone(),
+            provenance: entry.provenance.clone(),
+            recorded_at_epoch_ms: entry.recorded_at_epoch_ms,
+        })
+        .collect()
+}
+
+fn build_forge_status_payload(
+    state: &RenderState,
+    thread_id: &str,
+) -> Result<DesktopControlForgeStatusPayload, String> {
+    let shared_session = state
+        .autopilot_chat
+        .shared_session_for_thread(thread_id)
+        .cloned()
+        .ok_or_else(|| format!("No shared Forge session is available for `{thread_id}`."))?;
+    let controller_label = forge_shared_session_controller_label(&shared_session);
+    let local_role_label = forge_shared_session_local_role_label(&shared_session).to_string();
+    let status_text = state
+        .autopilot_chat
+        .shared_session_handoff_status_for_thread(thread_id)?;
+    let shared_session_value = serde_json::to_value(&shared_session)
+        .map_err(|error| format!("Failed to encode Forge shared-session payload: {error}"))?;
+    Ok(DesktopControlForgeStatusPayload {
+        thread_id: thread_id.to_string(),
+        shared_session_id: shared_session.shared_session_id.clone(),
+        project_name: shared_session
+            .project_name
+            .clone()
+            .or_else(|| shared_session.shell_title.clone()),
+        workspace_root: shared_session.workspace_root.clone(),
+        probe_session_ids: shared_session.probe_session_ids.clone(),
+        control_owner: shared_session.control_owner.label().to_string(),
+        controller_label,
+        local_role_label,
+        location_kind: shared_session
+            .remote_session
+            .location_kind
+            .label()
+            .to_string(),
+        execution_host_label: shared_session
+            .remote_session
+            .execution_host_label
+            .clone()
+            .or_else(|| shared_session.remote_session.execution_host_id.clone()),
+        attach_target: shared_session.remote_session.attach_target.clone(),
+        pending_request_summary: shared_session
+            .pending_handoff_request
+            .as_ref()
+            .map(|request| format!("{} — {}", request.display_name, request.summary)),
+        participants: forge_participant_statuses(&shared_session),
+        recent_collaboration: forge_timeline_statuses(&shared_session),
+        shared_session: shared_session_value,
+        status_text,
+    })
+}
+
+fn forge_status_payload_response(
+    state: &RenderState,
+    requested_thread_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match build_forge_status_payload(state, thread_id.as_str()) {
+        Ok(payload) => match serde_json::to_value(payload) {
+            Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                "Captured Forge shared-session status",
+                value,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Forge shared-session status: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn forge_hosted_sessions_payload_response(state: &RenderState) -> DesktopControlActionResponse {
+    let sessions = state
+        .autopilot_chat
+        .hosted_shared_session_directory()
+        .into_iter()
+        .map(|session| DesktopControlForgeHostedSessionStatus {
+            shared_session_id: session.shared_session_id,
+            probe_session_id: session.probe_session_id,
+            sibling_probe_session_ids: session.sibling_probe_session_ids,
+            workspace_root: session.workspace_root,
+            project_name: session.project_name,
+            git_branch: session.git_branch,
+            prepared_baseline_id: session.prepared_baseline_id,
+            prepared_baseline_status: session
+                .prepared_baseline_status
+                .map(|status| status.display_label().to_string()),
+            control_owner: session.control_owner.label().to_string(),
+            controller_label: session.controller_label,
+            participants: session
+                .participants
+                .into_iter()
+                .map(|participant| DesktopControlForgeParticipantStatus {
+                    participant_id: participant.participant_id,
+                    display_name: participant.display_name,
+                    kind: participant.kind.label().to_string(),
+                    local: false,
+                    controller: false,
+                    pending_request: false,
+                })
+                .collect(),
+            location_kind: session.location_kind.label().to_string(),
+            owner_label: session.owner_label,
+            execution_host_label: session.execution_host_label,
+            attach_target: session.attach_target,
+            updated_at_epoch_ms: session.updated_at_epoch_ms,
+        })
+        .collect::<Vec<_>>();
+    let message = if sessions.is_empty() {
+        "No hosted Forge sessions are visible yet"
+    } else {
+        "Captured hosted Forge session directory"
+    };
+    match serde_json::to_value(DesktopControlForgeHostedSessionsPayload { sessions }) {
+        Ok(value) => DesktopControlActionResponse::ok_with_payload(message, value),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode hosted Forge session directory: {error}"
+        )),
+    }
+}
+
+fn attach_hosted_forge_session_by_target(
+    state: &mut RenderState,
+    target: crate::app_state::ForgeHostedSessionAttachTarget,
+) -> DesktopControlActionResponse {
+    if !state.uses_probe_runtime() {
+        return DesktopControlActionResponse::error(
+            "Hosted Forge attach requires the Probe runtime lane.",
+        );
+    }
+    let Some(selected_thread) = state
+        .autopilot_chat
+        .select_thread_by_id(target.probe_session_id.as_str())
+    else {
+        return DesktopControlActionResponse::error(format!(
+            "Hosted Probe thread `{}` is known locally but the desktop could not select it.",
+            target.probe_session_id
+        ));
+    };
+    state
+        .autopilot_chat
+        .restore_session_preferences_from_thread(&selected_thread.thread_id);
+    let command = crate::probe_lane::ProbeLaneCommand::LoadSession {
+        session_id: probe_protocol::session::SessionId::new(selected_thread.thread_id.clone()),
+    };
+    if let Err(error) = state.queue_probe_command(command) {
+        state.autopilot_chat.last_error = Some(error.clone());
+        return DesktopControlActionResponse::error(error);
+    }
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.set_copy_notice(
+        Instant::now(),
+        format!(
+            "Attached hosted Forge session `{}`.",
+            target.shared_session_id
+        ),
+    );
+    let status_text = match state
+        .autopilot_chat
+        .shared_session_handoff_status_for_thread(target.probe_session_id.as_str())
+    {
+        Ok(status) => status,
+        Err(error) => error,
+    };
+    match serde_json::to_value(DesktopControlForgeAttachPayload {
+        shared_session_id: target.shared_session_id.clone(),
+        probe_session_id: target.probe_session_id.clone(),
+        workspace_label: target.workspace_label.clone(),
+        project_name: target.project_name.clone(),
+        attach_target: target.attach_target.clone(),
+        reused_local_thread: target.reused_local_thread,
+        status_text,
+    }) {
+        Ok(value) => DesktopControlActionResponse::ok_with_payload(
+            format!(
+                "Attached hosted Forge session `{}` to Probe thread `{}`",
+                target.shared_session_id, target.probe_session_id
+            ),
+            value,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode hosted Forge attach payload: {error}"
+        )),
+    }
+}
+
+fn attach_hosted_forge_shared_session_action(
+    state: &mut RenderState,
+    shared_session_id: &str,
+) -> DesktopControlActionResponse {
+    match state
+        .autopilot_chat
+        .prepare_hosted_probe_attach_by_shared_session_id(shared_session_id, current_epoch_ms())
+    {
+        Ok(target) => attach_hosted_forge_session_by_target(state, target),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn attach_hosted_forge_probe_session_action(
+    state: &mut RenderState,
+    probe_session_id: &str,
+) -> DesktopControlActionResponse {
+    match state
+        .autopilot_chat
+        .prepare_hosted_probe_attach_by_probe_session_id(probe_session_id, current_epoch_ms())
+    {
+        Ok(target) => attach_hosted_forge_session_by_target(state, target),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn record_forge_shared_session_handoff_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    next_owner: ForgeSharedSessionControlOwner,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state
+        .autopilot_chat
+        .record_shared_session_handoff_for_thread(
+            thread_id.as_str(),
+            next_owner,
+            summary,
+            "autopilotctl forge handoff",
+            current_epoch_ms(),
+        ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!(
+                        "Recorded shared-session handoff `{shared_session_id}` to {}",
+                        next_owner.display_label()
+                    ),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after handoff: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn request_forge_shared_session_control_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state
+        .autopilot_chat
+        .request_shared_session_control_for_thread(
+            thread_id.as_str(),
+            summary,
+            "autopilotctl forge handoff request",
+            current_epoch_ms(),
+        ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Recorded controller request on shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after request: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn accept_forge_shared_session_control_request_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state
+        .autopilot_chat
+        .accept_shared_session_control_request_for_thread(
+            thread_id.as_str(),
+            summary,
+            "autopilotctl forge handoff accept",
+            current_epoch_ms(),
+        ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Accepted controller request on shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after acceptance: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn take_forge_shared_session_control_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state.autopilot_chat.take_shared_session_control_for_thread(
+        thread_id.as_str(),
+        summary,
+        "autopilotctl forge handoff take",
+        current_epoch_ms(),
+    ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Took controller lease for shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after take-control: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn record_forge_shared_session_note_action(
+    state: &mut RenderState,
+    requested_thread_id: Option<&str>,
+    summary: &str,
+) -> DesktopControlActionResponse {
+    let thread_id = match resolve_forge_thread_id(state, requested_thread_id) {
+        Ok(thread_id) => thread_id,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match state.autopilot_chat.record_shared_session_note_for_thread(
+        thread_id.as_str(),
+        summary,
+        "autopilotctl forge handoff note",
+        current_epoch_ms(),
+    ) {
+        Ok(shared_session_id) => match build_forge_status_payload(state, thread_id.as_str()) {
+            Ok(payload) => match serde_json::to_value(payload) {
+                Ok(value) => DesktopControlActionResponse::ok_with_payload(
+                    format!("Recorded collaboration note on shared session `{shared_session_id}`"),
+                    value,
+                ),
+                Err(error) => DesktopControlActionResponse::error(format!(
+                    "Failed to encode Forge shared-session status after note: {error}"
+                )),
+            },
+            Err(error) => DesktopControlActionResponse::error(error),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
 fn nip90_sent_payments_report_response(
     state: &mut RenderState,
     start_epoch_seconds: u64,
@@ -5927,6 +7205,235 @@ fn remote_training_run_payload_response(
         Err(error) => DesktopControlActionResponse::error(format!(
             "Failed to encode remote training run detail: {error}"
         )),
+    }
+}
+
+fn gemma_finetune_payload_response() -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::status() {
+        Ok(status) => match serde_json::to_value(status) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                "Captured Gemma finetune control state",
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune control state: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn gemma_finetune_tenant_view_payload_response(api_key: &str) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::tenant_view(api_key) {
+        Ok(status) => match serde_json::to_value(status) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                "Captured Gemma finetune tenant view",
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune tenant view: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn gemma_finetune_job_payload_response(
+    job_id: &str,
+    api_key: Option<&str>,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::get_job(job_id, api_key) {
+        Ok(job) => match serde_json::to_value(job) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Captured Gemma finetune job {}", job_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune job payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn provision_gemma_finetune_tenant_action(
+    tenant_id: &str,
+    display_name: Option<&str>,
+    max_projects: usize,
+    max_datasets: usize,
+    max_jobs: usize,
+    max_active_jobs: usize,
+    max_promoted_models: usize,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::provision_tenant(
+        crate::gemma_finetune_control::GemmaFinetuneTenantProvisionRequest {
+            tenant_id: tenant_id.to_string(),
+            display_name: display_name.map(str::to_string),
+            max_projects,
+            max_datasets,
+            max_jobs,
+            max_active_jobs,
+            max_promoted_models,
+        },
+    ) {
+        Ok(tenant) => match serde_json::to_value(tenant) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Provisioned Gemma finetune tenant {}", tenant_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune tenant payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn create_gemma_finetune_project_action(
+    api_key: &str,
+    project_name: &str,
+    tenant_id: Option<&str>,
+    base_served_artifact_digest: &str,
+    hidden_size: usize,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::create_project(
+        crate::gemma_finetune_control::GemmaFinetuneProjectCreateRequest {
+            api_key: api_key.to_string(),
+            project_name: project_name.to_string(),
+            tenant_id: tenant_id.map(str::to_string),
+            base_served_artifact_digest: base_served_artifact_digest.to_string(),
+            hidden_size,
+        },
+    ) {
+        Ok(project) => match serde_json::to_value(project) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Created Gemma finetune project {}", project_name),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune project payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn create_gemma_finetune_job_action(
+    api_key: &str,
+    project_id: &str,
+    dataset_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::create_job(
+        crate::gemma_finetune_control::GemmaFinetuneJobCreateRequest {
+            api_key: api_key.to_string(),
+            project_id: project_id.to_string(),
+            dataset_id: dataset_id.map(str::to_string),
+        },
+    ) {
+        Ok(job) => match serde_json::to_value(job) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Queued Gemma finetune job for project {}", project_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune job payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn cancel_gemma_finetune_job_action(job_id: &str, api_key: &str) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::cancel_job(job_id, api_key) {
+        Ok(job) => match serde_json::to_value(job) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Updated Gemma finetune cancellation for {}", job_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune cancellation payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn promote_gemma_finetune_checkpoint_action(
+    api_key: &str,
+    job_id: &str,
+    checkpoint_id: Option<&str>,
+    reviewer_id: &str,
+    review_state: Option<&str>,
+    failed_case_ids: &[String],
+    summary: Option<&str>,
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::promote_checkpoint(
+        crate::gemma_finetune_control::GemmaFinetuneCheckpointPromotionRequest {
+            api_key: api_key.to_string(),
+            job_id: job_id.to_string(),
+            checkpoint_id: checkpoint_id.map(str::to_string),
+            reviewer_id: reviewer_id.to_string(),
+            review_state: review_state.map(str::to_string),
+            failed_case_ids: failed_case_ids.to_vec(),
+            summary: summary.map(str::to_string),
+        },
+    ) {
+        Ok(promotion) => match serde_json::to_value(promotion) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Scored Gemma checkpoint promotion for {}", job_id),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma promotion payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn register_gemma_finetune_dataset_action(
+    api_key: &str,
+    project_id: &str,
+    dataset_ref: &str,
+    train_path: &str,
+    validation_path: &str,
+    holdout_path: &str,
+    baseline_short_path: Option<&str>,
+    final_report_path: Option<&str>,
+    chat_template_digest: Option<&str>,
+    assistant_mask_coverage_bps: u32,
+    overlap_check_id: Option<&str>,
+    overlap_detail: Option<&str>,
+    compared_benchmark_refs: &[String],
+) -> DesktopControlActionResponse {
+    match crate::gemma_finetune_control::register_dataset(
+        crate::gemma_finetune_control::GemmaFinetuneDatasetRegisterRequest {
+            api_key: api_key.to_string(),
+            project_id: project_id.to_string(),
+            dataset_ref: dataset_ref.to_string(),
+            train_path: train_path.to_string(),
+            validation_path: validation_path.to_string(),
+            holdout_path: holdout_path.to_string(),
+            baseline_short_path: baseline_short_path.map(str::to_string),
+            final_report_path: final_report_path.map(str::to_string),
+            chat_template_digest: chat_template_digest.map(str::to_string),
+            assistant_mask_coverage_bps,
+            overlap_check_id: overlap_check_id.map(str::to_string),
+            overlap_detail: overlap_detail.map(str::to_string),
+            compared_benchmark_refs: compared_benchmark_refs.to_vec(),
+        },
+    ) {
+        Ok(dataset) => match serde_json::to_value(dataset) {
+            Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+                format!("Registered Gemma finetune dataset {}", dataset_ref),
+                payload,
+            ),
+            Err(error) => DesktopControlActionResponse::error(format!(
+                "Failed to encode Gemma finetune dataset payload: {error}"
+            )),
+        },
+        Err(error) => DesktopControlActionResponse::error(error),
     }
 }
 
@@ -6266,6 +7773,773 @@ fn desktop_control_cluster_status() -> DesktopControlClusterStatus {
         members: Vec::new(),
         last_error: Some(crate::provider_inventory::CLUSTER_NOT_INTEGRATED_REASON.to_string()),
     }
+}
+
+fn desktop_control_pooled_inference_cache() -> &'static Mutex<DesktopControlPooledInferenceCache> {
+    DESKTOP_CONTROL_POOLED_INFERENCE_CACHE
+        .get_or_init(|| Mutex::new(DesktopControlPooledInferenceCache::default()))
+}
+
+pub(crate) fn current_pooled_inference_status() -> DesktopControlPooledInferenceStatus {
+    desktop_control_pooled_inference_status()
+}
+
+#[cfg(test)]
+pub(crate) fn set_current_pooled_inference_status_for_tests(
+    status: DesktopControlPooledInferenceStatus,
+) {
+    let mut cache = desktop_control_pooled_inference_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    cache.snapshot = status;
+    cache.refreshed_at = Some(Instant::now());
+    cache.last_attempt_at = Some(Instant::now());
+}
+
+fn desktop_control_pooled_inference_status() -> DesktopControlPooledInferenceStatus {
+    let should_refresh = {
+        let cache = desktop_control_pooled_inference_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let stale = cache.refreshed_at.is_none_or(|refreshed_at| {
+            refreshed_at.elapsed() >= DESKTOP_CONTROL_POOLED_INFERENCE_REFRESH_INTERVAL
+        });
+        let recently_attempted = cache
+            .last_attempt_at
+            .is_some_and(|last_attempt| last_attempt.elapsed() < Duration::from_secs(2));
+        stale && !recently_attempted
+    };
+    if !should_refresh {
+        return desktop_control_pooled_inference_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .snapshot
+            .clone();
+    }
+
+    {
+        let mut cache = desktop_control_pooled_inference_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        cache.last_attempt_at = Some(Instant::now());
+    }
+
+    let result = load_desktop_control_pooled_inference_status();
+    let mut cache = desktop_control_pooled_inference_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    match result {
+        Ok(snapshot) => {
+            cache.snapshot = snapshot.clone();
+            cache.refreshed_at = Some(Instant::now());
+            cache.last_attempt_at = cache.refreshed_at;
+            snapshot
+        }
+        Err(error) => {
+            if cache.snapshot.last_refreshed_at_epoch_ms.is_some() {
+                cache.snapshot.source = "psionic_management_stale".to_string();
+                cache.snapshot.last_error = Some(error);
+            } else {
+                cache.snapshot = DesktopControlPooledInferenceStatus {
+                    source: "psionic_management_error".to_string(),
+                    membership_state: "error".to_string(),
+                    local_serving_state: "error".to_string(),
+                    last_error: Some(error),
+                    ..DesktopControlPooledInferenceStatus::default()
+                };
+            }
+            cache.snapshot.clone()
+        }
+    }
+}
+
+fn load_desktop_control_pooled_inference_status()
+-> Result<DesktopControlPooledInferenceStatus, String> {
+    let Some(management_base_url) = configured_pooled_inference_management_base_url()? else {
+        return Ok(DesktopControlPooledInferenceStatus::default());
+    };
+    let management_url = format!("{management_base_url}/psionic/management/status");
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(1500))
+        .build()
+        .map_err(|error| format!("failed to build pooled inference client: {error}"))?;
+    let response = client
+        .get(management_url.as_str())
+        .send()
+        .map_err(|error| format!("pooled inference GET {management_url} failed: {error}"))?;
+    let response = response.error_for_status().map_err(|error| {
+        format!("pooled inference GET {management_url} returned error status: {error}")
+    })?;
+    let status = response
+        .json::<DesktopControlPooledInferenceManagementStatusResponse>()
+        .map_err(|error| format!("pooled inference JSON decode failed: {error}"))?;
+    Ok(desktop_control_pooled_inference_snapshot(
+        management_base_url.as_str(),
+        &status,
+    ))
+}
+
+fn configured_pooled_inference_management_base_url() -> Result<Option<String>, String> {
+    let value = match std::env::var(DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        Ok(_) | Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(format!(
+                "{DESKTOP_CONTROL_PSIONIC_MESH_MANAGEMENT_BASE_URL_ENV} must be valid UTF-8"
+            ));
+        }
+    };
+    normalize_desktop_control_http_base_url(value.as_str()).map(Some)
+}
+
+fn normalize_desktop_control_http_base_url(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("base_url must not be empty".to_string());
+    }
+    let mut url =
+        reqwest::Url::parse(trimmed).map_err(|error| format!("invalid base_url: {error}"))?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(format!(
+            "unsupported base_url scheme: {}; expected http or https",
+            url.scheme()
+        ));
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    if url.path().ends_with('/') {
+        let trimmed_path = url.path().trim_end_matches('/').to_string();
+        url.set_path(trimmed_path.as_str());
+    }
+    Ok(url.to_string().trim_end_matches('/').to_string())
+}
+
+fn default_pooled_inference_join_posture() -> String {
+    "standalone".to_string()
+}
+
+fn desktop_control_pooled_inference_join_status(
+    status: &DesktopControlPooledInferenceManagementStatusResponse,
+) -> DesktopControlPooledInferenceJoinStatus {
+    DesktopControlPooledInferenceJoinStatus {
+        posture: status.join_state.posture.clone(),
+        last_joined_mesh_preference: status
+            .join_state
+            .last_joined_mesh_preference
+            .as_ref()
+            .map(desktop_control_joined_mesh_preference_status),
+        last_imported_join_bundle: status
+            .join_state
+            .last_imported_join_bundle
+            .as_ref()
+            .map(desktop_control_imported_join_bundle_status),
+    }
+}
+
+fn desktop_control_joined_mesh_preference_status(
+    preference: &DesktopControlPooledInferenceManagementJoinedMeshPreference,
+) -> DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+    DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+        mesh_label: preference.mesh_label.clone(),
+        namespace: preference.namespace.clone(),
+        cluster_id: preference.cluster_id.clone(),
+        advertised_control_plane_addrs: preference.advertised_control_plane_addrs.clone(),
+        trust_policy_digest: preference.trust_policy_digest.clone(),
+        selected_at_epoch_ms: preference.selected_at_ms,
+    }
+}
+
+fn desktop_control_imported_join_bundle_status(
+    bundle: &DesktopControlPooledInferenceManagementImportedJoinBundle,
+) -> DesktopControlPooledInferenceImportedJoinBundleStatus {
+    DesktopControlPooledInferenceImportedJoinBundleStatus {
+        bundle: desktop_control_join_bundle_status(&bundle.bundle),
+        imported_at_epoch_ms: bundle.imported_at_ms,
+    }
+}
+
+fn desktop_control_join_bundle_status(
+    bundle: &DesktopControlPooledInferenceManagementJoinBundle,
+) -> DesktopControlPooledInferenceJoinBundleStatus {
+    DesktopControlPooledInferenceJoinBundleStatus {
+        mesh_label: bundle.mesh_label.clone(),
+        namespace: bundle.namespace.clone(),
+        cluster_id: bundle.cluster_id.clone(),
+        advertised_control_plane_addrs: bundle.advertised_control_plane_addrs.clone(),
+        trust_policy_digest: bundle.trust_metadata.trust_policy_digest.clone(),
+        trust_posture: bundle.trust_metadata.trust_posture.clone(),
+        discovery_posture: bundle.trust_metadata.discovery_posture.clone(),
+        trust_bundle_version: bundle.trust_metadata.trust_bundle_version,
+        accepted_trust_bundle_versions: bundle
+            .trust_metadata
+            .accepted_trust_bundle_versions
+            .clone(),
+        introduction_policy_digest: bundle.trust_metadata.introduction_policy_digest.clone(),
+        admission_kind: desktop_control_join_bundle_admission_kind(&bundle.admission),
+        exported_at_epoch_ms: bundle.exported_at_ms,
+    }
+}
+
+fn desktop_control_join_bundle_status_from_file(
+    bundle: &DesktopControlPooledInferenceJoinBundleFile,
+) -> DesktopControlPooledInferenceJoinBundleStatus {
+    DesktopControlPooledInferenceJoinBundleStatus {
+        mesh_label: bundle.mesh_label.clone(),
+        namespace: bundle.namespace.clone(),
+        cluster_id: bundle.cluster_id.clone(),
+        advertised_control_plane_addrs: bundle.advertised_control_plane_addrs.clone(),
+        trust_policy_digest: bundle.trust_metadata.trust_policy_digest.clone(),
+        trust_posture: bundle.trust_metadata.trust_posture.clone(),
+        discovery_posture: bundle.trust_metadata.discovery_posture.clone(),
+        trust_bundle_version: bundle.trust_metadata.trust_bundle_version,
+        accepted_trust_bundle_versions: bundle
+            .trust_metadata
+            .accepted_trust_bundle_versions
+            .clone(),
+        introduction_policy_digest: bundle.trust_metadata.introduction_policy_digest.clone(),
+        admission_kind: desktop_control_join_bundle_admission_kind(&bundle.admission),
+        exported_at_epoch_ms: bundle.exported_at_ms,
+    }
+}
+
+fn desktop_control_join_bundle_admission_kind(value: &Value) -> String {
+    value
+        .as_object()
+        .and_then(|map| map.keys().next().cloned())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn desktop_control_pooled_inference_snapshot(
+    management_base_url: &str,
+    status: &DesktopControlPooledInferenceManagementStatusResponse,
+) -> DesktopControlPooledInferenceStatus {
+    let local_node = status
+        .nodes
+        .iter()
+        .find(|node| node.worker_id == DESKTOP_CONTROL_POOLED_INFERENCE_LOCAL_WORKER_ID);
+    let targetable_models = desktop_control_pooled_inference_targetable_models(status, local_node);
+    let warm_replica_count = status
+        .nodes
+        .iter()
+        .flat_map(|node| node.models.iter())
+        .filter(|model| model.warm_state == "warm")
+        .count();
+    DesktopControlPooledInferenceStatus {
+        available: true,
+        source: "psionic_management".to_string(),
+        management_base_url: Some(management_base_url.to_string()),
+        topology_digest: Some(status.topology_digest.clone()),
+        default_model: Some(status.default_model.clone()),
+        membership_state: if status.nodes.is_empty() {
+            "empty".to_string()
+        } else {
+            "joined".to_string()
+        },
+        member_count: status.nodes.len(),
+        targetable_model_count: targetable_models.len(),
+        warm_replica_count,
+        local_worker_id: local_node.map(|node| node.worker_id.clone()),
+        local_serving_state: pooled_inference_local_serving_state(local_node),
+        served_mesh_role: local_node.map(|node| node.served_mesh_role.role.clone()),
+        served_mesh_posture: local_node.map(|node| node.served_mesh_role.posture.clone()),
+        served_mesh_reasons: local_node
+            .map(|node| node.served_mesh_role.reasons.clone())
+            .unwrap_or_default(),
+        execution_mode: local_node.map(|node| node.execution_mode_label.clone()),
+        execution_engine: local_node.map(|node| node.execution_engine_label.clone()),
+        fallback_posture: local_node.and_then(pooled_inference_fallback_posture),
+        last_refreshed_at_epoch_ms: Some(current_epoch_ms()),
+        last_error: None,
+        targetable_models,
+        members: status
+            .nodes
+            .iter()
+            .map(desktop_control_pooled_inference_member_status)
+            .collect(),
+        join: desktop_control_pooled_inference_join_status(status),
+    }
+}
+
+fn pooled_inference_local_serving_state(
+    local_node: Option<&DesktopControlPooledInferenceManagementNodeStatus>,
+) -> String {
+    let Some(local_node) = local_node else {
+        return "not_joined".to_string();
+    };
+    if local_node.execution_mode_label == "proxy" {
+        return "proxying".to_string();
+    }
+    if local_node
+        .models
+        .iter()
+        .any(|model| model.warm_state == "warm")
+    {
+        return "serving_local".to_string();
+    }
+    if local_node.served_mesh_role.posture == "standby" {
+        return "standing_by".to_string();
+    }
+    if local_node
+        .served_mesh_role
+        .reasons
+        .iter()
+        .any(|reason| reason == "warming")
+    {
+        return "warming".to_string();
+    }
+    "joined_idle".to_string()
+}
+
+fn pooled_inference_fallback_posture(
+    node: &DesktopControlPooledInferenceManagementNodeStatus,
+) -> Option<String> {
+    if node.execution_mode_label != "proxy" {
+        return None;
+    }
+    if node.served_mesh_role.role == "thin_client"
+        && node
+            .served_mesh_role
+            .reasons
+            .iter()
+            .any(|reason| reason == "remote_only")
+    {
+        return Some("thin_client_remote_only".to_string());
+    }
+    if node
+        .served_mesh_role
+        .reasons
+        .iter()
+        .any(|reason| reason == "warming")
+    {
+        return Some("warming_until_local_ready".to_string());
+    }
+    None
+}
+
+fn desktop_control_pooled_inference_targetable_models(
+    status: &DesktopControlPooledInferenceManagementStatusResponse,
+    local_node: Option<&DesktopControlPooledInferenceManagementNodeStatus>,
+) -> Vec<DesktopControlPooledInferenceTargetStatus> {
+    let mut merged = BTreeMap::<String, DesktopControlPooledInferenceTargetStatus>::new();
+    let local_warm_models = local_node
+        .map(|node| {
+            node.models
+                .iter()
+                .filter(|model| model.warm_state == "warm")
+                .map(|model| model.canonical_name.as_str())
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    for node in &status.nodes {
+        for model in &node.models {
+            if model.warm_state != "warm" {
+                continue;
+            }
+            let entry = merged
+                .entry(model.canonical_name.clone())
+                .or_insert_with(|| DesktopControlPooledInferenceTargetStatus {
+                    model: model.canonical_name.clone(),
+                    family: model.family.clone(),
+                    supported_endpoints: Vec::new(),
+                    structured_outputs: model.structured_outputs,
+                    tool_calling: model.tool_calling,
+                    response_state: model.response_state,
+                    warm_replica_count: 0,
+                    local_warm_replica: false,
+                    cluster_execution_modes: Vec::new(),
+                    cluster_execution_topologies: Vec::new(),
+                    participating_workers: Vec::new(),
+                });
+            let mut endpoints = entry
+                .supported_endpoints
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            endpoints.extend(model.supported_endpoints.iter().cloned());
+            entry.supported_endpoints = endpoints.into_iter().collect();
+            let mut execution_modes = entry
+                .cluster_execution_modes
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            execution_modes.extend(model.cluster_execution_modes.iter().cloned());
+            entry.cluster_execution_modes = execution_modes.into_iter().collect();
+            let mut execution_topologies = entry
+                .cluster_execution_topologies
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            execution_topologies.extend(model.cluster_execution_topologies.iter().cloned());
+            entry.cluster_execution_topologies = execution_topologies.into_iter().collect();
+            entry.structured_outputs |= model.structured_outputs;
+            entry.tool_calling |= model.tool_calling;
+            entry.response_state |= model.response_state;
+            entry.warm_replica_count += 1;
+            if local_warm_models.contains(model.canonical_name.as_str()) {
+                entry.local_warm_replica = true;
+            }
+            if !entry
+                .participating_workers
+                .iter()
+                .any(|worker| worker == &node.worker_id)
+            {
+                entry.participating_workers.push(node.worker_id.clone());
+                entry.participating_workers.sort();
+            }
+        }
+    }
+    merged.into_values().collect()
+}
+
+fn desktop_control_pooled_inference_member_status(
+    node: &DesktopControlPooledInferenceManagementNodeStatus,
+) -> DesktopControlPooledInferenceNodeStatus {
+    let warm_models = node
+        .models
+        .iter()
+        .filter(|model| model.warm_state == "warm")
+        .map(|model| model.canonical_name.clone())
+        .collect::<Vec<_>>();
+    DesktopControlPooledInferenceNodeStatus {
+        worker_id: node.worker_id.clone(),
+        served_mesh_role: node.served_mesh_role.role.clone(),
+        served_mesh_posture: node.served_mesh_role.posture.clone(),
+        served_mesh_reasons: node.served_mesh_role.reasons.clone(),
+        execution_mode: node.execution_mode_label.clone(),
+        execution_engine: node.execution_engine_label.clone(),
+        warm_model_count: warm_models.len(),
+        targetable_model_count: node
+            .models
+            .iter()
+            .filter(|model| model.warm_state == "warm")
+            .count(),
+        warm_models,
+    }
+}
+
+fn clear_desktop_control_pooled_inference_cache() {
+    let mut cache = desktop_control_pooled_inference_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    cache.refreshed_at = None;
+    cache.last_attempt_at = None;
+}
+
+fn export_pooled_inference_join_bundle_action(
+    mesh_root: Option<&str>,
+    output_path: &str,
+    mesh_label: Option<&str>,
+    advertise_addrs: &[String],
+) -> DesktopControlActionResponse {
+    let output_path = match resolve_desktop_control_absolute_path(output_path) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let mesh_root = match resolve_pooled_inference_mesh_lane_root(mesh_root) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let mesh_config = match load_pooled_inference_mesh_lane_config(mesh_root.as_path()) {
+        Ok(config) => config,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let (advertise_targets, advertise_source, tailnet_self_device) =
+        match resolve_pooled_inference_join_advertise_addrs(advertise_addrs, &mesh_config) {
+            Ok(result) => result,
+            Err(error) => return DesktopControlActionResponse::error(error),
+        };
+    let mut args = vec![
+        OsString::from("export-join-bundle"),
+        OsString::from("--root"),
+        mesh_root.as_os_str().to_os_string(),
+        OsString::from("--out"),
+        output_path.as_os_str().to_os_string(),
+    ];
+    if let Some(mesh_label) = mesh_label.map(str::trim).filter(|value| !value.is_empty()) {
+        args.push(OsString::from("--mesh-label"));
+        args.push(OsString::from(mesh_label));
+    }
+    for advertise in &advertise_targets {
+        args.push(OsString::from("--advertise"));
+        args.push(OsString::from(advertise.to_string()));
+    }
+    let command_stdout = match run_pooled_inference_mesh_lane_command(args) {
+        Ok(stdout) => stdout,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let bundle = match load_desktop_control_join_bundle(output_path.as_path()) {
+        Ok(bundle) => desktop_control_join_bundle_status_from_file(&bundle),
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let message = format!(
+        "Exported pooled inference join bundle to `{}`",
+        output_path.display()
+    );
+    DesktopControlActionResponse::ok_with_payload(
+        message,
+        json!({
+            "mesh_root": mesh_root.display().to_string(),
+            "config_path": pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display().to_string(),
+            "service_name": mesh_config.service_name,
+            "output_path": output_path.display().to_string(),
+            "advertise_source": advertise_source,
+            "advertised_control_plane_addrs": bundle.advertised_control_plane_addrs,
+            "tailnet_self_device": tailnet_self_device,
+            "bundle": bundle,
+            "command_stdout": (!command_stdout.is_empty()).then_some(command_stdout),
+        }),
+    )
+}
+
+fn import_pooled_inference_join_bundle_action(
+    mesh_root: Option<&str>,
+    join_bundle_path: &str,
+) -> DesktopControlActionResponse {
+    let mesh_root = match resolve_pooled_inference_mesh_lane_root(mesh_root) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let join_bundle_path = match resolve_desktop_control_absolute_path(join_bundle_path) {
+        Ok(path) => path,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let before = desktop_control_pooled_inference_status();
+    let args = vec![
+        OsString::from("install"),
+        OsString::from("--root"),
+        mesh_root.as_os_str().to_os_string(),
+        OsString::from("--join-bundle"),
+        join_bundle_path.as_os_str().to_os_string(),
+    ];
+    let command_stdout = match run_pooled_inference_mesh_lane_command(args) {
+        Ok(stdout) => stdout,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    clear_desktop_control_pooled_inference_cache();
+    let after = desktop_control_pooled_inference_status();
+    let bundle = match load_desktop_control_join_bundle(join_bundle_path.as_path()) {
+        Ok(bundle) => desktop_control_join_bundle_status_from_file(&bundle),
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    let restart_required = before.source == "psionic_management" && before.join == after.join;
+    let restart_hint = restart_required.then(|| {
+        format!(
+            "restart the local psionic mesh lane service so `{}` is imported into file-backed mesh state",
+            join_bundle_path.display()
+        )
+    });
+    let message = if restart_required {
+        format!(
+            "Recorded pooled inference join bundle in `{}`; restart the mesh lane to apply it",
+            pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display()
+        )
+    } else {
+        format!(
+            "Recorded pooled inference join bundle in `{}`",
+            pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display()
+        )
+    };
+    DesktopControlActionResponse::ok_with_payload(
+        message,
+        json!({
+            "mesh_root": mesh_root.display().to_string(),
+            "config_path": pooled_inference_mesh_lane_config_path(mesh_root.as_path()).display().to_string(),
+            "join_bundle_path": join_bundle_path.display().to_string(),
+            "bundle": bundle,
+            "join_posture_before": before.join.posture,
+            "join_posture_after": after.join.posture,
+            "restart_required": restart_required,
+            "restart_hint": restart_hint,
+            "command_stdout": (!command_stdout.is_empty()).then_some(command_stdout),
+        }),
+    )
+}
+
+fn run_pooled_inference_mesh_lane_command(args: Vec<OsString>) -> Result<String, String> {
+    let mut command = resolve_pooled_inference_mesh_lane_command_plan()?.into_command();
+    command.args(args);
+    let output = command
+        .output()
+        .map_err(|error| format!("failed to run psionic mesh lane command: {error}"))?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        format!("exit status {}", output.status)
+    };
+    Err(format!("psionic-owned mesh lane command failed: {detail}"))
+}
+
+fn resolve_pooled_inference_mesh_lane_command_plan()
+-> Result<DesktopControlMeshLaneCommandPlan, String> {
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current exe: {error}"))?;
+    if let Some(path) = std::env::var_os(DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV) {
+        return Ok(DesktopControlMeshLaneCommandPlan {
+            program: PathBuf::from(path),
+            args: Vec::new(),
+        });
+    }
+    let sibling_binary =
+        desktop_control_sibling_named_binary_path(current_exe.as_path(), "psionic-mesh-lane");
+    if sibling_binary.is_file() {
+        return Ok(DesktopControlMeshLaneCommandPlan {
+            program: sibling_binary,
+            args: Vec::new(),
+        });
+    }
+    let sibling_manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .map(|workspace_root| workspace_root.join("psionic/Cargo.toml"))
+        .ok_or_else(|| "failed to resolve sibling psionic workspace".to_string())?;
+    if sibling_manifest.is_file() {
+        return Ok(DesktopControlMeshLaneCommandPlan {
+            program: PathBuf::from("cargo"),
+            args: vec![
+                OsString::from("run"),
+                OsString::from("--manifest-path"),
+                sibling_manifest.as_os_str().to_os_string(),
+                OsString::from("-p"),
+                OsString::from("psionic-serve"),
+                OsString::from("--bin"),
+                OsString::from("psionic-mesh-lane"),
+                OsString::from("--"),
+            ],
+        });
+    }
+    Err(format!(
+        "the supported pooled inference path uses the Psionic-owned `psionic-mesh-lane` binary; set {DESKTOP_CONTROL_PSIONIC_MESH_LANE_BIN_ENV} or keep a sibling `psionic` checkout available"
+    ))
+}
+
+fn desktop_control_sibling_named_binary_path(current_exe: &Path, binary_name: &str) -> PathBuf {
+    let base_dir = current_exe
+        .parent()
+        .and_then(|parent| {
+            if parent.file_name().is_some_and(|name| name == "deps") {
+                parent.parent()
+            } else {
+                Some(parent)
+            }
+        })
+        .unwrap_or_else(|| Path::new("."));
+    base_dir.join(format!("{binary_name}{}", std::env::consts::EXE_SUFFIX))
+}
+
+fn resolve_pooled_inference_mesh_lane_root(explicit_root: Option<&str>) -> Result<PathBuf, String> {
+    let root = explicit_root
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            std::env::var(DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .ok_or_else(|| {
+            format!(
+                "pooled inference mesh lane root is not configured; pass `--mesh-root` or set {DESKTOP_CONTROL_PSIONIC_MESH_LANE_ROOT_ENV}"
+            )
+        })?;
+    resolve_desktop_control_absolute_path(root.as_str())
+}
+
+fn resolve_desktop_control_absolute_path(value: &str) -> Result<PathBuf, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("path must not be empty".to_string());
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .map_err(|error| format!("failed to resolve current directory: {error}"))
+    }
+}
+
+fn pooled_inference_mesh_lane_config_path(root: &Path) -> PathBuf {
+    root.join("config").join("mesh-lane.json")
+}
+
+fn load_pooled_inference_mesh_lane_config(
+    root: &Path,
+) -> Result<DesktopControlMeshLaneConfig, String> {
+    let path = pooled_inference_mesh_lane_config_path(root);
+    let bytes = fs::read(&path).map_err(|error| {
+        format!(
+            "failed to read mesh lane config `{}`: {error}",
+            path.display()
+        )
+    })?;
+    serde_json::from_slice::<DesktopControlMeshLaneConfig>(&bytes).map_err(|error| {
+        format!(
+            "failed to parse mesh lane config `{}`: {error}",
+            path.display()
+        )
+    })
+}
+
+fn load_desktop_control_join_bundle(
+    path: &Path,
+) -> Result<DesktopControlPooledInferenceJoinBundleFile, String> {
+    let bytes = fs::read(path)
+        .map_err(|error| format!("failed to read join bundle `{}`: {error}", path.display()))?;
+    serde_json::from_slice::<DesktopControlPooledInferenceJoinBundleFile>(&bytes)
+        .map_err(|error| format!("failed to parse join bundle `{}`: {error}", path.display()))
+}
+
+fn resolve_pooled_inference_join_advertise_addrs(
+    explicit_addrs: &[String],
+    mesh_config: &DesktopControlMeshLaneConfig,
+) -> Result<(Vec<SocketAddr>, &'static str, Option<Value>), String> {
+    if !explicit_addrs.is_empty() {
+        let mut addrs = explicit_addrs
+            .iter()
+            .map(|value| {
+                value
+                    .parse::<SocketAddr>()
+                    .map_err(|error| format!("invalid --advertise value `{value}`: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        addrs.sort_unstable();
+        addrs.dedup();
+        return Ok((addrs, "explicit", None));
+    }
+    let tailnet = desktop_control_tailnet_status();
+    if let Some(self_device) = tailnet.self_device.as_ref() {
+        let mut addrs = self_device
+            .tailscale_ips
+            .iter()
+            .filter_map(|value| value.parse::<IpAddr>().ok())
+            .map(|ip| SocketAddr::new(ip, mesh_config.mesh_bind_addr.port()))
+            .collect::<Vec<_>>();
+        addrs.sort_unstable();
+        addrs.dedup();
+        if !addrs.is_empty() {
+            return Ok((
+                addrs,
+                "tailnet_self",
+                Some(json!({
+                    "node_id": self_device.node_id,
+                    "display_name": self_device.display_name,
+                    "host_name": self_device.host_name,
+                    "tailscale_ips": self_device.tailscale_ips,
+                })),
+            ));
+        }
+    }
+    Ok((Vec::new(), "mesh_config_default", None))
 }
 
 fn desktop_control_sandbox_profile_status(
@@ -9513,6 +11787,9 @@ fn procurement_backend_label(
 ) -> &'static str {
     match backend_family {
         Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
+        Some(openagents_kernel_core::compute::ComputeBackendFamily::PooledInference) => {
+            "pooled_inference"
+        }
         Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => {
             "apple_foundation_models"
         }
@@ -9820,7 +12097,9 @@ fn snapshot_for_state_with_signature(
     let inventory = crate::provider_inventory::inventory_status_for_state(state);
     let buyer_procurement = desktop_control_buyer_procurement_status(&state.network_requests);
     let gpt_oss = desktop_control_gpt_oss_status(state);
+    let pooled_inference = desktop_control_pooled_inference_status();
     let tailnet = desktop_control_tailnet_status();
+    let gemma_finetune = crate::gemma_finetune_control::status().unwrap_or_default();
 
     let mut snapshot = DesktopControlSnapshot {
         schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
@@ -9888,6 +12167,7 @@ fn snapshot_for_state_with_signature(
             last_action: state.spark_wallet.last_action.clone(),
             last_error: state.spark_wallet.last_error.clone(),
         },
+        pooled_inference,
         tailnet,
         tunnels: DesktopControlTunnelsStatus::default(),
         inventory,
@@ -9895,6 +12175,7 @@ fn snapshot_for_state_with_signature(
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
         training: desktop_control_training_status(state),
+        gemma_finetune,
         remote_training: desktop_control_remote_training_status(state),
         proofs: desktop_control_proof_status(state),
         challenges: desktop_control_challenge_status(state),
@@ -9957,6 +12238,9 @@ fn snapshot_for_state_with_signature(
                 job_id: active_job.job_id,
                 request_id: active_job.request_id,
                 capability: active_job.capability,
+                compute_product_id: active_job.compute_product_id,
+                market_receipt_class: active_job.market_receipt_class,
+                earnings_summary: active_job.earnings_summary,
                 stage,
                 projection_stage,
                 phase,
@@ -10582,6 +12866,19 @@ fn auth_token_preview(auth_token: &str) -> String {
     }
 }
 
+fn mask_secret(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() <= 12 {
+        trimmed.to_string()
+    } else {
+        format!(
+            "{}...{}",
+            &trimmed[..8],
+            &trimmed[trimmed.len().saturating_sub(4)..]
+        )
+    }
+}
+
 fn refresh_snapshot_attnres_summary(snapshot: &mut DesktopControlSnapshot) {
     let Ok(status) = crate::attnres_lab_control::current_status() else {
         return;
@@ -10856,20 +13153,25 @@ mod tests {
         DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
         DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
         DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlProofStatus, DesktopControlProviderStatus,
-        DesktopControlRemoteTrainingExplorerStatus, DesktopControlRemoteTrainingRunStatus,
-        DesktopControlRemoteTrainingSelectedRunStatus, DesktopControlRemoteTrainingStatus,
-        DesktopControlRemoteTrainingTrackStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
-        DesktopControlSessionStatus, DesktopControlSnapshot, DesktopControlTailnetDeviceStatus,
-        DesktopControlTailnetStatus, DesktopControlTrainingParticipantStatus,
-        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
-        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
-        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
-        build_nip90_sent_payments_report_payload, build_settlement_history,
-        challenges_by_delivery_proof, command_outcome_event, command_received_event,
-        desktop_control_challenge_history_status, desktop_control_proof_history_status,
-        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlPooledInferenceJoinStatus,
+        DesktopControlPooledInferenceJoinedMeshPreferenceStatus,
+        DesktopControlPooledInferenceManagementStatusResponse,
+        DesktopControlPooledInferenceNodeStatus, DesktopControlPooledInferenceStatus,
+        DesktopControlPooledInferenceTargetStatus, DesktopControlProofStatus,
+        DesktopControlProviderStatus, DesktopControlRemoteTrainingExplorerStatus,
+        DesktopControlRemoteTrainingRunStatus, DesktopControlRemoteTrainingSelectedRunStatus,
+        DesktopControlRemoteTrainingStatus, DesktopControlRemoteTrainingTrackStatus,
+        DesktopControlRuntime, DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate,
+        DesktopControlSandboxStatus, DesktopControlSessionStatus, DesktopControlSnapshot,
+        DesktopControlTailnetDeviceStatus, DesktopControlTailnetStatus,
+        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
+        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
+        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
+        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
+        command_received_event, desktop_control_challenge_history_status,
+        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
+        validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -10926,6 +13228,42 @@ mod tests {
     use tokio_tungstenite::{accept_async, tungstenite::Message};
 
     fn sample_snapshot() -> DesktopControlSnapshot {
+        let gemma_contract =
+            psionic_train::canonical_gemma_e4b_finetuning_mvp_contract().expect("gemma contract");
+        let template_digest = gemma_contract
+            .tokenizer
+            .template_digest
+            .clone()
+            .expect("gemma template digest");
+        let eval_pack_binding = psionic_train::canonical_gemma_e4b_finetune_eval_pack_binding()
+            .expect("gemma eval-pack binding");
+        let mut dataset_contract = psionic_train::GemmaE4bFinetuneDatasetContract {
+            schema_version: psionic_train::GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION
+                .to_string(),
+            dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+            train_split_ref: "split://openagents/gemma4/e4b/support-agent/train".to_string(),
+            held_out_validation_split_ref:
+                "split://openagents/gemma4/e4b/support-agent/held_out_validation".to_string(),
+            final_report_split_ref: "split://openagents/gemma4/e4b/support-agent/final_report"
+                .to_string(),
+            baseline_short_split_ref: "split://openagents/gemma4/e4b/support-agent/baseline_short"
+                .to_string(),
+            chat_template_digest: template_digest.clone(),
+            assistant_mask_kind: psionic_train::GemmaE4bAssistantMaskKind::AssistantResponsesOnly,
+            assistant_mask_coverage_bps: 10_000,
+            benchmark_overlap_check: psionic_train::GemmaE4bBenchmarkOverlapCheck {
+                check_id: "support-agent-overlap-check".to_string(),
+                compared_benchmark_refs: vec![
+                    "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                ],
+                exact_overlap_refs: Vec::new(),
+                near_duplicate_overlap_refs: Vec::new(),
+                passed: true,
+                detail: "bounded dataset cleared overlap review".to_string(),
+            },
+            dataset_digest: String::new(),
+        };
+        dataset_contract.dataset_digest = dataset_contract.stable_digest();
         DesktopControlSnapshot {
             schema_version: DESKTOP_CONTROL_SCHEMA_VERSION,
             snapshot_revision: 1,
@@ -11043,6 +13381,95 @@ mod tests {
                 withdraw_block_reason: None,
                 last_action: Some("Wallet refreshed".to_string()),
                 last_error: None,
+            },
+            pooled_inference: DesktopControlPooledInferenceStatus {
+                available: true,
+                source: "psionic_management".to_string(),
+                management_base_url: Some("http://127.0.0.1:7878".to_string()),
+                topology_digest: Some("mesh.topology.1".to_string()),
+                default_model: Some("gemma4:e4b".to_string()),
+                membership_state: "joined".to_string(),
+                member_count: 2,
+                targetable_model_count: 1,
+                warm_replica_count: 1,
+                local_worker_id: Some("openai_compat".to_string()),
+                local_serving_state: "proxying".to_string(),
+                served_mesh_role: Some("thin_client".to_string()),
+                served_mesh_posture: Some("standby".to_string()),
+                served_mesh_reasons: vec![
+                    "remote_only".to_string(),
+                    "warming".to_string(),
+                ],
+                execution_mode: Some("proxy".to_string()),
+                execution_engine: Some("llama.cpp".to_string()),
+                fallback_posture: Some("thin_client_remote_only".to_string()),
+                last_refreshed_at_epoch_ms: Some(123),
+                last_error: None,
+                targetable_models: vec![DesktopControlPooledInferenceTargetStatus {
+                    model: "gemma4:e4b".to_string(),
+                    family: "gemma4".to_string(),
+                    supported_endpoints: vec![
+                        "/v1/chat/completions".to_string(),
+                        "/v1/responses".to_string(),
+                    ],
+                    structured_outputs: false,
+                    tool_calling: true,
+                    response_state: true,
+                    warm_replica_count: 1,
+                    local_warm_replica: false,
+                    cluster_execution_modes: vec![
+                        "remote_whole_request".to_string(),
+                        "dense_split".to_string(),
+                    ],
+                    cluster_execution_topologies: vec!["pipeline_sharded".to_string()],
+                    participating_workers: vec![
+                        "openai_compat".to_string(),
+                        "worker-gpu-a".to_string(),
+                    ],
+                }],
+                members: vec![
+                    DesktopControlPooledInferenceNodeStatus {
+                        worker_id: "openai_compat".to_string(),
+                        served_mesh_role: "thin_client".to_string(),
+                        served_mesh_posture: "standby".to_string(),
+                        served_mesh_reasons: vec![
+                            "remote_only".to_string(),
+                            "warming".to_string(),
+                        ],
+                        execution_mode: "proxy".to_string(),
+                        execution_engine: "llama.cpp".to_string(),
+                        warm_model_count: 0,
+                        targetable_model_count: 0,
+                        warm_models: Vec::new(),
+                    },
+                    DesktopControlPooledInferenceNodeStatus {
+                        worker_id: "worker-gpu-a".to_string(),
+                        served_mesh_role: "worker".to_string(),
+                        served_mesh_posture: "serving".to_string(),
+                        served_mesh_reasons: vec!["demand_routed".to_string()],
+                        execution_mode: "native".to_string(),
+                        execution_engine: "psionic".to_string(),
+                        warm_model_count: 1,
+                        targetable_model_count: 1,
+                        warm_models: vec!["gemma4:e4b".to_string()],
+                    },
+                ],
+                join: DesktopControlPooledInferenceJoinStatus {
+                    posture: "joined".to_string(),
+                    last_joined_mesh_preference: Some(
+                        DesktopControlPooledInferenceJoinedMeshPreferenceStatus {
+                            mesh_label: "mesh-home".to_string(),
+                            namespace: "mesh-home".to_string(),
+                            cluster_id: "cluster.mesh-home".to_string(),
+                            advertised_control_plane_addrs: vec![
+                                "100.90.1.10:47470".to_string(),
+                            ],
+                            trust_policy_digest: "trust.mesh-home".to_string(),
+                            selected_at_epoch_ms: 1_762_100_000_000,
+                        },
+                    ),
+                    last_imported_join_bundle: None,
+                },
             },
             tailnet: DesktopControlTailnetStatus {
                 available: true,
@@ -11350,6 +13777,154 @@ mod tests {
                 contributions: Vec::new(),
                 contributor: crate::desktop_control::DesktopControlTrainingContributorStatus::default(),
                 operator: DesktopControlAppleAdapterOperatorStatus::default(),
+                last_error: None,
+            },
+            gemma_finetune: crate::gemma_finetune_control::GemmaFinetuneStatus {
+                available: true,
+                schema_version: 1,
+                view_scope: "operator_aggregate".to_string(),
+                scope_tenant_id: None,
+                storage_path: Some(
+                    "/tmp/openagents/logs/autopilot/gemma-finetune.json".to_string(),
+                ),
+                tenant_count: 1,
+                project_count: 1,
+                dataset_count: 1,
+                validation_receipt_count: 1,
+                job_count: 0,
+                promoted_model_count: 0,
+                accepted_outcome_count: 0,
+                model_inventory_count: 0,
+                quota_blocked_tenant_count: 0,
+                tenants: vec![crate::gemma_finetune_control::GemmaFinetuneTenantStatus {
+                    tenant_id: "design-partner".to_string(),
+                    display_name: "Design Partner".to_string(),
+                    created_at_epoch_ms: 1_762_500_004_000,
+                    updated_at_epoch_ms: 1_762_500_004_500,
+                    api_key_id: "tenant-key-design-partner".to_string(),
+                    api_key_preview: "gft_dead...beef".to_string(),
+                    last_authenticated_at_epoch_ms: Some(1_762_500_004_600),
+                    quota: crate::gemma_finetune_control::GemmaFinetuneTenantQuotaStatus {
+                        max_projects: 3,
+                        max_datasets: 6,
+                        max_jobs: 8,
+                        max_active_jobs: 1,
+                        max_promoted_models: 2,
+                    },
+                    usage: crate::gemma_finetune_control::GemmaFinetuneTenantUsageStatus {
+                        project_count: 1,
+                        dataset_count: 1,
+                        job_count: 0,
+                        active_job_count: 0,
+                        promoted_model_count: 0,
+                        accepted_outcome_count: 0,
+                        inventory_model_count: 0,
+                    },
+                    quota_ready: true,
+                    quota_blockers: Vec::new(),
+                    project_ids: vec!["support-agent-1762500004000".to_string()],
+                    accepted_outcome_ids: Vec::new(),
+                    inventory_model_refs: Vec::new(),
+                    last_action: Some("Provisioned Gemma finetune tenant".to_string()),
+                    last_error: None,
+                }],
+                projects: vec![crate::gemma_finetune_control::GemmaFinetuneProjectStatus {
+                    project_id: "support-agent-1762500004000".to_string(),
+                    tenant_id: "design-partner".to_string(),
+                    project_name: "Support agent".to_string(),
+                    created_at_epoch_ms: 1_762_500_004_000,
+                    updated_at_epoch_ms: 1_762_500_004_500,
+                    base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                    hidden_size: 4,
+                    active_dataset_id: Some("support-agent-2026-04-1762500004500".to_string()),
+                    lane_binding: crate::gemma_finetune_control::GemmaFinetuneLaneBindingStatus {
+                        model_id: gemma_contract.model_id.clone(),
+                        model_family: gemma_contract.model_family.clone(),
+                        training_family_id: gemma_contract.training_family_id.clone(),
+                        checkpoint_family: gemma_contract.checkpoint_family.clone(),
+                        base_model_revision: gemma_contract.base_model_revision.clone(),
+                        adapter_family: gemma_contract.adapter_target.adapter_family.clone(),
+                        eval_pack_storage_key: eval_pack_binding
+                            .benchmark_package_storage_key
+                            .clone(),
+                        tokenizer_contract_digest: gemma_contract.tokenizer_contract_digest.clone(),
+                    },
+                    last_action: Some("Bound dataset to project".to_string()),
+                    last_error: None,
+                }],
+                datasets: vec![crate::gemma_finetune_control::GemmaFinetuneDatasetStatus {
+                    dataset_id: "support-agent-2026-04-1762500004500".to_string(),
+                    project_id: "support-agent-1762500004000".to_string(),
+                    dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                    created_at_epoch_ms: 1_762_500_004_500,
+                    updated_at_epoch_ms: 1_762_500_004_500,
+                    train_split: crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "train".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/train"
+                            .to_string(),
+                        file_path: "/tmp/train.json".to_string(),
+                        file_digest: "train-digest".to_string(),
+                        sample_count: 128,
+                    },
+                    held_out_validation_split:
+                        crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                            split_id: "held_out_validation".to_string(),
+                            split_ref:
+                                "split://openagents/gemma4/e4b/support-agent/held_out_validation"
+                                    .to_string(),
+                            file_path: "/tmp/validation.json".to_string(),
+                            file_digest: "validation-digest".to_string(),
+                            sample_count: 32,
+                        },
+                    final_report_split:
+                        crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                            split_id: "final_report".to_string(),
+                            split_ref:
+                                "split://openagents/gemma4/e4b/support-agent/final_report"
+                                    .to_string(),
+                            file_path: "/tmp/holdout.json".to_string(),
+                            file_digest: "holdout-digest".to_string(),
+                            sample_count: 32,
+                        },
+                    baseline_short_split:
+                        crate::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                            split_id: "baseline_short".to_string(),
+                            split_ref:
+                                "split://openagents/gemma4/e4b/support-agent/baseline_short"
+                                    .to_string(),
+                            file_path: "/tmp/validation.json".to_string(),
+                            file_digest: "validation-digest".to_string(),
+                            sample_count: 32,
+                        },
+                    validation_receipt:
+                        crate::gemma_finetune_control::GemmaFinetuneValidationReceiptStatus {
+                            receipt_id: "support-agent.validation".to_string(),
+                            validated_at_epoch_ms: 1_762_500_004_500,
+                            status: "validated".to_string(),
+                            tokenizer_contract_digest: gemma_contract
+                                .tokenizer_contract_digest
+                                .clone(),
+                            tokenizer_compatible: true,
+                            template_compatible: true,
+                            assistant_mask_coverage_bps: 10_000,
+                            compared_benchmark_refs: vec![
+                                "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                            ],
+                            warnings: vec![
+                                "baseline_short path defaulted to the validation file for the bounded MVP lane".to_string(),
+                            ],
+                            errors: Vec::new(),
+                            dataset_contract,
+                            eval_pack_binding,
+                        },
+                    last_action: Some("Registered Gemma finetune dataset".to_string()),
+                    last_error: None,
+                }],
+                jobs: Vec::new(),
+                promoted_models: Vec::new(),
+                accepted_outcomes: Vec::new(),
+                model_inventory: Vec::new(),
+                last_action: Some("Registered Gemma finetune dataset".to_string()),
                 last_error: None,
             },
             remote_training: DesktopControlRemoteTrainingStatus {
@@ -11681,6 +14256,156 @@ mod tests {
             parsed.peers[1].last_seen.as_deref(),
             Some("2026-03-27T02:30:00Z")
         );
+    }
+
+    #[test]
+    fn pooled_inference_snapshot_projects_mesh_membership_and_targetable_models() {
+        let status = serde_json::from_value::<DesktopControlPooledInferenceManagementStatusResponse>(
+            json!({
+                "topology_digest": "mesh.topology.1",
+                "default_model": "gemma4:e4b",
+                "join_state": {
+                    "posture": "joined",
+                    "last_joined_mesh_preference": {
+                        "mesh_label": "mesh-home",
+                        "namespace": "mesh-home",
+                        "cluster_id": "cluster.mesh-home",
+                        "advertised_control_plane_addrs": ["100.90.1.10:47470"],
+                        "trust_policy_digest": "trust.mesh-home",
+                        "selected_at_ms": 1762100000000u64
+                    },
+                    "last_imported_join_bundle": {
+                        "bundle": {
+                            "mesh_label": "mesh-home",
+                            "namespace": "mesh-home",
+                            "cluster_id": "cluster.mesh-home",
+                            "advertised_control_plane_addrs": ["100.90.1.10:47470"],
+                            "trust_metadata": {
+                                "trust_policy_digest": "trust.mesh-home",
+                                "trust_posture": "trusted_lan",
+                                "discovery_posture": "lan_only",
+                                "trust_bundle_version": 4u64,
+                                "accepted_trust_bundle_versions": [3u64],
+                                "introduction_policy_digest": null
+                            },
+                            "admission": {
+                                "shared_admission": {
+                                    "admission_token": "mesh-token"
+                                }
+                            },
+                            "exported_at_ms": 1762100005000u64
+                        },
+                        "imported_at_ms": 1762100009000u64
+                    }
+                },
+                "nodes": [
+                    {
+                        "worker_id": "openai_compat",
+                        "served_mesh_role": {
+                            "role": "thin_client",
+                            "posture": "standby",
+                            "reasons": ["remote_only", "warming"]
+                        },
+                        "execution_mode_label": "proxy",
+                        "execution_engine_label": "llama.cpp",
+                        "models": []
+                    },
+                    {
+                        "worker_id": "worker-gpu-a",
+                        "served_mesh_role": {
+                            "role": "worker",
+                            "posture": "serving",
+                            "reasons": ["demand_routed"]
+                        },
+                        "execution_mode_label": "native",
+                        "execution_engine_label": "psionic",
+                        "models": [
+                            {
+                                "canonical_name": "gemma4:e4b",
+                                "family": "gemma4",
+                                "supported_endpoints": ["/v1/chat/completions", "/v1/responses"],
+                                "warm_state": "warm",
+                                "structured_outputs": false,
+                                "tool_calling": true,
+                                "response_state": true,
+                                "cluster_execution_modes": ["dense_split"],
+                                "cluster_execution_topologies": ["pipeline_sharded"]
+                            }
+                        ]
+                    }
+                ]
+            }),
+        )
+        .expect("pooled inference status should decode");
+
+        let snapshot =
+            super::desktop_control_pooled_inference_snapshot("http://127.0.0.1:7878", &status);
+
+        assert!(snapshot.available);
+        assert_eq!(snapshot.source, "psionic_management");
+        assert_eq!(snapshot.membership_state, "joined");
+        assert_eq!(snapshot.local_serving_state, "proxying");
+        assert_eq!(snapshot.served_mesh_role.as_deref(), Some("thin_client"));
+        assert_eq!(
+            snapshot.fallback_posture.as_deref(),
+            Some("thin_client_remote_only")
+        );
+        assert_eq!(snapshot.targetable_model_count, 1);
+        assert_eq!(snapshot.warm_replica_count, 1);
+        assert_eq!(snapshot.targetable_models[0].model, "gemma4:e4b");
+        assert_eq!(
+            snapshot.targetable_models[0].cluster_execution_modes,
+            vec!["dense_split".to_string()]
+        );
+        assert_eq!(
+            snapshot.targetable_models[0].cluster_execution_topologies,
+            vec!["pipeline_sharded".to_string()]
+        );
+        assert_eq!(
+            snapshot.targetable_models[0].participating_workers,
+            vec!["worker-gpu-a".to_string()]
+        );
+        assert_eq!(snapshot.join.posture, "joined");
+        assert_eq!(
+            snapshot
+                .join
+                .last_joined_mesh_preference
+                .as_ref()
+                .map(|value| value.mesh_label.as_str()),
+            Some("mesh-home")
+        );
+        assert_eq!(
+            snapshot
+                .join
+                .last_imported_join_bundle
+                .as_ref()
+                .map(|value| value.bundle.admission_kind.as_str()),
+            Some("shared_admission")
+        );
+        assert_eq!(
+            snapshot.targetable_models[0].supported_endpoints,
+            vec![
+                "/v1/chat/completions".to_string(),
+                "/v1/responses".to_string()
+            ]
+        );
+        assert_eq!(snapshot.members.len(), 2);
+        assert_eq!(snapshot.members[0].worker_id, "openai_compat");
+        assert_eq!(
+            snapshot.members[1].warm_models,
+            vec!["gemma4:e4b".to_string()]
+        );
+    }
+
+    #[test]
+    fn normalize_desktop_control_http_base_url_rejects_invalid_values() {
+        assert_eq!(
+            super::normalize_desktop_control_http_base_url("http://127.0.0.1:7878/mesh/?q=1#frag")
+                .expect("valid base url"),
+            "http://127.0.0.1:7878/mesh"
+        );
+        assert!(super::normalize_desktop_control_http_base_url("ftp://mesh.example").is_err());
+        assert!(super::normalize_desktop_control_http_base_url("").is_err());
     }
 
     fn sample_history_delivery_proof() -> DeliveryProof {
@@ -13386,6 +16111,24 @@ mod tests {
         assert_eq!(
             DesktopControlActionRequest::GetAttnResStatus.label(),
             "attnres-status"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                mesh_root: Some("/tmp/mesh-root".to_string()),
+                output_path: "/tmp/mesh-home.join.json".to_string(),
+                mesh_label: Some("mesh-home".to_string()),
+                advertise_addrs: vec!["100.90.1.10:47470".to_string()],
+            }
+            .label(),
+            "pooled-inference-export-join-bundle"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+                mesh_root: Some("/tmp/mesh-root".to_string()),
+                join_bundle_path: "/tmp/mesh-home.join.json".to_string(),
+            }
+            .label(),
+            "pooled-inference-import-join-bundle"
         );
         assert_eq!(
             DesktopControlActionRequest::StartAttnRes.label(),

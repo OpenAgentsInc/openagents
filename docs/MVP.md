@@ -146,6 +146,7 @@ We are shipping:
 * A wallet that can receive earnings, generate invoices, send payments, and show deterministic history.
 * A retained sync lane so conversations and job/activity state remain consistent and replay-safe across reconnects and restarts.
 * A starter Data Market slice that can register assets, publish grants, accept targeted NIP-90 access requests, issue delivery bundles, revoke access, and expose the same flow through panes, `autopilotctl`, and the no-window headless runtime.
+* A bounded design-partner `gemma4:e4b` finetuning surface that provisions tenant API keys, enforces explicit per-tenant quota on the single-lane MVP, registers explicit train/validation/holdout split files, queues one async adapter-SFT job against the frozen Gemma lane, exposes checkpoints and exported artifacts, and publishes truthful promotion state plus accepted-outcome and promoted-model inventory truth through desktop control and `autopilotctl`.
 
 We are intentionally *not* shipping:
 
@@ -154,6 +155,7 @@ We are intentionally *not* shipping:
 * Liquidity solver mode and Hydra intent-routing UX (future lane, explicit opt-in only)
 * A comprehensive plugin store UI
 * Broad public Data Market discovery, catalog search, or rich buyer procurement UX beyond the current narrow targeted-request flow
+* A broad end-user finetuning product, raw chat-log upload flow, or multi-family finetuning platform claim
 * Multi-surface parity across web/mobile
 * Operator-only consoles or complicated admin tooling
 

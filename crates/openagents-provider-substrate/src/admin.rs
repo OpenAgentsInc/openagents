@@ -609,7 +609,7 @@ impl ProviderPersistenceStore {
                 row.map_err(|error| format!("Failed to decode backend health row: {error}"))?;
             let health = decode_json::<ProviderBackendHealth>(&value_json)?;
             match backend_kind.as_str() {
-                "gpt_oss" => availability.gpt_oss = health,
+                "local_gemma" | "gpt_oss" => availability.local_gemma = health,
                 "apple_foundation_models" => availability.apple_foundation_models = health,
                 _ => {}
             }
@@ -1127,15 +1127,20 @@ fn replace_backend_rows(
     insert_backend_row(
         tx,
         ProviderBackendKind::GptOss,
-        &availability.gpt_oss,
+        &availability.local_gemma,
         captured_at_ms,
     )?;
-    insert_backend_row(
-        tx,
-        ProviderBackendKind::AppleFoundationModels,
-        &availability.apple_foundation_models,
-        captured_at_ms,
-    )?;
+    if availability
+        .apple_foundation_models
+        .has_authoritative_state()
+    {
+        insert_backend_row(
+            tx,
+            ProviderBackendKind::AppleFoundationModels,
+            &availability.apple_foundation_models,
+            captured_at_ms,
+        )?;
+    }
     Ok(())
 }
 
@@ -1335,7 +1340,7 @@ fn load_json_rows<T: DeserializeOwned>(
 
 fn backend_storage_key(backend_kind: ProviderBackendKind) -> &'static str {
     match backend_kind {
-        ProviderBackendKind::GptOss => "gpt_oss",
+        ProviderBackendKind::GptOss => "local_gemma",
         ProviderBackendKind::AppleFoundationModels => "apple_foundation_models",
         ProviderBackendKind::PsionicTrain => "psionic_train",
     }
@@ -1396,6 +1401,7 @@ mod tests {
         ProviderPayoutSummary, ProviderPersistedSnapshot, ProviderPersistenceStore,
         ProviderReceiptSummary, ProviderRecentJob, ProviderRuntimeStatusSnapshot,
         ProviderSnapshotParts, ProviderStatusResponse, assemble_provider_persisted_snapshot,
+        encode_json,
     };
     use crate::{
         ProviderAvailability, ProviderBackendHealth, ProviderComputeProduct, ProviderInventoryRow,
@@ -1403,6 +1409,7 @@ mod tests {
         ProviderSandboxProfile, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
     };
     use axum::http::StatusCode;
+    use rusqlite::params;
     use serde_json::json;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     use std::path::PathBuf;
@@ -1448,11 +1455,11 @@ mod tests {
                 inventory_session_started_at_ms: Some(1_762_300_000_000),
                 last_completed_job_at_epoch_ms: Some(1_762_300_030_000),
                 last_authoritative_event_id: Some("evt-1".to_string()),
-                execution_backend_label: "local GPT-OSS runtime".to_string(),
+                execution_backend_label: "local Gemma runtime".to_string(),
                 provider_blocker_codes: Vec::new(),
             },
             availability: ProviderAvailability {
-                gpt_oss: ProviderBackendHealth {
+                local_gemma: ProviderBackendHealth {
                     reachable: true,
                     ready: true,
                     configured_model: Some("llama3.2:latest".to_string()),
@@ -1466,6 +1473,7 @@ mod tests {
                 apple_foundation_models: ProviderBackendHealth::default(),
                 apple_adapter_hosting: Default::default(),
                 adapter_training_contributor: Default::default(),
+                pooled_inference: Default::default(),
                 sandbox: ProviderSandboxAvailability {
                     runtimes: vec![ProviderSandboxRuntimeHealth {
                         runtime_kind: ProviderSandboxRuntimeKind::Python,
@@ -1516,7 +1524,12 @@ mod tests {
                 backend_ready: true,
                 eligible: true,
                 capability_summary:
-                    "backend=gpt_oss execution=local_inference family=inference".to_string(),
+                    "backend=local_gemma execution=local_inference family=inference"
+                        .to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_summary:
+                    "Earns when local delivery is accepted and wallet settlement is confirmed."
+                        .to_string(),
                 source_badge: "local".to_string(),
                 capacity_lot_id: Some("lot-1".to_string()),
                 total_quantity: 1,
@@ -1537,9 +1550,9 @@ mod tests {
                 request_id: Some("req-1".to_string()),
                 status: "succeeded".to_string(),
                 demand_source: "open_network".to_string(),
-                product_id: Some("gpt_oss.text_generation".to_string()),
+                product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
                 compute_family: Some("inference".to_string()),
-                backend_family: Some("gpt_oss".to_string()),
+                backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -1556,7 +1569,7 @@ mod tests {
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
                 compute_family: Some("inference".to_string()),
-                backend_family: Some("gpt_oss".to_string()),
+                backend_family: Some("local_gemma".to_string()),
                 sandbox_execution_class: None,
                 sandbox_profile_id: None,
                 sandbox_profile_digest: None,
@@ -1628,7 +1641,7 @@ mod tests {
                 .receipts
                 .first()
                 .and_then(|receipt| receipt.backend_family.as_deref()),
-            Some("gpt_oss")
+            Some("local_gemma")
         );
         assert_eq!(
             snapshot
@@ -1690,6 +1703,42 @@ mod tests {
             reopened.load_sandbox_profiles(Some(4))? == snapshot.availability.sandbox.profiles,
             "provider admin store did not round-trip sandbox profiles",
         )?;
+        Ok(())
+    }
+
+    #[test]
+    fn sqlite_store_loads_legacy_gpt_oss_backend_rows_into_local_gemma()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let db_path = temp_dir.path().join("provider-admin-legacy.sqlite");
+        let config = sample_config(db_path.clone());
+        let store = ProviderPersistenceStore::open(&config)?;
+
+        store.connection.execute(
+            "INSERT INTO provider_backend_health (backend_kind, captured_at_ms, value_json) VALUES (?1, ?2, ?3)",
+            params![
+                "gpt_oss",
+                1_762_300_000_000i64,
+                encode_json(&ProviderBackendHealth {
+                    reachable: true,
+                    ready: true,
+                    configured_model: Some("gemma4:e4b".to_string()),
+                    ready_model: Some("gemma4:e4b".to_string()),
+                    available_models: vec!["gemma4:e4b".to_string()],
+                    last_error: None,
+                    last_action: Some("ready".to_string()),
+                    availability_message: None,
+                    latency_ms_p50: Some(111),
+                })?
+            ],
+        )?;
+
+        let availability = store.load_availability()?;
+        assert!(availability.local_gemma.ready);
+        assert_eq!(
+            availability.local_gemma.ready_model.as_deref(),
+            Some("gemma4:e4b")
+        );
         Ok(())
     }
 

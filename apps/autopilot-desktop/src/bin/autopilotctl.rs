@@ -6,6 +6,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -19,10 +20,12 @@ use autopilot_desktop::desktop_control::{
     DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
     DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketResolveDeliveryArgs,
     DesktopControlDataMarketRevokeGrantArgs, DesktopControlEventBatch,
-    DesktopControlLocalRuntimeStatus, DesktopControlManifest,
-    DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-    DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
-    DesktopControlTassadarStatus, DesktopControlTassadarView, control_manifest_path,
+    DesktopControlForgeAttachPayload, DesktopControlForgeHostedSessionsPayload,
+    DesktopControlForgeStatusPayload, DesktopControlLocalRuntimeStatus, DesktopControlManifest,
+    DesktopControlNip90SentPaymentsReport, DesktopControlPooledInferenceStatus,
+    DesktopControlSnapshot, DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
+    DesktopControlTassadarStatus, DesktopControlTassadarView, ForgeSharedSessionControlOwner,
+    control_manifest_path,
 };
 use autopilot_desktop::{
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
@@ -46,6 +49,9 @@ const DEFAULT_WAIT_TIMEOUT_MS: u64 = 20_000;
 const DEFAULT_TRAINING_WATCH_POLL_MS: u64 = 1_000;
 const DEFAULT_TRAINING_WATCH_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
 const DEFAULT_APPLE_FM_BASE_URL: &str = "http://127.0.0.1:11435";
+const FORGE_AUTOSTART_TIMEOUT_MS: u64 = 20_000;
+const FORGE_AUTOSTART_POLL_MS: u64 = 250;
+const FORGE_HEADLESS_LOG_FILENAME: &str = "forge-headless.log";
 
 #[derive(Parser, Debug)]
 #[command(name = "autopilotctl")]
@@ -82,6 +88,10 @@ enum Command {
         #[command(subcommand)]
         command: ClusterCommand,
     },
+    PooledInference {
+        #[command(subcommand)]
+        command: PooledInferenceCommand,
+    },
     Sandbox {
         #[command(subcommand)]
         command: SandboxCommand,
@@ -97,6 +107,11 @@ enum Command {
     Training {
         #[command(subcommand)]
         command: TrainingCommand,
+    },
+    #[command(name = "gemma-finetune")]
+    GemmaFinetune {
+        #[command(subcommand)]
+        command: GemmaFinetuneCommand,
     },
     #[command(name = "remote-training")]
     RemoteTraining {
@@ -150,6 +165,10 @@ enum Command {
     Chat {
         #[command(subcommand)]
         command: ChatCommand,
+    },
+    Forge {
+        #[command(subcommand)]
+        command: ForgeCommand,
     },
     DataMarket {
         #[command(subcommand)]
@@ -346,6 +365,26 @@ enum ClusterCommand {
     Topology,
 }
 
+#[derive(Subcommand, Debug)]
+enum PooledInferenceCommand {
+    Status,
+    Topology,
+    ExportJoinBundle {
+        output: PathBuf,
+        #[arg(long)]
+        mesh_root: Option<PathBuf>,
+        #[arg(long)]
+        mesh_label: Option<String>,
+        #[arg(long = "advertise")]
+        advertise_addrs: Vec<String>,
+    },
+    ImportJoinBundle {
+        input: PathBuf,
+        #[arg(long)]
+        mesh_root: Option<PathBuf>,
+    },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum SandboxEntrypointTypeArg {
     WorkspaceFile,
@@ -456,6 +495,128 @@ enum TrainingCommand {
     },
     Accept {
         run_id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneCommand {
+    Status,
+    Tenant {
+        #[command(subcommand)]
+        command: GemmaFinetuneTenantCommand,
+    },
+    Project {
+        #[command(subcommand)]
+        command: GemmaFinetuneProjectCommand,
+    },
+    Dataset {
+        #[command(subcommand)]
+        command: GemmaFinetuneDatasetCommand,
+    },
+    Job {
+        #[command(subcommand)]
+        command: GemmaFinetuneJobCommand,
+    },
+    Promote {
+        job_id: String,
+        #[arg(long)]
+        checkpoint_id: Option<String>,
+        #[arg(long)]
+        reviewer_id: String,
+        #[arg(long, default_value = "approved")]
+        review_state: String,
+        #[arg(long = "failed-case")]
+        failed_case_ids: Vec<String>,
+        #[arg(long)]
+        summary: Option<String>,
+        #[arg(long)]
+        api_key: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneTenantCommand {
+    Create {
+        tenant_id: String,
+        #[arg(long)]
+        display_name: Option<String>,
+        #[arg(long, default_value_t = 3)]
+        max_projects: usize,
+        #[arg(long, default_value_t = 6)]
+        max_datasets: usize,
+        #[arg(long, default_value_t = 8)]
+        max_jobs: usize,
+        #[arg(long, default_value_t = 1)]
+        max_active_jobs: usize,
+        #[arg(long, default_value_t = 2)]
+        max_promoted_models: usize,
+    },
+    Status {
+        #[arg(long)]
+        api_key: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneProjectCommand {
+    Create {
+        project_name: String,
+        #[arg(long)]
+        tenant_id: Option<String>,
+        #[arg(long)]
+        api_key: String,
+        #[arg(long)]
+        base_served_artifact_digest: String,
+        #[arg(long)]
+        hidden_size: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneDatasetCommand {
+    Register {
+        project_id: String,
+        dataset_ref: String,
+        #[arg(long)]
+        api_key: String,
+        train_path: PathBuf,
+        validation_path: PathBuf,
+        holdout_path: PathBuf,
+        #[arg(long)]
+        baseline_short_path: Option<PathBuf>,
+        #[arg(long)]
+        final_report_path: Option<PathBuf>,
+        #[arg(long)]
+        chat_template_digest: Option<String>,
+        #[arg(long, default_value_t = 10_000)]
+        assistant_mask_coverage_bps: u32,
+        #[arg(long)]
+        overlap_check_id: Option<String>,
+        #[arg(long)]
+        overlap_detail: Option<String>,
+        #[arg(long = "benchmark-ref")]
+        compared_benchmark_refs: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum GemmaFinetuneJobCommand {
+    Create {
+        project_id: String,
+        #[arg(long)]
+        api_key: String,
+        #[arg(long)]
+        dataset_id: Option<String>,
+    },
+    Get {
+        job_id: String,
+        #[arg(long)]
+        api_key: String,
+    },
+    Cancel {
+        job_id: String,
+        #[arg(long)]
+        api_key: String,
     },
 }
 
@@ -626,6 +787,67 @@ enum ChatCommand {
         name: String,
         #[arg(long, default_value = "OpenAgents team test channel")]
         about: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ForgeCommand {
+    Status {
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Hosted {
+        #[command(subcommand)]
+        command: ForgeHostedCommand,
+    },
+    Handoff {
+        #[command(subcommand)]
+        command: ForgeHandoffCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ForgeHostedCommand {
+    Sessions,
+    AttachShared { shared_session_id: String },
+    AttachProbe { probe_session_id: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum ForgeHandoffCommand {
+    Status {
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Human {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Agent {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Request {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Accept {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Take {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+    },
+    Note {
+        summary: String,
+        #[arg(long)]
+        thread_id: Option<String>,
     },
 }
 
@@ -970,6 +1192,33 @@ impl ClusterCommand {
     }
 }
 
+impl PooledInferenceCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Status | Self::Topology => None,
+            Self::ExportJoinBundle {
+                output,
+                mesh_root,
+                mesh_label,
+                advertise_addrs,
+            } => Some(
+                DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                    mesh_root: mesh_root.as_ref().map(|path| path.display().to_string()),
+                    output_path: output.display().to_string(),
+                    mesh_label: mesh_label.clone(),
+                    advertise_addrs: advertise_addrs.clone(),
+                },
+            ),
+            Self::ImportJoinBundle { input, mesh_root } => Some(
+                DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+                    mesh_root: mesh_root.as_ref().map(|path| path.display().to_string()),
+                    join_bundle_path: input.display().to_string(),
+                },
+            ),
+        }
+    }
+}
+
 impl SandboxCommand {
     fn action_request(&self) -> Result<Option<DesktopControlActionRequest>> {
         match self {
@@ -1105,6 +1354,148 @@ impl TrainingCommand {
             Self::Accept { run_id } => DesktopControlActionRequest::AcceptAppleAdapterTraining {
                 run_id: run_id.clone(),
             },
+        }
+    }
+}
+
+impl GemmaFinetuneCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetGemmaFinetuneStatus,
+            Self::Tenant { command } => command.action_request(),
+            Self::Project { command } => command.action_request(),
+            Self::Dataset { command } => command.action_request(),
+            Self::Job { command } => command.action_request(),
+            Self::Promote {
+                job_id,
+                checkpoint_id,
+                reviewer_id,
+                review_state,
+                failed_case_ids,
+                summary,
+                api_key,
+            } => DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+                api_key: api_key.clone(),
+                job_id: job_id.clone(),
+                checkpoint_id: checkpoint_id.clone(),
+                reviewer_id: reviewer_id.clone(),
+                review_state: Some(review_state.clone()),
+                failed_case_ids: failed_case_ids.clone(),
+                summary: summary.clone(),
+            },
+        }
+    }
+}
+
+impl GemmaFinetuneTenantCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Create {
+                tenant_id,
+                display_name,
+                max_projects,
+                max_datasets,
+                max_jobs,
+                max_active_jobs,
+                max_promoted_models,
+            } => DesktopControlActionRequest::ProvisionGemmaFinetuneTenant {
+                tenant_id: tenant_id.clone(),
+                display_name: display_name.clone(),
+                max_projects: *max_projects,
+                max_datasets: *max_datasets,
+                max_jobs: *max_jobs,
+                max_active_jobs: *max_active_jobs,
+                max_promoted_models: *max_promoted_models,
+            },
+            Self::Status { api_key } => DesktopControlActionRequest::GetGemmaFinetuneTenantView {
+                api_key: api_key.clone(),
+            },
+        }
+    }
+}
+
+impl GemmaFinetuneProjectCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Create {
+                project_name,
+                tenant_id,
+                api_key,
+                base_served_artifact_digest,
+                hidden_size,
+            } => DesktopControlActionRequest::CreateGemmaFinetuneProject {
+                api_key: api_key.clone(),
+                project_name: project_name.clone(),
+                tenant_id: tenant_id.clone(),
+                base_served_artifact_digest: base_served_artifact_digest.clone(),
+                hidden_size: *hidden_size,
+            },
+        }
+    }
+}
+
+impl GemmaFinetuneDatasetCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Register {
+                project_id,
+                dataset_ref,
+                api_key,
+                train_path,
+                validation_path,
+                holdout_path,
+                baseline_short_path,
+                final_report_path,
+                chat_template_digest,
+                assistant_mask_coverage_bps,
+                overlap_check_id,
+                overlap_detail,
+                compared_benchmark_refs,
+            } => DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+                api_key: api_key.clone(),
+                project_id: project_id.clone(),
+                dataset_ref: dataset_ref.clone(),
+                train_path: train_path.display().to_string(),
+                validation_path: validation_path.display().to_string(),
+                holdout_path: holdout_path.display().to_string(),
+                baseline_short_path: baseline_short_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
+                final_report_path: final_report_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
+                chat_template_digest: chat_template_digest.clone(),
+                assistant_mask_coverage_bps: *assistant_mask_coverage_bps,
+                overlap_check_id: overlap_check_id.clone(),
+                overlap_detail: overlap_detail.clone(),
+                compared_benchmark_refs: compared_benchmark_refs.clone(),
+            },
+        }
+    }
+}
+
+impl GemmaFinetuneJobCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Create {
+                project_id,
+                api_key,
+                dataset_id,
+            } => DesktopControlActionRequest::CreateGemmaFinetuneJob {
+                api_key: api_key.clone(),
+                project_id: project_id.clone(),
+                dataset_id: dataset_id.clone(),
+            },
+            Self::Get { job_id, api_key } => DesktopControlActionRequest::GetGemmaFinetuneJob {
+                job_id: job_id.clone(),
+                api_key: Some(api_key.clone()),
+            },
+            Self::Cancel { job_id, api_key } => {
+                DesktopControlActionRequest::CancelGemmaFinetuneJob {
+                    job_id: job_id.clone(),
+                    api_key: api_key.clone(),
+                }
+            }
         }
     }
 }
@@ -1261,6 +1652,83 @@ impl ChatCommand {
                     name: name.clone(),
                     about: about.clone(),
                 })
+            }
+        }
+    }
+}
+
+impl ForgeCommand {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
+        match self {
+            Self::Status { thread_id } => Some(DesktopControlActionRequest::GetForgeStatus {
+                thread_id: thread_id.clone(),
+            }),
+            Self::Hosted { .. } | Self::Handoff { .. } => None,
+        }
+    }
+}
+
+impl ForgeHostedCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Sessions => DesktopControlActionRequest::ListForgeHostedSessions,
+            Self::AttachShared { shared_session_id } => {
+                DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+                    shared_session_id: shared_session_id.clone(),
+                }
+            }
+            Self::AttachProbe { probe_session_id } => {
+                DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+                    probe_session_id: probe_session_id.clone(),
+                }
+            }
+        }
+    }
+}
+
+impl ForgeHandoffCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status { thread_id } => DesktopControlActionRequest::GetForgeStatus {
+                thread_id: thread_id.clone(),
+            },
+            Self::Human { summary, thread_id } => {
+                DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                    thread_id: thread_id.clone(),
+                    next_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                    summary: summary.clone(),
+                }
+            }
+            Self::Agent { summary, thread_id } => {
+                DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                    thread_id: thread_id.clone(),
+                    next_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                    summary: summary.clone(),
+                }
+            }
+            Self::Request { summary, thread_id } => {
+                DesktopControlActionRequest::RequestForgeSharedSessionControl {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
+            }
+            Self::Accept { summary, thread_id } => {
+                DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
+            }
+            Self::Take { summary, thread_id } => {
+                DesktopControlActionRequest::TakeForgeSharedSessionControl {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
+            }
+            Self::Note { summary, thread_id } => {
+                DesktopControlActionRequest::RecordForgeSharedSessionNote {
+                    thread_id: thread_id.clone(),
+                    summary: summary.clone(),
+                }
             }
         }
     }
@@ -1611,7 +2079,7 @@ struct LogEnvelope {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let json_output = cli.json;
-    let target = resolve_target(&cli)?;
+    let target = resolve_target_for_command(&cli)?;
     let client = DesktopControlClient::new(target)?;
     match cli.command {
         Command::Status => {
@@ -1682,6 +2150,41 @@ fn main() -> Result<()> {
                 print_json(payload)?;
             } else {
                 print_cluster_text(payload);
+            }
+        }
+        Command::PooledInference { command } => {
+            if let Some(action) = command.action_request() {
+                let response = client.action(&action)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    match command {
+                        PooledInferenceCommand::ExportJoinBundle { .. } => {
+                            print_pooled_inference_join_export_text(payload);
+                        }
+                        PooledInferenceCommand::ImportJoinBundle { .. } => {
+                            print_pooled_inference_join_import_text(payload);
+                        }
+                        PooledInferenceCommand::Status | PooledInferenceCommand::Topology => {}
+                    }
+                }
+            } else {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.pooled_inference)?;
+                } else {
+                    match command {
+                        PooledInferenceCommand::Status => {
+                            print_pooled_inference_status_text(&snapshot.pooled_inference);
+                        }
+                        PooledInferenceCommand::Topology => {
+                            print_pooled_inference_topology_text(&snapshot.pooled_inference);
+                        }
+                        PooledInferenceCommand::ExportJoinBundle { .. }
+                        | PooledInferenceCommand::ImportJoinBundle { .. } => {}
+                    }
+                }
             }
         }
         Command::Sandbox { command } => match command {
@@ -1791,6 +2294,47 @@ fn main() -> Result<()> {
                 }
             }
         },
+        Command::GemmaFinetune { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                if !matches!(
+                    command,
+                    GemmaFinetuneCommand::Status
+                        | GemmaFinetuneCommand::Tenant {
+                            command: GemmaFinetuneTenantCommand::Status { .. }
+                        }
+                ) {
+                    println!("{}", response.message);
+                }
+                match command {
+                    GemmaFinetuneCommand::Status => print_gemma_finetune_text(payload),
+                    GemmaFinetuneCommand::Tenant { command } => match command {
+                        GemmaFinetuneTenantCommand::Create { .. } => {
+                            print_gemma_finetune_tenant_provision_text(payload);
+                        }
+                        GemmaFinetuneTenantCommand::Status { .. } => {
+                            print_gemma_finetune_text(payload);
+                        }
+                    },
+                    GemmaFinetuneCommand::Project { .. } => {
+                        print_gemma_finetune_project_text(payload);
+                    }
+                    GemmaFinetuneCommand::Dataset { .. } => {
+                        print_gemma_finetune_dataset_text(payload);
+                    }
+                    GemmaFinetuneCommand::Job { .. } => {
+                        print_gemma_finetune_job_text(payload);
+                    }
+                    GemmaFinetuneCommand::Promote { .. } => {
+                        print_gemma_finetune_promotion_text(payload);
+                    }
+                }
+            }
+        }
         Command::RemoteTraining { command } => {
             let response = client.action(&command.action_request())?;
             ensure_action_success(&response)?;
@@ -2219,6 +2763,70 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, None)?;
             }
         },
+        Command::Forge { command } => match command {
+            ForgeCommand::Status { .. } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("forge status did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let payload = parse_forge_status_payload(response.payload.as_ref())?;
+                if json_output {
+                    print_json(&payload)?;
+                } else {
+                    print_forge_status_text(&payload);
+                }
+            }
+            ForgeCommand::Hosted { command } => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                match command {
+                    ForgeHostedCommand::Sessions => {
+                        let payload =
+                            parse_forge_hosted_sessions_payload(response.payload.as_ref())?;
+                        if json_output {
+                            print_json(&payload)?;
+                        } else {
+                            print_forge_hosted_sessions_text(&payload);
+                        }
+                    }
+                    ForgeHostedCommand::AttachShared { .. }
+                    | ForgeHostedCommand::AttachProbe { .. } => {
+                        let payload = parse_forge_attach_payload(response.payload.as_ref())?;
+                        if json_output {
+                            print_json(&json!({
+                                "message": response.message,
+                                "payload": payload,
+                            }))?;
+                        } else {
+                            println!("{}", response.message);
+                            print_forge_attach_text(&payload);
+                        }
+                    }
+                }
+            }
+            ForgeCommand::Handoff { command } => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                let payload = parse_forge_status_payload(response.payload.as_ref())?;
+                if json_output {
+                    let envelope = json!({
+                        "message": response.message,
+                        "payload": payload,
+                    });
+                    if matches!(command, ForgeHandoffCommand::Status { .. }) {
+                        print_json(&payload)?;
+                    } else {
+                        print_json(&envelope)?;
+                    }
+                } else {
+                    if !matches!(command, ForgeHandoffCommand::Status { .. }) {
+                        println!("{}", response.message);
+                    }
+                    print_forge_status_text(&payload);
+                }
+            }
+        },
         Command::DataMarket { command } => match &command {
             DataMarketCommand::SellerImportRequest {
                 event_id,
@@ -2428,8 +3036,12 @@ fn main() -> Result<()> {
 
 impl DesktopControlClient {
     fn new(target: ResolvedTarget) -> Result<Self> {
+        Self::new_with_timeout(target, Duration::from_secs(30))
+    }
+
+    fn new_with_timeout(target: ResolvedTarget, timeout: Duration) -> Result<Self> {
         let http = Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(timeout)
             .build()
             .context("build autopilotctl HTTP client")?;
         Ok(Self { http, target })
@@ -2857,6 +3469,14 @@ fn buy_mode_has_failed_request(status: &DesktopControlBuyModeStatus) -> bool {
         || status.recent_requests.iter().any(request_has_failed)
 }
 
+fn resolve_target_for_command(cli: &Cli) -> Result<ResolvedTarget> {
+    if matches!(&cli.command, Command::Forge { .. }) {
+        resolve_forge_target(cli)
+    } else {
+        resolve_target(cli)
+    }
+}
+
 fn resolve_target(cli: &Cli) -> Result<ResolvedTarget> {
     match (cli.base_url.as_ref(), cli.auth_token.as_ref()) {
         (Some(base_url), Some(auth_token)) => Ok(ResolvedTarget {
@@ -2879,16 +3499,35 @@ fn resolve_target(cli: &Cli) -> Result<ResolvedTarget> {
         ),
         (None, None) => {
             let manifest_path = cli.manifest.clone().unwrap_or_else(control_manifest_path);
-            let manifest = load_manifest_from_path(manifest_path.as_path())?;
-            Ok(ResolvedTarget {
-                base_url: manifest.base_url.trim().trim_end_matches('/').to_string(),
-                auth_token: manifest.auth_token,
-                manifest_path: Some(manifest_path),
-                identity_path: manifest.identity_path.map(PathBuf::from),
-                latest_session_log_path: Some(PathBuf::from(manifest.latest_session_log_path)),
-            })
+            resolve_target_from_manifest_path(manifest_path.as_path())
         }
     }
+}
+
+fn resolve_forge_target(cli: &Cli) -> Result<ResolvedTarget> {
+    if cli.base_url.is_some() || cli.auth_token.is_some() {
+        return resolve_target(cli);
+    }
+
+    let manifest_path = cli.manifest.clone().unwrap_or_else(control_manifest_path);
+    if let Ok(target) = resolve_target_from_manifest_path(manifest_path.as_path()) {
+        if desktop_control_target_reachable(&target) {
+            return Ok(target);
+        }
+    }
+
+    start_headless_forge_runtime(manifest_path.as_path())
+}
+
+fn resolve_target_from_manifest_path(path: &Path) -> Result<ResolvedTarget> {
+    let manifest = load_manifest_from_path(path)?;
+    Ok(ResolvedTarget {
+        base_url: manifest.base_url.trim().trim_end_matches('/').to_string(),
+        auth_token: manifest.auth_token,
+        manifest_path: Some(path.to_path_buf()),
+        identity_path: manifest.identity_path.map(PathBuf::from),
+        latest_session_log_path: Some(PathBuf::from(manifest.latest_session_log_path)),
+    })
 }
 
 fn load_manifest_from_path(path: &Path) -> Result<DesktopControlManifest> {
@@ -2896,6 +3535,116 @@ fn load_manifest_from_path(path: &Path) -> Result<DesktopControlManifest> {
         .with_context(|| format!("read desktop control manifest {}", path.display()))?;
     serde_json::from_str::<DesktopControlManifest>(raw.as_str())
         .with_context(|| format!("decode desktop control manifest {}", path.display()))
+}
+
+fn desktop_control_target_reachable(target: &ResolvedTarget) -> bool {
+    let Ok(client) = DesktopControlClient::new_with_timeout(target.clone(), Duration::from_secs(2))
+    else {
+        return false;
+    };
+    client.snapshot().is_ok()
+}
+
+fn start_headless_forge_runtime(manifest_path: &Path) -> Result<ResolvedTarget> {
+    let log_path = forge_headless_log_path(manifest_path);
+    let stdout = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path.as_path())
+        .with_context(|| format!("open Forge headless log {}", log_path.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .with_context(|| format!("clone Forge headless log handle {}", log_path.display()))?;
+
+    let mut command = headless_forge_process_command(manifest_path)?;
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+    command
+        .spawn()
+        .with_context(|| "spawn autopilot_headless_forge process")?;
+
+    wait_for_headless_forge_runtime(manifest_path, log_path.as_path())
+}
+
+fn headless_forge_process_command(manifest_path: &Path) -> Result<ProcessCommand> {
+    if let Some(binary_path) = headless_forge_binary_path() {
+        let mut command = ProcessCommand::new(binary_path);
+        command.arg("--manifest-path").arg(manifest_path);
+        return Ok(command);
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| anyhow!("resolve openagents workspace root for Forge headless autostart"))?;
+    let mut command = ProcessCommand::new("cargo");
+    command
+        .current_dir(workspace_root)
+        .arg("run")
+        .arg("-p")
+        .arg("autopilot-desktop")
+        .arg("--bin")
+        .arg("autopilot_headless_forge")
+        .arg("--")
+        .arg("--manifest-path")
+        .arg(manifest_path);
+    Ok(command)
+}
+
+fn headless_forge_binary_path() -> Option<PathBuf> {
+    let current_exe = std::env::current_exe().ok()?;
+    let sibling = current_exe.with_file_name("autopilot_headless_forge");
+    sibling.is_file().then_some(sibling)
+}
+
+fn forge_headless_log_path(manifest_path: &Path) -> PathBuf {
+    let parent = manifest_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    parent.join(FORGE_HEADLESS_LOG_FILENAME)
+}
+
+fn wait_for_headless_forge_runtime(
+    manifest_path: &Path,
+    log_path: &Path,
+) -> Result<ResolvedTarget> {
+    let started = Instant::now();
+    let timeout = Duration::from_millis(FORGE_AUTOSTART_TIMEOUT_MS);
+    loop {
+        if let Ok(target) = resolve_target_from_manifest_path(manifest_path) {
+            if desktop_control_target_reachable(&target) {
+                return Ok(target);
+            }
+        }
+        if started.elapsed() >= timeout {
+            let tail = read_log_tail(log_path, 40).unwrap_or_default();
+            bail!(
+                "Timed out starting standalone Forge host from {}. Inspect {}.{}",
+                manifest_path.display(),
+                log_path.display(),
+                if tail.is_empty() {
+                    String::new()
+                } else {
+                    format!("\nRecent log lines:\n{}", tail.join("\n"))
+                }
+            );
+        }
+        std::thread::sleep(Duration::from_millis(FORGE_AUTOSTART_POLL_MS));
+    }
+}
+
+fn read_log_tail(path: &Path, limit: usize) -> Result<Vec<String>> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("read Forge headless log {}", path.display()))?;
+    let mut lines = raw.lines().map(str::to_string).collect::<Vec<_>>();
+    if lines.len() > limit {
+        lines = lines.split_off(lines.len().saturating_sub(limit));
+    }
+    Ok(lines)
 }
 
 fn ensure_action_success(response: &DesktopControlActionResponse) -> Result<()> {
@@ -2939,6 +3688,26 @@ fn parse_tassadar_status(payload: Option<&Value>) -> Result<DesktopControlTassad
     let payload = payload.ok_or_else(|| anyhow!("missing Tassadar status payload"))?;
     serde_json::from_value::<DesktopControlTassadarStatus>(payload.clone())
         .context("decode Tassadar status payload")
+}
+
+fn parse_forge_status_payload(payload: Option<&Value>) -> Result<DesktopControlForgeStatusPayload> {
+    let payload = payload.ok_or_else(|| anyhow!("missing Forge status payload"))?;
+    serde_json::from_value::<DesktopControlForgeStatusPayload>(payload.clone())
+        .context("decode Forge status payload")
+}
+
+fn parse_forge_hosted_sessions_payload(
+    payload: Option<&Value>,
+) -> Result<DesktopControlForgeHostedSessionsPayload> {
+    let payload = payload.ok_or_else(|| anyhow!("missing hosted Forge sessions payload"))?;
+    serde_json::from_value::<DesktopControlForgeHostedSessionsPayload>(payload.clone())
+        .context("decode hosted Forge sessions payload")
+}
+
+fn parse_forge_attach_payload(payload: Option<&Value>) -> Result<DesktopControlForgeAttachPayload> {
+    let payload = payload.ok_or_else(|| anyhow!("missing hosted Forge attach payload"))?;
+    serde_json::from_value::<DesktopControlForgeAttachPayload>(payload.clone())
+        .context("decode hosted Forge attach payload")
 }
 
 fn parse_local_daily_window(date: &str) -> Result<(u64, u64)> {
@@ -4230,6 +4999,16 @@ fn json_array_len(value: Option<&Value>) -> usize {
     value.and_then(Value::as_array).map(Vec::len).unwrap_or(0)
 }
 
+fn json_array_strings(value: Option<&Value>) -> Option<String> {
+    let values = value
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    (!values.is_empty()).then(|| values.join(","))
+}
+
 fn json_nested_u64(value: Option<&Value>, path: &[&str]) -> Option<u64> {
     path.iter()
         .try_fold(value?, |current, segment| current.get(*segment))
@@ -4571,6 +5350,30 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.gpt_oss.ready_model.as_deref().unwrap_or("-")
     );
     println!(
+        "pooled inference: available={} join={} state={} role={} posture={} members={} targets={} warm_replicas={} default_model={}",
+        snapshot.pooled_inference.available,
+        snapshot.pooled_inference.join.posture,
+        snapshot.pooled_inference.local_serving_state,
+        snapshot
+            .pooled_inference
+            .served_mesh_role
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .pooled_inference
+            .served_mesh_posture
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.pooled_inference.member_count,
+        snapshot.pooled_inference.targetable_model_count,
+        snapshot.pooled_inference.warm_replica_count,
+        snapshot
+            .pooled_inference
+            .default_model
+            .as_deref()
+            .unwrap_or("-")
+    );
+    println!(
         "wallet: balance={} network={} status={} reconciling={} withdraw_ready={}",
         if snapshot.wallet.balance_known {
             format!("{} sats", snapshot.wallet.balance_sats)
@@ -4621,6 +5424,9 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.sandbox.active_job_count
     );
     for line in training_status_lines(snapshot) {
+        println!("{line}");
+    }
+    for line in gemma_finetune_status_lines(snapshot) {
         println!("{line}");
     }
     for line in remote_training_status_lines(snapshot) {
@@ -5268,6 +6074,171 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     lines
 }
 
+fn gemma_finetune_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
+    let mut lines = vec![format!(
+        "gemma finetune: available={} scope={} scope_tenant={} tenants={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} accepted_outcomes={} inventory_models={} quota_blocked_tenants={} storage={} last_action={} last_error={}",
+        snapshot.gemma_finetune.available,
+        snapshot.gemma_finetune.view_scope,
+        snapshot
+            .gemma_finetune
+            .scope_tenant_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.gemma_finetune.tenant_count,
+        snapshot.gemma_finetune.project_count,
+        snapshot.gemma_finetune.dataset_count,
+        snapshot.gemma_finetune.validation_receipt_count,
+        snapshot.gemma_finetune.job_count,
+        snapshot.gemma_finetune.promoted_model_count,
+        snapshot.gemma_finetune.accepted_outcome_count,
+        snapshot.gemma_finetune.model_inventory_count,
+        snapshot.gemma_finetune.quota_blocked_tenant_count,
+        snapshot
+            .gemma_finetune
+            .storage_path
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .gemma_finetune
+            .last_action
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.gemma_finetune.last_error.as_deref().unwrap_or("-")
+    )];
+    for tenant in snapshot.gemma_finetune.tenants.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune tenant: id={} display_name={} api_key={} projects={}/{} datasets={}/{} jobs={}/{} active_jobs={}/{} promoted_models={}/{} accepted_outcomes={} inventory_models={} quota_ready={} blockers={}",
+            tenant.tenant_id,
+            tenant.display_name,
+            tenant.api_key_preview,
+            tenant.usage.project_count,
+            tenant.quota.max_projects,
+            tenant.usage.dataset_count,
+            tenant.quota.max_datasets,
+            tenant.usage.job_count,
+            tenant.quota.max_jobs,
+            tenant.usage.active_job_count,
+            tenant.quota.max_active_jobs,
+            tenant.usage.promoted_model_count,
+            tenant.quota.max_promoted_models,
+            tenant.usage.accepted_outcome_count,
+            tenant.usage.inventory_model_count,
+            tenant.quota_ready,
+            if tenant.quota_blockers.is_empty() {
+                "-".to_string()
+            } else {
+                tenant.quota_blockers.join(" | ")
+            }
+        ));
+    }
+    for project in snapshot.gemma_finetune.projects.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune project: id={} tenant={} name={} base_digest={} hidden_size={} active_dataset={} model={} training_family={} eval_pack={} last_error={}",
+            project.project_id,
+            project.tenant_id,
+            project.project_name,
+            project.base_served_artifact_digest,
+            project.hidden_size,
+            project.active_dataset_id.as_deref().unwrap_or("-"),
+            project.lane_binding.model_id,
+            project.lane_binding.training_family_id,
+            project.lane_binding.eval_pack_storage_key,
+            project.last_error.as_deref().unwrap_or("-"),
+        ));
+    }
+    for dataset in snapshot.gemma_finetune.datasets.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune dataset: id={} project={} ref={} receipt={} tokenizer_ok={} template_ok={} train={} validation={} holdout={} baseline_short={} final_report={} overlap_refs={} warnings={} errors={}",
+            dataset.dataset_id,
+            dataset.project_id,
+            dataset.dataset_ref,
+            dataset.validation_receipt.status,
+            dataset.validation_receipt.tokenizer_compatible,
+            dataset.validation_receipt.template_compatible,
+            dataset.train_split.sample_count,
+            dataset.held_out_validation_split.sample_count,
+            dataset.final_report_split.sample_count,
+            dataset.baseline_short_split.sample_count,
+            dataset.final_report_split.sample_count,
+            dataset.validation_receipt.compared_benchmark_refs.len(),
+            dataset.validation_receipt.warnings.len(),
+            dataset.validation_receipt.errors.len(),
+        ));
+        if !dataset.validation_receipt.errors.is_empty() {
+            lines.push(format!(
+                "gemma finetune dataset errors: id={} detail={}",
+                dataset.dataset_id,
+                dataset.validation_receipt.errors.join(" | ")
+            ));
+        }
+    }
+    for job in snapshot.gemma_finetune.jobs.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune job: id={} project={} dataset={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} promoted_model={} last_error={}",
+            job.job_id,
+            job.project_id,
+            job.dataset_id,
+            job.state.label(),
+            job.phase.label(),
+            job.completed_steps,
+            job.plan.max_steps,
+            job.selected_candidate_id.as_deref().unwrap_or("-"),
+            job.checkpoints.len(),
+            job.artifacts.len(),
+            job.promotion
+                .as_ref()
+                .and_then(|promotion| promotion.promoted_model_ref.as_deref())
+                .unwrap_or("-"),
+            job.last_error.as_deref().unwrap_or("-"),
+        ));
+    }
+    for model in snapshot.gemma_finetune.promoted_models.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune promoted model: ref={} tenant={} project={} job={} checkpoint={} digest={} accepted_outcome={} inventory_model={}",
+            model.model_ref,
+            model.tenant_id,
+            model.project_id,
+            model.job_id,
+            model.checkpoint_id,
+            model.adapter_artifact_digest,
+            if model.accepted_outcome_id.is_empty() {
+                "-".to_string()
+            } else {
+                model.accepted_outcome_id.clone()
+            },
+            if model.inventory_model_id.is_empty() {
+                "-".to_string()
+            } else {
+                model.inventory_model_id.clone()
+            },
+        ));
+    }
+    for outcome in snapshot.gemma_finetune.accepted_outcomes.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune accepted outcome: id={} tenant={} project={} model_ref={} benchmark={} inventory_model={}",
+            outcome.outcome_id,
+            outcome.tenant_id,
+            outcome.project_id,
+            outcome.model_ref,
+            outcome.benchmark_package_storage_key,
+            outcome.inventory_model_id,
+        ));
+    }
+    for inventory in snapshot.gemma_finetune.model_inventory.iter().take(3) {
+        lines.push(format!(
+            "gemma finetune inventory model: id={} tenant={} model_ref={} display_name={} publication_state={} serving_posture={} accepted_outcome={}",
+            inventory.inventory_model_id,
+            inventory.tenant_id,
+            inventory.model_ref,
+            inventory.display_name,
+            inventory.publication_state,
+            inventory.serving_posture,
+            inventory.accepted_outcome_id,
+        ));
+    }
+    lines
+}
+
 fn remote_training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     let mut lines = vec![format!(
         "remote training: available={} source={} state={} last_sync={} last_success={} refresh_ms={} runs={} active_runs={} full_series={} summary_only={} stale_runs={} selected={} last_error={}",
@@ -5577,6 +6548,214 @@ fn print_cluster_text(payload: &Value) {
                 .and_then(Value::as_str)
                 .unwrap_or("-")
         );
+    }
+}
+
+fn print_pooled_inference_status_text(status: &DesktopControlPooledInferenceStatus) {
+    println!(
+        "pooled inference: available={} source={} join={} state={} membership={} members={} targets={} warm_replicas={} topology={} default_model={}",
+        status.available,
+        status.source,
+        status.join.posture,
+        status.local_serving_state,
+        status.membership_state,
+        status.member_count,
+        status.targetable_model_count,
+        status.warm_replica_count,
+        status.topology_digest.as_deref().unwrap_or("-"),
+        status.default_model.as_deref().unwrap_or("-")
+    );
+    println!(
+        "management_base_url={} local_worker={} role={} posture={} execution_mode={} execution_engine={} fallback={}",
+        status.management_base_url.as_deref().unwrap_or("-"),
+        status.local_worker_id.as_deref().unwrap_or("-"),
+        status.served_mesh_role.as_deref().unwrap_or("-"),
+        status.served_mesh_posture.as_deref().unwrap_or("-"),
+        status.execution_mode.as_deref().unwrap_or("-"),
+        status.execution_engine.as_deref().unwrap_or("-"),
+        status.fallback_posture.as_deref().unwrap_or("-")
+    );
+    println!(
+        "served_mesh_reasons={}",
+        if status.served_mesh_reasons.is_empty() {
+            "-".to_string()
+        } else {
+            status.served_mesh_reasons.join(",")
+        }
+    );
+    if let Some(error) = status.last_error.as_deref() {
+        println!("last_error: {error}");
+    }
+    if let Some(preference) = status.join.last_joined_mesh_preference.as_ref() {
+        println!(
+            "last_joined_mesh: label={} namespace={} cluster_id={} selected_at_ms={} addrs={}",
+            preference.mesh_label,
+            preference.namespace,
+            preference.cluster_id,
+            preference.selected_at_epoch_ms,
+            if preference.advertised_control_plane_addrs.is_empty() {
+                "-".to_string()
+            } else {
+                preference.advertised_control_plane_addrs.join(",")
+            }
+        );
+    }
+    if let Some(bundle) = status.join.last_imported_join_bundle.as_ref() {
+        println!(
+            "last_imported_bundle: label={} namespace={} cluster_id={} admission={} trust={} discovery={} exported_at_ms={} imported_at_ms={} addrs={}",
+            bundle.bundle.mesh_label,
+            bundle.bundle.namespace,
+            bundle.bundle.cluster_id,
+            bundle.bundle.admission_kind,
+            bundle.bundle.trust_posture,
+            bundle.bundle.discovery_posture,
+            bundle.bundle.exported_at_epoch_ms,
+            bundle.imported_at_epoch_ms,
+            if bundle.bundle.advertised_control_plane_addrs.is_empty() {
+                "-".to_string()
+            } else {
+                bundle.bundle.advertised_control_plane_addrs.join(",")
+            }
+        );
+    }
+    for model in &status.targetable_models {
+        println!(
+            "target={} family={} warm_replicas={} local_warm={} execution_modes={} topologies={} workers={} endpoints={} structured={} tools={} responses={}",
+            model.model,
+            model.family,
+            model.warm_replica_count,
+            model.local_warm_replica,
+            if model.cluster_execution_modes.is_empty() {
+                "-".to_string()
+            } else {
+                model.cluster_execution_modes.join(",")
+            },
+            if model.cluster_execution_topologies.is_empty() {
+                "-".to_string()
+            } else {
+                model.cluster_execution_topologies.join(",")
+            },
+            if model.participating_workers.is_empty() {
+                "-".to_string()
+            } else {
+                model.participating_workers.join(",")
+            },
+            if model.supported_endpoints.is_empty() {
+                "-".to_string()
+            } else {
+                model.supported_endpoints.join(",")
+            },
+            model.structured_outputs,
+            model.tool_calling,
+            model.response_state
+        );
+    }
+}
+
+fn print_pooled_inference_topology_text(status: &DesktopControlPooledInferenceStatus) {
+    print_pooled_inference_status_text(status);
+    for member in &status.members {
+        println!(
+            "member={} role={} posture={} execution_mode={} execution_engine={} warm_models={} targetable_models={} reasons={}",
+            member.worker_id,
+            member.served_mesh_role,
+            member.served_mesh_posture,
+            member.execution_mode,
+            member.execution_engine,
+            if member.warm_models.is_empty() {
+                "-".to_string()
+            } else {
+                member.warm_models.join(",")
+            },
+            member.targetable_model_count,
+            if member.served_mesh_reasons.is_empty() {
+                "-".to_string()
+            } else {
+                member.served_mesh_reasons.join(",")
+            }
+        );
+    }
+}
+
+fn print_pooled_inference_join_export_text(payload: &Value) {
+    println!(
+        "exported pooled inference join bundle: output={} mesh_root={} config_path={}",
+        json_str(payload.get("output_path")).unwrap_or("-"),
+        json_str(payload.get("mesh_root")).unwrap_or("-"),
+        json_str(payload.get("config_path")).unwrap_or("-"),
+    );
+    println!(
+        "service={} advertise_source={} addresses={}",
+        json_str(payload.get("service_name")).unwrap_or("-"),
+        json_str(payload.get("advertise_source")).unwrap_or("-"),
+        json_array_strings(payload.get("advertised_control_plane_addrs"))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    if let Some(bundle) = payload.get("bundle") {
+        println!(
+            "bundle: label={} namespace={} cluster_id={} admission={} trust={} discovery={} trust_bundle_version={} exported_at_ms={}",
+            json_str(bundle.get("mesh_label")).unwrap_or("-"),
+            json_str(bundle.get("namespace")).unwrap_or("-"),
+            json_str(bundle.get("cluster_id")).unwrap_or("-"),
+            json_str(bundle.get("admission_kind")).unwrap_or("-"),
+            json_str(bundle.get("trust_posture")).unwrap_or("-"),
+            json_str(bundle.get("discovery_posture")).unwrap_or("-"),
+            bundle
+                .get("trust_bundle_version")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            bundle
+                .get("exported_at_epoch_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        );
+    }
+    if let Some(device) = payload.get("tailnet_self_device") {
+        println!(
+            "tailnet_self: node_id={} display_name={} host_name={} ips={}",
+            json_str(device.get("node_id")).unwrap_or("-"),
+            json_str(device.get("display_name")).unwrap_or("-"),
+            json_str(device.get("host_name")).unwrap_or("-"),
+            json_array_strings(device.get("tailscale_ips"))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string())
+        );
+    }
+}
+
+fn print_pooled_inference_join_import_text(payload: &Value) {
+    println!(
+        "recorded pooled inference join bundle: input={} mesh_root={} config_path={}",
+        json_str(payload.get("join_bundle_path")).unwrap_or("-"),
+        json_str(payload.get("mesh_root")).unwrap_or("-"),
+        json_str(payload.get("config_path")).unwrap_or("-"),
+    );
+    if let Some(bundle) = payload.get("bundle") {
+        println!(
+            "bundle: label={} namespace={} cluster_id={} admission={} trust={} discovery={} addresses={}",
+            json_str(bundle.get("mesh_label")).unwrap_or("-"),
+            json_str(bundle.get("namespace")).unwrap_or("-"),
+            json_str(bundle.get("cluster_id")).unwrap_or("-"),
+            json_str(bundle.get("admission_kind")).unwrap_or("-"),
+            json_str(bundle.get("trust_posture")).unwrap_or("-"),
+            json_str(bundle.get("discovery_posture")).unwrap_or("-"),
+            json_array_strings(bundle.get("advertised_control_plane_addrs"))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string())
+        );
+    }
+    println!(
+        "join_posture_before={} join_posture_after={} restart_required={}",
+        json_str(payload.get("join_posture_before")).unwrap_or("-"),
+        json_str(payload.get("join_posture_after")).unwrap_or("-"),
+        payload
+            .get("restart_required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    );
+    if let Some(restart_hint) = json_str(payload.get("restart_hint")) {
+        println!("restart_hint: {restart_hint}");
     }
 }
 
@@ -6932,6 +8111,812 @@ fn print_training_text(payload: &Value) {
     }
 }
 
+fn print_gemma_finetune_text(payload: &Value) {
+    println!(
+        "gemma finetune: available={} scope={} scope_tenant={} tenants={} projects={} datasets={} validation_receipts={} jobs={} promoted_models={} accepted_outcomes={} inventory_models={} quota_blocked_tenants={} storage={} last_action={} last_error={}",
+        payload
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("view_scope")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("scope_tenant_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("project_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("dataset_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("validation_receipt_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("job_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("promoted_model_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("accepted_outcome_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("model_inventory_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("quota_blocked_tenant_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("storage_path")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_action")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+    if let Some(tenants) = payload.get("tenants").and_then(Value::as_array) {
+        for tenant in tenants.iter().take(3) {
+            let quota_blockers = tenant
+                .get("quota_blockers")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                })
+                .unwrap_or_else(|| "-".to_string());
+            println!(
+                "gemma finetune tenant: id={} display_name={} api_key={} projects={}/{} datasets={}/{} jobs={}/{} active_jobs={}/{} promoted_models={}/{} accepted_outcomes={} inventory_models={} quota_ready={} blockers={}",
+                tenant
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                tenant
+                    .get("display_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                tenant
+                    .get("api_key_preview")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("project_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_projects"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("dataset_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_datasets"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("job_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_jobs"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("active_job_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_active_jobs"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("promoted_model_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota")
+                    .and_then(|value| value.get("max_promoted_models"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("accepted_outcome_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("usage")
+                    .and_then(|value| value.get("inventory_model_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                tenant
+                    .get("quota_ready")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                if quota_blockers.is_empty() {
+                    "-".to_string()
+                } else {
+                    quota_blockers
+                },
+            );
+        }
+    }
+    if let Some(projects) = payload.get("projects").and_then(Value::as_array) {
+        for project in projects.iter().take(3) {
+            println!(
+                "gemma finetune project: id={} tenant={} name={} base_digest={} hidden_size={} active_dataset={} model={} training_family={} eval_pack={} last_error={}",
+                project
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("project_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("base_served_artifact_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("hidden_size")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                project
+                    .get("active_dataset_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("lane_binding")
+                    .and_then(|value| value.get("model_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("lane_binding")
+                    .and_then(|value| value.get("training_family_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("lane_binding")
+                    .and_then(|value| value.get("eval_pack_storage_key"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                project
+                    .get("last_error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(datasets) = payload.get("datasets").and_then(Value::as_array) {
+        for dataset in datasets.iter().take(3) {
+            println!(
+                "gemma finetune dataset: id={} project={} ref={} receipt={} tokenizer_ok={} template_ok={} train={} validation={} holdout={} overlap_refs={} warnings={} errors={}",
+                dataset
+                    .get("dataset_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("dataset_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("status"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("tokenizer_compatible"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("template_compatible"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                dataset
+                    .get("train_split")
+                    .and_then(|value| value.get("sample_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                dataset
+                    .get("held_out_validation_split")
+                    .and_then(|value| value.get("sample_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                dataset
+                    .get("final_report_split")
+                    .and_then(|value| value.get("sample_count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("compared_benchmark_refs"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("warnings"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                dataset
+                    .get("validation_receipt")
+                    .and_then(|value| value.get("errors"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+            );
+            let errors = dataset
+                .get("validation_receipt")
+                .and_then(|value| value.get("errors"))
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                })
+                .unwrap_or_default();
+            if !errors.is_empty() {
+                println!(
+                    "gemma finetune dataset errors: id={} detail={}",
+                    dataset
+                        .get("dataset_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("-"),
+                    errors
+                );
+            }
+        }
+    }
+    if let Some(jobs) = payload.get("jobs").and_then(Value::as_array) {
+        for job in jobs.iter().take(3) {
+            println!(
+                "gemma finetune job: id={} project={} dataset={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} promoted_model={} last_error={}",
+                job.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+                job.get("project_id").and_then(Value::as_str).unwrap_or("-"),
+                job.get("dataset_id").and_then(Value::as_str).unwrap_or("-"),
+                job.get("state").and_then(Value::as_str).unwrap_or("-"),
+                job.get("phase").and_then(Value::as_str).unwrap_or("-"),
+                job.get("completed_steps")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                job.get("plan")
+                    .and_then(|value| value.get("max_steps"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                job.get("selected_candidate_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                job.get("checkpoints")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                job.get("artifacts")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len),
+                job.get("promotion")
+                    .and_then(|value| value.get("promoted_model_ref"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                job.get("last_error").and_then(Value::as_str).unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(models) = payload.get("promoted_models").and_then(Value::as_array) {
+        for model in models.iter().take(3) {
+            println!(
+                "gemma finetune promoted model: ref={} tenant={} project={} job={} checkpoint={} digest={} accepted_outcome={} inventory_model={}",
+                model
+                    .get("model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+                model
+                    .get("checkpoint_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("adapter_artifact_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("accepted_outcome_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("inventory_model_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(outcomes) = payload.get("accepted_outcomes").and_then(Value::as_array) {
+        for outcome in outcomes.iter().take(3) {
+            println!(
+                "gemma finetune accepted outcome: id={} tenant={} project={} model_ref={} benchmark={} inventory_model={}",
+                outcome
+                    .get("outcome_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("project_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("benchmark_package_storage_key")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                outcome
+                    .get("inventory_model_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(inventory) = payload.get("model_inventory").and_then(Value::as_array) {
+        for model in inventory.iter().take(3) {
+            println!(
+                "gemma finetune inventory model: id={} tenant={} model_ref={} display_name={} publication_state={} serving_posture={} accepted_outcome={}",
+                model
+                    .get("inventory_model_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("display_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("publication_state")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("serving_posture")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                model
+                    .get("accepted_outcome_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+}
+
+fn print_gemma_finetune_tenant_provision_text(payload: &Value) {
+    println!(
+        "gemma finetune tenant provisioned: id={} display_name={} api_key={} quota_projects={} quota_datasets={} quota_jobs={} quota_active_jobs={} quota_promoted_models={}",
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("tenant_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("display_name"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("api_key")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_projects"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_datasets"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_jobs"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_active_jobs"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("tenant")
+            .and_then(|value| value.get("quota"))
+            .and_then(|value| value.get("max_promoted_models"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+    );
+}
+
+fn print_gemma_finetune_project_text(payload: &Value) {
+    println!(
+        "gemma finetune project created: id={} tenant={} name={} base_digest={} hidden_size={} model={} training_family={} eval_pack={}",
+        payload
+            .get("project_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("tenant_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("project_name")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("base_served_artifact_digest")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("hidden_size")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("lane_binding")
+            .and_then(|value| value.get("model_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("lane_binding")
+            .and_then(|value| value.get("training_family_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("lane_binding")
+            .and_then(|value| value.get("eval_pack_storage_key"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+}
+
+fn print_gemma_finetune_dataset_text(payload: &Value) {
+    println!(
+        "gemma finetune dataset registered: id={} project={} ref={} receipt={} tokenizer_ok={} template_ok={} benchmark_refs={} warnings={} errors={}",
+        payload
+            .get("dataset_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("project_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("dataset_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("status"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("tokenizer_compatible"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("template_compatible"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("compared_benchmark_refs"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("warnings"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("validation_receipt")
+            .and_then(|value| value.get("errors"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+    );
+    println!(
+        "gemma finetune splits: train={} validation={} holdout={} baseline_short={} final_report={}",
+        payload
+            .get("train_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("held_out_validation_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("final_report_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("baseline_short_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("final_report_split")
+            .and_then(|value| value.get("sample_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+    );
+}
+
+fn print_gemma_finetune_job_text(payload: &Value) {
+    println!(
+        "gemma finetune job: id={} tenant={} project={} dataset={} ref={} state={} phase={} steps={}/{} candidate={} checkpoints={} artifacts={} promoted_model={} accepted_outcome={} inventory_model={} cancel_requested={} last_action={} last_error={}",
+        payload.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("tenant_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("project_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("dataset_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("dataset_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload.get("state").and_then(Value::as_str).unwrap_or("-"),
+        payload.get("phase").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("completed_steps")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("plan")
+            .and_then(|value| value.get("max_steps"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("selected_candidate_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("checkpoints")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("artifacts")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("promotion")
+            .and_then(|value| value.get("promoted_model_ref"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promotion")
+            .and_then(|value| value.get("accepted_outcome_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promotion")
+            .and_then(|value| value.get("inventory_model_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("cancel_requested")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("last_action")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+    if let Some(events) = payload.get("events").and_then(Value::as_array) {
+        for event in events.iter().take(4) {
+            println!(
+                "gemma finetune job event: id={} seq={} kind={} phase={} detail={}",
+                event.get("event_id").and_then(Value::as_str).unwrap_or("-"),
+                event.get("seq").and_then(Value::as_u64).unwrap_or(0),
+                event.get("kind").and_then(Value::as_str).unwrap_or("-"),
+                event.get("phase").and_then(Value::as_str).unwrap_or("-"),
+                event.get("detail").and_then(Value::as_str).unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(checkpoints) = payload.get("checkpoints").and_then(Value::as_array) {
+        for checkpoint in checkpoints.iter().take(3) {
+            println!(
+                "gemma finetune checkpoint: id={} digest={} steps={}/{} mean_loss={} promoted_state={}",
+                checkpoint
+                    .get("checkpoint_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                checkpoint
+                    .get("checkpoint_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                checkpoint
+                    .get("completed_steps")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                checkpoint
+                    .get("max_steps")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+                checkpoint
+                    .get("mean_loss")
+                    .and_then(Value::as_f64)
+                    .map(|value| format!("{value:.4}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                checkpoint
+                    .get("promotion_decision")
+                    .and_then(|value| value.get("decision_state"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+    if let Some(artifacts) = payload.get("artifacts").and_then(Value::as_array) {
+        for artifact in artifacts.iter().take(3) {
+            println!(
+                "gemma finetune artifact: id={} adapter={} revision={} digest={} promoted_model={}",
+                artifact
+                    .get("artifact_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("adapter_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("adapter_revision")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("adapter_artifact_digest")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                artifact
+                    .get("promoted_model_ref")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+            );
+        }
+    }
+}
+
+fn print_gemma_finetune_promotion_text(payload: &Value) {
+    println!(
+        "gemma finetune promotion: checkpoint={} decision={} benchmark={} promoted_model={} accepted_outcome={} inventory_model={} promoted_at={} last_action={} last_error={}",
+        payload
+            .get("checkpoint_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("decision")
+            .and_then(|value| value.get("decision_state"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("decision")
+            .and_then(|value| value.get("benchmark_package_storage_key"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promoted_model_ref")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("accepted_outcome_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("inventory_model_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("promoted_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("last_action")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+    );
+    if let Some(review) = payload.get("operator_review") {
+        println!(
+            "gemma finetune promotion review: reviewer={} state={} summary={}",
+            review
+                .get("reviewer_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            review.get("state").and_then(Value::as_str).unwrap_or("-"),
+            review.get("summary").and_then(Value::as_str).unwrap_or("-"),
+        );
+    }
+}
+
 fn watch_training_run(
     client: &DesktopControlClient,
     requested_run_id: Option<&str>,
@@ -7979,6 +9964,137 @@ fn print_nip28_messages_text(
     }
 }
 
+fn print_forge_status_text(payload: &DesktopControlForgeStatusPayload) {
+    println!("thread: `{}`", payload.thread_id);
+    println!("shared session: `{}`", payload.shared_session_id);
+    if let Some(project_name) = payload.project_name.as_deref() {
+        println!("project: {}", project_name);
+    }
+    if let Some(workspace_root) = payload.workspace_root.as_deref() {
+        println!("workspace: {}", workspace_root);
+    }
+    if !payload.probe_session_ids.is_empty() {
+        println!("probe sessions: {}", payload.probe_session_ids.join(", "));
+    }
+    println!(
+        "controller: {} ({})",
+        payload.controller_label, payload.control_owner
+    );
+    println!("local role: {}", payload.local_role_label);
+    println!("location: {}", payload.location_kind);
+    if let Some(host) = payload.execution_host_label.as_deref() {
+        println!("host: {}", host);
+    }
+    if let Some(attach_target) = payload.attach_target.as_deref() {
+        println!("attach target: {}", attach_target);
+    }
+    if let Some(evidence_bundle_id) = payload
+        .shared_session
+        .get("evidence_bundle_id")
+        .and_then(Value::as_str)
+    {
+        println!("evidence bundle: `{}`", evidence_bundle_id);
+    }
+    if let Some(delivery_receipt_id) = payload
+        .shared_session
+        .get("delivery_receipt_id")
+        .and_then(Value::as_str)
+    {
+        println!("delivery receipt: `{}`", delivery_receipt_id);
+    }
+    if let Some(preflight_id) = payload
+        .shared_session
+        .get("hosted_preflight")
+        .and_then(|preflight| preflight.get("preflight_id"))
+        .and_then(Value::as_str)
+    {
+        println!("hosted preflight: `{}`", preflight_id);
+    }
+    println!();
+    println!("{}", payload.status_text);
+}
+
+fn print_forge_hosted_sessions_text(payload: &DesktopControlForgeHostedSessionsPayload) {
+    if payload.sessions.is_empty() {
+        println!("No hosted Forge sessions are visible yet.");
+        return;
+    }
+    println!("Hosted Forge sessions:");
+    for session in &payload.sessions {
+        let mut details = Vec::new();
+        if let Some(project_name) = session.project_name.as_deref() {
+            details.push(format!("project:{project_name}"));
+        }
+        if let Some(workspace_root) = session.workspace_root.as_deref() {
+            details.push(format!("ws:{workspace_root}"));
+        }
+        if let Some(git_branch) = session.git_branch.as_deref() {
+            details.push(format!("branch:{git_branch}"));
+        }
+        if let Some(prepared_baseline_id) = session.prepared_baseline_id.as_deref() {
+            let status = session
+                .prepared_baseline_status
+                .as_deref()
+                .unwrap_or("unknown");
+            details.push(format!("baseline:{prepared_baseline_id} ({status})"));
+        }
+        details.push(format!("controller:{}", session.control_owner));
+        if !session.participants.is_empty() {
+            details.push(format!(
+                "participants:{}",
+                session
+                    .participants
+                    .iter()
+                    .map(|participant| participant.display_name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        details.push(format!("location:{}", session.location_kind));
+        if let Some(owner_label) = session.owner_label.as_deref() {
+            details.push(format!("owner:{owner_label}"));
+        }
+        if let Some(host) = session.execution_host_label.as_deref() {
+            details.push(format!("host:{host}"));
+        }
+        if let Some(attach_target) = session.attach_target.as_deref() {
+            details.push(format!("attach:{attach_target}"));
+        }
+        if !session.sibling_probe_session_ids.is_empty() {
+            details.push(format!(
+                "other_probe_sessions:{}",
+                session.sibling_probe_session_ids.join(", ")
+            ));
+        }
+        println!(
+            "- `{}` -> `{}` ({})",
+            session.shared_session_id,
+            session.probe_session_id,
+            details.join(" | ")
+        );
+    }
+    println!(
+        "Attach with `autopilotctl forge hosted attach-shared <shared-session-id>` or `autopilotctl forge hosted attach-probe <probe-session-id>`."
+    );
+}
+
+fn print_forge_attach_text(payload: &DesktopControlForgeAttachPayload) {
+    println!("shared session: `{}`", payload.shared_session_id);
+    println!("probe session: `{}`", payload.probe_session_id);
+    println!("workspace: {}", payload.workspace_label);
+    if let Some(project_name) = payload.project_name.as_deref() {
+        println!("project: {}", project_name);
+    }
+    if let Some(attach_target) = payload.attach_target.as_deref() {
+        println!("attach target: {}", attach_target);
+    }
+    println!("reused local thread: {}", payload.reused_local_thread);
+    if !payload.status_text.trim().is_empty() {
+        println!();
+        println!("{}", payload.status_text);
+    }
+}
+
 fn blocker_codes_label(codes: &[String]) -> String {
     if codes.is_empty() {
         "-".to_string()
@@ -8014,9 +10130,11 @@ fn print_active_job_text(active_job: Option<&DesktopControlActiveJobStatus>) {
     match active_job {
         Some(active_job) => {
             println!(
-                "active job: request={} capability={} stage={} next={} settlement={} payment_pointer={} fees={}",
+                "active job: request={} capability={} product={} receipt={} stage={} next={} settlement={} payment_pointer={} fees={} earnings={}",
                 active_job.request_id,
                 active_job.capability,
+                active_job.compute_product_id.as_deref().unwrap_or("-"),
+                active_job.market_receipt_class.as_deref().unwrap_or("-"),
                 active_job.stage,
                 active_job.next_expected_event,
                 active_job.settlement_status.as_deref().unwrap_or("-"),
@@ -8024,7 +10142,8 @@ fn print_active_job_text(active_job: Option<&DesktopControlActiveJobStatus>) {
                 active_job
                     .settlement_fees_sats
                     .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                active_job.earnings_summary.as_deref().unwrap_or("-"),
             );
         }
         None => println!("active job: none"),
@@ -8046,18 +10165,21 @@ mod tests {
     use super::{
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
-        DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, GptOssCommand,
-        LocalRuntimeCommand, ProofCommand, ProviderCommand, RemoteTrainingCommand, ResearchCommand,
-        ResolvedTarget, SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand,
-        TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
-        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
-        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
-        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        DataMarketCommand, DataMarketRevocationActionArg, DesktopControlClient, ForgeCommand,
+        ForgeHandoffCommand, ForgeHostedCommand, GemmaFinetuneCommand, GemmaFinetuneDatasetCommand,
+        GemmaFinetuneJobCommand, GemmaFinetuneProjectCommand, GemmaFinetuneTenantCommand,
+        GptOssCommand, LocalRuntimeCommand, PooledInferenceCommand, ProofCommand, ProviderCommand,
+        RemoteTrainingCommand, ResearchCommand, ResolvedTarget, SandboxCommand,
+        SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
+        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
+        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
+        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
+        buy_mode_has_paid_request, buyer_procurement_status_lines,
         compressed_pubkey_from_xonly_hex, data_market_sha256_hex, ensure_buy_mode_budget_ack,
-        inventory_status_lines, materialize_data_market_delivery, nip90_sent_payments_report_lines,
-        parse_giftwrapped_delivery_pointer, parse_local_daily_window,
-        parse_nip90_sent_payments_report, parse_report_boundary, private_key_bytes,
-        remote_training_status_lines, request_has_failed, request_has_paid,
+        gemma_finetune_status_lines, inventory_status_lines, materialize_data_market_delivery,
+        nip90_sent_payments_report_lines, parse_giftwrapped_delivery_pointer,
+        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
+        private_key_bytes, remote_training_status_lines, request_has_failed, request_has_paid,
         request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
@@ -8067,9 +10189,10 @@ mod tests {
         DesktopControlDataMarketIssueDeliveryArgs, DesktopControlDataMarketPrepareDeliveryArgs,
         DesktopControlDataMarketPublishArgs, DesktopControlDataMarketRequestPaymentArgs,
         DesktopControlDataMarketResolveDeliveryArgs, DesktopControlDataMarketRevokeGrantArgs,
-        DesktopControlNip28MessageStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlSnapshot, DesktopControlTassadarReplayFamily,
-        DesktopControlTassadarSourceMode, DesktopControlTassadarView,
+        DesktopControlManifest, DesktopControlNip28MessageStatus,
+        DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
+        DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
+        DesktopControlTassadarView, ForgeSharedSessionControlOwner,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -8716,6 +10839,38 @@ mod tests {
             ClusterCommand::Topology.action_request(),
             DesktopControlActionRequest::GetClusterTopology
         );
+        assert_eq!(PooledInferenceCommand::Status.action_request(), None);
+        assert_eq!(PooledInferenceCommand::Topology.action_request(), None);
+        assert_eq!(
+            PooledInferenceCommand::ExportJoinBundle {
+                output: PathBuf::from("/tmp/mesh-home.join.json"),
+                mesh_root: Some(PathBuf::from("/tmp/mesh-root")),
+                mesh_label: Some("mesh-home".to_string()),
+                advertise_addrs: vec!["100.90.1.10:47470".to_string()],
+            }
+            .action_request(),
+            Some(
+                DesktopControlActionRequest::ExportPooledInferenceJoinBundle {
+                    mesh_root: Some("/tmp/mesh-root".to_string()),
+                    output_path: "/tmp/mesh-home.join.json".to_string(),
+                    mesh_label: Some("mesh-home".to_string()),
+                    advertise_addrs: vec!["100.90.1.10:47470".to_string()],
+                }
+            )
+        );
+        assert_eq!(
+            PooledInferenceCommand::ImportJoinBundle {
+                input: PathBuf::from("/tmp/mesh-home.join.json"),
+                mesh_root: Some(PathBuf::from("/tmp/mesh-joiner")),
+            }
+            .action_request(),
+            Some(
+                DesktopControlActionRequest::ImportPooledInferenceJoinBundle {
+                    mesh_root: Some("/tmp/mesh-joiner".to_string()),
+                    join_bundle_path: "/tmp/mesh-home.join.json".to_string(),
+                }
+            )
+        );
         assert_eq!(
             ProofCommand::Status.action_request(),
             DesktopControlActionRequest::GetProofStatus
@@ -8780,6 +10935,141 @@ mod tests {
             .action_request(),
             DesktopControlActionRequest::AcceptAppleAdapterTraining {
                 run_id: "weather-helper-1".to_string(),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Status.action_request(),
+            DesktopControlActionRequest::GetGemmaFinetuneStatus
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Tenant {
+                command: GemmaFinetuneTenantCommand::Status {
+                    api_key: "gft_test_key".to_string(),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::GetGemmaFinetuneTenantView {
+                api_key: "gft_test_key".to_string(),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Project {
+                command: GemmaFinetuneProjectCommand::Create {
+                    project_name: "Support agent".to_string(),
+                    tenant_id: Some("design-partner".to_string()),
+                    api_key: "gft_test_key".to_string(),
+                    base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                    hidden_size: 4,
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::CreateGemmaFinetuneProject {
+                api_key: "gft_test_key".to_string(),
+                project_name: "Support agent".to_string(),
+                tenant_id: Some("design-partner".to_string()),
+                base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                hidden_size: 4,
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Dataset {
+                command: GemmaFinetuneDatasetCommand::Register {
+                    project_id: "support-agent-1".to_string(),
+                    dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                    api_key: "gft_test_key".to_string(),
+                    train_path: PathBuf::from("/tmp/train.json"),
+                    validation_path: PathBuf::from("/tmp/validation.json"),
+                    holdout_path: PathBuf::from("/tmp/holdout.json"),
+                    baseline_short_path: Some(PathBuf::from("/tmp/baseline-short.json")),
+                    final_report_path: Some(PathBuf::from("/tmp/final-report.json")),
+                    chat_template_digest: Some("sha256:gemma-template".to_string()),
+                    assistant_mask_coverage_bps: 10_000,
+                    overlap_check_id: Some("overlap-1".to_string()),
+                    overlap_detail: Some("cleared".to_string()),
+                    compared_benchmark_refs: vec![
+                        "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                    ],
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::RegisterGemmaFinetuneDataset {
+                api_key: "gft_test_key".to_string(),
+                project_id: "support-agent-1".to_string(),
+                dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                train_path: "/tmp/train.json".to_string(),
+                validation_path: "/tmp/validation.json".to_string(),
+                holdout_path: "/tmp/holdout.json".to_string(),
+                baseline_short_path: Some("/tmp/baseline-short.json".to_string()),
+                final_report_path: Some("/tmp/final-report.json".to_string()),
+                chat_template_digest: Some("sha256:gemma-template".to_string()),
+                assistant_mask_coverage_bps: 10_000,
+                overlap_check_id: Some("overlap-1".to_string()),
+                overlap_detail: Some("cleared".to_string()),
+                compared_benchmark_refs: vec![
+                    "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                ],
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Job {
+                command: GemmaFinetuneJobCommand::Create {
+                    project_id: "support-agent-1".to_string(),
+                    api_key: "gft_test_key".to_string(),
+                    dataset_id: Some("dataset-1".to_string()),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::CreateGemmaFinetuneJob {
+                api_key: "gft_test_key".to_string(),
+                project_id: "support-agent-1".to_string(),
+                dataset_id: Some("dataset-1".to_string()),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Job {
+                command: GemmaFinetuneJobCommand::Get {
+                    job_id: "support-agent-job-1".to_string(),
+                    api_key: "gft_test_key".to_string(),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::GetGemmaFinetuneJob {
+                job_id: "support-agent-job-1".to_string(),
+                api_key: Some("gft_test_key".to_string()),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Job {
+                command: GemmaFinetuneJobCommand::Cancel {
+                    job_id: "support-agent-job-1".to_string(),
+                    api_key: "gft_test_key".to_string(),
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::CancelGemmaFinetuneJob {
+                job_id: "support-agent-job-1".to_string(),
+                api_key: "gft_test_key".to_string(),
+            }
+        );
+        assert_eq!(
+            GemmaFinetuneCommand::Promote {
+                job_id: "support-agent-job-1".to_string(),
+                checkpoint_id: Some("support-agent-r1-final".to_string()),
+                reviewer_id: "operator-1".to_string(),
+                review_state: "approved".to_string(),
+                failed_case_ids: Vec::new(),
+                summary: Some("approve".to_string()),
+                api_key: "gft_test_key".to_string(),
+            }
+            .action_request(),
+            DesktopControlActionRequest::PromoteGemmaFinetuneCheckpoint {
+                api_key: "gft_test_key".to_string(),
+                job_id: "support-agent-job-1".to_string(),
+                checkpoint_id: Some("support-agent-r1-final".to_string()),
+                reviewer_id: "operator-1".to_string(),
+                review_state: Some("approved".to_string()),
+                failed_case_ids: Vec::new(),
+                summary: Some("approve".to_string()),
             }
         );
         assert_eq!(
@@ -8946,6 +11236,105 @@ mod tests {
         assert_eq!(ChatCommand::Groups.action_request(), None);
         assert_eq!(ChatCommand::Channels.action_request(), None);
         assert_eq!(ChatCommand::Tail { limit: 5 }.action_request(), None);
+        assert_eq!(
+            ForgeCommand::Status {
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::GetForgeStatus {
+                thread_id: Some("thread-1".to_string()),
+            })
+        );
+        assert_eq!(
+            ForgeHostedCommand::Sessions.action_request(),
+            DesktopControlActionRequest::ListForgeHostedSessions
+        );
+        assert_eq!(
+            ForgeHostedCommand::AttachShared {
+                shared_session_id: "forge-session-1".to_string(),
+            }
+            .action_request(),
+            DesktopControlActionRequest::AttachForgeHostedSessionBySharedSessionId {
+                shared_session_id: "forge-session-1".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHostedCommand::AttachProbe {
+                probe_session_id: "probe-session-1".to_string(),
+            }
+            .action_request(),
+            DesktopControlActionRequest::AttachForgeHostedSessionByProbeSessionId {
+                probe_session_id: "probe-session-1".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Human {
+                summary: "handoff to me".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                thread_id: Some("thread-1".to_string()),
+                next_owner: ForgeSharedSessionControlOwner::HumanLocal,
+                summary: "handoff to me".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Agent {
+                summary: "handoff to agent".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RecordForgeSharedSessionHandoff {
+                thread_id: Some("thread-1".to_string()),
+                next_owner: ForgeSharedSessionControlOwner::ProbeLocalAgent,
+                summary: "handoff to agent".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Request {
+                summary: "take control".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RequestForgeSharedSessionControl {
+                thread_id: Some("thread-1".to_string()),
+                summary: "take control".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Accept {
+                summary: "accepted".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::AcceptForgeSharedSessionControlRequest {
+                thread_id: Some("thread-1".to_string()),
+                summary: "accepted".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Take {
+                summary: "taking control".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::TakeForgeSharedSessionControl {
+                thread_id: Some("thread-1".to_string()),
+                summary: "taking control".to_string(),
+            }
+        );
+        assert_eq!(
+            ForgeHandoffCommand::Note {
+                summary: "left a note".to_string(),
+                thread_id: Some("thread-1".to_string()),
+            }
+            .action_request(),
+            DesktopControlActionRequest::RecordForgeSharedSessionNote {
+                thread_id: Some("thread-1".to_string()),
+                summary: "left a note".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -9431,6 +11820,67 @@ mod tests {
     }
 
     #[test]
+    fn cli_accepts_global_json_after_forge_subcommand() {
+        let cli =
+            super::Cli::try_parse_from(["autopilotctl", "forge", "hosted", "sessions", "--json"])
+                .expect("cli should accept trailing global json flag");
+        assert!(cli.json);
+    }
+
+    #[test]
+    fn resolve_target_from_manifest_path_preserves_manifest_fields() {
+        let manifest = DesktopControlManifest {
+            schema_version: 1,
+            generated_at_epoch_ms: 1_775_000_000_000,
+            pid: 42,
+            listen_addr: "127.0.0.1:50505".to_string(),
+            base_url: "http://127.0.0.1:50505".to_string(),
+            auth_token: "fixture-token".to_string(),
+            identity_path: Some("/tmp/identity.mnemonic".to_string()),
+            latest_session_log_path: "/tmp/latest.jsonl".to_string(),
+        };
+        let manifest_file = NamedTempFile::new().expect("manifest temp file");
+        std::fs::write(
+            manifest_file.path(),
+            serde_json::to_vec(&manifest).expect("encode manifest"),
+        )
+        .expect("write manifest");
+
+        let target =
+            super::resolve_target_from_manifest_path(manifest_file.path()).expect("resolve target");
+        assert_eq!(target.base_url, "http://127.0.0.1:50505");
+        assert_eq!(target.auth_token, "fixture-token");
+        assert_eq!(
+            target.identity_path,
+            Some(PathBuf::from("/tmp/identity.mnemonic"))
+        );
+        assert_eq!(
+            target.latest_session_log_path,
+            Some(PathBuf::from("/tmp/latest.jsonl"))
+        );
+        assert_eq!(target.manifest_path.as_deref(), Some(manifest_file.path()));
+    }
+
+    #[test]
+    fn read_log_tail_returns_recent_lines() {
+        let log_file = NamedTempFile::new().expect("log temp file");
+        let payload = (0..10)
+            .map(|index| format!("line-{index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(log_file.path(), payload).expect("write log payload");
+        let lines = super::read_log_tail(log_file.path(), 3).expect("read log tail");
+        assert_eq!(
+            lines,
+            vec![
+                "line-7".to_string(),
+                "line-8".to_string(),
+                "line-9".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn training_status_lines_surface_control_and_artifact_planes() {
         let mut snapshot = sample_snapshot();
         snapshot.training.available = true;
@@ -9725,6 +12175,190 @@ mod tests {
         assert!(lines.iter().any(|line| line.contains(
             "training operator note: export, runtime smoke, and authority acceptance do not by themselves prove benchmark-useful adapter quality"
         )));
+    }
+
+    #[test]
+    fn gemma_finetune_status_lines_surface_validation_receipts() {
+        let mut snapshot = sample_snapshot();
+        snapshot.gemma_finetune = autopilot_desktop::gemma_finetune_control::GemmaFinetuneStatus {
+            available: true,
+            schema_version: 1,
+            view_scope: "operator_aggregate".to_string(),
+            scope_tenant_id: None,
+            storage_path: Some("/tmp/openagents/logs/autopilot/gemma-finetune.json".to_string()),
+            tenant_count: 1,
+            project_count: 1,
+            dataset_count: 1,
+            validation_receipt_count: 1,
+            job_count: 0,
+            promoted_model_count: 0,
+            accepted_outcome_count: 0,
+            model_inventory_count: 0,
+            quota_blocked_tenant_count: 0,
+            tenants: vec![
+                autopilot_desktop::gemma_finetune_control::GemmaFinetuneTenantStatus {
+                    tenant_id: "design-partner".to_string(),
+                    display_name: "Design Partner".to_string(),
+                    created_at_epoch_ms: 1,
+                    updated_at_epoch_ms: 2,
+                    api_key_id: "tenant-key-design-partner".to_string(),
+                    api_key_preview: "gft_test...cafe".to_string(),
+                    last_authenticated_at_epoch_ms: Some(3),
+                    quota: autopilot_desktop::gemma_finetune_control::GemmaFinetuneTenantQuotaStatus {
+                        max_projects: 3,
+                        max_datasets: 6,
+                        max_jobs: 8,
+                        max_active_jobs: 1,
+                        max_promoted_models: 2,
+                    },
+                    usage: autopilot_desktop::gemma_finetune_control::GemmaFinetuneTenantUsageStatus {
+                        project_count: 1,
+                        dataset_count: 1,
+                        job_count: 0,
+                        active_job_count: 0,
+                        promoted_model_count: 0,
+                        accepted_outcome_count: 0,
+                        inventory_model_count: 0,
+                    },
+                    quota_ready: true,
+                    quota_blockers: Vec::new(),
+                    project_ids: vec!["support-agent-1".to_string()],
+                    accepted_outcome_ids: Vec::new(),
+                    inventory_model_refs: Vec::new(),
+                    last_action: Some("Provisioned Gemma finetune tenant".to_string()),
+                    last_error: None,
+                }
+            ],
+            projects: vec![
+                autopilot_desktop::gemma_finetune_control::GemmaFinetuneProjectStatus {
+                    project_id: "support-agent-1".to_string(),
+                    tenant_id: "design-partner".to_string(),
+                    project_name: "Support agent".to_string(),
+                    created_at_epoch_ms: 1,
+                    updated_at_epoch_ms: 2,
+                    base_served_artifact_digest: "sha256:gemma4-e4b-base".to_string(),
+                    hidden_size: 4,
+                    active_dataset_id: Some("dataset-1".to_string()),
+                    lane_binding: autopilot_desktop::gemma_finetune_control::GemmaFinetuneLaneBindingStatus {
+                        model_id: "gemma4:e4b".to_string(),
+                        model_family: "gemma4".to_string(),
+                        training_family_id: "gemma4.e4b.adapter_sft.cuda.v1".to_string(),
+                        checkpoint_family: "gemma4_e4b_adapter".to_string(),
+                        base_model_revision: "gemma4:e4b@bounded".to_string(),
+                        adapter_family: "gemma4_e4b_lora".to_string(),
+                        eval_pack_storage_key: "benchmark://psionic/gemma4/e4b/finetune_eval@2026.04.03".to_string(),
+                        tokenizer_contract_digest: "sha256:gemma-template".to_string(),
+                    },
+                    last_action: Some("Bound dataset to project".to_string()),
+                    last_error: None,
+                }
+            ],
+            datasets: vec![
+                autopilot_desktop::gemma_finetune_control::GemmaFinetuneDatasetStatus {
+                    dataset_id: "dataset-1".to_string(),
+                    project_id: "support-agent-1".to_string(),
+                    dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                    created_at_epoch_ms: 2,
+                    updated_at_epoch_ms: 2,
+                    train_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "train".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/train".to_string(),
+                        file_path: "/tmp/train.json".to_string(),
+                        file_digest: "train-digest".to_string(),
+                        sample_count: 128,
+                    },
+                    held_out_validation_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "held_out_validation".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/held_out_validation".to_string(),
+                        file_path: "/tmp/validation.json".to_string(),
+                        file_digest: "validation-digest".to_string(),
+                        sample_count: 32,
+                    },
+                    final_report_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "final_report".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/final_report".to_string(),
+                        file_path: "/tmp/holdout.json".to_string(),
+                        file_digest: "holdout-digest".to_string(),
+                        sample_count: 32,
+                    },
+                    baseline_short_split: autopilot_desktop::gemma_finetune_control::GemmaFinetuneSplitFileStatus {
+                        split_id: "baseline_short".to_string(),
+                        split_ref: "split://openagents/gemma4/e4b/support-agent/baseline_short".to_string(),
+                        file_path: "/tmp/baseline-short.json".to_string(),
+                        file_digest: "baseline-short-digest".to_string(),
+                        sample_count: 16,
+                    },
+                    validation_receipt: autopilot_desktop::gemma_finetune_control::GemmaFinetuneValidationReceiptStatus {
+                        receipt_id: "dataset-1.validation".to_string(),
+                        validated_at_epoch_ms: 2,
+                        status: "validated".to_string(),
+                        tokenizer_contract_digest: "sha256:gemma-template".to_string(),
+                        tokenizer_compatible: true,
+                        template_compatible: true,
+                        assistant_mask_coverage_bps: 10_000,
+                        compared_benchmark_refs: vec![
+                            "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                        ],
+                        warnings: vec![
+                            "baseline_short path defaulted to the validation file for the bounded MVP lane".to_string(),
+                        ],
+                        errors: Vec::new(),
+                        dataset_contract: {
+                            let mut contract = psionic_train::GemmaE4bFinetuneDatasetContract {
+                                schema_version: psionic_train::GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION.to_string(),
+                                dataset_ref: "dataset://openagents/support-agent@2026.04".to_string(),
+                                train_split_ref: "split://openagents/gemma4/e4b/support-agent/train".to_string(),
+                                held_out_validation_split_ref: "split://openagents/gemma4/e4b/support-agent/held_out_validation".to_string(),
+                                final_report_split_ref: "split://openagents/gemma4/e4b/support-agent/final_report".to_string(),
+                                baseline_short_split_ref: "split://openagents/gemma4/e4b/support-agent/baseline_short".to_string(),
+                                chat_template_digest: "sha256:gemma-template".to_string(),
+                                assistant_mask_kind: psionic_train::GemmaE4bAssistantMaskKind::AssistantResponsesOnly,
+                                assistant_mask_coverage_bps: 10_000,
+                                benchmark_overlap_check: psionic_train::GemmaE4bBenchmarkOverlapCheck {
+                                    check_id: "overlap-1".to_string(),
+                                    compared_benchmark_refs: vec![
+                                        "benchmark://psionic/gemma4/e4b/finetune_eval".to_string(),
+                                    ],
+                                    exact_overlap_refs: Vec::new(),
+                                    near_duplicate_overlap_refs: Vec::new(),
+                                    passed: true,
+                                    detail: "cleared".to_string(),
+                                },
+                                dataset_digest: String::new(),
+                            };
+                            contract.dataset_digest = contract.stable_digest();
+                            contract
+                        },
+                        eval_pack_binding: psionic_train::canonical_gemma_e4b_finetune_eval_pack_binding()
+                            .expect("eval-pack binding"),
+                    },
+                    last_action: Some("Registered dataset".to_string()),
+                    last_error: None,
+                }
+            ],
+            jobs: Vec::new(),
+            promoted_models: Vec::new(),
+            accepted_outcomes: Vec::new(),
+            model_inventory: Vec::new(),
+            last_action: Some("Registered Gemma finetune dataset".to_string()),
+            last_error: None,
+        };
+        let lines = gemma_finetune_status_lines(&snapshot);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("gemma finetune: available=true"))
+        );
+        assert!(lines.iter().any(|line| {
+            line.contains("gemma finetune project:")
+                && line.contains("tenant=design-partner")
+                && line.contains("model=gemma4:e4b")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("gemma finetune dataset:")
+                && line.contains("receipt=validated")
+                && line.contains("template_ok=true")
+        }));
     }
 
     #[test]

@@ -290,6 +290,43 @@ enum ChatForgeComposerIntent {
         reason: String,
     },
     SettlementStatus,
+    HostedAuditRecord {
+        kind: crate::app_state::ForgeHostedAuditKind,
+        environment_summary: String,
+    },
+    HostedAuditNote {
+        kind: crate::app_state::ForgeHostedAuditKind,
+        note_kind: crate::app_state::ForgeHostedAuditNoteKind,
+        body: String,
+    },
+    HostedAuditExport {
+        kind: crate::app_state::ForgeHostedAuditKind,
+        path: Option<String>,
+    },
+    HostedPreflight {
+        path: Option<String>,
+    },
+    HostedSessionDirectory,
+    HostedAttachSharedSession {
+        shared_session_id: String,
+    },
+    HostedAttachProbeSession {
+        probe_session_id: String,
+    },
+    HostedAuditStatus,
+    HandoffStatus,
+    HandoffRequest {
+        summary: String,
+    },
+    HandoffAccept {
+        summary: String,
+    },
+    HandoffTake {
+        summary: String,
+    },
+    HandoffNote {
+        summary: String,
+    },
     Handoff {
         owner: crate::app_state::ForgeSharedSessionControlOwner,
         summary: String,
@@ -3274,6 +3311,39 @@ fn attach_existing_probe_thread(
     reused_attached_session: bool,
     sibling_matches: &[String],
 ) -> bool {
+    let sibling_note = if sibling_matches.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Other live sessions still exist: {}.",
+            sibling_matches.join(", ")
+        )
+    };
+    let reuse_prefix = if reused_attached_session {
+        "Reattached the Probe session already attached for this workspace"
+    } else {
+        "Attached the existing Probe session for this workspace"
+    };
+    load_probe_session_after_attach(
+        state,
+        thread_id,
+        format!("{reuse_prefix}: {thread_id}.{sibling_note}"),
+        format!(
+            "probe session attach workspace={} thread_id={} reused_attached_session={} sibling_matches={}",
+            workspace_label,
+            thread_id,
+            reused_attached_session,
+            sibling_matches.join(",")
+        ),
+    )
+}
+
+fn load_probe_session_after_attach(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+    notice: String,
+    trace_message: String,
+) -> bool {
     let Some(target) = state.autopilot_chat.select_thread_by_id(thread_id) else {
         state.autopilot_chat.last_error = Some(format!(
             "Probe session `{thread_id}` is known locally but the desktop could not select it."
@@ -3292,32 +3362,84 @@ fn attach_existing_probe_thread(
         state.autopilot_chat.last_error = Some(error);
         return true;
     }
-    let reuse_prefix = if reused_attached_session {
-        "Reattached the Probe session already attached for this workspace"
-    } else {
-        "Attached the existing Probe session for this workspace"
-    };
-    let sibling_note = if sibling_matches.is_empty() {
-        String::new()
-    } else {
-        format!(
-            " Other live sessions still exist: {}.",
-            sibling_matches.join(", ")
-        )
-    };
-    state.autopilot_chat.set_copy_notice(
-        std::time::Instant::now(),
-        format!("{reuse_prefix}: {}.{}", target.thread_id, sibling_note),
-    );
+    state
+        .autopilot_chat
+        .set_copy_notice(std::time::Instant::now(), notice);
     state.autopilot_chat.last_error = None;
-    tracing::info!(
-        "probe session attach workspace={} thread_id={} reused_attached_session={} sibling_matches={}",
-        workspace_label,
-        target.thread_id,
-        reused_attached_session,
-        sibling_matches.join(",")
-    );
+    tracing::info!("{trace_message}");
     true
+}
+
+fn format_hosted_session_directory(state: &crate::app_state::RenderState) -> String {
+    let sessions = state.autopilot_chat.hosted_shared_session_directory();
+    if sessions.is_empty() {
+        return "No hosted Forge sessions are visible yet. Point the desktop at the shared Forge state path and start a hosted Probe session first.".to_string();
+    }
+    let mut lines = vec!["Hosted Forge sessions:".to_string()];
+    for session in sessions {
+        let mut details = Vec::new();
+        if let Some(project_name) = session.project_name.as_deref() {
+            details.push(format!("project:{project_name}"));
+        }
+        if let Some(workspace_root) = session.workspace_root.as_deref() {
+            details.push(format!("ws:{workspace_root}"));
+        }
+        if let Some(git_branch) = session.git_branch.as_deref() {
+            details.push(format!("branch:{git_branch}"));
+        }
+        if let Some(baseline_id) = session.prepared_baseline_id.as_deref() {
+            let baseline_status = session
+                .prepared_baseline_status
+                .map(|status| status.display_label())
+                .unwrap_or("unknown");
+            details.push(format!("baseline:{baseline_id} ({baseline_status})"));
+        }
+        details.push(format!(
+            "controller:{}",
+            session.control_owner.display_label()
+        ));
+        if !session.participants.is_empty() {
+            details.push(format!(
+                "participants:{}",
+                session
+                    .participants
+                    .iter()
+                    .map(|participant| participant.display_name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        details.push(format!(
+            "location:{}",
+            session.location_kind.display_label()
+        ));
+        if let Some(owner_label) = session.owner_label.as_deref() {
+            details.push(format!("owner:{owner_label}"));
+        }
+        if let Some(execution_host_label) = session.execution_host_label.as_deref() {
+            details.push(format!("host:{execution_host_label}"));
+        }
+        if let Some(attach_target) = session.attach_target.as_deref() {
+            details.push(format!("attach:{attach_target}"));
+        }
+        if !session.sibling_probe_session_ids.is_empty() {
+            details.push(format!(
+                "other_probe_sessions:{}",
+                session.sibling_probe_session_ids.join(", ")
+            ));
+        }
+        lines.push(format!(
+            "- `{}` -> `{}` ({})",
+            session.shared_session_id,
+            session.probe_session_id,
+            details.join(" | ")
+        ));
+    }
+    lines.push(
+        "Attach with `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`."
+            .to_string(),
+    );
+    lines.join("\n")
 }
 
 fn remember_chat_command_prompt(state: &mut crate::app_state::RenderState, prompt: &str) {
@@ -4066,6 +4188,303 @@ fn gh_command_checked(workspace: &std::path::Path, args: &[&str]) -> Result<Stri
     ))
 }
 
+fn run_gcloud_command(args: &[&str]) -> Result<std::process::Output, String> {
+    std::process::Command::new("gcloud")
+        .args(args)
+        .output()
+        .map_err(|error| format!("Failed to launch gcloud: {error}"))
+}
+
+fn gcloud_command_checked(args: &[&str]) -> Result<String, String> {
+    let output = run_gcloud_command(args)?;
+    let body = git_output_text(&output);
+    if output.status.success() {
+        return Ok(body);
+    }
+    let fallback = if body.is_empty() {
+        format!("gcloud exited with status {}", output.status)
+    } else {
+        body
+    };
+    Err(format!(
+        "`gcloud {}` failed.\n\n```text\n{}\n```",
+        args.join(" "),
+        fallback
+    ))
+}
+
+fn env_var_optional_trimmed(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn hosted_preflight_check(
+    label: &str,
+    status: crate::app_state::ForgeHostedPreflightCheckStatus,
+    summary: impl Into<String>,
+    detail: Option<String>,
+) -> crate::app_state::ForgeHostedPreflightCheck {
+    crate::app_state::ForgeHostedPreflightCheck {
+        label: label.to_string(),
+        status,
+        summary: summary.into(),
+        detail,
+    }
+}
+
+fn normalize_command_value(value: Result<String, String>) -> Result<String, String> {
+    value
+        .map(|value| value.trim().to_string())
+        .and_then(|value| {
+            if value.is_empty() || value == "(unset)" {
+                Err("value is unset".to_string())
+            } else {
+                Ok(value)
+            }
+        })
+}
+
+fn build_probe_hosted_preflight_report(
+    chat: &crate::app_state::AutopilotChatState,
+    thread_id: &str,
+    recorded_at_epoch_ms: u64,
+) -> Result<crate::app_state::ForgeHostedPreflightReport, String> {
+    let shared_session = chat
+        .shared_session_for_thread(thread_id)
+        .ok_or_else(|| format!("No Probe-backed thread is available for `{thread_id}`."))?;
+    let workspace_root = shared_session.workspace_root.clone();
+    let workspace_path = workspace_root.as_deref().map(std::path::PathBuf::from);
+    let fallback_workspace =
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let command_workspace = workspace_path
+        .as_deref()
+        .unwrap_or(fallback_workspace.as_path());
+
+    let mut checks = Vec::new();
+    let mut repo_remote_url = None;
+    if let Some(workspace_path) = workspace_path.as_deref() {
+        match git_command_checked(workspace_path, &["remote", "get-url", "origin"]) {
+            Ok(remote_url) => {
+                repo_remote_url = Some(remote_url.trim().to_string());
+                match git_command_checked(
+                    workspace_path,
+                    &["ls-remote", "--exit-code", "origin", "HEAD"],
+                ) {
+                    Ok(_) => checks.push(hosted_preflight_check(
+                        "repo access",
+                        crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+                        format!(
+                            "Verified git remote access against `{}`.",
+                            repo_remote_url.as_deref().unwrap_or("origin")
+                        ),
+                        None,
+                    )),
+                    Err(error) => checks.push(hosted_preflight_check(
+                        "repo access",
+                        crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                        "Git remote access is not working for the active workspace.",
+                        Some(error),
+                    )),
+                }
+            }
+            Err(error) => checks.push(hosted_preflight_check(
+                "repo access",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                "The active workspace does not expose a usable `origin` remote.",
+                Some(error),
+            )),
+        }
+    } else {
+        checks.push(hosted_preflight_check(
+            "repo access",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "The active thread does not have a resolved workspace root.",
+            None,
+        ));
+    }
+
+    match gh_command_checked(command_workspace, &["auth", "status"]) {
+        Ok(_) => checks.push(hosted_preflight_check(
+            "github auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            "GitHub CLI auth is available for hosted delivery and review checks.",
+            None,
+        )),
+        Err(error) => checks.push(hosted_preflight_check(
+            "github auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "GitHub CLI auth is missing or unusable.",
+            Some(error),
+        )),
+    }
+
+    match normalize_command_value(gcloud_command_checked(&[
+        "auth",
+        "list",
+        "--filter=status:ACTIVE",
+        "--format=value(account)",
+    ])) {
+        Ok(account) => checks.push(hosted_preflight_check(
+            "gcp auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            format!("Active gcloud account: `{account}`."),
+            None,
+        )),
+        Err(error) => checks.push(hosted_preflight_check(
+            "gcp auth",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "gcloud does not have an active authenticated account.",
+            Some(error),
+        )),
+    }
+
+    let gcp_project = match normalize_command_value(gcloud_command_checked(&[
+        "config",
+        "get-value",
+        "project",
+    ])) {
+        Ok(project) => {
+            checks.push(hosted_preflight_check(
+                "gcp project",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+                format!("Target GCP project is `{project}`."),
+                None,
+            ));
+            Some(project)
+        }
+        Err(error) => {
+            checks.push(hosted_preflight_check(
+                "gcp project",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                "No GCP project is configured for the hosted lane.",
+                Some(error),
+            ));
+            None
+        }
+    };
+
+    let gcp_region = match normalize_command_value(gcloud_command_checked(&[
+        "config",
+        "get-value",
+        "compute/region",
+    ])) {
+        Ok(region) => {
+            checks.push(hosted_preflight_check(
+                "gcp region",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+                format!("Target GCP region is `{region}`."),
+                None,
+            ));
+            Some(region)
+        }
+        Err(error) => {
+            checks.push(hosted_preflight_check(
+                "gcp region",
+                crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+                "No GCP region is configured for the hosted lane.",
+                Some(error),
+            ));
+            None
+        }
+    };
+
+    if env_var_optional_trimmed("OPENAGENTS_FORGE_HOSTED_REPO_SECRET").is_some() {
+        checks.push(hosted_preflight_check(
+            "repo secret",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            "Required hosted repo secret env is present.",
+            None,
+        ));
+    } else {
+        checks.push(hosted_preflight_check(
+            "repo secret",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "Set `OPENAGENTS_FORGE_HOSTED_REPO_SECRET` before launch.",
+            None,
+        ));
+    }
+
+    let worker_baseline = if shared_session.remote_session.prepared_baseline_status
+        == Some(crate::app_state::ForgeProbePreparedBaselineStatus::Ready)
+    {
+        shared_session.remote_session.prepared_baseline_id.clone()
+    } else {
+        None
+    }
+    .or_else(|| env_var_optional_trimmed("OPENAGENTS_FORGE_HOSTED_WORKER_BASELINE"));
+    match worker_baseline.as_deref() {
+        Some(baseline) => checks.push(hosted_preflight_check(
+            "worker baseline",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            format!("Hosted worker baseline is `{baseline}`."),
+            None,
+        )),
+        None => checks.push(hosted_preflight_check(
+            "worker baseline",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Blocker,
+            "Probe does not currently show a ready hosted baseline, and `OPENAGENTS_FORGE_HOSTED_WORKER_BASELINE` is unset.",
+            None,
+        )),
+    }
+
+    if shared_session
+        .knowledge_mounts
+        .unsupported_routes
+        .is_empty()
+    {
+        checks.push(hosted_preflight_check(
+            "pack routing",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Ok,
+            "All routed packs are currently mountable on the active session.",
+            None,
+        ));
+    } else {
+        let detail = Some(
+            shared_session
+                .knowledge_mounts
+                .unsupported_routes
+                .iter()
+                .take(4)
+                .map(|issue| format!("{}: {}", issue.title, issue.reason))
+                .collect::<Vec<_>>()
+                .join(" | "),
+        );
+        checks.push(hosted_preflight_check(
+            "pack routing",
+            crate::app_state::ForgeHostedPreflightCheckStatus::Warning,
+            format!(
+                "{} routed pack(s) are still unsupported on the active session.",
+                shared_session.knowledge_mounts.unsupported_routes.len()
+            ),
+            detail,
+        ));
+    }
+
+    let disposition = if checks
+        .iter()
+        .any(|check| check.status == crate::app_state::ForgeHostedPreflightCheckStatus::Blocker)
+    {
+        crate::app_state::ForgeHostedPreflightDisposition::Blocked
+    } else {
+        crate::app_state::ForgeHostedPreflightDisposition::Ready
+    };
+
+    Ok(crate::app_state::ForgeHostedPreflightReport {
+        preflight_id: format!("forge-hosted-preflight-{recorded_at_epoch_ms}"),
+        disposition,
+        workspace_root,
+        repo_remote_url,
+        gcp_project,
+        gcp_region,
+        worker_baseline,
+        report_path: None,
+        checks,
+        recorded_at_epoch_ms,
+    })
+}
+
 fn parse_github_pull_request_watch(
     payload: &str,
     updated_at_epoch_ms: u64,
@@ -4799,6 +5218,18 @@ fn campaign_verification_kind_allowed(kind: crate::app_state::ForgeCampaignArtif
     )
 }
 
+fn parse_hosted_audit_kind(raw: &str) -> Option<crate::app_state::ForgeHostedAuditKind> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "coding" | "coding_closeout" | "closeout" => {
+            Some(crate::app_state::ForgeHostedAuditKind::CodingCloseout)
+        }
+        "bookkeeping" | "bookkeeping_rehearsal" | "rehearsal" => {
+            Some(crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal)
+        }
+        _ => None,
+    }
+}
+
 fn build_probe_settlement_status_snapshot(
     chat: &crate::app_state::AutopilotChatState,
 ) -> Result<String, String> {
@@ -4862,6 +5293,160 @@ fn build_probe_settlement_status_snapshot(
     }
     if let Some(delivery_receipt_id) = receipt.delivery_receipt_id.as_deref() {
         lines.push(format!("Delivery receipt: `{delivery_receipt_id}`."));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn build_probe_hosted_audit_status_snapshot(
+    chat: &crate::app_state::AutopilotChatState,
+) -> Result<String, String> {
+    let mut bundles = Vec::new();
+    if let Some(bundle) = chat.active_hosted_coding_audit_bundle() {
+        bundles.push(bundle);
+    }
+    if let Some(bundle) = chat.active_hosted_bookkeeping_audit_bundle() {
+        bundles.push(bundle);
+    }
+    let hosted_preflight = chat.active_hosted_preflight();
+    if bundles.is_empty() && hosted_preflight.is_none() {
+        return Err(
+            "Record hosted preflight with `/hosted preflight [path]` or hosted audit state with `/hosted coding <environment-summary>` / `/hosted bookkeeping <environment-summary>` first."
+                .to_string(),
+        );
+    }
+    let mut lines = Vec::new();
+    if let Some(preflight) = hosted_preflight {
+        lines.push(format!(
+            "Hosted preflight `{}` is {}.",
+            preflight.preflight_id,
+            preflight.disposition.display_label()
+        ));
+        lines.push(format!(
+            "Checks: {}. Blockers: {}. Warnings: {}.",
+            preflight.checks.len(),
+            preflight.blocker_count(),
+            preflight.warning_count()
+        ));
+        if let Some(workspace_root) = preflight.workspace_root.as_deref() {
+            lines.push(format!("Workspace: `{workspace_root}`."));
+        }
+        if let Some(gcp_project) = preflight.gcp_project.as_deref() {
+            let region = preflight.gcp_region.as_deref().unwrap_or("unknown-region");
+            lines.push(format!("Target GCP lane: `{gcp_project}` / `{region}`."));
+        }
+        if let Some(worker_baseline) = preflight.worker_baseline.as_deref() {
+            lines.push(format!("Worker baseline: `{worker_baseline}`."));
+        }
+        if let Some(report_path) = preflight.report_path.as_deref() {
+            lines.push(format!("Preflight report: `{report_path}`."));
+        }
+        if let Some(latest_blocker) = preflight.checks.iter().find(|check| {
+            check.status == crate::app_state::ForgeHostedPreflightCheckStatus::Blocker
+        }) {
+            lines.push(format!("Latest blocker: {}.", latest_blocker.summary));
+        }
+        lines.push(String::new());
+    }
+    for bundle in bundles {
+        lines.push(format!(
+            "{} `{}` on {}.",
+            bundle.kind.display_label(),
+            bundle.audit_bundle_id,
+            bundle.session_location_kind.display_label()
+        ));
+        lines.push(format!("Environment: {}", bundle.environment_summary));
+        lines.push(format!(
+            "Probe sessions: {}. Routed packs: {}. Mounted packs: {}.",
+            bundle.probe_session_ids.len(),
+            bundle.routed_pack_ids.len(),
+            bundle.mounted_pack_ids.len()
+        ));
+        if let Some(evidence_status) = bundle.evidence_status {
+            lines.push(format!(
+                "Evidence: {}{}",
+                evidence_status.display_label(),
+                bundle
+                    .evidence_bundle_id
+                    .as_deref()
+                    .map(|bundle_id| format!(" (`{bundle_id}`)"))
+                    .unwrap_or_default()
+            ));
+        }
+        if let Some(delivery_status) = bundle.delivery_status {
+            lines.push(format!(
+                "Delivery: {}{}",
+                delivery_status.display_label(),
+                bundle
+                    .delivery_receipt_id
+                    .as_deref()
+                    .map(|receipt_id| format!(" (`{receipt_id}`)"))
+                    .unwrap_or_default()
+            ));
+        }
+        if let Some(hosted_receipts) = bundle.hosted_receipts.as_ref() {
+            let mut receipt_parts = Vec::new();
+            if hosted_receipts.auth.is_some() {
+                receipt_parts.push("auth");
+            }
+            if hosted_receipts.checkout.is_some() {
+                receipt_parts.push("checkout");
+            }
+            if hosted_receipts.worker.is_some() {
+                receipt_parts.push("worker");
+            }
+            if hosted_receipts.cost.is_some() {
+                receipt_parts.push("cost");
+            }
+            if hosted_receipts.cleanup.is_some() {
+                receipt_parts.push("cleanup");
+            }
+            if !receipt_parts.is_empty() {
+                lines.push(format!("Hosted receipts: {}.", receipt_parts.join(", ")));
+            }
+        }
+        let defect_count = bundle
+            .notes
+            .iter()
+            .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::Defect)
+            .count();
+        let recovery_count = bundle
+            .notes
+            .iter()
+            .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::RecoveryStep)
+            .count();
+        let note_count = bundle
+            .notes
+            .iter()
+            .filter(|note| note.kind == crate::app_state::ForgeHostedAuditNoteKind::OperatorNote)
+            .count();
+        lines.push(format!(
+            "Notes: {note_count}. Recovery steps: {recovery_count}. Defects: {defect_count}."
+        ));
+        if let Some(latest_note) = bundle.notes.first() {
+            lines.push(format!(
+                "Latest {}: {}",
+                latest_note.kind.display_label(),
+                latest_note.body
+            ));
+        }
+        if bundle.kind == crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal {
+            if let Some(campaign_id) = bundle.campaign_id.as_deref() {
+                lines.push(format!("Campaign: `{campaign_id}`."));
+            }
+            if let Some(bounty_contract_id) = bundle.bounty_contract_id.as_deref() {
+                lines.push(format!("Bounty contract: `{bounty_contract_id}`."));
+            }
+            if let Some(bounty_claim_id) = bundle.bounty_claim_id.as_deref() {
+                lines.push(format!("Bounty claim: `{bounty_claim_id}`."));
+            }
+            if let Some(settlement_receipt_id) = bundle.settlement_receipt_id.as_deref() {
+                lines.push(format!("Settlement receipt: `{settlement_receipt_id}`."));
+            }
+        }
+        lines.push(String::new());
+    }
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
     }
     Ok(lines.join("\n"))
 }
@@ -5404,6 +5989,7 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
         && first_word != "/promote"
         && first_word != "/bounty"
         && first_word != "/settle"
+        && first_word != "/hosted"
         && first_word != "/handoff"
         && first_word != "/restore"
         && first_word != "/evidence"
@@ -5955,6 +6541,119 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
             ),
         };
     }
+    if first_word == "/hosted" {
+        let Some(subcommand) = words.get(1).map(String::as_str) else {
+            return Err(
+                "Hosted commands: `/hosted sessions`, `/hosted attach shared <shared-session-id>`, `/hosted attach probe <probe-session-id>`, `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
+            );
+        };
+        return match subcommand {
+            "sessions" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/hosted sessions`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedSessionDirectory))
+            }
+            "attach" => {
+                let Some(attach_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`.".to_string(),
+                    );
+                };
+                let Some(target_id) = words.get(3).cloned() else {
+                    return Err(
+                        "Usage: `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`.".to_string(),
+                    );
+                };
+                if words.len() != 4 {
+                    return Err(
+                        "Usage: `/hosted attach shared <shared-session-id>` or `/hosted attach probe <probe-session-id>`.".to_string(),
+                    );
+                }
+                match attach_kind {
+                    "shared" => Ok(Some(ChatForgeComposerIntent::HostedAttachSharedSession {
+                        shared_session_id: target_id,
+                    })),
+                    "probe" => Ok(Some(ChatForgeComposerIntent::HostedAttachProbeSession {
+                        probe_session_id: target_id,
+                    })),
+                    _ => Err(
+                        "Hosted attach target must be `shared` or `probe`.".to_string(),
+                    ),
+                }
+            }
+            "preflight" => Ok(Some(ChatForgeComposerIntent::HostedPreflight {
+                path: (words.len() > 2).then(|| words[2..].join(" ")),
+            })),
+            "coding" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/hosted coding <environment-summary>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedAuditRecord {
+                    kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                    environment_summary: words[2..].join(" "),
+                }))
+            }
+            "bookkeeping" => {
+                if words.len() < 3 {
+                    return Err("Usage: `/hosted bookkeeping <environment-summary>`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedAuditRecord {
+                    kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
+                    environment_summary: words[2..].join(" "),
+                }))
+            }
+            "note" | "recovery" | "defect" => {
+                let Some(raw_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, or `/hosted defect <coding|bookkeeping> <summary>`.".to_string(),
+                    );
+                };
+                if words.len() < 4 {
+                    return Err(
+                        "Usage: `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, or `/hosted defect <coding|bookkeeping> <summary>`.".to_string(),
+                    );
+                }
+                let kind = parse_hosted_audit_kind(raw_kind).ok_or_else(|| {
+                    "Hosted audit kind must be `coding` or `bookkeeping`.".to_string()
+                })?;
+                let note_kind = match subcommand {
+                    "note" => crate::app_state::ForgeHostedAuditNoteKind::OperatorNote,
+                    "recovery" => crate::app_state::ForgeHostedAuditNoteKind::RecoveryStep,
+                    "defect" => crate::app_state::ForgeHostedAuditNoteKind::Defect,
+                    _ => unreachable!(),
+                };
+                Ok(Some(ChatForgeComposerIntent::HostedAuditNote {
+                    kind,
+                    note_kind,
+                    body: words[3..].join(" "),
+                }))
+            }
+            "export" => {
+                let Some(raw_kind) = words.get(2).map(String::as_str) else {
+                    return Err(
+                        "Usage: `/hosted export <coding|bookkeeping> [path]`.".to_string(),
+                    );
+                };
+                let kind = parse_hosted_audit_kind(raw_kind).ok_or_else(|| {
+                    "Hosted audit kind must be `coding` or `bookkeeping`.".to_string()
+                })?;
+                Ok(Some(ChatForgeComposerIntent::HostedAuditExport {
+                    kind,
+                    path: (words.len() > 3).then(|| words[3..].join(" ")),
+                }))
+            }
+            "status" => {
+                if words.len() != 2 {
+                    return Err("Usage: `/hosted status`.".to_string());
+                }
+                Ok(Some(ChatForgeComposerIntent::HostedAuditStatus))
+            }
+            _ => Err(
+                "Hosted commands: `/hosted sessions`, `/hosted attach shared <shared-session-id>`, `/hosted attach probe <probe-session-id>`, `/hosted preflight [path]`, `/hosted coding <environment-summary>`, `/hosted bookkeeping <environment-summary>`, `/hosted note <coding|bookkeeping> <summary>`, `/hosted recovery <coding|bookkeeping> <summary>`, `/hosted defect <coding|bookkeeping> <summary>`, `/hosted export <coding|bookkeeping> [path]`, `/hosted status`.".to_string(),
+            ),
+        };
+    }
     if first_word == "/evidence" {
         let Some(subcommand) = words.get(1).map(String::as_str) else {
             return Err(
@@ -6077,27 +6776,46 @@ fn parse_chat_forge_intent(prompt: &str) -> Result<Option<ChatForgeComposerInten
             snapshot_ref: words.get(2).cloned(),
         }));
     }
-    let owner = match words.get(1).map(String::as_str) {
-        Some("human") | Some("local-human") => {
-            crate::app_state::ForgeSharedSessionControlOwner::HumanLocal
-        }
-        Some("agent") | Some("probe") | Some("local-probe") => {
-            crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent
-        }
-        _ => {
-            return Err(
-                "Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string(),
-            );
-        }
+    let Some(subcommand) = words.get(1).map(String::as_str) else {
+        return Err(
+            "Handoff commands: `/handoff status`, `/handoff request <summary>`, `/handoff accept <summary>`, `/handoff take <summary>`, `/handoff note <summary>`, `/handoff human <summary>`, `/handoff agent <summary>`.".to_string(),
+        );
     };
-    if words.len() < 3 {
-        return Err("Usage: `/handoff human <summary>` or `/handoff agent <summary>`.".to_string());
+    let summary = |start: usize| -> Result<String, String> {
+        let summary = words[start..].join(" ").trim().to_string();
+        if summary.is_empty() {
+            return Err("Shared-session handoff summary cannot be empty.".to_string());
+        }
+        Ok(summary)
+    };
+    match subcommand {
+        "status" if words.len() == 2 => Ok(Some(ChatForgeComposerIntent::HandoffStatus)),
+        "request" if words.len() >= 3 => Ok(Some(ChatForgeComposerIntent::HandoffRequest {
+            summary: summary(2)?,
+        })),
+        "accept" if words.len() >= 3 => Ok(Some(ChatForgeComposerIntent::HandoffAccept {
+            summary: summary(2)?,
+        })),
+        "take" | "take-control" if words.len() >= 3 => {
+            Ok(Some(ChatForgeComposerIntent::HandoffTake {
+                summary: summary(2)?,
+            }))
+        }
+        "note" if words.len() >= 3 => Ok(Some(ChatForgeComposerIntent::HandoffNote {
+            summary: summary(2)?,
+        })),
+        "human" | "local-human" => Ok(Some(ChatForgeComposerIntent::Handoff {
+            owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
+            summary: summary(2)?,
+        })),
+        "agent" | "probe" | "local-probe" => Ok(Some(ChatForgeComposerIntent::Handoff {
+            owner: crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
+            summary: summary(2)?,
+        })),
+        _ => Err(
+            "Handoff commands: `/handoff status`, `/handoff request <summary>`, `/handoff accept <summary>`, `/handoff take <summary>`, `/handoff note <summary>`, `/handoff human <summary>`, `/handoff agent <summary>`.".to_string(),
+        ),
     }
-    let summary = words[2..].join(" ").trim().to_string();
-    if summary.is_empty() {
-        return Err("Shared-session handoff summary cannot be empty.".to_string());
-    }
-    Ok(Some(ChatForgeComposerIntent::Handoff { owner, summary }))
 }
 
 fn resolve_discovered_skill_index(
@@ -7311,6 +8029,95 @@ fn run_chat_forge_action(
     remember_chat_command_prompt(state, &prompt);
     clear_chat_command_prompt(state);
 
+    if matches!(
+        &intent,
+        ChatForgeComposerIntent::HostedSessionDirectory
+            | ChatForgeComposerIntent::HostedAttachSharedSession { .. }
+            | ChatForgeComposerIntent::HostedAttachProbeSession { .. }
+    ) {
+        return match intent {
+            ChatForgeComposerIntent::HostedSessionDirectory => append_chat_command_result(
+                state,
+                prompt,
+                format_hosted_session_directory(state),
+                false,
+            ),
+            ChatForgeComposerIntent::HostedAttachSharedSession { shared_session_id } => match state
+                .autopilot_chat
+                .prepare_hosted_probe_attach_by_shared_session_id(
+                    shared_session_id.as_str(),
+                    current_epoch_millis(),
+                ) {
+                Ok(target) => {
+                    let attach_detail = target
+                        .attach_target
+                        .as_deref()
+                        .map(|attach_target| format!(" via `{attach_target}`"))
+                        .unwrap_or_default();
+                    let reuse_prefix = if target.reused_local_thread {
+                        "Reattached hosted Forge session"
+                    } else {
+                        "Attached hosted Forge session"
+                    };
+                    load_probe_session_after_attach(
+                        state,
+                        target.probe_session_id.as_str(),
+                        format!(
+                            "{reuse_prefix}: {} (shared `{}`{})",
+                            target.probe_session_id, target.shared_session_id, attach_detail
+                        ),
+                        format!(
+                            "probe hosted attach shared_session_id={} probe_session_id={} workspace={} reused_local_thread={}",
+                            target.shared_session_id,
+                            target.probe_session_id,
+                            target.workspace_label,
+                            target.reused_local_thread
+                        ),
+                    )
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            },
+            ChatForgeComposerIntent::HostedAttachProbeSession { probe_session_id } => {
+                match state
+                    .autopilot_chat
+                    .prepare_hosted_probe_attach_by_probe_session_id(
+                        probe_session_id.as_str(),
+                        current_epoch_millis(),
+                    ) {
+                    Ok(target) => {
+                        let attach_detail = target
+                            .attach_target
+                            .as_deref()
+                            .map(|attach_target| format!(" via `{attach_target}`"))
+                            .unwrap_or_default();
+                        let reuse_prefix = if target.reused_local_thread {
+                            "Reattached hosted Probe session"
+                        } else {
+                            "Attached hosted Probe session"
+                        };
+                        load_probe_session_after_attach(
+                            state,
+                            target.probe_session_id.as_str(),
+                            format!(
+                                "{reuse_prefix}: {} (shared `{}`{})",
+                                target.probe_session_id, target.shared_session_id, attach_detail
+                            ),
+                            format!(
+                                "probe hosted attach probe_session_id={} shared_session_id={} workspace={} reused_local_thread={}",
+                                target.probe_session_id,
+                                target.shared_session_id,
+                                target.workspace_label,
+                                target.reused_local_thread
+                            ),
+                        )
+                    }
+                    Err(error) => append_chat_command_result(state, prompt, error, true),
+                }
+            }
+            _ => unreachable!(),
+        };
+    }
+
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
         return append_chat_command_result(
             state,
@@ -7970,6 +8777,260 @@ fn run_chat_forge_action(
                 Err(error) => append_chat_command_result(state, prompt, error, true),
             }
         }
+        ChatForgeComposerIntent::HostedPreflight { path } => {
+            let recorded_at_epoch_ms = current_epoch_millis();
+            let Some(_) = state
+                .autopilot_chat
+                .ensure_probe_shared_session_for_thread(thread_id.as_str(), recorded_at_epoch_ms)
+            else {
+                append_chat_command_result(
+                    state,
+                    prompt,
+                    format!("No Probe-backed thread is available for `{thread_id}`."),
+                    true,
+                );
+                return false;
+            };
+            match build_probe_hosted_preflight_report(
+                &state.autopilot_chat,
+                thread_id.as_str(),
+                recorded_at_epoch_ms,
+            ) {
+                Ok(report) => match state
+                    .autopilot_chat
+                    .export_probe_hosted_preflight_report_for_thread(
+                        thread_id.as_str(),
+                        report.clone(),
+                        path.as_deref(),
+                        recorded_at_epoch_ms,
+                    ) {
+                    Ok(export_path) => {
+                        let mut report = report;
+                        report.report_path = Some(export_path.display().to_string());
+                        let blocker_count = report.blocker_count();
+                        let warning_count = report.warning_count();
+                        match state
+                            .autopilot_chat
+                            .record_probe_hosted_preflight_for_thread(
+                                thread_id.as_str(),
+                                report.clone(),
+                                recorded_at_epoch_ms,
+                            ) {
+                            Ok(preflight_id) => {
+                                let mut response = format!(
+                                    "Recorded hosted preflight `{preflight_id}` as {} and exported it to `{}`.\n\nBlockers: {blocker_count}. Warnings: {warning_count}.",
+                                    report.disposition.display_label(),
+                                    export_path.display()
+                                );
+                                if blocker_count > 0 {
+                                    response.push_str(
+                                        "\nDo not start the hosted run until the blockers are cleared.",
+                                    );
+                                }
+                                if let Ok(status) =
+                                    build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                                {
+                                    response.push_str("\n\n");
+                                    response.push_str(status.as_str());
+                                }
+                                append_chat_command_result(state, prompt, response, false)
+                            }
+                            Err(error) => append_chat_command_result(state, prompt, error, true),
+                        }
+                    }
+                    Err(error) => append_chat_command_result(state, prompt, error, true),
+                },
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::HostedAuditRecord {
+            kind,
+            environment_summary,
+        } => match state
+            .autopilot_chat
+            .record_probe_hosted_audit_bundle_for_thread(
+                thread_id.as_str(),
+                kind,
+                environment_summary.clone(),
+                current_epoch_millis(),
+            ) {
+            Ok(audit_bundle_id) => {
+                let mut response = format!(
+                    "Recorded {} `{audit_bundle_id}`.\n\n{}",
+                    kind.display_label(),
+                    environment_summary
+                );
+                if let Ok(status) = build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HostedAuditNote {
+            kind,
+            note_kind,
+            body,
+        } => match state
+            .autopilot_chat
+            .record_probe_hosted_audit_note_for_thread(
+                thread_id.as_str(),
+                kind,
+                note_kind,
+                body.clone(),
+                format!("operator.command:/hosted {}", note_kind.label()),
+                current_epoch_millis(),
+            ) {
+            Ok(audit_bundle_id) => {
+                let mut response = format!(
+                    "Recorded hosted {} on `{audit_bundle_id}` for {}.\n\n{}",
+                    note_kind.display_label(),
+                    kind.display_label(),
+                    body
+                );
+                if let Ok(status) = build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HostedAuditExport { kind, path } => match state
+            .autopilot_chat
+            .export_probe_hosted_audit_bundle_for_thread(
+                thread_id.as_str(),
+                kind,
+                path.as_deref(),
+                current_epoch_millis(),
+            ) {
+            Ok(export_path) => {
+                let mut response = format!(
+                    "Exported {} to `{}`.",
+                    kind.display_label(),
+                    export_path.display()
+                );
+                if let Ok(status) = build_probe_hosted_audit_status_snapshot(&state.autopilot_chat)
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HostedAuditStatus => {
+            match build_probe_hosted_audit_status_snapshot(&state.autopilot_chat) {
+                Ok(summary) => append_chat_command_result(state, prompt, summary, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::HandoffStatus => match state
+            .autopilot_chat
+            .shared_session_handoff_status_for_thread(thread_id.as_str())
+        {
+            Ok(status) => append_chat_command_result(state, prompt, status, false),
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HandoffRequest { summary } => match state
+            .autopilot_chat
+            .request_shared_session_control_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff request",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => {
+                let mut response = format!(
+                    "Recorded control request on shared session `{shared_session_id}`.\n\n{}",
+                    summary
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HandoffAccept { summary } => match state
+            .autopilot_chat
+            .accept_shared_session_control_request_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff accept",
+                current_epoch_millis(),
+            ) {
+            Ok(shared_session_id) => {
+                let mut response = format!(
+                    "Accepted the pending control request on shared session `{shared_session_id}`.\n\n{}",
+                    summary
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
+            Err(error) => append_chat_command_result(state, prompt, error, true),
+        },
+        ChatForgeComposerIntent::HandoffTake { summary } => {
+            match state.autopilot_chat.take_shared_session_control_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff take",
+                current_epoch_millis(),
+            ) {
+                Ok(shared_session_id) => {
+                    let mut response = format!(
+                        "Took control of shared session `{shared_session_id}`.\n\n{}",
+                        summary
+                    );
+                    if let Ok(status) = state
+                        .autopilot_chat
+                        .shared_session_handoff_status_for_thread(thread_id.as_str())
+                    {
+                        response.push_str("\n\n");
+                        response.push_str(status.as_str());
+                    }
+                    append_chat_command_result(state, prompt, response, false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatForgeComposerIntent::HandoffNote { summary } => {
+            match state.autopilot_chat.record_shared_session_note_for_thread(
+                thread_id.as_str(),
+                summary.clone(),
+                "operator.command:/handoff note",
+                current_epoch_millis(),
+            ) {
+                Ok(shared_session_id) => {
+                    let mut response = format!(
+                        "Recorded collaboration note on shared session `{shared_session_id}`.\n\n{}",
+                        summary
+                    );
+                    if let Ok(status) = state
+                        .autopilot_chat
+                        .shared_session_handoff_status_for_thread(thread_id.as_str())
+                    {
+                        response.push_str("\n\n");
+                        response.push_str(status.as_str());
+                    }
+                    append_chat_command_result(state, prompt, response, false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
         ChatForgeComposerIntent::Handoff { owner, summary } => match state
             .autopilot_chat
             .record_shared_session_handoff_for_thread(
@@ -7979,16 +9040,21 @@ fn run_chat_forge_action(
                 "operator.command:/handoff",
                 current_epoch_millis(),
             ) {
-            Ok(shared_session_id) => append_chat_command_result(
-                state,
-                prompt,
-                format!(
+            Ok(shared_session_id) => {
+                let mut response = format!(
                     "Recorded shared-session handoff `{shared_session_id}` to {}.\n\n{}",
                     owner.display_label(),
                     summary
-                ),
-                false,
-            ),
+                );
+                if let Ok(status) = state
+                    .autopilot_chat
+                    .shared_session_handoff_status_for_thread(thread_id.as_str())
+                {
+                    response.push_str("\n\n");
+                    response.push_str(status.as_str());
+                }
+                append_chat_command_result(state, prompt, response, false)
+            }
             Err(error) => append_chat_command_result(state, prompt, error, true),
         },
         ChatForgeComposerIntent::RestoreMark {
@@ -8289,6 +9355,11 @@ fn run_chat_forge_action(
             ),
             Err(error) => append_chat_command_result(state, prompt, error, true),
         },
+        ChatForgeComposerIntent::HostedSessionDirectory
+        | ChatForgeComposerIntent::HostedAttachSharedSession { .. }
+        | ChatForgeComposerIntent::HostedAttachProbeSession { .. } => {
+            unreachable!("hosted directory and attach intents return before probe-thread gating")
+        }
     }
 }
 
@@ -15445,13 +16516,16 @@ fn build_spot_compute_rfq_from_inputs(
             "gpt_oss" | "gptoss" | "psionic" | "local_inference" | "ollama" => {
                 Some(ComputeBackendFamily::GptOss)
             }
+            "pooled_inference" | "pooled" | "clustered_inference" | "psionic_cluster" => {
+                Some(ComputeBackendFamily::PooledInference)
+            }
             "apple_foundation_models" | "apple_fm" | "apple_foundation" => {
                 Some(ComputeBackendFamily::AppleFoundationModels)
             }
             "sandbox" | "none" | "any" if compute_family == ComputeFamily::SandboxExecution => None,
             other => {
                 return Err(format!(
-                    "Preferred backend must be gpt_oss, apple_foundation_models, or empty, got {other}"
+                    "Preferred backend must be gpt_oss, pooled_inference, apple_foundation_models, or empty, got {other}"
                 ));
             }
         },
@@ -17255,6 +18329,11 @@ pub(super) fn run_starter_jobs_action(
                                 ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
                                 ac_settlement_event_id: state.ac_lane.settlement_event_id.clone(),
                                 ac_default_event_id: None,
+                                compute_product_id: None,
+                                market_receipt_class: Some("accepted_delivery".to_string()),
+                                earnings_summary: Some(
+                                    "Starter quests earn when delivery settles and wallet evidence confirms payment.".to_string(),
+                                ),
                                 delivery_proof_id: None,
                                 delivery_metering_rule_id: None,
                                 delivery_proof_status_label: None,
@@ -19431,6 +20510,8 @@ mod tests {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             capacity_lot_id: None,
             capacity_instrument_id: None,
             delivery_proof_id: None,
@@ -19471,6 +20552,9 @@ mod tests {
             ac_envelope_event_id: None,
             ac_settlement_event_id: None,
             ac_default_event_id: None,
+            compute_product_id: None,
+            market_receipt_class: None,
+            earnings_summary: None,
             delivery_proof_id: None,
             delivery_metering_rule_id: None,
             delivery_proof_status_label: None,
@@ -20598,6 +21682,97 @@ mod tests {
             Some(ChatForgeComposerIntent::PromoteStatus)
         );
         assert_eq!(
+            parse_chat_forge_intent("/hosted sessions").unwrap(),
+            Some(ChatForgeComposerIntent::HostedSessionDirectory)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted attach shared forge-session-1").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAttachSharedSession {
+                shared_session_id: "forge-session-1".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted attach probe probe-session-1").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAttachProbeSession {
+                probe_session_id: "probe-session-1".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted preflight").unwrap(),
+            Some(ChatForgeComposerIntent::HostedPreflight { path: None })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted preflight target/hosted-preflight.json").unwrap(),
+            Some(ChatForgeComposerIntent::HostedPreflight {
+                path: Some("target/hosted-preflight.json".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted coding gcp us-central1 dogfood run").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditRecord {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                environment_summary: "gcp us-central1 dogfood run".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted bookkeeping gcp us-central1 bounty rehearsal")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditRecord {
+                kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
+                environment_summary: "gcp us-central1 bounty rehearsal".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted note coding operator attached via desktop shell")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditNote {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                note_kind: crate::app_state::ForgeHostedAuditNoteKind::OperatorNote,
+                body: "operator attached via desktop shell".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent(
+                "/hosted recovery coding restarted probe worker after approval pause"
+            )
+            .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditNote {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                note_kind: crate::app_state::ForgeHostedAuditNoteKind::RecoveryStep,
+                body: "restarted probe worker after approval pause".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent(
+                "/hosted defect bookkeeping delivery watch needed manual refresh"
+            )
+            .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditNote {
+                kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
+                note_kind: crate::app_state::ForgeHostedAuditNoteKind::Defect,
+                body: "delivery watch needed manual refresh".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted export coding").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditExport {
+                kind: crate::app_state::ForgeHostedAuditKind::CodingCloseout,
+                path: None,
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted export bookkeeping target/hosted-bookkeeping.json")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditExport {
+                kind: crate::app_state::ForgeHostedAuditKind::BookkeepingRehearsal,
+                path: Some("target/hosted-bookkeeping.json".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/hosted status").unwrap(),
+            Some(ChatForgeComposerIntent::HostedAuditStatus)
+        );
+        assert_eq!(
             parse_chat_forge_intent("/handoff human reviewed the diff manually").unwrap(),
             Some(ChatForgeComposerIntent::Handoff {
                 owner: crate::app_state::ForgeSharedSessionControlOwner::HumanLocal,
@@ -20609,6 +21784,36 @@ mod tests {
             Some(ChatForgeComposerIntent::Handoff {
                 owner: crate::app_state::ForgeSharedSessionControlOwner::ProbeLocalAgent,
                 summary: "continue with the implementation".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff status").unwrap(),
+            Some(ChatForgeComposerIntent::HandoffStatus)
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff request bob should take the next review pass")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HandoffRequest {
+                summary: "bob should take the next review pass".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff accept handing control to bob now").unwrap(),
+            Some(ChatForgeComposerIntent::HandoffAccept {
+                summary: "handing control to bob now".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff take i am taking the next turn").unwrap(),
+            Some(ChatForgeComposerIntent::HandoffTake {
+                summary: "i am taking the next turn".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_forge_intent("/handoff note waiting on approval before the next turn")
+                .unwrap(),
+            Some(ChatForgeComposerIntent::HandoffNote {
+                summary: "waiting on approval before the next turn".to_string(),
             })
         );
         assert_eq!(
@@ -20701,6 +21906,8 @@ mod tests {
         assert!(parse_chat_forge_intent("/evidence").is_err());
         assert!(parse_chat_forge_intent("/deliver").is_err());
         assert!(parse_chat_forge_intent("/settle").is_err());
+        assert!(parse_chat_forge_intent("/hosted").is_err());
+        assert!(parse_chat_forge_intent("/hosted attach").is_err());
         assert!(parse_chat_forge_intent("/campaign").is_err());
         assert!(parse_chat_forge_intent("/campaign verify probe active").is_err());
         assert!(parse_chat_forge_intent("/promote").is_err());

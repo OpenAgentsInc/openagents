@@ -1559,6 +1559,13 @@ impl EarnKernelReceiptState {
             &mut evidence,
             active_job_link_candidate_receipt_ids(job, stage).as_slice(),
         );
+        append_market_receipt_evidence(
+            &mut evidence,
+            job.job_id.as_str(),
+            job.compute_product_id.as_deref(),
+            job.market_receipt_class.as_deref(),
+            job.earnings_summary.as_deref(),
+        );
         evidence.push(policy_decision_evidence(&policy_decision));
 
         let hints = ReceiptHints {
@@ -1576,7 +1583,13 @@ impl EarnKernelReceiptState {
                 .as_ref()
                 .map(|pricing| btc_sats_money(pricing.liability_premium_sats)),
         };
-        let receipt_tags = gpt_oss_execution_receipt_tags(job.execution_provenance.as_ref());
+        let mut receipt_tags = gpt_oss_execution_receipt_tags(job.execution_provenance.as_ref());
+        append_market_receipt_tags(
+            &mut receipt_tags,
+            job.compute_product_id.as_deref(),
+            job.market_receipt_class.as_deref(),
+            job.earnings_summary.as_deref(),
+        );
 
         let receipt = ReceiptBuilder::new(
             receipt_id,
@@ -1598,6 +1611,9 @@ impl EarnKernelReceiptState {
             "capability": job.capability,
             "stage": stage.label(),
             "quoted_price_sats": job.quoted_price_sats,
+            "compute_product_id": job.compute_product_id,
+            "market_receipt_class": job.market_receipt_class,
+            "earnings_summary": job.earnings_summary,
             "payment_pointer": if payment_pointer.is_empty() { None::<String> } else { Some(payment_pointer.to_string()) },
             "work_unit": work_unit_metadata_payload(job.job_id.as_str(), &metadata),
             "liability_pricing": stage_pricing.as_ref().map(pricing_payload),
@@ -1611,6 +1627,9 @@ impl EarnKernelReceiptState {
             "source_tag": source_tag,
             "status": status,
             "reason_code": reason_code,
+            "compute_product_id": job.compute_product_id,
+            "market_receipt_class": job.market_receipt_class,
+            "earnings_summary": job.earnings_summary,
             "work_unit": work_unit_metadata_payload(job.job_id.as_str(), &metadata),
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
@@ -1852,6 +1871,12 @@ impl EarnKernelReceiptState {
                 provider_nostr_pubkey.to_string(),
             );
         }
+        append_market_receipt_tags(
+            &mut receipt_tags,
+            row.compute_product_id.as_deref(),
+            row.market_receipt_class.as_deref(),
+            row.earnings_summary.as_deref(),
+        );
 
         let receipt = ReceiptBuilder::new(
             lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key.as_str()),
@@ -1876,6 +1901,9 @@ impl EarnKernelReceiptState {
             "requester_nostr_pubkey": row.requester_nostr_pubkey,
             "provider_nostr_pubkey": row.provider_nostr_pubkey,
             "payout_sats": row.payout_sats,
+            "compute_product_id": row.compute_product_id,
+            "market_receipt_class": row.market_receipt_class,
+            "earnings_summary": row.earnings_summary,
             "payment_pointer": row.payment_pointer,
             "result_hash": row.result_hash,
             "failure_reason": row.failure_reason,
@@ -1892,6 +1920,9 @@ impl EarnKernelReceiptState {
             "status": status,
             "wallet_settlement_authoritative": payment_pointer_authoritative,
             "reason_code": reason_code,
+            "compute_product_id": row.compute_product_id,
+            "market_receipt_class": row.market_receipt_class,
+            "earnings_summary": row.earnings_summary,
             "work_unit": work_unit_metadata_payload(row.job_id.as_str(), &metadata),
             "policy_rule_id": policy_decision.rule_id,
             "policy_decision": policy_decision.decision,
@@ -1994,6 +2025,13 @@ impl EarnKernelReceiptState {
                     ),
                 ));
             }
+            append_market_receipt_evidence(
+                &mut evidence,
+                row.job_id.as_str(),
+                row.compute_product_id.as_deref(),
+                row.market_receipt_class.as_deref(),
+                row.earnings_summary.as_deref(),
+            );
             self.append_receipt_reference_links(&mut evidence, link_candidates.as_slice());
             evidence.push(policy_decision_evidence(&policy_decision));
             evidence
@@ -7190,6 +7228,78 @@ fn append_provenance_evidence_for_history(
     }
 }
 
+fn append_market_receipt_tags(
+    tags: &mut BTreeMap<String, String>,
+    compute_product_id: Option<&str>,
+    market_receipt_class: Option<&str>,
+    earnings_summary: Option<&str>,
+) {
+    if let Some(compute_product_id) = compute_product_id
+        && !compute_product_id.trim().is_empty()
+    {
+        tags.insert(
+            "compute.product_id".to_string(),
+            compute_product_id.to_string(),
+        );
+    }
+    if let Some(market_receipt_class) = market_receipt_class
+        && !market_receipt_class.trim().is_empty()
+    {
+        tags.insert(
+            "compute.market_receipt_class".to_string(),
+            market_receipt_class.to_string(),
+        );
+    }
+    if let Some(earnings_summary) = earnings_summary
+        && !earnings_summary.trim().is_empty()
+    {
+        tags.insert("earnings.summary".to_string(), earnings_summary.to_string());
+    }
+}
+
+fn append_market_receipt_evidence(
+    evidence: &mut Vec<EvidenceRef>,
+    job_id: &str,
+    compute_product_id: Option<&str>,
+    market_receipt_class: Option<&str>,
+    earnings_summary: Option<&str>,
+) {
+    if let Some(compute_product_id) = compute_product_id
+        && !compute_product_id.trim().is_empty()
+    {
+        evidence.push(EvidenceRef::new(
+            "compute_product_ref",
+            format!(
+                "oa://kernel/compute/products/{}",
+                normalize_key(compute_product_id)
+            ),
+            digest_for_text(compute_product_id),
+        ));
+    }
+    if let Some(market_receipt_class) = market_receipt_class
+        && !market_receipt_class.trim().is_empty()
+    {
+        evidence.push(EvidenceRef::new(
+            "market_receipt_class",
+            format!(
+                "oa://autopilot/earn/jobs/{}/market_receipt/{}",
+                normalize_key(job_id),
+                normalize_key(market_receipt_class)
+            ),
+            digest_for_text(market_receipt_class),
+        ));
+    }
+    if let Some(earnings_summary) = earnings_summary
+        && !earnings_summary.trim().is_empty()
+    {
+        evidence.push(EvidenceRef::new(
+            "earnings_summary_ref",
+            format!("oa://autopilot/earn/jobs/{}/summary", normalize_key(job_id)),
+            digest_for_text(earnings_summary),
+        ));
+    }
+}
+
 fn append_gpt_oss_execution_provenance_evidence(
     evidence: &mut Vec<EvidenceRef>,
     job_id: &str,
@@ -10595,6 +10705,9 @@ fn rehydrate_job_history_candidate_from_receipt(receipt: &Receipt) -> Option<Job
         ac_envelope_event_id: None,
         ac_settlement_event_id: None,
         ac_default_event_id: None,
+        compute_product_id: receipt.tags.get("compute.product_id").cloned(),
+        market_receipt_class: receipt.tags.get("compute.market_receipt_class").cloned(),
+        earnings_summary: receipt.tags.get("earnings.summary").cloned(),
         delivery_proof_id: None,
         delivery_metering_rule_id: None,
         delivery_proof_status_label: None,
@@ -10748,6 +10861,12 @@ mod tests {
             ac_envelope_event_id: Some("ac-env-1".to_string()),
             ac_settlement_event_id: Some("fb-evt".to_string()),
             ac_default_event_id: None,
+            compute_product_id: Some("psionic.local.inference.gpt_oss.single_node".to_string()),
+            market_receipt_class: Some("accepted_delivery".to_string()),
+            earnings_summary: Some(
+                "Earns when local delivery is accepted and wallet settlement is confirmed."
+                    .to_string(),
+            ),
             delivery_proof_id: Some("delivery.req-123".to_string()),
             delivery_metering_rule_id: Some("meter.gpt_oss.inference.v1".to_string()),
             delivery_proof_status_label: Some("accepted".to_string()),
@@ -10792,6 +10911,11 @@ mod tests {
             ac_settlement_event_id: Some("fb-evt".to_string()),
             ac_default_event_id: None,
             compute_product_id: Some("gpt_oss.text_generation".to_string()),
+            market_receipt_class: Some("accepted_delivery".to_string()),
+            earnings_summary: Some(
+                "Earns when local delivery is accepted and wallet settlement is confirmed."
+                    .to_string(),
+            ),
             capacity_lot_id: Some(
                 "lot.online.npub1abc.gpt_oss.text_generation.1762000000000".to_string(),
             ),
@@ -11267,6 +11391,20 @@ mod tests {
         assert_eq!(
             paid_row.provider_nostr_pubkey.as_deref(),
             Some("npub1provider")
+        );
+        assert_eq!(
+            paid_row.compute_product_id.as_deref(),
+            Some("psionic.local.inference.gpt_oss.single_node")
+        );
+        assert_eq!(
+            paid_row.market_receipt_class.as_deref(),
+            Some("accepted_delivery")
+        );
+        assert!(
+            paid_row
+                .earnings_summary
+                .as_deref()
+                .is_some_and(|value| value.contains("wallet settlement"))
         );
 
         let failed_row = rows
@@ -12176,6 +12314,29 @@ mod tests {
         assert!(settlement_receipt.evidence.iter().any(|evidence| {
             evidence.kind == "execution_backend_ref"
                 && evidence.uri == "oa://autopilot/jobs/job-req-123/execution/backend"
+        }));
+        assert_eq!(
+            settlement_receipt
+                .tags
+                .get("compute.product_id")
+                .map(String::as_str),
+            Some("gpt_oss.text_generation")
+        );
+        assert_eq!(
+            settlement_receipt
+                .tags
+                .get("compute.market_receipt_class")
+                .map(String::as_str),
+            Some("accepted_delivery")
+        );
+        assert!(
+            settlement_receipt
+                .tags
+                .get("earnings.summary")
+                .is_some_and(|value| value.contains("wallet settlement"))
+        );
+        assert!(settlement_receipt.evidence.iter().any(|evidence| {
+            evidence.kind == "market_receipt_class" && evidence.uri.contains("accepted_delivery")
         }));
     }
 
