@@ -28,6 +28,8 @@ For a release asset install:
 ./pylon --help
 ./pylon init
 ./pylon status --json
+./pylon inventory --json
+./pylon config show
 ./pylon-tui
 ```
 
@@ -167,6 +169,8 @@ With a release asset install, use the same commands through the shipped binary:
 ```bash
 ./pylon init
 ./pylon status --json
+./pylon inventory --json
+./pylon config show
 ./pylon online
 ```
 

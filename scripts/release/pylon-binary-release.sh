@@ -88,6 +88,8 @@ Quick start:
   ./pylon --help
   ./pylon init
   ./pylon status --json
+  ./pylon inventory --json
+  ./pylon config show
   ./pylon-tui
 
 Important:
@@ -118,6 +120,8 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 ./pylon --help
 ./pylon init
 ./pylon status --json
+./pylon inventory --json
+./pylon config show
 \`\`\`
 
 Notes:

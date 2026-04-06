@@ -91,6 +91,72 @@ pub struct PylonConfig {
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PylonPublicInventoryControls {
+    local_gemma_inference_enabled: bool,
+    local_gemma_embeddings_enabled: bool,
+    sandbox_container_exec_enabled: bool,
+    sandbox_python_exec_enabled: bool,
+    sandbox_node_exec_enabled: bool,
+    sandbox_posix_exec_enabled: bool,
+}
+
+impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
+    fn from(value: &ProviderInventoryControls) -> Self {
+        Self {
+            local_gemma_inference_enabled: value.local_gemma_inference_enabled,
+            local_gemma_embeddings_enabled: value.local_gemma_embeddings_enabled,
+            sandbox_container_exec_enabled: value.sandbox_container_exec_enabled,
+            sandbox_python_exec_enabled: value.sandbox_python_exec_enabled,
+            sandbox_node_exec_enabled: value.sandbox_node_exec_enabled,
+            sandbox_posix_exec_enabled: value.sandbox_posix_exec_enabled,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PylonPublicConfig {
+    schema_version: u32,
+    node_label: String,
+    payout_destination: Option<String>,
+    identity_path: PathBuf,
+    admin_db_path: PathBuf,
+    admin_listen_addr: String,
+    relay_urls: Vec<String>,
+    relay_connect_timeout_seconds: u64,
+    relay_auth_enabled: bool,
+    wallet_network: String,
+    wallet_api_key_env: Option<String>,
+    buyer_auto_pay_enabled: bool,
+    wallet_storage_dir: PathBuf,
+    local_gemma_base_url: String,
+    inventory_controls: PylonPublicInventoryControls,
+    declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
+}
+
+impl From<&PylonConfig> for PylonPublicConfig {
+    fn from(value: &PylonConfig) -> Self {
+        Self {
+            schema_version: value.schema_version,
+            node_label: value.node_label.clone(),
+            payout_destination: value.payout_destination.clone(),
+            identity_path: value.identity_path.clone(),
+            admin_db_path: value.admin_db_path.clone(),
+            admin_listen_addr: value.admin_listen_addr.clone(),
+            relay_urls: value.relay_urls.clone(),
+            relay_connect_timeout_seconds: value.relay_connect_timeout_seconds,
+            relay_auth_enabled: value.relay_auth_enabled,
+            wallet_network: value.wallet_network.clone(),
+            wallet_api_key_env: value.wallet_api_key_env.clone(),
+            buyer_auto_pay_enabled: value.buyer_auto_pay_enabled,
+            wallet_storage_dir: value.wallet_storage_dir.clone(),
+            local_gemma_base_url: value.local_gemma_base_url.clone(),
+            inventory_controls: PylonPublicInventoryControls::from(&value.inventory_controls),
+            declared_sandbox_profiles: value.declared_sandbox_profiles.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
     Init,
@@ -1752,13 +1818,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         }
         Command::ConfigShow => {
             let config = load_or_create_config(cli.config_path.as_path())?;
-            Ok(Some(serde_json::to_string_pretty(&config)?))
+            Ok(Some(render_public_config_json(&config)?))
         }
         Command::ConfigSet { key, value } => {
             let mut config = load_or_create_config(cli.config_path.as_path())?;
             apply_config_set(&mut config, key.as_str(), value.as_str())?;
             save_config(cli.config_path.as_path(), &config)?;
-            Ok(Some(serde_json::to_string_pretty(&config)?))
+            Ok(Some(render_public_config_json(&config)?))
         }
     }
 }
@@ -2711,9 +2777,15 @@ fn save_config(path: &Path, config: &PylonConfig) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create pylon config dir {}", parent.display()))?;
     }
-    std::fs::write(path, format!("{}\n", serde_json::to_string_pretty(config)?))
+    std::fs::write(path, format!("{}\n", render_public_config_json(config)?))
         .with_context(|| format!("failed to write pylon config {}", path.display()))?;
     Ok(())
+}
+
+fn render_public_config_json(config: &PylonConfig) -> Result<String> {
+    Ok(serde_json::to_string_pretty(&PylonPublicConfig::from(
+        config,
+    ))?)
 }
 
 fn merge_json_value(target: &mut Value, source: &Value) {
@@ -5706,13 +5778,6 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         "local_gemma_base_url" | "ollama_base_url" => {
             config.local_gemma_base_url = value.to_string();
         }
-        "apple_fm_base_url" => {
-            config.apple_fm_base_url = if value.trim().is_empty() {
-                None
-            } else {
-                Some(value.to_string())
-            };
-        }
         "backend.local_gemma_inference_enabled"
         | "backend.gpt_oss_inference_enabled"
         | "backend.ollama_inference_enabled" => {
@@ -5722,9 +5787,6 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         | "backend.gpt_oss_embeddings_enabled"
         | "backend.ollama_embeddings_enabled" => {
             config.inventory_controls.local_gemma_embeddings_enabled = parse_bool(value)?;
-        }
-        "backend.apple_fm_inference_enabled" => {
-            config.inventory_controls.apple_fm_inference_enabled = parse_bool(value)?;
         }
         "backend.sandbox_container_exec_enabled" => {
             config.inventory_controls.sandbox_container_exec_enabled = parse_bool(value)?;
@@ -5787,9 +5849,10 @@ mod tests {
         load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
         planned_gemma_benchmark_modes, provider_admin_config, psionic_gemma_benchmark_command_args,
         publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
-        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
-        save_config, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
+        render_human_status, render_public_config_json, render_sandbox_report,
+        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
+        run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
+        submit_buyer_job, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -5853,6 +5916,42 @@ mod tests {
         ensure(
             config.inventory_controls.sandbox_python_exec_enabled,
             "config set should update sandbox python toggle",
+        )
+    }
+
+    #[test]
+    fn public_config_json_omits_legacy_apple_fm_surface() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        let json = render_public_config_json(&config)?;
+
+        ensure(
+            json.contains("\"local_gemma_base_url\""),
+            "public config should expose the local Gemma base URL",
+        )?;
+        ensure(
+            json.contains("\"local_gemma_inference_enabled\""),
+            "public config should expose local Gemma inventory toggles",
+        )?;
+        ensure(
+            !json.contains("apple_fm_inference_enabled")
+                && !json.contains("apple_fm_adapter_hosting_enabled")
+                && !json.contains("apple_fm_base_url"),
+            "public config should omit legacy Apple FM-only config surface",
+        )
+    }
+
+    #[test]
+    fn config_set_rejects_legacy_apple_fm_surface() -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+
+        ensure(
+            apply_config_set(&mut config, "backend.apple_fm_inference_enabled", "false").is_err(),
+            "config set should reject legacy Apple FM backend toggles",
+        )?;
+        ensure(
+            apply_config_set(&mut config, "apple_fm_base_url", "http://127.0.0.1:11435").is_err(),
+            "config set should reject legacy Apple FM base URL overrides",
         )
     }
 
