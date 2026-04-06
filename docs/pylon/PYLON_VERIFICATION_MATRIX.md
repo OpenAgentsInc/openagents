@@ -25,6 +25,8 @@ If any release note, marketing text, or operator doc violates one of those state
 
 | Area | Verification Path | Expected Result |
 | --- | --- | --- |
+| Release asset help | download the matching release archive, extract it, run `./pylon --help` outside the repo | headless CLI runs without a Rust toolchain |
+| Release asset init | download the matching release archive, extract it, run `./pylon init` and `./pylon status --json` outside the repo | config and identity are created without a source checkout |
 | Install/init | `cargo run -p pylon -- init` | config and identity are created without `Autopilot` |
 | Unconfigured truth | `cargo run -p pylon -- status` before init | reports `unconfigured` |
 | Backend visibility | `cargo run -p pylon -- backends --json` | returns a `local_gemma` backend entry plus any declared sandbox backend state |
@@ -114,6 +116,8 @@ Standalone packaging is valid only if the install story is explicit:
 - how desired mode is changed
 - how logs/status are checked
 - how restarts are handled
+
+The preferred distribution lane is a GitHub Release asset that contains the standalone `pylon` and `pylon-tui` binaries for one verified platform. Source build remains the fallback when no matching asset exists.
 
 The current supported operational posture is a service-style `pylon serve` process managed by:
 

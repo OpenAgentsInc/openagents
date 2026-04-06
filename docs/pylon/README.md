@@ -18,6 +18,25 @@ cargo pylon-headless <command>
 
 It is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
 
+## Install Paths
+
+Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
+
+For a release asset install:
+
+```bash
+./pylon --help
+./pylon init
+./pylon status --json
+./pylon-tui
+```
+
+Use a source checkout only when:
+
+- no matching official release asset exists for the machine
+- the operator needs the retained Psionic benchmark path and wants to work from source
+- the operator is modifying or validating the code itself
+
 ## Launch Truth
 
 The market is still the **OpenAgents Compute Market**.
@@ -41,14 +60,13 @@ Current planned-but-not-live surfaces:
 
 Minimum local requirements:
 
-- Rust toolchain installed (`cargo`, `rustc`)
-- repo checkout available locally
+- either an official `Pylon` release asset for the local platform, or a local source checkout plus Rust
 - a writable local home/config path
 
 Runtime-specific requirements:
 
 - curated Gemma 4 weights downloaded through the built-in catalog or headless Gemma commands
-- sibling `psionic` checkout available for the benchmark and validation lane
+- sibling `psionic` checkout available for the retained benchmark and validation lane
 
 If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
 
@@ -58,6 +76,12 @@ Open the local terminal shell:
 
 ```bash
 cargo pylon
+```
+
+If you installed from a release asset instead of a source checkout, run:
+
+```bash
+./pylon-tui
 ```
 
 The first cut is intentionally small. It renders one full-screen transcript shell with:
@@ -134,6 +158,14 @@ Initialize a standalone config and identity:
 
 ```bash
 cargo pylon-headless init
+```
+
+With a release asset install, use the same commands through the shipped binary:
+
+```bash
+./pylon init
+./pylon status --json
+./pylon online
 ```
 
 Inspect status:
@@ -263,6 +295,8 @@ WantedBy=multi-user.target
 ### `launchd` / user-session guidance
 
 On macOS, run the same `cargo pylon-headless serve` command under `launchd`, `tmux`, or another persistent user-session manager. The operational requirement is explicit lifecycle control plus a stable long-running `serve` process, not a specific packaging format.
+
+The current binary-first distribution lane is GitHub Releases with per-platform archives. Source checkout plus Cargo remains the fallback for unsupported platforms and local development.
 
 ## Verification and Release Discipline
 
