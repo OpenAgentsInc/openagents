@@ -387,7 +387,7 @@ struct DoctorReport {
     payout_destination: Option<String>,
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
-    products: Vec<ProviderAdvertisedProduct>,
+    products: Vec<ProductEntry>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -1532,7 +1532,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             let config = load_or_create_config(cli.config_path.as_path())?;
             let identity = ensure_identity(config.identity_path.as_path())?;
             let availability = detect_availability(&config).await?;
-            let products = derive_provider_products(&availability, &config.inventory_controls);
+            let products =
+                public_product_entries(products_from_availability(&config, &availability));
             Ok(Some(serde_json::to_string_pretty(&DoctorReport {
                 config_path: cli.config_path.display().to_string(),
                 node_label: config.node_label.clone(),
@@ -3312,12 +3313,9 @@ fn derive_runtime_snapshot(
         "draining" => Some("DRAINING_PENDING_WORK".to_string()),
         _ => None,
     };
-    let last_error = runtime_error.or_else(|| {
-        if state == "degraded" {
-            first_backend_error(availability)
-        } else {
-            None
-        }
+    let last_error = runtime_error.or_else(|| match state.as_str() {
+        "degraded" | "offline" => first_backend_error(availability),
+        _ => None,
     });
     let last_action = match state.as_str() {
         "online" => format!("pylon is online with {eligible_products} sellable launch products"),
@@ -3922,6 +3920,25 @@ fn products_from_availability(
         .collect()
 }
 
+fn public_product_entries(products: Vec<ProviderAdvertisedProduct>) -> Vec<ProductEntry> {
+    products
+        .into_iter()
+        .map(|product| ProductEntry {
+            product_id: product.product.product_id().to_string(),
+            display_label: product.product.display_label().to_string(),
+            compute_family: product.product.compute_family_label().to_string(),
+            backend: product.product.backend_label().to_string(),
+            enabled: product.enabled,
+            backend_ready: product.backend_ready,
+            eligible: product.eligible,
+            capability_summary: product.capability_summary,
+            price_floor_sats: product.price_floor_sats,
+            terms_label: product.terms_label,
+            forward_terms_label: product.forward_terms_label,
+        })
+        .collect()
+}
+
 fn backend_entry(
     backend_id: &str,
     display_label: &str,
@@ -4167,22 +4184,7 @@ async fn load_inventory_report(
 
 async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
     let (config, status) = load_config_and_status(config_path).await?;
-    let products = products_from_status(&config, &status)
-        .into_iter()
-        .map(|product| ProductEntry {
-            product_id: product.product.product_id().to_string(),
-            display_label: product.product.display_label().to_string(),
-            compute_family: product.product.compute_family_label().to_string(),
-            backend: product.product.backend_label().to_string(),
-            enabled: product.enabled,
-            backend_ready: product.backend_ready,
-            eligible: product.eligible,
-            capability_summary: product.capability_summary,
-            price_floor_sats: product.price_floor_sats,
-            terms_label: product.terms_label,
-            forward_terms_label: product.forward_terms_label,
-        })
-        .collect();
+    let products = public_product_entries(products_from_status(&config, &status));
     Ok(ProductReport {
         context: report_context(&status),
         products,
@@ -5686,7 +5688,9 @@ async fn detect_local_gemma(
             return ProviderBackendHealth {
                 reachable: false,
                 ready: false,
-                last_error: Some(error.to_string()),
+                last_error: Some(format!(
+                    "local Gemma runtime not reachable at {url}; start a local runtime serving /api/tags or update local_gemma_base_url ({error})"
+                )),
                 last_action: Some("health check failed".to_string()),
                 ..ProviderBackendHealth::default()
             };
@@ -5698,7 +5702,9 @@ async fn detect_local_gemma(
             return ProviderBackendHealth {
                 reachable: true,
                 ready: false,
-                last_error: Some(error.to_string()),
+                last_error: Some(format!(
+                    "local Gemma runtime at {url} returned an invalid /api/tags payload; verify the runtime speaks the expected API or update local_gemma_base_url ({error})"
+                )),
                 last_action: Some("invalid local Gemma health payload".to_string()),
                 ..ProviderBackendHealth::default()
             };
@@ -5730,6 +5736,11 @@ async fn detect_local_gemma(
         configured_model: gemma_models.first().cloned(),
         ready_model: gemma_models.first().cloned(),
         available_models: gemma_models,
+        last_error: (!ready).then(|| {
+            format!(
+                "local Gemma runtime at {url} is reachable, but no Gemma 4 model is loaded. Downloaded GGUF files alone do not make supply eligible; start the runtime with a Gemma model or update local_gemma_base_url."
+            )
+        }),
         last_action: Some(if ready {
             "health check ready".to_string()
         } else {
@@ -5836,7 +5847,7 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AnnouncementAction, BuyerJobSubmitRequest, Command, DEFAULT_GEMMA_BENCH_PROMPT,
+        AnnouncementAction, BuyerJobSubmitRequest, Cli, Command, DEFAULT_GEMMA_BENCH_PROMPT,
         GemmaBenchExecutionMode, GemmaBenchmarkMode, GemmaBenchmarkRequest, GemmaBenchmarkSelector,
         GemmaCommand, GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend,
         LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord,
@@ -5850,7 +5861,7 @@ mod tests {
         planned_gemma_benchmark_modes, provider_admin_config, psionic_gemma_benchmark_command_args,
         publish_announcement_report, refresh_relay_report, remove_configured_relay,
         render_human_status, render_public_config_json, render_sandbox_report,
-        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
+        resolve_local_gemma_chat_target_from_status, run_cli, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
         submit_buyer_job, watch_buyer_jobs,
     };
@@ -9241,6 +9252,115 @@ mod tests {
         ensure(
             render_human_status(&status).contains("LOCAL_GEMMA_UNAVAILABLE"),
             "status should surface the local Gemma blocker when only non-Gemma models are present",
+        )?;
+        ensure(
+            status.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot
+                    .availability
+                    .local_gemma
+                    .last_error
+                    .as_deref()
+                    .is_some_and(|error| {
+                        error.contains("Downloaded GGUF files alone do not make supply eligible")
+                    })
+            }),
+            "status should explain that cached GGUFs are not enough without a loaded Gemma runtime",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn local_gemma_detection_reports_actionable_runtime_endpoint_failure()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        let last_error = status
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.availability.local_gemma.last_error.as_deref())
+            .ok_or_else(|| std::io::Error::other("missing local Gemma error"))?;
+
+        ensure(
+            last_error.contains("local Gemma runtime not reachable at http://127.0.0.1:9/api/tags"),
+            "status should name the exact local Gemma endpoint that failed",
+        )?;
+        ensure(
+            last_error.contains("update local_gemma_base_url"),
+            "status should explain the config remediation path for a failed local Gemma endpoint",
+        )?;
+        ensure(
+            render_human_status(&status).contains("local Gemma runtime not reachable"),
+            "human status should surface the actionable local Gemma runtime error",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn doctor_report_uses_canonical_product_ids_and_hides_legacy_apple_surface()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let base_url =
+            start_mock_http_server(
+                |method, path, _body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4-e4b-local:latest"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.local_gemma_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let output = run_cli(Cli {
+            command: Command::Doctor,
+            config_path: config_path.clone(),
+        })
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing doctor output"))?;
+        let json: Value = serde_json::from_str(output.as_str())?;
+        let products = json
+            .get("products")
+            .and_then(Value::as_array)
+            .ok_or_else(|| std::io::Error::other("missing doctor products"))?;
+
+        ensure(
+            !output.contains("\"product\": \"gpt_oss_inference\""),
+            "doctor should not leak legacy gpt_oss product enum names",
+        )?;
+        ensure(
+            products
+                .iter()
+                .all(|product| product.get("product").is_none()),
+            "doctor should expose canonical product_id fields rather than enum variant names",
+        )?;
+        ensure(
+            products.iter().any(|product| {
+                product.get("product_id").and_then(Value::as_str)
+                    == Some("psionic.local.inference.gemma.single_node")
+            }),
+            "doctor should expose the canonical Gemma product id",
+        )?;
+        ensure(
+            products.iter().all(|product| {
+                product.get("backend").and_then(Value::as_str) != Some("apple_foundation_models")
+            }),
+            "doctor should hide the legacy Apple FM-only surface from standalone Pylon onboarding",
         )
     }
 
