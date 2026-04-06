@@ -1284,6 +1284,7 @@ impl SparkWalletPaneState {
 
 pub struct BuyModePaneState {
     pub ledger: TerminalPane,
+    visual_ledger_row_offset: usize,
     pub buy_mode_loop_enabled: bool,
     pub buy_mode_next_dispatch_at: Option<Instant>,
     pub buy_mode_last_dispatch_at: Option<Instant>,
@@ -1301,6 +1302,7 @@ impl Default for BuyModePaneState {
                 .title("\\ BUY MODE")
                 .show_frame(false)
                 .code_block_style(true),
+            visual_ledger_row_offset: 0,
             buy_mode_loop_enabled: false,
             buy_mode_next_dispatch_at: None,
             buy_mode_last_dispatch_at: None,
@@ -1314,6 +1316,30 @@ impl Default for BuyModePaneState {
 }
 
 impl BuyModePaneState {
+    pub fn scroll_visual_ledger_rows_by(&mut self, dy: f32) {
+        if dy.abs() <= f32::EPSILON {
+            return;
+        }
+        let steps = ((dy.abs() / 24.0).ceil() as usize).max(1);
+        if dy.is_sign_positive() {
+            self.visual_ledger_row_offset = self.visual_ledger_row_offset.saturating_add(steps);
+        } else {
+            self.visual_ledger_row_offset = self.visual_ledger_row_offset.saturating_sub(steps);
+        }
+    }
+
+    pub fn clamped_visual_ledger_row_offset(
+        &mut self,
+        total_rows: usize,
+        visible_rows: usize,
+    ) -> usize {
+        let max_offset = total_rows.saturating_sub(visible_rows);
+        if self.visual_ledger_row_offset > max_offset {
+            self.visual_ledger_row_offset = max_offset;
+        }
+        self.visual_ledger_row_offset
+    }
+
     pub fn toggle_buy_mode_loop(&mut self, now: Instant) -> bool {
         self.buy_mode_loop_enabled = !self.buy_mode_loop_enabled;
         self.clear_buy_mode_blocked_notice();
