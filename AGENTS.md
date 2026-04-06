@@ -57,6 +57,11 @@ Default to:
 - Prefer deletion/simplification over expansion unless requested.
 - Keep changes small, verifiable, and directly tied to current MVP goals.
 - Do not add `.github/workflows/` automation in this repo.
+- The public `openagents.com` website does not live in this repo. It lives in
+  the sibling checkout at `/Users/christopherdavid/work/openagents.com`.
+- If the task is about the main website, homepage, landing pages, or public
+  domain entry flows, switch repos. Do not edit or recreate
+  `apps/openagents.com/` here.
 
 ## Psionic Specs
 
