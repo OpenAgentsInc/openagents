@@ -7,10 +7,11 @@ use crate::app_state::{
     AppleFmWorkbenchPaneState, AttnResLabPaneState, AutopilotChatState, BuyModePaymentsPaneState,
     CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs,
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
-    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, ContributorBetaPaneState,
-    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
-    CreditSettlementLedgerPaneState, DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState,
-    DesktopPane, EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CodingProjectPaneInputs,
+    CodingProjectPaneState, ContributorBetaPaneState, CreateInvoicePaneInputs,
+    CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
+    DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState, DesktopPane,
+    EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
     JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
     LocalInferencePaneInputs, LocalInferencePaneState, LogStreamLevelFilter, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
@@ -99,8 +100,8 @@ use crate::panes::{
     apple_fm_workbench as apple_fm_workbench_pane, attnres_lab as attnres_lab_pane,
     buy_mode as buy_mode_pane, buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane,
     calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
-    contributor_beta as contributor_beta_pane, credit as credit_pane,
-    data_buyer as data_buyer_pane, data_market as data_market_pane,
+    coding_project as coding_project_pane, contributor_beta as contributor_beta_pane,
+    credit as credit_pane, data_buyer as data_buyer_pane, data_market as data_market_pane,
     data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
     frame_debugger as frame_debugger_pane, key_ledger as key_ledger_pane,
     local_inference as local_inference_pane, log_stream as log_stream_pane,
@@ -253,6 +254,7 @@ impl PaneRenderer {
         credentials_inputs: &mut CredentialsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
+        coding_project_inputs: &mut CodingProjectPaneInputs,
         data_seller_inputs: &mut crate::app_state::DataSellerPaneInputs,
         calculator_inputs: &mut CalculatorPaneInputs,
         sidebar: &SidebarState,
@@ -269,6 +271,7 @@ impl PaneRenderer {
         data_seller: &DataSellerPaneState,
         data_buyer: &DataBuyerPaneState,
         data_market: &DataMarketPaneState,
+        coding_project: &CodingProjectPaneState,
         spark_replay: &mut SparkReplayPaneState,
         paint: &mut PaintContext,
     ) -> PanePaintReport {
@@ -403,6 +406,16 @@ impl PaneRenderer {
                         codex_account,
                         spacetime_presence,
                         chat_inputs,
+                        paint,
+                    );
+                }
+                PaneKind::CodingProject => {
+                    coding_project_pane::paint_coding_project_pane(
+                        content_bounds,
+                        autopilot_chat,
+                        coding_project,
+                        chat_inputs,
+                        coding_project_inputs,
                         paint,
                     );
                 }

@@ -4274,6 +4274,21 @@ fn pane_action_to_hit_action(
 
     match kind {
         PaneKind::ProjectOps => unsupported(),
+        PaneKind::CodingProject => match action {
+            "send_chat" | "send" => Ok(PaneHitAction::CodingProject(
+                crate::pane_system::CodingProjectPaneAction::SendChat,
+            )),
+            "select_task" => Ok(PaneHitAction::CodingProject(
+                crate::pane_system::CodingProjectPaneAction::SelectTask(require_index(action)?),
+            )),
+            "close_task_detail" | "close_detail" => Ok(PaneHitAction::CodingProject(
+                crate::pane_system::CodingProjectPaneAction::CloseTaskDetail,
+            )),
+            "add_task_note" => Ok(PaneHitAction::CodingProject(
+                crate::pane_system::CodingProjectPaneAction::AddTaskNote,
+            )),
+            _ => unsupported(),
+        },
         PaneKind::PsionicViz => unsupported(),
         PaneKind::PsionicRemoteTraining => match action {
             "refresh" => Ok(PaneHitAction::PsionicRemoteTraining(
@@ -4900,9 +4915,7 @@ fn pane_action_to_hit_action(
                 Ok(PaneHitAction::Spark(SparkPaneAction::GenerateSparkAddress))
             }
             "copy_spark_address" => Ok(PaneHitAction::Spark(SparkPaneAction::CopySparkAddress)),
-            "copy_bitcoin_address" => {
-                Ok(PaneHitAction::Spark(SparkPaneAction::CopyBitcoinAddress))
-            }
+            "copy_bitcoin_address" => Ok(PaneHitAction::Spark(SparkPaneAction::CopyBitcoinAddress)),
             "generate_bitcoin_address" => Ok(PaneHitAction::Spark(
                 SparkPaneAction::GenerateBitcoinAddress,
             )),
@@ -8286,6 +8299,7 @@ pub(crate) fn resolve_pane_kind_for_runtime(raw: &str) -> Option<PaneKind> {
 fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
     match kind {
         PaneKind::AutopilotChat => &["chat", "autopilot_chat", "autopilot", "codex"],
+        PaneKind::CodingProject => &["coding_project", "project_board", "coding_board", "kanban"],
         PaneKind::ProjectOps => &["project_ops", "projectops", "pm", "project_management"],
         PaneKind::Calculator => &["calculator", "calc"],
         PaneKind::LocalInference => &[
@@ -8410,6 +8424,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
     match kind {
         PaneKind::Empty => "pane",
         PaneKind::AutopilotChat => "autopilot_chat",
+        PaneKind::CodingProject => "coding_project",
         PaneKind::ProjectOps => "project_ops",
         PaneKind::CodexAccount => "codex_account",
         PaneKind::CodexModels => "codex_models",

@@ -84,7 +84,8 @@ impl PaneSearchFilter {
 
 pub const fn pane_search_tier(kind: PaneKind) -> PaneSearchTier {
     match kind {
-        PaneKind::ProjectOps
+        PaneKind::CodingProject
+        | PaneKind::ProjectOps
         | PaneKind::CodexAccount
         | PaneKind::CodexModels
         | PaneKind::CodexConfig
@@ -178,7 +179,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 67] = [
+const PANE_SPECS: [PaneSpec; 68] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -200,6 +201,21 @@ const PANE_SPECS: [PaneSpec; 67] = [
             id: "pane.codex",
             label: "CHAT",
             description: "Open a simple local Autopilot conversation pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::CodingProject,
+        title: "Coding Project",
+        default_width: 980.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.coding_project",
+            label: "Coding Project",
+            description: "Open the coding project board and guided intake pane",
             keybinding: None,
         }),
         hotbar: None,

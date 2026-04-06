@@ -114,6 +114,7 @@ const PANE_SIZE_MEMORY_SCHEMA_VERSION: u32 = 1;
 pub enum PaneKind {
     Empty,
     AutopilotChat,
+    CodingProject,
     ProjectOps,
     CodexAccount,
     CodexModels,
@@ -765,6 +766,20 @@ impl Default for DataSellerPaneInputs {
     }
 }
 
+pub struct CodingProjectPaneInputs {
+    pub task_note: TextInput,
+}
+
+impl Default for CodingProjectPaneInputs {
+    fn default() -> Self {
+        Self {
+            task_note: TextInput::new()
+                .placeholder("Add a task note or clarification...")
+                .border_color_focused(theme::border::FOCUS),
+        }
+    }
+}
+
 pub struct CalculatorPaneInputs {
     pub expression: TextInput,
 }
@@ -785,6 +800,272 @@ pub struct ProviderControlPaneState {
     pub local_fm_summary_pending_request_id: Option<String>,
     pub local_fm_summary_text: String,
     scroll_offset_px: f32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodingProjectTaskStatus {
+    Backlog,
+    InProgress,
+    Review,
+    Done,
+}
+
+impl CodingProjectTaskStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Backlog => "BACKLOG",
+            Self::InProgress => "IN PROGRESS",
+            Self::Review => "REVIEW",
+            Self::Done => "DONE",
+        }
+    }
+}
+
+pub struct CodingProjectTask {
+    pub title: String,
+    pub summary: String,
+    pub details: String,
+    pub status: CodingProjectTaskStatus,
+    pub updates: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+pub struct CodingProjectPaneState {
+    pub tasks: Vec<CodingProjectTask>,
+    pub selected_task_index: Option<usize>,
+    pub task_detail_open: bool,
+    pub review_requests: Vec<String>,
+    overview_scroll_offset: f32,
+    board_scroll_offset: f32,
+    chat_scroll_offset: f32,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+impl Default for CodingProjectPaneState {
+    fn default() -> Self {
+        Self {
+            tasks: vec![
+                CodingProjectTask {
+                    title: "Define intake levels".to_string(),
+                    summary: "Map lightweight vs full project intake flows.".to_string(),
+                    details: "Create rules for simple requests (bug fix, small tweak) versus full project requests (new app or major feature), with clear transitions into planning and execution.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Need final thresholds for simple vs complex.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Design agent routing policy".to_string(),
+                    summary: "Route planner, coder, and test jobs across providers.".to_string(),
+                    details: "Define policy for when work stays local versus delegated to OpenAI/Anthropic/RunPod workers, including latency, cost, and confidence signals.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Initial provider matrix drafted.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Acceptance criteria templates".to_string(),
+                    summary: "Generate reusable checks for coding tasks.".to_string(),
+                    details: "Provide default acceptance criteria scaffolds for bug fixes, refactors, and new features so each card has testable completion criteria.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Waiting on validation format decision.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Kanban persistence model".to_string(),
+                    summary: "Persist board state and task history across sessions.".to_string(),
+                    details: "Define storage and replay format for task status transitions, notes, and updates so project state survives restarts and can be audited.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Pending decision: local file vs authority-backed state.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Worker capability registry".to_string(),
+                    summary: "Track available agents and their tool/runtime limits.".to_string(),
+                    details: "Build a capability map for local workers, OpenAI/Anthropic workers, and future Nostr workers so routing can make explicit, testable decisions.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Need normalized capability schema.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Task dependency graph".to_string(),
+                    summary: "Support blocked-by links between cards.".to_string(),
+                    details: "Add dependency metadata so the orchestrator can schedule independent tasks in parallel and prevent invalid transitions when prerequisites are incomplete.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Drafting edge cases for cyclic dependencies.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Review evidence attachments".to_string(),
+                    summary: "Attach diffs, test output, and receipts to Review cards.".to_string(),
+                    details: "When tasks move to REVIEW, include compact evidence bundles so users can approve/reject with full context and minimal back-and-forth.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Waiting on receipt format alignment.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Routing telemetry dashboard hooks".to_string(),
+                    summary: "Expose latency/cost/success signals per provider.".to_string(),
+                    details: "Capture per-task routing outcomes and provider metrics so orchestration strategy can be tuned by observed reliability and cost.".to_string(),
+                    status: CodingProjectTaskStatus::Backlog,
+                    updates: vec!["Need initial metric set for MVP.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Implement board interactions".to_string(),
+                    summary: "Task select, popup detail, note capture, and status views.".to_string(),
+                    details: "Deliver Kanban interaction behavior with card focus, detail popup updates, and user note capture so context remains attached to each task.".to_string(),
+                    status: CodingProjectTaskStatus::InProgress,
+                    updates: vec![
+                        "Board columns and card selection implemented.".to_string(),
+                        "Detail popup note input wired.".to_string(),
+                    ],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Embed chat into project pane".to_string(),
+                    summary: "Single-pane conversation for planning and execution.".to_string(),
+                    details: "Keep chat in the left rail with project overview above it, preserving context while the board updates across task lifecycle states.".to_string(),
+                    status: CodingProjectTaskStatus::InProgress,
+                    updates: vec!["Composer and send action connected to Codex lane.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Task state sync with agent runs".to_string(),
+                    summary: "Update cards from real run outcomes and receipts.".to_string(),
+                    details: "Connect agent lifecycle events to task status transitions and append run summaries to task updates without manual refresh.".to_string(),
+                    status: CodingProjectTaskStatus::InProgress,
+                    updates: vec!["Run-to-card mapping schema drafted.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Review handoff UX".to_string(),
+                    summary: "Clarify what user review is required and why.".to_string(),
+                    details: "When a task enters REVIEW, show concrete questions, diffs, and required user decisions to unblock the next stage.".to_string(),
+                    status: CodingProjectTaskStatus::Review,
+                    updates: vec!["Need final copy for review prompts.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Provider fallback behavior".to_string(),
+                    summary: "Define failover when a selected model is unavailable.".to_string(),
+                    details: "Specify graceful fallback between local router model and remote providers while preserving task context and audit visibility.".to_string(),
+                    status: CodingProjectTaskStatus::Review,
+                    updates: vec!["Waiting on default fallback order approval.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Initial kanban layout baseline".to_string(),
+                    summary: "75/25 split with board + overview/chat rails.".to_string(),
+                    details: "Established baseline project board layout with dedicated columns and left rail for overview plus integrated chat.".to_string(),
+                    status: CodingProjectTaskStatus::Done,
+                    updates: vec!["Layout merged and validated.".to_string()],
+                    notes: Vec::new(),
+                },
+                CodingProjectTask {
+                    title: "Task detail notes workflow".to_string(),
+                    summary: "Allow user-added notes directly on card details.".to_string(),
+                    details: "Implemented per-task note capture inside detail popup to attach constraints and discoveries while execution is in progress.".to_string(),
+                    status: CodingProjectTaskStatus::Done,
+                    updates: vec!["Task notes persisted in pane state.".to_string()],
+                    notes: Vec::new(),
+                },
+            ],
+            selected_task_index: None,
+            task_detail_open: false,
+            review_requests: vec![
+                "Approve the default intake threshold between quick-fix mode and full project planning mode.".to_string(),
+                "Confirm initial provider routing priority: local router first, then remote coding worker fallback.".to_string(),
+                "Decide whether REVIEW requires explicit user approval before moving tasks to DONE.".to_string(),
+            ],
+            overview_scroll_offset: 0.0,
+            board_scroll_offset: 0.0,
+            chat_scroll_offset: 0.0,
+            last_action: Some("Coding Project ready".to_string()),
+            last_error: None,
+        }
+    }
+}
+
+impl CodingProjectPaneState {
+    fn clamp_scroll(offset: &mut f32, max_scroll: f32) -> f32 {
+        let clamped = offset.clamp(0.0, max_scroll.max(0.0));
+        *offset = clamped;
+        clamped
+    }
+
+    pub fn open_task_detail(&mut self, index: usize) -> bool {
+        if index >= self.tasks.len() {
+            return false;
+        }
+        self.selected_task_index = Some(index);
+        self.task_detail_open = true;
+        self.last_error = None;
+        self.last_action = Some(format!("Opened task {}", index + 1));
+        true
+    }
+
+    pub fn close_task_detail(&mut self) {
+        self.task_detail_open = false;
+    }
+
+    pub fn selected_task(&self) -> Option<&CodingProjectTask> {
+        let index = self.selected_task_index?;
+        self.tasks.get(index)
+    }
+
+    pub fn selected_task_mut(&mut self) -> Option<&mut CodingProjectTask> {
+        let index = self.selected_task_index?;
+        self.tasks.get_mut(index)
+    }
+
+    pub fn add_selected_task_note(&mut self, note: String) -> bool {
+        let note = note.trim();
+        if note.is_empty() {
+            self.last_error = Some("Task note cannot be empty".to_string());
+            return false;
+        }
+        let Some(task) = self.selected_task_mut() else {
+            self.last_error = Some("No task selected".to_string());
+            return false;
+        };
+        task.notes.push(note.to_string());
+        self.last_error = None;
+        self.last_action = Some("Added task note".to_string());
+        true
+    }
+
+    pub fn scroll_overview_by(&mut self, dy: f32, max_scroll: f32) -> bool {
+        let before = self.overview_scroll_offset;
+        self.overview_scroll_offset += dy;
+        Self::clamp_scroll(&mut self.overview_scroll_offset, max_scroll);
+        (self.overview_scroll_offset - before).abs() > f32::EPSILON
+    }
+
+    pub fn scroll_board_by(&mut self, dy: f32, max_scroll: f32) -> bool {
+        let before = self.board_scroll_offset;
+        self.board_scroll_offset += dy;
+        Self::clamp_scroll(&mut self.board_scroll_offset, max_scroll);
+        (self.board_scroll_offset - before).abs() > f32::EPSILON
+    }
+
+    pub fn scroll_chat_by(&mut self, dy: f32, max_scroll: f32) -> bool {
+        let before = self.chat_scroll_offset;
+        self.chat_scroll_offset += dy;
+        Self::clamp_scroll(&mut self.chat_scroll_offset, max_scroll);
+        (self.chat_scroll_offset - before).abs() > f32::EPSILON
+    }
+
+    pub const fn overview_scroll_offset(&self) -> f32 {
+        self.overview_scroll_offset
+    }
+
+    pub const fn board_scroll_offset(&self) -> f32 {
+        self.board_scroll_offset
+    }
+
+    pub const fn chat_scroll_offset(&self) -> f32 {
+        self.chat_scroll_offset
+    }
 }
 
 impl Default for ProviderControlPaneState {
@@ -27431,6 +27712,7 @@ pub struct RenderState {
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
+    pub coding_project_inputs: CodingProjectPaneInputs,
     pub data_seller_inputs: DataSellerPaneInputs,
     pub calculator_inputs: CalculatorPaneInputs,
     pub provider_control: ProviderControlPaneState,
@@ -27446,6 +27728,7 @@ pub struct RenderState {
     pub data_market: DataMarketPaneState,
     pub spark_replay: SparkReplayPaneState,
     pub autopilot_chat: AutopilotChatState,
+    pub coding_project: CodingProjectPaneState,
     pub project_ops: ProjectOpsPaneState,
     pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,
     pub codex_account: CodexAccountPaneState,
