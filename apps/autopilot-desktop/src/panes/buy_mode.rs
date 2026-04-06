@@ -1,3 +1,4 @@
+use chrono::{Local, TimeZone};
 use wgpui::components::hud::{DotShape, DotsGrid};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
@@ -6,9 +7,7 @@ use crate::app_state::{
     NetworkRequestsState, buy_mode_payments_status_lines,
 };
 use crate::nip90_compute_flow::build_buyer_request_flow_snapshot;
-use crate::pane_renderer::{
-    MissionControlBuyModePanelState, mission_control_buy_mode_panel_state, paint_action_button,
-};
+use crate::pane_renderer::{MissionControlBuyModePanelState, mission_control_buy_mode_panel_state};
 use crate::pane_system::{
     buy_mode_payments_copy_button_bounds, buy_mode_payments_ledger_bounds,
     buy_mode_payments_toggle_button_bounds,
@@ -20,7 +19,7 @@ use crate::state::nip90_payment_facts::{
 };
 
 const LEDGER_HEADER_HEIGHT: f32 = 26.0;
-const LEDGER_ROW_HEIGHT: f32 = 62.0;
+const LEDGER_ROW_HEIGHT: f32 = 78.0;
 const LEDGER_ROW_GAP: f32 = 8.0;
 const DETAIL_PANEL_MIN_WIDTH: f32 = 260.0;
 
@@ -67,7 +66,7 @@ pub fn paint(
         view_state.as_ref(),
         paint,
     );
-    paint_action_button(
+    paint_copy_ledger_button(
         buy_mode_payments_copy_button_bounds(content_bounds),
         "Copy ledger",
         paint,
@@ -78,7 +77,10 @@ pub fn paint(
         .map(|state| state.summary.as_str())
         .unwrap_or("Buy Mode is disabled for this session.");
     let summary_left = content_bounds.origin.x + 12.0;
-    let summary_right = buy_mode_payments_copy_button_bounds(content_bounds).origin.x - 8.0;
+    let summary_right = buy_mode_payments_copy_button_bounds(content_bounds)
+        .origin
+        .x
+        - 8.0;
     let summary_width = (summary_right - summary_left).max(40.0);
     let summary_compact = compact_text_for_width(summary, summary_width, 6.2);
     paint.scene.draw_text(paint.text.layout_mono(
@@ -101,7 +103,8 @@ pub fn paint(
     let status_lines =
         buy_mode_payments_status_lines(pane_state, network_requests, spark_wallet, now);
     for (index, line) in status_lines.iter().take(2).enumerate() {
-        let compact_line = compact_text_for_width(line.as_str(), content_bounds.size.width - 24.0, 5.8);
+        let compact_line =
+            compact_text_for_width(line.as_str(), content_bounds.size.width - 24.0, 5.8);
         paint.scene.draw_text(paint.text.layout_mono(
             compact_line.as_str(),
             Point::new(
@@ -115,6 +118,7 @@ pub fn paint(
 
     paint_visual_ledger(
         buy_mode_payments_ledger_bounds(content_bounds),
+        pane_state,
         &ledger_view,
         paint,
     );
@@ -338,6 +342,7 @@ fn row_from_live_snapshot(
 
 fn paint_visual_ledger(
     ledger_bounds: Bounds,
+    pane_state: &mut BuyModePaymentsPaneState,
     ledger_view: &BuyModeVisualLedgerView,
     paint: &mut PaintContext,
 ) {
@@ -394,15 +399,17 @@ fn paint_visual_ledger(
         rows_bounds.size.height,
     );
 
-    paint_ledger_rows(rows_bounds, ledger_view, paint);
-    paint_ledger_detail(detail_bounds, ledger_view.rows.first(), paint);
+    let focused_row = paint_ledger_rows(rows_bounds, pane_state, ledger_view, paint)
+        .and_then(|index| ledger_view.rows.get(index));
+    paint_ledger_detail(detail_bounds, focused_row, paint);
 }
 
 fn paint_ledger_rows(
     bounds: Bounds,
+    pane_state: &mut BuyModePaymentsPaneState,
     ledger_view: &BuyModeVisualLedgerView,
     paint: &mut PaintContext,
-) {
+) -> Option<usize> {
     let visible_rows = ((bounds.size.height + LEDGER_ROW_GAP)
         / (LEDGER_ROW_HEIGHT + LEDGER_ROW_GAP))
         .floor()
@@ -415,10 +422,28 @@ fn paint_ledger_rows(
             10.0,
             theme::text::MUTED,
         ));
-        return;
+        return None;
     }
 
-    for (index, row) in ledger_view.rows.iter().take(visible_rows).enumerate() {
+    let start_index =
+        pane_state.clamped_visual_ledger_row_offset(ledger_view.rows.len(), visible_rows);
+    let end_index = (start_index + visible_rows).min(ledger_view.rows.len());
+    let visible_slice = &ledger_view.rows[start_index..end_index];
+
+    let viewport_label = format!(
+        "showing {}-{} of {}",
+        start_index + 1,
+        end_index,
+        ledger_view.rows.len()
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        viewport_label.as_str(),
+        Point::new(bounds.origin.x, bounds.origin.y - 14.0),
+        8.8,
+        theme::text::MUTED,
+    ));
+
+    for (index, row) in visible_slice.iter().enumerate() {
         let row_bounds = Bounds::new(
             bounds.origin.x,
             bounds.origin.y + index as f32 * (LEDGER_ROW_HEIGHT + LEDGER_ROW_GAP),
@@ -432,6 +457,37 @@ fn paint_ledger_rows(
             index == 0,
             paint,
         );
+    }
+
+    if ledger_view.rows.len() > visible_rows {
+        let track_bounds = Bounds::new(bounds.max_x() - 5.0, bounds.origin.y, 3.0, bounds.size.height);
+        paint.scene.draw_quad(
+            Quad::new(track_bounds)
+                .with_background(theme::bg::ELEVATED.with_alpha(0.45))
+                .with_corner_radius(2.0),
+        );
+
+        let ratio = visible_rows as f32 / ledger_view.rows.len() as f32;
+        let thumb_height = (bounds.size.height * ratio).clamp(16.0, bounds.size.height);
+        let max_offset = ledger_view.rows.len().saturating_sub(visible_rows);
+        let thumb_y = if max_offset == 0 {
+            bounds.origin.y
+        } else {
+            let progress = start_index as f32 / max_offset as f32;
+            bounds.origin.y + (bounds.size.height - thumb_height) * progress
+        };
+        let thumb_bounds = Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height);
+        paint.scene.draw_quad(
+            Quad::new(thumb_bounds)
+                .with_background(Hsla::from_hex(0x2aa7e0).with_alpha(0.88))
+                .with_corner_radius(2.0),
+        );
+    }
+
+    if visible_slice.is_empty() {
+        None
+    } else {
+        Some(start_index)
     }
 }
 
@@ -531,15 +587,22 @@ fn paint_ledger_row(
             theme::text::SECONDARY,
         ),
     );
+
+    let identity_line = compact_text_for_width(
+        format!(
+            "at={}  nostr={}  lightning={}",
+            row_timestamp_label(row.sort_epoch_seconds),
+            short_id(row.provider_nostr_pubkey.as_str()),
+            short_id(row.lightning_destination_pubkey.as_str()),
+        )
+        .as_str(),
+        bounds.size.width - 20.0,
+        5.4,
+    );
     paint.scene.draw_text(
         paint.text.layout_mono(
-            format!(
-                "nostr={}  lightning={}",
-                short_id(row.provider_nostr_pubkey.as_str()),
-                short_id(row.lightning_destination_pubkey.as_str()),
-            )
-            .as_str(),
-            Point::new(bounds.origin.x + 210.0, bounds.origin.y + 50.0),
+            identity_line.as_str(),
+            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 63.0),
             8.8,
             theme::text::MUTED,
         ),
@@ -586,10 +649,12 @@ fn paint_ledger_detail(
         },
     ));
 
+    let observed_at = row_timestamp_label(row.sort_epoch_seconds);
     let mut y = bounds.origin.y + 58.0;
     let value_x = bounds.origin.x + 100.0;
     let value_width = (bounds.max_x() - value_x - 12.0).max(32.0);
     for (label, value) in [
+        ("Observed at", observed_at.as_str()),
         ("Request", row.request_id.as_str()),
         ("Payment ptr", row.payment_pointer.as_str()),
         ("Payment hash", row.payment_hash.as_str()),
@@ -634,7 +699,12 @@ fn paint_status_chip(bounds: Bounds, label: &str, color: Hsla, paint: &mut Paint
             .with_corner_radius(7.0),
     );
     let compact_label = compact_text_for_width(label, bounds.size.width - 10.0, 5.4);
-    let mut label_run = paint.text.layout_mono(compact_label.as_str(), Point::ZERO, 8.0, color.with_alpha(0.96));
+    let mut label_run = paint.text.layout_mono(
+        compact_label.as_str(),
+        Point::ZERO,
+        8.0,
+        color.with_alpha(0.96),
+    );
     let label_bounds = label_run.bounds();
     label_run.origin = Point::new(
         bounds.origin.x + ((bounds.size.width - label_bounds.size.width).max(0.0) * 0.5)
@@ -663,6 +733,14 @@ fn short_id(value: &str) -> String {
     } else {
         format!("{}..{}", &trimmed[..8], &trimmed[trimmed.len() - 6..])
     }
+}
+
+fn row_timestamp_label(epoch_seconds: u64) -> String {
+    Local
+        .timestamp_opt(epoch_seconds as i64, 0)
+        .single()
+        .map(|value| value.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn paint_buy_mode_button(
@@ -700,6 +778,23 @@ fn paint_buy_mode_button(
         Point::new(bounds.origin.x + 10.0, bounds.origin.y + 6.0),
         10.0,
         accent,
+    );
+    paint.scene.draw_text(label_layout);
+}
+
+fn paint_copy_ledger_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::HOVER.with_alpha(0.78))
+            .with_border(Hsla::from_hex(0x2AA7E0).with_alpha(0.45), 1.0)
+            .with_corner_radius(6.0),
+    );
+    let compact = compact_text_for_width(label, bounds.size.width - 12.0, 5.1);
+    let label_layout = paint.text.layout_mono(
+        compact.as_str(),
+        Point::new(bounds.origin.x + 8.0, bounds.origin.y + 7.0),
+        9.0,
+        theme::text::SECONDARY,
     );
     paint.scene.draw_text(label_layout);
 }

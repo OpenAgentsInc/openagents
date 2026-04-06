@@ -10252,6 +10252,11 @@ pub fn dispatch_buy_mode_payments_scroll_event(
         return false;
     }
 
+    if let InputEvent::Scroll { dy, .. } = event {
+        state.buy_mode_payments.scroll_visual_ledger_rows_by(*dy);
+        return true;
+    }
+
     state
         .buy_mode_payments
         .ledger
