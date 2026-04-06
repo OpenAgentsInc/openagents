@@ -614,11 +614,11 @@ fn append_provider_inventory_signature(builder: &mut SignatureBuilder, state: &R
     let controls = &state.provider_runtime.inventory_controls;
     builder.bool(
         "inventory_gpt_oss_inference_enabled",
-        controls.gpt_oss_inference_enabled,
+        controls.local_gemma_inference_enabled,
     );
     builder.bool(
         "inventory_gpt_oss_embeddings_enabled",
-        controls.gpt_oss_embeddings_enabled,
+        controls.local_gemma_embeddings_enabled,
     );
     builder.bool(
         "inventory_apple_fm_inference_enabled",
