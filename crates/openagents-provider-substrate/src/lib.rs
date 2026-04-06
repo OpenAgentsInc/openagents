@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderBackendKind {
-    #[serde(alias = "ollama")]
+    #[serde(alias = "gpt_oss", alias = "ollama")]
     GptOss,
     AppleFoundationModels,
     PsionicTrain,
@@ -150,6 +150,22 @@ impl ProviderBackendHealth {
     pub const fn is_ready(&self) -> bool {
         self.ready
     }
+
+    pub fn has_authoritative_state(&self) -> bool {
+        self.reachable
+            || self.ready
+            || self.configured_model.is_some()
+            || self.ready_model.is_some()
+            || !self.available_models.is_empty()
+            || self.last_error.is_some()
+            || self.last_action.is_some()
+            || self.availability_message.is_some()
+            || self.latency_ms_p50.is_some()
+    }
+
+    pub fn is_inert(&self) -> bool {
+        !self.has_authoritative_state()
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -186,6 +202,10 @@ pub struct ProviderAppleAdapterHostingAvailability {
 impl ProviderAppleAdapterHostingAvailability {
     pub fn has_authoritative_state(&self) -> bool {
         self.inventory_supported || self.attach_supported || !self.adapters.is_empty()
+    }
+
+    pub fn is_inert(&self) -> bool {
+        !self.has_authoritative_state()
     }
 
     pub fn loaded_adapter_count(&self) -> usize {
@@ -294,6 +314,10 @@ impl ProviderAdapterTrainingContributorAvailability {
             || self.minimum_memory_gb.is_some()
             || self.available_memory_gb.is_some()
             || self.settlement_trigger.is_some()
+    }
+
+    pub fn is_inert(&self) -> bool {
+        !self.has_authoritative_state()
     }
 
     pub fn product_backend_ready(&self) -> bool {
@@ -550,14 +574,24 @@ pub fn settlement_hook_from_authority(
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAvailability {
-    #[serde(alias = "ollama")]
-    pub gpt_oss: ProviderBackendHealth,
+    #[serde(alias = "gpt_oss", alias = "ollama")]
+    pub local_gemma: ProviderBackendHealth,
+    #[serde(default, skip_serializing_if = "ProviderBackendHealth::is_inert")]
     pub apple_foundation_models: ProviderBackendHealth,
-    #[serde(default)]
+    #[serde(
+        default,
+        skip_serializing_if = "ProviderAppleAdapterHostingAvailability::is_inert"
+    )]
     pub apple_adapter_hosting: ProviderAppleAdapterHostingAvailability,
-    #[serde(default)]
+    #[serde(
+        default,
+        skip_serializing_if = "ProviderAdapterTrainingContributorAvailability::is_inert"
+    )]
     pub adapter_training_contributor: ProviderAdapterTrainingContributorAvailability,
-    #[serde(default)]
+    #[serde(
+        default,
+        skip_serializing_if = "ProviderPooledInferenceAvailability::is_inert"
+    )]
     pub pooled_inference: ProviderPooledInferenceAvailability,
     pub sandbox: ProviderSandboxAvailability,
 }
@@ -566,7 +600,7 @@ impl ProviderAvailability {
     pub fn active_inference_backend(&self) -> Option<ProviderBackendKind> {
         if self.apple_foundation_models.is_ready() {
             Some(ProviderBackendKind::AppleFoundationModels)
-        } else if self.gpt_oss.is_ready() {
+        } else if self.local_gemma.is_ready() {
             Some(ProviderBackendKind::GptOss)
         } else {
             None
@@ -614,7 +648,7 @@ impl ProviderAvailability {
 
     pub fn product_backend_ready(&self, product: ProviderComputeProduct) -> bool {
         match product {
-            ProviderComputeProduct::GptOssInference => self.gpt_oss.is_ready(),
+            ProviderComputeProduct::GptOssInference => self.local_gemma.is_ready(),
             ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
                 self.pooled_inference.remote_whole_request_ready()
@@ -783,6 +817,10 @@ impl ProviderPooledInferenceAvailability {
             || self.member_count > 0
             || self.warm_replica_count > 0
             || !self.targetable_models.is_empty()
+    }
+
+    pub fn is_inert(&self) -> bool {
+        !self.has_authoritative_state()
     }
 
     pub fn remote_whole_request_ready(&self) -> bool {
@@ -1251,7 +1289,7 @@ impl ProviderComputeProduct {
         let base_summary = self.capability_summary_base();
         match self {
             Self::GptOssInference | Self::GptOssEmbeddings => {
-                let health = &availability.gpt_oss;
+                let health = &availability.local_gemma;
                 let ready_model = health.ready_model.as_deref().unwrap_or("none");
                 let configured_model = health.configured_model.as_deref().unwrap_or("none");
                 let latency_ms = health
@@ -1513,13 +1551,13 @@ impl ProviderComputeProduct {
                 contribution_class: "single_node_serving".to_string(),
                 market_receipt_class: "accepted_delivery".to_string(),
                 earnings_trigger: "wallet_settled_accepted_delivery".to_string(),
-                revenue_posture: if availability.gpt_oss.is_ready() {
+                revenue_posture: if availability.local_gemma.is_ready() {
                     "serving_ready"
                 } else {
                     "not_yet_earning"
                 }
                 .to_string(),
-                revenue_summary: if availability.gpt_oss.is_ready() {
+                revenue_summary: if availability.local_gemma.is_ready() {
                     "Earns when local delivery is accepted and wallet settlement is confirmed."
                 } else {
                     "No single-node revenue yet because the local Gemma runtime is not ready."
@@ -1631,10 +1669,16 @@ pub struct ProviderInventoryRow {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderInventoryControls {
-    #[serde(alias = "ollama_inference_enabled")]
-    pub gpt_oss_inference_enabled: bool,
-    #[serde(alias = "ollama_embeddings_enabled")]
-    pub gpt_oss_embeddings_enabled: bool,
+    #[serde(
+        alias = "gpt_oss_inference_enabled",
+        alias = "ollama_inference_enabled"
+    )]
+    pub local_gemma_inference_enabled: bool,
+    #[serde(
+        alias = "gpt_oss_embeddings_enabled",
+        alias = "ollama_embeddings_enabled"
+    )]
+    pub local_gemma_embeddings_enabled: bool,
     #[serde(default)]
     pub pooled_inference_remote_whole_request_enabled: bool,
     #[serde(default)]
@@ -1657,8 +1701,8 @@ pub struct ProviderInventoryControls {
 impl Default for ProviderInventoryControls {
     fn default() -> Self {
         Self {
-            gpt_oss_inference_enabled: true,
-            gpt_oss_embeddings_enabled: false,
+            local_gemma_inference_enabled: true,
+            local_gemma_embeddings_enabled: false,
             pooled_inference_remote_whole_request_enabled: true,
             pooled_inference_replicated_serving_enabled: true,
             pooled_inference_dense_split_enabled: true,
@@ -1677,7 +1721,7 @@ impl Default for ProviderInventoryControls {
 impl ProviderInventoryControls {
     pub const fn is_advertised(&self, target: ProviderComputeProduct) -> bool {
         match target {
-            ProviderComputeProduct::GptOssInference => self.gpt_oss_inference_enabled,
+            ProviderComputeProduct::GptOssInference => self.local_gemma_inference_enabled,
             ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
                 self.pooled_inference_remote_whole_request_enabled
@@ -1714,7 +1758,7 @@ impl ProviderInventoryControls {
 
     pub fn toggle(&mut self, target: ProviderComputeProduct) -> bool {
         let enabled = match target {
-            ProviderComputeProduct::GptOssInference => &mut self.gpt_oss_inference_enabled,
+            ProviderComputeProduct::GptOssInference => &mut self.local_gemma_inference_enabled,
             ProviderComputeProduct::PooledInferenceRemoteWholeRequest => {
                 &mut self.pooled_inference_remote_whole_request_enabled
             }
@@ -1743,7 +1787,7 @@ impl ProviderInventoryControls {
             ProviderComputeProduct::SandboxNodeExec => &mut self.sandbox_node_exec_enabled,
             ProviderComputeProduct::SandboxPosixExec => &mut self.sandbox_posix_exec_enabled,
             ProviderComputeProduct::GptOssEmbeddings => {
-                self.gpt_oss_embeddings_enabled = false;
+                self.local_gemma_embeddings_enabled = false;
                 return false;
             }
         };
@@ -2042,7 +2086,7 @@ mod tests {
     #[test]
     fn apple_backend_wins_when_both_backends_are_ready() {
         let availability = ProviderAvailability {
-            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            local_gemma: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ready_health(None, "apple-foundation-model", None),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
@@ -2129,9 +2173,56 @@ mod tests {
     }
 
     #[test]
+    fn availability_serializes_local_gemma_and_omits_inert_legacy_branches() {
+        let availability = ProviderAvailability {
+            local_gemma: ready_health(Some("gemma4:e4b"), "gemma4:e4b", Some(140)),
+            apple_foundation_models: ProviderBackendHealth::default(),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
+            sandbox: ProviderSandboxAvailability::default(),
+        };
+
+        let value = serde_json::to_value(&availability).expect("serialize availability");
+
+        assert!(value.get("local_gemma").is_some());
+        assert!(value.get("gpt_oss").is_none());
+        assert!(value.get("apple_foundation_models").is_none());
+        assert!(value.get("apple_adapter_hosting").is_none());
+        assert!(value.get("adapter_training_contributor").is_none());
+        assert!(value.get("pooled_inference").is_none());
+    }
+
+    #[test]
+    fn availability_accepts_legacy_gpt_oss_alias_on_decode() {
+        let value = serde_json::json!({
+            "gpt_oss": {
+                "reachable": true,
+                "ready": true,
+                "configured_model": "gemma4:e4b",
+                "ready_model": "gemma4:e4b",
+                "available_models": ["gemma4:e4b"]
+            },
+            "sandbox": {
+                "runtimes": [],
+                "profiles": []
+            }
+        });
+
+        let availability: ProviderAvailability =
+            serde_json::from_value(value).expect("decode legacy alias");
+
+        assert!(availability.local_gemma.ready);
+        assert_eq!(
+            availability.local_gemma.ready_model.as_deref(),
+            Some("gemma4:e4b")
+        );
+    }
+
+    #[test]
     fn derive_provider_products_reflects_backend_health_and_capability_summary() {
         let availability = ProviderAvailability {
-            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            local_gemma: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth {
                 reachable: true,
                 ready: false,
@@ -2175,7 +2266,7 @@ mod tests {
     #[test]
     fn pooled_inference_products_track_remote_and_replicated_readiness() {
         let availability = ProviderAvailability {
-            gpt_oss: ProviderBackendHealth::default(),
+            local_gemma: ProviderBackendHealth::default(),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
@@ -2438,7 +2529,7 @@ mod tests {
     fn derive_provider_products_includes_declared_sandbox_profiles_when_enabled()
     -> Result<(), Box<dyn std::error::Error>> {
         let availability = ProviderAvailability {
-            gpt_oss: ProviderBackendHealth::default(),
+            local_gemma: ProviderBackendHealth::default(),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
@@ -2500,7 +2591,7 @@ mod tests {
     #[test]
     fn apple_adapter_hosting_requires_runtime_inventory_and_compatible_adapter() {
         let availability = ProviderAvailability {
-            gpt_oss: ProviderBackendHealth::default(),
+            local_gemma: ProviderBackendHealth::default(),
             apple_foundation_models: ready_health(None, "apple-foundation-model", Some(38)),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability {
                 inventory_supported: true,
@@ -2554,7 +2645,7 @@ mod tests {
     #[test]
     fn apple_adapter_hosting_stays_blocked_without_compatible_loaded_adapter() {
         let availability = ProviderAvailability {
-            gpt_oss: ProviderBackendHealth::default(),
+            local_gemma: ProviderBackendHealth::default(),
             apple_foundation_models: ready_health(None, "apple-foundation-model", Some(38)),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability {
                 inventory_supported: true,
@@ -2592,7 +2683,7 @@ mod tests {
     #[test]
     fn adapter_training_contributor_product_derives_from_availability() {
         let availability = ProviderAvailability {
-            gpt_oss: ProviderBackendHealth::default(),
+            local_gemma: ProviderBackendHealth::default(),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ready_adapter_training_contributor(),
@@ -2743,7 +2834,7 @@ mod tests {
     #[test]
     fn lifecycle_holds_while_offline_even_if_backends_are_ready() {
         let availability = ProviderAvailability {
-            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            local_gemma: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
@@ -2764,7 +2855,7 @@ mod tests {
     #[test]
     fn lifecycle_promotes_non_offline_runtime_to_online_when_backend_is_ready() {
         let availability = ProviderAvailability {
-            gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
+            local_gemma: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),

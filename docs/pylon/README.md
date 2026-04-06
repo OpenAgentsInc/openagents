@@ -257,9 +257,8 @@ The generated config currently includes:
 - wallet network
 - wallet API key env var
 - wallet storage dir
-- local Gemma runtime base URL (`ollama_base_url`)
-- legacy Apple bridge base URL (`apple_fm_base_url`, disabled by default)
-- inventory-control toggles
+- local Gemma runtime base URL (`local_gemma_base_url`; legacy `ollama_base_url` still loads on read)
+- inventory-control toggles with `local_gemma_*` names; legacy `gpt_oss_*` and `ollama_*` names still load on read
 - declared sandbox profiles
 
 ## Headless Service Guidance

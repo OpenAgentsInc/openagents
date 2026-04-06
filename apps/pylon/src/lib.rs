@@ -83,7 +83,9 @@ pub struct PylonConfig {
     #[serde(default = "default_buyer_auto_pay_enabled")]
     pub buyer_auto_pay_enabled: bool,
     pub wallet_storage_dir: PathBuf,
-    pub ollama_base_url: String,
+    #[serde(alias = "ollama_base_url")]
+    pub local_gemma_base_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
@@ -2689,8 +2691,9 @@ fn load_config(path: &Path) -> Result<PylonConfig> {
         .unwrap_or_else(default_home_dir);
     let mut merged = serde_json::to_value(default_config(base_dir.as_path()))
         .context("failed to serialize default pylon config")?;
-    let parsed = serde_json::from_str::<Value>(payload.as_str())
+    let mut parsed = serde_json::from_str::<Value>(payload.as_str())
         .with_context(|| format!("failed to parse pylon config {}", path.display()))?;
+    normalize_legacy_config_value(&mut parsed);
     merge_json_value(&mut merged, &parsed);
     serde_json::from_value(merged)
         .with_context(|| format!("failed to hydrate pylon config {}", path.display()))
@@ -2731,6 +2734,56 @@ fn merge_json_value(target: &mut Value, source: &Value) {
     }
 }
 
+fn normalize_legacy_config_value(value: &mut Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+
+    if !object.contains_key("local_gemma_base_url") {
+        if let Some(legacy_value) = object.remove("ollama_base_url") {
+            object.insert("local_gemma_base_url".to_string(), legacy_value);
+        }
+    } else {
+        object.remove("ollama_base_url");
+    }
+
+    if let Some(inventory_controls) = object
+        .get_mut("inventory_controls")
+        .and_then(Value::as_object_mut)
+    {
+        normalize_legacy_object_key(
+            inventory_controls,
+            "local_gemma_inference_enabled",
+            &["gpt_oss_inference_enabled", "ollama_inference_enabled"],
+        );
+        normalize_legacy_object_key(
+            inventory_controls,
+            "local_gemma_embeddings_enabled",
+            &["gpt_oss_embeddings_enabled", "ollama_embeddings_enabled"],
+        );
+    }
+}
+
+fn normalize_legacy_object_key(
+    object: &mut serde_json::Map<String, Value>,
+    canonical_key: &str,
+    legacy_keys: &[&str],
+) {
+    if object.contains_key(canonical_key) {
+        for legacy_key in legacy_keys {
+            object.remove(*legacy_key);
+        }
+        return;
+    }
+
+    for legacy_key in legacy_keys {
+        if let Some(value) = object.remove(*legacy_key) {
+            object.insert(canonical_key.to_string(), value);
+            break;
+        }
+    }
+}
+
 fn default_config(base_dir: &Path) -> PylonConfig {
     let mut inventory_controls = ProviderInventoryControls::default();
     inventory_controls.apple_fm_inference_enabled = false;
@@ -2749,7 +2802,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         wallet_api_key_env: default_wallet_api_key_env(),
         buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
         wallet_storage_dir: base_dir.join("spark"),
-        ollama_base_url: "http://127.0.0.1:11434".to_string(),
+        local_gemma_base_url: "http://127.0.0.1:11434".to_string(),
         apple_fm_base_url: None,
         inventory_controls,
         declared_sandbox_profiles: Vec::new(),
@@ -3132,12 +3185,8 @@ fn build_snapshot_from_availability(
                 value: json!(config.payout_destination),
             },
             ProviderJsonEntry {
-                key: "ollama_base_url".to_string(),
-                value: Value::String(config.ollama_base_url.clone()),
-            },
-            ProviderJsonEntry {
-                key: "apple_fm_base_url".to_string(),
-                value: json!(config.apple_fm_base_url),
+                key: "local_gemma_base_url".to_string(),
+                value: Value::String(config.local_gemma_base_url.clone()),
             },
         ],
         identity: identity.map(|identity| identity_metadata(identity, config.node_label.as_str())),
@@ -3383,7 +3432,7 @@ fn provider_blocker_codes(
     state: &str,
 ) -> Vec<String> {
     let mut codes = Vec::new();
-    if !availability.gpt_oss.ready {
+    if !availability.local_gemma.ready {
         codes.push("LOCAL_GEMMA_UNAVAILABLE".to_string());
     }
     if !products.iter().any(|product| product.eligible)
@@ -3416,7 +3465,7 @@ fn execution_backend_label(
 
 fn first_backend_error(availability: &ProviderAvailability) -> Option<String> {
     availability
-        .gpt_oss
+        .local_gemma
         .last_error
         .clone()
         .or_else(|| availability.sandbox.last_scan_error.clone())
@@ -3536,7 +3585,7 @@ pub fn resolve_local_gemma_chat_target_from_snapshot(
     snapshot: &ProviderPersistedSnapshot,
 ) -> Result<LocalGemmaChatTarget> {
     let _ = config;
-    if let Some(model) = gemma_ready_model(&snapshot.availability.gpt_oss) {
+    if let Some(model) = gemma_ready_model(&snapshot.availability.local_gemma) {
         return Ok(LocalGemmaChatTarget {
             backend: LocalGemmaChatBackend::LocalRuntime,
             model,
@@ -3676,7 +3725,10 @@ async fn stream_local_gemma_chat<F>(
 where
     F: FnMut(LocalGemmaChatEvent),
 {
-    let url = format!("{}/api/chat", config.ollama_base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/api/chat",
+        config.local_gemma_base_url.trim_end_matches('/')
+    );
     let payload = json!({
         "model": target.model,
         "messages": messages
@@ -3835,8 +3887,8 @@ fn backend_entry(
 }
 
 fn local_gemma_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
-    if !config.inventory_controls.gpt_oss_inference_enabled
-        && !config.inventory_controls.gpt_oss_embeddings_enabled
+    if !config.inventory_controls.local_gemma_inference_enabled
+        && !config.inventory_controls.local_gemma_embeddings_enabled
     {
         return "disabled".to_string();
     }
@@ -3998,8 +4050,8 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
             backend_entry(
                 "local_gemma",
                 "Local Gemma",
-                local_gemma_health_state(&config, &availability.gpt_oss),
-                &availability.gpt_oss,
+                local_gemma_health_state(&config, &availability.local_gemma),
+                &availability.local_gemma,
                 local_gemma_products.as_slice(),
             ),
             sandbox_backend_entry(&config, &availability, sandbox_products.as_slice()),
@@ -5525,18 +5577,14 @@ async fn detect_availability(config: &PylonConfig) -> Result<ProviderAvailabilit
         .timeout(Duration::from_secs(2))
         .build()
         .context("failed to build pylon health-check client")?;
-    let gpt_oss = detect_ollama(&client, config).await;
+    let local_gemma = detect_local_gemma(&client, config).await;
     let sandbox = detect_sandbox_supply(
         &ProviderSandboxDetectionConfig::default()
             .with_declared_profiles(config.declared_sandbox_profiles.clone()),
     );
     Ok(ProviderAvailability {
-        gpt_oss,
-        apple_foundation_models: ProviderBackendHealth {
-            last_action: Some("not part of the current Pylon flow".to_string()),
-            availability_message: Some("disabled".to_string()),
-            ..ProviderBackendHealth::default()
-        },
+        local_gemma,
+        apple_foundation_models: ProviderBackendHealth::default(),
         apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
         adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
         pooled_inference: ProviderPooledInferenceAvailability::default(),
@@ -5544,16 +5592,22 @@ async fn detect_availability(config: &PylonConfig) -> Result<ProviderAvailabilit
     })
 }
 
-async fn detect_ollama(client: &reqwest::Client, config: &PylonConfig) -> ProviderBackendHealth {
-    if !config.inventory_controls.gpt_oss_inference_enabled
-        && !config.inventory_controls.gpt_oss_embeddings_enabled
+async fn detect_local_gemma(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+) -> ProviderBackendHealth {
+    if !config.inventory_controls.local_gemma_inference_enabled
+        && !config.inventory_controls.local_gemma_embeddings_enabled
     {
         return ProviderBackendHealth {
             last_action: Some("disabled by config".to_string()),
             ..ProviderBackendHealth::default()
         };
     }
-    let url = format!("{}/api/tags", config.ollama_base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/api/tags",
+        config.local_gemma_base_url.trim_end_matches('/')
+    );
     let response = match client.get(url.as_str()).send().await {
         Ok(response) => response,
         Err(error) => {
@@ -5649,7 +5703,9 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
             config.buyer_auto_pay_enabled = parse_bool(value)?;
         }
         "wallet_storage_dir" => config.wallet_storage_dir = PathBuf::from(value.trim()),
-        "ollama_base_url" => config.ollama_base_url = value.to_string(),
+        "local_gemma_base_url" | "ollama_base_url" => {
+            config.local_gemma_base_url = value.to_string();
+        }
         "apple_fm_base_url" => {
             config.apple_fm_base_url = if value.trim().is_empty() {
                 None
@@ -5657,11 +5713,15 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
                 Some(value.to_string())
             };
         }
-        "backend.gpt_oss_inference_enabled" | "backend.ollama_inference_enabled" => {
-            config.inventory_controls.gpt_oss_inference_enabled = parse_bool(value)?;
+        "backend.local_gemma_inference_enabled"
+        | "backend.gpt_oss_inference_enabled"
+        | "backend.ollama_inference_enabled" => {
+            config.inventory_controls.local_gemma_inference_enabled = parse_bool(value)?;
         }
-        "backend.gpt_oss_embeddings_enabled" | "backend.ollama_embeddings_enabled" => {
-            config.inventory_controls.gpt_oss_embeddings_enabled = parse_bool(value)?;
+        "backend.local_gemma_embeddings_enabled"
+        | "backend.gpt_oss_embeddings_enabled"
+        | "backend.ollama_embeddings_enabled" => {
+            config.inventory_controls.local_gemma_embeddings_enabled = parse_bool(value)?;
         }
         "backend.apple_fm_inference_enabled" => {
             config.inventory_controls.apple_fm_inference_enabled = parse_bool(value)?;
@@ -5868,14 +5928,56 @@ mod tests {
             "missing wallet storage should hydrate from the default config",
         )?;
         ensure(
-            config.ollama_base_url == "http://127.0.0.1:11434",
+            config.local_gemma_base_url == "http://127.0.0.1:11434",
             "missing local Gemma endpoint config should hydrate from the default config",
         )?;
         ensure(
-            config.inventory_controls.gpt_oss_inference_enabled
+            config.inventory_controls.local_gemma_inference_enabled
                 && !config.inventory_controls.apple_fm_inference_enabled
                 && !config.inventory_controls.apple_fm_adapter_hosting_enabled,
             "missing inventory controls should hydrate the Gemma-first Pylon defaults",
+        )
+    }
+
+    #[test]
+    fn load_config_accepts_legacy_local_runtime_aliases() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        std::fs::write(
+            config_path.as_path(),
+            r#"{
+  "schema_version": 1,
+  "node_label": "pylon",
+  "payout_destination": null,
+  "identity_path": "/tmp/pylon-test/identity.mnemonic",
+  "admin_db_path": "/tmp/pylon-test/provider-admin.sqlite",
+  "admin_listen_addr": "127.0.0.1:9468",
+  "wallet_storage_dir": "/tmp/pylon-test/spark",
+  "ollama_base_url": "http://127.0.0.1:11435",
+  "inventory_controls": {
+    "gpt_oss_inference_enabled": false,
+    "gpt_oss_embeddings_enabled": false,
+    "apple_fm_inference_enabled": false,
+    "apple_fm_adapter_hosting_enabled": false,
+    "sandbox_container_exec_enabled": false,
+    "sandbox_python_exec_enabled": false,
+    "sandbox_node_exec_enabled": false,
+    "sandbox_posix_exec_enabled": false
+  }
+}"#,
+        )?;
+
+        let config = super::load_config(config_path.as_path())?;
+
+        ensure(
+            config.local_gemma_base_url == "http://127.0.0.1:11435",
+            "legacy ollama_base_url should hydrate the local Gemma base URL",
+        )?;
+        ensure(
+            !config.inventory_controls.local_gemma_inference_enabled
+                && !config.inventory_controls.local_gemma_embeddings_enabled,
+            "legacy gpt_oss inventory flags should hydrate local Gemma controls",
         )
     }
 
@@ -5911,12 +6013,41 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn status_json_uses_local_gemma_schema_and_omits_inert_apple_branch()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        let json = serde_json::to_value(&status)?;
+        let availability = json
+            .get("snapshot")
+            .and_then(|value| value.get("availability"))
+            .ok_or_else(|| std::io::Error::other("missing availability"))?;
+
+        ensure(
+            availability.get("local_gemma").is_some(),
+            "status JSON should expose local_gemma availability",
+        )?;
+        ensure(
+            availability.get("gpt_oss").is_none(),
+            "status JSON should not expose the legacy gpt_oss availability key",
+        )?;
+        ensure(
+            availability.get("apple_foundation_models").is_none(),
+            "status JSON should omit inert Apple FM availability",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn local_control_transitions_cover_success_retry_and_failure_paths()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
-        config.ollama_base_url = "http://127.0.0.1:9".to_string();
+        config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
@@ -6766,7 +6897,7 @@ mod tests {
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
         config.relay_urls = vec![relay_url];
-        config.ollama_base_url = format!("http://{ollama_addr}");
+        config.local_gemma_base_url = format!("http://{ollama_addr}");
         save_config(config_path.as_path(), &config)?;
 
         let report = publish_announcement_report(config_path.as_path(), false).await?;
@@ -7696,7 +7827,7 @@ mod tests {
 
         let mut config = load_or_create_config(config_path.as_path())?;
         config.relay_urls = vec![relay_url];
-        config.ollama_base_url = format!("http://{ollama_addr}");
+        config.local_gemma_base_url = format!("http://{ollama_addr}");
         save_config(config_path.as_path(), &config)?;
 
         let report = scan_provider_requests(config_path.as_path(), 1).await?;
@@ -7841,7 +7972,7 @@ mod tests {
 
         let mut config = load_or_create_config(config_path.as_path())?;
         config.relay_urls = vec![relay_url];
-        config.ollama_base_url = base_url;
+        config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
         let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
 
@@ -8013,7 +8144,7 @@ mod tests {
 
         let mut config = load_or_create_config(config_path.as_path())?;
         config.relay_urls = vec![relay_url];
-        config.ollama_base_url = base_url;
+        config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
         let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
 
@@ -8263,7 +8394,7 @@ mod tests {
 
         let mut config = load_or_create_config(config_path.as_path())?;
         config.relay_urls = vec![relay_url];
-        config.ollama_base_url = base_url;
+        config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
         let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
 
@@ -8423,7 +8554,7 @@ mod tests {
         save_config(config_path, &config)?;
 
         let availability = ProviderAvailability {
-            gpt_oss: ready_health("gemma4:e4b", &["gemma4:e4b"], Some("gemma_ready")),
+            local_gemma: ready_health("gemma4:e4b", &["gemma4:e4b"], Some("gemma_ready")),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
@@ -8712,7 +8843,7 @@ mod tests {
         let config = load_or_create_config(config_path.as_path())?;
         let identity = ensure_identity(config.identity_path.as_path())?;
         let availability = ProviderAvailability {
-            gpt_oss: ready_health("gemma4:e4b", &["gemma4:e4b"], None),
+            local_gemma: ready_health("gemma4:e4b", &["gemma4:e4b"], None),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
@@ -8877,7 +9008,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
-        config.ollama_base_url = base_url;
+        config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
 
         let mut events = Vec::new();
@@ -8942,7 +9073,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
-        config.ollama_base_url = base_url;
+        config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
 
         let mut events = Vec::new();
@@ -8992,15 +9123,19 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
-        config.ollama_base_url = base_url;
+        config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
 
         let status = load_status_or_detect(config_path.as_path()).await?;
         ensure(
             status.snapshot.as_ref().is_some_and(|snapshot| {
-                !snapshot.availability.gpt_oss.ready
-                    && snapshot.availability.gpt_oss.available_models.is_empty()
+                !snapshot.availability.local_gemma.ready
+                    && snapshot
+                        .availability
+                        .local_gemma
+                        .available_models
+                        .is_empty()
             }),
             "non-Gemma models should not mark local Gemma supply ready",
         )?;

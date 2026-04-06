@@ -2236,7 +2236,7 @@ fn announcement_spec(
         .snapshot
         .as_ref()?
         .availability
-        .gpt_oss
+        .local_gemma
         .ready_model
         .clone()?;
     let price_msats = product.price_floor_sats.checked_mul(1000);
