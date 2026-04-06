@@ -1219,40 +1219,6 @@ async fn run_psionic_gemma_benchmark(
     mode: GemmaBenchExecutionMode,
     request: &GemmaBenchmarkRequest,
 ) -> GemmaBenchmarkResult {
-    let manifest_path = psionic_repo.join("Cargo.toml");
-    let mut args = vec![
-        String::from("run"),
-        String::from("--quiet"),
-        String::from("--manifest-path"),
-        manifest_path.display().to_string(),
-        String::from("-p"),
-        String::from("psionic-serve"),
-        String::from("--example"),
-        String::from("gemma4_bench"),
-        String::from("--"),
-        String::from("--model-path"),
-        model_path.display().to_string(),
-        String::from("--mode"),
-        mode.label().to_string(),
-        String::from("--prompt"),
-        request.prompt.clone(),
-        String::from("--max-output-tokens"),
-        request.max_output_tokens.to_string(),
-        String::from("--repeats"),
-        request.repeats.to_string(),
-    ];
-    if let Some(backend) = request.backend.as_ref() {
-        args.push(String::from("--backend"));
-        args.push(backend.clone());
-    }
-    if let Some(peer_base_url) = request.peer_base_url.as_ref() {
-        args.push(String::from("--peer-base-url"));
-        args.push(peer_base_url.clone());
-    }
-    if let Some(split_layer) = request.split_layer {
-        args.push(String::from("--split-layer"));
-        args.push(split_layer.to_string());
-    }
     let receipt_path = std::env::temp_dir().join(format!(
         "pylon-gemma-bench-{}-{}-{}-{}.json",
         spec.id,
@@ -1263,11 +1229,16 @@ async fn run_psionic_gemma_benchmark(
             .unwrap_or_default()
             .as_millis()
     ));
-    args.push(String::from("--json-out"));
-    args.push(receipt_path.display().to_string());
+    let args = psionic_gemma_benchmark_command_args(
+        psionic_repo,
+        model_path,
+        mode,
+        request,
+        receipt_path.as_path(),
+    );
 
     let output = TokioCommand::new("cargo")
-        .args(args.iter().skip(1))
+        .args(args.iter())
         .current_dir(psionic_repo)
         .stdin(Stdio::null())
         .output()
@@ -1342,6 +1313,52 @@ async fn run_psionic_gemma_benchmark(
             }
         }
     }
+}
+
+fn psionic_gemma_benchmark_command_args(
+    psionic_repo: &Path,
+    model_path: &Path,
+    mode: GemmaBenchExecutionMode,
+    request: &GemmaBenchmarkRequest,
+    receipt_path: &Path,
+) -> Vec<String> {
+    let manifest_path = psionic_repo.join("Cargo.toml");
+    let mut args = vec![
+        String::from("run"),
+        String::from("--quiet"),
+        String::from("--manifest-path"),
+        manifest_path.display().to_string(),
+        String::from("-p"),
+        String::from("psionic-serve"),
+        String::from("--example"),
+        String::from("gemma4_bench"),
+        String::from("--"),
+        String::from("--model-path"),
+        model_path.display().to_string(),
+        String::from("--mode"),
+        mode.label().to_string(),
+        String::from("--prompt"),
+        request.prompt.clone(),
+        String::from("--max-output-tokens"),
+        request.max_output_tokens.to_string(),
+        String::from("--repeats"),
+        request.repeats.to_string(),
+    ];
+    if let Some(backend) = request.backend.as_ref() {
+        args.push(String::from("--backend"));
+        args.push(backend.clone());
+    }
+    if let Some(peer_base_url) = request.peer_base_url.as_ref() {
+        args.push(String::from("--peer-base-url"));
+        args.push(peer_base_url.clone());
+    }
+    if let Some(split_layer) = request.split_layer {
+        args.push(String::from("--split-layer"));
+        args.push(split_layer.to_string());
+    }
+    args.push(String::from("--json-out"));
+    args.push(receipt_path.display().to_string());
+    args
 }
 
 fn render_gemma_benchmark_report(report: &GemmaBenchmarkReport) -> String {
@@ -5930,11 +5947,11 @@ mod tests {
         load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
         load_ledger, load_or_create_config, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, provider_admin_config, publish_announcement_report,
-        refresh_relay_report, remove_configured_relay, render_human_status, render_sandbox_report,
-        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
-        submit_buyer_job, watch_buyer_jobs,
+        planned_gemma_benchmark_modes, provider_admin_config, psionic_gemma_benchmark_command_args,
+        publish_announcement_report, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_sandbox_report, resolve_local_gemma_chat_target_from_status,
+        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
+        save_config, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -6726,6 +6743,43 @@ mod tests {
                 .to_string()
                 .contains("does not support single-node execution"),
             "sparse 26b should fail closed on single-node requests",
+        )
+    }
+
+    #[test]
+    fn gemma_benchmark_command_keeps_cargo_run_prefix() -> Result<(), Box<dyn std::error::Error>> {
+        let args = psionic_gemma_benchmark_command_args(
+            std::path::Path::new("/tmp/psionic"),
+            std::path::Path::new("/tmp/model.gguf"),
+            GemmaBenchExecutionMode::Single,
+            &GemmaBenchmarkRequest {
+                mode: GemmaBenchmarkMode::Single,
+                backend: Some(String::from("metal")),
+                peer_base_url: None,
+                split_layer: None,
+                prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                max_output_tokens: 96,
+                repeats: 1,
+                download_missing: false,
+            },
+            std::path::Path::new("/tmp/receipt.json"),
+        );
+
+        ensure(
+            args.first().is_some_and(|value| value == "run"),
+            "benchmark command should keep the cargo run prefix",
+        )?;
+        ensure(
+            args.get(1).is_some_and(|value| value == "--quiet"),
+            "benchmark command should keep the expected cargo flags after run",
+        )?;
+        ensure(
+            args.iter().any(|value| value == "--example"),
+            "benchmark command should still target the gemma4_bench example",
+        )?;
+        ensure(
+            args.iter().any(|value| value == "--json-out"),
+            "benchmark command should still request a JSON receipt",
         )
     }
 
