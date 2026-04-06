@@ -879,7 +879,8 @@ fn sync_wallet_error(
 #[cfg(test)]
 mod tests {
     use super::{
-        WalletSubcommand, parse_wallet_command, parse_wallet_network, resolve_wallet_api_key,
+        DEFAULT_OPENAGENTS_SPARK_API_KEY, WalletApiKeySource, WalletSubcommand,
+        parse_wallet_command, parse_wallet_network, resolve_wallet_api_key,
     };
 
     #[test]

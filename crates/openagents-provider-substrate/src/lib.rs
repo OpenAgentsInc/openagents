@@ -17,7 +17,8 @@ use openagents_kernel_core::compute::{
     ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
     ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
 };
-use serde::{Deserialize, Serialize};
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1644,6 +1645,10 @@ pub fn describe_provider_product_id(product_id: &str) -> Option<ProviderProductD
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderInventoryRow {
+    #[serde(
+        serialize_with = "serialize_inventory_row_target",
+        deserialize_with = "deserialize_inventory_row_target"
+    )]
     pub target: ProviderComputeProduct,
     pub enabled: bool,
     pub backend_ready: bool,
@@ -1665,6 +1670,54 @@ pub struct ProviderInventoryRow {
     pub forward_reserved_quantity: u64,
     pub forward_available_quantity: u64,
     pub forward_terms_label: Option<String>,
+}
+
+fn serialize_inventory_row_target<S>(
+    target: &ProviderComputeProduct,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(target.product_id())
+}
+
+fn deserialize_inventory_row_target<'de, D>(
+    deserializer: D,
+) -> Result<ProviderComputeProduct, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = String::deserialize(deserializer)?;
+    if let Some(product) = ProviderComputeProduct::for_product_id(raw.as_str()) {
+        return Ok(product);
+    }
+    match raw.as_str() {
+        "gpt_oss_inference" => Ok(ProviderComputeProduct::GptOssInference),
+        "gpt_oss_embeddings" => Ok(ProviderComputeProduct::GptOssEmbeddings),
+        "pooled_inference_remote_whole_request" => {
+            Ok(ProviderComputeProduct::PooledInferenceRemoteWholeRequest)
+        }
+        "pooled_inference_replicated_serving" => {
+            Ok(ProviderComputeProduct::PooledInferenceReplicatedServing)
+        }
+        "pooled_inference_dense_split" => Ok(ProviderComputeProduct::PooledInferenceDenseSplit),
+        "pooled_inference_sparse_expert" => Ok(ProviderComputeProduct::PooledInferenceSparseExpert),
+        "apple_foundation_models_inference" => {
+            Ok(ProviderComputeProduct::AppleFoundationModelsInference)
+        }
+        "apple_foundation_models_adapter_hosting" => {
+            Ok(ProviderComputeProduct::AppleFoundationModelsAdapterHosting)
+        }
+        "adapter_training_contributor" => Ok(ProviderComputeProduct::AdapterTrainingContributor),
+        "sandbox_container_exec" => Ok(ProviderComputeProduct::SandboxContainerExec),
+        "sandbox_python_exec" => Ok(ProviderComputeProduct::SandboxPythonExec),
+        "sandbox_node_exec" => Ok(ProviderComputeProduct::SandboxNodeExec),
+        "sandbox_posix_exec" => Ok(ProviderComputeProduct::SandboxPosixExec),
+        _ => Err(D::Error::custom(format!(
+            "unknown provider inventory target '{raw}'"
+        ))),
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1909,12 +1962,12 @@ mod tests {
         ProviderAdapterTrainingSettlementTrigger, ProviderAppleAdapterHostingAvailability,
         ProviderAppleAdapterHostingEntry, ProviderAvailability, ProviderBackendHealth,
         ProviderBackendKind, ProviderComputeProduct, ProviderFailureClass, ProviderIngressMode,
-        ProviderInventoryControls, ProviderLifecycleInput, ProviderLifecycleTransition,
-        ProviderMode, ProviderPooledInferenceAvailability, ProviderPooledInferenceTargetStatus,
-        ProviderSandboxAvailability, ProviderSandboxDetectionConfig, ProviderSandboxExecutionClass,
-        ProviderSandboxProfileSpec, derive_provider_lifecycle, derive_provider_products,
-        describe_provider_product_id, detect_sandbox_supply, match_adapter_training_contributor,
-        settlement_hook_from_authority,
+        ProviderInventoryControls, ProviderInventoryRow, ProviderLifecycleInput,
+        ProviderLifecycleTransition, ProviderMode, ProviderPooledInferenceAvailability,
+        ProviderPooledInferenceTargetStatus, ProviderSandboxAvailability,
+        ProviderSandboxDetectionConfig, ProviderSandboxExecutionClass, ProviderSandboxProfileSpec,
+        derive_provider_lifecycle, derive_provider_products, describe_provider_product_id,
+        detect_sandbox_supply, match_adapter_training_contributor, settlement_hook_from_authority,
     };
     use openagents_kernel_core::compute::{
         ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
@@ -2217,6 +2270,72 @@ mod tests {
             availability.local_gemma.ready_model.as_deref(),
             Some("gemma4:e4b")
         );
+    }
+
+    #[test]
+    fn inventory_row_serializes_target_as_canonical_product_id() {
+        let row = ProviderInventoryRow {
+            target: ProviderComputeProduct::GptOssInference,
+            enabled: true,
+            backend_ready: true,
+            eligible: true,
+            capability_summary: "backend=local_gemma".to_string(),
+            market_receipt_class: "accepted_delivery".to_string(),
+            earnings_summary: "ready".to_string(),
+            source_badge: "pylon.serve".to_string(),
+            capacity_lot_id: None,
+            total_quantity: 1,
+            reserved_quantity: 0,
+            available_quantity: 1,
+            delivery_state: "idle".to_string(),
+            price_floor_sats: 21,
+            terms_label: "spot".to_string(),
+            forward_capacity_lot_id: None,
+            forward_delivery_window_label: None,
+            forward_total_quantity: 0,
+            forward_reserved_quantity: 0,
+            forward_available_quantity: 0,
+            forward_terms_label: Some("forward".to_string()),
+        };
+
+        let value = serde_json::to_value(&row).expect("serialize inventory row");
+
+        assert_eq!(
+            value.get("target").and_then(|entry| entry.as_str()),
+            Some("psionic.local.inference.gemma.single_node")
+        );
+    }
+
+    #[test]
+    fn inventory_row_accepts_legacy_enum_target_on_decode() {
+        let value = serde_json::json!({
+            "target": "gpt_oss_inference",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=local_gemma",
+            "market_receipt_class": "accepted_delivery",
+            "earnings_summary": "ready",
+            "source_badge": "pylon.serve",
+            "capacity_lot_id": null,
+            "total_quantity": 1,
+            "reserved_quantity": 0,
+            "available_quantity": 1,
+            "delivery_state": "idle",
+            "price_floor_sats": 21,
+            "terms_label": "spot",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward"
+        });
+
+        let decoded: ProviderInventoryRow =
+            serde_json::from_value(value).expect("decode legacy inventory row");
+
+        assert_eq!(decoded.target, ProviderComputeProduct::GptOssInference);
     }
 
     #[test]

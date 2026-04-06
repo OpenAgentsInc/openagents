@@ -66,7 +66,7 @@ Minimum local requirements:
 Runtime-specific requirements:
 
 - curated Gemma 4 weights downloaded through the built-in catalog or headless Gemma commands
-- sibling `psionic` checkout available for the retained benchmark and validation lane
+- sibling `psionic` checkout only if the operator explicitly needs the retained benchmark and validation lane
 
 If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
 
@@ -101,7 +101,9 @@ Headless Gemma operator commands now exist too:
 - `cargo pylon-headless gemma download remaining`
 - `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
 
-Those commands keep Pylon as the operator entrypoint and shell into the sibling Psionic checkout for the real runtime benchmark. By default that means a local `../psionic` clone. Override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` when needed.
+Use the first two commands for normal onboarding. They bring Gemma supply online without requiring a sibling `psionic` checkout.
+
+Treat the full `gemma benchmark` matrix as a retained validation lane, not as required bring-up. That command shells into a sibling Psionic checkout for the real runtime benchmark. By default that means a local `../psionic` clone. Override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` when needed. If an existing sibling checkout is stale or missing the retained Gemma benchmark entrypoints, refresh it or clone a clean compatible `psionic` checkout and point `OPENAGENTS_PSIONIC_REPO` there.
 
 Pylon now also keeps a focused local ledger at `~/.openagents/pylon/ledger.json`. That file is the retained standalone durability layer for relay state, NIP-90 jobs, invoices, payments, settlements, and local activity replay. It is intentionally narrower than the old archived Pylon database.
 
@@ -182,6 +184,11 @@ cargo pylon-headless job submit --model gemma4:e4b --bid-msats 21000 "write a ha
 cargo pylon-headless job watch --seconds 30
 cargo pylon-headless gemma
 cargo pylon-headless gemma download remaining
+```
+
+Run the retained Psionic benchmark lane only when the operator explicitly needs it:
+
+```bash
 cargo pylon-headless gemma benchmark all --download-missing --mode matrix --peer-base-url http://127.0.0.1:18080
 ```
 
