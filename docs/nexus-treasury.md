@@ -39,6 +39,11 @@ The hosted treasury policy and wallet runtime are env-backed:
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
 
+For the production VM, set the payout policy env before running
+`scripts/deploy/nexus/03-configure-and-start.sh`. The deploy script now maps
+the treasury wallet and state onto `${NEXUS_DATA_DIR}/treasury/...` so the
+central wallet survives container restarts.
+
 ## Public Stats
 
 Public-safe treasury counters now project through `nexus-control /api/stats`:

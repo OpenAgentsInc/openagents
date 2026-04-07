@@ -80,8 +80,28 @@ It runs:
 - durable relay storage under `${NEXUS_DATA_DIR}` (`/var/lib/nexus-relay` by default)
 - the in-process authority/API routes merged into the same service
 - receipt persistence through `NEXUS_CONTROL_RECEIPT_LOG_PATH`
+- treasury wallet + payout state on the same persistent disk when
+  `NEXUS_CONTROL_TREASURY_ENABLED=true`
 
 The baseline bind is `0.0.0.0:8080` on the VM. Public DNS/TLS exposure is a later step; the app/runtime no longer depends on ephemeral in-memory relay storage.
+
+Treasury deployment note:
+
+- do not rely on the repo-relative treasury defaults in production
+- `scripts/deploy/nexus/03-configure-and-start.sh` now writes
+  `NEXUS_CONTROL_TREASURY_STATE_PATH`,
+  `NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH`, and
+  `NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR`
+  onto `${NEXUS_DATA_DIR}/treasury/...` so the central wallet survives restarts
+- set payout policy via env before running `03-configure-and-start.sh`, for example:
+
+```bash
+export NEXUS_CONTROL_TREASURY_ENABLED=true
+export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=2
+export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=20
+export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
+export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000
+```
 
 ## 5) Deploy artifacts
 
