@@ -63,6 +63,7 @@ jq -n \
   --arg image "$DEPLOY_IMAGE" \
   --arg health_raw "$HEALTH_RAW" \
   --arg stats_raw "$STATS_RAW" \
+  --arg treasury_raw "$TREASURY_RAW" \
   --arg data_mount "$DATA_DIR_STATUS_RAW" \
   '{
     generated_at: $generated_at,
