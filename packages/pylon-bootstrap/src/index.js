@@ -13,6 +13,7 @@ export const DEFAULT_RUSTUP_INIT_URL = "https://sh.rustup.rs";
 export const DEFAULT_MODEL_ID = "gemma-4-e4b";
 export const DEFAULT_DIAGNOSTIC_REPEATS = 3;
 export const DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS = 96;
+export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
 const SOURCE_BUILD_INSTALL_METHOD = "source_build";
@@ -23,8 +24,20 @@ function emitStatus(onStatus, message, detail = null) {
   }
 }
 
+function emitVerboseStatus(onStatus, verbose, message, detail = null) {
+  if (verbose) {
+    emitStatus(onStatus, message, detail);
+  }
+}
+
 function normalizeVersion(value) {
   return value.replace(/^pylon-v/, "").replace(/^v/, "");
+}
+
+function createBootstrapError(message, context = {}) {
+  const error = new Error(message);
+  Object.assign(error, context);
+  return error;
 }
 
 async function pathExists(value) {
@@ -41,10 +54,16 @@ function defaultInstallRoot() {
 }
 
 class MissingReleaseAssetsError extends Error {
-  constructor({ tagName, version, target, archiveBasename, archiveName, checksumName, targetCommitish }) {
-    super(
-      `Release ${tagName} is missing ${archiveName} or ${checksumName}.`,
-    );
+  constructor({
+    tagName,
+    version,
+    target,
+    archiveBasename,
+    archiveName,
+    checksumName,
+    targetCommitish,
+  }) {
+    super(`Release ${tagName} is missing ${archiveName} or ${checksumName}.`);
     this.name = "MissingReleaseAssetsError";
     this.tagName = tagName;
     this.version = version;
@@ -65,6 +84,166 @@ function requestHeaders() {
     headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
   return headers;
+}
+
+function formatRequestHeaders(headers = requestHeaders()) {
+  return Object.entries(headers).flatMap(([key, value]) => [
+    "--header",
+    `${key}: ${value}`,
+  ]);
+}
+
+function timedSignal(timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) {
+  if (typeof AbortSignal?.timeout === "function") {
+    return {
+      signal: AbortSignal.timeout(timeoutMs),
+      dispose() {},
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer);
+    },
+  };
+}
+
+function classifyNetworkError(error) {
+  const cause = error?.cause ?? null;
+  const code = cause?.code ?? cause?.errno ?? null;
+  const detail = [error?.message, cause?.message].filter(Boolean).join(" :: ");
+  const lowered = detail.toLowerCase();
+  let classification = "network";
+
+  if (
+    error?.name === "AbortError" ||
+    code === "ETIMEDOUT" ||
+    lowered.includes("timeout")
+  ) {
+    classification = "timeout";
+  } else if (
+    code === "ENOTFOUND" ||
+    code === "EAI_AGAIN" ||
+    lowered.includes("getaddrinfo")
+  ) {
+    classification = "dns";
+  } else if (
+    code === "CERT_HAS_EXPIRED" ||
+    code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+    lowered.includes("certificate") ||
+    lowered.includes("tls") ||
+    lowered.includes("ssl")
+  ) {
+    classification = "tls";
+  } else if (
+    code === "ECONNREFUSED" ||
+    code === "ECONNRESET" ||
+    code === "EHOSTUNREACH" ||
+    code === "ENETUNREACH" ||
+    code === "EADDRNOTAVAIL" ||
+    lowered.includes("connect")
+  ) {
+    classification = "connect";
+  }
+
+  const endpoint =
+    cause?.address || cause?.hostname || cause?.port
+      ? [
+          cause?.hostname ?? cause?.address ?? null,
+          cause?.port != null ? String(cause.port) : null,
+        ]
+          .filter(Boolean)
+          .join(":")
+      : null;
+
+  return {
+    classification,
+    code,
+    endpoint,
+    detail: detail || "network request failed",
+  };
+}
+
+function isRetryableFetchError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return classifyNetworkError(error).classification !== "tls";
+}
+
+function renderNetworkFailure({ stage, url, error, curlError = null }) {
+  const details = classifyNetworkError(error);
+  const parts = [
+    `${stage} failed for ${url}.`,
+    `classification=${details.classification}`,
+  ];
+  if (details.code) {
+    parts.push(`code=${details.code}`);
+  }
+  if (details.endpoint) {
+    parts.push(`endpoint=${details.endpoint}`);
+  }
+  parts.push(`detail=${details.detail}`);
+  if (curlError) {
+    parts.push(
+      `curl_fallback=${curlError instanceof Error ? curlError.message : String(curlError)}`,
+    );
+  }
+  return parts.join(" ");
+}
+
+async function fetchResponse(fetchImpl, url, headers = requestHeaders()) {
+  const timeout = timedSignal();
+  try {
+    return await fetchImpl(url, {
+      headers,
+      signal: timeout.signal,
+    });
+  } finally {
+    timeout.dispose();
+  }
+}
+
+async function runCurlText(runProcessImpl, url, headers = requestHeaders()) {
+  const { stdout } = await runProcessImpl("curl", [
+    "--fail",
+    "--silent",
+    "--show-error",
+    "--location",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "60",
+    ...formatRequestHeaders(headers),
+    url,
+  ]);
+  return stdout;
+}
+
+async function runCurlDownload(
+  runProcessImpl,
+  url,
+  destination,
+  headers = requestHeaders(),
+) {
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await runProcessImpl("curl", [
+    "--fail",
+    "--silent",
+    "--show-error",
+    "--location",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "300",
+    "--output",
+    destination,
+    ...formatRequestHeaders(headers),
+    url,
+  ]);
 }
 
 export function resolvePlatformTarget(
@@ -133,42 +312,164 @@ export function parseSha256File(payload, expectedAssetName) {
   return sha256.toLowerCase();
 }
 
-async function fetchJson(fetchImpl, url) {
-  const response = await fetchImpl(url, {
-    headers: requestHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `GitHub release lookup failed for ${url} (${response.status} ${response.statusText}).`,
-    );
+async function fetchJson(
+  fetchImpl,
+  url,
+  {
+    headers = requestHeaders(),
+    runProcessImpl = runProcess,
+    onStatus = null,
+    stage = "GitHub release lookup",
+    verbose = false,
+  } = {},
+) {
+  try {
+    emitVerboseStatus(onStatus, verbose, stage, url);
+    const response = await fetchResponse(fetchImpl, url, headers);
+    if (!response.ok) {
+      throw createBootstrapError(
+        `GitHub release lookup failed for ${url} (${response.status} ${response.statusText}).`,
+        {
+          stage,
+          url,
+          httpStatus: response.status,
+        },
+      );
+    }
+    return response.json();
+  } catch (error) {
+    if (
+      !error?.httpStatus &&
+      isRetryableFetchError(error) &&
+      typeof runProcessImpl === "function"
+    ) {
+      emitStatus(onStatus, "Retrying with curl transport", `${stage} ${url}`);
+      try {
+        return JSON.parse(await runCurlText(runProcessImpl, url, headers));
+      } catch (curlError) {
+        throw createBootstrapError(
+          renderNetworkFailure({ stage, url, error, curlError }),
+          { stage, url, cause: error },
+        );
+      }
+    }
+    if (error?.httpStatus) {
+      throw error;
+    }
+    throw createBootstrapError(renderNetworkFailure({ stage, url, error }), {
+      stage,
+      url,
+      cause: error,
+    });
   }
-  return response.json();
 }
 
-async function fetchText(fetchImpl, url, headers = requestHeaders()) {
-  const response = await fetchImpl(url, {
-    headers,
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Download failed for ${url} (${response.status} ${response.statusText}).`,
-    );
+async function fetchText(
+  fetchImpl,
+  url,
+  {
+    headers = requestHeaders(),
+    runProcessImpl = runProcess,
+    onStatus = null,
+    stage = "download text",
+    verbose = false,
+  } = {},
+) {
+  try {
+    emitVerboseStatus(onStatus, verbose, stage, url);
+    const response = await fetchResponse(fetchImpl, url, headers);
+    if (!response.ok) {
+      throw createBootstrapError(
+        `Download failed for ${url} (${response.status} ${response.statusText}).`,
+        {
+          stage,
+          url,
+          httpStatus: response.status,
+        },
+      );
+    }
+    return response.text();
+  } catch (error) {
+    if (
+      !error?.httpStatus &&
+      isRetryableFetchError(error) &&
+      typeof runProcessImpl === "function"
+    ) {
+      emitStatus(onStatus, "Retrying with curl transport", `${stage} ${url}`);
+      try {
+        return await runCurlText(runProcessImpl, url, headers);
+      } catch (curlError) {
+        throw createBootstrapError(
+          renderNetworkFailure({ stage, url, error, curlError }),
+          { stage, url, cause: error },
+        );
+      }
+    }
+    if (error?.httpStatus) {
+      throw error;
+    }
+    throw createBootstrapError(renderNetworkFailure({ stage, url, error }), {
+      stage,
+      url,
+      cause: error,
+    });
   }
-  return response.text();
 }
 
-async function downloadFile(fetchImpl, url, destination) {
-  const response = await fetchImpl(url, {
-    headers: requestHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Download failed for ${url} (${response.status} ${response.statusText}).`,
-    );
+async function downloadFile(
+  fetchImpl,
+  url,
+  destination,
+  {
+    headers = requestHeaders(),
+    runProcessImpl = runProcess,
+    onStatus = null,
+    stage = "download file",
+    verbose = false,
+  } = {},
+) {
+  try {
+    emitVerboseStatus(onStatus, verbose, stage, url);
+    const response = await fetchResponse(fetchImpl, url, headers);
+    if (!response.ok) {
+      throw createBootstrapError(
+        `Download failed for ${url} (${response.status} ${response.statusText}).`,
+        {
+          stage,
+          url,
+          httpStatus: response.status,
+        },
+      );
+    }
+    const payload = Buffer.from(await response.arrayBuffer());
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.writeFile(destination, payload);
+  } catch (error) {
+    if (
+      !error?.httpStatus &&
+      isRetryableFetchError(error) &&
+      typeof runProcessImpl === "function"
+    ) {
+      emitStatus(onStatus, "Retrying with curl transport", `${stage} ${url}`);
+      try {
+        await runCurlDownload(runProcessImpl, url, destination, headers);
+        return;
+      } catch (curlError) {
+        throw createBootstrapError(
+          renderNetworkFailure({ stage, url, error, curlError }),
+          { stage, url, cause: error },
+        );
+      }
+    }
+    if (error?.httpStatus) {
+      throw error;
+    }
+    throw createBootstrapError(renderNetworkFailure({ stage, url, error }), {
+      stage,
+      url,
+      cause: error,
+    });
   }
-  const payload = Buffer.from(await response.arrayBuffer());
-  await fs.mkdir(path.dirname(destination), { recursive: true });
-  await fs.writeFile(destination, payload);
 }
 
 async function sha256File(filePath) {
@@ -214,6 +515,9 @@ export function selectLatestPylonRelease(releases) {
 
 export async function fetchReleaseMetadata({
   fetchImpl = globalThis.fetch,
+  runProcessImpl = runProcess,
+  onStatus = null,
+  verbose = false,
   apiBase = DEFAULT_RELEASE_API_BASE,
   repo = DEFAULT_RELEASE_REPO,
   version = null,
@@ -225,7 +529,14 @@ export async function fetchReleaseMetadata({
       )}`
     : `/repos/${repo}/releases?per_page=100`;
   const url = `${apiBase.replace(/\/$/, "")}${endpoint}`;
-  const payload = await fetchJson(fetchImpl, url);
+  const payload = await fetchJson(fetchImpl, url, {
+    runProcessImpl,
+    onStatus,
+    verbose,
+    stage: normalizedVersion
+      ? "GitHub tagged release lookup"
+      : "GitHub release list lookup",
+  });
   return normalizedVersion ? payload : selectLatestPylonRelease(payload);
 }
 
@@ -259,7 +570,6 @@ export function selectReleaseAssets(release, target) {
     tagName,
     version,
     archiveBasename,
-    targetCommitish: release?.target_commitish ?? null,
     archiveAsset: {
       name: archiveAsset.name,
       url: archiveAsset.browser_download_url,
@@ -431,8 +741,13 @@ async function ensureRustToolchain({
 
   emitStatus(onStatus, "Installing Rust toolchain", "official rustup installer");
   const scriptPayload = await fetchText(fetchImpl, rustupInitUrl, {
-    accept: "text/plain",
-    "user-agent": "@openagentsinc/pylon bootstrap",
+    headers: {
+      accept: "text/plain",
+      "user-agent": "@openagentsinc/pylon bootstrap",
+    },
+    runProcessImpl,
+    onStatus,
+    stage: "Rust toolchain installer download",
   });
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pylon-rustup-"));
   const scriptPath = path.join(tempDir, "rustup-init.sh");
@@ -548,10 +863,14 @@ async function installSourceBuild(
         env: buildEnv,
       },
     );
-    await runProcessImpl("git", ["checkout", "--detach", `refs/tags/${selected.tagName}`], {
-      cwd: repoDir,
-      env: buildEnv,
-    });
+    await runProcessImpl(
+      "git",
+      ["checkout", "--detach", `refs/tags/${selected.tagName}`],
+      {
+        cwd: repoDir,
+        env: buildEnv,
+      },
+    );
 
     const { stdout: commitStdout } = await runProcessImpl(
       "git",
@@ -637,6 +956,71 @@ async function installSourceBuild(
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
+}
+
+async function findLatestCachedInstall(installRoot, target) {
+  const normalizedRoot = path.resolve(installRoot ?? defaultInstallRoot());
+  const versionsDir = path.join(normalizedRoot, "versions");
+  let entries;
+  try {
+    entries = await fs.readdir(versionsDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    if (!entry.name.endsWith(`-${target.os}-${target.arch}`)) {
+      continue;
+    }
+
+    const installDir = path.join(versionsDir, entry.name);
+    const manifestPath = path.join(installDir, "install.json");
+    const pylonPath = path.join(installDir, "pylon");
+    const pylonTuiPath = path.join(installDir, "pylon-tui");
+    if (
+      !(await pathExists(manifestPath)) ||
+      !(await pathExists(pylonPath)) ||
+      !(await pathExists(pylonTuiPath))
+    ) {
+      continue;
+    }
+
+    try {
+      const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+      const manifestStat = await fs.stat(manifestPath);
+      candidates.push({
+        version: manifest.version,
+        tagName: manifest.tagName,
+        target,
+        installRoot: normalizedRoot,
+        versionsDir,
+        downloadsDir: path.join(
+          normalizedRoot,
+          "downloads",
+          `pylon-v${normalizeVersion(manifest.version)}`,
+        ),
+        installDir,
+        archiveBasename: entry.name,
+        archivePath: null,
+        checksumPath: null,
+        manifestPath,
+        pylonPath,
+        pylonTuiPath,
+        expectedSha256: manifest.sha256 ?? null,
+        cached: true,
+        mtimeMs: manifestStat.mtimeMs,
+      });
+    } catch {
+      // Ignore malformed cache entries and keep scanning.
+    }
+  }
+
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
+  return candidates[0] ?? null;
 }
 
 export async function runProcess(
@@ -754,12 +1138,68 @@ export async function ensureReleaseInstall(
   );
   const target = resolvePlatformTarget(options.platform, options.arch);
   const installRoot = options.installRoot ?? defaultInstallRoot();
-  const release = await fetchReleaseMetadata({
-    fetchImpl,
-    apiBase: options.apiBase ?? DEFAULT_RELEASE_API_BASE,
-    repo: options.repo ?? DEFAULT_RELEASE_REPO,
-    version: options.version ?? null,
-  });
+  if (options.version) {
+    const requestedPaths = buildInstallPaths(installRoot, options.version, target);
+    const requestedCached =
+      (await pathExists(requestedPaths.pylonPath)) &&
+      (await pathExists(requestedPaths.pylonTuiPath));
+    if (requestedCached) {
+      emitStatus(
+        onStatus,
+        "Using cached standalone binaries",
+        `pylon-v${normalizeVersion(options.version)} for ${target.os}-${target.arch}`,
+      );
+      return {
+        version: normalizeVersion(options.version),
+        tagName: `pylon-v${normalizeVersion(options.version)}`,
+        target,
+        ...requestedPaths,
+        expectedSha256: await fs
+          .readFile(requestedPaths.manifestPath, "utf8")
+          .then((payload) => JSON.parse(payload).sha256)
+          .catch(() => null),
+        cached: true,
+      };
+    }
+  }
+
+  let release;
+  try {
+    release = await fetchReleaseMetadata({
+      fetchImpl,
+      runProcessImpl,
+      onStatus,
+      verbose: Boolean(options.verbose),
+      apiBase: options.apiBase ?? DEFAULT_RELEASE_API_BASE,
+      repo: options.repo ?? DEFAULT_RELEASE_REPO,
+      version: options.version ?? null,
+    });
+  } catch (error) {
+    const cached = !options.version
+      ? await findLatestCachedInstall(installRoot, target)
+      : null;
+    if (cached) {
+      emitStatus(
+        onStatus,
+        "Using cached standalone binaries",
+        `release lookup failed; falling back to ${cached.tagName}`,
+      );
+      return cached;
+    }
+
+    const requestedVersion = normalizeRequestedVersion(options.version);
+    const recovery = [
+      error instanceof Error ? error.message : String(error),
+      `Retry with verbose diagnostics: npx @openagentsinc/pylon --verbose${requestedVersion ? ` --version ${requestedVersion}` : ""}`,
+      "Tagged Pylon releases: https://github.com/OpenAgentsInc/openagents/releases?q=pylon-v",
+    ];
+    if (requestedVersion) {
+      recovery.push(
+        `Expected asset: ${buildAssetNames(requestedVersion, target).archiveName}`,
+      );
+    }
+    throw createBootstrapError(recovery.join("\n"), { cause: error });
+  }
   let selected;
   let missingAssetsError = null;
   try {
@@ -784,7 +1224,9 @@ export async function ensureReleaseInstall(
   if (binariesPresent) {
     const installMethod =
       manifest?.installMethod ??
-      (missingAssetsError ? SOURCE_BUILD_INSTALL_METHOD : RELEASE_ASSET_INSTALL_METHOD);
+      (missingAssetsError
+        ? SOURCE_BUILD_INSTALL_METHOD
+        : RELEASE_ASSET_INSTALL_METHOD);
     emitStatus(
       onStatus,
       installMethod === SOURCE_BUILD_INSTALL_METHOD
@@ -827,7 +1269,12 @@ export async function ensureReleaseInstall(
     "Fetching release checksum",
     selected.checksumAsset.name,
   );
-  const checksumPayload = await fetchText(fetchImpl, selected.checksumAsset.url);
+  const checksumPayload = await fetchText(fetchImpl, selected.checksumAsset.url, {
+    runProcessImpl,
+    onStatus,
+    verbose: Boolean(options.verbose),
+    stage: "Release checksum download",
+  });
   const expectedSha256 = parseSha256File(
     checksumPayload,
     selected.archiveAsset.name,
@@ -845,7 +1292,12 @@ export async function ensureReleaseInstall(
       "Downloading standalone binaries",
       selected.archiveAsset.name,
     );
-    await downloadFile(fetchImpl, selected.archiveAsset.url, paths.archivePath);
+    await downloadFile(fetchImpl, selected.archiveAsset.url, paths.archivePath, {
+      runProcessImpl,
+      onStatus,
+      verbose: Boolean(options.verbose),
+      stage: "Release archive download",
+    });
   }
 
   const actualSha256 = await sha256File(paths.archivePath);
@@ -878,10 +1330,9 @@ export async function ensureReleaseInstall(
     version: selected.version,
     tagName: selected.tagName,
     target,
-    installMethod: RELEASE_ASSET_INSTALL_METHOD,
     archive: selected.archiveAsset.name,
     sha256: expectedSha256,
-    sourceTargetCommitish: selected.targetCommitish ?? null,
+    installMethod: RELEASE_ASSET_INSTALL_METHOD,
   });
 
   emitStatus(
@@ -896,9 +1347,6 @@ export async function ensureReleaseInstall(
     target,
     expectedSha256,
     cached: false,
-    installMethod: RELEASE_ASSET_INSTALL_METHOD,
-    sourceCloneUrl: null,
-    sourceCommit: null,
   };
 }
 
@@ -946,7 +1394,11 @@ export async function bootstrapInstalledPylon(
       runProcessImpl,
     );
   } else {
-    emitStatus(onStatus, "Skipping curated model download", model);
+    emitStatus(
+      onStatus,
+      "Skipping optional curated GGUF cache",
+      "use --download-curated-cache to prefetch Hugging Face weights",
+    );
   }
 
   let diagnostic = null;
@@ -1000,9 +1452,6 @@ export async function bootstrapInstalledPylon(
     tagName: options.tagName ?? `pylon-v${options.version}`,
     target: options.target,
     cached: Boolean(options.cached),
-    installMethod: options.installMethod ?? RELEASE_ASSET_INSTALL_METHOD,
-    sourceCommit: options.sourceCommit ?? null,
-    sourceCloneUrl: options.sourceCloneUrl ?? null,
     binaries: {
       pylon: pylonPath,
       pylonTui: pylonTuiPath,
@@ -1037,21 +1486,12 @@ export async function launchInstalledPylonTui(
 export function renderBootstrapSummary(summary) {
   const lines = [
     `Pylon release: ${summary.version} (${summary.target.os}-${summary.target.arch})`,
-    `Release tag: ${summary.tagName}`,
-    `Install source: ${
-      summary.installMethod === SOURCE_BUILD_INSTALL_METHOD
-        ? "source build"
-        : "release asset"
-    }`,
+    `Archive source: ${summary.tagName}`,
     `Installed from cache: ${summary.cached ? "yes" : "no"}`,
     `Pylon binary: ${summary.binaries.pylon}`,
     `Pylon TUI: ${summary.binaries.pylonTui}`,
     `Config path: ${summary.configPath ?? "unknown"}`,
   ];
-
-  if (summary.sourceCommit) {
-    lines.push(`Source commit: ${summary.sourceCommit}`);
-  }
 
   const statusState =
     summary.status?.snapshot?.runtime?.authoritative_status ?? "unknown";
@@ -1069,6 +1509,16 @@ export function renderBootstrapSummary(summary) {
     lines.push(
       `Model download (${summary.model}): ${result?.status ?? "completed"}`,
     );
+  } else {
+    lines.push(
+      "Curated GGUF cache: skipped by default (pass --download-curated-cache to prefetch optional Hugging Face weights)",
+    );
+  }
+
+  const localGemmaError =
+    summary.status?.snapshot?.availability?.local_gemma?.last_error ?? null;
+  if (localGemmaError) {
+    lines.push(`Local runtime note: ${localGemmaError}`);
   }
 
   if (summary.diagnostic) {

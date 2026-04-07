@@ -81,15 +81,20 @@ Options:
   --install-root <path>                Override the launcher cache/install root.
   --config-path <path>                 Override OPENAGENTS_PYLON_CONFIG_PATH.
   --pylon-home <path>                  Override OPENAGENTS_PYLON_HOME.
-  --model <model-id>                   Model to download and diagnose.
+  --model <model-id>                   Model to diagnose, and optionally
+                                       prefetch into the local GGUF cache.
                                        Default: ${DEFAULT_MODEL_ID}
+  --download-curated-cache             Prefetch the optional Hugging Face GGUF
+                                       cache before opening the TUI.
   --diagnostic-repeats <n>             Repeat count for pylon gemma diagnose.
                                        Default: ${DEFAULT_DIAGNOSTIC_REPEATS}
   --diagnostic-max-output-tokens <n>   Max output tokens for diagnostics.
                                        Default: ${DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS}
-  --skip-model-download                Skip pylon gemma download.
+  --skip-model-download                Keep the curated GGUF cache skipped.
   --skip-diagnostics                   Skip pylon gemma diagnose.
   --no-launch                          Do not open pylon-tui after bootstrap.
+  --verbose                            Print extra network and recovery detail.
+  --debug-network                      Alias for --verbose.
   --json                               Emit a machine-readable JSON summary.
 
 Test and maintainer options:
@@ -110,9 +115,10 @@ export function parseArgs(argv) {
     model: DEFAULT_MODEL_ID,
     diagnosticRepeats: DEFAULT_DIAGNOSTIC_REPEATS,
     diagnosticMaxOutputTokens: DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS,
-    skipModelDownload: false,
+    skipModelDownload: true,
     skipDiagnostics: false,
     noLaunch: false,
+    verbose: false,
     json: false,
     help: false,
   };
@@ -150,6 +156,9 @@ export function parseArgs(argv) {
           throw new Error("--model requires a value.");
         }
         break;
+      case "--download-curated-cache":
+        options.skipModelDownload = false;
+        break;
       case "--diagnostic-repeats":
         options.diagnosticRepeats = parseIntegerFlag(
           argv[++index],
@@ -170,6 +179,10 @@ export function parseArgs(argv) {
         break;
       case "--no-launch":
         options.noLaunch = true;
+        break;
+      case "--verbose":
+      case "--debug-network":
+        options.verbose = true;
         break;
       case "--json":
         options.json = true;

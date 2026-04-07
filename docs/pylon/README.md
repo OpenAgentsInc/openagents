@@ -24,11 +24,12 @@ Prefer the npm bootstrap lane when the operator already has `npm` or `bun`:
 
 ```bash
 npx @openagentsinc/pylon
-npx @openagentsinc/pylon --version 0.0.1-rc3
+npx @openagentsinc/pylon --version 0.0.1-rc4
 npx @openagentsinc/pylon --no-launch
+npx @openagentsinc/pylon --download-curated-cache
 ```
 
-That launcher resolves the latest tagged `pylon-v...` GitHub release by default, or a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma download <model>` plus `pylon gemma diagnose <model>`.
+That launcher resolves the latest tagged `pylon-v...` GitHub release by default, or a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma diagnose <model>`. It only prefetches the optional Hugging Face GGUF cache when `--download-curated-cache` is set, because the sellable lane still depends on the configured local runtime endpoint rather than the local GGUF cache alone.
 The default no-argument path is the intended onboarding lane: it streams terminal
 status updates during bootstrap and opens `pylon-tui` automatically when the
 smoke path finishes. Use `--no-launch` when you want the same install and
@@ -88,7 +89,12 @@ Minimum local requirements:
 
 Runtime-specific requirements:
 
-- curated Gemma 4 weights downloaded through the built-in catalog or headless Gemma commands
+- a local runtime endpoint at `local_gemma_base_url` (default `http://127.0.0.1:11434`) that answers `/api/tags` and has a Gemma 4 model loaded
+- on macOS, the shortest supported runtime path today is:
+  - `brew install ollama`
+  - `brew services start ollama`
+  - `ollama pull gemma4:e4b`
+- the curated Hugging Face GGUF cache under `~/.openagents/pylon/models/huggingface/` is optional and does not make the sellable lane eligible by itself
 - sibling `psionic` checkout only if the operator explicitly needs the retained benchmark and validation lane
 
 If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
@@ -121,15 +127,16 @@ The shell keeps submitted input in the transcript, streams the local Gemma reply
 Headless Gemma operator commands now exist too:
 
 - `cargo pylon-headless gemma`
-- `cargo pylon-headless gemma download remaining`
+- `cargo pylon-headless gemma download remaining --transport curl`
 - `cargo pylon-headless gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3`
 - `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
 
-Use the first three commands for normal onboarding. They prepare the curated Gemma GGUF cache, confirm a loaded runtime model is actually answering `/api/chat`, and persist a local first-run diagnostic report without requiring a sibling `psionic` checkout.
+Use the first, third, and fourth commands for normal onboarding. They inspect the optional curated cache, confirm a loaded runtime model is actually answering `/api/chat`, and persist a local first-run diagnostic report without requiring a sibling `psionic` checkout. Use `gemma download ...` only when you intentionally want the local GGUF cache too.
 
 Important:
 
 - `pylon gemma download ...` only downloads GGUF files into `~/.openagents/pylon/models/huggingface/`
+- `pylon gemma download ... --transport curl` is the explicit fallback when the default Rust HTTP transport is unhappy in an SSH/VPN-constrained shell
 - `pylon gemma diagnose ...` only benchmarks models that are already loaded in the configured local runtime
 - the latest first-run diagnostic report is retained at `~/.openagents/pylon/diagnostics/gemma/latest.json`
 - downloaded GGUFs alone do not make supply eligible
@@ -224,7 +231,7 @@ cargo pylon-headless provider run --seconds 5
 cargo pylon-headless job submit --model gemma4:e4b --bid-msats 21000 "write a haiku about bitcoin"
 cargo pylon-headless job watch --seconds 30
 cargo pylon-headless gemma
-cargo pylon-headless gemma download remaining
+cargo pylon-headless gemma download remaining --transport curl
 cargo pylon-headless gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
 ```
 

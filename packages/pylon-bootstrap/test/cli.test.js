@@ -60,8 +60,19 @@ test("parseArgs defaults to launching the TUI", () => {
 
   expect(options.help).toBe(false);
   expect(options.noLaunch).toBe(false);
-  expect(options.skipModelDownload).toBe(false);
+  expect(options.skipModelDownload).toBe(true);
   expect(options.skipDiagnostics).toBe(false);
+  expect(options.verbose).toBe(false);
+});
+
+test("parseArgs supports explicit cache download and verbose network flags", () => {
+  const options = parseArgs([
+    "--download-curated-cache",
+    "--debug-network",
+  ]);
+
+  expect(options.skipModelDownload).toBe(false);
+  expect(options.verbose).toBe(true);
 });
 
 test("main launches pylon-tui by default after bootstrap", async () => {

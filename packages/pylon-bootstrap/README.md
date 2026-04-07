@@ -10,9 +10,10 @@ available.
 
 ```bash
 npx @openagentsinc/pylon
-npx @openagentsinc/pylon --version 0.0.1-rc3
+npx @openagentsinc/pylon --version 0.0.1-rc4
 npx @openagentsinc/pylon --no-launch
-npx @openagentsinc/pylon --model gemma-4-e2b --diagnostic-repeats 2
+npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --diagnostic-repeats 2
+npx @openagentsinc/pylon --verbose
 ```
 
 The launcher:
@@ -31,8 +32,12 @@ The launcher:
 - prints status lines such as release resolution, runtime checks, and local
   model scanning while it runs
 - runs `pylon --help`, `init`, `status --json`, and `inventory --json`
-- runs `pylon gemma download <model>`
 - runs `pylon gemma diagnose <model> --json`
+- only runs `pylon gemma download <model>` when `--download-curated-cache` is
+  set, because the optional GGUF cache does not satisfy the sellable runtime by
+  itself
+- falls back to `curl` for release metadata and asset downloads when the Node
+  fetch path fails in constrained network contexts
 - opens `pylon-tui` by default after the smoke path unless `--no-launch` is set
 
 ## Publish

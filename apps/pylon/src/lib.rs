@@ -2,6 +2,8 @@ mod ledger;
 mod nip90_runtime;
 mod wallet_runtime;
 
+use std::collections::BTreeMap;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -285,6 +287,7 @@ pub enum GemmaCommand {
     },
     Download {
         selector: GemmaSelector,
+        transport: GemmaDownloadTransport,
         json: bool,
     },
     Diagnose {
@@ -304,6 +307,23 @@ pub enum GemmaSelector {
     Model(String),
     All,
     Remaining,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum GemmaDownloadTransport {
+    Auto,
+    Reqwest,
+    Curl,
+}
+
+impl GemmaDownloadTransport {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Reqwest => "reqwest",
+            Self::Curl => "curl",
+        }
+    }
 }
 
 impl GemmaSelector {
@@ -743,6 +763,7 @@ pub struct GemmaDownloadResult {
     pub model_id: String,
     pub label: String,
     pub status: String,
+    pub transport: String,
     pub file_bytes: Option<u64>,
     pub path: String,
 }
@@ -957,17 +978,184 @@ where
     download_gemma_model_from_base_url(config_path, model_id, "https://huggingface.co", emit).await
 }
 
+pub async fn download_gemma_model_with_transport<F>(
+    config_path: &Path,
+    model_id: &str,
+    transport: GemmaDownloadTransport,
+    emit: F,
+) -> Result<PathBuf>
+where
+    F: FnMut(GemmaDownloadEvent),
+{
+    download_gemma_model_from_base_url_with_transport(
+        config_path,
+        model_id,
+        "https://huggingface.co",
+        transport,
+        emit,
+    )
+    .await
+}
+
 async fn download_gemma_model_from_base_url<F>(
     config_path: &Path,
     model_id: &str,
     base_url: &str,
-    mut emit: F,
+    emit: F,
 ) -> Result<PathBuf>
+where
+    F: FnMut(GemmaDownloadEvent),
+{
+    download_gemma_model_from_base_url_with_transport(
+        config_path,
+        model_id,
+        base_url,
+        GemmaDownloadTransport::Auto,
+        emit,
+    )
+    .await
+}
+
+fn build_gemma_download_client(bind_ipv4_unspecified: bool) -> Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent("openagents-pylon/0.1.1")
+        .connect_timeout(Duration::from_secs(15));
+    if bind_ipv4_unspecified {
+        builder = builder
+            .local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+            .http1_only();
+    }
+    builder
+        .build()
+        .context("failed to build Gemma download client")
+}
+
+fn gemma_download_transport_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        source
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(|reqwest_error| reqwest_error.is_connect() || reqwest_error.is_timeout())
+    }) || error.to_string().contains("Can't assign requested address")
+        || error.to_string().contains("os error 49")
+}
+
+async fn download_gemma_via_reqwest<F>(
+    url: &str,
+    partial_path: &Path,
+    spec: GemmaDownloadSpec,
+    bind_ipv4_unspecified: bool,
+    emit: &mut F,
+) -> Result<u64>
 where
     F: FnMut(GemmaDownloadEvent),
 {
     use tokio::io::AsyncWriteExt;
 
+    let client = build_gemma_download_client(bind_ipv4_unspecified)?;
+    let mut response = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("failed to request {url}"))?
+        .error_for_status()
+        .with_context(|| format!("download endpoint rejected {url}"))?;
+    let total_bytes = response.content_length();
+    emit(GemmaDownloadEvent::Started { spec, total_bytes });
+
+    let mut file = tokio::fs::File::create(partial_path)
+        .await
+        .with_context(|| format!("failed to create {}", partial_path.display()))?;
+    let mut downloaded_bytes = 0_u64;
+    let mut last_progress_emit = Instant::now()
+        .checked_sub(Duration::from_secs(1))
+        .unwrap_or_else(Instant::now);
+
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .with_context(|| format!("failed reading {url}"))?
+    {
+        file.write_all(&chunk).await?;
+        downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
+        let should_emit = last_progress_emit.elapsed() >= Duration::from_millis(100)
+            || total_bytes == Some(downloaded_bytes);
+        if should_emit {
+            emit(GemmaDownloadEvent::Progress {
+                spec,
+                downloaded_bytes,
+                total_bytes,
+            });
+            last_progress_emit = Instant::now();
+        }
+    }
+
+    file.flush().await?;
+    Ok(downloaded_bytes)
+}
+
+async fn download_gemma_via_curl<F>(
+    url: &str,
+    partial_path: &Path,
+    spec: GemmaDownloadSpec,
+    emit: &mut F,
+) -> Result<u64>
+where
+    F: FnMut(GemmaDownloadEvent),
+{
+    emit(GemmaDownloadEvent::Started {
+        spec,
+        total_bytes: None,
+    });
+    let output = TokioCommand::new("curl")
+        .args([
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--connect-timeout",
+            "15",
+            "--retry",
+            "2",
+            "--retry-delay",
+            "1",
+            "--output",
+        ])
+        .arg(partial_path)
+        .arg(url)
+        .output()
+        .await
+        .context("failed to start curl for Gemma download")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if stderr.is_empty() {
+            format!("curl exited with {}", output.status)
+        } else {
+            stderr
+        };
+        bail!("curl fallback failed for {url}: {detail}");
+    }
+    let file_bytes = tokio::fs::metadata(partial_path)
+        .await
+        .with_context(|| format!("failed to stat {}", partial_path.display()))?
+        .len();
+    emit(GemmaDownloadEvent::Progress {
+        spec,
+        downloaded_bytes: file_bytes,
+        total_bytes: Some(file_bytes),
+    });
+    Ok(file_bytes)
+}
+
+async fn download_gemma_model_from_base_url_with_transport<F>(
+    config_path: &Path,
+    model_id: &str,
+    base_url: &str,
+    transport: GemmaDownloadTransport,
+    mut emit: F,
+) -> Result<PathBuf>
+where
+    F: FnMut(GemmaDownloadEvent),
+{
     let spec =
         gemma_download_spec(model_id).ok_or_else(|| anyhow!("unknown Gemma model `{model_id}`"))?;
     let final_path = gemma_model_path(config_path, spec);
@@ -996,44 +1184,102 @@ where
             .and_then(|value| value.to_str())
             .unwrap_or("download"),
     ));
-    let client = reqwest::Client::builder()
-        .user_agent("openagents-pylon/0.1.1")
-        .build()?;
+    let download_url = spec.download_url(base_url);
 
     let result = async {
-        let mut response = client
-            .get(spec.download_url(base_url))
-            .send()
-            .await?
-            .error_for_status()?;
-        let total_bytes = response.content_length();
-        emit(GemmaDownloadEvent::Started { spec, total_bytes });
-
-        let mut file = tokio::fs::File::create(partial_path.as_path())
-            .await
-            .with_context(|| format!("failed to create {}", partial_path.display()))?;
-        let mut downloaded_bytes = 0_u64;
-        let mut last_progress_emit = Instant::now()
-            .checked_sub(Duration::from_secs(1))
-            .unwrap_or_else(Instant::now);
-
-        while let Some(chunk) = response.chunk().await? {
-            file.write_all(&chunk).await?;
-            downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
-            let should_emit = last_progress_emit.elapsed() >= Duration::from_millis(100)
-                || total_bytes == Some(downloaded_bytes);
-            if should_emit {
-                emit(GemmaDownloadEvent::Progress {
+        let mut attempt_errors = Vec::new();
+        let downloaded_bytes = match transport {
+            GemmaDownloadTransport::Reqwest => {
+                match download_gemma_via_reqwest(
+                    download_url.as_str(),
+                    partial_path.as_path(),
                     spec,
-                    downloaded_bytes,
-                    total_bytes,
-                });
-                last_progress_emit = Instant::now();
+                    false,
+                    &mut emit,
+                )
+                .await
+                {
+                    Ok(file_bytes) => file_bytes,
+                    Err(error) if gemma_download_transport_error(&error) => {
+                        attempt_errors.push(format!("reqwest: {error}"));
+                        let _ = tokio::fs::remove_file(partial_path.as_path()).await;
+                        let file_bytes = download_gemma_via_reqwest(
+                            download_url.as_str(),
+                            partial_path.as_path(),
+                            spec,
+                            true,
+                            &mut emit,
+                        )
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "Gemma download transport reqwest failed for {download_url}; retry with `pylon gemma download {model_id} --transport curl` if this host is in an SSH/VPN-constrained network context"
+                            )
+                        })?;
+                        file_bytes
+                    }
+                    Err(error) => return Err(error),
+                }
             }
-        }
+            GemmaDownloadTransport::Curl => {
+                let file_bytes = download_gemma_via_curl(
+                    download_url.as_str(),
+                    partial_path.as_path(),
+                    spec,
+                    &mut emit,
+                )
+                .await?;
+                file_bytes
+            }
+            GemmaDownloadTransport::Auto => {
+                match download_gemma_via_reqwest(
+                    download_url.as_str(),
+                    partial_path.as_path(),
+                    spec,
+                    false,
+                    &mut emit,
+                )
+                .await
+                {
+                    Ok(file_bytes) => file_bytes,
+                    Err(error) if gemma_download_transport_error(&error) => {
+                        attempt_errors.push(format!("reqwest: {error}"));
+                        let _ = tokio::fs::remove_file(partial_path.as_path()).await;
+                        match download_gemma_via_reqwest(
+                            download_url.as_str(),
+                            partial_path.as_path(),
+                            spec,
+                            true,
+                            &mut emit,
+                        )
+                        .await
+                        {
+                            Ok(file_bytes) => file_bytes,
+                            Err(ipv4_error) => {
+                                attempt_errors.push(format!("reqwest-ipv4: {ipv4_error}"));
+                                let _ = tokio::fs::remove_file(partial_path.as_path()).await;
+                                let file_bytes = download_gemma_via_curl(
+                                    download_url.as_str(),
+                                    partial_path.as_path(),
+                                    spec,
+                                    &mut emit,
+                                )
+                                .await
+                                .with_context(|| {
+                                    format!(
+                                        "Gemma download failed across reqwest and curl transports for {download_url}: {}",
+                                        attempt_errors.join(" | ")
+                                    )
+                                })?;
+                                file_bytes
+                            }
+                        }
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        };
 
-        file.flush().await?;
-        drop(file);
         tokio::fs::rename(partial_path.as_path(), final_path.as_path())
             .await
             .with_context(|| {
@@ -1144,12 +1390,14 @@ fn resolve_gemma_benchmark_selector(
 async fn run_gemma_download_command(
     config_path: &Path,
     selector: &GemmaSelector,
+    transport: GemmaDownloadTransport,
 ) -> Result<GemmaDownloadReport> {
     let _ = ensure_local_setup(config_path)?;
     let mut results = Vec::new();
     for spec in resolve_gemma_selector(selector, config_path)? {
         let already_installed = gemma_model_path(config_path, spec).exists();
-        let final_path = download_gemma_model(config_path, spec.id, |_| {}).await?;
+        let final_path =
+            download_gemma_model_with_transport(config_path, spec.id, transport, |_| {}).await?;
         let file_bytes = tokio::fs::metadata(final_path.as_path())
             .await
             .ok()
@@ -1161,6 +1409,11 @@ async fn run_gemma_download_command(
                 String::from("already_installed")
             } else {
                 String::from("downloaded")
+            },
+            transport: if already_installed {
+                String::from("cache")
+            } else {
+                transport.label().to_string()
             },
             file_bytes,
             path: final_path.display().to_string(),
@@ -1181,8 +1434,8 @@ fn render_gemma_download_report(report: &GemmaDownloadReport) -> String {
             .map(render_byte_size)
             .unwrap_or_else(|| String::from("n/a"));
         lines.push(format!(
-            "{}  {}  size={}  {}",
-            result.model_id, result.status, size, result.path
+            "{}  {}  transport={}  size={}  {}",
+            result.model_id, result.status, result.transport, size, result.path
         ));
     }
     if report.results.is_empty() {
@@ -2361,9 +2614,14 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 }
                 Ok(Some(render_gemma_catalog_report(&report)))
             }
-            GemmaCommand::Download { selector, json } => {
+            GemmaCommand::Download {
+                selector,
+                transport,
+                json,
+            } => {
                 let report =
-                    run_gemma_download_command(cli.config_path.as_path(), &selector).await?;
+                    run_gemma_download_command(cli.config_path.as_path(), &selector, transport)
+                        .await?;
                 if json {
                     return Ok(Some(serde_json::to_string_pretty(&report)?));
                 }
@@ -2476,7 +2734,7 @@ Commands:\n\
   wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
   gemma [list] [--json]\n\
-  gemma download <model|all|remaining> [--json]\n\
+  gemma download <model|all|remaining> [--transport auto|reqwest|curl] [--json]\n\
   gemma diagnose <model|all> [--max-output-tokens <n>] [--repeats <n>] [--download-missing] [--json]\n\
   gemma benchmark <model|all> [--mode single|distributed-dense|distributed-sparse|matrix] [--backend auto|metal|cuda] [--peer-base-url <url>] [--split-layer <n>] [--prompt <text>] [--max-output-tokens <n>] [--repeats <n>] [--download-missing] [--json]\n\
   online\n\
@@ -2841,9 +3099,13 @@ fn parse_gemma_command(args: &[String], start_index: usize) -> Result<Command> {
             },
         }),
         Some("download") => {
-            let (selector, json) = parse_gemma_download_command(args, start_index + 1)?;
+            let (selector, transport, json) = parse_gemma_download_command(args, start_index + 1)?;
             Ok(Command::Gemma {
-                command: GemmaCommand::Download { selector, json },
+                command: GemmaCommand::Download {
+                    selector,
+                    transport,
+                    json,
+                },
             })
         }
         Some("diagnose") => {
@@ -2881,16 +3143,34 @@ fn parse_gemma_command(args: &[String], start_index: usize) -> Result<Command> {
 fn parse_gemma_download_command(
     args: &[String],
     mut index: usize,
-) -> Result<(GemmaSelector, bool)> {
+) -> Result<(GemmaSelector, GemmaDownloadTransport, bool)> {
     let selector = parse_gemma_selector(
         args.get(index)
             .ok_or_else(|| anyhow!("missing <model|all|remaining> for gemma download"))?
             .as_str(),
     )?;
     index += 1;
+    let mut transport = GemmaDownloadTransport::Auto;
     let mut json = false;
     while index < args.len() {
         match args[index].as_str() {
+            "--transport" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --transport"))?;
+                transport = match value.as_str() {
+                    "auto" => GemmaDownloadTransport::Auto,
+                    "reqwest" => GemmaDownloadTransport::Reqwest,
+                    "curl" => GemmaDownloadTransport::Curl,
+                    other => {
+                        bail!(
+                            "unsupported Gemma download transport `{other}`; expected one of: auto, reqwest, curl"
+                        );
+                    }
+                };
+                index += 1;
+            }
             "--json" => {
                 json = true;
                 index += 1;
@@ -2898,7 +3178,7 @@ fn parse_gemma_download_command(
             other => bail!("unexpected argument for gemma download: {other}"),
         }
     }
-    Ok((selector, json))
+    Ok((selector, transport, json))
 }
 
 fn parse_gemma_selector(value: &str) -> Result<GemmaSelector> {
@@ -5001,6 +5281,14 @@ async fn load_inventory_report(
     limit: Option<usize>,
 ) -> Result<InventoryReport> {
     let (config, status) = load_config_and_status(config_path).await?;
+    let snapshot_rows = take_limited_rows(
+        status
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.inventory_rows.clone())
+            .unwrap_or_default(),
+        limit,
+    );
     let rows = if config_path.exists() {
         if let Some(rows) =
             try_live_json::<Vec<ProviderInventoryRow>>(&config, inventory_endpoint(limit).as_str())
@@ -5008,18 +5296,14 @@ async fn load_inventory_report(
         {
             rows
         } else if let Some(store) = open_existing_store(&config)? {
-            store
+            let stored_rows = store
                 .load_inventory_rows(limit)
-                .map_err(anyhow::Error::msg)?
+                .map_err(anyhow::Error::msg)?;
+            merge_inventory_rows(snapshot_rows, stored_rows, limit)
+        } else if !snapshot_rows.is_empty() {
+            snapshot_rows
         } else {
-            take_limited_rows(
-                status
-                    .snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.inventory_rows.clone())
-                    .unwrap_or_default(),
-                limit,
-            )
+            Vec::new()
         }
     } else {
         Vec::new()
@@ -5028,6 +5312,37 @@ async fn load_inventory_report(
         context: report_context(&status),
         rows,
     })
+}
+
+fn merge_inventory_rows(
+    snapshot_rows: Vec<ProviderInventoryRow>,
+    stored_rows: Vec<ProviderInventoryRow>,
+    limit: Option<usize>,
+) -> Vec<ProviderInventoryRow> {
+    if stored_rows.is_empty() {
+        return take_limited_rows(snapshot_rows, limit);
+    }
+
+    let mut merged = BTreeMap::new();
+    for row in stored_rows {
+        merged.insert(row.target.product_id().to_string(), row);
+    }
+    let page_capacity = limit.unwrap_or(usize::MAX);
+    for row in snapshot_rows {
+        let product_id = row.target.product_id().to_string();
+        if let Some(existing) = merged.get(&product_id) {
+            if inventory_row_truth_rank(existing) <= inventory_row_truth_rank(&row) {
+                merged.insert(product_id, row);
+            }
+        } else if merged.len() < page_capacity {
+            merged.insert(product_id, row);
+        }
+    }
+    take_limited_rows(merged.into_values().collect(), limit)
+}
+
+fn inventory_row_truth_rank(row: &ProviderInventoryRow) -> (bool, bool, bool) {
+    (row.eligible, row.backend_ready, row.enabled)
 }
 
 async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
@@ -6835,11 +7150,12 @@ mod tests {
         DEFAULT_GEMMA_DIAGNOSTIC_ID, GemmaBenchExecutionMode, GemmaBenchmarkMode,
         GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand, GemmaDiagnosticReceipt,
         GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
-        GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend,
-        LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord,
-        PylonWalletPaymentRecord, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
-        add_configured_relay, apply_config_set, apply_control_command,
-        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
+        GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
+        LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig,
+        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletInvoiceReport,
+        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
+        apply_control_command, build_snapshot_from_availability, default_config,
+        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
         ensure_identity, gemma_diagnostic_latest_report_path, gemma_download_spec,
         gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
         load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
@@ -7831,10 +8147,29 @@ mod tests {
                 == Command::Gemma {
                     command: GemmaCommand::Download {
                         selector: GemmaSelector::Remaining,
+                        transport: GemmaDownloadTransport::Auto,
                         json: true,
                     },
                 },
             "gemma download should parse the remaining selector",
+        )?;
+        ensure(
+            parse_args(vec![
+                "gemma".to_string(),
+                "download".to_string(),
+                "gemma-4-e4b".to_string(),
+                "--transport".to_string(),
+                "curl".to_string(),
+            ])?
+            .command
+                == Command::Gemma {
+                    command: GemmaCommand::Download {
+                        selector: GemmaSelector::Model("gemma-4-e4b".to_string()),
+                        transport: GemmaDownloadTransport::Curl,
+                        json: false,
+                    },
+                },
+            "gemma download should parse explicit transport overrides",
         )?;
         ensure(
             parse_args(vec![
@@ -9830,6 +10165,7 @@ mod tests {
     ) -> Result<PylonConfig, Box<dyn std::error::Error>> {
         let mut config = load_or_create_config(config_path)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.inventory_controls.sandbox_python_exec_enabled = true;
         config.declared_sandbox_profiles = vec![ProviderSandboxProfileSpec {
             profile_id: "python-batch".to_string(),
@@ -10269,6 +10605,63 @@ mod tests {
                 )
             }),
             "download should emit a finished event",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn gemma_download_supports_explicit_curl_transport()
+    -> Result<(), Box<dyn std::error::Error>> {
+        if std::process::Command::new("curl")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            return Ok(());
+        }
+
+        let spec = gemma_download_spec("gemma-4-e2b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-4-e2b spec"))?;
+        let payload = "y".repeat(8_192);
+        let expected_path = format!(
+            "/{}/resolve/main/{}?download=true",
+            spec.repo_id, spec.filename
+        );
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            if method == "GET" && path == expected_path {
+                return (200, "application/octet-stream", payload.clone());
+            }
+            (500, "text/plain", "unexpected request".to_string())
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut events = Vec::new();
+        let final_path = download_gemma_model_from_base_url_with_transport(
+            config_path.as_path(),
+            spec.id,
+            base_url.as_str(),
+            GemmaDownloadTransport::Curl,
+            |event| events.push(event),
+        )
+        .await?;
+
+        ensure(
+            std::fs::metadata(final_path.as_path())?.len() == 8_192,
+            "curl transport should preserve the full GGUF payload",
+        )?;
+        ensure(
+            events.iter().any(|event| {
+                matches!(
+                    event,
+                    GemmaDownloadEvent::Finished {
+                        spec,
+                        file_bytes,
+                        ..
+                    } if spec.id == "gemma-4-e2b" && *file_bytes == 8_192
+                )
+            }),
+            "curl transport should still emit a finished event with the final byte size",
         )
     }
 
@@ -10871,6 +11264,77 @@ mod tests {
         ensure(
             sandbox.profile_ids == vec!["python-batch".to_string()],
             "sandbox backend should expose declared profile ids",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn inventory_report_prefers_fresh_detected_snapshot_over_stale_store_rows()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let base_url =
+            start_mock_http_server(
+                |method, path, _body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4:e4b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.local_gemma_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+
+        let stale_snapshot = build_snapshot_from_availability(
+            &config,
+            Some(&identity),
+            ProviderDesiredMode::Online,
+            None,
+            ProviderAvailability::default(),
+            None,
+        );
+        let admin_config = provider_admin_config(&config)?;
+        let mut store = ProviderPersistenceStore::open(&admin_config)?;
+        store.set_listen_addr(config.admin_listen_addr.as_str())?;
+        store.set_desired_mode(ProviderDesiredMode::Online)?;
+        store.persist_snapshot(&stale_snapshot)?;
+
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        ensure(
+            status.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot.inventory_rows.iter().any(|row| {
+                    row.target.product_id() == "psionic.local.inference.gemma.single_node"
+                        && row.eligible
+                })
+            }),
+            "fresh status should detect ready local Gemma supply even when the persisted store is stale",
+        )?;
+
+        let inventory_report = load_inventory_report(config_path.as_path(), Some(8)).await?;
+        ensure(
+            inventory_report.rows.iter().any(|row| {
+                row.target.product_id() == "psionic.local.inference.gemma.single_node"
+                    && row.eligible
+            }),
+            "inventory should use the fresh detected snapshot instead of stale persisted rows when the local admin service is down",
+        )?;
+        ensure(
+            !inventory_report.rows.iter().any(|row| {
+                row.target.product_id() == "psionic.local.inference.gemma.single_node"
+                    && !row.eligible
+            }),
+            "inventory should not regress to stale ineligible rows after the runtime becomes ready",
         )
     }
 

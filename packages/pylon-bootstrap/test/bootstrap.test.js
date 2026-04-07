@@ -11,6 +11,7 @@ import {
   launchInstalledPylonTui,
   parseSha256File,
   resolvePlatformTarget,
+  runProcess,
   selectLatestPylonRelease,
   selectReleaseAssets,
 } from "../src/index.js";
@@ -270,7 +271,151 @@ describe("@openagentsinc/pylon bootstrap", () => {
       expect(first.cached).toBe(false);
       expect(second.cached).toBe(true);
       expect(server.counters().archiveHits - initialCounters.archiveHits).toBe(1);
-      expect(server.counters().taggedReleaseHits - initialCounters.taggedReleaseHits).toBe(2);
+      expect(server.counters().taggedReleaseHits - initialCounters.taggedReleaseHits).toBe(1);
+    });
+
+    test("falls back to curl transport when fetch fails during release resolution", async () => {
+      const target = resolvePlatformTarget("darwin", "arm64");
+      const { archiveName } = buildAssetNames("9.9.9", target);
+      const tempDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-curl-fallback-"),
+      );
+      const archiveRoot = path.join(tempDir, "stage");
+      const extractedDir = path.join(archiveRoot, "pylon-v9.9.9-darwin-arm64");
+      await fs.mkdir(extractedDir, { recursive: true });
+      await fs.writeFile(path.join(extractedDir, "pylon"), "#!/bin/sh\nexit 0\n");
+      await fs.writeFile(path.join(extractedDir, "pylon-tui"), "#!/bin/sh\nexit 0\n");
+      await fs.chmod(path.join(extractedDir, "pylon"), 0o755);
+      await fs.chmod(path.join(extractedDir, "pylon-tui"), 0o755);
+
+      const archivePath = path.join(tempDir, archiveName);
+      await Bun.spawn(["tar", "-czf", archivePath, "-C", archiveRoot, "pylon-v9.9.9-darwin-arm64"], {
+        stdout: "ignore",
+        stderr: "inherit",
+      }).exited;
+      const archivePayload = await fs.readFile(archivePath);
+      const checksumPayload = `${createHash("sha256").update(archivePayload).digest("hex")}  ${archiveName}\n`;
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-install-curl-"),
+      );
+
+      const install = await ensureReleaseInstall(
+        {
+          apiBase: "https://api.github.invalid",
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "darwin",
+          arch: "arm64",
+        },
+        {
+          fetchImpl: async () => {
+            throw new TypeError("fetch failed", {
+              cause: Object.assign(new Error("connect ENETUNREACH api.github.invalid:443"), {
+                code: "ENETUNREACH",
+                hostname: "api.github.invalid",
+                port: 443,
+              }),
+            });
+          },
+          runProcessImpl: async (command, args, options) => {
+            if (command !== "curl") {
+              return runProcess(command, args, options);
+            }
+            const url = args.at(-1);
+            if (url.endsWith("/releases?per_page=100")) {
+              return {
+                stdout: JSON.stringify([
+                  {
+                    tag_name: "pylon-v9.9.9",
+                    draft: false,
+                    assets: [
+                      {
+                        name: archiveName,
+                        browser_download_url: "https://downloads.example.test/archive",
+                      },
+                      {
+                        name: `${archiveName}.sha256`,
+                        browser_download_url: "https://downloads.example.test/archive.sha256",
+                      },
+                    ],
+                  },
+                ]),
+                stderr: "",
+              };
+            }
+            if (url === "https://downloads.example.test/archive.sha256") {
+              return { stdout: checksumPayload, stderr: "" };
+            }
+            if (url === "https://downloads.example.test/archive") {
+              const outputIndex = args.indexOf("--output");
+              await fs.writeFile(args[outputIndex + 1], archivePayload);
+              return { stdout: "", stderr: "" };
+            }
+            throw new Error(`Unexpected curl invocation: ${url}`);
+          },
+        },
+      );
+
+      expect(install.version).toBe("9.9.9");
+      expect(install.cached).toBe(false);
+      expect(await fs.stat(install.pylonPath)).toBeTruthy();
+      expect(await fs.stat(install.pylonTuiPath)).toBeTruthy();
+    });
+
+    test("reports actionable release lookup diagnostics when fetch and curl both fail", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-install-error-"),
+      );
+
+      await expect(
+        ensureReleaseInstall(
+          {
+            apiBase: "https://api.github.invalid",
+            repo: "OpenAgentsInc/openagents",
+            installRoot,
+            platform: "darwin",
+            arch: "arm64",
+          },
+          {
+            fetchImpl: async () => {
+              throw new TypeError("fetch failed", {
+                cause: Object.assign(new Error("getaddrinfo EAI_AGAIN api.github.invalid"), {
+                  code: "EAI_AGAIN",
+                  hostname: "api.github.invalid",
+                }),
+              });
+            },
+            runProcessImpl: async () => {
+              throw new Error("Failed to start curl: spawn curl ENOENT");
+            },
+          },
+        ),
+      ).rejects.toThrow(/classification=dns/);
+
+      await expect(
+        ensureReleaseInstall(
+          {
+            apiBase: "https://api.github.invalid",
+            repo: "OpenAgentsInc/openagents",
+            installRoot,
+            platform: "darwin",
+            arch: "arm64",
+          },
+          {
+            fetchImpl: async () => {
+              throw new TypeError("fetch failed", {
+                cause: Object.assign(new Error("getaddrinfo EAI_AGAIN api.github.invalid"), {
+                  code: "EAI_AGAIN",
+                  hostname: "api.github.invalid",
+                }),
+              });
+            },
+            runProcessImpl: async () => {
+              throw new Error("Failed to start curl: spawn curl ENOENT");
+            },
+          },
+        ),
+      ).rejects.toThrow(/Retry with verbose diagnostics/);
     });
 
     test("falls back to a deterministic source build when the release has no asset for the local target", async () => {
@@ -561,6 +706,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
         pylonTuiPath: "/tmp/pylon-tui",
         model: "gemma-4-e4b",
         configPath: "/tmp/pylon-config.json",
+        skipModelDownload: false,
         diagnosticRepeats: 2,
         diagnosticMaxOutputTokens: 24,
       },
@@ -710,6 +856,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
         pylonPath: "/tmp/pylon",
         pylonTuiPath: "/tmp/pylon-tui",
         model: "gemma-4-e4b",
+        skipModelDownload: true,
       },
       {
         runProcessImpl: async (_command, args) => {
@@ -741,14 +888,6 @@ describe("@openagentsinc/pylon bootstrap", () => {
             return {
               stdout: JSON.stringify({
                 rows: [{ id: "row-1" }],
-              }),
-              stderr: "",
-            };
-          }
-          if (joined === "gemma download gemma-4-e4b --json") {
-            return {
-              stdout: JSON.stringify({
-                results: [{ model_id: "gemma-4-e4b", status: "installed" }],
               }),
               stderr: "",
             };
