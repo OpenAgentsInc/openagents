@@ -31,6 +31,9 @@ The launcher:
   `pylon-tui` locally when no matching release asset exists for the machine
 - prompts before installing the Rust toolchain via `rustup` if a source build
   is needed and `cargo` / `rustc` are missing
+- emits best-effort anonymous installer telemetry to `openagents.com` so the
+  public stats page can show install starts, completions, source-build fallbacks,
+  Rust prompts, and smoke-test outcomes
 - downloads the archive and published SHA-256 checksum
 - verifies the checksum before extracting
 - caches the unpacked binaries under `~/.openagents/pylon/bootstrap/`
@@ -52,6 +55,10 @@ The launcher:
 - does not try to install or register a local runtime automatically; the
   bootstrap stays honest about the separate Ollama-compatible runtime
   prerequisite instead of mutating the host behind the user's back
+
+Set `OPENAGENTS_DISABLE_TELEMETRY=1` to disable installer telemetry, or
+`OPENAGENTS_TELEMETRY_URL=http://127.0.0.1:8000/api/telemetry/events` to point
+the launcher at a non-production telemetry endpoint.
 
 ## Publish
 

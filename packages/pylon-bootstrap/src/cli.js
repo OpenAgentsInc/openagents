@@ -8,8 +8,15 @@ import {
   ensureReleaseInstall,
   launchInstalledPylonTui,
   resolveBootstrapOutcome,
+  resolvePlatformTarget,
   renderBootstrapSummary,
 } from "./index.js";
+import {
+  createTelemetryClient,
+  detectPackageInvoker,
+  installSourceForTelemetry,
+  telemetryFailureContext,
+} from "./telemetry.js";
 
 function parseIntegerFlag(value, label) {
   const parsed = Number.parseInt(value, 10);
@@ -221,6 +228,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
     ensureReleaseInstallImpl = ensureReleaseInstall,
     bootstrapInstalledPylonImpl = bootstrapInstalledPylon,
     launchInstalledPylonTuiImpl = launchInstalledPylonTui,
+    createTelemetryClientImpl = createTelemetryClient,
   } = dependencies;
   const options = parseArgs(argv);
   if (options.help) {
@@ -229,51 +237,109 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   }
 
   const reporter = options.json ? null : createReporter();
+  const startedAt = Date.now();
+  const target = (() => {
+    try {
+      return resolvePlatformTarget(options.platform, options.arch);
+    } catch {
+      return {
+        os: process.platform,
+        arch: process.arch,
+      };
+    }
+  })();
+  const telemetryClient =
+    dependencies.telemetryClient ??
+    createTelemetryClientImpl({
+      fetchImpl: dependencies.fetchImpl ?? globalThis.fetch,
+    });
+  const sharedTelemetry = {
+    requested_version: options.version ?? "latest",
+    os: target.os,
+    arch: target.arch,
+    platform_key: `${target.os}-${target.arch}`,
+    npm_or_bun_invoker: detectPackageInvoker(),
+  };
 
-  const install = await ensureReleaseInstallImpl(options, {
-    ...dependencies,
-    onStatus: reporter?.status,
-  });
-  const summary = await bootstrapInstalledPylonImpl(
-    {
-      ...options,
-      ...install,
-      version: install.version,
-    },
-    {
+  telemetryClient?.emit?.("installer_started", sharedTelemetry);
+
+  let install = null;
+
+  try {
+    install = await ensureReleaseInstallImpl(options, {
       ...dependencies,
       onStatus: reporter?.status,
-    },
-  );
+      telemetryClient,
+    });
+    const summary = await bootstrapInstalledPylonImpl(
+      {
+        ...options,
+        ...install,
+        version: install.version,
+      },
+      {
+        ...dependencies,
+        onStatus: reporter?.status,
+        telemetryClient,
+      },
+    );
 
-  if (options.json) {
-    console.log(JSON.stringify(summary, null, 2));
-  } else {
-    const outcome = resolveBootstrapOutcome(summary);
-    if (outcome.level === "success") {
-      reporter?.success(`Pylon ${outcome.verdict}`, outcome.detail);
+    telemetryClient?.emit?.("installer_finished", {
+      ...sharedTelemetry,
+      release_tag: summary.tagName,
+      release_commit: install.sourceCommit ?? null,
+      duration_ms: Date.now() - startedAt,
+      result: "success",
+      install_source: installSourceForTelemetry(
+        summary.installMethod ?? install.installMethod,
+        Boolean(summary.cached),
+      ),
+    });
+    await telemetryClient?.flush?.();
+
+    if (options.json) {
+      console.log(JSON.stringify(summary, null, 2));
     } else {
-      reporter?.warning(`Pylon ${outcome.verdict}`, outcome.detail);
+      const outcome = resolveBootstrapOutcome(summary);
+      if (outcome.level === "success") {
+        reporter?.success(`Pylon ${outcome.verdict}`, outcome.detail);
+      } else {
+        reporter?.warning(`Pylon ${outcome.verdict}`, outcome.detail);
+      }
+      console.log(renderBootstrapSummary(summary));
+      if (!options.noLaunch) {
+        await launchInstalledPylonTuiImpl(
+          {
+            ...options,
+            ...install,
+            version: install.version,
+          },
+          {
+            ...dependencies,
+            onStatus: reporter?.status,
+          },
+        );
+      } else {
+        reporter?.warning(
+          "Skipped Pylon terminal UI launch",
+          "pass no flag to open pylon-tui by default",
+        );
+      }
     }
-    console.log(renderBootstrapSummary(summary));
-    if (!options.noLaunch) {
-      await launchInstalledPylonTuiImpl(
-        {
-          ...options,
-          ...install,
-          version: install.version,
-        },
-        {
-          ...dependencies,
-          onStatus: reporter?.status,
-        },
-      );
-    } else {
-      reporter?.warning(
-        "Skipped Pylon terminal UI launch",
-        "pass no flag to open pylon-tui by default",
-      );
-    }
+    return summary;
+  } catch (error) {
+    telemetryClient?.emit?.("installer_finished", {
+      ...sharedTelemetry,
+      release_tag: install?.tagName ?? null,
+      release_commit: install?.sourceCommit ?? null,
+      duration_ms: Date.now() - startedAt,
+      result: "failed",
+      install_source: install
+        ? installSourceForTelemetry(install.installMethod, Boolean(install.cached))
+        : null,
+      ...telemetryFailureContext(error, "launcher"),
+    });
+    await telemetryClient?.flush?.();
+    throw error;
   }
-  return summary;
 }

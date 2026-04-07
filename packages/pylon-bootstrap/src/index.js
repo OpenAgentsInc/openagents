@@ -5,6 +5,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
+import {
+  installSourceForTelemetry,
+  telemetryFailureContext,
+} from "./telemetry.js";
+
+export { createTelemetryClient } from "./telemetry.js";
 
 export const DEFAULT_RELEASE_REPO = "OpenAgentsInc/openagents";
 export const DEFAULT_RELEASE_API_BASE = "https://api.github.com";
@@ -28,6 +34,12 @@ function emitStatus(onStatus, message, detail = null) {
 function emitVerboseStatus(onStatus, verbose, message, detail = null) {
   if (verbose) {
     emitStatus(onStatus, message, detail);
+  }
+}
+
+function emitTelemetry(telemetryClient, eventName, properties = {}) {
+  if (typeof telemetryClient?.emit === "function") {
+    void telemetryClient.emit(eventName, properties);
   }
 }
 
@@ -713,6 +725,7 @@ async function ensureRustToolchain({
   fetchImpl,
   runProcessImpl,
   onStatus,
+  telemetryClient,
   promptImpl = promptForApproval,
   commandExistsImpl = commandExists,
   env = process.env,
@@ -725,44 +738,70 @@ async function ensureRustToolchain({
     return toolchainEnv;
   }
 
+  emitTelemetry(telemetryClient, "installer_rust_missing", {
+    os: target.os,
+    arch: target.arch,
+  });
+
   emitStatus(
     onStatus,
     "Rust toolchain required for source build",
     `${target.os}-${target.arch}`,
   );
 
+  emitTelemetry(telemetryClient, "installer_rust_install_prompt_shown", {
+    os: target.os,
+    arch: target.arch,
+  });
   const approved = await promptImpl(
     `Rust is required to build Pylon from source for ${target.os}-${target.arch}. Install the official Rust toolchain now via rustup?`,
   );
   if (!approved) {
+    emitTelemetry(telemetryClient, "installer_rust_install_declined", {
+      os: target.os,
+      arch: target.arch,
+    });
     throw new Error(
       `Rust is required to build Pylon from source.\nInstall it manually and rerun:\n${rustInstallCommand()}`,
     );
   }
 
-  emitStatus(onStatus, "Installing Rust toolchain", "official rustup installer");
-  const scriptPayload = await fetchText(fetchImpl, rustupInitUrl, {
-    headers: {
-      accept: "text/plain",
-      "user-agent": "@openagentsinc/pylon bootstrap",
-    },
-    runProcessImpl,
-    onStatus,
-    stage: "Rust toolchain installer download",
+  emitTelemetry(telemetryClient, "installer_rust_install_approved", {
+    os: target.os,
+    arch: target.arch,
   });
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pylon-rustup-"));
-  const scriptPath = path.join(tempDir, "rustup-init.sh");
 
+  emitStatus(onStatus, "Installing Rust toolchain", "official rustup installer");
   try {
+    const scriptPayload = await fetchText(fetchImpl, rustupInitUrl, {
+      headers: {
+        accept: "text/plain",
+        "user-agent": "@openagentsinc/pylon bootstrap",
+      },
+      runProcessImpl,
+      onStatus,
+      stage: "Rust toolchain installer download",
+    });
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pylon-rustup-"));
+    const scriptPath = path.join(tempDir, "rustup-init.sh");
     await fs.writeFile(scriptPath, scriptPayload);
     await fs.chmod(scriptPath, 0o755);
-    await runProcessImpl("sh", [scriptPath, "-y"], {
-      cwd: tempDir,
-      env: toolchainEnv,
-      stdio: "inherit",
+    try {
+      await runProcessImpl("sh", [scriptPath, "-y"], {
+        cwd: tempDir,
+        env: toolchainEnv,
+        stdio: "inherit",
+      });
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  } catch (error) {
+    emitTelemetry(telemetryClient, "installer_rust_install_failed", {
+      os: target.os,
+      arch: target.arch,
+      ...telemetryFailureContext(error, "rust_install"),
     });
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+    throw error;
   }
 
   toolchainEnv = withPrependedPath(env, path.join(os.homedir(), ".cargo", "bin"));
@@ -779,6 +818,10 @@ async function ensureRustToolchain({
     "Rust toolchain installed",
     path.join(os.homedir(), ".cargo", "bin"),
   );
+  emitTelemetry(telemetryClient, "installer_rust_install_completed", {
+    os: target.os,
+    arch: target.arch,
+  });
   return toolchainEnv;
 }
 
@@ -793,6 +836,7 @@ async function installSourceBuild(
     fetchImpl,
     runProcessImpl,
     onStatus,
+    telemetryClient,
     promptImpl = promptForApproval,
     commandExistsImpl = commandExists,
   },
@@ -812,6 +856,13 @@ async function installSourceBuild(
     "Prebuilt asset missing; falling back to source build",
     `${selected.tagName} for ${target.os}-${target.arch}`,
   );
+  emitTelemetry(telemetryClient, "installer_prebuilt_asset_missing", {
+    release_tag: selected.tagName,
+    release_commit: selected.targetCommitish ?? null,
+    os: target.os,
+    arch: target.arch,
+    platform_key: `${target.os}-${target.arch}`,
+  });
 
   if (!(await commandExistsImpl("git", process.env))) {
     throw new Error(
@@ -824,6 +875,7 @@ async function installSourceBuild(
     fetchImpl,
     runProcessImpl,
     onStatus,
+    telemetryClient,
     promptImpl,
     commandExistsImpl,
   });
@@ -897,6 +949,13 @@ async function installSourceBuild(
       "Building Pylon from source",
       `${selected.tagName} (${sourceCommit.slice(0, 12)})`,
     );
+    emitTelemetry(telemetryClient, "installer_source_build_started", {
+      release_tag: selected.tagName,
+      release_commit: sourceCommit,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
+    });
     await runProcessImpl(buildCommand[0], buildCommand.slice(1), {
       cwd: repoDir,
       env: buildEnv,
@@ -938,6 +997,17 @@ async function installSourceBuild(
       "Installed source-built binaries",
       `${selected.tagName} for ${target.os}-${target.arch}`,
     );
+    emitTelemetry(telemetryClient, "installer_source_build_completed", {
+      release_tag: selected.tagName,
+      release_commit: sourceCommit,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
+      install_source: installSourceForTelemetry(
+        SOURCE_BUILD_INSTALL_METHOD,
+        false,
+      ),
+    });
 
     return {
       ...selected,
@@ -950,6 +1020,14 @@ async function installSourceBuild(
       sourceCommit,
     };
   } catch (error) {
+    emitTelemetry(telemetryClient, "installer_source_build_failed", {
+      release_tag: selected.tagName,
+      release_commit: selected.targetCommitish ?? null,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
+      ...telemetryFailureContext(error, "source_build"),
+    });
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       `${message}\nManual source-build fallback:\n${manualBuildInstructions}`,
@@ -1013,6 +1091,9 @@ async function findLatestCachedInstall(installRoot, target) {
         pylonTuiPath,
         expectedSha256: manifest.sha256 ?? null,
         cached: true,
+        installMethod: manifest.installMethod ?? RELEASE_ASSET_INSTALL_METHOD,
+        sourceCloneUrl: manifest.sourceCloneUrl ?? null,
+        sourceCommit: manifest.sourceCommit ?? null,
         mtimeMs: manifestStat.mtimeMs,
       });
     } catch {
@@ -1124,6 +1205,7 @@ export async function ensureReleaseInstall(
     fetchImpl = globalThis.fetch,
     runProcessImpl = runProcess,
     onStatus = null,
+    telemetryClient = null,
     promptImpl = promptForApproval,
     commandExistsImpl = commandExists,
   } = {},
@@ -1141,25 +1223,38 @@ export async function ensureReleaseInstall(
   const installRoot = options.installRoot ?? defaultInstallRoot();
   if (options.version) {
     const requestedPaths = buildInstallPaths(installRoot, options.version, target);
+    const requestedManifest = await readInstallManifest(requestedPaths.manifestPath);
     const requestedCached =
       (await pathExists(requestedPaths.pylonPath)) &&
       (await pathExists(requestedPaths.pylonTuiPath));
     if (requestedCached) {
+      const installMethod =
+        requestedManifest?.installMethod ?? RELEASE_ASSET_INSTALL_METHOD;
       emitStatus(
         onStatus,
-        "Using cached standalone binaries",
+        installMethod === SOURCE_BUILD_INSTALL_METHOD
+          ? "Using cached source-built binaries"
+          : "Using cached standalone binaries",
         `pylon-v${normalizeVersion(options.version)} for ${target.os}-${target.arch}`,
       );
+      emitTelemetry(telemetryClient, "installer_cached_install_reused", {
+        release_tag: `pylon-v${normalizeVersion(options.version)}`,
+        release_commit: requestedManifest?.sourceCommit ?? null,
+        os: target.os,
+        arch: target.arch,
+        platform_key: `${target.os}-${target.arch}`,
+        install_source: installSourceForTelemetry(installMethod, true),
+      });
       return {
         version: normalizeVersion(options.version),
         tagName: `pylon-v${normalizeVersion(options.version)}`,
         target,
         ...requestedPaths,
-        expectedSha256: await fs
-          .readFile(requestedPaths.manifestPath, "utf8")
-          .then((payload) => JSON.parse(payload).sha256)
-          .catch(() => null),
+        expectedSha256: requestedManifest?.sha256 ?? null,
         cached: true,
+        installMethod,
+        sourceCloneUrl: requestedManifest?.sourceCloneUrl ?? null,
+        sourceCommit: requestedManifest?.sourceCommit ?? null,
       };
     }
   }
@@ -1175,6 +1270,13 @@ export async function ensureReleaseInstall(
       repo: options.repo ?? DEFAULT_RELEASE_REPO,
       version: options.version ?? null,
     });
+    emitTelemetry(telemetryClient, "installer_release_resolved", {
+      release_tag: release?.tag_name ?? null,
+      release_commit: release?.target_commitish ?? null,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
+    });
   } catch (error) {
     const cached = !options.version
       ? await findLatestCachedInstall(installRoot, target)
@@ -1182,9 +1284,19 @@ export async function ensureReleaseInstall(
     if (cached) {
       emitStatus(
         onStatus,
-        "Using cached standalone binaries",
+        cached.installMethod === SOURCE_BUILD_INSTALL_METHOD
+          ? "Using cached source-built binaries"
+          : "Using cached standalone binaries",
         `release lookup failed; falling back to ${cached.tagName}`,
       );
+      emitTelemetry(telemetryClient, "installer_cached_install_reused", {
+        release_tag: cached.tagName,
+        release_commit: cached.sourceCommit ?? null,
+        os: target.os,
+        arch: target.arch,
+        platform_key: `${target.os}-${target.arch}`,
+        install_source: installSourceForTelemetry(cached.installMethod, true),
+      });
       return cached;
     }
 
@@ -1205,6 +1317,14 @@ export async function ensureReleaseInstall(
   let missingAssetsError = null;
   try {
     selected = selectReleaseAssets(release, target);
+    emitTelemetry(telemetryClient, "installer_prebuilt_asset_found", {
+      release_tag: selected.tagName,
+      release_commit: release?.target_commitish ?? null,
+      asset_name: selected.archiveAsset.name,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
+    });
   } catch (error) {
     if (!(error instanceof MissingReleaseAssetsError)) {
       throw error;
@@ -1235,6 +1355,14 @@ export async function ensureReleaseInstall(
         : "Using cached standalone binaries",
       `${selected.tagName} for ${target.os}-${target.arch}`,
     );
+    emitTelemetry(telemetryClient, "installer_cached_install_reused", {
+      release_tag: selected.tagName,
+      release_commit: manifest?.sourceCommit ?? release?.target_commitish ?? null,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
+      install_source: installSourceForTelemetry(installMethod, true),
+    });
     return {
       ...selected,
       ...paths,
@@ -1259,6 +1387,7 @@ export async function ensureReleaseInstall(
         fetchImpl,
         runProcessImpl,
         onStatus,
+        telemetryClient,
         promptImpl,
         commandExistsImpl,
       },
@@ -1293,20 +1422,62 @@ export async function ensureReleaseInstall(
       "Downloading standalone binaries",
       selected.archiveAsset.name,
     );
-    await downloadFile(fetchImpl, selected.archiveAsset.url, paths.archivePath, {
-      runProcessImpl,
-      onStatus,
-      verbose: Boolean(options.verbose),
-      stage: "Release archive download",
+    emitTelemetry(telemetryClient, "installer_prebuilt_download_started", {
+      release_tag: selected.tagName,
+      asset_name: selected.archiveAsset.name,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
     });
+    try {
+      await downloadFile(fetchImpl, selected.archiveAsset.url, paths.archivePath, {
+        runProcessImpl,
+        onStatus,
+        verbose: Boolean(options.verbose),
+        stage: "Release archive download",
+      });
+      emitTelemetry(telemetryClient, "installer_prebuilt_download_completed", {
+        release_tag: selected.tagName,
+        asset_name: selected.archiveAsset.name,
+        os: target.os,
+        arch: target.arch,
+        platform_key: `${target.os}-${target.arch}`,
+      });
+    } catch (error) {
+      emitTelemetry(telemetryClient, "installer_prebuilt_download_failed", {
+        release_tag: selected.tagName,
+        asset_name: selected.archiveAsset.name,
+        os: target.os,
+        arch: target.arch,
+        platform_key: `${target.os}-${target.arch}`,
+        ...telemetryFailureContext(error, "prebuilt_download"),
+      });
+      throw error;
+    }
   }
 
   const actualSha256 = await sha256File(paths.archivePath);
   if (actualSha256 !== expectedSha256) {
+    emitTelemetry(telemetryClient, "installer_checksum_failed", {
+      release_tag: selected.tagName,
+      asset_name: selected.archiveAsset.name,
+      os: target.os,
+      arch: target.arch,
+      platform_key: `${target.os}-${target.arch}`,
+      error_stage: "checksum_verify",
+      error_code: "sha256_mismatch",
+    });
     throw new Error(
       `SHA-256 verification failed for ${selected.archiveAsset.name}: expected ${expectedSha256}, got ${actualSha256}.`,
     );
   }
+  emitTelemetry(telemetryClient, "installer_checksum_verified", {
+    release_tag: selected.tagName,
+    asset_name: selected.archiveAsset.name,
+    os: target.os,
+    arch: target.arch,
+    platform_key: `${target.os}-${target.arch}`,
+  });
 
   emitStatus(
     onStatus,
@@ -1348,6 +1519,9 @@ export async function ensureReleaseInstall(
     target,
     expectedSha256,
     cached: false,
+    installMethod: RELEASE_ASSET_INSTALL_METHOD,
+    sourceCloneUrl: null,
+    sourceCommit: null,
   };
 }
 
@@ -1356,6 +1530,7 @@ export async function bootstrapInstalledPylon(
   {
     runProcessImpl = runProcess,
     onStatus = null,
+    telemetryClient = null,
   } = {},
 ) {
   const pylonPath = path.resolve(options.pylonPath);
@@ -1365,108 +1540,157 @@ export async function bootstrapInstalledPylon(
     options.diagnosticRepeats ?? DEFAULT_DIAGNOSTIC_REPEATS;
   const diagnosticMaxOutputTokens =
     options.diagnosticMaxOutputTokens ?? DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS;
+  emitTelemetry(telemetryClient, "installer_smoke_test_started", {
+    release_tag: options.tagName ?? `pylon-v${options.version}`,
+    release_commit: options.sourceCommit ?? null,
+    os: options.target?.os ?? null,
+    arch: options.target?.arch ?? null,
+    platform_key:
+      options.target?.os && options.target?.arch
+        ? `${options.target.os}-${options.target.arch}`
+        : null,
+    install_source: installSourceForTelemetry(
+      options.installMethod,
+      Boolean(options.cached),
+    ),
+  });
 
-  emitStatus(onStatus, "Verifying Pylon binary", path.basename(pylonPath));
-  await runPylonCommand(pylonPath, ["--help"], options, runProcessImpl);
-  emitStatus(onStatus, "Bootstrapping local Pylon identity");
-  const init = await runPylonJson(pylonPath, ["init"], options, runProcessImpl);
-  emitStatus(onStatus, "Checking runtime health");
-  const status = await runPylonJson(
-    pylonPath,
-    ["status", "--json"],
-    options,
-    runProcessImpl,
-  );
-  emitStatus(onStatus, "Scanning for local models");
-  const inventory = await runPylonJson(
-    pylonPath,
-    ["inventory", "--json"],
-    options,
-    runProcessImpl,
-  );
-
-  let download = null;
-  if (!options.skipModelDownload) {
-    emitStatus(onStatus, "Downloading curated model bundle", model);
-    download = await runPylonJson(
+  try {
+    emitStatus(onStatus, "Verifying Pylon binary", path.basename(pylonPath));
+    await runPylonCommand(pylonPath, ["--help"], options, runProcessImpl);
+    emitStatus(onStatus, "Bootstrapping local Pylon identity");
+    const init = await runPylonJson(pylonPath, ["init"], options, runProcessImpl);
+    emitStatus(onStatus, "Checking runtime health");
+    const status = await runPylonJson(
       pylonPath,
-      ["gemma", "download", model, "--json"],
+      ["status", "--json"],
       options,
       runProcessImpl,
     );
-  } else {
-    emitStatus(
-      onStatus,
-      "Skipping optional curated GGUF cache",
-      "use --download-curated-cache to prefetch Hugging Face weights",
+    emitStatus(onStatus, "Scanning for local models");
+    const inventory = await runPylonJson(
+      pylonPath,
+      ["inventory", "--json"],
+      options,
+      runProcessImpl,
     );
-  }
 
-  let diagnostic = null;
-  if (!options.skipDiagnostics) {
-    emitStatus(onStatus, "Running first-run diagnostic", model);
-    try {
-      diagnostic = await runPylonJson(
+    let download = null;
+    if (!options.skipModelDownload) {
+      emitStatus(onStatus, "Downloading curated model bundle", model);
+      download = await runPylonJson(
         pylonPath,
-        [
-          "gemma",
-          "diagnose",
-          model,
-          "--max-output-tokens",
-          String(diagnosticMaxOutputTokens),
-          "--repeats",
-          String(diagnosticRepeats),
-          "--json",
-        ],
+        ["gemma", "download", model, "--json"],
         options,
         runProcessImpl,
       );
-    } catch (error) {
-      if (!isUnsupportedGemmaDiagnoseError(error)) {
-        throw error;
-      }
+    } else {
       emitStatus(
         onStatus,
-        "Skipping first-run diagnostic",
-        "installed Pylon release does not expose gemma diagnose",
+        "Skipping optional curated GGUF cache",
+        "use --download-curated-cache to prefetch Hugging Face weights",
       );
     }
-  } else {
-    emitStatus(onStatus, "Skipping first-run diagnostic", model);
+
+    let diagnostic = null;
+    if (!options.skipDiagnostics) {
+      emitStatus(onStatus, "Running first-run diagnostic", model);
+      try {
+        diagnostic = await runPylonJson(
+          pylonPath,
+          [
+            "gemma",
+            "diagnose",
+            model,
+            "--max-output-tokens",
+            String(diagnosticMaxOutputTokens),
+            "--repeats",
+            String(diagnosticRepeats),
+            "--json",
+          ],
+          options,
+          runProcessImpl,
+        );
+      } catch (error) {
+        if (!isUnsupportedGemmaDiagnoseError(error)) {
+          throw error;
+        }
+        emitStatus(
+          onStatus,
+          "Skipping first-run diagnostic",
+          "installed Pylon release does not expose gemma diagnose",
+        );
+      }
+    } else {
+      emitStatus(onStatus, "Skipping first-run diagnostic", model);
+    }
+
+    const diagnosticResult =
+      diagnostic?.results?.find((result) => result.model_id === model) ??
+      diagnostic?.results?.[0] ??
+      null;
+
+    emitStatus(
+      onStatus,
+      "Bootstrap complete",
+      diagnosticResult?.status
+        ? `diagnostic ${diagnosticResult.status}`
+        : "smoke path complete",
+    );
+    emitTelemetry(telemetryClient, "installer_smoke_test_completed", {
+      release_tag: options.tagName ?? `pylon-v${options.version}`,
+      release_commit: options.sourceCommit ?? null,
+      os: options.target?.os ?? null,
+      arch: options.target?.arch ?? null,
+      platform_key:
+        options.target?.os && options.target?.arch
+          ? `${options.target.os}-${options.target.arch}`
+          : null,
+      install_source: installSourceForTelemetry(
+        options.installMethod,
+        Boolean(options.cached),
+      ),
+      diagnostic_status: diagnosticResult?.status ?? null,
+    });
+
+    return {
+      version: options.version,
+      tagName: options.tagName ?? `pylon-v${options.version}`,
+      target: options.target,
+      cached: Boolean(options.cached),
+      installMethod: options.installMethod ?? RELEASE_ASSET_INSTALL_METHOD,
+      binaries: {
+        pylon: pylonPath,
+        pylonTui: pylonTuiPath,
+      },
+      configPath: init?.config_path ?? options.configPath ?? null,
+      pylonHome: options.pylonHome ? path.resolve(options.pylonHome) : null,
+      init,
+      status,
+      inventory,
+      model,
+      download,
+      diagnostic,
+      diagnosticResult,
+    };
+  } catch (error) {
+    emitTelemetry(telemetryClient, "installer_smoke_test_failed", {
+      release_tag: options.tagName ?? `pylon-v${options.version}`,
+      release_commit: options.sourceCommit ?? null,
+      os: options.target?.os ?? null,
+      arch: options.target?.arch ?? null,
+      platform_key:
+        options.target?.os && options.target?.arch
+          ? `${options.target.os}-${options.target.arch}`
+          : null,
+      install_source: installSourceForTelemetry(
+        options.installMethod,
+        Boolean(options.cached),
+      ),
+      ...telemetryFailureContext(error, "smoke_test"),
+    });
+    throw error;
   }
-
-  const diagnosticResult =
-    diagnostic?.results?.find((result) => result.model_id === model) ??
-    diagnostic?.results?.[0] ??
-    null;
-
-  emitStatus(
-    onStatus,
-    "Bootstrap complete",
-    diagnosticResult?.status
-      ? `diagnostic ${diagnosticResult.status}`
-      : "smoke path complete",
-  );
-
-  return {
-    version: options.version,
-    tagName: options.tagName ?? `pylon-v${options.version}`,
-    target: options.target,
-    cached: Boolean(options.cached),
-    binaries: {
-      pylon: pylonPath,
-      pylonTui: pylonTuiPath,
-    },
-    configPath: init?.config_path ?? options.configPath ?? null,
-    pylonHome: options.pylonHome ? path.resolve(options.pylonHome) : null,
-    init,
-    status,
-    inventory,
-    model,
-    download,
-    diagnostic,
-    diagnosticResult,
-  };
 }
 
 export async function launchInstalledPylonTui(
@@ -1572,6 +1796,7 @@ export function renderBootstrapSummary(summary) {
     `Verdict detail: ${outcome.detail}`,
     `Pylon release: ${summary.version} (${summary.target.os}-${summary.target.arch})`,
     `Archive source: ${summary.tagName}`,
+    `Install source: ${installSourceForTelemetry(summary.installMethod, summary.cached).replaceAll("_", " ")}`,
     `Installed from cache: ${summary.cached ? "yes" : "no"}`,
     `Pylon binary: ${summary.binaries.pylon}`,
     `Pylon TUI: ${summary.binaries.pylonTui}`,

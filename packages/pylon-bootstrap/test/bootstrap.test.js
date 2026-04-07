@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   bootstrapInstalledPylon,
   buildAssetNames,
+  createTelemetryClient,
   ensureReleaseInstall,
   launchInstalledPylonTui,
   parseSha256File,
@@ -66,6 +67,50 @@ describe("@openagentsinc/pylon bootstrap", () => {
     ).toBe(
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     );
+  });
+
+  test("createTelemetryClient posts anonymous installer telemetry", async () => {
+    const payloads = [];
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        payloads.push(await request.json());
+        return Response.json({ accepted: true }, { status: 202 });
+      },
+    });
+
+    try {
+      const telemetryClient = createTelemetryClient({
+        endpoint: `http://127.0.0.1:${server.port}/api/telemetry/events`,
+        anonymousActorId: "install-123",
+        sessionId: "install-123",
+        installId: "install-123",
+        appVersion: "0.1.3",
+      });
+
+      await telemetryClient.emit("installer_started", {
+        os: "linux",
+        arch: "x86_64",
+      });
+      await telemetryClient.flush();
+
+      expect(payloads).toEqual([
+        expect.objectContaining({
+          event_name: "installer_started",
+          source_surface: "installer",
+          anonymous_actor_id: "install-123",
+          session_id: "install-123",
+          install_id: "install-123",
+          app_version: "0.1.3",
+          properties: {
+            os: "linux",
+            arch: "x86_64",
+          },
+        }),
+      ]);
+    } finally {
+      server.stop(true);
+    }
   });
 
   test("selectLatestPylonRelease ignores non-pylon repo releases", () => {
@@ -555,6 +600,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
       );
       const statuses = [];
       const commands = [];
+      const telemetryEvents = [];
       const expectedCommit = "1234567890abcdef1234567890abcdef12345678";
 
       const install = await ensureReleaseInstall(
@@ -637,6 +683,12 @@ describe("@openagentsinc/pylon bootstrap", () => {
             throw new Error(`Unexpected command: ${command} ${joined}`);
           },
           onStatus: (event) => statuses.push(event),
+          telemetryClient: {
+            emit(eventName, properties) {
+              telemetryEvents.push({ eventName, properties });
+              return Promise.resolve(true);
+            },
+          },
         },
       );
 
@@ -666,6 +718,15 @@ describe("@openagentsinc/pylon bootstrap", () => {
             entry.args.join(" ") === "build --release -p pylon -p pylon-tui",
         ),
       ).toBe(true);
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_prebuilt_asset_missing",
+      );
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_source_build_started",
+      );
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_source_build_completed",
+      );
 
       const cached = await ensureReleaseInstall(
         {
@@ -701,6 +762,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
       );
       const expectedCommit = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
       const prompts = [];
+      const telemetryEvents = [];
       let rustInstalled = false;
 
       const install = await ensureReleaseInstall(
@@ -782,6 +844,12 @@ describe("@openagentsinc/pylon bootstrap", () => {
             }
             throw new Error(`Unexpected command: ${command} ${joined}`);
           },
+          telemetryClient: {
+            emit(eventName, properties) {
+              telemetryEvents.push({ eventName, properties });
+              return Promise.resolve(true);
+            },
+          },
         },
       );
 
@@ -789,6 +857,15 @@ describe("@openagentsinc/pylon bootstrap", () => {
       expect(prompts).toHaveLength(1);
       expect(prompts[0]).toContain("Install the official Rust toolchain now via rustup?");
       expect(install.installMethod).toBe("source_build");
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_rust_install_prompt_shown",
+      );
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_rust_install_approved",
+      );
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_rust_install_completed",
+      );
     });
 
     test("prints manual Rust install guidance when the user declines source-build toolchain installation", async () => {
@@ -827,6 +904,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
   test("bootstrapInstalledPylon runs the smoke path in order", async () => {
     const calls = [];
     const statuses = [];
+    const telemetryEvents = [];
     const summary = await bootstrapInstalledPylon(
       {
         version: "1.2.3",
@@ -910,6 +988,12 @@ describe("@openagentsinc/pylon bootstrap", () => {
           throw new Error(`Unexpected command: ${command} ${joined}`);
         },
         onStatus: (event) => statuses.push(event.message),
+        telemetryClient: {
+          emit(eventName, properties) {
+            telemetryEvents.push({ eventName, properties });
+            return Promise.resolve(true);
+          },
+        },
       },
     );
 
@@ -942,6 +1026,10 @@ describe("@openagentsinc/pylon bootstrap", () => {
     ]);
     expect(summary.configPath).toBe("/tmp/pylon-config.json");
     expect(summary.diagnosticResult?.status).toBe("completed");
+    expect(telemetryEvents.map((event) => event.eventName)).toEqual([
+      "installer_smoke_test_started",
+      "installer_smoke_test_completed",
+    ]);
   });
 
   test("launchInstalledPylonTui inherits stdio for the interactive shell", async () => {

@@ -46,6 +46,23 @@ afterEach(() => {
   console.error = originalConsoleError;
 });
 
+function createTelemetryRecorder() {
+  const events = [];
+
+  return {
+    events,
+    client: {
+      emit(eventName, properties) {
+        events.push({ eventName, properties });
+        return Promise.resolve(true);
+      },
+      flush() {
+        return Promise.resolve();
+      },
+    },
+  };
+}
+
 async function withCapturedConsole(run) {
   const logs = [];
   const errors = [];
@@ -77,9 +94,11 @@ test("parseArgs supports explicit cache download and verbose network flags", () 
 
 test("main launches pylon-tui by default after bootstrap", async () => {
   const calls = [];
+  const telemetry = createTelemetryRecorder();
 
   await withCapturedConsole(async () =>
     main([], {
+      telemetryClient: telemetry.client,
       ensureReleaseInstallImpl: async (options, dependencies) => {
         calls.push({
           step: "install",
@@ -127,11 +146,17 @@ test("main launches pylon-tui by default after bootstrap", async () => {
       pylonTuiPath: "/tmp/pylon-tui",
     }),
   );
+  expect(telemetry.events.map((event) => event.eventName)).toEqual([
+    "installer_started",
+    "installer_finished",
+  ]);
 });
 
 test("main prints a warning verdict when bootstrap completes without a usable runtime", async () => {
+  const telemetry = createTelemetryRecorder();
   const { logs } = await withCapturedConsole(async () =>
     main(["--no-launch"], {
+      telemetryClient: telemetry.client,
       ensureReleaseInstallImpl: async () => BASE_INSTALL,
       bootstrapInstalledPylonImpl: async () => ({
         ...BASE_SUMMARY,
@@ -163,9 +188,11 @@ test("main prints a warning verdict when bootstrap completes without a usable ru
 
 test("main skips TUI launch when --no-launch is set", async () => {
   const calls = [];
+  const telemetry = createTelemetryRecorder();
 
   const { logs } = await withCapturedConsole(async () =>
     main(["--no-launch"], {
+      telemetryClient: telemetry.client,
       ensureReleaseInstallImpl: async () => BASE_INSTALL,
       bootstrapInstalledPylonImpl: async () => BASE_SUMMARY,
       launchInstalledPylonTuiImpl: async () => {
@@ -178,5 +205,31 @@ test("main skips TUI launch when --no-launch is set", async () => {
   expect(calls).toEqual([]);
   expect(logs.some((line) => line.includes("Skipped Pylon terminal UI launch"))).toBe(
     true,
+  );
+});
+
+test("main records a failed installer finish event when bootstrap aborts", async () => {
+  const telemetry = createTelemetryRecorder();
+
+  await expect(
+    withCapturedConsole(async () =>
+      main(["--no-launch"], {
+        telemetryClient: telemetry.client,
+        ensureReleaseInstallImpl: async () => {
+          throw new Error("release resolution exploded");
+        },
+      }),
+    ),
+  ).rejects.toThrow("release resolution exploded");
+
+  expect(telemetry.events.map((event) => event.eventName)).toEqual([
+    "installer_started",
+    "installer_finished",
+  ]);
+  expect(telemetry.events[1].properties).toEqual(
+    expect.objectContaining({
+      result: "failed",
+      error_stage: "launcher",
+    }),
   );
 });

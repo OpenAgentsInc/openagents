@@ -45,6 +45,11 @@ The launcher only caches those standalone binaries under
 `~/.openagents/pylon/bootstrap/versions/`. It does not copy or symlink them
 into a shared global bin directory, so a global npm or bun install keeps the
 package-managed `pylon` command as the stable entrypoint on `PATH`.
+The npm bootstrap lane now also emits best-effort anonymous install telemetry
+to `openagents.com` so the public stats page can show install starts,
+completions, source-build fallbacks, Rust prompts, and smoke-test outcomes.
+Set `OPENAGENTS_DISABLE_TELEMETRY=1` to disable that stream, or point
+`OPENAGENTS_TELEMETRY_URL` at a non-production endpoint during local validation.
 The bootstrap summary now ends with an explicit operator verdict:
 
 - `fully online`
