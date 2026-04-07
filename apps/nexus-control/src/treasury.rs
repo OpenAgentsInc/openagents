@@ -47,6 +47,7 @@ const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
+const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
 const TREASURY_PAYOUT_LIMIT: usize = 16_384;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
@@ -142,6 +143,12 @@ impl TreasuryConfig {
 
     pub fn payout_interval_ms(&self) -> u64 {
         self.payout_interval_seconds.saturating_mul(1_000)
+    }
+
+    pub fn dispatch_result_timeout_ms(&self) -> u64 {
+        TREASURY_DISPATCH_RESULT_TIMEOUT_MS
+            .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
+            .max(self.payout_interval_ms().saturating_mul(2))
     }
 }
 
@@ -639,12 +646,14 @@ impl TreasuryState {
         now_unix_ms: u64,
     ) -> (Vec<TreasuryDispatchPlan>, Vec<TreasuryReceiptEvent>) {
         self.trim_retention();
+        let mut receipt_events = self.expire_stale_dispatches(config, now_unix_ms);
         if !config.enabled
             || config.payout_sats_per_window == 0
             || config.payout_interval_seconds == 0
             || online_identities.is_empty()
         {
-            return (Vec::new(), Vec::new());
+            self.persist();
+            return (Vec::new(), receipt_events);
         }
 
         let window_started_at_unix_ms =
@@ -653,7 +662,6 @@ impl TreasuryState {
             window_started_at_unix_ms.saturating_add(config.payout_interval_ms());
         let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
         let mut dispatch_plans = Vec::new();
-        let mut receipt_events = Vec::new();
 
         for identity in online_identities {
             let payout_key = payout_window_key(
@@ -916,6 +924,31 @@ impl TreasuryState {
             .fold(0u64, |total, record| {
                 total.saturating_add(record.amount_sats)
             })
+    }
+
+    fn expire_stale_dispatches(
+        &mut self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> Vec<TreasuryReceiptEvent> {
+        let timeout_ms = config.dispatch_result_timeout_ms();
+        let mut receipt_events = Vec::new();
+        for record in self.payout_records_by_key.values_mut() {
+            if record.status != "dispatching" || record.payment_id.is_some() {
+                continue;
+            }
+            if now_unix_ms <= record.updated_at_unix_ms.saturating_add(timeout_ms) {
+                continue;
+            }
+            record.status = "failed".to_string();
+            record.reason = Some("dispatch_outcome_timeout".to_string());
+            record.updated_at_unix_ms = now_unix_ms;
+            if !record.fail_receipt_recorded {
+                record.fail_receipt_recorded = true;
+                receipt_events.push(failed_payout_receipt(record));
+            }
+        }
+        receipt_events
     }
 
     fn prune_challenges(&mut self, now_unix_ms: u64) {
@@ -1892,6 +1925,76 @@ mod tests {
         assert_eq!(stats.payout_sats_paid_total, 120);
         assert_eq!(stats.payout_sats_paid_24h, 120);
         assert_eq!(stats.payouts_confirmed_24h, 1);
+    }
+
+    #[test]
+    fn stale_dispatching_records_stop_blocking_budget() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.daily_budget_cap_sats = config.payout_sats_per_window;
+
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = super::now_unix_ms();
+        let stale_window_started_at_unix_ms = payout_window_started_at(
+            now_unix_ms.saturating_sub(config.dispatch_result_timeout_ms() + 5_000),
+            config.payout_interval_ms(),
+        );
+        let stale_payout_key = format!("{stale_window_started_at_unix_ms}:pubkey-stale");
+        state.payout_records_by_key.insert(
+            stale_payout_key.clone(),
+            super::TreasuryPayoutRecord {
+                payout_key: stale_payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-stale".to_string(),
+                payout_target: "spark:stale".to_string(),
+                amount_sats: config.payout_sats_per_window,
+                status: "dispatching".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: stale_window_started_at_unix_ms,
+                window_ends_at_unix_ms: stale_window_started_at_unix_ms
+                    + config.payout_interval_ms(),
+                created_at_unix_ms: stale_window_started_at_unix_ms,
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(config.dispatch_result_timeout_ms() + 1),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+            },
+        );
+
+        let (plans, receipts) = state.prepare_due_payouts(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            }],
+            now_unix_ms,
+        );
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].receipt_type, "treasury.payout.failed");
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get(stale_payout_key.as_str())
+                .and_then(|record| record.reason.as_deref()),
+            Some("dispatch_outcome_timeout")
+        );
     }
 
     #[tokio::test]

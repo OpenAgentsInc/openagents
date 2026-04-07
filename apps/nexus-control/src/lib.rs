@@ -1338,8 +1338,13 @@ async fn record_provider_presence_heartbeat(
         (record, dispatch_plans)
     };
     if !dispatch_plans.is_empty() {
-        let batch = dispatch_live_payouts(&state.config.treasury, dispatch_plans.as_slice()).await;
-        apply_treasury_dispatch_batch(&state, batch).await;
+        let dispatch_state = state.clone();
+        tokio::spawn(async move {
+            let batch =
+                dispatch_live_payouts(&dispatch_state.config.treasury, dispatch_plans.as_slice())
+                    .await;
+            apply_treasury_dispatch_batch(&dispatch_state, batch).await;
+        });
     }
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
