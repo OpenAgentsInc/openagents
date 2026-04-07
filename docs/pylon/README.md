@@ -39,14 +39,16 @@ Prefer an official release asset when one exists for the user's platform. Those 
 Use a direct release asset install only when the operator explicitly does not want the npm bootstrap layer:
 
 ```bash
-./pylon --help
+./pylon
 ./pylon init
 ./pylon status --json
 ./pylon inventory --json
 ./pylon config show
 ./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
-./pylon-tui
 ```
+
+Bare `./pylon` now opens the terminal UI. Use `./pylon-tui` only when you want
+to target the shell binary explicitly.
 
 Use a source checkout only when:
 
@@ -98,7 +100,7 @@ cargo pylon
 If you installed from a release asset instead of a source checkout, run:
 
 ```bash
-./pylon-tui
+./pylon
 ```
 
 The first cut is intentionally small. It renders one full-screen transcript shell with:

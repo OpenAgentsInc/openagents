@@ -80,18 +80,17 @@ Version: ${VERSION}
 Platform: $(host_os)-$(host_arch)
 
 This archive contains:
-- pylon: the headless provider CLI
+- pylon: the terminal UI launcher plus headless provider CLI
 - pylon-tui: the terminal UI shell
 
 Quick start:
   cd ${archive_dir}
-  ./pylon --help
+  ./pylon
   ./pylon init
   ./pylon status --json
   ./pylon inventory --json
   ./pylon config show
   ./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
-  ./pylon-tui
 
 Important:
 - These binaries run without a Rust toolchain.
