@@ -1384,15 +1384,27 @@ fn rebuild_managed_chat_projection(
             .unwrap_or_default();
     }
 
+    // Single pass: group message event_ids by channel_id, then sort each bucket once.
+    // Replaces per-channel O(messages) filter with an O(messages log messages) index.
+    let mut channel_messages: HashMap<&str, Vec<&str>> =
+        HashMap::with_capacity(live_channels.len());
+    for (event_id, message) in &messages {
+        channel_messages
+            .entry(message.channel_id.as_str())
+            .or_default()
+            .push(event_id.as_str());
+    }
+    for ids in channel_messages.values_mut() {
+        ids.sort_by(|a, b| compare_message_ids(a, b, &messages));
+    }
+
     let mut channel_rows = live_channels
         .iter()
         .map(|(channel_id, channel)| {
-            let mut message_ids = messages
-                .values()
-                .filter(|message| message.channel_id == *channel_id)
-                .map(|message| message.event_id.clone())
-                .collect::<Vec<_>>();
-            message_ids.sort_by(|left, right| compare_message_ids(left, right, &messages));
+            let message_ids: Vec<String> = channel_messages
+                .get(channel_id.as_str())
+                .map(|ids| ids.iter().map(|id| (*id).to_owned()).collect())
+                .unwrap_or_default();
             let root_message_ids = message_ids
                 .iter()
                 .filter(|event_id| {
@@ -1404,12 +1416,7 @@ fn rebuild_managed_chat_projection(
                 .cloned()
                 .collect::<Vec<_>>();
             let latest_message_id = message_ids.last().cloned();
-            let unread_count = unread_count_for_channel(
-                &message_ids,
-                local_state.read_cursors.get(channel_id),
-                &messages,
-            );
-            let mention_count = mention_count_for_channel(
+            let (unread_count, mention_count) = unread_and_mention_counts(
                 &message_ids,
                 local_state.read_cursors.get(channel_id),
                 &messages,
@@ -1701,6 +1708,36 @@ fn compare_message_ids(
         .created_at
         .cmp(&right_message.created_at)
         .then_with(|| left_message.event_id.cmp(&right_message.event_id))
+}
+
+fn unread_and_mention_counts(
+    message_ids: &[String],
+    cursor: Option<&ManagedChatReadCursor>,
+    messages: &BTreeMap<String, ManagedChatMessageProjection>,
+    local_pubkey: Option<&str>,
+) -> (usize, usize) {
+    let mut unread = 0usize;
+    let mut mentions = 0usize;
+    for id in message_ids {
+        let Some(message) = messages.get(id.as_str()) else {
+            continue;
+        };
+        if message.delivery_state != ManagedChatDeliveryState::Confirmed {
+            continue;
+        }
+        if !managed_chat_message_is_after_cursor(message, cursor) {
+            continue;
+        }
+        unread += 1;
+        if let Some(pk) = local_pubkey {
+            if message.author_pubkey != pk
+                && message.mention_pubkeys.iter().any(|c| c == pk)
+            {
+                mentions += 1;
+            }
+        }
+    }
+    (unread, mentions)
 }
 
 fn unread_count_for_channel(

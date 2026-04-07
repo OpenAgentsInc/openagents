@@ -33,6 +33,7 @@ This doc is intentionally narrower than the older default-channel performance no
 | P1 | ✅ Done | Reducer-side pre-send dedupe landed in `Nip28ChatLaneWorker`. `sync_managed_chat_subscriptions(&mut self, ...)` now normalizes inputs, compares against cached `ManagedChatSubscriptionSyncRequest`, and suppresses identical dispatches. Worker-side dedupe in `handle_command()` kept as second line of defense. 7 unit tests pass: `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests::sync_managed_chat_subscriptions`. |
 | P2 | ✅ Done | `handle_command()` no longer sets `subscriptions_dirty` on cursor-only changes. `since_created_at` still updates in worker state for future reconnect backfill, but only relay or channel set changes trigger `replace_subscription()`. Reconnect-on-error and missing-subscription paths unchanged. 4 unit tests pass: `cargo test -p autopilot-desktop --lib -- nip28_chat_lane::tests::handle_command`. |
 | P3 | ✅ Done | `record_relay_events()` no longer triggers full rebuild+persist inline. Sets `projection_dirty` flag instead; `flush_if_dirty()` runs once per frame in the reducer after all events are recorded. Persistence decoupled from `refresh_projection()` via `persist_dirty` flag with 2s throttle in `persist_if_dirty()`. Redundant normalize removed from `persist_managed_chat_projection_document()`. Shutdown path calls `flush_persist()`. 19 tests pass: `cargo test -p autopilot-desktop --lib -- chat_projection::tests managed_chat_projection chat_regression_tests chat_state_browses`. |
+| P4 | ✅ Done | `rebuild_managed_chat_projection()` no longer filters the full `messages` map once per channel. Added single-pass `channel_messages: HashMap<&str, Vec<&str>>` index built after message enrichment, sorted once; per-channel build reads directly from the index. Added `unread_and_mention_counts()` that computes both counts in one pass, replacing two separate calls to `unread_messages_for_channel()`. Also fixed pre-existing stale `gpt_oss` field references in `snapshot_domains.rs` and `provider_runtime.rs` that were breaking compilation. 19 tests pass. |
 
 ---
 
@@ -256,6 +257,7 @@ That work runs in the same reducer-driven path that is supposed to keep the app 
 **Type:** Performance
 **Priority:** P1 — High
 **Estimate:** M
+**Status:** Done
 
 ### Summary
 
