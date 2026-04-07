@@ -27,7 +27,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.0.1-rc6
+npx @openagentsinc/pylon --version 0.0.1-rc7
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -151,6 +151,13 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 - a bottom textbox where plain text submits a prompt, `/help` shows the retained shell commands, and `/download <model>` pulls a curated Gemma GGUF into the local Pylon cache
 
 The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. The current local chat path only accepts Gemma models visible through the configured local runtime endpoint. The system block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+
+When a node reports provider presence to `Nexus`, that same heartbeat now also
+carries a private hosting telemetry snapshot alongside the public-safe launch
+summary. `Nexus` retains runtime state, backend availability, inventory rows,
+and host facts such as CPU, memory, disk, network, thermal, power, and GPU
+telemetry for online Pylons, while the public website remains limited to coarse
+aggregate counters and recent public-safe summaries.
 
 Headless Gemma operator commands now exist too:
 

@@ -41,6 +41,13 @@ rows on the existing heartbeat, and `Nexus` should surface those rows back out
 through `/api/stats` as recent per-Pylon model telemetry. The website remains
 only a reader of that `Nexus` authority surface.
 
+That provider-presence heartbeat now also needs a private authority-only
+hosting telemetry slice. `Pylon` already knows local model-hosting facts such
+as runtime status, backend availability, eligible inventory, CPU, memory, disk,
+network, thermal, power, and GPU state; `Nexus` should retain those structured
+facts on the provider-presence record without promoting the raw device payload
+onto the public website stats projection.
+
 This document updates the older MVP-only posture that Pylon should not be treated as a separate product surface. That older posture remains correct for current implementation ownership inside `#3116`, but the product plan is now to split out a narrow standalone provider connector as part of the current compute-market execution wave, alongside the remaining open repo issue slate where possible and immediately after it where blocking dependencies require it.
 
 ## Timing And Priority

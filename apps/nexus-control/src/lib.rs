@@ -60,7 +60,7 @@ use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use openagents_kernel_proto::openagents::data::v1 as proto_data;
-use openagents_provider_substrate::ProviderDiagnosticSummary;
+use openagents_provider_substrate::{ProviderDiagnosticSummary, ProviderHostingTelemetrySnapshot};
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -515,6 +515,7 @@ pub struct ProviderPresenceHeartbeatRequest {
     pub runtime_state: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
+    pub hosting_telemetry: ProviderHostingTelemetrySnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -614,6 +615,8 @@ struct ProviderPresenceRecord {
     ready_model: Option<String>,
     runtime_state: Option<String>,
     diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
+    #[allow(dead_code)]
+    hosting_telemetry: ProviderHostingTelemetrySnapshot,
     online: bool,
     last_seen_at_unix_ms: u64,
 }
@@ -753,6 +756,7 @@ impl ProviderPresenceState {
             diagnostic_summaries: normalize_provider_diagnostic_summaries(
                 request.diagnostic_summaries,
             ),
+            hosting_telemetry: request.hosting_telemetry,
             online: true,
             last_seen_at_unix_ms: recorded_at_unix_ms,
         };
@@ -786,6 +790,7 @@ impl ProviderPresenceState {
                 ready_model: None,
                 runtime_state: None,
                 diagnostic_summaries: Vec::new(),
+                hosting_telemetry: ProviderHostingTelemetrySnapshot::default(),
                 online: false,
                 last_seen_at_unix_ms: recorded_at_unix_ms,
             });
@@ -1311,6 +1316,7 @@ async fn record_provider_presence_heartbeat(
         ready_model: normalize_optional_field(request.ready_model.as_deref()),
         runtime_state: normalize_optional_field(request.runtime_state.as_deref()),
         diagnostic_summaries: normalize_provider_diagnostic_summaries(request.diagnostic_summaries),
+        hosting_telemetry: request.hosting_telemetry,
     };
     let now = now_unix_ms();
     let (record, dispatch_plans) = {
@@ -6913,7 +6919,14 @@ mod tests {
     use openagents_kernel_core::time::floor_to_minute_utc;
     use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
     use openagents_provider_substrate::{
-        ProviderDiagnosticSummary, sign_provider_payout_target_registration,
+        ProviderAvailability, ProviderBackendHealth, ProviderComputeProduct,
+        ProviderDiagnosticSummary, ProviderHostDiskTelemetry, ProviderHostGpuTelemetry,
+        ProviderHostLoadAverageTelemetry, ProviderHostMemoryTelemetry,
+        ProviderHostNetworkInterfaceTelemetry, ProviderHostPowerTelemetry,
+        ProviderHostSwapTelemetry, ProviderHostTelemetrySnapshot,
+        ProviderHostThermalComponentTelemetry, ProviderHostingTelemetrySnapshot,
+        ProviderInventoryRow, ProviderRuntimeStatusSnapshot,
+        sign_provider_payout_target_registration,
     };
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
@@ -7066,6 +7079,120 @@ mod tests {
             },
             runtime_state: Some(runtime_state.to_string()),
             diagnostic_summaries: Vec::new(),
+            hosting_telemetry: provider_hosting_telemetry_fixture(),
+        }
+    }
+
+    fn provider_hosting_telemetry_fixture() -> ProviderHostingTelemetrySnapshot {
+        ProviderHostingTelemetrySnapshot {
+            captured_at_unix_ms: 1_762_000_000_123,
+            runtime: ProviderRuntimeStatusSnapshot {
+                authoritative_status: Some("online".to_string()),
+                queue_depth: 2,
+                online_uptime_seconds: 321,
+                execution_backend_label: "local Gemma runtime".to_string(),
+                provider_blocker_codes: vec!["LOCAL_GEMMA_MODEL_UNAVAILABLE".to_string()],
+                ..ProviderRuntimeStatusSnapshot::default()
+            },
+            availability: ProviderAvailability {
+                local_gemma: ProviderBackendHealth {
+                    reachable: true,
+                    ready: true,
+                    configured_model: Some("gemma4:e4b".to_string()),
+                    ready_model: Some("gemma4:e4b".to_string()),
+                    available_models: vec!["gemma4:e4b".to_string(), "gemma4:e2b".to_string()],
+                    latency_ms_p50: Some(37),
+                    ..ProviderBackendHealth::default()
+                },
+                ..ProviderAvailability::default()
+            },
+            inventory_rows: vec![ProviderInventoryRow {
+                target: ProviderComputeProduct::GptOssInference,
+                enabled: true,
+                backend_ready: true,
+                eligible: true,
+                capability_summary: "Gemma 4 local inference".to_string(),
+                market_receipt_class: "accepted_delivery".to_string(),
+                earnings_summary: "wallet settled accepted delivery".to_string(),
+                source_badge: "local_runtime".to_string(),
+                capacity_lot_id: None,
+                total_quantity: 1,
+                reserved_quantity: 0,
+                available_quantity: 1,
+                delivery_state: "open".to_string(),
+                price_floor_sats: 21,
+                terms_label: "spot".to_string(),
+                forward_capacity_lot_id: None,
+                forward_delivery_window_label: None,
+                forward_total_quantity: 0,
+                forward_reserved_quantity: 0,
+                forward_available_quantity: 0,
+                forward_terms_label: None,
+            }],
+            host: Some(ProviderHostTelemetrySnapshot {
+                captured_at_unix_ms: 1_762_000_000_123,
+                host_name: Some("alpha-box".to_string()),
+                os_version: Some("macOS 15.4".to_string()),
+                kernel_version: Some("Darwin 24.4.0".to_string()),
+                cpu_arch: Some("arm64".to_string()),
+                physical_cpu_count: Some(12),
+                logical_cpu_count: 12,
+                cpu_brand: Some("Apple M4 Max".to_string()),
+                cpu_frequency_mhz: Some(4056),
+                cpu_usage_percent: Some(24.5),
+                load_average: Some(ProviderHostLoadAverageTelemetry {
+                    one: 1.25,
+                    five: 1.1,
+                    fifteen: 0.95,
+                }),
+                memory: Some(ProviderHostMemoryTelemetry {
+                    used_bytes: 32 * 1024 * 1024 * 1024,
+                    available_bytes: 64 * 1024 * 1024 * 1024,
+                    total_bytes: 96 * 1024 * 1024 * 1024,
+                }),
+                swap: Some(ProviderHostSwapTelemetry {
+                    used_bytes: 0,
+                    free_bytes: 16 * 1024 * 1024 * 1024,
+                    total_bytes: 16 * 1024 * 1024 * 1024,
+                }),
+                uptime_seconds: Some(86_400),
+                gpus: vec![ProviderHostGpuTelemetry {
+                    model: "Apple M4 Max".to_string(),
+                    memory_total_label: Some("48 GB".to_string()),
+                    ..ProviderHostGpuTelemetry::default()
+                }],
+                disks: vec![ProviderHostDiskTelemetry {
+                    mount_point: "/".to_string(),
+                    name: Some("Macintosh HD".to_string()),
+                    file_system: Some("apfs".to_string()),
+                    kind: Some("ssd".to_string()),
+                    removable: false,
+                    available_space_bytes: 700 * 1024 * 1024 * 1024,
+                    total_space_bytes: 1_000 * 1024 * 1024 * 1024,
+                    read_bytes_delta: 1024,
+                    written_bytes_delta: 2048,
+                    total_read_bytes: 4_096,
+                    total_written_bytes: 8_192,
+                    pylon_home_disk: true,
+                }],
+                network_interfaces: vec![ProviderHostNetworkInterfaceTelemetry {
+                    name: "en0".to_string(),
+                    received_bytes_delta: 12_345,
+                    transmitted_bytes_delta: 54_321,
+                    total_received_bytes: 123_450,
+                    total_transmitted_bytes: 543_210,
+                }],
+                thermal_components: vec![ProviderHostThermalComponentTelemetry {
+                    label: "soc".to_string(),
+                    temperature_celsius: 58.0,
+                    max_celsius: Some(72.0),
+                    critical_celsius: Some(90.0),
+                }],
+                power: Some(ProviderHostPowerTelemetry {
+                    source_summary: Some("AC Power".to_string()),
+                    draw_summary: Some("charging; 100%".to_string()),
+                }),
+            }),
         }
     }
 
@@ -9579,6 +9706,58 @@ mod tests {
         presence.prune(pruned_at);
         let pruned = presence.metrics(pruned_at);
         assert!(pruned.recent_pylon_diagnostics.is_empty());
+    }
+
+    #[test]
+    fn provider_presence_private_hosting_telemetry_is_retained_but_not_projected_publicly() {
+        let mut presence = ProviderPresenceState::default();
+        let request =
+            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online");
+        presence.record_heartbeat(request, 100_000);
+
+        let record = presence
+            .rows_by_key
+            .get("aabbccdd00112233:session-a-1")
+            .expect("provider presence record");
+        assert_eq!(
+            record
+                .hosting_telemetry
+                .host
+                .as_ref()
+                .and_then(|host| host.gpus.first())
+                .map(|gpu| gpu.model.as_str()),
+            Some("Apple M4 Max")
+        );
+        assert_eq!(
+            record
+                .hosting_telemetry
+                .runtime
+                .authoritative_status
+                .as_deref(),
+            Some("online")
+        );
+        assert_eq!(
+            record
+                .hosting_telemetry
+                .availability
+                .local_gemma
+                .ready_model
+                .as_deref(),
+            Some("gemma4:e4b")
+        );
+        assert_eq!(
+            record
+                .hosting_telemetry
+                .inventory_rows
+                .first()
+                .map(|row| row.target),
+            Some(ProviderComputeProduct::GptOssInference)
+        );
+
+        let metrics = presence.metrics(100_000);
+        let public_row = serde_json::to_value(&metrics.recent_pylons[0]).expect("public row");
+        assert!(public_row.get("hosting_telemetry").is_none());
+        assert!(public_row.get("host_name").is_none());
     }
 
     #[tokio::test]

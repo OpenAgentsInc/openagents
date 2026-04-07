@@ -5,7 +5,8 @@ mod wallet_runtime;
 use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command as StdCommand, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -19,6 +20,10 @@ use openagents_provider_substrate::{
     ProviderAdminUpdate, ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
     ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
     ProviderDiagnosticSummary, ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent,
+    ProviderHostDiskTelemetry, ProviderHostGpuTelemetry, ProviderHostLoadAverageTelemetry,
+    ProviderHostMemoryTelemetry, ProviderHostNetworkInterfaceTelemetry, ProviderHostPowerTelemetry,
+    ProviderHostSwapTelemetry, ProviderHostTelemetrySnapshot,
+    ProviderHostThermalComponentTelemetry, ProviderHostingTelemetrySnapshot,
     ProviderIdentityMetadata, ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry,
     ProviderMode, ProviderPersistedSnapshot, ProviderPersistenceStore,
     ProviderPooledInferenceAvailability, ProviderReceiptSummary, ProviderRecentJob,
@@ -31,6 +36,7 @@ use openagents_provider_substrate::{
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sysinfo::{Components, CpuRefreshKind, Disks, Networks, RefreshKind, System};
 use tokio::process::Command as TokioCommand;
 
 pub use ledger::{
@@ -66,6 +72,17 @@ pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
 pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
+const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
+
+#[derive(Clone, Debug)]
+struct ProviderHostTelemetryCacheEntry {
+    config_path: PathBuf,
+    refreshed_at: Instant,
+    snapshot: ProviderHostTelemetrySnapshot,
+}
+
+static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetryCacheEntry>>> =
+    OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
@@ -6752,6 +6769,7 @@ struct NexusProviderPresenceHeartbeatRequest {
     runtime_state: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
+    hosting_telemetry: ProviderHostingTelemetrySnapshot,
 }
 
 #[derive(Debug, Serialize)]
@@ -6790,6 +6808,7 @@ async fn report_provider_presence_heartbeat(
     session_id: &str,
     snapshot: &ProviderPersistedSnapshot,
 ) -> Result<()> {
+    let hosting_telemetry = build_provider_hosting_telemetry(config_path, snapshot);
     let request = NexusProviderPresenceHeartbeatRequest {
         nostr_pubkey_hex: identity.public_key_hex.clone(),
         session_id: session_id.to_string(),
@@ -6814,6 +6833,7 @@ async fn report_provider_presence_heartbeat(
             .clone()
             .or_else(|| Some(snapshot.runtime.mode.label().to_string())),
         diagnostic_summaries: load_latest_provider_diagnostic_summaries(config_path),
+        hosting_telemetry,
     };
     post_nexus_provider_presence(
         client,
@@ -6844,6 +6864,348 @@ async fn report_provider_presence_offline(
         "offline",
     )
     .await
+}
+
+fn build_provider_hosting_telemetry(
+    config_path: &Path,
+    snapshot: &ProviderPersistedSnapshot,
+) -> ProviderHostingTelemetrySnapshot {
+    let host = load_cached_provider_host_telemetry(config_path);
+    ProviderHostingTelemetrySnapshot {
+        captured_at_unix_ms: host.captured_at_unix_ms,
+        runtime: snapshot.runtime.clone(),
+        availability: snapshot.availability.clone(),
+        inventory_rows: snapshot.inventory_rows.clone(),
+        host: Some(host),
+    }
+}
+
+fn load_cached_provider_host_telemetry(config_path: &Path) -> ProviderHostTelemetrySnapshot {
+    let now = Instant::now();
+    let cache = PROVIDER_HOST_TELEMETRY_CACHE.get_or_init(|| Mutex::new(None));
+    let mut guard = cache.lock().expect("provider host telemetry cache");
+    if let Some(entry) = guard.as_ref() {
+        let cache_is_fresh = entry.config_path == config_path
+            && now.duration_since(entry.refreshed_at)
+                < Duration::from_millis(DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS);
+        if cache_is_fresh {
+            return entry.snapshot.clone();
+        }
+    }
+    let snapshot = collect_provider_host_telemetry(config_path);
+    *guard = Some(ProviderHostTelemetryCacheEntry {
+        config_path: config_path.to_path_buf(),
+        refreshed_at: now,
+        snapshot: snapshot.clone(),
+    });
+    snapshot
+}
+
+fn collect_provider_host_telemetry(config_path: &Path) -> ProviderHostTelemetrySnapshot {
+    let mut system = System::new_with_specifics(
+        RefreshKind::nothing()
+            .with_cpu(CpuRefreshKind::everything())
+            .with_memory(sysinfo::MemoryRefreshKind::everything()),
+    );
+    let mut disks = Disks::new_with_refreshed_list();
+    let mut networks = Networks::new_with_refreshed_list();
+    let mut components = Components::new_with_refreshed_list();
+
+    system.refresh_memory();
+    system.refresh_cpu_all();
+    disks.refresh(false);
+    networks.refresh(false);
+    components.refresh(false);
+
+    let host_name = normalize_provider_host_optional_string(System::host_name());
+    let os_version = normalize_provider_host_optional_string(System::long_os_version());
+    let kernel_version =
+        normalize_provider_host_optional_string(Some(System::kernel_long_version()));
+    let cpu_arch = normalize_provider_host_optional_string(Some(System::cpu_arch()));
+    let cpu_brand = system
+        .cpus()
+        .iter()
+        .find_map(|cpu| normalize_provider_host_optional_string(Some(cpu.brand().to_string())));
+    let cpu_frequency_mhz = system
+        .cpus()
+        .first()
+        .map(sysinfo::Cpu::frequency)
+        .filter(|frequency| *frequency > 0);
+    let cpu_usage_percent = (!system.cpus().is_empty()).then(|| system.global_cpu_usage());
+    let load = System::load_average();
+    let load_average = Some(ProviderHostLoadAverageTelemetry {
+        one: load.one,
+        five: load.five,
+        fifteen: load.fifteen,
+    });
+    let memory = Some(ProviderHostMemoryTelemetry {
+        used_bytes: system.used_memory(),
+        available_bytes: system.available_memory(),
+        total_bytes: system.total_memory(),
+    });
+    let swap = Some(ProviderHostSwapTelemetry {
+        used_bytes: system.used_swap(),
+        free_bytes: system.free_swap(),
+        total_bytes: system.total_swap(),
+    });
+    let (gpus, power) = detect_provider_gpu_and_power_telemetry();
+
+    ProviderHostTelemetrySnapshot {
+        captured_at_unix_ms: u64::try_from(now_epoch_ms()).unwrap_or(0),
+        host_name,
+        os_version,
+        kernel_version,
+        cpu_arch,
+        physical_cpu_count: System::physical_core_count().map(|count| count as u64),
+        logical_cpu_count: system.cpus().len() as u64,
+        cpu_brand,
+        cpu_frequency_mhz,
+        cpu_usage_percent,
+        load_average,
+        memory,
+        swap,
+        uptime_seconds: Some(System::uptime()),
+        gpus,
+        disks: collect_provider_disk_telemetry(disks.list(), config_path),
+        network_interfaces: collect_provider_network_interface_telemetry(&networks),
+        thermal_components: collect_provider_thermal_telemetry(&components),
+        power,
+    }
+}
+
+fn normalize_provider_host_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn detect_provider_gpu_and_power_telemetry() -> (
+    Vec<ProviderHostGpuTelemetry>,
+    Option<ProviderHostPowerTelemetry>,
+) {
+    if cfg!(target_os = "macos") {
+        return (
+            detect_macos_provider_host_gpus().unwrap_or_default(),
+            detect_macos_provider_power_telemetry().ok(),
+        );
+    }
+    match detect_nvidia_provider_host_gpus() {
+        Ok((gpus, draw_summary)) => (
+            gpus,
+            draw_summary.map(|draw_summary| ProviderHostPowerTelemetry {
+                source_summary: Some("nvidia_gpu_power_telemetry".to_string()),
+                draw_summary: Some(draw_summary),
+            }),
+        ),
+        Err(_) => (Vec::new(), None),
+    }
+}
+
+fn detect_macos_provider_host_gpus() -> Result<Vec<ProviderHostGpuTelemetry>> {
+    let output = StdCommand::new("system_profiler")
+        .args(["SPDisplaysDataType", "-json", "-detailLevel", "mini"])
+        .output()?;
+    if !output.status.success() {
+        bail!("system_profiler failed");
+    }
+    let payload = serde_json::from_slice::<Value>(&output.stdout)?;
+    let Some(entries) = payload.get("SPDisplaysDataType").and_then(Value::as_array) else {
+        bail!("SPDisplaysDataType missing");
+    };
+
+    let mut gpus = entries
+        .iter()
+        .filter_map(|entry| {
+            let model = entry
+                .get("sppci_model")
+                .or_else(|| entry.get("_name"))
+                .and_then(Value::as_str)
+                .and_then(|value| {
+                    normalize_provider_host_optional_string(Some(value.to_string()))
+                })?;
+            let vendor = entry
+                .get("spdisplays_vendor")
+                .and_then(Value::as_str)
+                .and_then(|value| normalize_provider_host_optional_string(Some(value.to_string())));
+            let memory_total_label = entry
+                .get("spdisplays_vram")
+                .or_else(|| entry.get("spdisplays_vram_shared"))
+                .and_then(Value::as_str)
+                .and_then(|value| normalize_provider_host_optional_string(Some(value.to_string())));
+            Some(ProviderHostGpuTelemetry {
+                model,
+                vendor,
+                memory_total_label,
+                ..ProviderHostGpuTelemetry::default()
+            })
+        })
+        .collect::<Vec<_>>();
+    gpus.sort_by(|left, right| left.model.cmp(&right.model));
+    Ok(gpus)
+}
+
+fn detect_nvidia_provider_host_gpus() -> Result<(Vec<ProviderHostGpuTelemetry>, Option<String>)> {
+    let output = StdCommand::new("nvidia-smi")
+        .args([
+            "--query-gpu=name,memory.free,memory.total,power.draw,power.limit",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()?;
+    if !output.status.success() {
+        bail!("nvidia-smi unavailable");
+    }
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut gpus = Vec::new();
+    let mut power_rows = Vec::new();
+    for line in stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        let columns = line.split(',').map(str::trim).collect::<Vec<_>>();
+        let model = columns
+            .first()
+            .and_then(|value| normalize_provider_host_optional_string(Some((*value).to_string())));
+        let Some(model) = model else {
+            continue;
+        };
+        let memory_free_mib = columns.get(1).and_then(|value| value.parse::<u64>().ok());
+        let memory_total_mib = columns.get(2).and_then(|value| value.parse::<u64>().ok());
+        let power_draw_watts = columns.get(3).and_then(|value| value.parse::<f64>().ok());
+        let power_limit_watts = columns.get(4).and_then(|value| value.parse::<f64>().ok());
+        if let (Some(draw), Some(limit)) = (power_draw_watts, power_limit_watts) {
+            power_rows.push(format!("{model} {draw:.1}W / {limit:.1}W"));
+        }
+        gpus.push(ProviderHostGpuTelemetry {
+            model,
+            memory_total_bytes: memory_total_mib.map(|value| value.saturating_mul(1024 * 1024)),
+            memory_free_bytes: memory_free_mib.map(|value| value.saturating_mul(1024 * 1024)),
+            memory_total_label: memory_total_mib.map(|value| format!("{value} MiB")),
+            memory_free_label: memory_free_mib.map(|value| format!("{value} MiB")),
+            power_draw_watts,
+            power_limit_watts,
+            ..ProviderHostGpuTelemetry::default()
+        });
+    }
+    let draw_summary = (!power_rows.is_empty()).then(|| power_rows.join(", "));
+    Ok((gpus, draw_summary))
+}
+
+fn detect_macos_provider_power_telemetry() -> Result<ProviderHostPowerTelemetry> {
+    let output = StdCommand::new("pmset").args(["-g", "batt"]).output()?;
+    if !output.status.success() {
+        bail!("pmset failed");
+    }
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut lines = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    let source_line = lines
+        .next()
+        .ok_or_else(|| anyhow!("pmset source missing"))?;
+    let detail_line = lines.next().unwrap_or_default();
+    let source_summary = normalize_provider_host_optional_string(Some(
+        source_line
+            .split('\'')
+            .nth(1)
+            .unwrap_or(source_line)
+            .to_string(),
+    ));
+    let detail_summary = normalize_provider_host_optional_string(Some(
+        detail_line
+            .split('\t')
+            .nth(1)
+            .unwrap_or(detail_line)
+            .split(" present:")
+            .next()
+            .unwrap_or(detail_line)
+            .to_string(),
+    ));
+    Ok(ProviderHostPowerTelemetry {
+        source_summary,
+        draw_summary: detail_summary,
+    })
+}
+
+fn collect_provider_disk_telemetry(
+    disks: &[sysinfo::Disk],
+    config_path: &Path,
+) -> Vec<ProviderHostDiskTelemetry> {
+    let mut rows = disks
+        .iter()
+        .map(|disk| {
+            let usage = disk.usage();
+            ProviderHostDiskTelemetry {
+                mount_point: disk.mount_point().display().to_string(),
+                name: normalize_provider_host_optional_string(Some(
+                    disk.name().to_string_lossy().into_owned(),
+                )),
+                file_system: normalize_provider_host_optional_string(Some(
+                    disk.file_system().to_string_lossy().into_owned(),
+                )),
+                kind: Some(format!("{:?}", disk.kind()).to_ascii_lowercase()),
+                removable: disk.is_removable(),
+                available_space_bytes: disk.available_space(),
+                total_space_bytes: disk.total_space(),
+                read_bytes_delta: usage.read_bytes,
+                written_bytes_delta: usage.written_bytes,
+                total_read_bytes: usage.total_read_bytes,
+                total_written_bytes: usage.total_written_bytes,
+                pylon_home_disk: config_path.starts_with(disk.mount_point()),
+            }
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .pylon_home_disk
+            .cmp(&left.pylon_home_disk)
+            .then_with(|| left.mount_point.cmp(&right.mount_point))
+    });
+    rows
+}
+
+fn collect_provider_network_interface_telemetry(
+    networks: &Networks,
+) -> Vec<ProviderHostNetworkInterfaceTelemetry> {
+    let mut rows = networks
+        .iter()
+        .filter(|(name, _)| !provider_network_interface_is_ignored(name.as_str()))
+        .map(|(name, network)| ProviderHostNetworkInterfaceTelemetry {
+            name: name.to_string(),
+            received_bytes_delta: network.received(),
+            transmitted_bytes_delta: network.transmitted(),
+            total_received_bytes: network.total_received(),
+            total_transmitted_bytes: network.total_transmitted(),
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| left.name.cmp(&right.name));
+    rows
+}
+
+fn provider_network_interface_is_ignored(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    normalized.starts_with("lo")
+}
+
+fn collect_provider_thermal_telemetry(
+    components: &Components,
+) -> Vec<ProviderHostThermalComponentTelemetry> {
+    let mut rows = components
+        .iter()
+        .filter_map(|component| {
+            component.temperature().map(|temperature_celsius| {
+                ProviderHostThermalComponentTelemetry {
+                    label: component.label().to_string(),
+                    temperature_celsius,
+                    max_celsius: component.max(),
+                    critical_celsius: component.critical(),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| left.label.cmp(&right.label));
+    rows
 }
 
 async fn post_nexus_provider_presence<T: Serialize>(
@@ -7594,7 +7956,17 @@ mod tests {
             recorded_requests_for_server
                 .lock()
                 .expect("provider presence request log")
-                .push((format!("{method} {path}"), payload));
+                .push((format!("{method} {path}"), payload.clone()));
+            if path == "/api/provider-payout-target/challenge" {
+                return (
+                    200,
+                    "application/json",
+                    json!({
+                        "challenge": "presence-test-challenge"
+                    })
+                    .to_string(),
+                );
+            }
             (200, "application/json", "{\"ok\":true}".to_string())
         })
         .await?;
@@ -7678,55 +8050,81 @@ mod tests {
             .lock()
             .expect("provider presence request log")
             .clone();
+        let heartbeat_request = requests
+            .iter()
+            .find(|(route, _)| route == "POST /api/provider-presence/heartbeat")
+            .ok_or("missing heartbeat request")?;
+        let offline_request = requests
+            .iter()
+            .find(|(route, _)| route == "POST /api/provider-presence/offline")
+            .ok_or("missing offline request")?;
         ensure(
-            requests.len() == 2,
-            "provider presence should send one heartbeat and one offline report",
+            requests.len() == 4,
+            "provider presence should send heartbeat, payout-target sync, and offline reports",
         )?;
         ensure(
-            requests[0].0 == "POST /api/provider-presence/heartbeat",
-            "first provider presence request should hit the heartbeat endpoint",
-        )?;
-        ensure(
-            requests[0].1["nostr_pubkey_hex"] == json!(identity.public_key_hex),
+            heartbeat_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex),
             "heartbeat should include the Pylon public key",
         )?;
         ensure(
-            requests[0].1["session_id"] == "session-test",
+            heartbeat_request.1["session_id"] == "session-test",
             "heartbeat should include the provider presence session id",
         )?;
         ensure(
-            requests[0].1["eligible_product_count"] == 1,
+            heartbeat_request.1["eligible_product_count"] == 1,
             "heartbeat should include the eligible product count",
         )?;
         ensure(
-            requests[0].1["products"]
+            heartbeat_request.1["products"]
                 .as_array()
                 .is_some_and(|products| products.len() == 1),
             "heartbeat should include the eligible launch product ids",
         )?;
         ensure(
-            requests[0].1["ready_model"] == "gemma4:e4b",
+            heartbeat_request.1["ready_model"] == "gemma4:e4b",
             "heartbeat should include the ready model",
         )?;
         ensure(
-            requests[0].1["diagnostic_summaries"]
+            heartbeat_request.1["diagnostic_summaries"]
                 .as_array()
                 .is_some_and(|rows| rows.len() == 1),
             "heartbeat should include the latest retained diagnostic summaries",
         )?;
         ensure(
-            requests[0].1["diagnostic_summaries"][0]["model_id"] == "gemma-4-e4b"
-                && requests[0].1["diagnostic_summaries"][0]["mean_total_s"] == json!(1.5)
-                && requests[0].1["diagnostic_summaries"][0]["mean_decode_tok_s"] == json!(12.5),
+            heartbeat_request.1["diagnostic_summaries"][0]["model_id"] == "gemma-4-e4b"
+                && heartbeat_request.1["diagnostic_summaries"][0]["mean_total_s"] == json!(1.5)
+                && heartbeat_request.1["diagnostic_summaries"][0]["mean_decode_tok_s"]
+                    == json!(12.5),
             "heartbeat should serialize diagnostic throughput metrics through the Nexus payload",
         )?;
         ensure(
-            requests[1].0 == "POST /api/provider-presence/offline",
-            "second provider presence request should hit the offline endpoint",
+            heartbeat_request.1["hosting_telemetry"]["availability"]["local_gemma"]["ready_model"]
+                == "gemma4:e4b"
+                && heartbeat_request.1["hosting_telemetry"]["inventory_rows"][0]["target"]
+                    == "psionic.local.inference.gemma.single_node",
+            "heartbeat should include inventory and backend telemetry for model-hosting supply",
         )?;
         ensure(
-            requests[1].1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
-                && requests[1].1["session_id"] == "session-test",
+            heartbeat_request.1["hosting_telemetry"]["runtime"]["execution_backend_label"]
+                .as_str()
+                .is_some_and(|label| !label.trim().is_empty()),
+            "heartbeat should include runtime execution backend telemetry",
+        )?;
+        ensure(
+            heartbeat_request.1["hosting_telemetry"]["host"]["captured_at_unix_ms"]
+                .as_u64()
+                .is_some_and(|value| value > 0)
+                && heartbeat_request.1["hosting_telemetry"]["host"]["logical_cpu_count"]
+                    .as_u64()
+                    .is_some_and(|value| value > 0)
+                && heartbeat_request.1["hosting_telemetry"]["host"]["memory"]["total_bytes"]
+                    .as_u64()
+                    .is_some_and(|value| value > 0),
+            "heartbeat should include host CPU and memory telemetry",
+        )?;
+        ensure(
+            offline_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
+                && offline_request.1["session_id"] == "session-test",
             "offline report should include the same identity and session",
         )
     }

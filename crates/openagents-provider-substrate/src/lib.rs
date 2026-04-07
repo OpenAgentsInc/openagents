@@ -192,6 +192,146 @@ pub struct ProviderDiagnosticSummary {
     pub repeats: u64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostLoadAverageTelemetry {
+    pub one: f64,
+    pub five: f64,
+    pub fifteen: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostMemoryTelemetry {
+    pub used_bytes: u64,
+    pub available_bytes: u64,
+    pub total_bytes: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostSwapTelemetry {
+    pub used_bytes: u64,
+    pub free_bytes: u64,
+    pub total_bytes: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostGpuTelemetry {
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_total_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_free_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_total_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_free_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_draw_watts: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_limit_watts: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostDiskTelemetry {
+    pub mount_point: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_system: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub removable: bool,
+    pub available_space_bytes: u64,
+    pub total_space_bytes: u64,
+    pub read_bytes_delta: u64,
+    pub written_bytes_delta: u64,
+    pub total_read_bytes: u64,
+    pub total_written_bytes: u64,
+    #[serde(default)]
+    pub pylon_home_disk: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostNetworkInterfaceTelemetry {
+    pub name: String,
+    pub received_bytes_delta: u64,
+    pub transmitted_bytes_delta: u64,
+    pub total_received_bytes: u64,
+    pub total_transmitted_bytes: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostThermalComponentTelemetry {
+    pub label: String,
+    pub temperature_celsius: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_celsius: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critical_celsius: Option<f32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostPowerTelemetry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draw_summary: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostTelemetrySnapshot {
+    pub captured_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kernel_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_arch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical_cpu_count: Option<u64>,
+    #[serde(default)]
+    pub logical_cpu_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_brand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_frequency_mhz: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_usage_percent: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_average: Option<ProviderHostLoadAverageTelemetry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<ProviderHostMemoryTelemetry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swap: Option<ProviderHostSwapTelemetry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uptime_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gpus: Vec<ProviderHostGpuTelemetry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disks: Vec<ProviderHostDiskTelemetry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub network_interfaces: Vec<ProviderHostNetworkInterfaceTelemetry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub thermal_components: Vec<ProviderHostThermalComponentTelemetry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power: Option<ProviderHostPowerTelemetry>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderHostingTelemetrySnapshot {
+    pub captured_at_unix_ms: u64,
+    pub runtime: ProviderRuntimeStatusSnapshot,
+    pub availability: ProviderAvailability,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inventory_rows: Vec<ProviderInventoryRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<ProviderHostTelemetrySnapshot>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAppleAdapterHostingEntry {
     pub adapter_id: String,
