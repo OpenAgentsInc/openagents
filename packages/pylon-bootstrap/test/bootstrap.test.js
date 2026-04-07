@@ -410,4 +410,85 @@ describe("@openagentsinc/pylon bootstrap", () => {
       },
     });
   });
+
+  test("bootstrapInstalledPylon skips gemma diagnose when the release does not support it", async () => {
+    const statuses = [];
+
+    const summary = await bootstrapInstalledPylon(
+      {
+        version: "0.0.1-rc3",
+        tagName: "pylon-v0.0.1-rc3",
+        target: { os: "darwin", arch: "arm64" },
+        cached: false,
+        pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
+        model: "gemma-4-e4b",
+      },
+      {
+        runProcessImpl: async (_command, args) => {
+          const joined = args.join(" ");
+          if (joined === "--help") {
+            return { stdout: "usage", stderr: "" };
+          }
+          if (joined === "init") {
+            return {
+              stdout: JSON.stringify({
+                config_path: "/tmp/pylon-config.json",
+              }),
+              stderr: "",
+            };
+          }
+          if (joined === "status --json") {
+            return {
+              stdout: JSON.stringify({
+                snapshot: {
+                  runtime: {
+                    authoritative_status: "online",
+                  },
+                },
+              }),
+              stderr: "",
+            };
+          }
+          if (joined === "inventory --json") {
+            return {
+              stdout: JSON.stringify({
+                rows: [{ id: "row-1" }],
+              }),
+              stderr: "",
+            };
+          }
+          if (joined === "gemma download gemma-4-e4b --json") {
+            return {
+              stdout: JSON.stringify({
+                results: [{ model_id: "gemma-4-e4b", status: "installed" }],
+              }),
+              stderr: "",
+            };
+          }
+          if (
+            joined ===
+            "gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3 --json"
+          ) {
+            throw new Error(
+              "/tmp/pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3 --json exited with code 1: unknown gemma command: diagnose",
+            );
+          }
+          throw new Error(`Unexpected command: ${joined}`);
+        },
+        onStatus: (event) => statuses.push(event),
+      },
+    );
+
+    expect(summary.diagnostic).toBeNull();
+    expect(summary.diagnosticResult).toBeNull();
+    expect(statuses).toContainEqual({
+      message: "Skipping first-run diagnostic",
+      detail: "installed Pylon release does not expose gemma diagnose",
+    });
+    expect(statuses.at(-1)).toEqual({
+      message: "Bootstrap complete",
+      detail: "smoke path complete",
+    });
+  });
 });

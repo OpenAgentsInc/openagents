@@ -353,6 +353,14 @@ async function runPylonJson(pylonPath, args, options, runProcessImpl) {
   }
 }
 
+function isUnsupportedGemmaDiagnoseError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("unknown gemma command: diagnose") ||
+    message.includes("unknown command: diagnose")
+  );
+}
+
 export async function ensureReleaseInstall(
   options = {},
   {
@@ -533,21 +541,32 @@ export async function bootstrapInstalledPylon(
   let diagnostic = null;
   if (!options.skipDiagnostics) {
     emitStatus(onStatus, "Running first-run diagnostic", model);
-    diagnostic = await runPylonJson(
-      pylonPath,
-      [
-        "gemma",
-        "diagnose",
-        model,
-        "--max-output-tokens",
-        String(diagnosticMaxOutputTokens),
-        "--repeats",
-        String(diagnosticRepeats),
-        "--json",
-      ],
-      options,
-      runProcessImpl,
-    );
+    try {
+      diagnostic = await runPylonJson(
+        pylonPath,
+        [
+          "gemma",
+          "diagnose",
+          model,
+          "--max-output-tokens",
+          String(diagnosticMaxOutputTokens),
+          "--repeats",
+          String(diagnosticRepeats),
+          "--json",
+        ],
+        options,
+        runProcessImpl,
+      );
+    } catch (error) {
+      if (!isUnsupportedGemmaDiagnoseError(error)) {
+        throw error;
+      }
+      emitStatus(
+        onStatus,
+        "Skipping first-run diagnostic",
+        "installed Pylon release does not expose gemma diagnose",
+      );
+    }
   } else {
     emitStatus(onStatus, "Skipping first-run diagnostic", model);
   }
