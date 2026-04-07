@@ -13649,6 +13649,9 @@ fn backend_family_label(
         openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels => {
             "apple_foundation_models"
         }
+        openagents_kernel_core::compute::ComputeBackendFamily::PooledInference => {
+            "pooled_inference"
+        }
         openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain => "psionic_train",
     }
 }

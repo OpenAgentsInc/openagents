@@ -13,7 +13,7 @@
 mod economy;
 mod kernel;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -66,7 +66,8 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::economy::{
-    AuthorityReceiptContext, PublicRuntimeSnapshot, PublicStatsSnapshot, ReceiptLedger,
+    AuthorityReceiptContext, PublicRecentPylon, PublicRuntimeSnapshot, PublicStatsSnapshot,
+    ReceiptLedger,
 };
 use crate::kernel::{
     FinalizeValidatorChallengeRequest, FinalizeValidatorChallengeResponse, KernelMutationContext,
@@ -117,6 +118,10 @@ const DEFAULT_STARTER_DEMAND_REQUEST_TTL_SECONDS: u64 = 75;
 const DEFAULT_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION: usize = 1;
 const DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS: u64 = 15;
 const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
+const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
+const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 30_000;
+const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
+const PUBLIC_RECENT_PYLON_LIMIT: usize = 8;
 const DEFAULT_SYNC_STREAM_GRANTS: [&str; 2] = [
     "stream.activity_projection.v1",
     "stream.earn_job_lifecycle_projection.v1",
@@ -476,6 +481,39 @@ pub struct StarterDemandCompleteResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderPresenceHeartbeatRequest {
+    pub nostr_pubkey_hex: String,
+    pub session_id: String,
+    pub node_label: Option<String>,
+    pub client_version: Option<String>,
+    #[serde(default)]
+    pub relay_urls: Vec<String>,
+    #[serde(default)]
+    pub products: Vec<String>,
+    #[serde(default)]
+    pub eligible_product_count: u64,
+    pub ready_model: Option<String>,
+    pub runtime_state: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderPresenceOfflineRequest {
+    pub nostr_pubkey_hex: String,
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderPresenceResponse {
+    pub authority: String,
+    pub session_id: String,
+    pub nostr_pubkey_hex: String,
+    pub status: String,
+    pub recorded_at_unix_ms: u64,
+    pub heartbeat_interval_ms: u64,
+    pub stale_after_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {
     pub ok: bool,
     pub service: String,
@@ -499,6 +537,7 @@ struct AppState {
 struct ControlStore {
     sessions_by_access_token: HashMap<String, DesktopSessionRecord>,
     sync_tokens: HashMap<String, SyncTokenRecord>,
+    provider_presence: ProviderPresenceState,
     starter_demand: StarterDemandState,
     economy: ReceiptLedger,
     kernel: KernelState,
@@ -518,11 +557,17 @@ impl ControlStore {
         Self {
             sessions_by_access_token: HashMap::new(),
             sync_tokens: HashMap::new(),
+            provider_presence: ProviderPresenceState::default(),
             starter_demand: StarterDemandState::default(),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
             kernel,
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct ProviderPresenceState {
+    rows_by_key: HashMap<String, ProviderPresenceRecord>,
 }
 
 #[derive(Debug, Default)]
@@ -532,6 +577,30 @@ struct StarterDemandState {
     next_template_index: usize,
     last_dispatch_by_session: HashMap<String, u64>,
     offers_by_session: HashMap<String, Vec<StarterDemandOfferRecord>>,
+}
+
+#[derive(Debug, Clone)]
+struct ProviderPresenceRecord {
+    nostr_pubkey_hex: String,
+    session_id: String,
+    node_label: Option<String>,
+    client_version: Option<String>,
+    relay_urls: Vec<String>,
+    products: Vec<String>,
+    eligible_product_count: u64,
+    ready_model: Option<String>,
+    runtime_state: Option<String>,
+    online: bool,
+    last_seen_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProviderPresenceMetrics {
+    pylons_online_now: u64,
+    pylons_seen_24h: u64,
+    pylon_sessions_online_now: u64,
+    sellable_pylons_online_now: u64,
+    recent_pylons: Vec<PublicRecentPylon>,
 }
 
 #[derive(Debug, Clone)]
@@ -639,6 +708,123 @@ const STARTER_DEMAND_TEMPLATES: [StarterDemandTemplate; 4] = [
     },
 ];
 
+impl ProviderPresenceState {
+    fn record_heartbeat(
+        &mut self,
+        request: ProviderPresenceHeartbeatRequest,
+        recorded_at_unix_ms: u64,
+    ) -> ProviderPresenceRecord {
+        self.prune(recorded_at_unix_ms);
+        let record = ProviderPresenceRecord {
+            nostr_pubkey_hex: request.nostr_pubkey_hex,
+            session_id: request.session_id,
+            node_label: normalize_optional_field(request.node_label.as_deref()),
+            client_version: normalize_optional_field(request.client_version.as_deref()),
+            relay_urls: normalize_string_vec(request.relay_urls),
+            products: normalize_string_vec(request.products),
+            eligible_product_count: request.eligible_product_count,
+            ready_model: normalize_optional_field(request.ready_model.as_deref()),
+            runtime_state: normalize_optional_field(request.runtime_state.as_deref()),
+            online: true,
+            last_seen_at_unix_ms: recorded_at_unix_ms,
+        };
+        self.rows_by_key.insert(
+            provider_presence_key(record.nostr_pubkey_hex.as_str(), record.session_id.as_str()),
+            record.clone(),
+        );
+        record
+    }
+
+    fn record_offline(
+        &mut self,
+        nostr_pubkey_hex: String,
+        session_id: String,
+        recorded_at_unix_ms: u64,
+    ) -> ProviderPresenceRecord {
+        self.prune(recorded_at_unix_ms);
+        let key = provider_presence_key(nostr_pubkey_hex.as_str(), session_id.as_str());
+        let mut record = self
+            .rows_by_key
+            .get(&key)
+            .cloned()
+            .unwrap_or(ProviderPresenceRecord {
+                nostr_pubkey_hex,
+                session_id,
+                node_label: None,
+                client_version: None,
+                relay_urls: Vec::new(),
+                products: Vec::new(),
+                eligible_product_count: 0,
+                ready_model: None,
+                runtime_state: None,
+                online: false,
+                last_seen_at_unix_ms: recorded_at_unix_ms,
+            });
+        record.online = false;
+        record.last_seen_at_unix_ms = recorded_at_unix_ms;
+        self.rows_by_key.insert(key, record.clone());
+        record
+    }
+
+    fn prune(&mut self, now_unix_ms: u64) {
+        let oldest_allowed = now_unix_ms.saturating_sub(PROVIDER_PRESENCE_RETENTION_WINDOW_MS);
+        self.rows_by_key
+            .retain(|_, record| record.last_seen_at_unix_ms >= oldest_allowed);
+    }
+
+    fn metrics(&self, now_unix_ms: u64) -> ProviderPresenceMetrics {
+        let stale_cutoff = now_unix_ms.saturating_sub(DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+        let seen_cutoff = now_unix_ms.saturating_sub(PROVIDER_PRESENCE_RETENTION_WINDOW_MS);
+        let mut online_identities = HashSet::new();
+        let mut seen_identities = HashSet::new();
+        let mut sellable_identities = HashSet::new();
+        let mut pylon_sessions_online_now = 0u64;
+
+        for record in self.rows_by_key.values() {
+            if record.last_seen_at_unix_ms >= seen_cutoff {
+                seen_identities.insert(record.nostr_pubkey_hex.clone());
+            }
+            if record.online && record.last_seen_at_unix_ms >= stale_cutoff {
+                online_identities.insert(record.nostr_pubkey_hex.clone());
+                pylon_sessions_online_now = pylon_sessions_online_now.saturating_add(1);
+                if record.eligible_product_count > 0 {
+                    sellable_identities.insert(record.nostr_pubkey_hex.clone());
+                }
+            }
+        }
+
+        let mut recent_pylons = self.rows_by_key.values().cloned().collect::<Vec<_>>();
+        recent_pylons.sort_by(|left, right| {
+            right
+                .last_seen_at_unix_ms
+                .cmp(&left.last_seen_at_unix_ms)
+                .then_with(|| left.session_id.cmp(&right.session_id))
+        });
+        recent_pylons.truncate(PUBLIC_RECENT_PYLON_LIMIT);
+
+        ProviderPresenceMetrics {
+            pylons_online_now: online_identities.len() as u64,
+            pylons_seen_24h: seen_identities.len() as u64,
+            pylon_sessions_online_now,
+            sellable_pylons_online_now: sellable_identities.len() as u64,
+            recent_pylons: recent_pylons
+                .into_iter()
+                .map(|record| PublicRecentPylon {
+                    node_label: record.node_label,
+                    nostr_pubkey_short: truncate_nostr_pubkey(record.nostr_pubkey_hex.as_str()),
+                    last_seen_at_unix_ms: record.last_seen_at_unix_ms,
+                    client_version: record.client_version,
+                    relay_urls: record.relay_urls,
+                    eligible_product_count: record.eligible_product_count,
+                    products: record.products,
+                    ready_model: record.ready_model,
+                    runtime_state: record.runtime_state,
+                })
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ApiError {
     status: StatusCode,
@@ -677,6 +863,14 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
     Router::new()
         .route("/stats", get(public_stats))
         .route("/api/stats", get(public_stats))
+        .route(
+            "/api/provider-presence/heartbeat",
+            post(record_provider_presence_heartbeat),
+        )
+        .route(
+            "/api/provider-presence/offline",
+            post(record_provider_presence_offline),
+        )
         .route("/api/session/desktop", post(create_desktop_session))
         .route("/api/session/me", get(session_me))
         .route("/api/sync/token", post(create_sync_token))
@@ -985,6 +1179,7 @@ async fn public_stats(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
+    store.provider_presence.prune(now);
     let expired_events =
         prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
     record_expired_offer_receipts(&mut store, expired_events, now);
@@ -992,6 +1187,73 @@ async fn public_stats(
         .economy
         .snapshot(&runtime_snapshot(&state.config, &store, now), now);
     Ok(Json(stats))
+}
+
+async fn record_provider_presence_heartbeat(
+    State(state): State<AppState>,
+    Json(request): Json<ProviderPresenceHeartbeatRequest>,
+) -> Result<Json<ProviderPresenceResponse>, ApiError> {
+    let normalized_request = ProviderPresenceHeartbeatRequest {
+        nostr_pubkey_hex: normalize_required_field(
+            request.nostr_pubkey_hex.as_str(),
+            "provider_nostr_pubkey_missing",
+        )?,
+        session_id: normalize_required_field(request.session_id.as_str(), "session_id_missing")?,
+        node_label: normalize_optional_field(request.node_label.as_deref()),
+        client_version: normalize_optional_field(request.client_version.as_deref()),
+        relay_urls: normalize_string_vec(request.relay_urls),
+        products: normalize_string_vec(request.products),
+        eligible_product_count: request.eligible_product_count,
+        ready_model: normalize_optional_field(request.ready_model.as_deref()),
+        runtime_state: normalize_optional_field(request.runtime_state.as_deref()),
+    };
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let record = store
+        .provider_presence
+        .record_heartbeat(normalized_request, now);
+    Ok(Json(ProviderPresenceResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        session_id: record.session_id,
+        nostr_pubkey_hex: record.nostr_pubkey_hex,
+        status: "online".to_string(),
+        recorded_at_unix_ms: now,
+        heartbeat_interval_ms: DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
+        stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+    }))
+}
+
+async fn record_provider_presence_offline(
+    State(state): State<AppState>,
+    Json(request): Json<ProviderPresenceOfflineRequest>,
+) -> Result<Json<ProviderPresenceResponse>, ApiError> {
+    let nostr_pubkey_hex = normalize_required_field(
+        request.nostr_pubkey_hex.as_str(),
+        "provider_nostr_pubkey_missing",
+    )?;
+    let session_id = normalize_required_field(request.session_id.as_str(), "session_id_missing")?;
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let record = store
+        .provider_presence
+        .record_offline(nostr_pubkey_hex, session_id, now);
+    Ok(Json(ProviderPresenceResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        session_id: record.session_id,
+        nostr_pubkey_hex: record.nostr_pubkey_hex,
+        status: "offline".to_string(),
+        recorded_at_unix_ms: now,
+        heartbeat_interval_ms: DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
+        stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+    }))
 }
 
 async fn create_desktop_session(
@@ -5905,6 +6167,7 @@ fn runtime_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
 ) -> PublicRuntimeSnapshot {
+    let provider_presence_metrics = store.provider_presence.metrics(now_unix_ms);
     let (starter_offers_waiting_ack, starter_offers_running) = store
         .starter_demand
         .offers_by_session
@@ -5925,6 +6188,11 @@ fn runtime_snapshot(
     let risk_metrics = store.kernel.risk_market_metrics(now_unix_ms as i64);
     PublicRuntimeSnapshot {
         hosted_nexus_relay_url: config.hosted_nexus_relay_url.clone(),
+        pylons_online_now: provider_presence_metrics.pylons_online_now,
+        pylons_seen_24h: provider_presence_metrics.pylons_seen_24h,
+        pylon_sessions_online_now: provider_presence_metrics.pylon_sessions_online_now,
+        sellable_pylons_online_now: provider_presence_metrics.sellable_pylons_online_now,
+        pylon_presence_stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         sessions_active: store.sessions_by_access_token.len(),
         sync_tokens_active: store.sync_tokens.len(),
         starter_demand_budget_cap_sats: config.starter_demand_budget_cap_sats,
@@ -6007,6 +6275,7 @@ fn runtime_snapshot(
         risk_implied_fail_probability_bps: risk_metrics.risk_implied_fail_probability_bps,
         risk_calibration_score: risk_metrics.risk_calibration_score,
         risk_coverage_concentration_hhi: risk_metrics.risk_coverage_concentration_hhi,
+        recent_pylons: provider_presence_metrics.recent_pylons,
     }
 }
 
@@ -6144,6 +6413,17 @@ fn normalize_optional_field(value: Option<&str>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn normalize_string_vec(values: Vec<String>) -> Vec<String> {
+    let mut normalized = values
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
 fn sanitize_identifier(value: &str) -> String {
     let sanitized = value
         .chars()
@@ -6159,6 +6439,22 @@ fn sanitize_identifier(value: &str) -> String {
         "desktop".to_string()
     } else {
         sanitized
+    }
+}
+
+fn provider_presence_key(nostr_pubkey_hex: &str, session_id: &str) -> String {
+    format!("{nostr_pubkey_hex}:{session_id}")
+}
+
+fn truncate_nostr_pubkey(nostr_pubkey_hex: &str) -> String {
+    if nostr_pubkey_hex.len() <= 16 {
+        nostr_pubkey_hex.to_string()
+    } else {
+        format!(
+            "{}…{}",
+            &nostr_pubkey_hex[..8],
+            &nostr_pubkey_hex[nostr_pubkey_hex.len().saturating_sub(8)..]
+        )
     }
 }
 
@@ -6179,31 +6475,30 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use openagents_kernel_core::authority::{
-        AcceptComputeOutcomeRequest, AdjustReservePartitionRequest,
-        AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest,
-        AppendComputeSyntheticDataSamplesRequest, BindCoverageRequest, BindCoverageResponse,
-        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
-        CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
-        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeEvaluationRunRequest,
-        CreateComputeProductRequest, CreateComputeSyntheticDataJobRequest,
-        CreateComputeTrainingRunRequest, CreateContractRequest, CreateContractResponse,
-        CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+        AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
+        AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
+        BindCoverageRequest, BindCoverageResponse, CashSettleCapacityInstrumentRequest,
+        CloseCapacityInstrumentRequest, CloseStructuredCapacityInstrumentRequest,
+        CorrectComputeIndexRequest, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
+        CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
+        CreateComputeSyntheticDataJobRequest, CreateComputeTrainingRunRequest,
+        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
         CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
         CreateStructuredCapacityInstrumentRequest, CreateWorkUnitRequest, CreateWorkUnitResponse,
         ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
         FinalizeComputeEvaluationRunRequest, FinalizeComputeSyntheticDataGenerationRequest,
         FinalizeComputeTrainingRunRequest, FinalizeVerdictRequest, FinalizeVerdictResponse,
         HttpKernelAuthorityClient, IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse,
-        KernelAuthority, PlaceCoverageOfferRequest,
-        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
-        PublishRiskSignalResponse, RecordComputeAdapterWindowRequest,
-        RecordComputeSyntheticDataVerificationRequest, RecordDeliveryProofRequest,
-        RegisterComputeBenchmarkPackageRequest, RegisterComputeCheckpointFamilyPolicyRequest,
-        RegisterComputeEnvironmentPackageRequest, RegisterComputeTrainingPolicyRequest,
-        RegisterComputeValidatorPolicyRequest, RegisterReservePartitionRequest,
-        RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
-        SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest,
-        SubmitOutputResponse,
+        KernelAuthority, PlaceCoverageOfferRequest, PlaceCoverageOfferResponse,
+        PublishComputeIndexRequest, PublishRiskSignalRequest, PublishRiskSignalResponse,
+        RecordComputeAdapterWindowRequest, RecordComputeSyntheticDataVerificationRequest,
+        RecordDeliveryProofRequest, RegisterComputeBenchmarkPackageRequest,
+        RegisterComputeCheckpointFamilyPolicyRequest, RegisterComputeEnvironmentPackageRequest,
+        RegisterComputeTrainingPolicyRequest, RegisterComputeValidatorPolicyRequest,
+        RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
+        ResolveRiskClaimResponse, SelectRoutePlanRequest, SelectRoutePlanResponse,
+        SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
         ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
@@ -6264,11 +6559,13 @@ mod tests {
 
     use super::{
         DEFAULT_COMPUTE_POLICY_BUNDLE_ID, DEFAULT_COMPUTE_POLICY_VERSION,
-        DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
-        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, PublicStatsSnapshot,
-        ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, ServiceConfig,
-        StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
-        StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
+        DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS, DesktopSessionCreateRequest,
+        DesktopSessionResponse, FinalizeValidatorChallengeRequest, LeaseValidatorChallengeRequest,
+        LeaseValidatorChallengeResponse, PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
+        ProviderPresenceHeartbeatRequest, ProviderPresenceOfflineRequest, ProviderPresenceState,
+        PublicStatsSnapshot, ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse,
+        ServiceConfig, StarterDemandAckRequest, StarterDemandAckResponse,
+        StarterDemandCompleteRequest, StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
         SyncTokenResponse, build_router,
     };
@@ -6350,6 +6647,34 @@ mod tests {
 
     fn authorization(session: &DesktopSessionResponse) -> String {
         format!("Bearer {}", session.access_token)
+    }
+
+    fn provider_presence_request(
+        nostr_pubkey_hex: &str,
+        session_id: &str,
+        node_label: &str,
+        eligible_product_count: u64,
+        runtime_state: &str,
+    ) -> ProviderPresenceHeartbeatRequest {
+        ProviderPresenceHeartbeatRequest {
+            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+            session_id: session_id.to_string(),
+            node_label: Some(node_label.to_string()),
+            client_version: Some("pylon/0.1.0".to_string()),
+            relay_urls: vec!["wss://nexus.openagents.com/".to_string()],
+            products: if eligible_product_count > 0 {
+                vec!["psionic.local.inference.gemma.single_node".to_string()]
+            } else {
+                Vec::new()
+            },
+            eligible_product_count,
+            ready_model: if eligible_product_count > 0 {
+                Some("gemma4:e4b".to_string())
+            } else {
+                None
+            },
+            runtime_state: Some(runtime_state.to_string()),
+        }
     }
 
     fn kernel_policy() -> PolicyContext {
@@ -8561,8 +8886,13 @@ mod tests {
         assert_eq!(empty_stats.status(), StatusCode::OK);
         let empty: PublicStatsSnapshot = response_json(empty_stats).await?;
         assert_eq!(empty.receipt_count, 0);
+        assert_eq!(empty.pylons_online_now, 0);
+        assert_eq!(empty.pylons_seen_24h, 0);
+        assert_eq!(empty.pylon_sessions_online_now, 0);
+        assert_eq!(empty.sellable_pylons_online_now, 0);
         assert_eq!(empty.sessions_active, 0);
         assert_eq!(empty.sync_tokens_active, 0);
+        assert!(empty.recent_pylons.is_empty());
 
         let empty_api_stats = app
             .clone()
@@ -8616,6 +8946,7 @@ mod tests {
         assert_eq!(stats.sync_tokens_issued_24h, 1);
         assert!(stats.receipt_count >= 2);
         assert_eq!(api_stats.receipt_count, stats.receipt_count);
+        assert_eq!(api_stats.pylons_online_now, stats.pylons_online_now);
         assert_eq!(api_stats.sessions_active, stats.sessions_active);
         assert_eq!(api_stats.sync_tokens_active, stats.sync_tokens_active);
         assert!(
@@ -8631,6 +8962,138 @@ mod tests {
                 .any(|receipt| receipt.receipt_type == "sync_token.issued")
         );
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_presence_routes_publish_public_stats() -> Result<()> {
+        let app = build_router(test_config()?);
+
+        for request in [
+            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online"),
+            provider_presence_request("aabbccdd00112233", "session-a-2", "alpha-2", 0, "degraded"),
+            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 2, "online"),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/provider-presence/heartbeat")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&request)?))?,
+                )
+                .await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.pylons_online_now, 2);
+        assert_eq!(stats.pylons_seen_24h, 2);
+        assert_eq!(stats.pylon_sessions_online_now, 3);
+        assert_eq!(stats.sellable_pylons_online_now, 2);
+        assert_eq!(
+            stats.pylon_presence_stale_after_ms,
+            DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS
+        );
+        assert_eq!(stats.recent_pylons.len(), 3);
+        assert!(
+            stats
+                .recent_pylons
+                .iter()
+                .any(|row| row.nostr_pubkey_short == "bbccddee11223344")
+        );
+
+        let offline_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/offline")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPresenceOfflineRequest {
+                            nostr_pubkey_hex: "aabbccdd00112233".to_string(),
+                            session_id: "session-a-1".to_string(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(offline_response.status(), StatusCode::OK);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.pylons_online_now, 2);
+        assert_eq!(stats.pylons_seen_24h, 2);
+        assert_eq!(stats.pylon_sessions_online_now, 2);
+        assert_eq!(stats.sellable_pylons_online_now, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn provider_presence_ttl_and_identity_cardinality_are_stable() {
+        let mut presence = ProviderPresenceState::default();
+
+        presence.record_heartbeat(
+            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online"),
+            100_000,
+        );
+        presence.record_heartbeat(
+            provider_presence_request("aabbccdd00112233", "session-a-2", "alpha-2", 0, "degraded"),
+            100_000,
+        );
+        presence.record_heartbeat(
+            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 1, "online"),
+            100_000,
+        );
+
+        let fresh =
+            presence.metrics(100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS.saturating_sub(1));
+        assert_eq!(fresh.pylons_online_now, 2);
+        assert_eq!(fresh.pylons_seen_24h, 2);
+        assert_eq!(fresh.pylon_sessions_online_now, 3);
+        assert_eq!(fresh.sellable_pylons_online_now, 2);
+
+        presence.record_offline(
+            "aabbccdd00112233".to_string(),
+            "session-a-1".to_string(),
+            110_000,
+        );
+        let after_offline = presence.metrics(110_000);
+        assert_eq!(after_offline.pylons_online_now, 2);
+        assert_eq!(after_offline.pylons_seen_24h, 2);
+        assert_eq!(after_offline.pylon_sessions_online_now, 2);
+        assert_eq!(after_offline.sellable_pylons_online_now, 1);
+
+        let stale = presence.metrics(100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS + 1);
+        assert_eq!(stale.pylons_online_now, 0);
+        assert_eq!(stale.pylon_sessions_online_now, 0);
+        assert_eq!(stale.pylons_seen_24h, 2);
+
+        let pruned_at = 110_000 + PROVIDER_PRESENCE_RETENTION_WINDOW_MS + 1;
+        presence.prune(pruned_at);
+        let pruned = presence.metrics(pruned_at);
+        assert_eq!(pruned.pylons_online_now, 0);
+        assert_eq!(pruned.pylons_seen_24h, 0);
+        assert!(pruned.recent_pylons.is_empty());
     }
 
     #[tokio::test]
