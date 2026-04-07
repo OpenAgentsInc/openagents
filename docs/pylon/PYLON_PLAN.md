@@ -35,6 +35,12 @@ aggregate public counts that the website or future platform consumes. The
 website should not become the source of truth for "Pylons online now" or
 "Pylons seen in the last 24 hours."
 
+That same single telemetry path now also carries retained first-run diagnostic
+summaries. `Pylon` should publish the latest public-safe `gemma diagnose`
+rows on the existing heartbeat, and `Nexus` should surface those rows back out
+through `/api/stats` as recent per-Pylon model telemetry. The website remains
+only a reader of that `Nexus` authority surface.
+
 This document updates the older MVP-only posture that Pylon should not be treated as a separate product surface. That older posture remains correct for current implementation ownership inside `#3116`, but the product plan is now to split out a narrow standalone provider connector as part of the current compute-market execution wave, alongside the remaining open repo issue slate where possible and immediately after it where blocking dependencies require it.
 
 ## Timing And Priority

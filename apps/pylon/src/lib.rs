@@ -16,14 +16,14 @@ use openagents_provider_substrate::{
     ProviderAdapterTrainingContributorAvailability, ProviderAdminConfig, ProviderAdminRuntime,
     ProviderAdminUpdate, ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
     ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
-    ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent, ProviderIdentityMetadata,
-    ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry, ProviderMode,
-    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderPooledInferenceAvailability,
-    ProviderReceiptSummary, ProviderRecentJob, ProviderRuntimeStatusSnapshot,
-    ProviderSandboxDetectionConfig, ProviderSandboxProfile, ProviderSandboxProfileSpec,
-    ProviderSandboxRuntimeHealth, ProviderSnapshotParts, ProviderStatusResponse,
-    assemble_provider_persisted_snapshot, derive_provider_products, detect_sandbox_supply,
-    provider_runtime_state_label, validate_provider_control_action,
+    ProviderDiagnosticSummary, ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent,
+    ProviderIdentityMetadata, ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry,
+    ProviderMode, ProviderPersistedSnapshot, ProviderPersistenceStore,
+    ProviderPooledInferenceAvailability, ProviderReceiptSummary, ProviderRecentJob,
+    ProviderRuntimeStatusSnapshot, ProviderSandboxDetectionConfig, ProviderSandboxProfile,
+    ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSnapshotParts,
+    ProviderStatusResponse, assemble_provider_persisted_snapshot, derive_provider_products,
+    detect_sandbox_supply, provider_runtime_state_label, validate_provider_control_action,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -775,6 +775,8 @@ pub struct GemmaDiagnosticReport {
     pub selector: String,
     pub diagnostic_id: String,
     pub measured_at_unix_ms: u64,
+    #[serde(default)]
+    pub repeats: usize,
     pub report_path: String,
     pub results: Vec<GemmaDiagnosticResult>,
 }
@@ -1216,6 +1218,58 @@ pub fn load_latest_gemma_diagnostic_report(
     Ok(Some(report))
 }
 
+fn provider_diagnostic_summaries_from_report(
+    report: &GemmaDiagnosticReport,
+) -> Vec<ProviderDiagnosticSummary> {
+    report
+        .results
+        .iter()
+        .map(|result| ProviderDiagnosticSummary {
+            diagnostic_id: report.diagnostic_id.clone(),
+            model_id: result.model_id.clone(),
+            runtime_backend: result.runtime_backend.clone(),
+            status: result.status.clone(),
+            reason: result.reason.clone(),
+            measured_at_unix_ms: result
+                .receipt
+                .as_ref()
+                .map(|receipt| receipt.measured_at_unix_ms)
+                .unwrap_or(report.measured_at_unix_ms),
+            load_s: result.receipt.as_ref().and_then(|receipt| receipt.load_s),
+            mean_total_s: result.receipt.as_ref().map(|receipt| receipt.mean_total_s),
+            mean_ttft_s: result
+                .receipt
+                .as_ref()
+                .and_then(|receipt| receipt.mean_ttft_s),
+            mean_decode_tok_s: result
+                .receipt
+                .as_ref()
+                .and_then(|receipt| receipt.mean_decode_tok_s),
+            repeats: u64::try_from(
+                result
+                    .receipt
+                    .as_ref()
+                    .map(|receipt| receipt.repeats)
+                    .unwrap_or(report.repeats),
+            )
+            .unwrap_or(u64::MAX),
+        })
+        .collect()
+}
+
+fn load_latest_provider_diagnostic_summaries(config_path: &Path) -> Vec<ProviderDiagnosticSummary> {
+    match load_latest_gemma_diagnostic_report(config_path) {
+        Ok(Some(report)) => provider_diagnostic_summaries_from_report(&report),
+        Ok(None) => Vec::new(),
+        Err(error) => {
+            eprintln!(
+                "warning: failed to load latest Gemma diagnostic report for Nexus heartbeat: {error}"
+            );
+            Vec::new()
+        }
+    }
+}
+
 fn save_gemma_diagnostic_report(
     config_path: &Path,
     report: &mut GemmaDiagnosticReport,
@@ -1419,6 +1473,7 @@ async fn run_gemma_diagnostic_command(
         selector: selector.label(),
         diagnostic_id: request.diagnostic_id.clone(),
         measured_at_unix_ms,
+        repeats: request.repeats,
         report_path: String::new(),
         results,
     };
@@ -2080,7 +2135,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         }
         Command::Serve => {
             let config = load_or_create_config(cli.config_path.as_path())?;
-            serve(config).await?;
+            serve(cli.config_path.as_path(), config).await?;
             Ok(None)
         }
         Command::Status { json } => {
@@ -3592,7 +3647,7 @@ fn ensure_identity(path: &Path) -> Result<NostrIdentity> {
     })
 }
 
-async fn serve(config: PylonConfig) -> Result<()> {
+async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     let admin_config = provider_admin_config(&config)?;
     let mut desired_mode = ProviderPersistenceStore::open(&admin_config)
         .map_err(anyhow::Error::msg)?
@@ -3698,6 +3753,7 @@ async fn serve(config: PylonConfig) -> Result<()> {
                 if let Some(snapshot) = previous_snapshot.as_ref() {
                     if let Err(error) = report_provider_presence_heartbeat(
                         &presence_client,
+                        config_path,
                         &config,
                         &identity,
                         provider_presence_session_id.as_str(),
@@ -6288,6 +6344,8 @@ struct NexusProviderPresenceHeartbeatRequest {
     eligible_product_count: u64,
     ready_model: Option<String>,
     runtime_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
 }
 
 #[derive(Debug, Serialize)]
@@ -6298,6 +6356,7 @@ struct NexusProviderPresenceOfflineRequest {
 
 async fn report_provider_presence_heartbeat(
     client: &reqwest::Client,
+    config_path: &Path,
     config: &PylonConfig,
     identity: &NostrIdentity,
     session_id: &str,
@@ -6326,6 +6385,7 @@ async fn report_provider_presence_heartbeat(
             .authoritative_status
             .clone()
             .or_else(|| Some(snapshot.runtime.mode.label().to_string())),
+        diagnostic_summaries: load_latest_provider_diagnostic_summaries(config_path),
     };
     post_nexus_provider_presence(
         client,
@@ -6735,24 +6795,26 @@ mod tests {
     use super::{
         AnnouncementAction, BuyerJobSubmitRequest, Cli, Command, DEFAULT_GEMMA_BENCH_PROMPT,
         DEFAULT_GEMMA_DIAGNOSTIC_ID, GemmaBenchExecutionMode, GemmaBenchmarkMode,
-        GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand, GemmaDiagnosticRequest,
-        GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend, LocalGemmaChatEvent,
-        LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
-        WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
-        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
-        download_gemma_model_from_base_url, ensure_identity, gemma_diagnostic_latest_report_path,
-        gemma_download_spec, gemma_local_installations, inventory_rows, load_backend_report,
-        load_earnings_report, load_inventory_report, load_jobs_report,
-        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
-        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
-        load_status_or_detect, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
-        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_public_config_json, render_sandbox_report,
-        report_provider_presence_heartbeat, report_provider_presence_offline,
-        resolve_local_gemma_chat_target_from_status, run_cli, run_gemma_diagnostic_command,
-        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
-        save_config, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
+        GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand, GemmaDiagnosticReceipt,
+        GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
+        GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend,
+        LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord,
+        PylonWalletPaymentRecord, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
+        add_configured_relay, apply_config_set, apply_control_command,
+        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
+        ensure_identity, gemma_diagnostic_latest_report_path, gemma_download_spec,
+        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
+        load_or_create_config, load_product_report, load_receipts_report, load_relay_report,
+        load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
+        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
+        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
+        remove_configured_relay, render_human_status, render_public_config_json,
+        render_sandbox_report, report_provider_presence_heartbeat,
+        report_provider_presence_offline, resolve_local_gemma_chat_target_from_status, run_cli,
+        run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
+        run_local_gemma_chat_stream, run_provider_requests, save_config,
+        save_gemma_diagnostic_report, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -7019,10 +7081,55 @@ mod tests {
         .await?;
 
         let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
         let mut config = default_config(temp_dir.path());
         config.nexus_control_base_url = nexus_base_url;
         let identity = ensure_identity(config.identity_path.as_path())?;
         let client = provider_presence_client()?;
+        let mut diagnostic_report = GemmaDiagnosticReport {
+            schema_version: 1,
+            report_kind: "pylon.gemma_diagnostic.report.v1".to_string(),
+            selector: "gemma-4-e4b".to_string(),
+            diagnostic_id: DEFAULT_GEMMA_DIAGNOSTIC_ID.to_string(),
+            measured_at_unix_ms: 1_762_000_000_000,
+            repeats: 2,
+            report_path: String::new(),
+            results: vec![GemmaDiagnosticResult {
+                model_id: "gemma-4-e4b".to_string(),
+                label: "Gemma 4 E4B".to_string(),
+                runtime_model: Some("gemma4:e4b".to_string()),
+                runtime_backend: "local_runtime".to_string(),
+                status: "completed".to_string(),
+                reason: None,
+                model_cached: true,
+                ready_in_runtime: true,
+                receipt: Some(GemmaDiagnosticReceipt {
+                    schema_version: 1,
+                    report_kind: "pylon.gemma_diagnostic.receipt.v1".to_string(),
+                    diagnostic_id: DEFAULT_GEMMA_DIAGNOSTIC_ID.to_string(),
+                    measured_at_unix_ms: 1_762_000_000_000,
+                    model_id: "gemma-4-e4b".to_string(),
+                    runtime_model: "gemma4:e4b".to_string(),
+                    runtime_backend: "local_runtime".to_string(),
+                    load_s: Some(0.25),
+                    mean_total_s: 1.5,
+                    mean_ttft_s: Some(0.2),
+                    mean_decode_tok_s: Some(12.5),
+                    output_tokens: 24,
+                    repeats: 2,
+                    runs: vec![GemmaDiagnosticRunReceipt {
+                        run_index: 0,
+                        output_tokens: 24,
+                        total_s: 1.5,
+                        ttft_s: Some(0.2),
+                        decode_tok_s: Some(12.5),
+                        load_s: Some(0.25),
+                        output_text: "mesh".to_string(),
+                    }],
+                }),
+            }],
+        };
+        save_gemma_diagnostic_report(config_path.as_path(), &mut diagnostic_report)?;
         let snapshot = build_snapshot_from_availability(
             &config,
             Some(&identity),
@@ -7040,8 +7147,15 @@ mod tests {
             None,
         );
 
-        report_provider_presence_heartbeat(&client, &config, &identity, "session-test", &snapshot)
-            .await?;
+        report_provider_presence_heartbeat(
+            &client,
+            config_path.as_path(),
+            &config,
+            &identity,
+            "session-test",
+            &snapshot,
+        )
+        .await?;
         report_provider_presence_offline(&client, &config, &identity, "session-test").await?;
 
         let requests = recorded_requests
@@ -7077,6 +7191,18 @@ mod tests {
         ensure(
             requests[0].1["ready_model"] == "gemma4:e4b",
             "heartbeat should include the ready model",
+        )?;
+        ensure(
+            requests[0].1["diagnostic_summaries"]
+                .as_array()
+                .is_some_and(|rows| rows.len() == 1),
+            "heartbeat should include the latest retained diagnostic summaries",
+        )?;
+        ensure(
+            requests[0].1["diagnostic_summaries"][0]["model_id"] == "gemma-4-e4b"
+                && requests[0].1["diagnostic_summaries"][0]["mean_total_s"] == json!(1.5)
+                && requests[0].1["diagnostic_summaries"][0]["mean_decode_tok_s"] == json!(12.5),
+            "heartbeat should serialize diagnostic throughput metrics through the Nexus payload",
         )?;
         ensure(
             requests[1].0 == "POST /api/provider-presence/offline",

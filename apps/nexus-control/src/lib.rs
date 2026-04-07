@@ -59,6 +59,7 @@ use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use openagents_kernel_proto::openagents::data::v1 as proto_data;
+use openagents_provider_substrate::ProviderDiagnosticSummary;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -66,8 +67,8 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::economy::{
-    AuthorityReceiptContext, PublicRecentPylon, PublicRuntimeSnapshot, PublicStatsSnapshot,
-    ReceiptLedger,
+    AuthorityReceiptContext, PublicRecentPylon, PublicRecentPylonDiagnostic, PublicRuntimeSnapshot,
+    PublicStatsSnapshot, ReceiptLedger,
 };
 use crate::kernel::{
     FinalizeValidatorChallengeRequest, FinalizeValidatorChallengeResponse, KernelMutationContext,
@@ -122,6 +123,8 @@ const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 30_000;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
 const PUBLIC_RECENT_PYLON_LIMIT: usize = 8;
+const MAX_PROVIDER_DIAGNOSTIC_SUMMARIES: usize = 16;
+const PUBLIC_RECENT_PYLON_DIAGNOSTIC_LIMIT: usize = 24;
 const DEFAULT_SYNC_STREAM_GRANTS: [&str; 2] = [
     "stream.activity_projection.v1",
     "stream.earn_job_lifecycle_projection.v1",
@@ -480,7 +483,7 @@ pub struct StarterDemandCompleteResponse {
     pub budget_allocated_sats: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProviderPresenceHeartbeatRequest {
     pub nostr_pubkey_hex: String,
     pub session_id: String,
@@ -494,6 +497,8 @@ pub struct ProviderPresenceHeartbeatRequest {
     pub eligible_product_count: u64,
     pub ready_model: Option<String>,
     pub runtime_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -590,17 +595,19 @@ struct ProviderPresenceRecord {
     eligible_product_count: u64,
     ready_model: Option<String>,
     runtime_state: Option<String>,
+    diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
     online: bool,
     last_seen_at_unix_ms: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct ProviderPresenceMetrics {
     pylons_online_now: u64,
     pylons_seen_24h: u64,
     pylon_sessions_online_now: u64,
     sellable_pylons_online_now: u64,
     recent_pylons: Vec<PublicRecentPylon>,
+    recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
 }
 
 #[derive(Debug, Clone)]
@@ -725,6 +732,9 @@ impl ProviderPresenceState {
             eligible_product_count: request.eligible_product_count,
             ready_model: normalize_optional_field(request.ready_model.as_deref()),
             runtime_state: normalize_optional_field(request.runtime_state.as_deref()),
+            diagnostic_summaries: normalize_provider_diagnostic_summaries(
+                request.diagnostic_summaries,
+            ),
             online: true,
             last_seen_at_unix_ms: recorded_at_unix_ms,
         };
@@ -757,6 +767,7 @@ impl ProviderPresenceState {
                 eligible_product_count: 0,
                 ready_model: None,
                 runtime_state: None,
+                diagnostic_summaries: Vec::new(),
                 online: false,
                 last_seen_at_unix_ms: recorded_at_unix_ms,
             });
@@ -802,6 +813,34 @@ impl ProviderPresenceState {
         });
         recent_pylons.truncate(PUBLIC_RECENT_PYLON_LIMIT);
 
+        let mut recent_pylon_diagnostics = Vec::new();
+        for record in &recent_pylons {
+            for diagnostic in &record.diagnostic_summaries {
+                recent_pylon_diagnostics.push(PublicRecentPylonDiagnostic {
+                    node_label: record.node_label.clone(),
+                    nostr_pubkey_short: truncate_nostr_pubkey(record.nostr_pubkey_hex.as_str()),
+                    last_seen_at_unix_ms: record.last_seen_at_unix_ms,
+                    diagnostic_id: diagnostic.diagnostic_id.clone(),
+                    model_id: diagnostic.model_id.clone(),
+                    runtime_backend: diagnostic.runtime_backend.clone(),
+                    status: diagnostic.status.clone(),
+                    reason: diagnostic.reason.clone(),
+                    measured_at_unix_ms: diagnostic.measured_at_unix_ms,
+                    load_s: diagnostic.load_s,
+                    mean_total_s: diagnostic.mean_total_s,
+                    mean_ttft_s: diagnostic.mean_ttft_s,
+                    mean_decode_tok_s: diagnostic.mean_decode_tok_s,
+                    repeats: diagnostic.repeats,
+                });
+                if recent_pylon_diagnostics.len() >= PUBLIC_RECENT_PYLON_DIAGNOSTIC_LIMIT {
+                    break;
+                }
+            }
+            if recent_pylon_diagnostics.len() >= PUBLIC_RECENT_PYLON_DIAGNOSTIC_LIMIT {
+                break;
+            }
+        }
+
         ProviderPresenceMetrics {
             pylons_online_now: online_identities.len() as u64,
             pylons_seen_24h: seen_identities.len() as u64,
@@ -821,6 +860,7 @@ impl ProviderPresenceState {
                     runtime_state: record.runtime_state,
                 })
                 .collect(),
+            recent_pylon_diagnostics,
         }
     }
 }
@@ -1206,6 +1246,7 @@ async fn record_provider_presence_heartbeat(
         eligible_product_count: request.eligible_product_count,
         ready_model: normalize_optional_field(request.ready_model.as_deref()),
         runtime_state: normalize_optional_field(request.runtime_state.as_deref()),
+        diagnostic_summaries: normalize_provider_diagnostic_summaries(request.diagnostic_summaries),
     };
     let now = now_unix_ms();
     let mut store = state.store.write().map_err(|_| ApiError {
@@ -6276,6 +6317,7 @@ fn runtime_snapshot(
         risk_calibration_score: risk_metrics.risk_calibration_score,
         risk_coverage_concentration_hhi: risk_metrics.risk_coverage_concentration_hhi,
         recent_pylons: provider_presence_metrics.recent_pylons,
+        recent_pylon_diagnostics: provider_presence_metrics.recent_pylon_diagnostics,
     }
 }
 
@@ -6424,6 +6466,42 @@ fn normalize_string_vec(values: Vec<String>) -> Vec<String> {
     normalized
 }
 
+fn normalize_provider_diagnostic_summaries(
+    values: Vec<ProviderDiagnosticSummary>,
+) -> Vec<ProviderDiagnosticSummary> {
+    let mut normalized = values
+        .into_iter()
+        .filter_map(normalize_provider_diagnostic_summary)
+        .collect::<Vec<_>>();
+    normalized.sort_by(|left, right| {
+        right
+            .measured_at_unix_ms
+            .cmp(&left.measured_at_unix_ms)
+            .then_with(|| left.model_id.cmp(&right.model_id))
+            .then_with(|| left.status.cmp(&right.status))
+    });
+    normalized.truncate(MAX_PROVIDER_DIAGNOSTIC_SUMMARIES);
+    normalized
+}
+
+fn normalize_provider_diagnostic_summary(
+    value: ProviderDiagnosticSummary,
+) -> Option<ProviderDiagnosticSummary> {
+    Some(ProviderDiagnosticSummary {
+        diagnostic_id: normalize_optional_field(Some(value.diagnostic_id.as_str()))?,
+        model_id: normalize_optional_field(Some(value.model_id.as_str()))?,
+        runtime_backend: normalize_optional_field(Some(value.runtime_backend.as_str()))?,
+        status: normalize_optional_field(Some(value.status.as_str()))?,
+        reason: normalize_optional_field(value.reason.as_deref()),
+        measured_at_unix_ms: value.measured_at_unix_ms,
+        load_s: value.load_s,
+        mean_total_s: value.mean_total_s,
+        mean_ttft_s: value.mean_ttft_s,
+        mean_decode_tok_s: value.mean_decode_tok_s,
+        repeats: value.repeats,
+    })
+}
+
 fn sanitize_identifier(value: &str) -> String {
     let sanitized = value
         .chars()
@@ -6550,6 +6628,7 @@ mod tests {
     };
     use openagents_kernel_core::time::floor_to_minute_utc;
     use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
+    use openagents_provider_substrate::ProviderDiagnosticSummary;
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
         ValidatorChallengeResult, ValidatorChallengeStatus, ValidatorChallengeVerdict,
@@ -6674,6 +6753,27 @@ mod tests {
                 None
             },
             runtime_state: Some(runtime_state.to_string()),
+            diagnostic_summaries: Vec::new(),
+        }
+    }
+
+    fn provider_diagnostic_summary(
+        diagnostic_id: &str,
+        model_id: &str,
+        status: &str,
+    ) -> ProviderDiagnosticSummary {
+        ProviderDiagnosticSummary {
+            diagnostic_id: diagnostic_id.to_string(),
+            model_id: model_id.to_string(),
+            runtime_backend: "local_runtime".to_string(),
+            status: status.to_string(),
+            reason: None,
+            measured_at_unix_ms: 1_762_000_000_000,
+            load_s: Some(0.25),
+            mean_total_s: Some(1.5),
+            mean_ttft_s: Some(0.2),
+            mean_decode_tok_s: Some(12.5),
+            repeats: 2,
         }
     }
 
@@ -8893,6 +8993,7 @@ mod tests {
         assert_eq!(empty.sessions_active, 0);
         assert_eq!(empty.sync_tokens_active, 0);
         assert!(empty.recent_pylons.is_empty());
+        assert!(empty.recent_pylon_diagnostics.is_empty());
 
         let empty_api_stats = app
             .clone()
@@ -8968,8 +9069,16 @@ mod tests {
     async fn provider_presence_routes_publish_public_stats() -> Result<()> {
         let app = build_router(test_config()?);
 
+        let mut alpha =
+            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online");
+        alpha.diagnostic_summaries = vec![provider_diagnostic_summary(
+            "openagents.pylon.first_run.v1",
+            "gemma-4-e4b",
+            "completed",
+        )];
+
         for request in [
-            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online"),
+            alpha,
             provider_presence_request("aabbccdd00112233", "session-a-2", "alpha-2", 0, "degraded"),
             provider_presence_request("bbccddee11223344", "session-b-1", "beta", 2, "online"),
         ] {
@@ -9012,6 +9121,14 @@ mod tests {
                 .iter()
                 .any(|row| row.nostr_pubkey_short == "bbccddee11223344")
         );
+        assert_eq!(stats.recent_pylon_diagnostics.len(), 1);
+        assert_eq!(
+            stats.recent_pylon_diagnostics[0].diagnostic_id,
+            "openagents.pylon.first_run.v1"
+        );
+        assert_eq!(stats.recent_pylon_diagnostics[0].model_id, "gemma-4-e4b");
+        assert_eq!(stats.recent_pylon_diagnostics[0].status, "completed");
+        assert_eq!(stats.recent_pylon_diagnostics[0].mean_total_s, Some(1.5));
 
         let offline_response = app
             .clone()
@@ -9094,6 +9211,62 @@ mod tests {
         assert_eq!(pruned.pylons_online_now, 0);
         assert_eq!(pruned.pylons_seen_24h, 0);
         assert!(pruned.recent_pylons.is_empty());
+        assert!(pruned.recent_pylon_diagnostics.is_empty());
+    }
+
+    #[test]
+    fn provider_presence_diagnostics_are_normalized_and_pruned() {
+        let mut presence = ProviderPresenceState::default();
+        let mut request =
+            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online");
+        request.diagnostic_summaries = vec![
+            ProviderDiagnosticSummary {
+                diagnostic_id: "   ".to_string(),
+                model_id: "gemma-4-e4b".to_string(),
+                runtime_backend: "local_runtime".to_string(),
+                status: "completed".to_string(),
+                reason: None,
+                measured_at_unix_ms: 1_762_000_000_000,
+                load_s: None,
+                mean_total_s: Some(1.5),
+                mean_ttft_s: None,
+                mean_decode_tok_s: None,
+                repeats: 1,
+            },
+            ProviderDiagnosticSummary {
+                diagnostic_id: " openagents.pylon.first_run.v1 ".to_string(),
+                model_id: " gemma-4-e4b ".to_string(),
+                runtime_backend: " local_runtime ".to_string(),
+                status: " completed ".to_string(),
+                reason: Some("  ".to_string()),
+                measured_at_unix_ms: 1_762_000_000_100,
+                load_s: Some(0.25),
+                mean_total_s: Some(1.5),
+                mean_ttft_s: Some(0.2),
+                mean_decode_tok_s: Some(12.5),
+                repeats: 2,
+            },
+        ];
+        presence.record_heartbeat(request, 100_000);
+
+        let fresh = presence.metrics(100_000);
+        assert_eq!(fresh.recent_pylon_diagnostics.len(), 1);
+        assert_eq!(
+            fresh.recent_pylon_diagnostics[0].diagnostic_id,
+            "openagents.pylon.first_run.v1"
+        );
+        assert_eq!(fresh.recent_pylon_diagnostics[0].model_id, "gemma-4-e4b");
+        assert_eq!(
+            fresh.recent_pylon_diagnostics[0].runtime_backend,
+            "local_runtime"
+        );
+        assert_eq!(fresh.recent_pylon_diagnostics[0].status, "completed");
+        assert_eq!(fresh.recent_pylon_diagnostics[0].reason, None);
+
+        let pruned_at = 100_000 + PROVIDER_PRESENCE_RETENTION_WINDOW_MS + 1;
+        presence.prune(pruned_at);
+        let pruned = presence.metrics(pruned_at);
+        assert!(pruned.recent_pylon_diagnostics.is_empty());
     }
 
     #[tokio::test]

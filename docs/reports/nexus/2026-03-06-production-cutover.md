@@ -73,6 +73,7 @@ Current public stats shape also includes Pylon presence fields sourced from
 - `sellable_pylons_online_now`
 - `pylon_presence_stale_after_ms`
 - `recent_pylons`
+- `recent_pylon_diagnostics`
 
 This is the key public-state change from the prior hostname path, which reported `receipt_persistence_enabled = false`.
 
@@ -80,6 +81,11 @@ Current provider-presence ingestion path:
 
 - `POST /api/provider-presence/heartbeat`
 - `POST /api/provider-presence/offline`
+
+The heartbeat path now also accepts public-safe retained diagnostic summaries
+from `Pylon`, and `/api/stats` reflects those rows back out as
+`recent_pylon_diagnostics`. That keeps model-speed telemetry on the same
+authority path as presence instead of creating a second website-side API.
 
 Those endpoints make `nexus-control` the public telemetry authority for Pylon
 presence, and the website or future closed platform can consume that stats

@@ -81,6 +81,30 @@ pub struct PublicRecentPylon {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PublicRecentPylonDiagnostic {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    pub nostr_pubkey_short: String,
+    pub last_seen_at_unix_ms: u64,
+    pub diagnostic_id: String,
+    pub model_id: String,
+    pub runtime_backend: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub measured_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_total_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_ttft_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_decode_tok_s: Option<f64>,
+    pub repeats: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PublicStatsSnapshot {
     pub service: String,
     pub authority: String,
@@ -185,6 +209,8 @@ pub struct PublicStatsSnapshot {
     pub risk_coverage_concentration_hhi: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_pylons: Vec<PublicRecentPylon>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
     pub recent_receipts: Vec<PublicRecentReceipt>,
 }
 
@@ -265,6 +291,7 @@ pub struct PublicRuntimeSnapshot {
     pub risk_calibration_score: f64,
     pub risk_coverage_concentration_hhi: f64,
     pub recent_pylons: Vec<PublicRecentPylon>,
+    pub recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -483,6 +510,7 @@ impl ReceiptLedger {
             risk_calibration_score: runtime.risk_calibration_score,
             risk_coverage_concentration_hhi: runtime.risk_coverage_concentration_hhi,
             recent_pylons: runtime.recent_pylons.clone(),
+            recent_pylon_diagnostics: runtime.recent_pylon_diagnostics.clone(),
             recent_receipts: self.recent_receipts(),
         }
     }
@@ -732,6 +760,7 @@ mod tests {
                 risk_calibration_score: 0.0,
                 risk_coverage_concentration_hhi: 0.0,
                 recent_pylons: Vec::new(),
+                recent_pylon_diagnostics: Vec::new(),
             },
             6_000,
         );

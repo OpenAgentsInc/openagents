@@ -169,6 +169,27 @@ impl ProviderBackendHealth {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderDiagnosticSummary {
+    pub diagnostic_id: String,
+    pub model_id: String,
+    pub runtime_backend: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub measured_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_total_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_ttft_s: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_decode_tok_s: Option<f64>,
+    #[serde(default)]
+    pub repeats: u64,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAppleAdapterHostingEntry {
     pub adapter_id: String,
