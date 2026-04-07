@@ -269,6 +269,18 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             }
         }
     }
+    // Collect author pubkeys from this batch before moving the events.
+    let batch_author_pubkeys: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        nip28_relay_events
+            .iter()
+            .filter_map(|e| {
+                let pk = e.pubkey.clone();
+                seen.insert(pk.clone()).then_some(pk)
+            })
+            .collect()
+    };
+
     let had_relay_events = !nip28_relay_events.is_empty();
     if had_relay_events {
         state
@@ -283,19 +295,23 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         .managed_chat_projection
         .flush_if_dirty();
 
-    if had_relay_events {
-        // Trigger kind-0 fetch for any author pubkeys not yet requested
-        let author_pubkeys: Vec<String> = state
-            .autopilot_chat
-            .managed_chat_projection
-            .snapshot
-            .messages
-            .values()
-            .map(|m| m.author_pubkey.clone())
-            .collect();
+    // One-shot bootstrap: fetch kind-0 for all authors in retained history.
+    // take_kind0_bootstrap_pubkeys() returns a non-empty vec exactly once.
+    let bootstrap_pubkeys = state
+        .autopilot_chat
+        .managed_chat_projection
+        .take_kind0_bootstrap_pubkeys();
+    if !bootstrap_pubkeys.is_empty() {
         state
             .nip28_chat_lane_worker
-            .fetch_kind0_if_needed(author_pubkeys);
+            .fetch_kind0_if_needed(bootstrap_pubkeys);
+    }
+
+    // Incremental: trigger kind-0 fetch for authors in the current batch only.
+    if !batch_author_pubkeys.is_empty() {
+        state
+            .nip28_chat_lane_worker
+            .fetch_kind0_if_needed(batch_author_pubkeys);
     }
 
     {

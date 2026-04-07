@@ -199,6 +199,7 @@ pub struct ManagedChatProjectionState {
     projection_dirty: bool,
     persist_dirty: bool,
     last_persist_at: Option<std::time::Instant>,
+    kind0_bootstrap_done: bool,
 }
 
 impl Default for ManagedChatProjectionState {
@@ -245,6 +246,7 @@ impl ManagedChatProjectionState {
                     projection_dirty: false,
                     persist_dirty: false,
                     last_persist_at: None,
+                    kind0_bootstrap_done: false,
                 }
             }
             Err(error) => Self {
@@ -266,6 +268,7 @@ impl ManagedChatProjectionState {
                 projection_dirty: false,
                 persist_dirty: false,
                 last_persist_at: None,
+                kind0_bootstrap_done: false,
             },
         }
     }
@@ -760,6 +763,22 @@ impl ManagedChatProjectionState {
             self.last_error = Some(error);
             self.load_state = PaneLoadState::Error;
         }
+    }
+
+    /// Returns deduplicated author pubkeys from the current snapshot for kind-0 bootstrap.
+    /// Returns a non-empty Vec exactly once — subsequent calls return empty.
+    pub fn take_kind0_bootstrap_pubkeys(&mut self) -> Vec<String> {
+        if self.kind0_bootstrap_done {
+            return vec![];
+        }
+        self.kind0_bootstrap_done = true;
+        let mut seen = std::collections::HashSet::new();
+        self.snapshot
+            .messages
+            .values()
+            .map(|m| m.author_pubkey.clone())
+            .filter(|pk| seen.insert(pk.clone()))
+            .collect()
     }
 }
 
