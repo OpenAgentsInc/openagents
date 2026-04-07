@@ -1276,7 +1276,6 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    refresh_treasury_wallet_if_due(&state, false).await;
     let mut store = state.store.write().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -6421,24 +6420,6 @@ fn find_session_by_id<'a>(
         .find(|session| session.session_id == session_id)
 }
 
-async fn refresh_treasury_wallet_if_due(state: &AppState, create_if_missing: bool) {
-    let now = now_unix_ms();
-    let should_refresh = state
-        .store
-        .read()
-        .ok()
-        .map(|store| {
-            create_if_missing
-                || store
-                    .treasury
-                    .wallet_refresh_due(&state.config.treasury, now)
-        })
-        .unwrap_or(false);
-    if should_refresh {
-        refresh_treasury_wallet_state(state, create_if_missing).await;
-    }
-}
-
 async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool) {
     let now = now_unix_ms();
     match load_live_wallet_snapshot(&state.config.treasury, create_if_missing).await {
@@ -6939,7 +6920,10 @@ mod tests {
         ValidatorChallengeResult, ValidatorChallengeStatus, ValidatorChallengeVerdict,
     };
     use serde_json::json;
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
     use tower::ServiceExt;
 
     use crate::treasury::{
@@ -9784,6 +9768,36 @@ mod tests {
 
         set_test_wallet_snapshot_hook(None);
         set_test_wallet_funding_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_does_not_refresh_wallet_state() -> Result<()> {
+        let app = build_router(test_config()?);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            anyhow::bail!("public_stats_should_not_touch_wallet");
+        })));
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let _: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 0);
+
+        set_test_wallet_snapshot_hook(None);
         Ok(())
     }
 
