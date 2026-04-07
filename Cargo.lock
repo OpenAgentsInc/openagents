@@ -5243,6 +5243,7 @@ dependencies = [
  "http-body-util",
  "openagents-kernel-core",
  "openagents-kernel-proto",
+ "openagents-provider-substrate",
  "openagents-validator-service",
  "rand 0.9.2",
  "serde",

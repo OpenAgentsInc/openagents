@@ -4036,10 +4036,16 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             previous_snapshot = Some(snapshot);
             needs_sync = false;
 
-            if desired_mode == ProviderDesiredMode::Online
-                && Instant::now() >= next_provider_presence_heartbeat_at
-            {
-                if let Some(snapshot) = previous_snapshot.as_ref() {
+            if let Some(snapshot) = previous_snapshot.as_ref() {
+                if let Err(error) =
+                    sync_live_announcement(config_path, desired_mode, snapshot).await
+                {
+                    eprintln!("warning: failed to publish pylon provider announcement: {error}");
+                }
+
+                if desired_mode == ProviderDesiredMode::Online
+                    && Instant::now() >= next_provider_presence_heartbeat_at
+                {
                     if let Err(error) = report_provider_presence_heartbeat(
                         &presence_client,
                         config_path,
@@ -4056,9 +4062,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     } else {
                         provider_presence_online = true;
                     }
+                    next_provider_presence_heartbeat_at =
+                        Instant::now() + provider_presence_heartbeat_interval;
                 }
-                next_provider_presence_heartbeat_at =
-                    Instant::now() + provider_presence_heartbeat_interval;
             }
         }
 
@@ -4093,6 +4099,32 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn snapshot_has_eligible_live_text_generation_supply(
+    snapshot: &ProviderPersistedSnapshot,
+) -> bool {
+    snapshot.inventory_rows.iter().any(|row| {
+        row.eligible
+            && row.target.compute_family_label() == "inference"
+            && row.target.backend_label() == "local_gemma"
+    })
+}
+
+async fn sync_live_announcement(
+    config_path: &Path,
+    desired_mode: ProviderDesiredMode,
+    snapshot: &ProviderPersistedSnapshot,
+) -> Result<Option<AnnouncementReport>> {
+    if desired_mode != ProviderDesiredMode::Online
+        || !snapshot_has_eligible_live_text_generation_supply(snapshot)
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        publish_announcement_report(config_path, true).await?,
+    ))
 }
 
 async fn apply_control_command(
@@ -7155,6 +7187,7 @@ mod tests {
         PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletInvoiceReport,
         WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
         apply_control_command, build_snapshot_from_availability, default_config,
+        detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
         ensure_identity, gemma_diagnostic_latest_report_path, gemma_download_spec,
         gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
@@ -7168,7 +7201,8 @@ mod tests {
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config,
-        save_gemma_diagnostic_report, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
+        save_gemma_diagnostic_report, scan_provider_requests, submit_buyer_job,
+        sync_live_announcement, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -8565,6 +8599,99 @@ mod tests {
                 .iter()
                 .any(|entry| entry.kind == "announcement.published"),
             "publish should append a relay activity record",
+        )?;
+
+        ollama_server.await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sync_live_announcement_publishes_when_online_and_eligible()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let ollama_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let ollama_addr = ollama_listener.local_addr()?;
+        let ollama_server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = ollama_listener.accept().await.expect("accept ollama");
+                let mut request = vec![0u8; 4096];
+                let _ = stream
+                    .read(&mut request)
+                    .await
+                    .expect("read ollama request");
+                let body = json!({
+                    "models": [{"name": "gemma4:e4b"}]
+                })
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write ollama response");
+            }
+        });
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                let value: Value = serde_json::from_str(payload.as_str()).expect("parse event");
+                if value[0] == "EVENT" {
+                    return value;
+                }
+            }
+            panic!("relay did not receive an EVENT frame");
+        });
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.relay_urls = vec![relay_url];
+        config.local_gemma_base_url = format!("http://{ollama_addr}");
+        save_config(config_path.as_path(), &config)?;
+
+        let availability = detect_availability(&config).await?;
+        let snapshot = build_snapshot_from_availability(
+            &config,
+            Some(&identity),
+            ProviderDesiredMode::Online,
+            None,
+            availability,
+            None,
+        );
+
+        let report = sync_live_announcement(
+            config_path.as_path(),
+            ProviderDesiredMode::Online,
+            &snapshot,
+        )
+        .await?;
+        ensure(
+            report.as_ref().and_then(|entry| entry.handler_event_id.as_ref()).is_some(),
+            "eligible online supply should auto-publish the handler announcement",
+        )?;
+
+        let payload = relay_server.await?;
+        ensure(
+            payload[0] == "EVENT" && payload[1]["kind"] == 31990,
+            "auto-publish should send a kind:31990 handler announcement",
+        )?;
+
+        let ledger = load_ledger(config_path.as_path())?;
+        ensure(
+            ledger.announcements.len() == 1,
+            "auto-publish should persist the handler announcement in the ledger",
         )?;
 
         ollama_server.await?;

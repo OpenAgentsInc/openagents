@@ -90,6 +90,8 @@ Quick start:
   ./pylon status --json
   ./pylon inventory --json
   ./pylon config show
+  ./pylon online
+  ./pylon serve
   # Sellable Gemma supply still requires a local runtime at 127.0.0.1:11434.
   # On macOS the shortest path today is:
   #   brew install ollama
@@ -102,6 +104,7 @@ Important:
 - Pylon keeps its local state under ~/.openagents/pylon by default.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
 - First-run diagnostics persist to ~/.openagents/pylon/diagnostics/gemma/latest.json.
+- When the node is online and eligible, the long-lived `serve` loop now auto-publishes or refreshes the current handler announcement.
 - The retained Gemma benchmark path still shells into a sibling Psionic checkout.
   Set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic when you need that lane.
 - Source builds remain the fallback for unsupported platforms or when you need
@@ -129,6 +132,8 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 ./pylon status --json
 ./pylon inventory --json
 ./pylon config show
+./pylon online
+./pylon serve
 # Sellable Gemma supply still requires a local runtime at 127.0.0.1:11434.
 # On macOS the shortest path today is:
 #   brew install ollama
@@ -142,6 +147,7 @@ Notes:
 - The current standalone sellable lane is \`psionic.local.inference.gemma.single_node\`.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
 - First-run diagnostics persist to \`~/.openagents/pylon/diagnostics/gemma/latest.json\`.
+- When the node is online and eligible, the long-lived \`serve\` loop auto-publishes or refreshes the current handler announcement.
 - Source builds are still the fallback for unsupported platforms or local development.
 EOF
 }

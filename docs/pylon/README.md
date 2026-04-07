@@ -181,6 +181,10 @@ The retained provider announcement controls now also exist in both places:
 - headless: `cargo pylon-headless announce`, `cargo pylon-headless announce publish`, `cargo pylon-headless announce refresh`
 
 The current retained announcement scope is one honest local text-generation handler for `kind:5050`. Pylon only publishes it when a local Gemma-backed text-generation path is actually eligible.
+When `cargo pylon-headless serve` is running and the node is `online` with
+eligible local Gemma supply, Pylon now auto-publishes or refreshes that handler
+announcement. `announce publish` remains the explicit manual path when you want
+to force the publish step yourself.
 
 The retained provider intake controls also exist in both places:
 - TUI: `/provider scan [--seconds <n>]`, `/provider run [--seconds <n>]`
