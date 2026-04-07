@@ -7,6 +7,7 @@ import {
   bootstrapInstalledPylon,
   ensureReleaseInstall,
   launchInstalledPylonTui,
+  resolveBootstrapOutcome,
   renderBootstrapSummary,
 } from "./index.js";
 
@@ -248,7 +249,12 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   if (options.json) {
     console.log(JSON.stringify(summary, null, 2));
   } else {
-    reporter?.success("Pylon bootstrap complete");
+    const outcome = resolveBootstrapOutcome(summary);
+    if (outcome.level === "success") {
+      reporter?.success(`Pylon ${outcome.verdict}`, outcome.detail);
+    } else {
+      reporter?.warning(`Pylon ${outcome.verdict}`, outcome.detail);
+    }
     console.log(renderBootstrapSummary(summary));
     if (!options.noLaunch) {
       await launchInstalledPylonTuiImpl(

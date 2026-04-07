@@ -17,6 +17,7 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
 const SOURCE_BUILD_INSTALL_METHOD = "source_build";
+const PREFERRED_RUNTIME_MODEL_NAME = "gemma4:e4b";
 
 function emitStatus(onStatus, message, detail = null) {
   if (typeof onStatus === "function") {
@@ -1483,14 +1484,99 @@ export async function launchInstalledPylonTui(
   });
 }
 
-export function renderBootstrapSummary(summary) {
+export function resolveBootstrapOutcome(summary) {
+  const runtimeState =
+    summary.status?.snapshot?.runtime?.authoritative_status ?? "unknown";
+  const localGemma = summary.status?.snapshot?.availability?.local_gemma ?? {};
+  const readyModel = localGemma.ready_model ?? null;
+  const localGemmaError = localGemma.last_error ?? null;
+  const diagnosticStatus = summary.diagnosticResult?.status ?? null;
+
+  if (runtimeState === "online") {
+    return {
+      level: "success",
+      verdict: "fully online",
+      detail: readyModel
+        ? `loaded runtime model ${readyModel}`
+        : "eligible local Gemma supply is online",
+    };
+  }
+
+  if (readyModel) {
+    return {
+      level: "success",
+      verdict: "runtime ready",
+      detail: `loaded runtime model ${readyModel}`,
+    };
+  }
+
+  const loweredError = (localGemmaError ?? "").toLowerCase();
+  if (loweredError.includes("/api/tags") || loweredError.includes("not reachable")) {
+    return {
+      level: "warning",
+      verdict: "installed but runtime missing",
+      detail:
+        "no Ollama-compatible local runtime is answering /api/tags yet",
+    };
+  }
+
+  if (
+    diagnosticStatus &&
+    diagnosticStatus !== "completed" &&
+    diagnosticStatus !== "passed" &&
+    diagnosticStatus !== "healthy"
+  ) {
+    return {
+      level: "warning",
+      verdict: "installed but runtime not yet usable",
+      detail: diagnosticStatus,
+    };
+  }
+
+  return {
+    level: "warning",
+    verdict: "installed",
+    detail: "complete the local runtime setup before bringing the node online",
+  };
+}
+
+function renderBootstrapNextSteps(summary, outcome) {
   const lines = [
+    "Launcher path: use the same npx/bunx command again, or install globally and run `pylon`.",
+  ];
+
+  if (outcome.verdict === "fully online" || outcome.verdict === "runtime ready") {
+    lines.push("Next step: open the TUI with `pylon`, or keep using the package-managed launcher.");
+    return lines;
+  }
+
+  if (summary.target?.os === "darwin") {
+    lines.push(
+      "Runtime setup (macOS default): `brew install ollama`, `brew services start ollama`, `ollama pull gemma4:e4b`.",
+    );
+  } else {
+    lines.push(
+      "Runtime setup: start an Ollama-compatible local runtime at `local_gemma_base_url` and load `gemma4:e4b`.",
+    );
+  }
+  lines.push(
+    "Persistent PATH command: `npm install -g @openagentsinc/pylon` or `bun install -g @openagentsinc/pylon`, then run `pylon`.",
+  );
+  return lines;
+}
+
+export function renderBootstrapSummary(summary) {
+  const outcome = resolveBootstrapOutcome(summary);
+  const lines = [
+    `Onboarding verdict: ${outcome.verdict}`,
+    `Verdict detail: ${outcome.detail}`,
     `Pylon release: ${summary.version} (${summary.target.os}-${summary.target.arch})`,
     `Archive source: ${summary.tagName}`,
     `Installed from cache: ${summary.cached ? "yes" : "no"}`,
     `Pylon binary: ${summary.binaries.pylon}`,
     `Pylon TUI: ${summary.binaries.pylonTui}`,
     `Config path: ${summary.configPath ?? "unknown"}`,
+    `Preferred runtime model name: ${PREFERRED_RUNTIME_MODEL_NAME}`,
   ];
 
   const statusState =
@@ -1548,6 +1634,8 @@ export function renderBootstrapSummary(summary) {
       lines.push(`Diagnostic note: ${result.reason}`);
     }
   }
+
+  lines.push(...renderBootstrapNextSteps(summary, outcome));
 
   return lines.join("\n");
 }

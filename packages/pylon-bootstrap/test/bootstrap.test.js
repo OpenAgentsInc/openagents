@@ -10,7 +10,9 @@ import {
   ensureReleaseInstall,
   launchInstalledPylonTui,
   parseSha256File,
+  renderBootstrapSummary,
   resolvePlatformTarget,
+  resolveBootstrapOutcome,
   runProcess,
   selectLatestPylonRelease,
   selectReleaseAssets,
@@ -1045,5 +1047,99 @@ describe("@openagentsinc/pylon bootstrap", () => {
       message: "Bootstrap complete",
       detail: "smoke path complete",
     });
+  });
+
+  test("resolveBootstrapOutcome distinguishes missing runtime from ready runtime", () => {
+    const runtimeMissing = resolveBootstrapOutcome({
+      status: {
+        snapshot: {
+          runtime: {
+            authoritative_status: "degraded",
+          },
+          availability: {
+            local_gemma: {
+              ready_model: null,
+              last_error:
+                "local Gemma runtime not reachable at http://127.0.0.1:11434/api/tags",
+            },
+          },
+        },
+      },
+      diagnosticResult: {
+        status: "failed",
+      },
+    });
+    const runtimeReady = resolveBootstrapOutcome({
+      status: {
+        snapshot: {
+          runtime: {
+            authoritative_status: "ready",
+          },
+          availability: {
+            local_gemma: {
+              ready_model: "gemma4:e4b",
+              last_error: null,
+            },
+          },
+        },
+      },
+      diagnosticResult: {
+        status: "completed",
+      },
+    });
+
+    expect(runtimeMissing).toEqual({
+      level: "warning",
+      verdict: "installed but runtime missing",
+      detail: "no Ollama-compatible local runtime is answering /api/tags yet",
+    });
+    expect(runtimeReady).toEqual({
+      level: "success",
+      verdict: "runtime ready",
+      detail: "loaded runtime model gemma4:e4b",
+    });
+  });
+
+  test("renderBootstrapSummary prints the verdict and package-managed next steps", () => {
+    const summary = renderBootstrapSummary({
+      version: "1.2.3",
+      tagName: "pylon-v1.2.3",
+      target: { os: "darwin", arch: "arm64" },
+      cached: false,
+      binaries: {
+        pylon: "/tmp/pylon",
+        pylonTui: "/tmp/pylon-tui",
+      },
+      configPath: "/tmp/pylon-config.json",
+      status: {
+        snapshot: {
+          runtime: {
+            authoritative_status: "degraded",
+          },
+          availability: {
+            local_gemma: {
+              ready_model: null,
+              last_error:
+                "local Gemma runtime not reachable at http://127.0.0.1:11434/api/tags",
+            },
+          },
+        },
+      },
+      inventory: {
+        rows: [],
+      },
+      model: "gemma-4-e4b",
+      download: null,
+      diagnostic: null,
+      diagnosticResult: {
+        status: "failed",
+      },
+    });
+
+    expect(summary).toContain("Onboarding verdict: installed but runtime missing");
+    expect(summary).toContain("Preferred runtime model name: gemma4:e4b");
+    expect(summary).toContain(
+      "Persistent PATH command: `npm install -g @openagentsinc/pylon` or `bun install -g @openagentsinc/pylon`, then run `pylon`.",
+    );
   });
 });

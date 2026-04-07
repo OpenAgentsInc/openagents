@@ -39,6 +39,8 @@ The launcher:
   `PATH`
 - prints status lines such as release resolution, runtime checks, and local
   model scanning while it runs
+- ends first run with an explicit verdict such as `fully online`, `runtime
+  ready`, or `installed but runtime missing`, plus exact next-step guidance
 - runs `pylon --help`, `init`, `status --json`, and `inventory --json`
 - runs `pylon gemma diagnose <model> --json`
 - only runs `pylon gemma download <model>` when `--download-curated-cache` is
@@ -47,6 +49,9 @@ The launcher:
 - falls back to `curl` for release metadata and asset downloads when the Node
   fetch path fails in constrained network contexts
 - opens `pylon-tui` by default after the smoke path unless `--no-launch` is set
+- does not try to install or register a local runtime automatically; the
+  bootstrap stays honest about the separate Ollama-compatible runtime
+  prerequisite instead of mutating the host behind the user's back
 
 ## Publish
 

@@ -45,6 +45,15 @@ The launcher only caches those standalone binaries under
 `~/.openagents/pylon/bootstrap/versions/`. It does not copy or symlink them
 into a shared global bin directory, so a global npm or bun install keeps the
 package-managed `pylon` command as the stable entrypoint on `PATH`.
+The bootstrap summary now ends with an explicit operator verdict:
+
+- `fully online`
+- `runtime ready`
+- `installed but runtime missing`
+
+That verdict is intentionally separate from local cache/download success. The
+bootstrap does not auto-install or auto-mutate a local runtime; it tells the
+operator exactly what is missing and how to finish the bring-up path.
 
 Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
 
@@ -96,11 +105,18 @@ Minimum local requirements:
 
 Runtime-specific requirements:
 
-- a local runtime endpoint at `local_gemma_base_url` (default `http://127.0.0.1:11434`) that answers `/api/tags` and has a Gemma 4 model loaded
+- an Ollama-compatible local runtime endpoint at `local_gemma_base_url`
+  (default `http://127.0.0.1:11434`) that answers `GET /api/tags` and
+  `POST /api/chat`, with a Gemma 4 model loaded
 - on macOS, the shortest supported runtime path today is:
   - `brew install ollama`
   - `brew services start ollama`
   - `ollama pull gemma4:e4b`
+- preferred runtime model names are:
+  - `gemma4:e2b`
+  - `gemma4:e4b`
+  - `gemma4:26b`
+  - `gemma4:31b`
 - the curated Hugging Face GGUF cache under `~/.openagents/pylon/models/huggingface/` is optional and does not make the sellable lane eligible by itself
 - sibling `psionic` checkout only if the operator explicitly needs the retained benchmark and validation lane
 

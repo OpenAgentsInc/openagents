@@ -129,6 +129,38 @@ test("main launches pylon-tui by default after bootstrap", async () => {
   );
 });
 
+test("main prints a warning verdict when bootstrap completes without a usable runtime", async () => {
+  const { logs } = await withCapturedConsole(async () =>
+    main(["--no-launch"], {
+      ensureReleaseInstallImpl: async () => BASE_INSTALL,
+      bootstrapInstalledPylonImpl: async () => ({
+        ...BASE_SUMMARY,
+        status: {
+          snapshot: {
+            runtime: {
+              authoritative_status: "degraded",
+            },
+            availability: {
+              local_gemma: {
+                last_error:
+                  "local Gemma runtime not reachable at http://127.0.0.1:11434/api/tags",
+                ready_model: null,
+              },
+            },
+          },
+        },
+      }),
+      launchInstalledPylonTuiImpl: async () => {
+        throw new Error("launch should be skipped");
+      },
+    }),
+  );
+
+  expect(logs.some((line) => line.includes("Pylon installed but runtime missing"))).toBe(
+    true,
+  );
+});
+
 test("main skips TUI launch when --no-launch is set", async () => {
   const calls = [];
 
