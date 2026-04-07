@@ -3594,6 +3594,14 @@ const fn default_buyer_auto_pay_enabled() -> bool {
     false
 }
 
+pub fn provider_presence_heartbeat_interval() -> Duration {
+    Duration::from_millis(DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS)
+}
+
+pub fn new_provider_presence_session_id() -> String {
+    format!("pylon_{}", random_token())
+}
+
 pub fn default_config_path() -> PathBuf {
     if let Ok(path) = std::env::var(ENV_PYLON_CONFIG_PATH) {
         let trimmed = path.trim();
@@ -3658,9 +3666,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     let mut runtime = ProviderAdminRuntime::spawn(admin_config).map_err(anyhow::Error::msg)?;
     let presence_client = provider_presence_client()?;
     let identity = ensure_identity(config.identity_path.as_path())?;
-    let provider_presence_session_id = format!("pylon_{}", random_token());
-    let provider_presence_heartbeat_interval =
-        Duration::from_millis(DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS);
+    let provider_presence_session_id = new_provider_presence_session_id();
+    let provider_presence_heartbeat_interval = provider_presence_heartbeat_interval();
     let mut next_provider_presence_heartbeat_at = Instant::now();
     let mut provider_presence_online = false;
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
@@ -4424,6 +4431,35 @@ pub async fn load_config_and_status(
     let config = load_config_or_default(config_path)?;
     let status = load_status_or_detect(config_path).await?;
     Ok((config, status))
+}
+
+pub async fn report_provider_presence_heartbeat_for_snapshot(
+    config_path: &Path,
+    session_id: &str,
+    snapshot: &ProviderPersistedSnapshot,
+) -> Result<()> {
+    let config = load_config_required(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let client = provider_presence_client()?;
+    report_provider_presence_heartbeat(
+        &client,
+        config_path,
+        &config,
+        &identity,
+        session_id,
+        snapshot,
+    )
+    .await
+}
+
+pub async fn report_provider_presence_offline_for_config(
+    config_path: &Path,
+    session_id: &str,
+) -> Result<()> {
+    let config = load_config_required(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let client = provider_presence_client()?;
+    report_provider_presence_offline(&client, &config, &identity, session_id).await
 }
 
 pub async fn resolve_local_gemma_chat_target(config_path: &Path) -> Result<LocalGemmaChatTarget> {
@@ -6809,12 +6845,12 @@ mod tests {
         load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
         load_or_create_config, load_product_report, load_receipts_report, load_relay_report,
         load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
-        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
-        remove_configured_relay, render_human_status, render_public_config_json,
-        render_sandbox_report, report_provider_presence_heartbeat,
-        report_provider_presence_offline, resolve_local_gemma_chat_target_from_status, run_cli,
-        run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
+        planned_gemma_benchmark_modes, provider_admin_config, psionic_gemma_benchmark_command_args,
+        publish_announcement_report, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_public_config_json, render_sandbox_report,
+        report_provider_presence_heartbeat_for_snapshot,
+        report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
+        run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config,
         save_gemma_diagnostic_report, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
     };
@@ -7086,8 +7122,8 @@ mod tests {
         let config_path = temp_dir.path().join("config.json");
         let mut config = default_config(temp_dir.path());
         config.nexus_control_base_url = nexus_base_url;
+        save_config(config_path.as_path(), &config)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
-        let client = provider_presence_client()?;
         let mut diagnostic_report = GemmaDiagnosticReport {
             schema_version: 1,
             report_kind: "pylon.gemma_diagnostic.report.v1".to_string(),
@@ -7149,16 +7185,13 @@ mod tests {
             None,
         );
 
-        report_provider_presence_heartbeat(
-            &client,
+        report_provider_presence_heartbeat_for_snapshot(
             config_path.as_path(),
-            &config,
-            &identity,
             "session-test",
             &snapshot,
         )
         .await?;
-        report_provider_presence_offline(&client, &config, &identity, "session-test").await?;
+        report_provider_presence_offline_for_config(config_path.as_path(), "session-test").await?;
 
         let requests = recorded_requests
             .lock()

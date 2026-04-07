@@ -237,6 +237,9 @@ struct AppShell {
     last_error: Option<String>,
     next_refresh_at: Instant,
     next_gpu_refresh_at: Instant,
+    provider_presence_session_id: String,
+    provider_presence_online: bool,
+    next_provider_presence_heartbeat_at: Instant,
     should_quit: bool,
     transcript: RetainedTranscript,
     bottom_pane: BottomPane,
@@ -284,6 +287,9 @@ impl AppShell {
             last_error: None,
             next_refresh_at: Instant::now(),
             next_gpu_refresh_at: Instant::now(),
+            provider_presence_session_id: pylon::new_provider_presence_session_id(),
+            provider_presence_online: false,
+            next_provider_presence_heartbeat_at: Instant::now(),
             should_quit: false,
             transcript,
             bottom_pane: BottomPane::default(),
@@ -1653,9 +1659,11 @@ impl AppShell {
     async fn refresh(&mut self) {
         self.refresh_system_stats();
         self.installed_gemma_models = installed_gemma_models(self.config_path.as_path());
+        let mut presence_snapshot = None::<ProviderPersistedSnapshot>;
         match pylon::ensure_local_setup(self.config_path.as_path()) {
             Ok(_) => match pylon::load_config_and_status(self.config_path.as_path()).await {
                 Ok((_, status)) => {
+                    presence_snapshot = status.snapshot.clone();
                     self.loaded = Some(LoadedState {
                         snapshot: status.snapshot,
                     });
@@ -1671,8 +1679,54 @@ impl AppShell {
                 self.last_error = Some(error.to_string());
             }
         }
+        self.sync_provider_presence(presence_snapshot.as_ref())
+            .await;
         self.last_refresh_at = Some(Instant::now());
         self.next_refresh_at = Instant::now() + REFRESH_RATE;
+    }
+
+    async fn sync_provider_presence(&mut self, snapshot: Option<&ProviderPersistedSnapshot>) {
+        let now = Instant::now();
+        match snapshot {
+            Some(snapshot)
+                if !self.provider_presence_online
+                    || now >= self.next_provider_presence_heartbeat_at =>
+            {
+                match pylon::report_provider_presence_heartbeat_for_snapshot(
+                    self.config_path.as_path(),
+                    self.provider_presence_session_id.as_str(),
+                    snapshot,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        self.provider_presence_online = true;
+                        self.next_provider_presence_heartbeat_at =
+                            now + pylon::provider_presence_heartbeat_interval();
+                    }
+                    Err(_) => {
+                        self.next_provider_presence_heartbeat_at = now + REFRESH_RATE;
+                    }
+                }
+            }
+            Some(_) => {}
+            None => {
+                self.report_provider_presence_offline().await;
+            }
+        }
+    }
+
+    async fn report_provider_presence_offline(&mut self) {
+        if !self.provider_presence_online {
+            return;
+        }
+        let _ = pylon::report_provider_presence_offline_for_config(
+            self.config_path.as_path(),
+            self.provider_presence_session_id.as_str(),
+        )
+        .await;
+        self.provider_presence_online = false;
+        self.next_provider_presence_heartbeat_at = Instant::now();
     }
 
     fn refresh_system_stats(&mut self) {
@@ -2329,7 +2383,9 @@ async fn run_pylon_tui_with_config(config: TuiLaunchConfig) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    let result = run_loop(&mut terminal, config).await;
+    let mut app = AppShell::new(config.config_path);
+    let result = run_loop(&mut terminal, &mut app).await;
+    app.report_provider_presence_offline().await;
     let cleanup_result = restore_terminal(&mut terminal);
 
     result.and(cleanup_result)
@@ -2337,9 +2393,8 @@ async fn run_pylon_tui_with_config(config: TuiLaunchConfig) -> Result<()> {
 
 async fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    config: TuiLaunchConfig,
+    app: &mut AppShell,
 ) -> Result<()> {
-    let mut app = AppShell::new(config.config_path);
     app.refresh().await;
 
     while !app.should_quit() {
