@@ -67,6 +67,7 @@ const CHAT_ATTACHMENT_LABEL_LINE_HEIGHT: f32 = 10.0;
 const CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ATTACHMENT_DETAIL_LINE_HEIGHT: f32 = 10.0;
 const MANAGED_SYSTEM_LAYOUT_CACHE_LIMIT: usize = 128;
+const MANAGED_CHAT_LAYOUT_CACHE_LIMIT: usize = 256;
 const CHAT_MESSAGE_BUBBLE_PAD_X: f32 = ui_style::spacing::ROW_PADDING;
 const CHAT_MESSAGE_BUBBLE_PAD_Y: f32 = ui_style::spacing::SECTION_GAP - 2.0;
 const CHAT_MESSAGE_BUBBLE_GAP: f32 = ui_style::spacing::SECTION_GAP;
@@ -393,6 +394,60 @@ impl ManagedSystemTranscriptLayoutCache {
     }
 
     fn touch(&mut self, key: ManagedSystemTranscriptLayoutCacheKey) {
+        if let Some(index) = self.lru.iter().position(|existing| existing == &key) {
+            self.lru.remove(index);
+        }
+        self.lru.push_back(key);
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ManagedChatTranscriptLayoutCacheKey {
+    event_id: String,
+    markdown_width_px: u32,
+}
+
+#[derive(Clone)]
+struct ManagedChatTranscriptLayoutCacheEntry {
+    markdown_document: MarkdownDocument,
+    attachments: Vec<RichMessageAttachment>,
+    markdown_height: f32,
+    attachment_height: f32,
+}
+
+#[derive(Default)]
+struct ManagedChatTranscriptLayoutCache {
+    entries:
+        BTreeMap<ManagedChatTranscriptLayoutCacheKey, ManagedChatTranscriptLayoutCacheEntry>,
+    lru: VecDeque<ManagedChatTranscriptLayoutCacheKey>,
+}
+
+impl ManagedChatTranscriptLayoutCache {
+    fn get(
+        &mut self,
+        key: &ManagedChatTranscriptLayoutCacheKey,
+    ) -> Option<ManagedChatTranscriptLayoutCacheEntry> {
+        let entry = self.entries.get(key).cloned()?;
+        self.touch(key.clone());
+        Some(entry)
+    }
+
+    fn insert(
+        &mut self,
+        key: ManagedChatTranscriptLayoutCacheKey,
+        entry: ManagedChatTranscriptLayoutCacheEntry,
+    ) {
+        self.entries.insert(key.clone(), entry);
+        self.touch(key);
+        while self.entries.len() > MANAGED_CHAT_LAYOUT_CACHE_LIMIT {
+            let Some(oldest) = self.lru.pop_front() else {
+                break;
+            };
+            self.entries.remove(&oldest);
+        }
+    }
+
+    fn touch(&mut self, key: ManagedChatTranscriptLayoutCacheKey) {
         if let Some(index) = self.lru.iter().position(|existing| existing == &key) {
             self.lru.remove(index);
         }
@@ -888,6 +943,57 @@ fn managed_system_layout_cache_key(
     }
 }
 
+fn managed_chat_layout_cache() -> &'static Mutex<ManagedChatTranscriptLayoutCache> {
+    static MANAGED_CHAT_LAYOUT_CACHE: OnceLock<Mutex<ManagedChatTranscriptLayoutCache>> =
+        OnceLock::new();
+    MANAGED_CHAT_LAYOUT_CACHE
+        .get_or_init(|| Mutex::new(ManagedChatTranscriptLayoutCache::default()))
+}
+
+fn managed_chat_layout_cache_key(
+    event_id: &str,
+    markdown_width: f32,
+) -> ManagedChatTranscriptLayoutCacheKey {
+    ManagedChatTranscriptLayoutCacheKey {
+        event_id: event_id.to_string(),
+        markdown_width_px: markdown_width.max(0.0).round() as u32,
+    }
+}
+
+fn managed_chat_cached_row_layout(
+    message: &ManagedChatMessageProjection,
+    markdown_width: f32,
+    markdown_parser: &MarkdownParser,
+    markdown_renderer: &MarkdownRenderer,
+    text_system: &mut wgpui::TextSystem,
+) -> ManagedChatTranscriptLayoutCacheEntry {
+    let key = managed_chat_layout_cache_key(&message.event_id, markdown_width);
+    if let Ok(mut cache) = managed_chat_layout_cache().lock()
+        && let Some(entry) = cache.get(&key)
+    {
+        return entry;
+    }
+
+    let markdown_source = managed_message_markdown_source(message);
+    let markdown_document = markdown_parser.parse(&markdown_source);
+    let markdown_height = markdown_renderer
+        .measure(&markdown_document, markdown_width, text_system)
+        .height
+        .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
+    let attachments = rich_message_attachments(&markdown_source);
+    let attachment_height = rich_message_attachments_height_for_attachments(&attachments);
+    let entry = ManagedChatTranscriptLayoutCacheEntry {
+        markdown_document,
+        attachments,
+        markdown_height,
+        attachment_height,
+    };
+    if let Ok(mut cache) = managed_chat_layout_cache().lock() {
+        cache.insert(key, entry.clone());
+    }
+    entry
+}
+
 fn rich_message_attachments_height_for_attachments(attachments: &[RichMessageAttachment]) -> f32 {
     attachments
         .iter()
@@ -1322,12 +1428,15 @@ fn transcript_content_height(
                 if managed_message_reply_label(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
-                let markdown_source = managed_message_markdown_source(message);
-                let markdown_document = markdown_parser.parse(&markdown_source);
-                let markdown_size =
-                    markdown_renderer.measure(&markdown_document, markdown_width, text_system);
-                height += markdown_size.height.max(CHAT_TRANSCRIPT_LINE_HEIGHT);
-                height += rich_message_attachments_height(&markdown_source);
+                let layout = managed_chat_cached_row_layout(
+                    message,
+                    markdown_width,
+                    &markdown_parser,
+                    &markdown_renderer,
+                    text_system,
+                );
+                height += layout.markdown_height;
+                height += layout.attachment_height;
                 if managed_message_reaction_summary(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
@@ -6787,11 +6896,16 @@ pub fn paint(
                     y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
                 }
 
-                let markdown_source = managed_message_markdown_source(message);
-                let markdown_document = markdown_parser.parse(&markdown_source);
+                let layout = managed_chat_cached_row_layout(
+                    message,
+                    markdown_width,
+                    &markdown_parser,
+                    &markdown_renderer,
+                    paint.text,
+                );
                 let markdown_height = markdown_renderer
                     .render(
-                        &markdown_document,
+                        &layout.markdown_document,
                         Point::new(transcript_scroll_clip.origin.x, y),
                         markdown_width,
                         paint.text,
@@ -6800,8 +6914,8 @@ pub fn paint(
                     .height
                     .max(CHAT_TRANSCRIPT_LINE_HEIGHT);
                 y += markdown_height;
-                y += paint_rich_message_attachments(
-                    &markdown_source,
+                y += paint_cached_rich_message_attachments(
+                    &layout.attachments,
                     transcript_scroll_clip.origin.x,
                     y,
                     markdown_width,
