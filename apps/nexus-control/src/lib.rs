@@ -12,6 +12,7 @@
 
 mod economy;
 mod kernel;
+mod treasury;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::Infallible;
@@ -75,6 +76,18 @@ use crate::kernel::{
     KernelState, LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
     ReceiptProjectionEvent, ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse,
     SnapshotProjectionEvent,
+};
+use crate::treasury::{
+    OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
+    ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
+    ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
+    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryReceiptEvent,
+    TreasuryState, TreasuryStatusResponse, create_live_funding_target, dispatch_live_payouts,
+    load_live_wallet_snapshot,
+};
+
+pub use crate::treasury::{
+    TreasuryCommand, parse_treasury_command, run_treasury_command, treasury_usage,
 };
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";
@@ -156,6 +169,7 @@ pub struct ServiceConfig {
     pub starter_demand_max_active_offers_per_session: usize,
     pub starter_demand_start_confirm_seconds: u64,
     pub starter_demand_heartbeat_timeout_seconds: u64,
+    pub treasury: TreasuryConfig,
 }
 
 impl ServiceConfig {
@@ -297,6 +311,7 @@ impl ServiceConfig {
                 "{ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS} must be less than {ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS}"
             ));
         }
+        let treasury = TreasuryConfig::from_env()?;
 
         Ok(Self {
             listen_addr,
@@ -319,6 +334,7 @@ impl ServiceConfig {
             starter_demand_max_active_offers_per_session,
             starter_demand_start_confirm_seconds,
             starter_demand_heartbeat_timeout_seconds,
+            treasury,
         })
     }
 }
@@ -544,6 +560,7 @@ struct ControlStore {
     sync_tokens: HashMap<String, SyncTokenRecord>,
     provider_presence: ProviderPresenceState,
     starter_demand: StarterDemandState,
+    treasury: TreasuryState,
     economy: ReceiptLedger,
     kernel: KernelState,
 }
@@ -564,6 +581,7 @@ impl ControlStore {
             sync_tokens: HashMap::new(),
             provider_presence: ProviderPresenceState::default(),
             starter_demand: StarterDemandState::default(),
+            treasury: TreasuryState::new(config.treasury.state_path.clone()),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
             kernel,
         }
@@ -783,6 +801,37 @@ impl ProviderPresenceState {
             .retain(|_, record| record.last_seen_at_unix_ms >= oldest_allowed);
     }
 
+    fn has_live_session(&self, nostr_pubkey_hex: &str, session_id: &str, now_unix_ms: u64) -> bool {
+        let stale_cutoff = now_unix_ms.saturating_sub(DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+        self.rows_by_key.values().any(|record| {
+            record.nostr_pubkey_hex == nostr_pubkey_hex
+                && record.session_id == session_id
+                && record.online
+                && record.last_seen_at_unix_ms >= stale_cutoff
+        })
+    }
+
+    fn online_identities(&self, now_unix_ms: u64) -> Vec<OnlinePylonIdentity> {
+        let stale_cutoff = now_unix_ms.saturating_sub(DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+        let mut identities = BTreeMap::<String, bool>::new();
+        for record in self.rows_by_key.values() {
+            if !(record.online && record.last_seen_at_unix_ms >= stale_cutoff) {
+                continue;
+            }
+            identities
+                .entry(record.nostr_pubkey_hex.clone())
+                .and_modify(|sellable| *sellable |= record.eligible_product_count > 0)
+                .or_insert(record.eligible_product_count > 0);
+        }
+        identities
+            .into_iter()
+            .map(|(nostr_pubkey_hex, sellable)| OnlinePylonIdentity {
+                nostr_pubkey_hex,
+                sellable,
+            })
+            .collect()
+    }
+
     fn metrics(&self, now_unix_ms: u64) -> ProviderPresenceMetrics {
         let stale_cutoff = now_unix_ms.saturating_sub(DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         let seen_cutoff = now_unix_ms.saturating_sub(PROVIDER_PRESENCE_RETENTION_WINDOW_MS);
@@ -911,6 +960,14 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             "/api/provider-presence/offline",
             post(record_provider_presence_offline),
         )
+        .route(
+            "/api/provider-payout-target/challenge",
+            post(issue_provider_payout_target_challenge),
+        )
+        .route(
+            "/api/provider-payout-target/register",
+            post(register_provider_payout_target),
+        )
         .route("/api/session/desktop", post(create_desktop_session))
         .route("/api/session/me", get(session_me))
         .route("/api/sync/token", post(create_sync_token))
@@ -930,6 +987,11 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/api/starter-demand/offers/{request_id}/complete",
             post(complete_starter_demand_offer),
+        )
+        .route("/v1/treasury/status", get(treasury_status))
+        .route(
+            "/v1/treasury/funding-target",
+            post(create_treasury_funding_target),
         )
         .route("/v1/kernel/work_units", post(create_kernel_work_unit))
         .route("/v1/kernel/contracts", post(create_kernel_contract))
@@ -1214,6 +1276,7 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
+    refresh_treasury_wallet_if_due(&state, false).await;
     let mut store = state.store.write().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -1223,9 +1286,11 @@ async fn public_stats(
     let expired_events =
         prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
     record_expired_offer_receipts(&mut store, expired_events, now);
-    let stats = store
-        .economy
-        .snapshot(&runtime_snapshot(&state.config, &store, now), now);
+    let treasury_runtime = store.treasury.public_stats(&state.config.treasury, now);
+    let stats = store.economy.snapshot(
+        &runtime_snapshot(&state.config, &store, &treasury_runtime, now),
+        now,
+    );
     Ok(Json(stats))
 }
 
@@ -1249,14 +1314,28 @@ async fn record_provider_presence_heartbeat(
         diagnostic_summaries: normalize_provider_diagnostic_summaries(request.diagnostic_summaries),
     };
     let now = now_unix_ms();
-    let mut store = state.store.write().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
-    let record = store
-        .provider_presence
-        .record_heartbeat(normalized_request, now);
+    let (record, dispatch_plans) = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let record = store
+            .provider_presence
+            .record_heartbeat(normalized_request, now);
+        let online_identities = store.provider_presence.online_identities(now);
+        let (dispatch_plans, treasury_receipts) = store.treasury.prepare_due_payouts(
+            &state.config.treasury,
+            online_identities.as_slice(),
+            now,
+        );
+        record_treasury_receipt_events(&mut store, treasury_receipts, now);
+        (record, dispatch_plans)
+    };
+    if !dispatch_plans.is_empty() {
+        let batch = dispatch_live_payouts(&state.config.treasury, dispatch_plans.as_slice()).await;
+        apply_treasury_dispatch_batch(&state, batch).await;
+    }
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id: record.session_id,
@@ -1294,6 +1373,145 @@ async fn record_provider_presence_offline(
         recorded_at_unix_ms: now,
         heartbeat_interval_ms: DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
         stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+    }))
+}
+
+async fn issue_provider_payout_target_challenge(
+    State(state): State<AppState>,
+    Json(request): Json<ProviderPayoutTargetChallengeRequest>,
+) -> Result<Json<ProviderPayoutTargetChallengeResponse>, ApiError> {
+    let nostr_pubkey_hex = normalize_required_field(
+        request.nostr_pubkey_hex.as_str(),
+        "provider_nostr_pubkey_missing",
+    )?;
+    let session_id = normalize_required_field(request.session_id.as_str(), "session_id_missing")?;
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    if !store.provider_presence.has_live_session(
+        nostr_pubkey_hex.as_str(),
+        session_id.as_str(),
+        now,
+    ) {
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            error: "forbidden",
+            reason: "provider_payout_target_requires_live_presence".to_string(),
+        });
+    }
+    Ok(Json(store.treasury.issue_registration_challenge(
+        &state.config.treasury,
+        nostr_pubkey_hex.as_str(),
+        session_id.as_str(),
+        now,
+    )))
+}
+
+async fn register_provider_payout_target(
+    State(state): State<AppState>,
+    Json(request): Json<ProviderPayoutTargetRegistrationRequest>,
+) -> Result<Json<ProviderPayoutTargetRegistrationResponse>, ApiError> {
+    let normalized_request = ProviderPayoutTargetRegistrationRequest {
+        nostr_pubkey_hex: normalize_required_field(
+            request.nostr_pubkey_hex.as_str(),
+            "provider_nostr_pubkey_missing",
+        )?,
+        session_id: normalize_required_field(request.session_id.as_str(), "session_id_missing")?,
+        spark_address: normalize_required_field(
+            request.spark_address.as_str(),
+            "provider_spark_address_missing",
+        )?,
+        bitcoin_address: normalize_optional_field(request.bitcoin_address.as_deref()),
+        challenge: normalize_required_field(request.challenge.as_str(), "challenge_missing")?,
+        challenge_signature_hex: normalize_required_field(
+            request.challenge_signature_hex.as_str(),
+            "challenge_signature_missing",
+        )?,
+    };
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    if !store.provider_presence.has_live_session(
+        normalized_request.nostr_pubkey_hex.as_str(),
+        normalized_request.session_id.as_str(),
+        now,
+    ) {
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            error: "forbidden",
+            reason: "provider_payout_target_requires_live_presence".to_string(),
+        });
+    }
+    let (response, receipt_events) = store
+        .treasury
+        .register_payout_target(&normalized_request, now)
+        .map_err(|error| ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "bad_request",
+            reason: error.to_string(),
+        })?;
+    record_treasury_receipt_events(&mut store, receipt_events, now);
+    Ok(Json(response))
+}
+
+async fn treasury_status(
+    State(state): State<AppState>,
+) -> Result<Json<TreasuryStatusResponse>, ApiError> {
+    refresh_treasury_wallet_state(&state, true).await;
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(
+        store.treasury.status_response(&state.config.treasury, now),
+    ))
+}
+
+async fn create_treasury_funding_target(
+    State(state): State<AppState>,
+    Json(request): Json<TreasuryFundingTargetRequest>,
+) -> Result<Json<TreasuryFundingTargetResponse>, ApiError> {
+    let normalized_request = TreasuryFundingTargetRequest {
+        amount_sats: request.amount_sats.filter(|value| *value > 0),
+        description: normalize_optional_field(request.description.as_deref()),
+        expiry_seconds: request.expiry_seconds.filter(|value| *value > 0),
+    };
+    let material = create_live_funding_target(&state.config.treasury, normalized_request)
+        .await
+        .map_err(|error| ApiError {
+            status: StatusCode::BAD_GATEWAY,
+            error: "bad_gateway",
+            reason: error.to_string(),
+        })?;
+    let now = now_unix_ms();
+    {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let treasury_receipts = store
+            .treasury
+            .apply_wallet_snapshot(&material.wallet_snapshot, now);
+        record_treasury_receipt_events(&mut store, treasury_receipts, now);
+    }
+    Ok(Json(TreasuryFundingTargetResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        wallet_runtime_status: material.wallet_snapshot.runtime_status,
+        wallet_runtime_detail: material.wallet_snapshot.runtime_detail,
+        wallet_balance_sats: material.wallet_snapshot.balance_sats,
+        wallet_balance_updated_at_unix_ms: now,
+        spark_address: material.spark_address,
+        bitcoin_address: material.bitcoin_address,
+        bolt11_invoice: material.bolt11_invoice,
     }))
 }
 
@@ -6203,9 +6421,76 @@ fn find_session_by_id<'a>(
         .find(|session| session.session_id == session_id)
 }
 
+async fn refresh_treasury_wallet_if_due(state: &AppState, create_if_missing: bool) {
+    let now = now_unix_ms();
+    let should_refresh = state
+        .store
+        .read()
+        .ok()
+        .map(|store| {
+            create_if_missing
+                || store
+                    .treasury
+                    .wallet_refresh_due(&state.config.treasury, now)
+        })
+        .unwrap_or(false);
+    if should_refresh {
+        refresh_treasury_wallet_state(state, create_if_missing).await;
+    }
+}
+
+async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool) {
+    let now = now_unix_ms();
+    match load_live_wallet_snapshot(&state.config.treasury, create_if_missing).await {
+        Ok(snapshot) => {
+            if let Ok(mut store) = state.store.write() {
+                let receipt_events = store.treasury.apply_wallet_snapshot(&snapshot, now);
+                record_treasury_receipt_events(&mut store, receipt_events, now);
+            }
+        }
+        Err(error) => {
+            if let Ok(mut store) = state.store.write() {
+                store.treasury.record_wallet_error(error.to_string());
+            }
+        }
+    }
+}
+
+async fn apply_treasury_dispatch_batch(state: &AppState, batch: TreasuryDispatchBatchResult) {
+    let now = now_unix_ms();
+    if let Ok(mut store) = state.store.write() {
+        let mut receipt_events = Vec::<TreasuryReceiptEvent>::new();
+        for outcome in batch.outcomes {
+            receipt_events.extend(store.treasury.apply_dispatch_outcome(outcome, now));
+        }
+        if let Some(snapshot) = batch.wallet_snapshot.as_ref() {
+            receipt_events.extend(store.treasury.apply_wallet_snapshot(snapshot, now));
+        }
+        if let Some(error) = batch.wallet_error {
+            store.treasury.record_wallet_error(error);
+        }
+        record_treasury_receipt_events(&mut store, receipt_events, now);
+    }
+}
+
+fn record_treasury_receipt_events(
+    store: &mut ControlStore,
+    receipt_events: Vec<TreasuryReceiptEvent>,
+    now_unix_ms: u64,
+) {
+    for receipt_event in receipt_events {
+        store.economy.record(
+            receipt_event.receipt_type,
+            now_unix_ms,
+            receipt_event.context,
+        );
+    }
+}
+
 fn runtime_snapshot(
     config: &ServiceConfig,
     store: &ControlStore,
+    treasury_runtime: &crate::treasury::TreasuryPublicStats,
     now_unix_ms: u64,
 ) -> PublicRuntimeSnapshot {
     let provider_presence_metrics = store.provider_presence.metrics(now_unix_ms);
@@ -6240,6 +6525,22 @@ fn runtime_snapshot(
         starter_demand_budget_allocated_sats: store.starter_demand.budget_allocated_sats,
         starter_offers_waiting_ack,
         starter_offers_running,
+        nexus_wallet_runtime_status: treasury_runtime.wallet_runtime_status.clone(),
+        nexus_wallet_last_error: treasury_runtime.wallet_last_error.clone(),
+        nexus_wallet_balance_sats: treasury_runtime.wallet_balance_sats,
+        nexus_wallet_balance_updated_at_unix_ms: treasury_runtime.wallet_balance_updated_at_unix_ms,
+        nexus_treasury_enabled: treasury_runtime.treasury_enabled,
+        nexus_treasury_payout_sats_per_window: treasury_runtime.payout_sats_per_window,
+        nexus_treasury_payout_interval_seconds: treasury_runtime.payout_interval_seconds,
+        nexus_treasury_require_sellable: treasury_runtime.require_sellable,
+        nexus_treasury_daily_budget_cap_sats: treasury_runtime.daily_budget_cap_sats,
+        nexus_registered_payout_identities: treasury_runtime.registered_payout_identities,
+        nexus_payout_sats_paid_total: treasury_runtime.payout_sats_paid_total,
+        nexus_payout_sats_paid_24h: treasury_runtime.payout_sats_paid_24h,
+        nexus_payouts_dispatched_24h: treasury_runtime.payouts_dispatched_24h,
+        nexus_payouts_confirmed_24h: treasury_runtime.payouts_confirmed_24h,
+        nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
+        nexus_payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
         compute_products_active: compute_metrics.compute_products_active,
         compute_capacity_lots_open: compute_metrics.compute_capacity_lots_open,
         compute_capacity_lots_delivering: compute_metrics.compute_capacity_lots_delivering,
@@ -6548,6 +6849,8 @@ fn now_unix_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use anyhow::Result;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -6628,13 +6931,24 @@ mod tests {
     };
     use openagents_kernel_core::time::floor_to_minute_utc;
     use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
-    use openagents_provider_substrate::ProviderDiagnosticSummary;
+    use openagents_provider_substrate::{
+        ProviderDiagnosticSummary, sign_provider_payout_target_registration,
+    };
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
         ValidatorChallengeResult, ValidatorChallengeStatus, ValidatorChallengeVerdict,
     };
     use serde_json::json;
+    use std::sync::Arc;
     use tower::ServiceExt;
+
+    use crate::treasury::{
+        ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
+        ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
+        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
+        TreasuryStatusResponse, TreasuryWalletSnapshot, set_test_wallet_funding_hook,
+        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+    };
 
     use super::{
         DEFAULT_COMPUTE_POLICY_BUNDLE_ID, DEFAULT_COMPUTE_POLICY_VERSION,
@@ -6646,7 +6960,7 @@ mod tests {
         ServiceConfig, StarterDemandAckRequest, StarterDemandAckResponse,
         StarterDemandCompleteRequest, StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
-        SyncTokenResponse, build_router,
+        SyncTokenResponse, TreasuryConfig, build_router,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -6674,6 +6988,20 @@ mod tests {
             starter_demand_max_active_offers_per_session: 1,
             starter_demand_start_confirm_seconds: 5,
             starter_demand_heartbeat_timeout_seconds: 5,
+            treasury: TreasuryConfig {
+                enabled: false,
+                payout_sats_per_window: 0,
+                payout_interval_seconds: 60,
+                require_sellable: false,
+                daily_budget_cap_sats: 1_000,
+                state_path: PathBuf::from("/tmp/test-nexus-control-treasury-state.json"),
+                wallet_mnemonic_path: PathBuf::from("/tmp/test-nexus-control-treasury.mnemonic"),
+                wallet_storage_dir: PathBuf::from("/tmp/test-nexus-control-treasury-wallet"),
+                wallet_network: "regtest".to_string(),
+                wallet_api_key_env: None,
+                wallet_status_refresh_seconds: 30,
+                registration_challenge_ttl_seconds: 300,
+            },
         })
     }
 
@@ -9267,6 +9595,196 @@ mod tests {
         presence.prune(pruned_at);
         let pruned = presence.metrics(pruned_at);
         assert!(pruned.recent_pylon_diagnostics.is_empty());
+    }
+
+    #[tokio::test]
+    async fn provider_payout_target_registration_requires_live_presence_and_updates_stats()
+    -> Result<()> {
+        let app = build_router(test_config()?);
+        let nostr_pubkey_hex = "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+        let private_key_hex = "1111111111111111111111111111111111111111111111111111111111111111";
+
+        let forbidden = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/challenge")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetChallengeRequest {
+                            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                            session_id: "session-a".to_string(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+        let heartbeat = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/heartbeat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&provider_presence_request(
+                        nostr_pubkey_hex,
+                        "session-a",
+                        "alpha",
+                        1,
+                        "online",
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat.status(), StatusCode::OK);
+
+        let challenge_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/challenge")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetChallengeRequest {
+                            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                            session_id: "session-a".to_string(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(challenge_response.status(), StatusCode::OK);
+        let challenge: ProviderPayoutTargetChallengeResponse =
+            response_json(challenge_response).await?;
+
+        let signature = sign_provider_payout_target_registration(
+            private_key_hex,
+            nostr_pubkey_hex,
+            "session-a",
+            challenge.challenge.as_str(),
+            "spark:alice",
+        )
+        .map_err(anyhow::Error::msg)?;
+        let register_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetRegistrationRequest {
+                            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                            session_id: "session-a".to_string(),
+                            spark_address: "spark:alice".to_string(),
+                            bitcoin_address: Some("bc1qalice".to_string()),
+                            challenge: challenge.challenge,
+                            challenge_signature_hex: signature,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(register_response.status(), StatusCode::OK);
+        let _: ProviderPayoutTargetRegistrationResponse = response_json(register_response).await?;
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_registered_payout_identities, 1);
+        assert_eq!(stats.receipt_count, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_status_and_funding_routes_project_wallet_state() -> Result<()> {
+        let app = build_router(test_config()?);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(|| {
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 500,
+                payments: Vec::new(),
+            })
+        })));
+
+        let status_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(status_response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(status_response).await?;
+        assert_eq!(status.wallet_balance_sats, 500);
+
+        set_test_wallet_funding_hook(Some(Arc::new(|request| {
+            assert_eq!(request.amount_sats, Some(210));
+            Ok(TreasuryFundingMaterial {
+                spark_address: "spark:treasury".to_string(),
+                bitcoin_address: "bc1qtreasury".to_string(),
+                bolt11_invoice: Some("lnbc210fund".to_string()),
+                wallet_snapshot: TreasuryWalletSnapshot {
+                    runtime_status: "connected".to_string(),
+                    runtime_detail: None,
+                    balance_sats: 710,
+                    payments: Vec::new(),
+                },
+            })
+        })));
+
+        let funding_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/treasury/funding-target")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &TreasuryFundingTargetRequest {
+                            amount_sats: Some(210),
+                            description: Some("fund treasury".to_string()),
+                            expiry_seconds: Some(60),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(funding_response.status(), StatusCode::OK);
+        let funding: TreasuryFundingTargetResponse = response_json(funding_response).await?;
+        assert_eq!(funding.spark_address, "spark:treasury");
+        assert_eq!(funding.bolt11_invoice.as_deref(), Some("lnbc210fund"));
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_wallet_balance_sats, 710);
+        assert_eq!(
+            stats.nexus_wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
+
+        set_test_wallet_snapshot_hook(None);
+        set_test_wallet_funding_hook(None);
+        Ok(())
     }
 
     #[tokio::test]

@@ -12,6 +12,8 @@ workspace = true
 
 [dependencies]
 axum = "0.8"
+bitcoin.workspace = true
+hex.workspace = true
 openagents-kernel-core = { path = "../openagents-kernel-core" }
 psionic-sandbox = { workspace = true }
 rusqlite = { version = "0.31", features = ["bundled"] }

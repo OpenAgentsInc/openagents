@@ -10,13 +10,16 @@ description = "OpenAgents Nexus control API for desktop sessions and sync token 
 [dependencies]
 anyhow.workspace = true
 axum = "0.8"
+bip39 = "2.2.0"
 hex.workspace = true
 http = "1"
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
 openagents-kernel-proto = { path = "../../crates/openagents-kernel-proto" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
+openagents-spark = { path = "../../crates/spark" }
 openagents-validator-service = { path = "../../crates/openagents-validator-service" }
 rand.workspace = true
+rustls = { version = "0.23", features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio.workspace = true

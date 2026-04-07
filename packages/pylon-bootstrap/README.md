@@ -13,7 +13,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.0.1-rc5
+npx @openagentsinc/pylon --version 0.0.1-rc6
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --diagnostic-repeats 2
 npx @openagentsinc/pylon --verbose

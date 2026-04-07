@@ -25,7 +25,8 @@ use openagents_provider_substrate::{
     ProviderRuntimeStatusSnapshot, ProviderSandboxDetectionConfig, ProviderSandboxProfile,
     ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSnapshotParts,
     ProviderStatusResponse, assemble_provider_persisted_snapshot, derive_provider_products,
-    detect_sandbox_supply, provider_runtime_state_label, validate_provider_control_action,
+    detect_sandbox_supply, provider_runtime_state_label, sign_provider_payout_target_registration,
+    validate_provider_control_action,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -64,6 +65,7 @@ pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
 pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
 pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
+const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
@@ -3948,7 +3950,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     let identity = ensure_identity(config.identity_path.as_path())?;
     let provider_presence_session_id = new_provider_presence_session_id();
     let provider_presence_heartbeat_interval = provider_presence_heartbeat_interval();
+    let provider_payout_target_sync_interval = provider_payout_target_sync_interval();
     let mut next_provider_presence_heartbeat_at = Instant::now();
+    let mut next_provider_payout_target_sync_at = Instant::now();
     let mut provider_presence_online = false;
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
     let mut needs_sync = true;
@@ -4000,6 +4004,7 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             }
             provider_presence_online = false;
             next_provider_presence_heartbeat_at = Instant::now();
+            next_provider_payout_target_sync_at = Instant::now();
         }
 
         if needs_sync {
@@ -4065,6 +4070,26 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     next_provider_presence_heartbeat_at =
                         Instant::now() + provider_presence_heartbeat_interval;
                 }
+                if desired_mode == ProviderDesiredMode::Online
+                    && provider_presence_online
+                    && Instant::now() >= next_provider_payout_target_sync_at
+                {
+                    if let Err(error) = sync_provider_payout_target(
+                        &presence_client,
+                        config_path,
+                        &config,
+                        &identity,
+                        provider_presence_session_id.as_str(),
+                    )
+                    .await
+                    {
+                        eprintln!(
+                            "warning: failed to register pylon payout target with Nexus: {error}"
+                        );
+                    }
+                    next_provider_payout_target_sync_at =
+                        Instant::now() + provider_payout_target_sync_interval;
+                }
             }
         }
 
@@ -4101,9 +4126,7 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     Ok(())
 }
 
-fn snapshot_has_eligible_live_text_generation_supply(
-    snapshot: &ProviderPersistedSnapshot,
-) -> bool {
+fn snapshot_has_eligible_live_text_generation_supply(snapshot: &ProviderPersistedSnapshot) -> bool {
     snapshot.inventory_rows.iter().any(|row| {
         row.eligible
             && row.target.compute_family_label() == "inference"
@@ -4122,9 +4145,7 @@ async fn sync_live_announcement(
         return Ok(None);
     }
 
-    Ok(Some(
-        publish_announcement_report(config_path, true).await?,
-    ))
+    Ok(Some(publish_announcement_report(config_path, true).await?))
 }
 
 async fn apply_control_command(
@@ -6739,6 +6760,28 @@ struct NexusProviderPresenceOfflineRequest {
     session_id: String,
 }
 
+#[derive(Debug, Serialize)]
+struct NexusProviderPayoutTargetChallengeRequest {
+    nostr_pubkey_hex: String,
+    session_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct NexusProviderPayoutTargetChallengeResponse {
+    challenge: String,
+}
+
+#[derive(Debug, Serialize)]
+struct NexusProviderPayoutTargetRegistrationRequest {
+    nostr_pubkey_hex: String,
+    session_id: String,
+    spark_address: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bitcoin_address: Option<String>,
+    challenge: String,
+    challenge_signature_hex: String,
+}
+
 async fn report_provider_presence_heartbeat(
     client: &reqwest::Client,
     config_path: &Path,
@@ -6779,7 +6822,8 @@ async fn report_provider_presence_heartbeat(
         &request,
         "heartbeat",
     )
-    .await
+    .await?;
+    sync_provider_payout_target(client, config_path, config, identity, session_id).await
 }
 
 async fn report_provider_presence_offline(
@@ -6823,6 +6867,93 @@ async fn post_nexus_provider_presence<T: Serialize>(
             .unwrap_or_else(|_| "failed to decode nexus provider presence error".to_string());
         bail!("nexus provider presence {action} failed: {detail}");
     }
+    Ok(())
+}
+
+async fn post_nexus_json<T: Serialize, R: DeserializeOwned>(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    path: &str,
+    payload: &T,
+    action: &str,
+) -> Result<R> {
+    let url = nexus_control_url(config, path);
+    let response = client
+        .post(url.as_str())
+        .json(payload)
+        .send()
+        .await
+        .with_context(|| format!("failed to post pylon {action} to {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| format!("failed to decode nexus {action} error"));
+        bail!("nexus {action} failed: {detail}");
+    }
+    response
+        .json::<R>()
+        .await
+        .with_context(|| format!("failed to decode nexus {action} response"))
+}
+
+fn provider_payout_target_sync_interval() -> Duration {
+    Duration::from_millis(DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS)
+}
+
+async fn sync_provider_payout_target(
+    client: &reqwest::Client,
+    config_path: &Path,
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    session_id: &str,
+) -> Result<()> {
+    let address_report = create_wallet_address_report(config_path).await?;
+    sync_provider_payout_target_with_report(client, config, identity, session_id, &address_report)
+        .await
+}
+
+async fn sync_provider_payout_target_with_report(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    session_id: &str,
+    address_report: &WalletAddressReport,
+) -> Result<()> {
+    let challenge = post_nexus_json::<_, NexusProviderPayoutTargetChallengeResponse>(
+        client,
+        config,
+        "/api/provider-payout-target/challenge",
+        &NexusProviderPayoutTargetChallengeRequest {
+            nostr_pubkey_hex: identity.public_key_hex.clone(),
+            session_id: session_id.to_string(),
+        },
+        "payout-target challenge",
+    )
+    .await?;
+    let challenge_signature_hex = sign_provider_payout_target_registration(
+        identity.private_key_hex.as_str(),
+        identity.public_key_hex.as_str(),
+        session_id,
+        challenge.challenge.as_str(),
+        address_report.spark_address.as_str(),
+    )
+    .map_err(anyhow::Error::msg)?;
+    let _: Value = post_nexus_json(
+        client,
+        config,
+        "/api/provider-payout-target/register",
+        &NexusProviderPayoutTargetRegistrationRequest {
+            nostr_pubkey_hex: identity.public_key_hex.clone(),
+            session_id: session_id.to_string(),
+            spark_address: address_report.spark_address.clone(),
+            bitcoin_address: Some(address_report.bitcoin_address.clone()),
+            challenge: challenge.challenge,
+            challenge_signature_hex,
+        },
+        "payout-target register",
+    )
+    .await?;
     Ok(())
 }
 
@@ -7184,17 +7315,17 @@ mod tests {
         GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
         GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
         LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig,
-        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletInvoiceReport,
-        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
-        apply_control_command, build_snapshot_from_availability, default_config,
-        detect_availability,
-        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
-        ensure_identity, gemma_diagnostic_latest_report_path, gemma_download_spec,
-        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
-        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
-        load_or_create_config, load_product_report, load_receipts_report, load_relay_report,
-        load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, provider_admin_config, psionic_gemma_benchmark_command_args,
+        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletAddressReport,
+        WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
+        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
+        detect_availability, download_gemma_model_from_base_url,
+        download_gemma_model_from_base_url_with_transport, ensure_identity,
+        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
+        inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
+        load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
+        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
+        load_status_or_detect, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
+        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
         publish_announcement_report, refresh_relay_report, remove_configured_relay,
         render_human_status, render_public_config_json, render_sandbox_report,
         report_provider_presence_heartbeat_for_snapshot,
@@ -7202,7 +7333,7 @@ mod tests {
         run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config,
         save_gemma_diagnostic_report, scan_provider_requests, submit_buyer_job,
-        sync_live_announcement, watch_buyer_jobs,
+        sync_live_announcement, sync_provider_payout_target_with_report, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -7597,6 +7728,88 @@ mod tests {
             requests[1].1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
                 && requests[1].1["session_id"] == "session-test",
             "offline report should include the same identity and session",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_payout_target_registration_uses_signed_wallet_targets()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let nexus_base_url = start_mock_http_server(move |method, path, body| {
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            recorded_requests_for_server
+                .lock()
+                .expect("payout target request log")
+                .push((format!("{method} {path}"), payload.clone()));
+            if path == "/api/provider-payout-target/challenge" {
+                return (
+                    200,
+                    "application/json",
+                    json!({
+                        "authority": "openagents-hosted-nexus",
+                        "nostr_pubkey_hex": payload["nostr_pubkey_hex"],
+                        "session_id": payload["session_id"],
+                        "challenge": "challenge-payout-001",
+                        "issued_at_unix_ms": 1,
+                        "expires_at_unix_ms": 2
+                    })
+                    .to_string(),
+                );
+            }
+            (200, "application/json", "{\"ok\":true}".to_string())
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = default_config(temp_dir.path());
+        config.nexus_control_base_url = nexus_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let client = provider_presence_client()?;
+        sync_provider_payout_target_with_report(
+            &client,
+            &config,
+            &identity,
+            "session-payout",
+            &WalletAddressReport {
+                runtime: WalletRuntimeSurface::default(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: "bc1qalice".to_string(),
+            },
+        )
+        .await?;
+
+        let requests = recorded_requests
+            .lock()
+            .expect("payout target request log")
+            .clone();
+        ensure(
+            requests.len() == 2,
+            "payout target registration should issue one challenge and one registration request",
+        )?;
+        ensure(
+            requests[0].0 == "POST /api/provider-payout-target/challenge",
+            "first payout target request should issue a challenge",
+        )?;
+        ensure(
+            requests[1].0 == "POST /api/provider-payout-target/register",
+            "second payout target request should register the signed target",
+        )?;
+        ensure(
+            requests[1].1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
+                && requests[1].1["session_id"] == "session-payout"
+                && requests[1].1["spark_address"] == "spark:alice"
+                && requests[1].1["bitcoin_address"] == "bc1qalice",
+            "registered payout target should include the same identity, session, and receive targets",
+        )?;
+        ensure(
+            requests[1].1["challenge_signature_hex"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty()),
+            "registered payout target should include a signed challenge proof",
         )
     }
 
@@ -8678,7 +8891,10 @@ mod tests {
         )
         .await?;
         ensure(
-            report.as_ref().and_then(|entry| entry.handler_event_id.as_ref()).is_some(),
+            report
+                .as_ref()
+                .and_then(|entry| entry.handler_event_id.as_ref())
+                .is_some(),
             "eligible online supply should auto-publish the handler announcement",
         )?;
 

@@ -6,10 +6,12 @@
 //! orchestration stay in app crates.
 
 mod admin;
+mod payout_target;
 mod sandbox;
 mod sandbox_execution;
 
 pub use admin::*;
+pub use payout_target::*;
 pub use sandbox::*;
 pub use sandbox_execution::*;
 
