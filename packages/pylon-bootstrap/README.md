@@ -1,8 +1,10 @@
 # `@openagentsinc/pylon`
 
 Bootstrap the latest tagged standalone `Pylon` release asset from GitHub
-Releases, stream first-run status updates in the terminal, and open the Pylon
-terminal UI without Cargo.
+Releases, fall back to a deterministic source build when no matching asset
+exists for the local platform, stream first-run status updates in the terminal,
+and open the Pylon terminal UI without Cargo when prebuilt binaries are
+available.
 
 ## Usage
 
@@ -19,6 +21,10 @@ The launcher:
   tagged `Pylon` version when `--version` is provided
 - resolves the correct `pylon-v<version>-<os>-<arch>.tar.gz` asset for the
   current machine
+- falls back to the exact tagged source checkout and builds `pylon` plus
+  `pylon-tui` locally when no matching release asset exists for the machine
+- prompts before installing the Rust toolchain via `rustup` if a source build
+  is needed and `cargo` / `rustc` are missing
 - downloads the archive and published SHA-256 checksum
 - verifies the checksum before extracting
 - caches the unpacked binaries under `~/.openagents/pylon/bootstrap/`

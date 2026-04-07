@@ -33,6 +33,10 @@ The default no-argument path is the intended onboarding lane: it streams termina
 status updates during bootstrap and opens `pylon-tui` automatically when the
 smoke path finishes. Use `--no-launch` when you want the same install and
 bootstrap flow without handing the terminal to the TUI.
+If the resolved release does not ship a prebuilt archive for the local
+platform, the launcher now falls back to the exact tagged source checkout,
+prompts before installing Rust if `cargo` and `rustc` are missing, and builds
+`pylon` plus `pylon-tui` locally before continuing into the same smoke path.
 
 Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
 

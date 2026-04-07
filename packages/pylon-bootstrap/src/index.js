@@ -4,13 +4,18 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import readline from "node:readline/promises";
 
 export const DEFAULT_RELEASE_REPO = "OpenAgentsInc/openagents";
 export const DEFAULT_RELEASE_API_BASE = "https://api.github.com";
+export const DEFAULT_RELEASE_GIT_BASE = "https://github.com";
+export const DEFAULT_RUSTUP_INIT_URL = "https://sh.rustup.rs";
 export const DEFAULT_MODEL_ID = "gemma-4-e4b";
 export const DEFAULT_DIAGNOSTIC_REPEATS = 3;
 export const DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS = 96;
 const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
+const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
+const SOURCE_BUILD_INSTALL_METHOD = "source_build";
 
 function emitStatus(onStatus, message, detail = null) {
   if (typeof onStatus === "function") {
@@ -33,6 +38,22 @@ async function pathExists(value) {
 
 function defaultInstallRoot() {
   return path.join(os.homedir(), ".openagents", "pylon", "bootstrap");
+}
+
+class MissingReleaseAssetsError extends Error {
+  constructor({ tagName, version, target, archiveBasename, archiveName, checksumName, targetCommitish }) {
+    super(
+      `Release ${tagName} is missing ${archiveName} or ${checksumName}.`,
+    );
+    this.name = "MissingReleaseAssetsError";
+    this.tagName = tagName;
+    this.version = version;
+    this.target = target;
+    this.archiveBasename = archiveBasename;
+    this.archiveName = archiveName;
+    this.checksumName = checksumName;
+    this.targetCommitish = targetCommitish ?? null;
+  }
 }
 
 function requestHeaders() {
@@ -124,9 +145,9 @@ async function fetchJson(fetchImpl, url) {
   return response.json();
 }
 
-async function fetchText(fetchImpl, url) {
+async function fetchText(fetchImpl, url, headers = requestHeaders()) {
   const response = await fetchImpl(url, {
-    headers: requestHeaders(),
+    headers,
   });
   if (!response.ok) {
     throw new Error(
@@ -223,15 +244,22 @@ export function selectReleaseAssets(release, target) {
   const checksumAsset = assets.find((asset) => asset.name === checksumName);
 
   if (!archiveAsset || !checksumAsset) {
-    throw new Error(
-      `Release ${tagName} is missing ${archiveName} or ${checksumName}.`,
-    );
+    throw new MissingReleaseAssetsError({
+      tagName,
+      version,
+      target,
+      archiveBasename,
+      archiveName,
+      checksumName,
+      targetCommitish: release?.target_commitish ?? null,
+    });
   }
 
   return {
     tagName,
     version,
     archiveBasename,
+    targetCommitish: release?.target_commitish ?? null,
     archiveAsset: {
       name: archiveAsset.name,
       url: archiveAsset.browser_download_url,
@@ -265,6 +293,350 @@ export function buildInstallPaths(installRoot, version, target) {
     pylonPath: path.join(installDir, "pylon"),
     pylonTuiPath: path.join(installDir, "pylon-tui"),
   };
+}
+
+async function readInstallManifest(manifestPath) {
+  try {
+    const payload = await fs.readFile(manifestPath, "utf8");
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+async function writeInstallManifest(manifestPath, payload) {
+  await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+  await fs.writeFile(manifestPath, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+export function deriveReleaseGitBase(apiBase = DEFAULT_RELEASE_API_BASE) {
+  const normalized = (apiBase ?? DEFAULT_RELEASE_API_BASE).replace(/\/$/, "");
+  if (normalized === DEFAULT_RELEASE_API_BASE) {
+    return DEFAULT_RELEASE_GIT_BASE;
+  }
+  return normalized.replace(/\/api(?:\/v3)?$/i, "");
+}
+
+export function buildReleaseCloneUrl(
+  repo,
+  {
+    apiBase = DEFAULT_RELEASE_API_BASE,
+    gitBase = null,
+    cloneUrl = null,
+  } = {},
+) {
+  if (cloneUrl) {
+    return cloneUrl;
+  }
+  return `${(gitBase ?? deriveReleaseGitBase(apiBase)).replace(/\/$/, "")}/${repo}.git`;
+}
+
+function withPrependedPath(env, entry) {
+  const normalizedEntry = path.resolve(entry);
+  const parts = (env.PATH ?? process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean);
+  if (!parts.includes(normalizedEntry)) {
+    parts.unshift(normalizedEntry);
+  }
+  return {
+    ...env,
+    PATH: parts.join(path.delimiter),
+  };
+}
+
+async function commandExists(command, env = process.env) {
+  const pathValue = env.PATH ?? process.env.PATH ?? "";
+  const directories = pathValue.split(path.delimiter).filter(Boolean);
+  const suffixes =
+    process.platform === "win32"
+      ? (env.PATHEXT ?? process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
+          .split(";")
+          .filter(Boolean)
+      : [""];
+
+  for (const directory of directories) {
+    for (const suffix of suffixes) {
+      const candidate = path.join(directory, `${command}${suffix}`);
+      if (await pathExists(candidate)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+async function promptForApproval(message) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(
+      `${message}\nInteractive approval is required, but this terminal is not interactive.`,
+    );
+  }
+  const terminal = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  try {
+    const answer = await terminal.question(`${message} [y/N] `);
+    return /^y(?:es)?$/i.test(answer.trim());
+  } finally {
+    terminal.close();
+  }
+}
+
+function manualSourceBuildCommands(tagName, cloneUrl) {
+  return [
+    `git clone --depth 1 --branch ${tagName} ${cloneUrl}`,
+    "cd openagents",
+    "cargo build --release -p pylon -p pylon-tui",
+  ].join("\n");
+}
+
+function rustInstallCommand() {
+  return "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y";
+}
+
+async function ensureRustToolchain({
+  target,
+  fetchImpl,
+  runProcessImpl,
+  onStatus,
+  promptImpl = promptForApproval,
+  commandExistsImpl = commandExists,
+  env = process.env,
+  rustupInitUrl = DEFAULT_RUSTUP_INIT_URL,
+}) {
+  let toolchainEnv = withPrependedPath(env, path.join(os.homedir(), ".cargo", "bin"));
+  const hasCargo = await commandExistsImpl("cargo", toolchainEnv);
+  const hasRustc = await commandExistsImpl("rustc", toolchainEnv);
+  if (hasCargo && hasRustc) {
+    return toolchainEnv;
+  }
+
+  emitStatus(
+    onStatus,
+    "Rust toolchain required for source build",
+    `${target.os}-${target.arch}`,
+  );
+
+  const approved = await promptImpl(
+    `Rust is required to build Pylon from source for ${target.os}-${target.arch}. Install the official Rust toolchain now via rustup?`,
+  );
+  if (!approved) {
+    throw new Error(
+      `Rust is required to build Pylon from source.\nInstall it manually and rerun:\n${rustInstallCommand()}`,
+    );
+  }
+
+  emitStatus(onStatus, "Installing Rust toolchain", "official rustup installer");
+  const scriptPayload = await fetchText(fetchImpl, rustupInitUrl, {
+    accept: "text/plain",
+    "user-agent": "@openagentsinc/pylon bootstrap",
+  });
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pylon-rustup-"));
+  const scriptPath = path.join(tempDir, "rustup-init.sh");
+
+  try {
+    await fs.writeFile(scriptPath, scriptPayload);
+    await fs.chmod(scriptPath, 0o755);
+    await runProcessImpl("sh", [scriptPath, "-y"], {
+      cwd: tempDir,
+      env: toolchainEnv,
+      stdio: "inherit",
+    });
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+
+  toolchainEnv = withPrependedPath(env, path.join(os.homedir(), ".cargo", "bin"));
+  const cargoInstalled = await commandExistsImpl("cargo", toolchainEnv);
+  const rustcInstalled = await commandExistsImpl("rustc", toolchainEnv);
+  if (!cargoInstalled || !rustcInstalled) {
+    throw new Error(
+      `Rust install completed, but \`cargo\` and \`rustc\` were not found on PATH.\nInstall them manually and rerun:\n${rustInstallCommand()}`,
+    );
+  }
+
+  emitStatus(
+    onStatus,
+    "Rust toolchain installed",
+    path.join(os.homedir(), ".cargo", "bin"),
+  );
+  return toolchainEnv;
+}
+
+async function installSourceBuild(
+  {
+    selected,
+    options,
+    paths,
+    target,
+  },
+  {
+    fetchImpl,
+    runProcessImpl,
+    onStatus,
+    promptImpl = promptForApproval,
+    commandExistsImpl = commandExists,
+  },
+) {
+  const cloneUrl = buildReleaseCloneUrl(options.repo ?? DEFAULT_RELEASE_REPO, {
+    apiBase: options.apiBase ?? DEFAULT_RELEASE_API_BASE,
+    cloneUrl: options.sourceRepoUrl ?? null,
+    gitBase: options.gitBase ?? null,
+  });
+  const manualBuildInstructions = manualSourceBuildCommands(
+    selected.tagName,
+    cloneUrl,
+  );
+
+  emitStatus(
+    onStatus,
+    "Prebuilt asset missing; falling back to source build",
+    `${selected.tagName} for ${target.os}-${target.arch}`,
+  );
+
+  if (!(await commandExistsImpl("git", process.env))) {
+    throw new Error(
+      `Source build fallback requires \`git\`.\nInstall it and rerun \`npx @openagentsinc/pylon\`, or build manually:\n${manualBuildInstructions}`,
+    );
+  }
+
+  const buildEnv = await ensureRustToolchain({
+    target,
+    fetchImpl,
+    runProcessImpl,
+    onStatus,
+    promptImpl,
+    commandExistsImpl,
+  });
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pylon-source-build-"));
+  const repoDir = path.join(tempDir, "openagents");
+  const buildCommand = [
+    "cargo",
+    "build",
+    "--release",
+    "-p",
+    "pylon",
+    "-p",
+    "pylon-tui",
+  ];
+
+  try {
+    await fs.mkdir(repoDir, { recursive: true });
+    emitStatus(onStatus, "Fetching source checkout", selected.tagName);
+    await runProcessImpl("git", ["init"], {
+      cwd: repoDir,
+      env: buildEnv,
+    });
+    await runProcessImpl("git", ["remote", "add", "origin", cloneUrl], {
+      cwd: repoDir,
+      env: buildEnv,
+    });
+    await runProcessImpl(
+      "git",
+      [
+        "fetch",
+        "--depth",
+        "1",
+        "origin",
+        `refs/tags/${selected.tagName}:refs/tags/${selected.tagName}`,
+      ],
+      {
+        cwd: repoDir,
+        env: buildEnv,
+      },
+    );
+    await runProcessImpl("git", ["checkout", "--detach", `refs/tags/${selected.tagName}`], {
+      cwd: repoDir,
+      env: buildEnv,
+    });
+
+    const { stdout: commitStdout } = await runProcessImpl(
+      "git",
+      ["rev-parse", "HEAD"],
+      {
+        cwd: repoDir,
+        env: buildEnv,
+      },
+    );
+    const sourceCommit = commitStdout.trim();
+    if (
+      selected.targetCommitish &&
+      /^[a-f0-9]{40}$/i.test(selected.targetCommitish) &&
+      sourceCommit !== selected.targetCommitish
+    ) {
+      throw new Error(
+        `Resolved release tag ${selected.tagName} checked out ${sourceCommit}, expected ${selected.targetCommitish}.`,
+      );
+    }
+
+    emitStatus(
+      onStatus,
+      "Building Pylon from source",
+      `${selected.tagName} (${sourceCommit.slice(0, 12)})`,
+    );
+    await runProcessImpl(buildCommand[0], buildCommand.slice(1), {
+      cwd: repoDir,
+      env: buildEnv,
+      stdio: "inherit",
+    });
+
+    const builtPylonPath = path.join(repoDir, "target", "release", "pylon");
+    const builtPylonTuiPath = path.join(repoDir, "target", "release", "pylon-tui");
+    if (!(await pathExists(builtPylonPath)) || !(await pathExists(builtPylonTuiPath))) {
+      throw new Error(
+        `Source build completed without the expected binaries at ${path.join(repoDir, "target", "release")}.`,
+      );
+    }
+
+    await fs.rm(paths.installDir, { recursive: true, force: true });
+    await fs.mkdir(paths.installDir, { recursive: true });
+    await Promise.all([
+      fs.copyFile(builtPylonPath, paths.pylonPath),
+      fs.copyFile(builtPylonTuiPath, paths.pylonTuiPath),
+    ]);
+    await Promise.allSettled([
+      fs.chmod(paths.pylonPath, 0o755),
+      fs.chmod(paths.pylonTuiPath, 0o755),
+    ]);
+
+    await writeInstallManifest(paths.manifestPath, {
+      version: selected.version,
+      tagName: selected.tagName,
+      target,
+      installMethod: SOURCE_BUILD_INSTALL_METHOD,
+      sourceCloneUrl: cloneUrl,
+      sourceCommit,
+      sourceTargetCommitish: selected.targetCommitish ?? null,
+      buildCommand: buildCommand.join(" "),
+    });
+
+    emitStatus(
+      onStatus,
+      "Installed source-built binaries",
+      `${selected.tagName} for ${target.os}-${target.arch}`,
+    );
+
+    return {
+      ...selected,
+      ...paths,
+      target,
+      cached: false,
+      expectedSha256: null,
+      installMethod: SOURCE_BUILD_INSTALL_METHOD,
+      sourceCloneUrl: cloneUrl,
+      sourceCommit,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${message}\nManual source-build fallback:\n${manualBuildInstructions}`,
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 export async function runProcess(
@@ -367,6 +739,8 @@ export async function ensureReleaseInstall(
     fetchImpl = globalThis.fetch,
     runProcessImpl = runProcess,
     onStatus = null,
+    promptImpl = promptForApproval,
+    commandExistsImpl = commandExists,
   } = {},
 ) {
   if (typeof fetchImpl !== "function") {
@@ -386,27 +760,66 @@ export async function ensureReleaseInstall(
     repo: options.repo ?? DEFAULT_RELEASE_REPO,
     version: options.version ?? null,
   });
-  const selected = selectReleaseAssets(release, target);
+  let selected;
+  let missingAssetsError = null;
+  try {
+    selected = selectReleaseAssets(release, target);
+  } catch (error) {
+    if (!(error instanceof MissingReleaseAssetsError)) {
+      throw error;
+    }
+    missingAssetsError = error;
+    selected = {
+      tagName: error.tagName,
+      version: error.version,
+      archiveBasename: error.archiveBasename,
+      targetCommitish: error.targetCommitish,
+    };
+  }
   const paths = buildInstallPaths(installRoot, selected.version, target);
+  const manifest = await readInstallManifest(paths.manifestPath);
 
   const binariesPresent =
     (await pathExists(paths.pylonPath)) && (await pathExists(paths.pylonTuiPath));
   if (binariesPresent) {
+    const installMethod =
+      manifest?.installMethod ??
+      (missingAssetsError ? SOURCE_BUILD_INSTALL_METHOD : RELEASE_ASSET_INSTALL_METHOD);
     emitStatus(
       onStatus,
-      "Using cached standalone binaries",
+      installMethod === SOURCE_BUILD_INSTALL_METHOD
+        ? "Using cached source-built binaries"
+        : "Using cached standalone binaries",
       `${selected.tagName} for ${target.os}-${target.arch}`,
     );
     return {
       ...selected,
       ...paths,
       target,
-      expectedSha256: await fs
-        .readFile(paths.manifestPath, "utf8")
-        .then((payload) => JSON.parse(payload).sha256)
-        .catch(() => null),
+      expectedSha256: manifest?.sha256 ?? null,
       cached: true,
+      installMethod,
+      sourceCloneUrl: manifest?.sourceCloneUrl ?? null,
+      sourceCommit: manifest?.sourceCommit ?? null,
     };
+  }
+
+  if (missingAssetsError) {
+    return installSourceBuild(
+      {
+        selected,
+        options,
+        paths,
+        target,
+      },
+      {
+        fetchImpl,
+        runProcessImpl,
+        onStatus,
+        promptImpl,
+        commandExistsImpl,
+      },
+    );
   }
 
   emitStatus(
@@ -461,20 +874,15 @@ export async function ensureReleaseInstall(
     fs.chmod(paths.pylonTuiPath, 0o755),
   ]);
 
-  await fs.writeFile(
-    paths.manifestPath,
-    `${JSON.stringify(
-      {
-        version: selected.version,
-        tagName: selected.tagName,
-        target,
-        archive: selected.archiveAsset.name,
-        sha256: expectedSha256,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  await writeInstallManifest(paths.manifestPath, {
+    version: selected.version,
+    tagName: selected.tagName,
+    target,
+    installMethod: RELEASE_ASSET_INSTALL_METHOD,
+    archive: selected.archiveAsset.name,
+    sha256: expectedSha256,
+    sourceTargetCommitish: selected.targetCommitish ?? null,
+  });
 
   emitStatus(
     onStatus,
@@ -488,6 +896,9 @@ export async function ensureReleaseInstall(
     target,
     expectedSha256,
     cached: false,
+    installMethod: RELEASE_ASSET_INSTALL_METHOD,
+    sourceCloneUrl: null,
+    sourceCommit: null,
   };
 }
 
@@ -589,6 +1000,9 @@ export async function bootstrapInstalledPylon(
     tagName: options.tagName ?? `pylon-v${options.version}`,
     target: options.target,
     cached: Boolean(options.cached),
+    installMethod: options.installMethod ?? RELEASE_ASSET_INSTALL_METHOD,
+    sourceCommit: options.sourceCommit ?? null,
+    sourceCloneUrl: options.sourceCloneUrl ?? null,
     binaries: {
       pylon: pylonPath,
       pylonTui: pylonTuiPath,
@@ -623,12 +1037,21 @@ export async function launchInstalledPylonTui(
 export function renderBootstrapSummary(summary) {
   const lines = [
     `Pylon release: ${summary.version} (${summary.target.os}-${summary.target.arch})`,
-    `Archive source: ${summary.tagName}`,
+    `Release tag: ${summary.tagName}`,
+    `Install source: ${
+      summary.installMethod === SOURCE_BUILD_INSTALL_METHOD
+        ? "source build"
+        : "release asset"
+    }`,
     `Installed from cache: ${summary.cached ? "yes" : "no"}`,
     `Pylon binary: ${summary.binaries.pylon}`,
     `Pylon TUI: ${summary.binaries.pylonTui}`,
     `Config path: ${summary.configPath ?? "unknown"}`,
   ];
+
+  if (summary.sourceCommit) {
+    lines.push(`Source commit: ${summary.sourceCommit}`);
+  }
 
   const statusState =
     summary.status?.snapshot?.runtime?.authoritative_status ?? "unknown";

@@ -85,6 +85,19 @@ describe("@openagentsinc/pylon bootstrap", () => {
   });
 
   describe("ensureReleaseInstall", () => {
+    function latestReleaseFetch(release) {
+      return async (url) => {
+        const parsed = new URL(url);
+        if (
+          parsed.pathname === "/repos/OpenAgentsInc/openagents/releases" &&
+          parsed.searchParams.get("per_page") === "100"
+        ) {
+          return Response.json([release]);
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+    }
+
     let server;
     let serverUrl;
 
@@ -258,6 +271,280 @@ describe("@openagentsinc/pylon bootstrap", () => {
       expect(second.cached).toBe(true);
       expect(server.counters().archiveHits - initialCounters.archiveHits).toBe(1);
       expect(server.counters().taggedReleaseHits - initialCounters.taggedReleaseHits).toBe(2);
+    });
+
+    test("falls back to a deterministic source build when the release has no asset for the local target", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-source-install-"),
+      );
+      const statuses = [];
+      const commands = [];
+      const expectedCommit = "1234567890abcdef1234567890abcdef12345678";
+
+      const install = await ensureReleaseInstall(
+        {
+          apiBase: "https://api.github.com",
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "linux",
+          arch: "x64",
+          sourceRepoUrl: "/tmp/openagents-source.git",
+        },
+        {
+          fetchImpl: latestReleaseFetch({
+            tag_name: "pylon-v1.2.3",
+            target_commitish: expectedCommit,
+            draft: false,
+            assets: [
+              {
+                name: "pylon-v1.2.3-darwin-arm64.tar.gz",
+                browser_download_url: "https://example.com/archive",
+              },
+              {
+                name: "pylon-v1.2.3-darwin-arm64.tar.gz.sha256",
+                browser_download_url: "https://example.com/checksum",
+              },
+            ],
+          }),
+          commandExistsImpl: async (command) =>
+            ["git", "cargo", "rustc"].includes(command),
+          runProcessImpl: async (command, args, options = {}) => {
+            commands.push({
+              command,
+              args,
+              cwd: options.cwd ?? null,
+            });
+            const joined = args.join(" ");
+            if (command === "git" && joined === "init") {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined === "remote add origin /tmp/openagents-source.git"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined ===
+                "fetch --depth 1 origin refs/tags/pylon-v1.2.3:refs/tags/pylon-v1.2.3"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined === "checkout --detach refs/tags/pylon-v1.2.3"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (command === "git" && joined === "rev-parse HEAD") {
+              return { stdout: `${expectedCommit}\n`, stderr: "" };
+            }
+            if (
+              command === "cargo" &&
+              joined === "build --release -p pylon -p pylon-tui"
+            ) {
+              const releaseDir = path.join(options.cwd, "target", "release");
+              await fs.mkdir(releaseDir, { recursive: true });
+              await fs.writeFile(
+                path.join(releaseDir, "pylon"),
+                "#!/bin/sh\necho source build\n",
+              );
+              await fs.writeFile(
+                path.join(releaseDir, "pylon-tui"),
+                "#!/bin/sh\necho source build tui\n",
+              );
+              await fs.chmod(path.join(releaseDir, "pylon"), 0o755);
+              await fs.chmod(path.join(releaseDir, "pylon-tui"), 0o755);
+              return { stdout: "", stderr: "" };
+            }
+            throw new Error(`Unexpected command: ${command} ${joined}`);
+          },
+          onStatus: (event) => statuses.push(event),
+        },
+      );
+
+      expect(install.installMethod).toBe("source_build");
+      expect(install.cached).toBe(false);
+      expect(install.sourceCommit).toBe(expectedCommit);
+      expect(await fs.stat(install.pylonPath)).toBeTruthy();
+      expect(await fs.stat(install.pylonTuiPath)).toBeTruthy();
+      expect(
+        JSON.parse(await fs.readFile(install.manifestPath, "utf8")),
+      ).toEqual(
+        expect.objectContaining({
+          installMethod: "source_build",
+          sourceCloneUrl: "/tmp/openagents-source.git",
+          sourceCommit: expectedCommit,
+          buildCommand: "cargo build --release -p pylon -p pylon-tui",
+        }),
+      );
+      expect(statuses).toContainEqual({
+        message: "Prebuilt asset missing; falling back to source build",
+        detail: "pylon-v1.2.3 for linux-x86_64",
+      });
+      expect(
+        commands.some(
+          (entry) =>
+            entry.command === "cargo" &&
+            entry.args.join(" ") === "build --release -p pylon -p pylon-tui",
+        ),
+      ).toBe(true);
+
+      const cached = await ensureReleaseInstall(
+        {
+          apiBase: "https://api.github.com",
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "linux",
+          arch: "x64",
+          sourceRepoUrl: "/tmp/openagents-source.git",
+        },
+        {
+          fetchImpl: latestReleaseFetch({
+            tag_name: "pylon-v1.2.3",
+            target_commitish: expectedCommit,
+            draft: false,
+            assets: [],
+          }),
+          commandExistsImpl: async () => true,
+          runProcessImpl: async (command, args) => {
+            throw new Error(`Cached install should not rebuild: ${command} ${args.join(" ")}`);
+          },
+        },
+      );
+
+      expect(cached.cached).toBe(true);
+      expect(cached.installMethod).toBe("source_build");
+      expect(cached.sourceCommit).toBe(expectedCommit);
+    });
+
+    test("prompts before installing Rust when a source build needs a toolchain", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-rustup-install-"),
+      );
+      const expectedCommit = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+      const prompts = [];
+      let rustInstalled = false;
+
+      const install = await ensureReleaseInstall(
+        {
+          apiBase: "https://api.github.com",
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "linux",
+          arch: "x64",
+          sourceRepoUrl: "/tmp/openagents-source.git",
+        },
+        {
+          fetchImpl: async (url) => {
+            if (url === "https://sh.rustup.rs") {
+              return new Response("#!/bin/sh\nexit 0\n");
+            }
+            return latestReleaseFetch({
+              tag_name: "pylon-v1.2.3",
+              target_commitish: expectedCommit,
+              draft: false,
+              assets: [],
+            })(url);
+          },
+          promptImpl: async (message) => {
+            prompts.push(message);
+            return true;
+          },
+          commandExistsImpl: async (command) => {
+            if (command === "git") {
+              return true;
+            }
+            if (command === "cargo" || command === "rustc") {
+              return rustInstalled;
+            }
+            return false;
+          },
+          runProcessImpl: async (command, args, options = {}) => {
+            const joined = args.join(" ");
+            if (command === "sh") {
+              rustInstalled = true;
+              return { stdout: "", stderr: "" };
+            }
+            if (command === "git" && joined === "init") {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined === "remote add origin /tmp/openagents-source.git"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined ===
+                "fetch --depth 1 origin refs/tags/pylon-v1.2.3:refs/tags/pylon-v1.2.3"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined === "checkout --detach refs/tags/pylon-v1.2.3"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (command === "git" && joined === "rev-parse HEAD") {
+              return { stdout: `${expectedCommit}\n`, stderr: "" };
+            }
+            if (
+              command === "cargo" &&
+              joined === "build --release -p pylon -p pylon-tui"
+            ) {
+              const releaseDir = path.join(options.cwd, "target", "release");
+              await fs.mkdir(releaseDir, { recursive: true });
+              await fs.writeFile(path.join(releaseDir, "pylon"), "#!/bin/sh\n");
+              await fs.writeFile(path.join(releaseDir, "pylon-tui"), "#!/bin/sh\n");
+              await fs.chmod(path.join(releaseDir, "pylon"), 0o755);
+              await fs.chmod(path.join(releaseDir, "pylon-tui"), 0o755);
+              return { stdout: "", stderr: "" };
+            }
+            throw new Error(`Unexpected command: ${command} ${joined}`);
+          },
+        },
+      );
+
+      expect(rustInstalled).toBe(true);
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).toContain("Install the official Rust toolchain now via rustup?");
+      expect(install.installMethod).toBe("source_build");
+    });
+
+    test("prints manual Rust install guidance when the user declines source-build toolchain installation", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-rustup-decline-"),
+      );
+
+      await expect(
+        ensureReleaseInstall(
+          {
+            apiBase: "https://api.github.com",
+            repo: "OpenAgentsInc/openagents",
+            installRoot,
+            platform: "linux",
+            arch: "x64",
+            sourceRepoUrl: "/tmp/openagents-source.git",
+          },
+          {
+            fetchImpl: latestReleaseFetch({
+              tag_name: "pylon-v1.2.3",
+              target_commitish: "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+              draft: false,
+              assets: [],
+            }),
+            promptImpl: async () => false,
+            commandExistsImpl: async (command) => command === "git",
+            runProcessImpl: async (command, args) => {
+              throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+            },
+          },
+        ),
+      ).rejects.toThrow("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y");
     });
   });
 

@@ -70,9 +70,11 @@ export function usage() {
 
 Description:
   Download the latest tagged standalone Pylon release asset for this machine,
-  or a specific tagged Pylon version when --version is set. Verify its
-  checksum, cache the binaries locally, run the first-run smoke path, and then
-  open the Pylon terminal UI by default with live status updates.
+  or a specific tagged Pylon version when --version is set. If no matching
+  asset exists for the local platform, fetch the exact tagged source checkout
+  and build it locally instead. Cache the binaries, run the first-run smoke
+  path, and then open the Pylon terminal UI by default with live status
+  updates.
 
 Options:
   --version <x.y.z>                    Resolve a specific Pylon release.
