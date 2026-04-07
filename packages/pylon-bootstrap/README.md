@@ -1,13 +1,15 @@
 # `@openagentsinc/pylon`
 
 Bootstrap the latest tagged standalone `Pylon` release asset from GitHub
-Releases and run the first-run smoke path without Cargo.
+Releases, stream first-run status updates in the terminal, and open the Pylon
+terminal UI without Cargo.
 
 ## Usage
 
 ```bash
 npx @openagentsinc/pylon
-npx @openagentsinc/pylon --version 0.1.0
+npx @openagentsinc/pylon --version 0.0.1-rc3
+npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --model gemma-4-e2b --diagnostic-repeats 2
 ```
 
@@ -20,9 +22,12 @@ The launcher:
 - downloads the archive and published SHA-256 checksum
 - verifies the checksum before extracting
 - caches the unpacked binaries under `~/.openagents/pylon/bootstrap/`
+- prints status lines such as release resolution, runtime checks, and local
+  model scanning while it runs
 - runs `pylon --help`, `init`, `status --json`, and `inventory --json`
 - runs `pylon gemma download <model>`
 - runs `pylon gemma diagnose <model> --json`
+- opens `pylon-tui` by default after the smoke path unless `--no-launch` is set
 
 ## Publish
 

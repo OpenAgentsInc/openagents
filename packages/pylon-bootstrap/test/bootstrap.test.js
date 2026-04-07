@@ -8,6 +8,7 @@ import {
   bootstrapInstalledPylon,
   buildAssetNames,
   ensureReleaseInstall,
+  launchInstalledPylonTui,
   parseSha256File,
   resolvePlatformTarget,
   selectLatestPylonRelease,
@@ -262,6 +263,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
 
   test("bootstrapInstalledPylon runs the smoke path in order", async () => {
     const calls = [];
+    const statuses = [];
     const summary = await bootstrapInstalledPylon(
       {
         version: "1.2.3",
@@ -343,6 +345,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
           }
           throw new Error(`Unexpected command: ${command} ${joined}`);
         },
+        onStatus: (event) => statuses.push(event.message),
       },
     );
 
@@ -364,7 +367,47 @@ describe("@openagentsinc/pylon bootstrap", () => {
         "--json",
       ],
     ]);
+    expect(statuses).toEqual([
+      "Verifying Pylon binary",
+      "Bootstrapping local Pylon identity",
+      "Checking runtime health",
+      "Scanning for local models",
+      "Downloading curated model bundle",
+      "Running first-run diagnostic",
+      "Bootstrap complete",
+    ]);
     expect(summary.configPath).toBe("/tmp/pylon-config.json");
     expect(summary.diagnosticResult?.status).toBe("completed");
+  });
+
+  test("launchInstalledPylonTui inherits stdio for the interactive shell", async () => {
+    const calls = [];
+
+    await launchInstalledPylonTui(
+      {
+        pylonTuiPath: "/tmp/pylon-tui",
+        pylonHome: "/tmp/pylon-home",
+        configPath: "/tmp/pylon-config.json",
+      },
+      {
+        runProcessImpl: async (command, args, options) => {
+          calls.push({ command, args, options });
+          return { stdout: "", stderr: "" };
+        },
+      },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({
+      command: "/tmp/pylon-tui",
+      args: [],
+      options: {
+        env: expect.objectContaining({
+          OPENAGENTS_PYLON_CONFIG_PATH: "/tmp/pylon-config.json",
+          OPENAGENTS_PYLON_HOME: "/tmp/pylon-home",
+        }),
+        stdio: "inherit",
+      },
+    });
   });
 });

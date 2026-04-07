@@ -12,6 +12,12 @@ export const DEFAULT_DIAGNOSTIC_REPEATS = 3;
 export const DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS = 96;
 const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 
+function emitStatus(onStatus, message, detail = null) {
+  if (typeof onStatus === "function") {
+    onStatus({ message, detail });
+  }
+}
+
 function normalizeVersion(value) {
   return value.replace(/^pylon-v/, "").replace(/^v/, "");
 }
@@ -264,22 +270,26 @@ export function buildInstallPaths(installRoot, version, target) {
 export async function runProcess(
   command,
   args,
-  { cwd, env } = {},
+  { cwd, env, stdio = ["ignore", "pipe", "pipe"] } = {},
 ) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
       env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio,
     });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
+    if (child.stdout) {
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk.toString();
+      });
+    }
+    if (child.stderr) {
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString();
+      });
+    }
     child.on("error", (error) => {
       reject(
         new Error(
@@ -348,12 +358,18 @@ export async function ensureReleaseInstall(
   {
     fetchImpl = globalThis.fetch,
     runProcessImpl = runProcess,
+    onStatus = null,
   } = {},
 ) {
   if (typeof fetchImpl !== "function") {
     throw new Error("A global fetch implementation is required to bootstrap Pylon.");
   }
 
+  emitStatus(
+    onStatus,
+    "Resolving latest tagged Pylon release",
+    options.version ? `requested ${options.version}` : "default release track",
+  );
   const target = resolvePlatformTarget(options.platform, options.arch);
   const installRoot = options.installRoot ?? defaultInstallRoot();
   const release = await fetchReleaseMetadata({
@@ -368,6 +384,11 @@ export async function ensureReleaseInstall(
   const binariesPresent =
     (await pathExists(paths.pylonPath)) && (await pathExists(paths.pylonTuiPath));
   if (binariesPresent) {
+    emitStatus(
+      onStatus,
+      "Using cached standalone binaries",
+      `${selected.tagName} for ${target.os}-${target.arch}`,
+    );
     return {
       ...selected,
       ...paths,
@@ -380,6 +401,11 @@ export async function ensureReleaseInstall(
     };
   }
 
+  emitStatus(
+    onStatus,
+    "Fetching release checksum",
+    selected.checksumAsset.name,
+  );
   const checksumPayload = await fetchText(fetchImpl, selected.checksumAsset.url);
   const expectedSha256 = parseSha256File(
     checksumPayload,
@@ -393,6 +419,11 @@ export async function ensureReleaseInstall(
     archiveReady = (await sha256File(paths.archivePath)) === expectedSha256;
   }
   if (!archiveReady) {
+    emitStatus(
+      onStatus,
+      "Downloading standalone binaries",
+      selected.archiveAsset.name,
+    );
     await downloadFile(fetchImpl, selected.archiveAsset.url, paths.archivePath);
   }
 
@@ -403,6 +434,11 @@ export async function ensureReleaseInstall(
     );
   }
 
+  emitStatus(
+    onStatus,
+    "Extracting standalone binaries",
+    paths.installDir,
+  );
   await fs.rm(paths.installDir, { recursive: true, force: true });
   await extractArchive(paths.archivePath, paths.versionsDir, runProcessImpl);
 
@@ -432,6 +468,12 @@ export async function ensureReleaseInstall(
     )}\n`,
   );
 
+  emitStatus(
+    onStatus,
+    "Installed standalone binaries",
+    `${selected.tagName} for ${target.os}-${target.arch}`,
+  );
+
   return {
     ...selected,
     ...paths,
@@ -445,6 +487,7 @@ export async function bootstrapInstalledPylon(
   options,
   {
     runProcessImpl = runProcess,
+    onStatus = null,
   } = {},
 ) {
   const pylonPath = path.resolve(options.pylonPath);
@@ -455,14 +498,18 @@ export async function bootstrapInstalledPylon(
   const diagnosticMaxOutputTokens =
     options.diagnosticMaxOutputTokens ?? DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS;
 
+  emitStatus(onStatus, "Verifying Pylon binary", path.basename(pylonPath));
   await runPylonCommand(pylonPath, ["--help"], options, runProcessImpl);
+  emitStatus(onStatus, "Bootstrapping local Pylon identity");
   const init = await runPylonJson(pylonPath, ["init"], options, runProcessImpl);
+  emitStatus(onStatus, "Checking runtime health");
   const status = await runPylonJson(
     pylonPath,
     ["status", "--json"],
     options,
     runProcessImpl,
   );
+  emitStatus(onStatus, "Scanning for local models");
   const inventory = await runPylonJson(
     pylonPath,
     ["inventory", "--json"],
@@ -472,16 +519,20 @@ export async function bootstrapInstalledPylon(
 
   let download = null;
   if (!options.skipModelDownload) {
+    emitStatus(onStatus, "Downloading curated model bundle", model);
     download = await runPylonJson(
       pylonPath,
       ["gemma", "download", model, "--json"],
       options,
       runProcessImpl,
     );
+  } else {
+    emitStatus(onStatus, "Skipping curated model download", model);
   }
 
   let diagnostic = null;
   if (!options.skipDiagnostics) {
+    emitStatus(onStatus, "Running first-run diagnostic", model);
     diagnostic = await runPylonJson(
       pylonPath,
       [
@@ -497,12 +548,22 @@ export async function bootstrapInstalledPylon(
       options,
       runProcessImpl,
     );
+  } else {
+    emitStatus(onStatus, "Skipping first-run diagnostic", model);
   }
 
   const diagnosticResult =
     diagnostic?.results?.find((result) => result.model_id === model) ??
     diagnostic?.results?.[0] ??
     null;
+
+  emitStatus(
+    onStatus,
+    "Bootstrap complete",
+    diagnosticResult?.status
+      ? `diagnostic ${diagnosticResult.status}`
+      : "smoke path complete",
+  );
 
   return {
     version: options.version,
@@ -523,6 +584,21 @@ export async function bootstrapInstalledPylon(
     diagnostic,
     diagnosticResult,
   };
+}
+
+export async function launchInstalledPylonTui(
+  options,
+  {
+    runProcessImpl = runProcess,
+    onStatus = null,
+  } = {},
+) {
+  const pylonTuiPath = path.resolve(options.pylonTuiPath);
+  emitStatus(onStatus, "Opening Pylon terminal UI", path.basename(pylonTuiPath));
+  return runProcessImpl(pylonTuiPath, [], {
+    env: buildPylonEnv(options),
+    stdio: "inherit",
+  });
 }
 
 export function renderBootstrapSummary(summary) {

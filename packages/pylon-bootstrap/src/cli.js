@@ -6,6 +6,7 @@ import {
   DEFAULT_RELEASE_REPO,
   bootstrapInstalledPylon,
   ensureReleaseInstall,
+  launchInstalledPylonTui,
   renderBootstrapSummary,
 } from "./index.js";
 
@@ -17,6 +18,52 @@ function parseIntegerFlag(value, label) {
   return parsed;
 }
 
+function createTerminalStyles(enableColor) {
+  if (!enableColor) {
+    return {
+      bold: (value) => value,
+      cyan: (value) => value,
+      dim: (value) => value,
+      green: (value) => value,
+      red: (value) => value,
+      yellow: (value) => value,
+    };
+  }
+
+  const wrap = (open, close) => (value) => `${open}${value}${close}`;
+  return {
+    bold: wrap("\u001B[1m", "\u001B[22m"),
+    cyan: wrap("\u001B[36m", "\u001B[39m"),
+    dim: wrap("\u001B[2m", "\u001B[22m"),
+    green: wrap("\u001B[32m", "\u001B[39m"),
+    red: wrap("\u001B[31m", "\u001B[39m"),
+    yellow: wrap("\u001B[33m", "\u001B[39m"),
+  };
+}
+
+function createReporter({ enableColor = process.stdout.isTTY && !process.env.NO_COLOR } = {}) {
+  const styles = createTerminalStyles(enableColor);
+  return {
+    status({ message, detail = null }) {
+      const prefix = styles.cyan("›");
+      const suffix = detail ? ` ${styles.dim(detail)}` : "";
+      console.log(`${prefix} ${styles.bold(message)}${suffix}`);
+    },
+    success(message, detail = null) {
+      const suffix = detail ? ` ${styles.dim(detail)}` : "";
+      console.log(`${styles.green("✓")} ${styles.bold(message)}${suffix}`);
+    },
+    warning(message, detail = null) {
+      const suffix = detail ? ` ${styles.dim(detail)}` : "";
+      console.log(`${styles.yellow("!")} ${styles.bold(message)}${suffix}`);
+    },
+    failure(message, detail = null) {
+      const suffix = detail ? ` ${styles.dim(detail)}` : "";
+      console.error(`${styles.red("x")} ${styles.bold(message)}${suffix}`);
+    },
+  };
+}
+
 export function usage() {
   return `Usage:
   npx @openagentsinc/pylon [options]
@@ -24,7 +71,8 @@ export function usage() {
 Description:
   Download the latest tagged standalone Pylon release asset for this machine,
   or a specific tagged Pylon version when --version is set. Verify its
-  checksum, cache the binaries locally, and run the first-run smoke path.
+  checksum, cache the binaries locally, run the first-run smoke path, and then
+  open the Pylon terminal UI by default with live status updates.
 
 Options:
   --version <x.y.z>                    Resolve a specific Pylon release.
@@ -39,6 +87,7 @@ Options:
                                        Default: ${DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS}
   --skip-model-download                Skip pylon gemma download.
   --skip-diagnostics                   Skip pylon gemma diagnose.
+  --no-launch                          Do not open pylon-tui after bootstrap.
   --json                               Emit a machine-readable JSON summary.
 
 Test and maintainer options:
@@ -61,6 +110,7 @@ export function parseArgs(argv) {
     diagnosticMaxOutputTokens: DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS,
     skipModelDownload: false,
     skipDiagnostics: false,
+    noLaunch: false,
     json: false,
     help: false,
   };
@@ -116,6 +166,9 @@ export function parseArgs(argv) {
       case "--skip-diagnostics":
         options.skipDiagnostics = true;
         break;
+      case "--no-launch":
+        options.noLaunch = true;
+        break;
       case "--json":
         options.json = true;
         break;
@@ -144,26 +197,58 @@ export function parseArgs(argv) {
 }
 
 export async function main(argv = process.argv.slice(2), dependencies = {}) {
+  const {
+    ensureReleaseInstallImpl = ensureReleaseInstall,
+    bootstrapInstalledPylonImpl = bootstrapInstalledPylon,
+    launchInstalledPylonTuiImpl = launchInstalledPylonTui,
+  } = dependencies;
   const options = parseArgs(argv);
   if (options.help) {
     console.log(usage());
     return null;
   }
 
-  const install = await ensureReleaseInstall(options, dependencies);
-  const summary = await bootstrapInstalledPylon(
+  const reporter = options.json ? null : createReporter();
+
+  const install = await ensureReleaseInstallImpl(options, {
+    ...dependencies,
+    onStatus: reporter?.status,
+  });
+  const summary = await bootstrapInstalledPylonImpl(
     {
       ...options,
       ...install,
       version: install.version,
     },
-    dependencies,
+    {
+      ...dependencies,
+      onStatus: reporter?.status,
+    },
   );
 
   if (options.json) {
     console.log(JSON.stringify(summary, null, 2));
   } else {
+    reporter?.success("Pylon bootstrap complete");
     console.log(renderBootstrapSummary(summary));
+    if (!options.noLaunch) {
+      await launchInstalledPylonTuiImpl(
+        {
+          ...options,
+          ...install,
+          version: install.version,
+        },
+        {
+          ...dependencies,
+          onStatus: reporter?.status,
+        },
+      );
+    } else {
+      reporter?.warning(
+        "Skipped Pylon terminal UI launch",
+        "pass no flag to open pylon-tui by default",
+      );
+    }
   }
   return summary;
 }
