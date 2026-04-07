@@ -103,7 +103,14 @@ Headless Gemma operator commands now exist too:
 - `cargo pylon-headless gemma download remaining`
 - `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
 
-Use the first two commands for normal onboarding. They bring Gemma supply online without requiring a sibling `psionic` checkout.
+Use the first two commands for normal onboarding. They prepare the curated Gemma GGUF cache without requiring a sibling `psionic` checkout.
+
+Important:
+
+- `pylon gemma download ...` only downloads GGUF files into `~/.openagents/pylon/models/huggingface/`
+- downloaded GGUFs alone do not make supply eligible
+- `Pylon` still requires a local runtime endpoint at `local_gemma_base_url` (default `http://127.0.0.1:11434`) that answers `/api/tags` and has a Gemma 4 model loaded
+- if `pylon online` reports `degraded` or `NO_ELIGIBLE_SUPPLY`, check that runtime first before falling back to a source build
 
 Treat the full `gemma benchmark` matrix as a retained validation lane, not as required bring-up. That command shells into a sibling Psionic checkout for the real runtime benchmark. By default that means a local `../psionic` clone. Override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` when needed. If an existing sibling checkout is stale or missing the retained Gemma benchmark entrypoints, refresh it or clone a clean compatible `psionic` checkout and point `OPENAGENTS_PSIONIC_REPO` there.
 
@@ -173,6 +180,12 @@ With a release asset install, use the same commands through the shipped binary:
 ./pylon config show
 ./pylon online
 ```
+
+If the shipped binary is current, `status`, `inventory`, `config show`, and `doctor` should all agree on the current standalone lane:
+
+- backend naming should be `local_gemma`
+- the launch product should be `psionic.local.inference.gemma.single_node`
+- legacy `gpt_oss_*`, `ollama_*`, or Apple-FM-only product names should not be the surfaced launch truth for standalone Pylon onboarding
 
 Inspect status:
 

@@ -64,7 +64,26 @@ Deploy receipt:
   - `hosted_nexus_relay_url = wss://nexus.openagents.com/`
   - `receipt_persistence_enabled = true`
 
+Current public stats shape also includes Pylon presence fields sourced from
+`nexus-control` provider-presence state:
+
+- `pylons_online_now`
+- `pylons_seen_24h`
+- `pylon_sessions_online_now`
+- `sellable_pylons_online_now`
+- `pylon_presence_stale_after_ms`
+- `recent_pylons`
+
 This is the key public-state change from the prior hostname path, which reported `receipt_persistence_enabled = false`.
+
+Current provider-presence ingestion path:
+
+- `POST /api/provider-presence/heartbeat`
+- `POST /api/provider-presence/offline`
+
+Those endpoints make `nexus-control` the public telemetry authority for Pylon
+presence, and the website or future closed platform can consume that stats
+surface without becoming the source of truth.
 
 ### Relay protocol checks
 

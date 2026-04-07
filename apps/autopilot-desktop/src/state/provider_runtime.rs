@@ -448,7 +448,7 @@ impl ProviderRuntimeState {
 
     pub fn availability(&self) -> ProviderAvailability {
         ProviderAvailability {
-            gpt_oss: self.gpt_oss.substrate_health(),
+            local_gemma: self.gpt_oss.substrate_health(),
             apple_foundation_models: self.apple_fm.substrate_health(),
             apple_adapter_hosting: self.apple_fm.substrate_adapter_hosting(),
             adapter_training_contributor: self.apple_fm.substrate_training_contributor(),

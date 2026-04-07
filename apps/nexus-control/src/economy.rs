@@ -61,6 +61,25 @@ pub struct PublicRecentReceipt {
     pub amount_sats: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicRecentPylon {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    pub nostr_pubkey_short: String,
+    pub last_seen_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_urls: Vec<String>,
+    pub eligible_product_count: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub products: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_state: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PublicStatsSnapshot {
     pub service: String,
@@ -72,6 +91,16 @@ pub struct PublicStatsSnapshot {
     pub receipt_persistence_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_persistence_error: Option<String>,
+    #[serde(default)]
+    pub pylons_online_now: u64,
+    #[serde(default)]
+    pub pylons_seen_24h: u64,
+    #[serde(default)]
+    pub pylon_sessions_online_now: u64,
+    #[serde(default)]
+    pub sellable_pylons_online_now: u64,
+    #[serde(default)]
+    pub pylon_presence_stale_after_ms: u64,
     pub sessions_active: usize,
     pub sessions_issued_24h: u64,
     pub sync_tokens_active: usize,
@@ -154,12 +183,19 @@ pub struct PublicStatsSnapshot {
     pub risk_implied_fail_probability_bps: u32,
     pub risk_calibration_score: f64,
     pub risk_coverage_concentration_hhi: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_pylons: Vec<PublicRecentPylon>,
     pub recent_receipts: Vec<PublicRecentReceipt>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct PublicRuntimeSnapshot {
     pub hosted_nexus_relay_url: String,
+    pub pylons_online_now: u64,
+    pub pylons_seen_24h: u64,
+    pub pylon_sessions_online_now: u64,
+    pub sellable_pylons_online_now: u64,
+    pub pylon_presence_stale_after_ms: u64,
     pub sessions_active: usize,
     pub sync_tokens_active: usize,
     pub starter_demand_budget_cap_sats: u64,
@@ -228,6 +264,7 @@ pub struct PublicRuntimeSnapshot {
     pub risk_implied_fail_probability_bps: u32,
     pub risk_calibration_score: f64,
     pub risk_coverage_concentration_hhi: f64,
+    pub recent_pylons: Vec<PublicRecentPylon>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -351,6 +388,11 @@ impl ReceiptLedger {
             receipt_count: self.receipts.len(),
             receipt_persistence_enabled: self.receipt_log_path.is_some(),
             receipt_persistence_error: self.last_persistence_error.clone(),
+            pylons_online_now: runtime.pylons_online_now,
+            pylons_seen_24h: runtime.pylons_seen_24h,
+            pylon_sessions_online_now: runtime.pylon_sessions_online_now,
+            sellable_pylons_online_now: runtime.sellable_pylons_online_now,
+            pylon_presence_stale_after_ms: runtime.pylon_presence_stale_after_ms,
             sessions_active: runtime.sessions_active,
             sessions_issued_24h,
             sync_tokens_active: runtime.sync_tokens_active,
@@ -440,6 +482,7 @@ impl ReceiptLedger {
             risk_implied_fail_probability_bps: runtime.risk_implied_fail_probability_bps,
             risk_calibration_score: runtime.risk_calibration_score,
             risk_coverage_concentration_hhi: runtime.risk_coverage_concentration_hhi,
+            recent_pylons: runtime.recent_pylons.clone(),
             recent_receipts: self.recent_receipts(),
         }
     }
@@ -615,6 +658,11 @@ mod tests {
         let snapshot = ledger.snapshot(
             &PublicRuntimeSnapshot {
                 hosted_nexus_relay_url: "wss://nexus.openagents.com/".to_string(),
+                pylons_online_now: 0,
+                pylons_seen_24h: 0,
+                pylon_sessions_online_now: 0,
+                sellable_pylons_online_now: 0,
+                pylon_presence_stale_after_ms: 0,
                 sessions_active: 1,
                 sync_tokens_active: 1,
                 starter_demand_budget_cap_sats: 5_000,
@@ -683,6 +731,7 @@ mod tests {
                 risk_implied_fail_probability_bps: 0,
                 risk_calibration_score: 0.0,
                 risk_coverage_concentration_hhi: 0.0,
+                recent_pylons: Vec::new(),
             },
             6_000,
         );

@@ -61,6 +61,7 @@ pub use wallet_runtime::{
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
 pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
 pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
+const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
@@ -70,6 +71,8 @@ pub struct PylonConfig {
     pub identity_path: PathBuf,
     pub admin_db_path: PathBuf,
     pub admin_listen_addr: String,
+    #[serde(default = "default_nexus_control_base_url")]
+    pub nexus_control_base_url: String,
     #[serde(default = "default_relay_urls")]
     pub relay_urls: Vec<String>,
     #[serde(default = "default_relay_connect_timeout_seconds")]
@@ -122,6 +125,7 @@ struct PylonPublicConfig {
     identity_path: PathBuf,
     admin_db_path: PathBuf,
     admin_listen_addr: String,
+    nexus_control_base_url: String,
     relay_urls: Vec<String>,
     relay_connect_timeout_seconds: u64,
     relay_auth_enabled: bool,
@@ -143,6 +147,7 @@ impl From<&PylonConfig> for PylonPublicConfig {
             identity_path: value.identity_path.clone(),
             admin_db_path: value.admin_db_path.clone(),
             admin_listen_addr: value.admin_listen_addr.clone(),
+            nexus_control_base_url: value.nexus_control_base_url.clone(),
             relay_urls: value.relay_urls.clone(),
             relay_connect_timeout_seconds: value.relay_connect_timeout_seconds,
             relay_auth_enabled: value.relay_auth_enabled,
@@ -387,7 +392,7 @@ struct DoctorReport {
     payout_destination: Option<String>,
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
-    products: Vec<ProviderAdvertisedProduct>,
+    products: Vec<ProductEntry>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -1532,7 +1537,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             let config = load_or_create_config(cli.config_path.as_path())?;
             let identity = ensure_identity(config.identity_path.as_path())?;
             let availability = detect_availability(&config).await?;
-            let products = derive_provider_products(&availability, &config.inventory_controls);
+            let products =
+                public_product_entries(products_from_availability(&config, &availability));
             Ok(Some(serde_json::to_string_pretty(&DoctorReport {
                 config_path: cli.config_path.display().to_string(),
                 node_label: config.node_label.clone(),
@@ -2867,6 +2873,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         identity_path: base_dir.join("identity.mnemonic"),
         admin_db_path: base_dir.join("provider-admin.sqlite"),
         admin_listen_addr: "127.0.0.1:9468".to_string(),
+        nexus_control_base_url: default_nexus_control_base_url(),
         relay_urls: default_relay_urls(),
         relay_connect_timeout_seconds: default_relay_connect_timeout_seconds(),
         relay_auth_enabled: default_relay_auth_enabled(),
@@ -2887,6 +2894,10 @@ fn default_relay_urls() -> Vec<String> {
         "wss://relay.damus.io".to_string(),
         "wss://nos.lol".to_string(),
     ]
+}
+
+fn default_nexus_control_base_url() -> String {
+    "https://nexus.openagents.com".to_string()
 }
 
 const fn default_relay_connect_timeout_seconds() -> u64 {
@@ -2971,7 +2982,13 @@ async fn serve(config: PylonConfig) -> Result<()> {
         .desired_mode()
         .map_err(anyhow::Error::msg)?;
     let mut runtime = ProviderAdminRuntime::spawn(admin_config).map_err(anyhow::Error::msg)?;
+    let presence_client = provider_presence_client()?;
     let identity = ensure_identity(config.identity_path.as_path())?;
+    let provider_presence_session_id = format!("pylon_{}", random_token());
+    let provider_presence_heartbeat_interval =
+        Duration::from_millis(DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS);
+    let mut next_provider_presence_heartbeat_at = Instant::now();
+    let mut provider_presence_online = false;
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
     let mut needs_sync = true;
     loop {
@@ -2982,6 +2999,20 @@ async fn serve(config: PylonConfig) -> Result<()> {
                     needs_sync = true;
                 }
                 ProviderAdminUpdate::WorkerError(error) => {
+                    if provider_presence_online {
+                        if let Err(report_error) = report_provider_presence_offline(
+                            &presence_client,
+                            &config,
+                            &identity,
+                            provider_presence_session_id.as_str(),
+                        )
+                        .await
+                        {
+                            eprintln!(
+                                "warning: failed to report pylon provider offline to Nexus: {report_error}"
+                            );
+                        }
+                    }
                     let snapshot = build_error_snapshot(
                         &config,
                         Some(&identity),
@@ -2995,15 +3026,78 @@ async fn serve(config: PylonConfig) -> Result<()> {
             }
         }
 
+        if desired_mode != ProviderDesiredMode::Online && provider_presence_online {
+            if let Err(error) = report_provider_presence_offline(
+                &presence_client,
+                &config,
+                &identity,
+                provider_presence_session_id.as_str(),
+            )
+            .await
+            {
+                eprintln!("warning: failed to report pylon provider offline to Nexus: {error}");
+            }
+            provider_presence_online = false;
+            next_provider_presence_heartbeat_at = Instant::now();
+        }
+
         if needs_sync {
-            let snapshot =
-                build_snapshot(&config, &identity, desired_mode, previous_snapshot.as_ref())
-                    .await?;
+            let snapshot = match build_snapshot(
+                &config,
+                &identity,
+                desired_mode,
+                previous_snapshot.as_ref(),
+            )
+            .await
+            {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    if provider_presence_online {
+                        if let Err(report_error) = report_provider_presence_offline(
+                            &presence_client,
+                            &config,
+                            &identity,
+                            provider_presence_session_id.as_str(),
+                        )
+                        .await
+                        {
+                            eprintln!(
+                                "warning: failed to report pylon provider offline to Nexus: {report_error}"
+                            );
+                        }
+                    }
+                    return Err(error);
+                }
+            };
             runtime
                 .sync_snapshot(snapshot.clone())
                 .map_err(anyhow::Error::msg)?;
             previous_snapshot = Some(snapshot);
             needs_sync = false;
+
+            if desired_mode == ProviderDesiredMode::Online
+                && Instant::now() >= next_provider_presence_heartbeat_at
+            {
+                if let Some(snapshot) = previous_snapshot.as_ref() {
+                    if let Err(error) = report_provider_presence_heartbeat(
+                        &presence_client,
+                        &config,
+                        &identity,
+                        provider_presence_session_id.as_str(),
+                        snapshot,
+                    )
+                    .await
+                    {
+                        eprintln!(
+                            "warning: failed to report pylon provider heartbeat to Nexus: {error}"
+                        );
+                    } else {
+                        provider_presence_online = true;
+                    }
+                }
+                next_provider_presence_heartbeat_at =
+                    Instant::now() + provider_presence_heartbeat_interval;
+            }
         }
 
         let sleep_duration = if needs_sync {
@@ -3014,6 +3108,20 @@ async fn serve(config: PylonConfig) -> Result<()> {
         tokio::select! {
             result = tokio::signal::ctrl_c() => {
                 result.context("failed waiting for ctrl-c")?;
+                if provider_presence_online {
+                    if let Err(error) = report_provider_presence_offline(
+                        &presence_client,
+                        &config,
+                        &identity,
+                        provider_presence_session_id.as_str(),
+                    )
+                    .await
+                    {
+                        eprintln!(
+                            "warning: failed to report pylon provider offline to Nexus: {error}"
+                        );
+                    }
+                }
                 break;
             }
             () = tokio::time::sleep(sleep_duration) => {
@@ -3312,12 +3420,9 @@ fn derive_runtime_snapshot(
         "draining" => Some("DRAINING_PENDING_WORK".to_string()),
         _ => None,
     };
-    let last_error = runtime_error.or_else(|| {
-        if state == "degraded" {
-            first_backend_error(availability)
-        } else {
-            None
-        }
+    let last_error = runtime_error.or_else(|| match state.as_str() {
+        "degraded" | "offline" => first_backend_error(availability),
+        _ => None,
     });
     let last_action = match state.as_str() {
         "online" => format!("pylon is online with {eligible_products} sellable launch products"),
@@ -3922,6 +4027,25 @@ fn products_from_availability(
         .collect()
 }
 
+fn public_product_entries(products: Vec<ProviderAdvertisedProduct>) -> Vec<ProductEntry> {
+    products
+        .into_iter()
+        .map(|product| ProductEntry {
+            product_id: product.product.product_id().to_string(),
+            display_label: product.product.display_label().to_string(),
+            compute_family: product.product.compute_family_label().to_string(),
+            backend: product.product.backend_label().to_string(),
+            enabled: product.enabled,
+            backend_ready: product.backend_ready,
+            eligible: product.eligible,
+            capability_summary: product.capability_summary,
+            price_floor_sats: product.price_floor_sats,
+            terms_label: product.terms_label,
+            forward_terms_label: product.forward_terms_label,
+        })
+        .collect()
+}
+
 fn backend_entry(
     backend_id: &str,
     display_label: &str,
@@ -4167,22 +4291,7 @@ async fn load_inventory_report(
 
 async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
     let (config, status) = load_config_and_status(config_path).await?;
-    let products = products_from_status(&config, &status)
-        .into_iter()
-        .map(|product| ProductEntry {
-            product_id: product.product.product_id().to_string(),
-            display_label: product.product.display_label().to_string(),
-            compute_family: product.product.compute_family_label().to_string(),
-            backend: product.product.backend_label().to_string(),
-            enabled: product.enabled,
-            backend_ready: product.backend_ready,
-            eligible: product.eligible,
-            capability_summary: product.capability_summary,
-            price_floor_sats: product.price_floor_sats,
-            terms_label: product.terms_label,
-            forward_terms_label: product.forward_terms_label,
-        })
-        .collect();
+    let products = public_product_entries(products_from_status(&config, &status));
     Ok(ProductReport {
         context: report_context(&status),
         products,
@@ -5521,6 +5630,125 @@ fn comma_or_none(values: &[String]) -> String {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct NexusProviderPresenceHeartbeatRequest {
+    nostr_pubkey_hex: String,
+    session_id: String,
+    node_label: Option<String>,
+    client_version: Option<String>,
+    relay_urls: Vec<String>,
+    products: Vec<String>,
+    eligible_product_count: u64,
+    ready_model: Option<String>,
+    runtime_state: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct NexusProviderPresenceOfflineRequest {
+    nostr_pubkey_hex: String,
+    session_id: String,
+}
+
+async fn report_provider_presence_heartbeat(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    session_id: &str,
+    snapshot: &ProviderPersistedSnapshot,
+) -> Result<()> {
+    let request = NexusProviderPresenceHeartbeatRequest {
+        nostr_pubkey_hex: identity.public_key_hex.clone(),
+        session_id: session_id.to_string(),
+        node_label: Some(config.node_label.clone()),
+        client_version: Some(format!("pylon/{}", env!("CARGO_PKG_VERSION"))),
+        relay_urls: config.relay_urls.clone(),
+        products: snapshot
+            .inventory_rows
+            .iter()
+            .filter(|row| row.eligible)
+            .map(|row| row.target.product_id().to_string())
+            .collect(),
+        eligible_product_count: snapshot
+            .inventory_rows
+            .iter()
+            .filter(|row| row.eligible)
+            .count() as u64,
+        ready_model: gemma_ready_model(&snapshot.availability.local_gemma),
+        runtime_state: snapshot
+            .runtime
+            .authoritative_status
+            .clone()
+            .or_else(|| Some(snapshot.runtime.mode.label().to_string())),
+    };
+    post_nexus_provider_presence(
+        client,
+        config,
+        "/api/provider-presence/heartbeat",
+        &request,
+        "heartbeat",
+    )
+    .await
+}
+
+async fn report_provider_presence_offline(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    session_id: &str,
+) -> Result<()> {
+    let request = NexusProviderPresenceOfflineRequest {
+        nostr_pubkey_hex: identity.public_key_hex.clone(),
+        session_id: session_id.to_string(),
+    };
+    post_nexus_provider_presence(
+        client,
+        config,
+        "/api/provider-presence/offline",
+        &request,
+        "offline",
+    )
+    .await
+}
+
+async fn post_nexus_provider_presence<T: Serialize>(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    path: &str,
+    payload: &T,
+    action: &str,
+) -> Result<()> {
+    let url = nexus_control_url(config, path);
+    let response = client
+        .post(url.as_str())
+        .json(payload)
+        .send()
+        .await
+        .with_context(|| format!("failed to post pylon provider presence {action} to {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode nexus provider presence error".to_string());
+        bail!("nexus provider presence {action} failed: {detail}");
+    }
+    Ok(())
+}
+
+fn provider_presence_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .context("failed to build pylon provider-presence client")
+}
+
+fn nexus_control_url(config: &PylonConfig, path: &str) -> String {
+    format!(
+        "{}/{}",
+        config.nexus_control_base_url.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    )
+}
+
 async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusResponse>> {
     let client = admin_client()?;
     let url = format!("http://{}/v1/status", config.admin_listen_addr);
@@ -5686,7 +5914,9 @@ async fn detect_local_gemma(
             return ProviderBackendHealth {
                 reachable: false,
                 ready: false,
-                last_error: Some(error.to_string()),
+                last_error: Some(format!(
+                    "local Gemma runtime not reachable at {url}; start a local runtime serving /api/tags or update local_gemma_base_url ({error})"
+                )),
                 last_action: Some("health check failed".to_string()),
                 ..ProviderBackendHealth::default()
             };
@@ -5698,7 +5928,9 @@ async fn detect_local_gemma(
             return ProviderBackendHealth {
                 reachable: true,
                 ready: false,
-                last_error: Some(error.to_string()),
+                last_error: Some(format!(
+                    "local Gemma runtime at {url} returned an invalid /api/tags payload; verify the runtime speaks the expected API or update local_gemma_base_url ({error})"
+                )),
                 last_action: Some("invalid local Gemma health payload".to_string()),
                 ..ProviderBackendHealth::default()
             };
@@ -5730,6 +5962,11 @@ async fn detect_local_gemma(
         configured_model: gemma_models.first().cloned(),
         ready_model: gemma_models.first().cloned(),
         available_models: gemma_models,
+        last_error: (!ready).then(|| {
+            format!(
+                "local Gemma runtime at {url} is reachable, but no Gemma 4 model is loaded. Downloaded GGUF files alone do not make supply eligible; start the runtime with a Gemma model or update local_gemma_base_url."
+            )
+        }),
         last_action: Some(if ready {
             "health check ready".to_string()
         } else {
@@ -5755,6 +5992,13 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
             };
         }
         "admin_listen_addr" => config.admin_listen_addr = value.to_string(),
+        "nexus_control_base_url" => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                bail!("nexus_control_base_url must not be empty");
+            }
+            config.nexus_control_base_url = trimmed.to_string();
+        }
         "relay_connect_timeout_seconds" => {
             config.relay_connect_timeout_seconds = value
                 .parse::<u64>()
@@ -5820,6 +6064,10 @@ fn now_epoch_ms() -> i64 {
     }
 }
 
+fn random_token() -> String {
+    hex::encode(rand::random::<[u8; 16]>())
+}
+
 #[cfg(test)]
 type TestPayoutPayHook = Box<dyn Fn(&str, Option<u64>) -> Result<WalletPayReport> + Send + Sync>;
 
@@ -5835,8 +6083,10 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::{
-        AnnouncementAction, BuyerJobSubmitRequest, Command, DEFAULT_GEMMA_BENCH_PROMPT,
+        AnnouncementAction, BuyerJobSubmitRequest, Cli, Command, DEFAULT_GEMMA_BENCH_PROMPT,
         GemmaBenchExecutionMode, GemmaBenchmarkMode, GemmaBenchmarkRequest, GemmaBenchmarkSelector,
         GemmaCommand, GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend,
         LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord,
@@ -5847,12 +6097,13 @@ mod tests {
         load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
         load_ledger, load_or_create_config, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, provider_admin_config, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_public_config_json, render_sandbox_report,
-        resolve_local_gemma_chat_target_from_status, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, run_provider_requests, save_config, scan_provider_requests,
-        submit_buyer_job, watch_buyer_jobs,
+        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
+        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
+        remove_configured_relay, render_human_status, render_public_config_json,
+        render_sandbox_report, report_provider_presence_heartbeat,
+        report_provider_presence_offline, resolve_local_gemma_chat_target_from_status, run_cli,
+        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
+        save_config, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -5930,6 +6181,10 @@ mod tests {
             "public config should expose the local Gemma base URL",
         )?;
         ensure(
+            json.contains("\"nexus_control_base_url\""),
+            "public config should expose the Nexus control base URL",
+        )?;
+        ensure(
             json.contains("\"local_gemma_inference_enabled\""),
             "public config should expose local Gemma inventory toggles",
         )?;
@@ -5972,6 +6227,20 @@ mod tests {
         ensure(
             !config.relay_auth_enabled,
             "config set should update the relay auth toggle",
+        )
+    }
+
+    #[test]
+    fn config_set_updates_nexus_control_base_url() -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        apply_config_set(
+            &mut config,
+            "nexus_control_base_url",
+            "https://nexus.example.com",
+        )?;
+        ensure(
+            config.nexus_control_base_url == "https://nexus.example.com",
+            "config set should update nexus_control_base_url",
         )
     }
 
@@ -6031,6 +6300,10 @@ mod tests {
             "missing local Gemma endpoint config should hydrate from the default config",
         )?;
         ensure(
+            config.nexus_control_base_url == "https://nexus.openagents.com",
+            "missing nexus_control_base_url should hydrate from the default config",
+        )?;
+        ensure(
             config.inventory_controls.local_gemma_inference_enabled
                 && !config.inventory_controls.apple_fm_inference_enabled
                 && !config.inventory_controls.apple_fm_adapter_hosting_enabled,
@@ -6077,6 +6350,93 @@ mod tests {
             !config.inventory_controls.local_gemma_inference_enabled
                 && !config.inventory_controls.local_gemma_embeddings_enabled,
             "legacy gpt_oss inventory flags should hydrate local Gemma controls",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_presence_reports_online_and_offline_to_nexus()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let nexus_base_url = start_mock_http_server(move |method, path, body| {
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            recorded_requests_for_server
+                .lock()
+                .expect("provider presence request log")
+                .push((format!("{method} {path}"), payload));
+            (200, "application/json", "{\"ok\":true}".to_string())
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.nexus_control_base_url = nexus_base_url;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let client = provider_presence_client()?;
+        let snapshot = build_snapshot_from_availability(
+            &config,
+            Some(&identity),
+            ProviderDesiredMode::Online,
+            None,
+            ProviderAvailability {
+                local_gemma: ready_health("gemma4:e4b", &["gemma4:e4b"], Some("gemma_ready")),
+                apple_foundation_models: ProviderBackendHealth::default(),
+                apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+                adapter_training_contributor:
+                    ProviderAdapterTrainingContributorAvailability::default(),
+                pooled_inference: ProviderPooledInferenceAvailability::default(),
+                sandbox: ProviderSandboxAvailability::default(),
+            },
+            None,
+        );
+
+        report_provider_presence_heartbeat(&client, &config, &identity, "session-test", &snapshot)
+            .await?;
+        report_provider_presence_offline(&client, &config, &identity, "session-test").await?;
+
+        let requests = recorded_requests
+            .lock()
+            .expect("provider presence request log")
+            .clone();
+        ensure(
+            requests.len() == 2,
+            "provider presence should send one heartbeat and one offline report",
+        )?;
+        ensure(
+            requests[0].0 == "POST /api/provider-presence/heartbeat",
+            "first provider presence request should hit the heartbeat endpoint",
+        )?;
+        ensure(
+            requests[0].1["nostr_pubkey_hex"] == json!(identity.public_key_hex),
+            "heartbeat should include the Pylon public key",
+        )?;
+        ensure(
+            requests[0].1["session_id"] == "session-test",
+            "heartbeat should include the provider presence session id",
+        )?;
+        ensure(
+            requests[0].1["eligible_product_count"] == 1,
+            "heartbeat should include the eligible product count",
+        )?;
+        ensure(
+            requests[0].1["products"]
+                .as_array()
+                .is_some_and(|products| products.len() == 1),
+            "heartbeat should include the eligible launch product ids",
+        )?;
+        ensure(
+            requests[0].1["ready_model"] == "gemma4:e4b",
+            "heartbeat should include the ready model",
+        )?;
+        ensure(
+            requests[1].0 == "POST /api/provider-presence/offline",
+            "second provider presence request should hit the offline endpoint",
+        )?;
+        ensure(
+            requests[1].1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
+                && requests[1].1["session_id"] == "session-test",
+            "offline report should include the same identity and session",
         )
     }
 
@@ -9241,6 +9601,115 @@ mod tests {
         ensure(
             render_human_status(&status).contains("LOCAL_GEMMA_UNAVAILABLE"),
             "status should surface the local Gemma blocker when only non-Gemma models are present",
+        )?;
+        ensure(
+            status.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot
+                    .availability
+                    .local_gemma
+                    .last_error
+                    .as_deref()
+                    .is_some_and(|error| {
+                        error.contains("Downloaded GGUF files alone do not make supply eligible")
+                    })
+            }),
+            "status should explain that cached GGUFs are not enough without a loaded Gemma runtime",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn local_gemma_detection_reports_actionable_runtime_endpoint_failure()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        let last_error = status
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.availability.local_gemma.last_error.as_deref())
+            .ok_or_else(|| std::io::Error::other("missing local Gemma error"))?;
+
+        ensure(
+            last_error.contains("local Gemma runtime not reachable at http://127.0.0.1:9/api/tags"),
+            "status should name the exact local Gemma endpoint that failed",
+        )?;
+        ensure(
+            last_error.contains("update local_gemma_base_url"),
+            "status should explain the config remediation path for a failed local Gemma endpoint",
+        )?;
+        ensure(
+            render_human_status(&status).contains("local Gemma runtime not reachable"),
+            "human status should surface the actionable local Gemma runtime error",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn doctor_report_uses_canonical_product_ids_and_hides_legacy_apple_surface()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let base_url =
+            start_mock_http_server(
+                |method, path, _body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4-e4b-local:latest"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.local_gemma_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let output = run_cli(Cli {
+            command: Command::Doctor,
+            config_path: config_path.clone(),
+        })
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing doctor output"))?;
+        let json: Value = serde_json::from_str(output.as_str())?;
+        let products = json
+            .get("products")
+            .and_then(Value::as_array)
+            .ok_or_else(|| std::io::Error::other("missing doctor products"))?;
+
+        ensure(
+            !output.contains("\"product\": \"gpt_oss_inference\""),
+            "doctor should not leak legacy gpt_oss product enum names",
+        )?;
+        ensure(
+            products
+                .iter()
+                .all(|product| product.get("product").is_none()),
+            "doctor should expose canonical product_id fields rather than enum variant names",
+        )?;
+        ensure(
+            products.iter().any(|product| {
+                product.get("product_id").and_then(Value::as_str)
+                    == Some("psionic.local.inference.gemma.single_node")
+            }),
+            "doctor should expose the canonical Gemma product id",
+        )?;
+        ensure(
+            products.iter().all(|product| {
+                product.get("backend").and_then(Value::as_str) != Some("apple_foundation_models")
+            }),
+            "doctor should hide the legacy Apple FM-only surface from standalone Pylon onboarding",
         )
     }
 
