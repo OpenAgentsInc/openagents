@@ -27,7 +27,7 @@ npx @openagentsinc/pylon
 npx @openagentsinc/pylon --version 0.1.0
 ```
 
-That launcher resolves the matching GitHub release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma download <model>` plus `pylon gemma diagnose <model>`.
+That launcher resolves the latest tagged `pylon-v...` GitHub release by default, or a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma download <model>` plus `pylon gemma diagnose <model>`.
 
 Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
 

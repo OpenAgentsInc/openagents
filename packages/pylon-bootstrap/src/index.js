@@ -10,6 +10,7 @@ export const DEFAULT_RELEASE_API_BASE = "https://api.github.com";
 export const DEFAULT_MODEL_ID = "gemma-4-e4b";
 export const DEFAULT_DIAGNOSTIC_REPEATS = 3;
 export const DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS = 96;
+const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 
 function normalizeVersion(value) {
   return value.replace(/^pylon-v/, "").replace(/^v/, "");
@@ -160,6 +161,30 @@ export function normalizeRequestedVersion(value) {
   return normalizeVersion(value);
 }
 
+export function isPylonReleaseTag(tagName) {
+  return (
+    typeof tagName === "string" &&
+    tagName.startsWith(PYLON_RELEASE_TAG_PREFIX)
+  );
+}
+
+export function selectLatestPylonRelease(releases) {
+  if (!Array.isArray(releases)) {
+    throw new Error("GitHub release lookup did not return a release list.");
+  }
+
+  const release = releases.find(
+    (candidate) => !candidate?.draft && isPylonReleaseTag(candidate?.tag_name),
+  );
+  if (!release) {
+    throw new Error(
+      `GitHub release lookup did not find any published ${PYLON_RELEASE_TAG_PREFIX} releases.`,
+    );
+  }
+
+  return release;
+}
+
 export async function fetchReleaseMetadata({
   fetchImpl = globalThis.fetch,
   apiBase = DEFAULT_RELEASE_API_BASE,
@@ -168,10 +193,13 @@ export async function fetchReleaseMetadata({
 } = {}) {
   const normalizedVersion = normalizeRequestedVersion(version);
   const endpoint = normalizedVersion
-    ? `/repos/${repo}/releases/tags/${encodeURIComponent(`pylon-v${normalizedVersion}`)}`
-    : `/repos/${repo}/releases/latest`;
+    ? `/repos/${repo}/releases/tags/${encodeURIComponent(
+        `${PYLON_RELEASE_TAG_PREFIX}${normalizedVersion}`,
+      )}`
+    : `/repos/${repo}/releases?per_page=100`;
   const url = `${apiBase.replace(/\/$/, "")}${endpoint}`;
-  return fetchJson(fetchImpl, url);
+  const payload = await fetchJson(fetchImpl, url);
+  return normalizedVersion ? payload : selectLatestPylonRelease(payload);
 }
 
 export function selectReleaseAssets(release, target) {

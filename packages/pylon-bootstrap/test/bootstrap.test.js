@@ -10,6 +10,7 @@ import {
   ensureReleaseInstall,
   parseSha256File,
   resolvePlatformTarget,
+  selectLatestPylonRelease,
   selectReleaseAssets,
 } from "../src/index.js";
 
@@ -63,18 +64,39 @@ describe("@openagentsinc/pylon bootstrap", () => {
     );
   });
 
+  test("selectLatestPylonRelease ignores non-pylon repo releases", () => {
+    const release = selectLatestPylonRelease([
+      {
+        tag_name: "autopilot-v0.1.1",
+        draft: false,
+      },
+      {
+        tag_name: "pylon-v0.0.1-rc3",
+        draft: false,
+      },
+      {
+        tag_name: "pylon-v0.0.1-rc2",
+        draft: false,
+      },
+    ]);
+
+    expect(release.tag_name).toBe("pylon-v0.0.1-rc3");
+  });
+
   describe("ensureReleaseInstall", () => {
     let server;
     let serverUrl;
 
     beforeAll(() => {
-      let releaseHits = 0;
+      let releaseListHits = 0;
+      let taggedReleaseHits = 0;
       let archiveHits = 0;
       let checksumHits = 0;
 
       server = {
         counters: () => ({
-          releaseHits,
+          releaseListHits,
+          taggedReleaseHits,
           archiveHits,
           checksumHits,
         }),
@@ -116,8 +138,32 @@ describe("@openagentsinc/pylon bootstrap", () => {
           port: 0,
           fetch(request) {
             const url = new URL(request.url);
+            if (url.pathname === "/repos/OpenAgentsInc/openagents/releases") {
+              releaseListHits += 1;
+              return Response.json([
+                {
+                  tag_name: "autopilot-v0.1.1",
+                  draft: false,
+                  assets: [],
+                },
+                {
+                  tag_name: "pylon-v1.2.3",
+                  draft: false,
+                  assets: [
+                    {
+                      name: archiveName,
+                      browser_download_url: `${serverUrl}/assets/${archiveName}`,
+                    },
+                    {
+                      name: `${archiveName}.sha256`,
+                      browser_download_url: `${serverUrl}/assets/${archiveName}.sha256`,
+                    },
+                  ],
+                },
+              ]);
+            }
             if (url.pathname === "/repos/OpenAgentsInc/openagents/releases/tags/pylon-v1.2.3") {
-              releaseHits += 1;
+              taggedReleaseHits += 1;
               return Response.json({
                 tag_name: "pylon-v1.2.3",
                 assets: [
@@ -156,6 +202,37 @@ describe("@openagentsinc/pylon bootstrap", () => {
       const installRoot = await fs.mkdtemp(
         path.join(os.tmpdir(), "pylon-bootstrap-install-"),
       );
+      const initialCounters = server.counters();
+
+      const first = await ensureReleaseInstall({
+        apiBase: serverUrl,
+        repo: "OpenAgentsInc/openagents",
+        installRoot,
+        platform: "darwin",
+        arch: "arm64",
+      });
+      const second = await ensureReleaseInstall({
+        apiBase: serverUrl,
+        repo: "OpenAgentsInc/openagents",
+        installRoot,
+        platform: "darwin",
+        arch: "arm64",
+      });
+
+      expect(await fs.stat(first.pylonPath)).toBeTruthy();
+      expect(await fs.stat(first.pylonTuiPath)).toBeTruthy();
+      expect(first.cached).toBe(false);
+      expect(second.cached).toBe(true);
+      expect(server.counters().archiveHits - initialCounters.archiveHits).toBe(1);
+      expect(server.counters().releaseListHits - initialCounters.releaseListHits).toBe(2);
+      expect(server.counters().taggedReleaseHits - initialCounters.taggedReleaseHits).toBe(0);
+    });
+
+    test("downloads an explicitly requested pylon release tag", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-install-versioned-"),
+      );
+      const initialCounters = server.counters();
 
       const first = await ensureReleaseInstall({
         apiBase: serverUrl,
@@ -178,7 +255,8 @@ describe("@openagentsinc/pylon bootstrap", () => {
       expect(await fs.stat(first.pylonTuiPath)).toBeTruthy();
       expect(first.cached).toBe(false);
       expect(second.cached).toBe(true);
-      expect(server.counters().archiveHits).toBe(1);
+      expect(server.counters().archiveHits - initialCounters.archiveHits).toBe(1);
+      expect(server.counters().taggedReleaseHits - initialCounters.taggedReleaseHits).toBe(2);
     });
   });
 

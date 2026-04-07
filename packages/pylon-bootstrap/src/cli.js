@@ -22,8 +22,9 @@ export function usage() {
   npx @openagentsinc/pylon [options]
 
 Description:
-  Download the correct standalone Pylon release asset for this machine, verify
-  its checksum, cache the binaries locally, and run the first-run smoke path.
+  Download the latest tagged standalone Pylon release asset for this machine,
+  or a specific tagged Pylon version when --version is set. Verify its
+  checksum, cache the binaries locally, and run the first-run smoke path.
 
 Options:
   --version <x.y.z>                    Resolve a specific Pylon release.
