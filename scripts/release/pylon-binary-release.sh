@@ -104,7 +104,7 @@ Important:
 - Pylon keeps its local state under ~/.openagents/pylon by default.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
 - First-run diagnostics persist to ~/.openagents/pylon/diagnostics/gemma/latest.json.
-- When the node is online and eligible, the long-lived `serve` loop now auto-publishes or refreshes the current handler announcement.
+- When the node is online and eligible, the long-lived \`serve\` loop now auto-publishes or refreshes the current handler announcement.
 - The retained Gemma benchmark path still shells into a sibling Psionic checkout.
   Set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic when you need that lane.
 - Source builds remain the fallback for unsupported platforms or when you need
