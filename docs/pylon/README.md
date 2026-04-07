@@ -20,9 +20,18 @@ It is still a narrow supply connector. It is not a buyer shell, not a labor runt
 
 ## Install Paths
 
+Prefer the npm bootstrap lane when the operator already has `npm` or `bun`:
+
+```bash
+npx @openagentsinc/pylon
+npx @openagentsinc/pylon --version 0.1.0
+```
+
+That launcher resolves the matching GitHub release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma download <model>` plus `pylon gemma diagnose <model>`.
+
 Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
 
-For a release asset install:
+Use a direct release asset install only when the operator explicitly does not want the npm bootstrap layer:
 
 ```bash
 ./pylon --help
