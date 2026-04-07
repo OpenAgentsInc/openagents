@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Bootstrap the standalone OpenAgents Pylon release asset and run first-run smoke checks.",
   "type": "module",
-  "bin": "./bin/pylon.js",
+  "bin": {
+    "pylon": "./bin/pylon.js"
+  },
   "files": [
     "bin",
     "src",
