@@ -10,6 +10,9 @@ available.
 
 ```bash
 npx @openagentsinc/pylon
+bunx @openagentsinc/pylon
+npm install -g @openagentsinc/pylon && pylon
+bun install -g @openagentsinc/pylon && pylon
 npx @openagentsinc/pylon --version 0.0.1-rc4
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --diagnostic-repeats 2
@@ -18,8 +21,10 @@ npx @openagentsinc/pylon --verbose
 
 The launcher:
 
-- resolves the latest tagged `pylon-v...` release by default, or a specific
-  tagged `Pylon` version when `--version` is provided
+- supports direct `npx` / `bunx` execution plus global `npm install -g` /
+  `bun install -g` installs with the same `pylon` command
+- checks GitHub for the latest tagged `pylon-v...` release on each default run,
+  or resolves a specific tagged `Pylon` version when `--version` is provided
 - resolves the correct `pylon-v<version>-<os>-<arch>.tar.gz` asset for the
   current machine
 - falls back to the exact tagged source checkout and builds `pylon` plus
@@ -29,6 +34,9 @@ The launcher:
 - downloads the archive and published SHA-256 checksum
 - verifies the checksum before extracting
 - caches the unpacked binaries under `~/.openagents/pylon/bootstrap/`
+- never links or copies those cached standalone binaries into a shared global
+  bin directory, so the package-managed `pylon` launcher remains the command on
+  `PATH`
 - prints status lines such as release resolution, runtime checks, and local
   model scanning while it runs
 - runs `pylon --help`, `init`, `status --json`, and `inventory --json`
@@ -46,5 +54,6 @@ Publish directly from this package directory:
 
 ```bash
 cd packages/pylon-bootstrap
+npm pack --dry-run
 npm publish
 ```

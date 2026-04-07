@@ -24,12 +24,15 @@ Prefer the npm bootstrap lane when the operator already has `npm` or `bun`:
 
 ```bash
 npx @openagentsinc/pylon
+bunx @openagentsinc/pylon
+npm install -g @openagentsinc/pylon && pylon
+bun install -g @openagentsinc/pylon && pylon
 npx @openagentsinc/pylon --version 0.0.1-rc4
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
 
-That launcher resolves the latest tagged `pylon-v...` GitHub release by default, or a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma diagnose <model>`. It only prefetches the optional Hugging Face GGUF cache when `--download-curated-cache` is set, because the sellable lane still depends on the configured local runtime endpoint rather than the local GGUF cache alone.
+That launcher checks GitHub for the latest tagged `pylon-v...` release on each default run, or resolves a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma diagnose <model>`. It only prefetches the optional Hugging Face GGUF cache when `--download-curated-cache` is set, because the sellable lane still depends on the configured local runtime endpoint rather than the local GGUF cache alone.
 The default no-argument path is the intended onboarding lane: it streams terminal
 status updates during bootstrap and opens `pylon-tui` automatically when the
 smoke path finishes. Use `--no-launch` when you want the same install and
@@ -38,6 +41,10 @@ If the resolved release does not ship a prebuilt archive for the local
 platform, the launcher now falls back to the exact tagged source checkout,
 prompts before installing Rust if `cargo` and `rustc` are missing, and builds
 `pylon` plus `pylon-tui` locally before continuing into the same smoke path.
+The launcher only caches those standalone binaries under
+`~/.openagents/pylon/bootstrap/versions/`. It does not copy or symlink them
+into a shared global bin directory, so a global npm or bun install keeps the
+package-managed `pylon` command as the stable entrypoint on `PATH`.
 
 Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
 

@@ -274,6 +274,135 @@ describe("@openagentsinc/pylon bootstrap", () => {
       expect(server.counters().taggedReleaseHits - initialCounters.taggedReleaseHits).toBe(1);
     });
 
+    test("installs a newer tagged pylon release when the cached install is older", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-install-upgrade-"),
+      );
+      const target = resolvePlatformTarget("darwin", "arm64");
+      const createArchiveForVersion = async (version) => {
+        const { archiveName } = buildAssetNames(version, target);
+        const tempDir = await fs.mkdtemp(
+          path.join(os.tmpdir(), `pylon-bootstrap-upgrade-${version}-`),
+        );
+        const archiveRoot = path.join(tempDir, "stage");
+        const archiveBase = `pylon-v${version}-darwin-arm64`;
+        const extractedDir = path.join(archiveRoot, archiveBase);
+        await fs.mkdir(extractedDir, { recursive: true });
+        await fs.writeFile(
+          path.join(extractedDir, "pylon"),
+          `#!/bin/sh\necho ${version}\n`,
+        );
+        await fs.writeFile(
+          path.join(extractedDir, "pylon-tui"),
+          `#!/bin/sh\necho tui ${version}\n`,
+        );
+        await fs.chmod(path.join(extractedDir, "pylon"), 0o755);
+        await fs.chmod(path.join(extractedDir, "pylon-tui"), 0o755);
+
+        const archivePath = path.join(tempDir, archiveName);
+        await Bun.spawn(
+          ["tar", "-czf", archivePath, "-C", archiveRoot, archiveBase],
+          {
+            stdout: "ignore",
+            stderr: "inherit",
+          },
+        ).exited;
+
+        const archivePayload = await fs.readFile(archivePath);
+        return {
+          archiveName,
+          archivePayload,
+          checksumPayload: `${createHash("sha256").update(archivePayload).digest("hex")}  ${archiveName}\n`,
+        };
+      };
+
+      const assetsByVersion = {
+        "1.2.3": await createArchiveForVersion("1.2.3"),
+        "1.2.4": await createArchiveForVersion("1.2.4"),
+      };
+      let latestVersion = "1.2.3";
+      let releaseListHits = 0;
+      let archiveHits = 0;
+
+      const upgradeServer = Bun.serve({
+        port: 0,
+        fetch(request) {
+          const url = new URL(request.url);
+          if (url.pathname === "/repos/OpenAgentsInc/openagents/releases") {
+            releaseListHits += 1;
+            const latestAssets = assetsByVersion[latestVersion];
+            return Response.json([
+              {
+                tag_name: `pylon-v${latestVersion}`,
+                draft: false,
+                assets: [
+                  {
+                    name: latestAssets.archiveName,
+                    browser_download_url: `${upgradeServerUrl}/assets/${latestAssets.archiveName}`,
+                  },
+                  {
+                    name: `${latestAssets.archiveName}.sha256`,
+                    browser_download_url: `${upgradeServerUrl}/assets/${latestAssets.archiveName}.sha256`,
+                  },
+                ],
+              },
+            ]);
+          }
+
+          const assetMatch = url.pathname.match(/^\/assets\/(.+)$/);
+          if (assetMatch) {
+            const requestedName = assetMatch[1];
+            const payload = Object.values(assetsByVersion).find(
+              (entry) =>
+                entry.archiveName === requestedName ||
+                `${entry.archiveName}.sha256` === requestedName,
+            );
+            if (!payload) {
+              return new Response("not found", { status: 404 });
+            }
+            if (requestedName.endsWith(".sha256")) {
+              return new Response(payload.checksumPayload);
+            }
+            archiveHits += 1;
+            return new Response(payload.archivePayload);
+          }
+
+          return new Response("not found", { status: 404 });
+        },
+      });
+      const upgradeServerUrl = `http://127.0.0.1:${upgradeServer.port}`;
+
+      try {
+        const first = await ensureReleaseInstall({
+          apiBase: upgradeServerUrl,
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "darwin",
+          arch: "arm64",
+        });
+
+        latestVersion = "1.2.4";
+
+        const second = await ensureReleaseInstall({
+          apiBase: upgradeServerUrl,
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "darwin",
+          arch: "arm64",
+        });
+
+        expect(first.version).toBe("1.2.3");
+        expect(second.version).toBe("1.2.4");
+        expect(second.cached).toBe(false);
+        expect(await fs.stat(second.pylonPath)).toBeTruthy();
+        expect(await fs.stat(second.pylonTuiPath)).toBeTruthy();
+        expect(releaseListHits).toBe(2);
+        expect(archiveHits).toBe(2);
+      } finally {
+        upgradeServer.stop(true);
+      }
+    });
+
     test("falls back to curl transport when fetch fails during release resolution", async () => {
       const target = resolvePlatformTarget("darwin", "arm64");
       const { archiveName } = buildAssetNames("9.9.9", target);

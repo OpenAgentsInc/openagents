@@ -87,7 +87,7 @@ test("main launches pylon-tui by default after bootstrap", async () => {
           hasStatusReporter: typeof dependencies.onStatus === "function",
         });
         dependencies.onStatus?.({
-          message: "Resolving latest tagged Pylon release",
+          message: "Checking for newer tagged Pylon releases",
           detail: "default release track",
         });
         return BASE_INSTALL;

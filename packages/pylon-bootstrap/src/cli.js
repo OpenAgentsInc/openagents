@@ -67,6 +67,8 @@ function createReporter({ enableColor = process.stdout.isTTY && !process.env.NO_
 export function usage() {
   return `Usage:
   npx @openagentsinc/pylon [options]
+  bunx @openagentsinc/pylon [options]
+  pylon [options]
 
 Description:
   Download the latest tagged standalone Pylon release asset for this machine,
@@ -74,7 +76,9 @@ Description:
   asset exists for the local platform, fetch the exact tagged source checkout
   and build it locally instead. Cache the binaries, run the first-run smoke
   path, and then open the Pylon terminal UI by default with live status
-  updates.
+  updates. The launcher checks GitHub for newer tagged pylon-v... releases on
+  each default run, but only caches the standalone binaries under the local
+  bootstrap root; it does not replace your global npm or bun pylon command.
 
 Options:
   --version <x.y.z>                    Resolve a specific Pylon release.

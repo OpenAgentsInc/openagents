@@ -1,0 +1,26 @@
+#!/bin/sh
+
+set -eu
+
+SCRIPT_PATH="$0"
+while [ -L "$SCRIPT_PATH" ]; do
+  LINK_TARGET=$(readlink "$SCRIPT_PATH")
+  case "$LINK_TARGET" in
+    /*) SCRIPT_PATH="$LINK_TARGET" ;;
+    *) SCRIPT_PATH="$(dirname -- "$SCRIPT_PATH")/$LINK_TARGET" ;;
+  esac
+done
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)
+LAUNCHER_JS="${SCRIPT_DIR}/pylon.js"
+
+if command -v node >/dev/null 2>&1; then
+  exec node "$LAUNCHER_JS" "$@"
+fi
+
+if command -v bun >/dev/null 2>&1; then
+  exec bun "$LAUNCHER_JS" "$@"
+fi
+
+echo "pylon launcher requires Node.js or Bun on PATH." >&2
+exit 1

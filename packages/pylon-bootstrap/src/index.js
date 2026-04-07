@@ -1133,7 +1133,7 @@ export async function ensureReleaseInstall(
 
   emitStatus(
     onStatus,
-    "Resolving latest tagged Pylon release",
+    "Checking for newer tagged Pylon releases",
     options.version ? `requested ${options.version}` : "default release track",
   );
   const target = resolvePlatformTarget(options.platform, options.arch);
