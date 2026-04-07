@@ -287,6 +287,11 @@ pub enum GemmaCommand {
         selector: GemmaSelector,
         json: bool,
     },
+    Diagnose {
+        selector: GemmaBenchmarkSelector,
+        request: GemmaDiagnosticRequest,
+        json: bool,
+    },
     Benchmark {
         selector: GemmaBenchmarkSelector,
         request: GemmaBenchmarkRequest,
@@ -363,6 +368,15 @@ pub struct GemmaBenchmarkRequest {
     pub backend: Option<String>,
     pub peer_base_url: Option<String>,
     pub split_layer: Option<usize>,
+    pub prompt: String,
+    pub max_output_tokens: usize,
+    pub repeats: usize,
+    pub download_missing: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GemmaDiagnosticRequest {
+    pub diagnostic_id: String,
     pub prompt: String,
     pub max_output_tokens: usize,
     pub repeats: usize,
@@ -755,6 +769,59 @@ pub struct GemmaBenchmarkResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GemmaDiagnosticReport {
+    pub schema_version: u32,
+    pub report_kind: String,
+    pub selector: String,
+    pub diagnostic_id: String,
+    pub measured_at_unix_ms: u64,
+    pub report_path: String,
+    pub results: Vec<GemmaDiagnosticResult>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GemmaDiagnosticResult {
+    pub model_id: String,
+    pub label: String,
+    pub runtime_model: Option<String>,
+    pub runtime_backend: String,
+    pub status: String,
+    pub reason: Option<String>,
+    pub model_cached: bool,
+    pub ready_in_runtime: bool,
+    pub receipt: Option<GemmaDiagnosticReceipt>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GemmaDiagnosticReceipt {
+    pub schema_version: u32,
+    pub report_kind: String,
+    pub diagnostic_id: String,
+    pub measured_at_unix_ms: u64,
+    pub model_id: String,
+    pub runtime_model: String,
+    pub runtime_backend: String,
+    pub load_s: Option<f64>,
+    pub mean_total_s: f64,
+    pub mean_ttft_s: Option<f64>,
+    pub mean_decode_tok_s: Option<f64>,
+    pub output_tokens: usize,
+    pub repeats: usize,
+    pub runs: Vec<GemmaDiagnosticRunReceipt>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GemmaDiagnosticRunReceipt {
+    pub run_index: usize,
+    pub output_tokens: usize,
+    pub total_s: f64,
+    pub ttft_s: Option<f64>,
+    pub decode_tok_s: Option<f64>,
+    pub load_s: Option<f64>,
+    pub output_text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GemmaBenchReceipt {
     pub schema_version: u32,
     pub report_kind: String,
@@ -831,6 +898,10 @@ const GEMMA_DOWNLOAD_SPECS: [GemmaDownloadSpec; 4] = [
 
 const DEFAULT_GEMMA_BENCH_PROMPT: &str =
     "Write one short sentence about decentralized Gemma inference.";
+const DEFAULT_GEMMA_DIAGNOSTIC_ID: &str = "openagents.pylon.first_run.v1";
+const GEMMA_DIAGNOSTIC_REPORT_KIND: &str = "pylon.gemma_diagnostic.report.v1";
+const GEMMA_DIAGNOSTIC_RECEIPT_KIND: &str = "pylon.gemma_diagnostic.receipt.v1";
+const GEMMA_DIAGNOSTIC_SCHEMA_VERSION: u32 = 1;
 
 pub fn gemma_download_specs() -> &'static [GemmaDownloadSpec] {
     &GEMMA_DOWNLOAD_SPECS
@@ -1114,6 +1185,465 @@ fn render_gemma_download_report(report: &GemmaDownloadReport) -> String {
     }
     if report.results.is_empty() {
         lines.push(String::from("no matching Gemma models"));
+    }
+    lines.join("\n")
+}
+
+pub fn gemma_diagnostics_root(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_home_dir)
+        .join("diagnostics")
+        .join("gemma")
+}
+
+pub fn gemma_diagnostic_latest_report_path(config_path: &Path) -> PathBuf {
+    gemma_diagnostics_root(config_path).join("latest.json")
+}
+
+pub fn load_latest_gemma_diagnostic_report(
+    config_path: &Path,
+) -> Result<Option<GemmaDiagnosticReport>> {
+    let path = gemma_diagnostic_latest_report_path(config_path);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let payload = std::fs::read_to_string(path.as_path())
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    let report = serde_json::from_str::<GemmaDiagnosticReport>(payload.as_str())
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    Ok(Some(report))
+}
+
+fn save_gemma_diagnostic_report(
+    config_path: &Path,
+    report: &mut GemmaDiagnosticReport,
+) -> Result<()> {
+    let path = gemma_diagnostic_latest_report_path(config_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    report.report_path = path.display().to_string();
+    let payload = serde_json::to_string_pretty(report)?;
+    std::fs::write(path.as_path(), format!("{payload}\n"))
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct LocalGemmaChatCompletionMetrics {
+    total_s: Option<f64>,
+    load_s: Option<f64>,
+    prompt_s: Option<f64>,
+    decode_s: Option<f64>,
+    output_tokens: Option<usize>,
+    decode_tok_s: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct LocalGemmaChatChunk {
+    delta: Option<String>,
+    completion: Option<LocalGemmaChatCompletionMetrics>,
+}
+
+fn parse_ollama_duration_seconds(payload: &Value, key: &str) -> Option<f64> {
+    payload
+        .get(key)
+        .and_then(Value::as_u64)
+        .map(|value| value as f64 / 1_000_000_000.0)
+}
+
+fn normalize_model_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
+}
+
+fn runtime_model_matches_spec(runtime_model: &str, spec: GemmaDownloadSpec) -> bool {
+    let normalized_runtime = normalize_model_key(runtime_model);
+    [spec.id, spec.psionic_model_id]
+        .into_iter()
+        .map(normalize_model_key)
+        .any(|candidate| {
+            !candidate.is_empty()
+                && (normalized_runtime == candidate
+                    || normalized_runtime.contains(candidate.as_str()))
+        })
+}
+
+fn runtime_model_for_spec(
+    health: &ProviderBackendHealth,
+    spec: GemmaDownloadSpec,
+) -> Option<String> {
+    let mut models = Vec::new();
+    if let Some(model) = health.ready_model.as_ref() {
+        models.push(model.clone());
+    }
+    for model in &health.available_models {
+        if !models.iter().any(|existing| existing == model) {
+            models.push(model.clone());
+        }
+    }
+    models
+        .into_iter()
+        .find(|model| runtime_model_matches_spec(model.as_str(), spec))
+}
+
+async fn run_gemma_diagnostic_command(
+    config_path: &Path,
+    selector: &GemmaBenchmarkSelector,
+    request: &GemmaDiagnosticRequest,
+) -> Result<GemmaDiagnosticReport> {
+    let _ = ensure_local_setup(config_path)?;
+    let specs = resolve_gemma_benchmark_selector(selector)?;
+    if request.download_missing {
+        for spec in &specs {
+            let _ = download_gemma_model(config_path, spec.id, |_| {}).await?;
+        }
+    }
+
+    let (config, status) = load_config_and_status(config_path).await?;
+    let measured_at_unix_ms = u64::try_from(now_epoch_ms()).unwrap_or(0);
+    let local_gemma_health = status
+        .snapshot
+        .as_ref()
+        .map(|snapshot| &snapshot.availability.local_gemma);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .context("failed to build pylon diagnostic client")?;
+
+    let mut results = Vec::new();
+    for spec in specs {
+        let model_cached = gemma_model_path(config_path, spec).exists();
+        let runtime_backend = LocalGemmaChatBackend::LocalRuntime.label().to_string();
+        let Some(health) = local_gemma_health else {
+            results.push(GemmaDiagnosticResult {
+                model_id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                runtime_model: None,
+                runtime_backend,
+                status: "failed".to_string(),
+                reason: Some("local Gemma runtime status is unavailable".to_string()),
+                model_cached,
+                ready_in_runtime: false,
+                receipt: None,
+            });
+            continue;
+        };
+
+        if !health.reachable {
+            results.push(GemmaDiagnosticResult {
+                model_id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                runtime_model: None,
+                runtime_backend,
+                status: "failed".to_string(),
+                reason: health
+                    .last_error
+                    .clone()
+                    .or_else(|| Some("local Gemma runtime is unreachable".to_string())),
+                model_cached,
+                ready_in_runtime: false,
+                receipt: None,
+            });
+            continue;
+        }
+
+        let runtime_model = runtime_model_for_spec(health, spec);
+        let ready_in_runtime = runtime_model.is_some() && health.ready;
+        let Some(runtime_model) = runtime_model else {
+            results.push(GemmaDiagnosticResult {
+                model_id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                runtime_model: None,
+                runtime_backend,
+                status: "skipped".to_string(),
+                reason: Some(format!(
+                    "{} is not loaded in the local runtime; downloaded GGUF files alone do not make supply eligible",
+                    spec.id
+                )),
+                model_cached,
+                ready_in_runtime,
+                receipt: None,
+            });
+            continue;
+        };
+
+        let target = LocalGemmaChatTarget {
+            backend: LocalGemmaChatBackend::LocalRuntime,
+            model: runtime_model.clone(),
+        };
+        match run_local_gemma_diagnostic_target(
+            &client,
+            &config,
+            &target,
+            spec,
+            request,
+            measured_at_unix_ms,
+        )
+        .await
+        {
+            Ok(receipt) => results.push(GemmaDiagnosticResult {
+                model_id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                runtime_model: Some(runtime_model),
+                runtime_backend,
+                status: "completed".to_string(),
+                reason: None,
+                model_cached,
+                ready_in_runtime,
+                receipt: Some(receipt),
+            }),
+            Err(error) => results.push(GemmaDiagnosticResult {
+                model_id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                runtime_model: Some(runtime_model),
+                runtime_backend,
+                status: "failed".to_string(),
+                reason: Some(error.to_string()),
+                model_cached,
+                ready_in_runtime,
+                receipt: None,
+            }),
+        }
+    }
+
+    let mut report = GemmaDiagnosticReport {
+        schema_version: GEMMA_DIAGNOSTIC_SCHEMA_VERSION,
+        report_kind: GEMMA_DIAGNOSTIC_REPORT_KIND.to_string(),
+        selector: selector.label(),
+        diagnostic_id: request.diagnostic_id.clone(),
+        measured_at_unix_ms,
+        report_path: String::new(),
+        results,
+    };
+    save_gemma_diagnostic_report(config_path, &mut report)?;
+    Ok(report)
+}
+
+async fn run_local_gemma_diagnostic_target(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    target: &LocalGemmaChatTarget,
+    spec: GemmaDownloadSpec,
+    request: &GemmaDiagnosticRequest,
+    measured_at_unix_ms: u64,
+) -> Result<GemmaDiagnosticReceipt> {
+    let mut runs = Vec::with_capacity(request.repeats);
+    for run_index in 0..request.repeats {
+        runs.push(
+            run_local_gemma_diagnostic_once(
+                client,
+                config,
+                target,
+                request.prompt.as_str(),
+                request.max_output_tokens,
+                run_index,
+            )
+            .await?,
+        );
+    }
+
+    let mean_total_s = runs.iter().map(|run| run.total_s).sum::<f64>() / runs.len() as f64;
+    let mean_ttft_s = mean_f64_option(runs.iter().filter_map(|run| run.ttft_s));
+    let mean_decode_tok_s = mean_f64_option(runs.iter().filter_map(|run| run.decode_tok_s));
+    let load_s = mean_f64_option(runs.iter().filter_map(|run| run.load_s));
+    let output_tokens = (runs.iter().map(|run| run.output_tokens).sum::<usize>() as f64
+        / runs.len() as f64)
+        .round() as usize;
+
+    Ok(GemmaDiagnosticReceipt {
+        schema_version: GEMMA_DIAGNOSTIC_SCHEMA_VERSION,
+        report_kind: GEMMA_DIAGNOSTIC_RECEIPT_KIND.to_string(),
+        diagnostic_id: request.diagnostic_id.clone(),
+        measured_at_unix_ms,
+        model_id: spec.id.to_string(),
+        runtime_model: target.model.clone(),
+        runtime_backend: target.backend.label().to_string(),
+        load_s,
+        mean_total_s,
+        mean_ttft_s,
+        mean_decode_tok_s,
+        output_tokens,
+        repeats: request.repeats,
+        runs,
+    })
+}
+
+async fn run_local_gemma_diagnostic_once(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    target: &LocalGemmaChatTarget,
+    prompt: &str,
+    max_output_tokens: usize,
+    run_index: usize,
+) -> Result<GemmaDiagnosticRunReceipt> {
+    let url = format!(
+        "{}/api/chat",
+        config.local_gemma_base_url.trim_end_matches('/')
+    );
+    let payload = json!({
+        "model": target.model,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        "stream": true,
+        "options": {
+            "num_predict": max_output_tokens,
+        },
+    });
+    let started_at = Instant::now();
+    let mut response = client
+        .post(url.as_str())
+        .json(&payload)
+        .send()
+        .await
+        .with_context(|| {
+            format!(
+                "failed to send local Gemma diagnostic request to {url}; verify the local runtime is reachable and the model is loaded"
+            )
+        })?;
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        bail!(
+            "local Gemma diagnostic failed: {}",
+            http_error_message(body.as_str())
+        );
+    }
+
+    let mut pending = String::new();
+    let mut output_text = String::new();
+    let mut first_delta_at = None::<f64>;
+    let mut completion = None::<LocalGemmaChatCompletionMetrics>;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .context("failed reading local Gemma diagnostic stream")?
+    {
+        pending.push_str(String::from_utf8_lossy(&chunk).as_ref());
+        while let Some(line_end) = pending.find('\n') {
+            let line = pending[..line_end].trim().to_string();
+            pending.drain(..=line_end);
+            if line.is_empty() {
+                continue;
+            }
+            let chunk = decode_ollama_chat_chunk(line.as_str())?;
+            if let Some(delta) = chunk.delta {
+                if first_delta_at.is_none() {
+                    first_delta_at = Some(started_at.elapsed().as_secs_f64());
+                }
+                output_text.push_str(delta.as_str());
+            }
+            if let Some(chunk_completion) = chunk.completion {
+                completion = Some(chunk_completion);
+            }
+        }
+    }
+
+    let trailing = pending.trim();
+    if !trailing.is_empty() {
+        let chunk = decode_ollama_chat_chunk(trailing)?;
+        if let Some(delta) = chunk.delta {
+            if first_delta_at.is_none() {
+                first_delta_at = Some(started_at.elapsed().as_secs_f64());
+            }
+            output_text.push_str(delta.as_str());
+        }
+        if let Some(chunk_completion) = chunk.completion {
+            completion = Some(chunk_completion);
+        }
+    }
+
+    let total_s = completion
+        .as_ref()
+        .and_then(|value| value.total_s)
+        .unwrap_or_else(|| started_at.elapsed().as_secs_f64());
+    let output_tokens = completion
+        .as_ref()
+        .and_then(|value| value.output_tokens)
+        .unwrap_or(0);
+    let decode_tok_s = completion
+        .as_ref()
+        .and_then(|value| value.decode_tok_s)
+        .or_else(|| {
+            let ttft_s = first_delta_at?;
+            let decode_window_s = total_s - ttft_s;
+            (output_tokens > 0 && decode_window_s > 0.0)
+                .then_some(output_tokens as f64 / decode_window_s)
+        });
+
+    Ok(GemmaDiagnosticRunReceipt {
+        run_index,
+        output_tokens,
+        total_s,
+        ttft_s: first_delta_at,
+        decode_tok_s,
+        load_s: completion.as_ref().and_then(|value| value.load_s),
+        output_text,
+    })
+}
+
+fn mean_f64_option(values: impl Iterator<Item = f64>) -> Option<f64> {
+    let mut total = 0.0;
+    let mut count = 0usize;
+    for value in values {
+        total += value;
+        count += 1;
+    }
+    (count > 0).then_some(total / count as f64)
+}
+
+fn render_gemma_diagnostic_report(report: &GemmaDiagnosticReport) -> String {
+    let mut lines = vec![
+        format!("selector: {}", report.selector),
+        format!("diagnostic_id: {}", report.diagnostic_id),
+        format!("report: {}", report.report_path),
+    ];
+    if report.results.is_empty() {
+        lines.push(String::from("no matching Gemma diagnostic rows"));
+        return lines.join("\n");
+    }
+    for result in &report.results {
+        match result.receipt.as_ref() {
+            Some(receipt) => {
+                let ttft = receipt
+                    .mean_ttft_s
+                    .map(|value| format!("{value:.3}s"))
+                    .unwrap_or_else(|| String::from("n/a"));
+                let decode = receipt
+                    .mean_decode_tok_s
+                    .map(|value| format!("{value:.2} tok/s"))
+                    .unwrap_or_else(|| String::from("n/a"));
+                let load = receipt
+                    .load_s
+                    .map(|value| format!("{value:.3}s"))
+                    .unwrap_or_else(|| String::from("n/a"));
+                lines.push(format!(
+                    "{} {} total={:.3}s ttft={} tok/s={} load={} runtime={}",
+                    result.model_id,
+                    result.status,
+                    receipt.mean_total_s,
+                    ttft,
+                    decode,
+                    load,
+                    receipt.runtime_model
+                ));
+            }
+            None => lines.push(format!(
+                "{} {} {}",
+                result.model_id,
+                result.status,
+                result.reason.as_deref().unwrap_or("no detail")
+            )),
+        }
     }
     lines.join("\n")
 }
@@ -1784,6 +2314,19 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 }
                 Ok(Some(render_gemma_download_report(&report)))
             }
+            GemmaCommand::Diagnose {
+                selector,
+                request,
+                json,
+            } => {
+                let report =
+                    run_gemma_diagnostic_command(cli.config_path.as_path(), &selector, &request)
+                        .await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_gemma_diagnostic_report(&report)))
+            }
             GemmaCommand::Benchmark {
                 selector,
                 request,
@@ -1877,6 +2420,7 @@ Commands:\n\
   wallet history [--limit <n>] [--json]\n\
   gemma [list] [--json]\n\
   gemma download <model|all|remaining> [--json]\n\
+  gemma diagnose <model|all> [--max-output-tokens <n>] [--repeats <n>] [--download-missing] [--json]\n\
   gemma benchmark <model|all> [--mode single|distributed-dense|distributed-sparse|matrix] [--backend auto|metal|cuda] [--peer-base-url <url>] [--split-layer <n>] [--prompt <text>] [--max-output-tokens <n>] [--repeats <n>] [--download-missing] [--json]\n\
   online\n\
   offline\n\
@@ -2245,6 +2789,16 @@ fn parse_gemma_command(args: &[String], start_index: usize) -> Result<Command> {
                 command: GemmaCommand::Download { selector, json },
             })
         }
+        Some("diagnose") => {
+            let (selector, request, json) = parse_gemma_diagnostic_command(args, start_index + 1)?;
+            Ok(Command::Gemma {
+                command: GemmaCommand::Diagnose {
+                    selector,
+                    request,
+                    json,
+                },
+            })
+        }
         Some("benchmark") => {
             let (selector, request, json) = parse_gemma_benchmark_command(args, start_index + 1)?;
             Ok(Command::Gemma {
@@ -2313,6 +2867,69 @@ fn parse_gemma_benchmark_selector(value: &str) -> Result<GemmaBenchmarkSelector>
             Ok(GemmaBenchmarkSelector::Model(model_id.to_string()))
         }
     }
+}
+
+fn parse_gemma_diagnostic_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(GemmaBenchmarkSelector, GemmaDiagnosticRequest, bool)> {
+    let selector = parse_gemma_benchmark_selector(
+        args.get(index)
+            .ok_or_else(|| anyhow!("missing <model|all> for gemma diagnose"))?
+            .as_str(),
+    )?;
+    index += 1;
+    let mut json = false;
+    let mut max_output_tokens = 96usize;
+    let mut repeats = 3usize;
+    let mut download_missing = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--max-output-tokens" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --max-output-tokens"))?;
+                max_output_tokens = value
+                    .parse::<usize>()
+                    .with_context(|| format!("invalid Gemma max output tokens: {value}"))?;
+                index += 1;
+            }
+            "--repeats" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --repeats"))?;
+                repeats = value
+                    .parse::<usize>()
+                    .with_context(|| format!("invalid Gemma diagnostic repeats: {value}"))?;
+                index += 1;
+            }
+            "--download-missing" => {
+                download_missing = true;
+                index += 1;
+            }
+            other => bail!("unexpected argument for gemma diagnose: {other}"),
+        }
+    }
+    if repeats == 0 {
+        bail!("Gemma diagnostic repeats must be at least 1");
+    }
+    Ok((
+        selector,
+        GemmaDiagnosticRequest {
+            diagnostic_id: DEFAULT_GEMMA_DIAGNOSTIC_ID.to_string(),
+            prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+            max_output_tokens,
+            repeats,
+            download_missing,
+        },
+        json,
+    ))
 }
 
 fn parse_gemma_benchmark_command(
@@ -3965,15 +4582,45 @@ where
 fn decode_ollama_chat_delta(line: &str) -> Result<Option<String>> {
     let payload = serde_json::from_str::<Value>(line)
         .with_context(|| format!("invalid local Gemma stream chunk: {line}"))?;
-    if payload.get("done").and_then(Value::as_bool) == Some(true) {
-        return Ok(None);
-    }
-    Ok(payload
+    Ok(decode_ollama_chat_chunk_from_payload(&payload).delta)
+}
+
+fn decode_ollama_chat_chunk(line: &str) -> Result<LocalGemmaChatChunk> {
+    let payload = serde_json::from_str::<Value>(line)
+        .with_context(|| format!("invalid local Gemma stream chunk: {line}"))?;
+    Ok(decode_ollama_chat_chunk_from_payload(&payload))
+}
+
+fn decode_ollama_chat_chunk_from_payload(payload: &Value) -> LocalGemmaChatChunk {
+    let delta = payload
         .get("message")
         .and_then(|message| message.get("content"))
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .map(ToString::to_string))
+        .map(ToString::to_string);
+    let completion = (payload.get("done").and_then(Value::as_bool) == Some(true)).then(|| {
+        let decode_s = parse_ollama_duration_seconds(payload, "eval_duration");
+        let output_tokens = payload
+            .get("eval_count")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok());
+        LocalGemmaChatCompletionMetrics {
+            total_s: parse_ollama_duration_seconds(payload, "total_duration"),
+            load_s: parse_ollama_duration_seconds(payload, "load_duration"),
+            prompt_s: parse_ollama_duration_seconds(payload, "prompt_eval_duration"),
+            decode_s,
+            output_tokens,
+            decode_tok_s: match (output_tokens, decode_s) {
+                (Some(output_tokens), Some(decode_s))
+                    if output_tokens > 0 && decode_s.is_finite() && decode_s > 0.0 =>
+                {
+                    Some(output_tokens as f64 / decode_s)
+                }
+                _ => None,
+            },
+        }
+    });
+    LocalGemmaChatChunk { delta, completion }
 }
 
 fn http_error_message(body: &str) -> String {
@@ -6087,21 +6734,23 @@ mod tests {
 
     use super::{
         AnnouncementAction, BuyerJobSubmitRequest, Cli, Command, DEFAULT_GEMMA_BENCH_PROMPT,
-        GemmaBenchExecutionMode, GemmaBenchmarkMode, GemmaBenchmarkRequest, GemmaBenchmarkSelector,
-        GemmaCommand, GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend,
-        LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord,
-        PylonWalletPaymentRecord, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
-        add_configured_relay, apply_config_set, apply_control_command,
-        build_snapshot_from_availability, default_config, download_gemma_model_from_base_url,
-        ensure_identity, gemma_download_spec, gemma_local_installations, inventory_rows,
-        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
-        load_ledger, load_or_create_config, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
-        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
-        remove_configured_relay, render_human_status, render_public_config_json,
-        render_sandbox_report, report_provider_presence_heartbeat,
-        report_provider_presence_offline, resolve_local_gemma_chat_target_from_status, run_cli,
+        DEFAULT_GEMMA_DIAGNOSTIC_ID, GemmaBenchExecutionMode, GemmaBenchmarkMode,
+        GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand, GemmaDiagnosticRequest,
+        GemmaDownloadEvent, GemmaSelector, LocalGemmaChatBackend, LocalGemmaChatEvent,
+        LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+        WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
+        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
+        download_gemma_model_from_base_url, ensure_identity, gemma_diagnostic_latest_report_path,
+        gemma_download_spec, gemma_local_installations, inventory_rows, load_backend_report,
+        load_earnings_report, load_inventory_report, load_jobs_report,
+        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
+        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
+        load_status_or_detect, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
+        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
+        publish_announcement_report, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_public_config_json, render_sandbox_report,
+        report_provider_presence_heartbeat, report_provider_presence_offline,
+        resolve_local_gemma_chat_target_from_status, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
         save_config, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
     };
@@ -6506,6 +7155,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
@@ -7057,6 +7707,34 @@ mod tests {
                     },
                 },
             "gemma benchmark should parse matrix-mode orchestration flags",
+        )?;
+        ensure(
+            parse_args(vec![
+                "gemma".to_string(),
+                "diagnose".to_string(),
+                "gemma-4-e4b".to_string(),
+                "--max-output-tokens".to_string(),
+                "24".to_string(),
+                "--repeats".to_string(),
+                "2".to_string(),
+                "--download-missing".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Gemma {
+                    command: GemmaCommand::Diagnose {
+                        selector: GemmaBenchmarkSelector::Model("gemma-4-e4b".to_string()),
+                        request: GemmaDiagnosticRequest {
+                            diagnostic_id: DEFAULT_GEMMA_DIAGNOSTIC_ID.to_string(),
+                            prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                            max_output_tokens: 24,
+                            repeats: 2,
+                            download_missing: true,
+                        },
+                        json: true,
+                    },
+                },
+            "gemma diagnose should parse first-run diagnostic flags",
         )
     }
 
@@ -7355,6 +8033,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
         config.local_gemma_base_url = format!("http://{ollama_addr}");
         save_config(config_path.as_path(), &config)?;
@@ -8285,6 +8964,7 @@ mod tests {
         });
 
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
         config.local_gemma_base_url = format!("http://{ollama_addr}");
         save_config(config_path.as_path(), &config)?;
@@ -8430,6 +9110,7 @@ mod tests {
         });
 
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
         config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
@@ -8602,6 +9283,7 @@ mod tests {
         });
 
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
         config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
@@ -8852,6 +9534,7 @@ mod tests {
         });
 
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
         config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
@@ -9467,6 +10150,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
 
@@ -9532,6 +10216,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
 
@@ -9554,6 +10239,269 @@ mod tests {
         ensure(
             collect_chat_deltas(events.as_slice()) == "Je suis Gemma 4.",
             "chat stream should preserve the streamed reply when prior turns are present",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn gemma_diagnose_persists_latest_report_with_runtime_metrics()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let base_url =
+            start_mock_http_server(
+                move |method, path, body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4-e4b-local:latest"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/api/chat") => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("valid diagnostic body");
+                        recorded_requests_for_server
+                            .lock()
+                            .expect("diagnostic request log")
+                            .push(request);
+                        (
+                            200,
+                            "application/x-ndjson",
+                            concat!(
+                                "{\"message\":{\"content\":\"hello \"},\"done\":false}\n",
+                                "{\"message\":{\"content\":\"world\"},\"done\":false}\n",
+                                "{\"done\":true,\"total_duration\":5000000000,\"load_duration\":1000000000,\"prompt_eval_duration\":500000000,\"eval_duration\":2000000000,\"eval_count\":20}\n"
+                            )
+                            .to_string(),
+                        )
+                    }
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.local_gemma_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let report = run_gemma_diagnostic_command(
+            config_path.as_path(),
+            &GemmaBenchmarkSelector::Model("gemma-4-e4b".to_string()),
+            &GemmaDiagnosticRequest {
+                diagnostic_id: DEFAULT_GEMMA_DIAGNOSTIC_ID.to_string(),
+                prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                max_output_tokens: 24,
+                repeats: 2,
+                download_missing: false,
+            },
+        )
+        .await?;
+
+        ensure(
+            report.results.len() == 1,
+            "diagnostic report should keep one result for a single selected model",
+        )?;
+        let result = &report.results[0];
+        ensure(
+            result.status == "completed",
+            "diagnostic report should mark a loaded local runtime model as completed",
+        )?;
+        ensure(
+            result.runtime_model.as_deref() == Some("gemma4-e4b-local:latest"),
+            "diagnostic report should retain the exact runtime model that answered the probe",
+        )?;
+
+        let receipt = result
+            .receipt
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("missing diagnostic receipt"))?;
+        ensure(
+            receipt.repeats == 2 && receipt.runs.len() == 2,
+            "diagnostic receipt should retain one row per repeated run",
+        )?;
+        ensure(
+            receipt.output_tokens == 20,
+            "diagnostic receipt should use the runtime eval_count as output token truth",
+        )?;
+        ensure(
+            receipt
+                .mean_ttft_s
+                .is_some_and(|value| value >= 0.0 && value <= receipt.mean_total_s),
+            "diagnostic receipt should retain a bounded first-token latency",
+        )?;
+        ensure(
+            receipt
+                .mean_decode_tok_s
+                .is_some_and(|value| (value - 10.0).abs() < 0.001),
+            "diagnostic receipt should derive decode throughput from eval_count and eval_duration",
+        )?;
+        ensure(
+            receipt.load_s == Some(1.0) && (receipt.mean_total_s - 5.0).abs() < 0.001,
+            "diagnostic receipt should keep runtime total and load durations in seconds",
+        )?;
+        ensure(
+            receipt
+                .runs
+                .iter()
+                .all(|run| run.output_text == "hello world"),
+            "diagnostic receipt should retain the streamed text for each run",
+        )?;
+
+        let report_path = gemma_diagnostic_latest_report_path(config_path.as_path());
+        ensure(
+            report.report_path == report_path.display().to_string() && report_path.exists(),
+            "diagnostic command should persist the latest report under the retained diagnostics path",
+        )?;
+        let loaded = load_latest_gemma_diagnostic_report(config_path.as_path())?
+            .ok_or_else(|| std::io::Error::other("missing latest diagnostic report"))?;
+        ensure(
+            loaded == report,
+            "loading the latest diagnostic report should round-trip the saved JSON payload",
+        )?;
+
+        let requests = recorded_requests
+            .lock()
+            .expect("diagnostic request log")
+            .clone();
+        ensure(
+            requests.len() == 2,
+            "diagnostic command should hit the local runtime once per requested repeat",
+        )?;
+        ensure(
+            requests.iter().all(|request| {
+                request["model"] == json!("gemma4-e4b-local:latest")
+                    && request["options"]["num_predict"] == json!(24)
+                    && request["stream"] == json!(true)
+            }),
+            "diagnostic command should send the resolved runtime model and requested output cap",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn gemma_diagnose_records_runtime_endpoint_failure()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let report = run_gemma_diagnostic_command(
+            config_path.as_path(),
+            &GemmaBenchmarkSelector::Model("gemma-4-e4b".to_string()),
+            &GemmaDiagnosticRequest {
+                diagnostic_id: DEFAULT_GEMMA_DIAGNOSTIC_ID.to_string(),
+                prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                max_output_tokens: 16,
+                repeats: 1,
+                download_missing: false,
+            },
+        )
+        .await?;
+
+        ensure(
+            report.results.len() == 1,
+            "diagnostic failure report should still keep the selected model row",
+        )?;
+        let result = &report.results[0];
+        ensure(
+            result.status == "failed" && result.receipt.is_none(),
+            "diagnostic command should fail closed when the local runtime endpoint is unreachable",
+        )?;
+        let reason = result
+            .reason
+            .as_deref()
+            .ok_or_else(|| std::io::Error::other("missing diagnostic failure reason"))?;
+        ensure(
+            reason.contains("http://127.0.0.1:9/api/tags")
+                && reason.contains("update local_gemma_base_url"),
+            "diagnostic failure should name the exact local runtime endpoint and remediation path",
+        )?;
+        let loaded = load_latest_gemma_diagnostic_report(config_path.as_path())?
+            .ok_or_else(|| std::io::Error::other("missing latest diagnostic report"))?;
+        ensure(
+            loaded.results[0].status == "failed",
+            "diagnostic failure should still persist the retained report for later export",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn gemma_diagnose_skips_models_not_loaded_in_runtime()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(0usize));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/api/tags") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "models": [
+                            {"name": "gemma4-e2b-local:latest"}
+                        ]
+                    })
+                    .to_string(),
+                ),
+                ("POST", "/api/chat") => {
+                    *recorded_requests_for_server
+                        .lock()
+                        .expect("diagnostic request count") += 1;
+                    (200, "application/x-ndjson", "{\"done\":true}\n".to_string())
+                }
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.local_gemma_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let report = run_gemma_diagnostic_command(
+            config_path.as_path(),
+            &GemmaBenchmarkSelector::Model("gemma-4-e4b".to_string()),
+            &GemmaDiagnosticRequest {
+                diagnostic_id: DEFAULT_GEMMA_DIAGNOSTIC_ID.to_string(),
+                prompt: DEFAULT_GEMMA_BENCH_PROMPT.to_string(),
+                max_output_tokens: 16,
+                repeats: 1,
+                download_missing: false,
+            },
+        )
+        .await?;
+
+        let result = report
+            .results
+            .first()
+            .ok_or_else(|| std::io::Error::other("missing diagnostic result"))?;
+        ensure(
+            result.status == "skipped" && result.receipt.is_none(),
+            "diagnostic command should skip models that are not loaded in the current runtime",
+        )?;
+        ensure(
+            result.ready_in_runtime == false
+                && result
+                    .reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.contains("not loaded in the local runtime")),
+            "diagnostic skip should explain that downloaded weights alone are not enough",
+        )?;
+        ensure(
+            *recorded_requests.lock().expect("diagnostic request count") == 0,
+            "diagnostic skip should not hit /api/chat when the requested model is not loaded",
         )
     }
 
@@ -9582,6 +10530,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
@@ -9623,6 +10572,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;
@@ -9672,6 +10622,7 @@ mod tests {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.local_gemma_base_url = base_url;
         save_config(config_path.as_path(), &config)?;
         ensure_identity(config.identity_path.as_path())?;

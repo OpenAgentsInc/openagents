@@ -30,6 +30,7 @@ For a release asset install:
 ./pylon status --json
 ./pylon inventory --json
 ./pylon config show
+./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
 ./pylon-tui
 ```
 
@@ -101,13 +102,16 @@ Headless Gemma operator commands now exist too:
 
 - `cargo pylon-headless gemma`
 - `cargo pylon-headless gemma download remaining`
+- `cargo pylon-headless gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3`
 - `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
 
-Use the first two commands for normal onboarding. They prepare the curated Gemma GGUF cache without requiring a sibling `psionic` checkout.
+Use the first three commands for normal onboarding. They prepare the curated Gemma GGUF cache, confirm a loaded runtime model is actually answering `/api/chat`, and persist a local first-run diagnostic report without requiring a sibling `psionic` checkout.
 
 Important:
 
 - `pylon gemma download ...` only downloads GGUF files into `~/.openagents/pylon/models/huggingface/`
+- `pylon gemma diagnose ...` only benchmarks models that are already loaded in the configured local runtime
+- the latest first-run diagnostic report is retained at `~/.openagents/pylon/diagnostics/gemma/latest.json`
 - downloaded GGUFs alone do not make supply eligible
 - `Pylon` still requires a local runtime endpoint at `local_gemma_base_url` (default `http://127.0.0.1:11434`) that answers `/api/tags` and has a Gemma 4 model loaded
 - if `pylon online` reports `degraded` or `NO_ELIGIBLE_SUPPLY`, check that runtime first before falling back to a source build
@@ -201,6 +205,7 @@ cargo pylon-headless job submit --model gemma4:e4b --bid-msats 21000 "write a ha
 cargo pylon-headless job watch --seconds 30
 cargo pylon-headless gemma
 cargo pylon-headless gemma download remaining
+cargo pylon-headless gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
 ```
 
 Run the retained Psionic benchmark lane only when the operator explicitly needs it:

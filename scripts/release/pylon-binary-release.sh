@@ -90,11 +90,13 @@ Quick start:
   ./pylon status --json
   ./pylon inventory --json
   ./pylon config show
+  ./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
   ./pylon-tui
 
 Important:
 - These binaries run without a Rust toolchain.
 - Pylon keeps its local state under ~/.openagents/pylon by default.
+- First-run diagnostics persist to ~/.openagents/pylon/diagnostics/gemma/latest.json.
 - The retained Gemma benchmark path still shells into a sibling Psionic checkout.
   Set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic when you need that lane.
 - Source builds remain the fallback for unsupported platforms or when you need
@@ -122,11 +124,13 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 ./pylon status --json
 ./pylon inventory --json
 ./pylon config show
+./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
 \`\`\`
 
 Notes:
 - This release is unsigned and not notarized.
 - The current standalone sellable lane is \`psionic.local.inference.gemma.single_node\`.
+- First-run diagnostics persist to \`~/.openagents/pylon/diagnostics/gemma/latest.json\`.
 - Source builds are still the fallback for unsupported platforms or local development.
 EOF
 }
