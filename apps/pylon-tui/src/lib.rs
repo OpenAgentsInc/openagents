@@ -7,7 +7,7 @@ use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow, bail};
 use bottom_pane::{BottomPane, ComposerSubmission};
@@ -103,17 +103,8 @@ struct Gemma4Status {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct EconomySidebarStats {
-    wallet_balance: pylon::WalletBalanceSnapshot,
+    wallet_balance: Option<pylon::WalletBalanceSnapshot>,
     earnings: Option<ProviderEarningsSummary>,
-    wallet_receives: WalletReceiveSummary,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct WalletReceiveSummary {
-    sats_today: u64,
-    lifetime_sats: u64,
-    count_today: u64,
-    last_credit_label: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1874,11 +1865,7 @@ impl AppShell {
                     let _ = tx.send(WorkerEvent::RefreshCompleted {
                         loaded: None,
                         installed_gemma_models,
-                        economy_stats: compute_economy_sidebar_stats(
-                            None,
-                            None,
-                            config_path.as_path(),
-                        ),
+                        economy_stats: compute_economy_sidebar_stats(None, None),
                         last_error: Some(error.to_string()),
                         last_wallet_error: None,
                         provider_presence_online,
@@ -1914,7 +1901,6 @@ impl AppShell {
                                     economy_stats: compute_economy_sidebar_stats(
                                         wallet_status.as_ref(),
                                         status.snapshot.as_ref(),
-                                        config_path.as_path(),
                                     ),
                                     last_error: None,
                                     last_wallet_error,
@@ -1940,7 +1926,6 @@ impl AppShell {
                                     economy_stats: compute_economy_sidebar_stats(
                                         wallet_status.as_ref(),
                                         None,
-                                        config_path.as_path(),
                                     ),
                                     last_error: Some(error.to_string()),
                                     last_wallet_error,
@@ -1962,11 +1947,7 @@ impl AppShell {
                         WorkerEvent::RefreshCompleted {
                             loaded: None,
                             installed_gemma_models,
-                            economy_stats: compute_economy_sidebar_stats(
-                                None,
-                                None,
-                                config_path.as_path(),
-                            ),
+                            economy_stats: compute_economy_sidebar_stats(None, None),
                             last_error: Some(error.to_string()),
                             last_wallet_error: None,
                             provider_presence_online,
@@ -2388,64 +2369,58 @@ impl AppShell {
     }
 
     fn economy_lines(&self) -> Vec<Line<'static>> {
-        let balance = &self.economy_stats.wallet_balance;
-        let earnings = self.economy_stats.earnings.as_ref();
-        let uses_wallet_fallback = earnings.is_none_or(|value| {
-            value.sats_today == 0
-                && value.lifetime_sats == 0
-                && value.jobs_today == 0
-                && value.last_job_result == "none"
-        });
-        let wallet_receives = &self.economy_stats.wallet_receives;
-        let (
-            today_label,
-            today_value,
-            lifetime_label,
-            lifetime_value,
-            count_label,
-            count_value,
-            last_label,
-            last_value,
-        ) = if uses_wallet_fallback {
-            (
-                "credited today",
-                format_sats(wallet_receives.sats_today),
-                "credited lifetime",
-                format_sats(wallet_receives.lifetime_sats),
-                "receives today",
-                wallet_receives.count_today.to_string(),
-                "last credit",
-                wallet_receives
-                    .last_credit_label
-                    .clone()
-                    .unwrap_or_else(|| "none".to_string()),
-            )
-        } else {
-            let provider =
-                earnings.expect("provider earnings should exist when fallback is disabled");
-            (
-                "earned today",
-                format_sats(provider.sats_today),
-                "earned lifetime",
-                format_sats(provider.lifetime_sats),
-                "jobs today",
-                provider.jobs_today.to_string(),
-                "last job",
-                provider.last_job_result.clone(),
-            )
-        };
+        let wallet_total = self
+            .economy_stats
+            .wallet_balance
+            .as_ref()
+            .map(|balance| format_sats(balance.total_sats))
+            .unwrap_or_else(|| "unavailable".to_string());
+        let wallet_breakdown = self
+            .economy_stats
+            .wallet_balance
+            .as_ref()
+            .map(|balance| {
+                format!(
+                    "spark: {}  lightning: {}",
+                    format_sats(balance.spark_sats),
+                    format_sats(balance.lightning_sats)
+                )
+            })
+            .unwrap_or_else(|| "spark: unavailable  lightning: unavailable".to_string());
+        let wallet_onchain = self
+            .economy_stats
+            .wallet_balance
+            .as_ref()
+            .map(|balance| format_sats(balance.onchain_sats))
+            .unwrap_or_else(|| "unavailable".to_string());
+        let (today_value, lifetime_value, count_value, last_value) = self
+            .economy_stats
+            .earnings
+            .as_ref()
+            .map(|provider| {
+                (
+                    format_sats(provider.sats_today),
+                    format_sats(provider.lifetime_sats),
+                    provider.jobs_today.to_string(),
+                    provider.last_job_result.clone(),
+                )
+            })
+            .unwrap_or_else(|| {
+                (
+                    "unavailable".to_string(),
+                    "unavailable".to_string(),
+                    "unavailable".to_string(),
+                    "unavailable".to_string(),
+                )
+            });
         vec![
-            Line::from(format!("wallet total: {}", format_sats(balance.total_sats))),
-            Line::from(format!(
-                "spark: {}  lightning: {}",
-                format_sats(balance.spark_sats),
-                format_sats(balance.lightning_sats)
-            )),
-            Line::from(format!("on-chain: {}", format_sats(balance.onchain_sats))),
-            Line::from(format!("{today_label}: {today_value}")),
-            Line::from(format!("{lifetime_label}: {lifetime_value}")),
-            Line::from(format!("{count_label}: {count_value}")),
-            Line::from(format!("{last_label}: {last_value}")),
+            Line::from(format!("wallet total: {wallet_total}")),
+            Line::from(wallet_breakdown),
+            Line::from(format!("on-chain: {wallet_onchain}")),
+            Line::from(format!("earned today: {today_value}")),
+            Line::from(format!("earned lifetime: {lifetime_value}")),
+            Line::from(format!("jobs today: {count_value}")),
+            Line::from(format!("last job: {last_value}")),
         ]
     }
 
@@ -2915,18 +2890,10 @@ fn gemma4_status(loaded: Option<&LoadedState>) -> Gemma4Status {
 fn compute_economy_sidebar_stats(
     wallet_status: Option<&pylon::WalletStatusReport>,
     snapshot: Option<&ProviderPersistedSnapshot>,
-    config_path: &Path,
 ) -> EconomySidebarStats {
-    let ledger = pylon::load_ledger(config_path).unwrap_or_default();
     EconomySidebarStats {
-        wallet_balance: wallet_status
-            .map(|report| report.balance.clone())
-            .unwrap_or_else(|| pylon::WalletBalanceSnapshot {
-                total_sats: ledger.wallet.last_balance_sats.unwrap_or(0),
-                ..pylon::WalletBalanceSnapshot::default()
-            }),
+        wallet_balance: wallet_status.map(|report| report.balance.clone()),
         earnings: snapshot.and_then(|value| value.earnings.clone()),
-        wallet_receives: summarize_wallet_receives(&ledger),
     }
 }
 
@@ -2962,57 +2929,6 @@ async fn sync_provider_presence_for_refresh(
         Some(_) => provider_presence_online,
         None => false,
     }
-}
-
-fn summarize_wallet_receives(ledger: &pylon::PylonLedger) -> WalletReceiveSummary {
-    let current_day = current_epoch_ms() / 86_400_000;
-    let settled_receives = ledger
-        .wallet
-        .payments
-        .iter()
-        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
-        .filter(|payment| is_settled_wallet_payment_status(payment.status.as_str()))
-        .collect::<Vec<_>>();
-    let latest_receive = settled_receives
-        .iter()
-        .max_by_key(|payment| payment.updated_at_ms)
-        .copied();
-    WalletReceiveSummary {
-        sats_today: settled_receives
-            .iter()
-            .filter(|payment| payment.updated_at_ms / 86_400_000 == current_day)
-            .map(|payment| payment.amount_sats)
-            .sum(),
-        lifetime_sats: settled_receives
-            .iter()
-            .map(|payment| payment.amount_sats)
-            .sum(),
-        count_today: settled_receives
-            .iter()
-            .filter(|payment| payment.updated_at_ms / 86_400_000 == current_day)
-            .count() as u64,
-        last_credit_label: latest_receive.map(|payment| {
-            format!(
-                "{} {} sats",
-                payment.status,
-                format_u64_with_commas(payment.amount_sats)
-            )
-        }),
-    }
-}
-
-fn is_settled_wallet_payment_status(status: &str) -> bool {
-    matches!(
-        status.to_ascii_lowercase().as_str(),
-        "succeeded" | "success" | "settled" | "completed" | "confirmed"
-    )
-}
-
-fn current_epoch_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or(0)
 }
 
 fn collect_gemma4_backend_models(backend: &ProviderBackendHealth, models: &mut Vec<String>) {
@@ -3541,14 +3457,13 @@ fn estimate_token_count(text: &str) -> usize {
 mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, EconomySidebarStats,
-        WalletReceiveSummary, WorkerEvent, active_chat_title, estimate_token_count,
-        max_transcript_scroll_y, parse_tui_buyer_job_history_request,
-        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
-        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
-        parse_tui_optional_limit, parse_tui_payout_history_request,
-        parse_tui_payout_withdraw_request, should_publish_provider_presence,
-        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
-        wrapped_row_count,
+        WorkerEvent, active_chat_title, estimate_token_count, max_transcript_scroll_y,
+        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
+        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
+        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
+        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
+        should_publish_provider_presence, summarize_chat_metrics, transcript_viewport_height,
+        transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use openagents_provider_substrate::{
@@ -3612,12 +3527,12 @@ mod tests {
     fn economy_sidebar_shows_balance_and_earnings() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         app.economy_stats = EconomySidebarStats {
-            wallet_balance: pylon::WalletBalanceSnapshot {
+            wallet_balance: Some(pylon::WalletBalanceSnapshot {
                 spark_sats: 21,
                 lightning_sats: 34,
                 onchain_sats: 55,
                 total_sats: 110,
-            },
+            }),
             earnings: Some(ProviderEarningsSummary {
                 sats_today: 8,
                 lifetime_sats: 144,
@@ -3629,7 +3544,6 @@ mod tests {
                 payout_success_ratio_bps: None,
                 avg_wallet_confirmation_latency_seconds: None,
             }),
-            wallet_receives: WalletReceiveSummary::default(),
         };
 
         let sidebar = app
@@ -3646,15 +3560,15 @@ mod tests {
     }
 
     #[test]
-    fn economy_sidebar_falls_back_to_wallet_receives_when_provider_earnings_are_empty() {
+    fn economy_sidebar_shows_zero_earnings_without_wallet_receive_fallback() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         app.economy_stats = EconomySidebarStats {
-            wallet_balance: pylon::WalletBalanceSnapshot {
+            wallet_balance: Some(pylon::WalletBalanceSnapshot {
                 spark_sats: 188,
                 lightning_sats: 0,
                 onchain_sats: 0,
                 total_sats: 188,
-            },
+            }),
             earnings: Some(ProviderEarningsSummary {
                 sats_today: 0,
                 lifetime_sats: 0,
@@ -3666,12 +3580,6 @@ mod tests {
                 payout_success_ratio_bps: None,
                 avg_wallet_confirmation_latency_seconds: None,
             }),
-            wallet_receives: WalletReceiveSummary {
-                sats_today: 24,
-                lifetime_sats: 188,
-                count_today: 12,
-                last_credit_label: Some("completed 2 sats".to_string()),
-            },
         };
 
         let sidebar = app
@@ -3681,10 +3589,32 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        assert!(sidebar.contains("credited today: 24 sats"));
-        assert!(sidebar.contains("credited lifetime: 188 sats"));
-        assert!(sidebar.contains("receives today: 12"));
-        assert!(sidebar.contains("last credit: completed 2 sats"));
+        assert!(sidebar.contains("earned today: 0 sats"));
+        assert!(sidebar.contains("earned lifetime: 0 sats"));
+        assert!(sidebar.contains("jobs today: 0"));
+        assert!(sidebar.contains("last job: none"));
+        assert!(!sidebar.contains("credited"));
+    }
+
+    #[test]
+    fn economy_sidebar_marks_wallet_and_earnings_unavailable_without_live_data() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.economy_stats = EconomySidebarStats::default();
+
+        let sidebar = app
+            .economy_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(sidebar.contains("wallet total: unavailable"));
+        assert!(sidebar.contains("spark: unavailable  lightning: unavailable"));
+        assert!(sidebar.contains("on-chain: unavailable"));
+        assert!(sidebar.contains("earned today: unavailable"));
+        assert!(sidebar.contains("earned lifetime: unavailable"));
+        assert!(sidebar.contains("jobs today: unavailable"));
+        assert!(sidebar.contains("last job: unavailable"));
     }
 
     #[test]
