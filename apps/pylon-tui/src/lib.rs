@@ -7,7 +7,7 @@ use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Result};
 use bottom_pane::{BottomPane, ComposerSubmission};
@@ -19,7 +19,9 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use openagents_provider_substrate::{ProviderBackendHealth, ProviderPersistedSnapshot};
+use openagents_provider_substrate::{
+    ProviderBackendHealth, ProviderEarningsSummary, ProviderPersistedSnapshot,
+};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -33,8 +35,8 @@ use transcript::{ActiveTurn, RetainedTranscript, TranscriptEntry, TranscriptRole
 use unicode_width::UnicodeWidthStr;
 
 const TICK_RATE: Duration = Duration::from_millis(50);
-const REFRESH_RATE: Duration = Duration::from_secs(2);
-const GPU_REFRESH_RATE: Duration = Duration::from_secs(30);
+const REFRESH_RATE: Duration = Duration::from_secs(10);
+const GPU_REFRESH_RATE: Duration = Duration::from_secs(300);
 
 fn shell_border() -> Style {
     Style::default().fg(Color::Rgb(0x73, 0xc2, 0xfb))
@@ -99,6 +101,21 @@ struct Gemma4Status {
     note: String,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct EconomySidebarStats {
+    wallet_balance: pylon::WalletBalanceSnapshot,
+    earnings: Option<ProviderEarningsSummary>,
+    wallet_receives: WalletReceiveSummary,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct WalletReceiveSummary {
+    sats_today: u64,
+    lifetime_sats: u64,
+    count_today: u64,
+    last_credit_label: Option<String>,
+}
+
 #[derive(Clone, Debug, Default)]
 struct LiveSystemStats {
     host_name: Option<String>,
@@ -129,6 +146,14 @@ struct LiveSystemStats {
 
 #[derive(Debug)]
 enum WorkerEvent {
+    RefreshCompleted {
+        loaded: Option<LoadedState>,
+        installed_gemma_models: BTreeMap<String, u64>,
+        economy_stats: EconomySidebarStats,
+        last_error: Option<String>,
+        last_wallet_error: Option<String>,
+        provider_presence_online: bool,
+    },
     StreamStarted(String),
     StreamDelta(String),
     StreamFinished,
@@ -254,6 +279,7 @@ struct AppShell {
     provider_presence_session_id: String,
     provider_presence_online: bool,
     next_provider_presence_heartbeat_at: Instant,
+    refresh_in_flight: bool,
     should_quit: bool,
     transcript: RetainedTranscript,
     bottom_pane: BottomPane,
@@ -267,6 +293,7 @@ struct AppShell {
     pending_chat_prompt: Option<String>,
     installed_gemma_models: BTreeMap<String, u64>,
     gemma_downloads: BTreeMap<String, GemmaDownloadProgressState>,
+    economy_stats: EconomySidebarStats,
     transcript_follow_latest: bool,
     transcript_scroll_y: u16,
     transcript_wrap_width: u16,
@@ -301,10 +328,11 @@ impl AppShell {
             last_error: None,
             last_wallet_error: None,
             next_refresh_at: Instant::now(),
-            next_gpu_refresh_at: Instant::now(),
+            next_gpu_refresh_at: Instant::now() + GPU_REFRESH_RATE,
             provider_presence_session_id: pylon::new_provider_presence_session_id(),
             provider_presence_online: false,
             next_provider_presence_heartbeat_at: Instant::now(),
+            refresh_in_flight: false,
             should_quit: false,
             transcript,
             bottom_pane: BottomPane::default(),
@@ -317,6 +345,7 @@ impl AppShell {
             chat_history: Vec::new(),
             pending_chat_prompt: None,
             gemma_downloads: BTreeMap::new(),
+            economy_stats: EconomySidebarStats::default(),
             transcript_follow_latest: true,
             transcript_scroll_y: 0,
             transcript_wrap_width: 0,
@@ -330,7 +359,7 @@ impl AppShell {
     }
 
     fn should_refresh(&self) -> bool {
-        Instant::now() >= self.next_refresh_at
+        !self.refresh_in_flight && Instant::now() >= self.next_refresh_at
     }
 
     fn schedule_refresh_now(&mut self) {
@@ -755,6 +784,30 @@ impl AppShell {
 
     fn handle_worker_event(&mut self, event: WorkerEvent) {
         match event {
+            WorkerEvent::RefreshCompleted {
+                loaded,
+                installed_gemma_models,
+                economy_stats,
+                last_error,
+                last_wallet_error,
+                provider_presence_online,
+            } => {
+                self.loaded = loaded;
+                self.installed_gemma_models = installed_gemma_models;
+                self.economy_stats = economy_stats;
+                self.last_error = last_error;
+                self.last_wallet_error = last_wallet_error;
+                self.provider_presence_online = provider_presence_online;
+                self.refresh_in_flight = false;
+                self.last_refresh_at = Some(Instant::now());
+                self.next_refresh_at = Instant::now() + REFRESH_RATE;
+                self.next_provider_presence_heartbeat_at = Instant::now()
+                    + if provider_presence_online {
+                        pylon::provider_presence_heartbeat_interval()
+                    } else {
+                        REFRESH_RATE
+                    };
+            }
             WorkerEvent::StreamStarted(model) => {
                 self.active_chat_target = Some(model.clone());
                 self.transcript.set_active_turn(ActiveTurn::new(
@@ -1797,80 +1850,125 @@ impl AppShell {
 
     async fn refresh(&mut self) {
         self.refresh_system_stats();
-        self.installed_gemma_models = installed_gemma_models(self.config_path.as_path());
-        let mut presence_snapshot = None::<ProviderPersistedSnapshot>;
-        match pylon::ensure_local_setup(self.config_path.as_path()) {
-            Ok(_) => {
-                let wallet_status =
-                    match pylon::load_wallet_status_report(self.config_path.as_path()).await {
-                        Ok(report) => {
-                            self.last_wallet_error = None;
-                            Some(report)
-                        }
-                        Err(error) => {
-                            self.last_wallet_error = Some(error.to_string());
-                            None
-                        }
-                    };
-                match pylon::load_config_and_status(self.config_path.as_path()).await {
-                    Ok((_, status)) => {
-                        presence_snapshot = status.snapshot.clone();
-                        self.loaded = Some(LoadedState {
-                            snapshot: status.snapshot,
-                            wallet_status,
-                        });
-                        self.last_error = None;
-                    }
-                    Err(error) => {
-                        self.loaded = Some(LoadedState {
-                            snapshot: None,
-                            wallet_status,
-                        });
-                        self.last_error = Some(error.to_string());
-                    }
-                }
-            }
-            Err(error) => {
-                self.loaded = None;
-                self.last_error = Some(error.to_string());
-                self.last_wallet_error = None;
-            }
-        }
-        self.sync_provider_presence(presence_snapshot.as_ref())
-            .await;
-        self.last_refresh_at = Some(Instant::now());
-        self.next_refresh_at = Instant::now() + REFRESH_RATE;
+        self.start_refresh();
     }
 
-    async fn sync_provider_presence(&mut self, snapshot: Option<&ProviderPersistedSnapshot>) {
-        let now = Instant::now();
-        match snapshot {
-            Some(snapshot)
-                if !self.provider_presence_online
-                    || now >= self.next_provider_presence_heartbeat_at =>
+    fn start_refresh(&mut self) {
+        if self.refresh_in_flight {
+            return;
+        }
+        self.refresh_in_flight = true;
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        let session_id = self.provider_presence_session_id.clone();
+        let provider_presence_online = self.provider_presence_online;
+        let heartbeat_due = Instant::now() >= self.next_provider_presence_heartbeat_at;
+        std::thread::spawn(move || {
+            let installed_gemma_models = installed_gemma_models(config_path.as_path());
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
             {
-                match pylon::report_provider_presence_heartbeat_for_snapshot(
-                    self.config_path.as_path(),
-                    self.provider_presence_session_id.as_str(),
-                    snapshot,
-                )
-                .await
-                {
-                    Ok(()) => {
-                        self.provider_presence_online = true;
-                        self.next_provider_presence_heartbeat_at =
-                            now + pylon::provider_presence_heartbeat_interval();
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = tx.send(WorkerEvent::RefreshCompleted {
+                        loaded: None,
+                        installed_gemma_models,
+                        economy_stats: compute_economy_sidebar_stats(None, None, config_path.as_path()),
+                        last_error: Some(error.to_string()),
+                        last_wallet_error: None,
+                        provider_presence_online,
+                    });
+                    return;
+                }
+            };
+            let event = runtime.block_on(async move {
+                match pylon::ensure_local_setup(config_path.as_path()) {
+                    Ok(_) => {
+                        let (wallet_status, last_wallet_error) =
+                            match pylon::load_wallet_status_report(config_path.as_path()).await {
+                                Ok(report) => (Some(report), None),
+                                Err(error) => (None, Some(error.to_string())),
+                            };
+                        match pylon::load_config_and_status(config_path.as_path()).await {
+                            Ok((_, status)) => {
+                                let provider_presence_online = sync_provider_presence_for_refresh(
+                                    config_path.as_path(),
+                                    session_id.as_str(),
+                                    status.snapshot.as_ref(),
+                                    provider_presence_online,
+                                    heartbeat_due,
+                                )
+                                .await;
+                                WorkerEvent::RefreshCompleted {
+                                    loaded: Some(LoadedState {
+                                        snapshot: status.snapshot.clone(),
+                                        wallet_status: wallet_status.clone(),
+                                    }),
+                                    installed_gemma_models,
+                                    economy_stats: compute_economy_sidebar_stats(
+                                        wallet_status.as_ref(),
+                                        status.snapshot.as_ref(),
+                                        config_path.as_path(),
+                                    ),
+                                    last_error: None,
+                                    last_wallet_error,
+                                    provider_presence_online,
+                                }
+                            }
+                            Err(error) => {
+                                let provider_presence_online = sync_provider_presence_for_refresh(
+                                    config_path.as_path(),
+                                    session_id.as_str(),
+                                    None,
+                                    provider_presence_online,
+                                    heartbeat_due,
+                                )
+                                .await;
+                                WorkerEvent::RefreshCompleted {
+                                    loaded: Some(LoadedState {
+                                        snapshot: None,
+                                        wallet_status: wallet_status.clone(),
+                                    }),
+                                    installed_gemma_models,
+                                    economy_stats: compute_economy_sidebar_stats(
+                                        wallet_status.as_ref(),
+                                        None,
+                                        config_path.as_path(),
+                                    ),
+                                    last_error: Some(error.to_string()),
+                                    last_wallet_error,
+                                    provider_presence_online,
+                                }
+                            }
+                        }
                     }
-                    Err(_) => {
-                        self.next_provider_presence_heartbeat_at = now + REFRESH_RATE;
+                    Err(error) => {
+                        let provider_presence_online = sync_provider_presence_for_refresh(
+                            config_path.as_path(),
+                            session_id.as_str(),
+                            None,
+                            provider_presence_online,
+                            heartbeat_due,
+                        )
+                        .await;
+                        WorkerEvent::RefreshCompleted {
+                            loaded: None,
+                            installed_gemma_models,
+                            economy_stats: compute_economy_sidebar_stats(
+                                None,
+                                None,
+                                config_path.as_path(),
+                            ),
+                            last_error: Some(error.to_string()),
+                            last_wallet_error: None,
+                            provider_presence_online,
+                        }
                     }
                 }
-            }
-            Some(_) => {}
-            None => {
-                self.report_provider_presence_offline().await;
-            }
-        }
+            });
+            let _ = tx.send(event);
+        });
     }
 
     async fn report_provider_presence_offline(&mut self) {
@@ -1960,15 +2058,20 @@ impl AppShell {
         let middle = Layout::horizontal([Constraint::Percentage(67), Constraint::Percentage(33)])
             .split(vertical[1]);
         self.update_transcript_layout(middle[0]);
-        let system_height = (self.summary_lines().len() as u16 + 2).clamp(10, 20);
-        let right_column =
-            Layout::vertical([Constraint::Length(system_height), Constraint::Min(10)])
-                .split(middle[1]);
+        let models_height = (self.model_lines().len() as u16 + 2).clamp(10, 14);
+        let economy_height = (self.economy_lines().len() as u16 + 2).clamp(8, 10);
+        let right_column = Layout::vertical([
+            Constraint::Min(8),
+            Constraint::Length(models_height),
+            Constraint::Length(economy_height),
+        ])
+        .split(middle[1]);
 
         frame.render_widget(self.header_panel(), vertical[0]);
         frame.render_widget(self.transcript_panel(), middle[0]);
         frame.render_widget(self.summary_panel(), right_column[0]);
         frame.render_widget(self.models_panel(), right_column[1]);
+        frame.render_widget(self.economy_panel(), right_column[2]);
         self.bottom_pane.render(
             frame,
             vertical[2],
@@ -1988,6 +2091,9 @@ impl AppShell {
             )));
         } else {
             spans.push(Span::raw("  booting"));
+        }
+        if self.refresh_in_flight {
+            spans.push(Span::raw("  refreshing"));
         }
         if self.last_error.is_some() {
             spans.push(Span::styled(
@@ -2027,6 +2133,10 @@ impl AppShell {
 
     fn models_panel(&self) -> Paragraph<'static> {
         panel("Gemma Models", Text::from(self.model_lines()))
+    }
+
+    fn economy_panel(&self) -> Paragraph<'static> {
+        panel("Balance + Earnings", Text::from(self.economy_lines()))
     }
 
     fn transcript_panel(&self) -> Paragraph<'static> {
@@ -2268,6 +2378,67 @@ impl AppShell {
             }
         }
         lines
+    }
+
+    fn economy_lines(&self) -> Vec<Line<'static>> {
+        let balance = &self.economy_stats.wallet_balance;
+        let earnings = self.economy_stats.earnings.as_ref();
+        let uses_wallet_fallback = earnings.is_none_or(|value| {
+            value.sats_today == 0
+                && value.lifetime_sats == 0
+                && value.jobs_today == 0
+                && value.last_job_result == "none"
+        });
+        let wallet_receives = &self.economy_stats.wallet_receives;
+        let (
+            today_label,
+            today_value,
+            lifetime_label,
+            lifetime_value,
+            count_label,
+            count_value,
+            last_label,
+            last_value,
+        ) = if uses_wallet_fallback {
+            (
+                "credited today",
+                format_sats(wallet_receives.sats_today),
+                "credited lifetime",
+                format_sats(wallet_receives.lifetime_sats),
+                "receives today",
+                wallet_receives.count_today.to_string(),
+                "last credit",
+                wallet_receives
+                    .last_credit_label
+                    .clone()
+                    .unwrap_or_else(|| "none".to_string()),
+            )
+        } else {
+            let provider = earnings.expect("provider earnings should exist when fallback is disabled");
+            (
+                "earned today",
+                format_sats(provider.sats_today),
+                "earned lifetime",
+                format_sats(provider.lifetime_sats),
+                "jobs today",
+                provider.jobs_today.to_string(),
+                "last job",
+                provider.last_job_result.clone(),
+            )
+        };
+        vec![
+            Line::from(format!("wallet total: {}", format_sats(balance.total_sats))),
+            Line::from(format!(
+                "spark: {}  lightning: {}",
+                format_sats(balance.spark_sats),
+                format_sats(balance.lightning_sats)
+            )),
+            Line::from(format!("on-chain: {}", format_sats(balance.onchain_sats))),
+            Line::from(format!("{today_label}: {today_value}")),
+            Line::from(format!("{lifetime_label}: {lifetime_value}")),
+            Line::from(format!("{count_label}: {count_value}")),
+            Line::from(format!("{last_label}: {last_value}")),
+        ]
     }
 
     fn transcript_body(&self) -> Text<'static> {
@@ -2726,6 +2897,102 @@ fn gemma4_status(loaded: Option<&LoadedState>) -> Gemma4Status {
     }
 }
 
+fn compute_economy_sidebar_stats(
+    wallet_status: Option<&pylon::WalletStatusReport>,
+    snapshot: Option<&ProviderPersistedSnapshot>,
+    config_path: &Path,
+) -> EconomySidebarStats {
+    let ledger = pylon::load_ledger(config_path).unwrap_or_default();
+    EconomySidebarStats {
+        wallet_balance: wallet_status
+            .map(|report| report.balance.clone())
+            .unwrap_or_else(|| pylon::WalletBalanceSnapshot {
+                total_sats: ledger.wallet.last_balance_sats.unwrap_or(0),
+                ..pylon::WalletBalanceSnapshot::default()
+            }),
+        earnings: snapshot.and_then(|value| value.earnings.clone()),
+        wallet_receives: summarize_wallet_receives(&ledger),
+    }
+}
+
+async fn sync_provider_presence_for_refresh(
+    config_path: &Path,
+    provider_presence_session_id: &str,
+    snapshot: Option<&ProviderPersistedSnapshot>,
+    provider_presence_online: bool,
+    heartbeat_due: bool,
+) -> bool {
+    match snapshot {
+        Some(snapshot) if !provider_presence_online || heartbeat_due => {
+            pylon::report_provider_presence_heartbeat_for_snapshot(
+                config_path,
+                provider_presence_session_id,
+                snapshot,
+            )
+            .await
+            .is_ok()
+        }
+        Some(_) => provider_presence_online,
+        None if provider_presence_online => {
+            let _ = pylon::report_provider_presence_offline_for_config(
+                config_path,
+                provider_presence_session_id,
+            )
+            .await;
+            false
+        }
+        None => false,
+    }
+}
+
+fn summarize_wallet_receives(ledger: &pylon::PylonLedger) -> WalletReceiveSummary {
+    let current_day = current_epoch_ms() / 86_400_000;
+    let settled_receives = ledger
+        .wallet
+        .payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+        .filter(|payment| is_settled_wallet_payment_status(payment.status.as_str()))
+        .collect::<Vec<_>>();
+    let latest_receive = settled_receives
+        .iter()
+        .max_by_key(|payment| payment.updated_at_ms)
+        .copied();
+    WalletReceiveSummary {
+        sats_today: settled_receives
+            .iter()
+            .filter(|payment| payment.updated_at_ms / 86_400_000 == current_day)
+            .map(|payment| payment.amount_sats)
+            .sum(),
+        lifetime_sats: settled_receives.iter().map(|payment| payment.amount_sats).sum(),
+        count_today: settled_receives
+            .iter()
+            .filter(|payment| payment.updated_at_ms / 86_400_000 == current_day)
+            .count() as u64,
+        last_credit_label: latest_receive.map(|payment| {
+            format!(
+                "{} {} sats",
+                payment.status,
+                format_u64_with_commas(payment.amount_sats)
+            )
+        }),
+    }
+}
+
+fn is_settled_wallet_payment_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "succeeded" | "success" | "settled" | "completed" | "confirmed"
+    )
+}
+
+fn current_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
 fn collect_gemma4_backend_models(backend: &ProviderBackendHealth, models: &mut Vec<String>) {
     if let Some(model) = backend.ready_model.as_deref() {
         if is_gemma4_model(model) {
@@ -3009,6 +3276,22 @@ fn format_duration(duration: Duration) -> String {
     format!("{}d", hours / 24)
 }
 
+fn format_sats(value: u64) -> String {
+    format!("{} sats", format_u64_with_commas(value))
+}
+
+fn format_u64_with_commas(value: u64) -> String {
+    let digits = value.to_string();
+    let mut formatted = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, ch) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            formatted.push(',');
+        }
+        formatted.push(ch);
+    }
+    formatted
+}
+
 fn format_uptime(seconds: u64) -> String {
     let days = seconds / 86_400;
     let hours = (seconds % 86_400) / 3_600;
@@ -3235,7 +3518,7 @@ fn estimate_token_count(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_chat_title, estimate_token_count, max_transcript_scroll_y,
+        EconomySidebarStats, WalletReceiveSummary, active_chat_title, estimate_token_count, max_transcript_scroll_y,
         parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
         parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
         parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
@@ -3245,6 +3528,7 @@ mod tests {
         WorkerEvent,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use openagents_provider_substrate::ProviderEarningsSummary;
     use ratatui::layout::Rect;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
@@ -3297,6 +3581,85 @@ mod tests {
         assert!(summary.contains("wallet: connected  total: 48 sats"));
         assert!(summary.contains("spark: 48  lightning: 0  onchain: 0"));
         assert!(summary.contains("latest receive: completed 2 sats via spark"));
+    }
+
+    #[test]
+    fn economy_sidebar_shows_balance_and_earnings() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.economy_stats = EconomySidebarStats {
+            wallet_balance: pylon::WalletBalanceSnapshot {
+                spark_sats: 21,
+                lightning_sats: 34,
+                onchain_sats: 55,
+                total_sats: 110,
+            },
+            earnings: Some(ProviderEarningsSummary {
+                sats_today: 8,
+                lifetime_sats: 144,
+                jobs_today: 2,
+                online_uptime_seconds: 60,
+                last_job_result: "settled".to_string(),
+                first_job_latency_seconds: None,
+                completion_ratio_bps: None,
+                payout_success_ratio_bps: None,
+                avg_wallet_confirmation_latency_seconds: None,
+            }),
+            wallet_receives: WalletReceiveSummary::default(),
+        };
+
+        let sidebar = app
+            .economy_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(sidebar.contains("wallet total: 110 sats"));
+        assert!(sidebar.contains("spark: 21 sats  lightning: 34 sats"));
+        assert!(sidebar.contains("earned lifetime: 144 sats"));
+        assert!(sidebar.contains("last job: settled"));
+    }
+
+    #[test]
+    fn economy_sidebar_falls_back_to_wallet_receives_when_provider_earnings_are_empty() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.economy_stats = EconomySidebarStats {
+            wallet_balance: pylon::WalletBalanceSnapshot {
+                spark_sats: 188,
+                lightning_sats: 0,
+                onchain_sats: 0,
+                total_sats: 188,
+            },
+            earnings: Some(ProviderEarningsSummary {
+                sats_today: 0,
+                lifetime_sats: 0,
+                jobs_today: 0,
+                online_uptime_seconds: 0,
+                last_job_result: "none".to_string(),
+                first_job_latency_seconds: None,
+                completion_ratio_bps: None,
+                payout_success_ratio_bps: None,
+                avg_wallet_confirmation_latency_seconds: None,
+            }),
+            wallet_receives: WalletReceiveSummary {
+                sats_today: 24,
+                lifetime_sats: 188,
+                count_today: 12,
+                last_credit_label: Some("completed 2 sats".to_string()),
+            },
+        };
+
+        let sidebar = app
+            .economy_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(sidebar.contains("credited today: 24 sats"));
+        assert!(sidebar.contains("credited lifetime: 188 sats"));
+        assert!(sidebar.contains("receives today: 12"));
+        assert!(sidebar.contains("last credit: completed 2 sats"));
     }
 
     #[test]
