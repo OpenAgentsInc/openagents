@@ -88,6 +88,7 @@ fn managed_chat_projection_deduplicates_duplicate_relay_delivery_after_reload() 
         message_event.clone(),
         message_event.clone(),
     ]);
+    projection.flush_if_dirty();
 
     assert_eq!(projection.relay_events.len(), 3);
     assert_eq!(projection.snapshot.messages.len(), 1);
@@ -106,6 +107,7 @@ fn managed_chat_projection_deduplicates_duplicate_relay_delivery_after_reload() 
         Some(message_event.id.as_str())
     );
 
+    projection.flush_persist();
     let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
     assert_eq!(reloaded.snapshot.messages.len(), 1);
     let reloaded_channel = reloaded

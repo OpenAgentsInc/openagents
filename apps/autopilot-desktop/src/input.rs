@@ -311,6 +311,10 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 let _ = process.child.kill();
                 let _ = process.child.wait();
             }
+            state
+                .autopilot_chat
+                .managed_chat_projection
+                .flush_persist();
             state.codex_lane_worker.shutdown_async();
             state.probe_lane_worker.shutdown_async();
             state.kernel_projection_worker.shutdown_async();

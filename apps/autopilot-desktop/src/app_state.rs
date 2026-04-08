@@ -37836,6 +37836,7 @@ mod tests {
                 "history".to_string(),
             ),
         ]);
+        chat.managed_chat_projection.flush_if_dirty();
 
         assert!(chat.has_managed_chat_browseable_content());
         let workspace_entries = chat.chat_workspace_entries();
@@ -37963,6 +37964,7 @@ mod tests {
                 presence_content.clone(),
             ),
         ]);
+        chat.managed_chat_projection.flush_if_dirty();
 
         let workspace_entries = chat.chat_workspace_entries();
         let managed_index = workspace_entries
@@ -38087,6 +38089,7 @@ mod tests {
             ));
         }
         chat.managed_chat_projection.record_relay_events(events);
+        chat.managed_chat_projection.flush_if_dirty();
 
         let workspace_entries = chat.chat_workspace_entries();
         let managed_index = workspace_entries
@@ -38201,6 +38204,7 @@ mod tests {
             ));
         }
         chat.managed_chat_projection.record_relay_events(events);
+        chat.managed_chat_projection.flush_if_dirty();
 
         let workspace_entries = chat.chat_workspace_entries();
         let system_index = workspace_entries
@@ -38275,6 +38279,7 @@ mod tests {
                 channel_alpha.content().expect("alpha content"),
             ),
         ]);
+        chat.managed_chat_projection.flush_if_dirty();
 
         // Managed content exists but no explicit workspace selection was made.
         assert!(chat.has_managed_chat_browseable_content());
@@ -38337,6 +38342,7 @@ mod tests {
                 channel.content().expect("channel content"),
             ),
         ]);
+        chat.managed_chat_projection.flush_if_dirty();
 
         assert_eq!(
             chat.selected_workspace,
@@ -38425,6 +38431,7 @@ mod tests {
             channel_event('c', '3', 21, "ops-beta", "ops", "Operations", 2),
             channel_event('d', '4', 22, "dev-alpha", "dev", "Development", 1),
         ]);
+        chat.managed_chat_projection.flush_if_dirty();
 
         let rows = chat.active_managed_chat_channel_rail_rows();
         assert_eq!(rows.len(), 5);

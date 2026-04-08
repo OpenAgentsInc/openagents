@@ -269,24 +269,49 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             }
         }
     }
-    if !nip28_relay_events.is_empty() {
+    // Collect author pubkeys from this batch before moving the events.
+    let batch_author_pubkeys: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        nip28_relay_events
+            .iter()
+            .filter_map(|e| {
+                let pk = e.pubkey.clone();
+                seen.insert(pk.clone()).then_some(pk)
+            })
+            .collect()
+    };
+
+    let had_relay_events = !nip28_relay_events.is_empty();
+    if had_relay_events {
         state
             .autopilot_chat
             .managed_chat_projection
             .record_relay_events(nip28_relay_events);
+    }
 
-        // Trigger kind-0 fetch for any author pubkeys not yet requested
-        let author_pubkeys: Vec<String> = state
-            .autopilot_chat
-            .managed_chat_projection
-            .snapshot
-            .messages
-            .values()
-            .map(|m| m.author_pubkey.clone())
-            .collect();
+    // Flush deferred projection rebuild once per frame (after all relay events recorded).
+    state
+        .autopilot_chat
+        .managed_chat_projection
+        .flush_if_dirty();
+
+    // One-shot bootstrap: fetch kind-0 for all authors in retained history.
+    // take_kind0_bootstrap_pubkeys() returns a non-empty vec exactly once.
+    let bootstrap_pubkeys = state
+        .autopilot_chat
+        .managed_chat_projection
+        .take_kind0_bootstrap_pubkeys();
+    if !bootstrap_pubkeys.is_empty() {
         state
             .nip28_chat_lane_worker
-            .fetch_kind0_if_needed(author_pubkeys);
+            .fetch_kind0_if_needed(bootstrap_pubkeys);
+    }
+
+    // Incremental: trigger kind-0 fetch for authors in the current batch only.
+    if !batch_author_pubkeys.is_empty() {
+        state
+            .nip28_chat_lane_worker
+            .fetch_kind0_if_needed(batch_author_pubkeys);
     }
 
     {
@@ -339,6 +364,12 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
                     crate::nip28_chat_lane::NIP28_CHAT_BACKFILL_OVERLAP_SECS,
                 ),
         );
+
+    // Throttled persistence — writes at most once per PERSIST_THROTTLE interval.
+    state
+        .autopilot_chat
+        .managed_chat_projection
+        .persist_if_dirty();
 
     changed
 }

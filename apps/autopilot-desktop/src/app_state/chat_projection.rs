@@ -29,6 +29,7 @@ pub const MANAGED_CHAT_UNCATEGORIZED_CATEGORY_ID: &str = "oa:uncategorized";
 const MANAGED_CHAT_DATASET_GROUP_ID: &str = "oa-datasets";
 const MANAGED_CHAT_DATASET_CATEGORY_ID: &str = "datasets";
 const MANAGED_CHAT_DATASET_CATEGORY_LABEL: &str = "Dataset Channels";
+const PERSIST_THROTTLE: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -195,6 +196,10 @@ pub struct ManagedChatProjectionState {
     projection_file_path: PathBuf,
     pub relay_connection_state: ManagedChatRelayState,
     pub relay_last_error: Option<String>,
+    projection_dirty: bool,
+    persist_dirty: bool,
+    last_persist_at: Option<std::time::Instant>,
+    kind0_bootstrap_done: bool,
 }
 
 impl Default for ManagedChatProjectionState {
@@ -238,6 +243,10 @@ impl ManagedChatProjectionState {
                     projection_file_path,
                     relay_connection_state: ManagedChatRelayState::Connecting,
                     relay_last_error: None,
+                    projection_dirty: false,
+                    persist_dirty: false,
+                    last_persist_at: None,
+                    kind0_bootstrap_done: false,
                 }
             }
             Err(error) => Self {
@@ -256,6 +265,10 @@ impl ManagedChatProjectionState {
                 projection_file_path,
                 relay_connection_state: ManagedChatRelayState::Connecting,
                 relay_last_error: None,
+                projection_dirty: false,
+                persist_dirty: false,
+                last_persist_at: None,
+                kind0_bootstrap_done: false,
             },
         }
     }
@@ -333,7 +346,7 @@ impl ManagedChatProjectionState {
 
     pub fn record_relay_event(&mut self, event: Event) {
         self.relay_events.push(event);
-        self.refresh_projection("Projected managed chat event");
+        self.projection_dirty = true;
     }
 
     pub fn record_relay_events<I>(&mut self, events: I)
@@ -341,6 +354,14 @@ impl ManagedChatProjectionState {
         I: IntoIterator<Item = Event>,
     {
         self.relay_events.extend(events);
+        self.projection_dirty = true;
+    }
+
+    pub fn flush_if_dirty(&mut self) {
+        if !self.projection_dirty {
+            return;
+        }
+        self.projection_dirty = false;
         self.refresh_projection("Projected managed chat relay sync");
     }
 
@@ -682,20 +703,10 @@ impl ManagedChatProjectionState {
             self.outbound_messages.len(),
             self.snapshot.channels.len()
         );
-        if let Err(error) = persist_managed_chat_projection_document(
-            self.projection_file_path.as_path(),
-            &self.relay_events,
-            &self.outbound_messages,
-            &self.local_state,
-        ) {
-            self.last_error = Some(error);
-            self.load_state = PaneLoadState::Error;
-            self.last_action = Some(action);
-        } else {
-            self.last_error = None;
-            self.load_state = PaneLoadState::Ready;
-            self.last_action = Some(action);
-        }
+        self.last_error = None;
+        self.load_state = PaneLoadState::Ready;
+        self.last_action = Some(action);
+        self.persist_dirty = true;
     }
 
     fn persist_current_state(&mut self, action: String) -> Result<(), String> {
@@ -709,7 +720,65 @@ impl ManagedChatProjectionState {
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
         self.last_action = Some(action);
+        self.persist_dirty = false;
+        self.last_persist_at = Some(std::time::Instant::now());
         Ok(())
+    }
+
+    pub fn persist_if_dirty(&mut self) {
+        if !self.persist_dirty {
+            return;
+        }
+        let now = std::time::Instant::now();
+        if let Some(last) = self.last_persist_at {
+            if now.duration_since(last) < PERSIST_THROTTLE {
+                return;
+            }
+        }
+        self.persist_dirty = false;
+        self.last_persist_at = Some(now);
+        if let Err(error) = persist_managed_chat_projection_document(
+            self.projection_file_path.as_path(),
+            &self.relay_events,
+            &self.outbound_messages,
+            &self.local_state,
+        ) {
+            self.last_error = Some(error);
+            self.load_state = PaneLoadState::Error;
+        }
+    }
+
+    pub fn flush_persist(&mut self) {
+        if !self.persist_dirty {
+            return;
+        }
+        self.persist_dirty = false;
+        self.last_persist_at = Some(std::time::Instant::now());
+        if let Err(error) = persist_managed_chat_projection_document(
+            self.projection_file_path.as_path(),
+            &self.relay_events,
+            &self.outbound_messages,
+            &self.local_state,
+        ) {
+            self.last_error = Some(error);
+            self.load_state = PaneLoadState::Error;
+        }
+    }
+
+    /// Returns deduplicated author pubkeys from the current snapshot for kind-0 bootstrap.
+    /// Returns a non-empty Vec exactly once — subsequent calls return empty.
+    pub fn take_kind0_bootstrap_pubkeys(&mut self) -> Vec<String> {
+        if self.kind0_bootstrap_done {
+            return vec![];
+        }
+        self.kind0_bootstrap_done = true;
+        let mut seen = std::collections::HashSet::new();
+        self.snapshot
+            .messages
+            .values()
+            .map(|m| m.author_pubkey.clone())
+            .filter(|pk| seen.insert(pk.clone()))
+            .collect()
     }
 }
 
@@ -857,8 +926,8 @@ fn persist_managed_chat_projection_document(
     let document = ManagedChatProjectionDocumentV1 {
         schema_version: MANAGED_CHAT_PROJECTION_SCHEMA_VERSION,
         stream_id: MANAGED_CHAT_PROJECTION_STREAM_ID.to_string(),
-        relay_events: normalize_managed_chat_relay_events(relay_events.to_vec()),
-        outbound_messages: normalize_managed_chat_outbound_messages(outbound_messages.to_vec()),
+        relay_events: relay_events.to_vec(),
+        outbound_messages: outbound_messages.to_vec(),
         local_state: local_state.clone(),
     };
     let payload = serde_json::to_string_pretty(&document)
@@ -1334,15 +1403,27 @@ fn rebuild_managed_chat_projection(
             .unwrap_or_default();
     }
 
+    // Single pass: group message event_ids by channel_id, then sort each bucket once.
+    // Replaces per-channel O(messages) filter with an O(messages log messages) index.
+    let mut channel_messages: HashMap<&str, Vec<&str>> =
+        HashMap::with_capacity(live_channels.len());
+    for (event_id, message) in &messages {
+        channel_messages
+            .entry(message.channel_id.as_str())
+            .or_default()
+            .push(event_id.as_str());
+    }
+    for ids in channel_messages.values_mut() {
+        ids.sort_by(|a, b| compare_message_ids(a, b, &messages));
+    }
+
     let mut channel_rows = live_channels
         .iter()
         .map(|(channel_id, channel)| {
-            let mut message_ids = messages
-                .values()
-                .filter(|message| message.channel_id == *channel_id)
-                .map(|message| message.event_id.clone())
-                .collect::<Vec<_>>();
-            message_ids.sort_by(|left, right| compare_message_ids(left, right, &messages));
+            let message_ids: Vec<String> = channel_messages
+                .get(channel_id.as_str())
+                .map(|ids| ids.iter().map(|id| (*id).to_owned()).collect())
+                .unwrap_or_default();
             let root_message_ids = message_ids
                 .iter()
                 .filter(|event_id| {
@@ -1354,12 +1435,7 @@ fn rebuild_managed_chat_projection(
                 .cloned()
                 .collect::<Vec<_>>();
             let latest_message_id = message_ids.last().cloned();
-            let unread_count = unread_count_for_channel(
-                &message_ids,
-                local_state.read_cursors.get(channel_id),
-                &messages,
-            );
-            let mention_count = mention_count_for_channel(
+            let (unread_count, mention_count) = unread_and_mention_counts(
                 &message_ids,
                 local_state.read_cursors.get(channel_id),
                 &messages,
@@ -1651,6 +1727,36 @@ fn compare_message_ids(
         .created_at
         .cmp(&right_message.created_at)
         .then_with(|| left_message.event_id.cmp(&right_message.event_id))
+}
+
+fn unread_and_mention_counts(
+    message_ids: &[String],
+    cursor: Option<&ManagedChatReadCursor>,
+    messages: &BTreeMap<String, ManagedChatMessageProjection>,
+    local_pubkey: Option<&str>,
+) -> (usize, usize) {
+    let mut unread = 0usize;
+    let mut mentions = 0usize;
+    for id in message_ids {
+        let Some(message) = messages.get(id.as_str()) else {
+            continue;
+        };
+        if message.delivery_state != ManagedChatDeliveryState::Confirmed {
+            continue;
+        }
+        if !managed_chat_message_is_after_cursor(message, cursor) {
+            continue;
+        }
+        unread += 1;
+        if let Some(pk) = local_pubkey {
+            if message.author_pubkey != pk
+                && message.mention_pubkeys.iter().any(|c| c == pk)
+            {
+                mentions += 1;
+            }
+        }
+    }
+    (unread, mentions)
 }
 
 fn unread_count_for_channel(
@@ -2132,6 +2238,7 @@ mod tests {
             build_admins_event('8', 11, vec![admin]),
             channel_create.clone(),
         ]);
+        projection.flush_if_dirty();
 
         assert_eq!(projection.snapshot.groups.len(), 1);
         assert_eq!(projection.snapshot.channels.len(), 1);
@@ -2168,6 +2275,7 @@ mod tests {
             .unwrap();
         assert_eq!(projection.snapshot.channels[0].unread_count, 1);
 
+        projection.flush_persist();
         let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
         assert_eq!(reloaded.snapshot, projection.snapshot);
         assert_eq!(
@@ -2219,8 +2327,10 @@ mod tests {
             message_two.clone(),
             reaction.clone(),
         ]);
+        req.flush_if_dirty();
         neg.record_relay_events(vec![group, channel_create, channel_metadata, message_one]);
         neg.record_relay_events(vec![reaction, message_two]);
+        neg.flush_if_dirty();
 
         assert_eq!(req.snapshot, full.snapshot);
         assert_eq!(neg.snapshot, full.snapshot);
@@ -2480,6 +2590,7 @@ mod tests {
         assert_eq!(acked.attempt_count, 2);
         assert_eq!(acked.delivery_error, None);
 
+        projection.flush_persist();
         let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
         let reloaded_message = reloaded.snapshot.messages.get(&outbound_event.id).unwrap();
         assert_eq!(
@@ -2546,6 +2657,8 @@ mod tests {
 
         let message = build_message_event('d', 'e', 30, &channel_create.id, "hello from relay");
         projection.record_relay_event(message.clone());
+        projection.flush_if_dirty();
+        projection.flush_persist();
 
         let reloaded = ManagedChatProjectionState::from_projection_path_for_tests(path);
         assert!(
@@ -2599,6 +2712,7 @@ mod tests {
         );
 
         projection.record_relay_event(outbound_event.clone());
+        projection.flush_if_dirty();
 
         let confirmed = projection
             .snapshot
