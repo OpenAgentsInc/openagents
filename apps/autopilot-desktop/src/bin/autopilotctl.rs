@@ -5385,6 +5385,18 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.wallet.balance_reconciling,
         snapshot.wallet.can_withdraw
     );
+    if snapshot.wallet.unclaimed_deposit_count > 0 {
+        println!(
+            "wallet onchain_deposits: count={} total_sats={} notice={}",
+            snapshot.wallet.unclaimed_deposit_count,
+            snapshot.wallet.unclaimed_deposit_total_sats,
+            snapshot
+                .wallet
+                .unclaimed_deposit_notice
+                .as_deref()
+                .unwrap_or("-")
+        );
+    }
     println!(
         "tailnet: available={} tailnet={} online_devices={}/{} health={} last_error={}",
         snapshot.tailnet.available,

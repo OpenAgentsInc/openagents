@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use keyring::Entry;
 use nostr::identity_mnemonic_path;
-use openagents_spark::{Network, SparkSigner, SparkWallet, WalletConfig};
+use openagents_spark::{
+    DepositClaimFeePolicy, Network, SparkSigner, SparkWallet, UnclaimedDeposit, WalletConfig,
+};
 use serde_json::json;
 
 const KEYCHAIN_SERVICE: &str = "com.openagents.autopilot.credentials";
@@ -48,6 +50,11 @@ enum Command {
     Status,
     SparkAddress,
     BitcoinAddress,
+    ClaimDeposit {
+        txid: String,
+        vout: u32,
+        fee_policy: Option<DepositClaimFeePolicy>,
+    },
     Bolt11Invoice {
         amount_sats: u64,
         description: Option<String>,
@@ -111,6 +118,7 @@ async fn run(cli: Cli) -> Result<()> {
             network: cli.network,
             api_key: cli.api_key.clone(),
             storage_dir: cli.storage_dir.clone(),
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         },
     )
     .await
@@ -127,6 +135,10 @@ async fn run(cli: Cli) -> Result<()> {
                 .list_payments(Some(20), None)
                 .await
                 .context("failed to list payments")?;
+            let unclaimed_deposits = wallet
+                .list_unclaimed_deposits()
+                .await
+                .context("failed to list unclaimed deposits")?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&json!({
@@ -134,6 +146,7 @@ async fn run(cli: Cli) -> Result<()> {
                     "identityPath": cli.identity_path.display().to_string(),
                     "storageDir": cli.storage_dir.display().to_string(),
                     "apiKeySource": cli.api_key_source.label(),
+                    "depositClaimFeePolicy": wallet.config().deposit_claim_fee_policy.label(cli.network),
                     "networkStatus": {
                         "status": format!("{:?}", network_status.status).to_ascii_lowercase(),
                         "detail": network_status.detail,
@@ -144,21 +157,19 @@ async fn run(cli: Cli) -> Result<()> {
                         "onchainSats": balance.onchain_sats,
                         "totalSats": balance.total_sats(),
                     },
-                    "recentPayments": payments.into_iter().take(10).map(|payment| {
-                        json!({
-                            "id": payment.id,
-                            "direction": payment.direction,
-                            "status": payment.status,
-                            "amountSats": payment.amount_sats,
-                            "feesSats": payment.fees_sats,
-                            "totalDebitSats": if payment.direction.eq_ignore_ascii_case("send") {
-                                payment.amount_sats.saturating_add(payment.fees_sats)
-                            } else {
-                                payment.amount_sats
-                            },
-                            "timestamp": payment.timestamp,
-                        })
-                    }).collect::<Vec<_>>(),
+                    "recentPayments": payments
+                        .into_iter()
+                        .take(10)
+                        .map(payment_json)
+                        .collect::<Vec<_>>(),
+                    "unclaimedDeposits": unclaimed_deposits
+                        .iter()
+                        .map(unclaimed_deposit_json)
+                        .collect::<Vec<_>>(),
+                    "unclaimedDepositCount": unclaimed_deposits.len(),
+                    "unclaimedDepositTotalSats": unclaimed_deposits
+                        .iter()
+                        .fold(0_u64, |acc, deposit| acc.saturating_add(deposit.amount_sats)),
                 }))?
             );
         }
@@ -189,6 +200,44 @@ async fn run(cli: Cli) -> Result<()> {
                     "bitcoinAddress": address,
                     "identityPath": cli.identity_path.display().to_string(),
                     "storageDir": cli.storage_dir.display().to_string(),
+                }))?
+            );
+        }
+        Command::ClaimDeposit {
+            txid,
+            vout,
+            fee_policy,
+        } => {
+            let payment = wallet
+                .claim_unclaimed_deposit(txid.as_str(), vout, fee_policy.clone())
+                .await
+                .context("failed to claim unclaimed deposit")?;
+            let balance = wallet
+                .get_balance()
+                .await
+                .context("failed to refresh balance after claim")?;
+            let unclaimed_deposits = wallet
+                .list_unclaimed_deposits()
+                .await
+                .context("failed to refresh unclaimed deposits after claim")?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "network": network_label(cli.network),
+                    "txid": txid,
+                    "vout": vout,
+                    "feePolicy": fee_policy.map(|policy| policy.label(cli.network)),
+                    "claimedPayment": payment_json(payment),
+                    "postBalance": {
+                        "sparkSats": balance.spark_sats,
+                        "lightningSats": balance.lightning_sats,
+                        "onchainSats": balance.onchain_sats,
+                        "totalSats": balance.total_sats(),
+                    },
+                    "remainingUnclaimedDeposits": unclaimed_deposits
+                        .iter()
+                        .map(unclaimed_deposit_json)
+                        .collect::<Vec<_>>(),
                 }))?
             );
         }
@@ -394,6 +443,28 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             }
             Ok(Command::BitcoinAddress)
         }
+        "claim-deposit" => {
+            let txid = args
+                .get(start_index + 1)
+                .ok_or_else(|| anyhow!("missing <txid> for claim-deposit"))?
+                .trim()
+                .to_string();
+            if txid.is_empty() {
+                bail!("claim-deposit txid cannot be empty");
+            }
+            let vout_raw = args
+                .get(start_index + 2)
+                .ok_or_else(|| anyhow!("missing <vout> for claim-deposit"))?;
+            let vout = vout_raw
+                .parse::<u32>()
+                .map_err(|error| anyhow!("invalid vout '{}': {error}", vout_raw))?;
+            let fee_policy = parse_claim_deposit_fee_policy(args, start_index + 3)?;
+            Ok(Command::ClaimDeposit {
+                txid,
+                vout,
+                fee_policy,
+            })
+        }
         "bolt11-invoice" => {
             let amount_raw = args
                 .get(start_index + 1)
@@ -539,6 +610,82 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
     }
 }
 
+fn parse_claim_deposit_fee_policy(
+    args: &[String],
+    start_index: usize,
+) -> Result<Option<DepositClaimFeePolicy>> {
+    let mut fixed_amount_sats = None::<u64>;
+    let mut sat_per_vbyte = None::<u64>;
+    let mut recommended_fee_leeway = None::<u64>;
+    let mut index = start_index;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--fee-sat" => {
+                index += 1;
+                let raw = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --fee-sat"))?;
+                let value = raw
+                    .parse::<u64>()
+                    .map_err(|error| anyhow!("invalid --fee-sat '{}': {error}", raw))?;
+                fixed_amount_sats = Some(value);
+                index += 1;
+            }
+            "--sat-per-vbyte" => {
+                index += 1;
+                let raw = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --sat-per-vbyte"))?;
+                let value = raw
+                    .parse::<u64>()
+                    .map_err(|error| anyhow!("invalid --sat-per-vbyte '{}': {error}", raw))?;
+                sat_per_vbyte = Some(value);
+                index += 1;
+            }
+            "--recommended-fee-leeway" => {
+                index += 1;
+                let raw = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --recommended-fee-leeway"))?;
+                let value = raw.parse::<u64>().map_err(|error| {
+                    anyhow!("invalid --recommended-fee-leeway '{}': {error}", raw)
+                })?;
+                recommended_fee_leeway = Some(value);
+                index += 1;
+            }
+            other => bail!("unexpected argument for claim-deposit: {other}"),
+        }
+    }
+
+    let provided = [
+        fixed_amount_sats.is_some(),
+        sat_per_vbyte.is_some(),
+        recommended_fee_leeway.is_some(),
+    ]
+    .into_iter()
+    .filter(|provided| *provided)
+    .count();
+    if provided > 1 {
+        bail!(
+            "claim-deposit accepts only one of --fee-sat, --sat-per-vbyte, or --recommended-fee-leeway"
+        );
+    }
+
+    Ok(fixed_amount_sats
+        .map(|amount_sats| DepositClaimFeePolicy::Fixed { amount_sats })
+        .or_else(|| {
+            sat_per_vbyte.map(|sat_per_vbyte| DepositClaimFeePolicy::Rate { sat_per_vbyte })
+        })
+        .or_else(|| {
+            recommended_fee_leeway.map(|leeway_sat_per_vbyte| {
+                DepositClaimFeePolicy::NetworkRecommended {
+                    leeway_sat_per_vbyte,
+                }
+            })
+        }))
+}
+
 fn parse_network(raw: &str) -> Result<Network> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "mainnet" => Ok(Network::Mainnet),
@@ -557,6 +704,39 @@ fn network_label(network: Network) -> &'static str {
         Network::Testnet => "testnet",
         Network::Signet => "signet",
     }
+}
+
+fn payment_json(payment: openagents_spark::PaymentSummary) -> serde_json::Value {
+    let direction = payment.direction;
+    let is_send = direction.eq_ignore_ascii_case("send");
+
+    json!({
+        "id": payment.id,
+        "direction": direction,
+        "status": payment.status,
+        "amountSats": payment.amount_sats,
+        "feesSats": payment.fees_sats,
+        "totalDebitSats": if is_send {
+            payment.amount_sats.saturating_add(payment.fees_sats)
+        } else {
+            payment.amount_sats
+        },
+        "timestamp": payment.timestamp,
+        "method": payment.method,
+    })
+}
+
+fn unclaimed_deposit_json(deposit: &UnclaimedDeposit) -> serde_json::Value {
+    json!({
+        "txid": deposit.txid,
+        "vout": deposit.vout,
+        "amountSats": deposit.amount_sats,
+        "refundTxId": deposit.refund_tx_id,
+        "claimError": deposit.claim_error,
+        "claimErrorCode": deposit.claim_error_code,
+        "requiredFeeSats": deposit.required_fee_sats,
+        "requiredFeeRateSatPerVbyte": deposit.required_fee_rate_sat_per_vbyte,
+    })
 }
 
 fn resolve_api_key(flag_value: Option<String>) -> (Option<String>, SparkApiKeySource) {
@@ -608,6 +788,7 @@ fn print_usage() {
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] status\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] spark-address\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] bitcoin-address\n\
+           cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] claim-deposit <txid> <vout> [--recommended-fee-leeway <sat/vb> | --sat-per-vbyte <sat/vb> | --fee-sat <sats>]\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] bolt11-invoice <amount_sats> [--description <text>] [--expiry-seconds <n>]\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] create-invoice <amount_sats> [--description <text>] [--expiry-seconds <n>]\n\
            cargo run -p autopilot-desktop --bin spark-wallet-cli -- [options] pay-invoice <payment_request> [--amount-sats <n>]\n\
@@ -625,4 +806,61 @@ fn print_usage() {
            3) keychain service '{KEYCHAIN_SERVICE}' account '{KEYCHAIN_ACCOUNT_SPARK_API_KEY}'\n\
            4) BREEZ_API_KEY env\n"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Command, parse_claim_deposit_fee_policy, parse_command};
+    use openagents_spark::DepositClaimFeePolicy;
+
+    #[test]
+    fn claim_deposit_command_accepts_recommended_fee_override() {
+        let args = vec![
+            "claim-deposit".to_string(),
+            "deposit-txid-123".to_string(),
+            "1".to_string(),
+            "--recommended-fee-leeway".to_string(),
+            "2".to_string(),
+        ];
+
+        let command = parse_command(&args, 0).expect("command should parse");
+
+        match command {
+            Command::ClaimDeposit {
+                txid,
+                vout,
+                fee_policy,
+            } => {
+                assert_eq!(txid, "deposit-txid-123");
+                assert_eq!(vout, 1);
+                assert_eq!(
+                    fee_policy,
+                    Some(DepositClaimFeePolicy::NetworkRecommended {
+                        leeway_sat_per_vbyte: 2,
+                    })
+                );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn claim_deposit_fee_policy_rejects_multiple_overrides() {
+        let args = vec![
+            "claim-deposit".to_string(),
+            "deposit-txid-123".to_string(),
+            "1".to_string(),
+            "--fee-sat".to_string(),
+            "500".to_string(),
+            "--sat-per-vbyte".to_string(),
+            "8".to_string(),
+        ];
+
+        let error = parse_claim_deposit_fee_policy(&args, 3).expect_err("should reject");
+        assert!(
+            error
+                .to_string()
+                .contains("claim-deposit accepts only one of")
+        );
+    }
 }

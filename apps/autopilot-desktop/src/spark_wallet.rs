@@ -8,8 +8,8 @@ use std::time::Duration;
 use lightning_invoice::Bolt11Invoice;
 use nostr::identity_mnemonic_path;
 use openagents_spark::{
-    Balance, Network, NetworkStatus, NetworkStatusReport, PaymentSummary, SparkSigner, SparkWallet,
-    WalletConfig,
+    Balance, DepositClaimFeePolicy, Network, NetworkStatus, NetworkStatusReport, PaymentSummary,
+    SparkSigner, SparkWallet, UnclaimedDeposit, WalletConfig,
 };
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
@@ -178,6 +178,8 @@ pub struct SparkPaneState {
     pub balance: Option<Balance>,
     pub pending_balance_confirmation_payment_id: Option<String>,
     pub tracked_pending_payment_ids: Vec<String>,
+    pub unclaimed_deposits: Vec<UnclaimedDeposit>,
+    pub unclaimed_deposit_notice: Option<String>,
     pub spark_address: Option<String>,
     pub bitcoin_address: Option<String>,
     pub recent_payments: Vec<PaymentSummary>,
@@ -213,6 +215,8 @@ impl Clone for SparkPaneState {
                 .pending_balance_confirmation_payment_id
                 .clone(),
             tracked_pending_payment_ids: self.tracked_pending_payment_ids.clone(),
+            unclaimed_deposits: self.unclaimed_deposits.clone(),
+            unclaimed_deposit_notice: self.unclaimed_deposit_notice.clone(),
             spark_address: self.spark_address.clone(),
             bitcoin_address: self.bitcoin_address.clone(),
             recent_payments: self.recent_payments.clone(),
@@ -255,6 +259,8 @@ impl SparkPaneState {
             balance: None,
             pending_balance_confirmation_payment_id: None,
             tracked_pending_payment_ids: Vec::new(),
+            unclaimed_deposits: Vec::new(),
+            unclaimed_deposit_notice: None,
             spark_address: None,
             bitcoin_address: None,
             recent_payments: Vec::new(),
@@ -521,6 +527,8 @@ impl SparkPaneState {
         self.wallet_fingerprint = None;
         self.wallet_identity_source = None;
         self.wallet_context_warning = None;
+        self.unclaimed_deposits.clear();
+        self.unclaimed_deposit_notice = None;
         self.last_error = None;
         self.last_operation_error = None;
         self.last_action = Some("Updated Spark credential env overrides".to_string());
@@ -536,6 +544,8 @@ impl SparkPaneState {
         self.wallet_fingerprint = None;
         self.wallet_identity_source = None;
         self.wallet_context_warning = None;
+        self.unclaimed_deposits.clear();
+        self.unclaimed_deposit_notice = None;
         self.last_error = None;
         self.last_operation_error = None;
         self.last_action = Some(match path {
@@ -568,6 +578,8 @@ impl SparkPaneState {
         self.wallet_fingerprint = None;
         self.wallet_identity_source = None;
         self.wallet_context_warning = None;
+        self.unclaimed_deposits.clear();
+        self.unclaimed_deposit_notice = None;
         self.last_operation_error = None;
         if !self
             .last_action
@@ -598,6 +610,8 @@ impl SparkPaneState {
         self.wallet_fingerprint = None;
         self.wallet_identity_source = None;
         self.wallet_context_warning = None;
+        self.unclaimed_deposits.clear();
+        self.unclaimed_deposit_notice = None;
         self.refresh(runtime);
     }
 
@@ -920,6 +934,7 @@ impl SparkPaneState {
             network: self.network,
             api_key: Some(configured_api_key(&self.env_overrides)),
             storage_dir,
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         };
         let wallet = run_with_timeout(
             runtime,
@@ -982,17 +997,37 @@ impl SparkPaneState {
             wallet.list_all_payments()
         }) {
             Ok((payments, _attempts)) => {
+                let unclaimed_deposits = match run_with_transient_retry(
+                    runtime,
+                    "List Spark unclaimed deposits",
+                    action_timeout,
+                    || wallet.list_unclaimed_deposits(),
+                ) {
+                    Ok((deposits, _attempts)) => deposits,
+                    Err(error) => {
+                        if let Some(balance) = fetched_balance {
+                            self.balance = Some(balance);
+                        }
+                        self.recent_payments = payments;
+                        return Err(format!("Failed to list unclaimed deposits: {error}"));
+                    }
+                };
                 self.apply_balance_refresh_with_payment_confirmation(
                     fetched_balance,
                     payments.as_slice(),
                 );
                 self.recent_payments = payments;
+                self.unclaimed_deposit_notice =
+                    summarize_unclaimed_deposit_notice(unclaimed_deposits.as_slice());
+                self.unclaimed_deposits = unclaimed_deposits;
                 Ok(())
             }
             Err(error) => {
                 if let Some(balance) = fetched_balance {
                     self.balance = Some(balance);
                 }
+                self.unclaimed_deposit_notice = None;
+                self.unclaimed_deposits.clear();
                 Err(format!("Failed to list payments: {error}"))
             }
         }
@@ -1152,6 +1187,37 @@ pub(crate) fn wallet_payment_amount_summary(payment: &PaymentSummary) -> String 
         )
     } else {
         format!("{} sats", payment.amount_sats)
+    }
+}
+
+pub(crate) fn summarize_unclaimed_deposit_notice(deposits: &[UnclaimedDeposit]) -> Option<String> {
+    if deposits.is_empty() {
+        return None;
+    }
+
+    let total_sats = deposits.iter().fold(0_u64, |acc, deposit| {
+        acc.saturating_add(deposit.amount_sats)
+    });
+    let count = deposits.len();
+    let lead = &deposits[0];
+    let location = format!("{}:{}", lead.txid, lead.vout);
+
+    let summary = if count == 1 {
+        format!(
+            "1 confirmed on-chain deposit awaiting Spark claim ({total_sats} sats at {location})"
+        )
+    } else {
+        format!(
+            "{count} confirmed on-chain deposits awaiting Spark claim ({total_sats} sats total; latest {location})"
+        )
+    };
+
+    if let Some(claim_error) = lead.claim_error.as_deref() {
+        Some(format!("{summary}. Claim status: {claim_error}"))
+    } else {
+        Some(format!(
+            "{summary}. Spark has not claimed the confirmed deposit into spendable balance yet."
+        ))
     }
 }
 
@@ -1534,11 +1600,12 @@ mod tests {
         coalesce_refresh_like_command_burst, configured_api_key, configured_network,
         configured_spark_action_timeout, is_settled_wallet_payment_status,
         is_terminal_wallet_payment_status, pending_wallet_delta_sats, run_with_timeout,
-        run_with_transient_retry, timeout_message, wallet_creation_allowed,
+        run_with_transient_retry, summarize_unclaimed_deposit_notice, timeout_message,
+        wallet_creation_allowed,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
-    use openagents_spark::{Balance, PaymentSummary};
+    use openagents_spark::{Balance, PaymentSummary, UnclaimedDeposit};
     use std::collections::{HashMap, VecDeque};
     use std::sync::{Mutex, mpsc};
     use std::time::Duration;
@@ -2111,6 +2178,25 @@ mod tests {
         assert!(is_terminal_wallet_payment_status("completed"));
         assert!(is_terminal_wallet_payment_status("failed"));
         assert!(!is_terminal_wallet_payment_status("pending"));
+    }
+
+    #[test]
+    fn summarize_unclaimed_deposit_notice_surfaces_claim_error() {
+        let notice = summarize_unclaimed_deposit_notice(&[UnclaimedDeposit {
+            txid: "deposit-txid-123".to_string(),
+            vout: 1,
+            amount_sats: 10_000,
+            refund_tx_id: None,
+            claim_error: Some("Max deposit claim fee exceeded".to_string()),
+            claim_error_code: Some("max_fee_exceeded".to_string()),
+            required_fee_sats: Some(640),
+            required_fee_rate_sat_per_vbyte: Some(28),
+        }])
+        .expect("notice");
+
+        assert!(notice.contains("confirmed on-chain deposit awaiting Spark claim"));
+        assert!(notice.contains("deposit-txid-123:1"));
+        assert!(notice.contains("Max deposit claim fee exceeded"));
     }
 
     #[test]

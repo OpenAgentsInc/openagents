@@ -11,5 +11,6 @@ mod wallet;
 pub use error::SparkError;
 pub use signer::SparkSigner;
 pub use wallet::{
-    Balance, Network, NetworkStatus, NetworkStatusReport, PaymentSummary, SparkWallet, WalletConfig,
+    Balance, DepositClaimFeePolicy, Network, NetworkStatus, NetworkStatusReport, PaymentSummary,
+    SparkWallet, UnclaimedDeposit, WalletConfig,
 };

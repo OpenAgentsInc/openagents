@@ -6,8 +6,7 @@ use crate::app_state::{
 };
 use crate::pane_renderer::{
     app_text_style, mission_control_muted_color, mission_control_panel_header_color,
-    paint_primary_button, paint_secondary_button, paint_source_badge,
-    split_text_for_display,
+    paint_primary_button, paint_secondary_button, paint_source_badge, split_text_for_display,
 };
 use crate::pane_system::pane_content_bounds;
 use crate::spark_pane;
@@ -108,7 +107,11 @@ pub fn paint_wallet_pane(
     );
     paint_wallet_copy_icon_button(layout.copy_spark_address_button, paint);
 
-    paint_secondary_button(layout.bitcoin_address_button, "Generate Bitcoin Address", paint);
+    paint_secondary_button(
+        layout.bitcoin_address_button,
+        "Generate Bitcoin Address",
+        paint,
+    );
     paint_wallet_receive_value_row(
         layout.bitcoin_address_value,
         spark_wallet
@@ -119,7 +122,11 @@ pub fn paint_wallet_pane(
     );
     paint_wallet_copy_icon_button(layout.copy_bitcoin_address_button, paint);
 
-    paint_wallet_solid_blue_button(layout.create_invoice_button, "Create Lightning Invoice", paint);
+    paint_wallet_solid_blue_button(
+        layout.create_invoice_button,
+        "Create Lightning Invoice",
+        paint,
+    );
     paint_wallet_receive_value_row(
         layout.invoice_value,
         spark_wallet
@@ -426,6 +433,24 @@ pub fn paint_wallet_pane(
         ));
         y += 16.0;
         for line in split_text_for_display(warning, 88) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(row_x, y),
+                11.0,
+                theme::status::WARNING,
+            ));
+            y += 16.0;
+        }
+    }
+    if let Some(notice) = spark_wallet.unclaimed_deposit_notice.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "On-chain deposit status:",
+            Point::new(row_x, y),
+            11.0,
+            theme::status::WARNING,
+        ));
+        y += 16.0;
+        for line in split_text_for_display(notice, 88) {
             paint.scene.draw_text(paint.text.layout(
                 &line,
                 Point::new(row_x, y),
@@ -901,6 +926,9 @@ fn wallet_supporting_details_height(
     if let Some(warning) = spark_wallet.wallet_context_warning.as_deref() {
         height += 16.0 + split_text_for_display(warning, 88).len() as f32 * 16.0;
     }
+    if let Some(notice) = spark_wallet.unclaimed_deposit_notice.as_deref() {
+        height += 16.0 + split_text_for_display(notice, 88).len() as f32 * 16.0;
+    }
     if !spark_wallet.recent_payments.is_empty() {
         height += 16.0 + spark_wallet.recent_payments.iter().take(6).count() as f32 * 14.0;
     }
@@ -927,8 +955,10 @@ fn wallet_data_row_height(value: &str, value_chunk_len: usize) -> f32 {
 
 fn wallet_data_value_chunk_len(row_width: f32) -> usize {
     let available_width = (row_width
-        - (WALLET_DATA_LABEL_COLUMN_WIDTH + WALLET_DATA_VALUE_GAP + WALLET_DATA_VALUE_RIGHT_PADDING))
-    .max(48.0);
+        - (WALLET_DATA_LABEL_COLUMN_WIDTH
+            + WALLET_DATA_VALUE_GAP
+            + WALLET_DATA_VALUE_RIGHT_PADDING))
+        .max(48.0);
     let value_font_size = app_text_style(AppTextRole::FormValue).font_size;
     let estimated_char_width = (value_font_size * 0.66).max(1.0);
     (available_width / estimated_char_width).floor().max(1.0) as usize
@@ -1027,10 +1057,12 @@ fn paint_wallet_solid_blue_button(bounds: Bounds, label: &str, paint: &mut Paint
     let text_bounds = text.bounds();
     let text_x = bounds.origin.x + (bounds.size.width - text_bounds.size.width).max(0.0) * 0.5;
     let text_y = bounds.origin.y + (bounds.size.height - text_bounds.size.height).max(0.0) * 0.5;
-    paint.scene.draw_text(
-        paint.text
-            .layout_mono(label, Point::new(text_x, text_y), font_size, text_color),
-    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(text_x, text_y),
+        font_size,
+        text_color,
+    ));
 }
 
 fn paint_wallet_receive_value_row(bounds: Bounds, value: &str, paint: &mut PaintContext) {
@@ -1062,16 +1094,31 @@ fn paint_wallet_copy_icon_button(bounds: Bounds, paint: &mut PaintContext) {
             .with_border(theme::border::DEFAULT.with_alpha(0.24), 1.0)
             .with_corner_radius(WALLET_CARD_RADIUS),
     );
-    let stroke = app_text_style(AppTextRole::FormValue).color.with_alpha(0.86);
+    let stroke = app_text_style(AppTextRole::FormValue)
+        .color
+        .with_alpha(0.86);
     let back = Bounds::new(
         bounds.origin.x + 8.0,
         bounds.origin.y + 9.0,
         (bounds.size.width - 16.0).max(6.0),
         (bounds.size.height - 16.0).max(6.0),
     );
-    let front = Bounds::new(back.origin.x - 3.0, back.origin.y - 3.0, back.size.width, back.size.height);
-    paint.scene.draw_quad(Quad::new(back).with_border(stroke, 1.0).with_corner_radius(2.0));
-    paint.scene.draw_quad(Quad::new(front).with_border(stroke, 1.0).with_corner_radius(2.0));
+    let front = Bounds::new(
+        back.origin.x - 3.0,
+        back.origin.y - 3.0,
+        back.size.width,
+        back.size.height,
+    );
+    paint.scene.draw_quad(
+        Quad::new(back)
+            .with_border(stroke, 1.0)
+            .with_corner_radius(2.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(front)
+            .with_border(stroke, 1.0)
+            .with_corner_radius(2.0),
+    );
 }
 
 pub fn paint_create_invoice_pane(
@@ -1121,7 +1168,11 @@ pub fn paint_create_invoice_pane(
         paint,
     );
     paint.scene.push_clip(viewport);
-    paint_primary_button(layout.create_invoice_button, "Create Lightning invoice", paint);
+    paint_primary_button(
+        layout.create_invoice_button,
+        "Create Lightning invoice",
+        paint,
+    );
     paint_secondary_button(layout.copy_invoice_button, "Copy Lightning invoice", paint);
 
     create_invoice_inputs
@@ -1251,6 +1302,24 @@ pub fn paint_create_invoice_pane(
                 Point::new(content_bounds.origin.x + 24.0, y),
                 11.0,
                 theme::status::ERROR,
+            ));
+            y += 16.0;
+        }
+    }
+    if let Some(notice) = spark_wallet.unclaimed_deposit_notice.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            "On-chain deposit status:",
+            Point::new(content_bounds.origin.x + 24.0, y),
+            11.0,
+            theme::status::WARNING,
+        ));
+        y += 16.0;
+        for line in split_text_for_display(notice, 88) {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(content_bounds.origin.x + 24.0, y),
+                11.0,
+                theme::status::WARNING,
             ));
             y += 16.0;
         }

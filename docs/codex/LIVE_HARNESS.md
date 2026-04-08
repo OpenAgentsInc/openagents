@@ -196,6 +196,10 @@ cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
   --network mainnet status
 ```
 
+`status` now also reports `unclaimedDeposits` and the active
+`depositClaimFeePolicy`. If a confirmed Bitcoin-address receive has not
+credited the spendable Spark balance yet, inspect that section first.
+
 Generate Spark funding targets:
 
 ```bash
@@ -210,6 +214,14 @@ cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
 # On-chain BTC funding address
 cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
   --network mainnet bitcoin-address
+```
+
+If a confirmed on-chain deposit is still sitting in `unclaimedDeposits`, claim
+it explicitly:
+
+```bash
+cargo run -p autopilot-desktop --bin spark-wallet-cli -- \
+  --network mainnet claim-deposit <txid> <vout> --recommended-fee-leeway 1
 ```
 
 Regenerate a fresh Blink BTC invoice and pay it from Spark:

@@ -11,7 +11,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use openagents_provider_substrate::verify_provider_payout_target_registration_signature;
 use openagents_spark::{
-    Network as SparkNetwork, NetworkStatus, PaymentSummary, SparkSigner, SparkWallet, WalletConfig,
+    DepositClaimFeePolicy, Network as SparkNetwork, NetworkStatus, PaymentSummary, SparkSigner,
+    SparkWallet, WalletConfig,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
@@ -1619,6 +1620,7 @@ async fn open_wallet_uncached(
             network: parse_wallet_network(config.wallet_network.as_str())?,
             api_key: resolve_wallet_api_key(config.wallet_api_key_env.as_deref()),
             storage_dir: config.wallet_storage_dir.clone(),
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         },
     )
     .await

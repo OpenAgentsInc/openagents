@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use breez_sdk_spark::{
-    BreezSdk, GetInfoRequest, ListPaymentsRequest, Network as SdkNetwork, Payment, PaymentDetails,
+    BreezSdk, ClaimDepositRequest, DepositClaimError, GetInfoRequest, ListPaymentsRequest,
+    ListUnclaimedDepositsRequest, MaxFee, Network as SdkNetwork, Payment, PaymentDetails,
     PaymentStatus, PaymentType, PrepareSendPaymentRequest, ReceivePaymentMethod,
     ReceivePaymentRequest, SdkBuilder, Seed, SendPaymentRequest, SyncWalletRequest, default_config,
 };
@@ -33,6 +34,7 @@ pub struct WalletConfig {
     pub network: Network,
     pub api_key: Option<String>,
     pub storage_dir: PathBuf,
+    pub deposit_claim_fee_policy: DepositClaimFeePolicy,
 }
 
 impl Default for WalletConfig {
@@ -46,6 +48,65 @@ impl Default for WalletConfig {
             network: Network::Mainnet,
             api_key: None,
             storage_dir,
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DepositClaimFeePolicy {
+    Auto,
+    Fixed { amount_sats: u64 },
+    Rate { sat_per_vbyte: u64 },
+    NetworkRecommended { leeway_sat_per_vbyte: u64 },
+    Disabled,
+}
+
+impl Default for DepositClaimFeePolicy {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl DepositClaimFeePolicy {
+    pub fn resolved_for_network(&self, network: Network) -> Self {
+        match self {
+            Self::Auto => match network {
+                Network::Mainnet => Self::NetworkRecommended {
+                    leeway_sat_per_vbyte: 1,
+                },
+                Network::Regtest => Self::Rate { sat_per_vbyte: 1 },
+                Network::Testnet | Network::Signet => Self::Disabled,
+            },
+            other => other.clone(),
+        }
+    }
+
+    pub fn to_sdk_max_fee(&self, network: Network) -> Option<MaxFee> {
+        match self.resolved_for_network(network) {
+            Self::Auto => None,
+            Self::Fixed { amount_sats } => Some(MaxFee::Fixed {
+                amount: amount_sats,
+            }),
+            Self::Rate { sat_per_vbyte } => Some(MaxFee::Rate { sat_per_vbyte }),
+            Self::NetworkRecommended {
+                leeway_sat_per_vbyte,
+            } => Some(MaxFee::NetworkRecommended {
+                leeway_sat_per_vbyte,
+            }),
+            Self::Disabled => None,
+        }
+    }
+
+    pub fn label(&self, network: Network) -> String {
+        match self.resolved_for_network(network) {
+            Self::Auto => "auto".to_string(),
+            Self::Fixed { amount_sats } => format!("fixed:{amount_sats}sats"),
+            Self::Rate { sat_per_vbyte } => format!("rate:{sat_per_vbyte}sat/vb"),
+            Self::NetworkRecommended {
+                leeway_sat_per_vbyte,
+            } => format!("recommended:+{leeway_sat_per_vbyte}sat/vb"),
+            Self::Disabled => "disabled".to_string(),
         }
     }
 }
@@ -95,6 +156,18 @@ pub struct PaymentSummary {
     pub status_detail: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnclaimedDeposit {
+    pub txid: String,
+    pub vout: u32,
+    pub amount_sats: u64,
+    pub refund_tx_id: Option<String>,
+    pub claim_error: Option<String>,
+    pub claim_error_code: Option<String>,
+    pub required_fee_sats: Option<u64>,
+    pub required_fee_rate_sat_per_vbyte: Option<u64>,
+}
+
 impl PaymentSummary {
     pub fn is_returned_htlc_failure(&self) -> bool {
         self.status.eq_ignore_ascii_case("failed")
@@ -128,6 +201,9 @@ impl SparkWallet {
         } else {
             sdk_config.real_time_sync_server_url = None;
         }
+        sdk_config.max_deposit_claim_fee = config
+            .deposit_claim_fee_policy
+            .to_sdk_max_fee(config.network);
 
         let builder = SdkBuilder::new(sdk_config, seed)
             .with_default_storage(config.storage_dir.to_string_lossy().to_string());
@@ -344,6 +420,50 @@ impl SparkWallet {
         Ok(payments)
     }
 
+    pub async fn list_unclaimed_deposits(&self) -> Result<Vec<UnclaimedDeposit>, SparkError> {
+        let response = self
+            .sdk
+            .list_unclaimed_deposits(ListUnclaimedDepositsRequest {})
+            .await
+            .map_err(|error| SparkError::Wallet(error.to_string()))?;
+
+        Ok(response
+            .deposits
+            .into_iter()
+            .map(unclaimed_deposit_from_sdk_deposit)
+            .collect())
+    }
+
+    pub async fn claim_unclaimed_deposit(
+        &self,
+        txid: &str,
+        vout: u32,
+        fee_policy_override: Option<DepositClaimFeePolicy>,
+    ) -> Result<PaymentSummary, SparkError> {
+        let txid = txid.trim();
+        if txid.is_empty() {
+            return Err(SparkError::InvalidPaymentRequest(
+                "deposit txid cannot be empty".to_string(),
+            ));
+        }
+
+        let max_fee = fee_policy_override
+            .unwrap_or_else(|| self.config.deposit_claim_fee_policy.clone())
+            .to_sdk_max_fee(self.config.network);
+
+        let response = self
+            .sdk
+            .claim_deposit(ClaimDepositRequest {
+                txid: txid.to_string(),
+                vout,
+                max_fee,
+            })
+            .await
+            .map_err(|error| SparkError::Wallet(error.to_string()))?;
+
+        Ok(payment_summary_from_sdk_payment(response.payment))
+    }
+
     pub async fn disconnect(&self) -> Result<(), SparkError> {
         self.sdk
             .disconnect()
@@ -431,6 +551,45 @@ fn payment_summary_from_sdk_payment(payment: Payment) -> PaymentSummary {
     }
 }
 
+fn unclaimed_deposit_from_sdk_deposit(deposit: breez_sdk_spark::DepositInfo) -> UnclaimedDeposit {
+    let mut claim_error = None;
+    let mut claim_error_code = None;
+    let mut required_fee_sats = None;
+    let mut required_fee_rate_sat_per_vbyte = None;
+
+    if let Some(error) = deposit.claim_error.as_ref() {
+        claim_error = Some(error.to_string());
+        match error {
+            DepositClaimError::MaxDepositClaimFeeExceeded {
+                required_fee_sats: sats,
+                required_fee_rate_sat_per_vbyte: fee_rate,
+                ..
+            } => {
+                claim_error_code = Some("max_fee_exceeded".to_string());
+                required_fee_sats = Some(*sats);
+                required_fee_rate_sat_per_vbyte = Some(*fee_rate);
+            }
+            DepositClaimError::MissingUtxo { .. } => {
+                claim_error_code = Some("missing_utxo".to_string());
+            }
+            DepositClaimError::Generic { .. } => {
+                claim_error_code = Some("generic".to_string());
+            }
+        }
+    }
+
+    UnclaimedDeposit {
+        txid: deposit.txid,
+        vout: deposit.vout,
+        amount_sats: deposit.amount_sats,
+        refund_tx_id: deposit.refund_tx_id,
+        claim_error,
+        claim_error_code,
+        required_fee_sats,
+        required_fee_rate_sat_per_vbyte,
+    }
+}
+
 fn payment_status_detail(status: PaymentStatus, htlc_status: Option<&str>) -> Option<String> {
     if matches!(status, PaymentStatus::Failed)
         && htlc_status.is_some_and(|value| value.eq_ignore_ascii_case("returned"))
@@ -464,11 +623,14 @@ fn payment_status_detail(status: PaymentStatus, htlc_status: Option<&str>) -> Op
 #[cfg(test)]
 mod tests {
     use super::{
-        Balance, Network, PaymentSummary, PaymentType, SdkNetwork, WalletConfig,
-        payment_direction_label, payment_summary_from_sdk_payment,
+        Balance, DepositClaimFeePolicy, Network, PaymentSummary, PaymentType, SdkNetwork,
+        UnclaimedDeposit, WalletConfig, payment_direction_label, payment_summary_from_sdk_payment,
+        unclaimed_deposit_from_sdk_deposit,
     };
     use crate::SparkError;
-    use breez_sdk_spark::{Payment, PaymentDetails, PaymentMethod, PaymentStatus};
+    use breez_sdk_spark::{
+        DepositClaimError, Fee, Payment, PaymentDetails, PaymentMethod, PaymentStatus,
+    };
 
     #[test]
     fn network_mapping_mainnet_is_explicit() {
@@ -507,6 +669,24 @@ mod tests {
     #[test]
     fn wallet_config_defaults_to_mainnet() {
         assert_eq!(WalletConfig::default().network, Network::Mainnet);
+    }
+
+    #[test]
+    fn wallet_config_defaults_to_network_recommended_claim_fee_on_mainnet() {
+        assert_eq!(
+            WalletConfig::default()
+                .deposit_claim_fee_policy
+                .label(Network::Mainnet),
+            "recommended:+1sat/vb"
+        );
+    }
+
+    #[test]
+    fn auto_claim_policy_stays_regtest_friendly() {
+        assert_eq!(
+            DepositClaimFeePolicy::Auto.label(Network::Regtest),
+            "rate:1sat/vb"
+        );
     }
 
     #[test]
@@ -594,6 +774,40 @@ mod tests {
         assert_eq!(
             summary.status_detail.as_deref(),
             Some("waiting for receiver preimage")
+        );
+    }
+
+    #[test]
+    fn unclaimed_deposit_summary_preserves_claim_fee_requirements() {
+        let summary = unclaimed_deposit_from_sdk_deposit(breez_sdk_spark::DepositInfo {
+            txid: "deposit-txid-123".to_string(),
+            vout: 1,
+            amount_sats: 10_000,
+            refund_tx: None,
+            refund_tx_id: None,
+            claim_error: Some(DepositClaimError::MaxDepositClaimFeeExceeded {
+                tx: "deposit-txid-123".to_string(),
+                vout: 1,
+                max_fee: Some(Fee::Rate { sat_per_vbyte: 1 }),
+                required_fee_sats: 640,
+                required_fee_rate_sat_per_vbyte: 28,
+            }),
+        });
+
+        assert_eq!(
+            summary,
+            UnclaimedDeposit {
+                txid: "deposit-txid-123".to_string(),
+                vout: 1,
+                amount_sats: 10_000,
+                refund_tx_id: None,
+                claim_error: Some(
+                    "Max deposit claim fee exceeded for utxo: deposit-txid-123:1 with max fee: Some(Rate { sat_per_vbyte: 1 }) and required fee: 640 sats or 28 sats/vbyte".to_string()
+                ),
+                claim_error_code: Some("max_fee_exceeded".to_string()),
+                required_fee_sats: Some(640),
+                required_fee_rate_sat_per_vbyte: Some(28),
+            }
         );
     }
 }

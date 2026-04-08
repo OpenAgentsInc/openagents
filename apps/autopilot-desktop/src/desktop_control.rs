@@ -742,6 +742,9 @@ pub struct DesktopControlWalletStatus {
     pub balance_sats: u64,
     pub balance_known: bool,
     pub balance_reconciling: bool,
+    pub unclaimed_deposit_count: usize,
+    pub unclaimed_deposit_total_sats: u64,
+    pub unclaimed_deposit_notice: Option<String>,
     pub network: String,
     pub network_status: String,
     pub can_withdraw: bool,
@@ -3948,7 +3951,7 @@ fn desktop_control_gpt_oss_status(state: &RenderState) -> DesktopControlGptOssSt
 
 fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
     format!(
-        "wallet balance={} network_status={} balance_known={} reconciling={} withdraw_ready={}",
+        "wallet balance={} network_status={} balance_known={} reconciling={} withdraw_ready={} unclaimed_deposits={} unclaimed_sats={}",
         if status.balance_known {
             status.balance_sats.to_string()
         } else {
@@ -3957,7 +3960,9 @@ fn wallet_status_summary(status: &DesktopControlWalletStatus) -> String {
         status.network_status,
         status.balance_known,
         status.balance_reconciling,
-        status.can_withdraw
+        status.can_withdraw,
+        status.unclaimed_deposit_count,
+        status.unclaimed_deposit_total_sats
     )
 }
 
@@ -12160,6 +12165,15 @@ fn snapshot_for_state_with_signature(
             balance_sats: wallet_balance_sats.unwrap_or(0),
             balance_known: wallet_balance_sats.is_some(),
             balance_reconciling: state.spark_wallet.balance_reconciling(),
+            unclaimed_deposit_count: state.spark_wallet.unclaimed_deposits.len(),
+            unclaimed_deposit_total_sats: state
+                .spark_wallet
+                .unclaimed_deposits
+                .iter()
+                .fold(0_u64, |acc, deposit| {
+                    acc.saturating_add(deposit.amount_sats)
+                }),
+            unclaimed_deposit_notice: state.spark_wallet.unclaimed_deposit_notice.clone(),
             network: state.spark_wallet.network_name().to_string(),
             network_status: state.spark_wallet.network_status_label().to_string(),
             can_withdraw: wallet_can_withdraw,
@@ -13227,6 +13241,29 @@ mod tests {
     use tokio::sync::{mpsc as tokio_mpsc, oneshot};
     use tokio_tungstenite::{accept_async, tungstenite::Message};
 
+    #[test]
+    fn wallet_status_summary_mentions_unclaimed_onchain_deposits() {
+        let summary = super::wallet_status_summary(&DesktopControlWalletStatus {
+            balance_sats: 0,
+            balance_known: true,
+            balance_reconciling: false,
+            unclaimed_deposit_count: 1,
+            unclaimed_deposit_total_sats: 10_000,
+            unclaimed_deposit_notice: Some(
+                "1 confirmed on-chain deposit awaiting Spark claim".to_string(),
+            ),
+            network: "mainnet".to_string(),
+            network_status: "connected".to_string(),
+            can_withdraw: false,
+            withdraw_block_reason: Some("wallet balance is zero".to_string()),
+            last_action: Some("Wallet refreshed".to_string()),
+            last_error: None,
+        });
+
+        assert!(summary.contains("unclaimed_deposits=1"));
+        assert!(summary.contains("unclaimed_sats=10000"));
+    }
+
     fn sample_snapshot() -> DesktopControlSnapshot {
         let gemma_contract =
             psionic_train::canonical_gemma_e4b_finetuning_mvp_contract().expect("gemma contract");
@@ -13375,6 +13412,9 @@ mod tests {
                 balance_sats: 77,
                 balance_known: true,
                 balance_reconciling: false,
+                unclaimed_deposit_count: 0,
+                unclaimed_deposit_total_sats: 0,
+                unclaimed_deposit_notice: None,
                 network: "mainnet".to_string(),
                 network_status: "connected".to_string(),
                 can_withdraw: true,

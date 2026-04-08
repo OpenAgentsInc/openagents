@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use openagents_spark::{
-    Balance as SparkBalance, Network as SparkNetwork, PaymentSummary, SparkSigner, SparkWallet,
-    WalletConfig,
+    Balance as SparkBalance, DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary,
+    SparkSigner, SparkWallet, WalletConfig,
 };
 use serde::Serialize;
 
@@ -764,6 +764,7 @@ async fn open_wallet(context: &WalletRuntimeContext) -> Result<SparkWallet> {
             network: context.network,
             api_key: context.api_key.clone(),
             storage_dir: context.storage_dir.clone(),
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         },
     )
     .await
