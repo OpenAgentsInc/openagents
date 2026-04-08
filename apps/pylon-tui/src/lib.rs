@@ -35,7 +35,8 @@ use unicode_width::UnicodeWidthStr;
 const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(2);
 const GPU_REFRESH_RATE: Duration = Duration::from_secs(30);
-const WALLET_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
+const WALLET_REFRESH_RATE: Duration = Duration::from_secs(30);
+const WALLET_REFRESH_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn shell_border() -> Style {
     Style::default().fg(Color::Rgb(0x73, 0xc2, 0xfb))
@@ -225,6 +226,12 @@ enum WorkerEvent {
     WalletCommandFailed {
         error: String,
     },
+    WalletRefreshFinished {
+        report: pylon::WalletStatusReport,
+    },
+    WalletRefreshFailed {
+        error: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -252,6 +259,8 @@ struct AppShell {
     last_wallet_error: Option<String>,
     next_refresh_at: Instant,
     next_gpu_refresh_at: Instant,
+    next_wallet_refresh_at: Instant,
+    wallet_refresh_in_flight: bool,
     provider_presence_session_id: String,
     provider_presence_online: bool,
     next_provider_presence_heartbeat_at: Instant,
@@ -289,10 +298,15 @@ impl AppShell {
             "Shell Ready",
             vec![String::from("Type a prompt. /help shows commands.")],
         ));
+        let cached_wallet = pylon::load_cached_wallet_status(config_path.as_path());
+        let initial_loaded = cached_wallet.map(|ws| LoadedState {
+            snapshot: None,
+            wallet_status: Some(ws),
+        });
         Self {
             installed_gemma_models: installed_gemma_models(config_path.as_path()),
             config_path,
-            loaded: None,
+            loaded: initial_loaded,
             system,
             disks: Disks::new_with_refreshed_list(),
             networks: Networks::new_with_refreshed_list(),
@@ -303,6 +317,8 @@ impl AppShell {
             last_wallet_error: None,
             next_refresh_at: Instant::now(),
             next_gpu_refresh_at: Instant::now(),
+            next_wallet_refresh_at: Instant::now(),
+            wallet_refresh_in_flight: false,
             provider_presence_session_id: pylon::new_provider_presence_session_id(),
             provider_presence_online: false,
             next_provider_presence_heartbeat_at: Instant::now(),
@@ -940,6 +956,7 @@ impl AppShell {
             }
             WorkerEvent::PayoutCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
+                self.next_wallet_refresh_at = Instant::now();
                 self.schedule_refresh_now();
             }
             WorkerEvent::PayoutCommandFailed { error } => {
@@ -947,10 +964,22 @@ impl AppShell {
             }
             WorkerEvent::WalletCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
+                self.next_wallet_refresh_at = Instant::now();
                 self.schedule_refresh_now();
             }
             WorkerEvent::WalletCommandFailed { error } => {
                 self.push_system_message("Wallet Error", error);
+            }
+            WorkerEvent::WalletRefreshFinished { report } => {
+                self.wallet_refresh_in_flight = false;
+                self.last_wallet_error = None;
+                if let Some(loaded) = self.loaded.as_mut() {
+                    loaded.wallet_status = Some(report);
+                }
+            }
+            WorkerEvent::WalletRefreshFailed { error } => {
+                self.wallet_refresh_in_flight = false;
+                self.last_wallet_error = Some(error);
             }
         }
         self.sync_transcript_scroll_after_update();
@@ -1796,54 +1825,79 @@ impl AppShell {
         );
     }
 
+    fn spawn_wallet_refresh(&mut self) {
+        if self.wallet_refresh_in_flight {
+            return;
+        }
+        self.wallet_refresh_in_flight = true;
+        self.next_wallet_refresh_at = Instant::now() + WALLET_REFRESH_RATE;
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        tokio::spawn(async move {
+            match tokio::time::timeout(
+                WALLET_REFRESH_TIMEOUT,
+                pylon::load_wallet_status_report(config_path.as_path()),
+            )
+            .await
+            {
+                Ok(Ok(report)) => {
+                    let _ = tx.send(WorkerEvent::WalletRefreshFinished { report });
+                }
+                Ok(Err(error)) => {
+                    let _ = tx.send(WorkerEvent::WalletRefreshFailed {
+                        error: error.to_string(),
+                    });
+                }
+                Err(_) => {
+                    let _ = tx.send(WorkerEvent::WalletRefreshFailed {
+                        error: "wallet status timed out".to_string(),
+                    });
+                }
+            }
+        });
+    }
+
     async fn refresh(&mut self) {
         self.refresh_system_stats();
         self.installed_gemma_models = installed_gemma_models(self.config_path.as_path());
+        if Instant::now() >= self.next_wallet_refresh_at {
+            self.spawn_wallet_refresh();
+        }
         let mut presence_snapshot = None::<ProviderPersistedSnapshot>;
         match pylon::ensure_local_setup(self.config_path.as_path()) {
             Ok(_) => {
-                let wallet_status = match tokio::time::timeout(
-                    WALLET_REFRESH_TIMEOUT,
-                    pylon::load_wallet_status_report(self.config_path.as_path()),
-                )
-                .await
-                {
-                    Ok(Ok(report)) => {
-                        self.last_wallet_error = None;
-                        Some(report)
-                    }
-                    Ok(Err(error)) => {
-                        self.last_wallet_error = Some(error.to_string());
-                        None
-                    }
-                    Err(_) => {
-                        self.last_wallet_error =
-                            Some("wallet status timed out".to_string());
-                        None
-                    }
-                };
+                let prev_wallet_status = self
+                    .loaded
+                    .as_ref()
+                    .and_then(|l| l.wallet_status.clone());
                 match pylon::load_config_and_status(self.config_path.as_path()).await {
                     Ok((_, status)) => {
                         presence_snapshot = status.snapshot.clone();
                         self.loaded = Some(LoadedState {
                             snapshot: status.snapshot,
-                            wallet_status,
+                            wallet_status: prev_wallet_status,
                         });
                         self.last_error = None;
                     }
                     Err(error) => {
                         self.loaded = Some(LoadedState {
                             snapshot: None,
-                            wallet_status,
+                            wallet_status: prev_wallet_status,
                         });
                         self.last_error = Some(error.to_string());
                     }
                 }
             }
             Err(error) => {
-                self.loaded = None;
+                let prev_wallet_status = self
+                    .loaded
+                    .as_ref()
+                    .and_then(|l| l.wallet_status.clone());
+                self.loaded = prev_wallet_status.map(|ws| LoadedState {
+                    snapshot: None,
+                    wallet_status: Some(ws),
+                });
                 self.last_error = Some(error.to_string());
-                self.last_wallet_error = None;
             }
         }
         self.sync_provider_presence(presence_snapshot.as_ref())
@@ -3308,6 +3362,84 @@ mod tests {
         assert!(summary.contains("wallet: connected  total: 48 sats"));
         assert!(summary.contains("spark: 48  lightning: 0  onchain: 0"));
         assert!(summary.contains("latest receive: completed 2 sats via spark"));
+    }
+
+    #[test]
+    fn wallet_refresh_event_updates_loaded_state() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.loaded = Some(super::LoadedState {
+            snapshot: None,
+            wallet_status: None,
+        });
+        app.last_wallet_error = Some("wallet status timed out".to_string());
+        app.wallet_refresh_in_flight = true;
+
+        // Simulate a successful background wallet refresh arriving.
+        app.handle_worker_event(super::WorkerEvent::WalletRefreshFinished {
+            report: pylon::WalletStatusReport {
+                runtime_status: "connected".to_string(),
+                balance: pylon::WalletBalanceSnapshot {
+                    spark_sats: 100,
+                    total_sats: 100,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        });
+
+        assert!(!app.wallet_refresh_in_flight);
+        assert!(app.last_wallet_error.is_none());
+        let wallet = app
+            .loaded
+            .as_ref()
+            .and_then(|l| l.wallet_status.as_ref());
+        assert!(wallet.is_some());
+        assert_eq!(wallet.map(|w| w.balance.total_sats), Some(100));
+
+        let summary = app
+            .summary_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(summary.contains("wallet: connected  total: 100 sats"));
+    }
+
+    #[test]
+    fn wallet_refresh_failure_preserves_loaded_state() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        // Pre-seed with a previous successful wallet status.
+        app.loaded = Some(super::LoadedState {
+            snapshot: None,
+            wallet_status: Some(pylon::WalletStatusReport {
+                runtime_status: "connected".to_string(),
+                balance: pylon::WalletBalanceSnapshot {
+                    spark_sats: 50,
+                    total_sats: 50,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        });
+        app.wallet_refresh_in_flight = true;
+
+        // Simulate a failed background wallet refresh.
+        app.handle_worker_event(super::WorkerEvent::WalletRefreshFailed {
+            error: "wallet status timed out".to_string(),
+        });
+
+        assert!(!app.wallet_refresh_in_flight);
+        assert_eq!(
+            app.last_wallet_error.as_deref(),
+            Some("wallet status timed out")
+        );
+        // Previous wallet status should still be present in loaded state.
+        let wallet = app
+            .loaded
+            .as_ref()
+            .and_then(|l| l.wallet_status.as_ref());
+        assert!(wallet.is_some());
+        assert_eq!(wallet.map(|w| w.balance.total_sats), Some(50));
     }
 
     #[test]

@@ -340,7 +340,8 @@ pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatu
     let result: Result<WalletStatusReport> = async {
         let wallet = open_wallet(&context).await?;
         let result: Result<_> = async {
-            let network_status = wallet.network_status().await;
+            // get_balance with ensure_synced already syncs the wallet, so skip
+            // the separate network_status() call to avoid a redundant round-trip.
             let balance = wallet
                 .get_balance()
                 .await
@@ -349,14 +350,14 @@ pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatu
                 .list_payments(Some(10), None)
                 .await
                 .context("failed to list Spark payments")?;
-            Ok((network_status, balance, payments))
+            Ok((balance, payments))
         }
         .await;
-        let (network_status, balance, payments) = finalize_wallet(wallet, result).await?;
+        let (balance, payments) = finalize_wallet(wallet, result).await?;
         let report = WalletStatusReport {
             runtime,
-            runtime_status: network_status_label(&network_status),
-            runtime_detail: network_status.detail.clone(),
+            runtime_status: "connected".to_string(),
+            runtime_detail: None,
             balance: balance_snapshot(&balance),
             recent_payments: payments
                 .iter()
@@ -380,6 +381,29 @@ pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatu
         sync_wallet_error(config_path, &context.runtime, error.to_string())?;
     }
     result
+}
+
+/// Returns a [`WalletStatusReport`] seeded from the persisted ledger, without
+/// touching the network.  Useful as a warm-cache fallback so the TUI can show
+/// the last-known balance immediately on boot.
+pub fn load_cached_wallet_status(config_path: &Path) -> Option<WalletStatusReport> {
+    let ledger = crate::load_ledger(config_path).ok()?;
+    let balance_sats = ledger.wallet.last_balance_sats?;
+    let runtime_status = ledger.wallet.runtime_status.clone().unwrap_or_default();
+    if runtime_status.is_empty() {
+        return None;
+    }
+    let context = prepare_wallet_context(config_path).ok()?;
+    Some(WalletStatusReport {
+        runtime: context.runtime,
+        runtime_status,
+        runtime_detail: ledger.wallet.last_error.clone(),
+        balance: WalletBalanceSnapshot {
+            total_sats: balance_sats,
+            ..Default::default()
+        },
+        recent_payments: ledger.wallet.payments.clone(),
+    })
 }
 
 pub async fn create_wallet_address_report(config_path: &Path) -> Result<WalletAddressReport> {
@@ -838,13 +862,6 @@ fn read_env_nonempty(name: &str) -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-fn network_status_label(report: &openagents_spark::NetworkStatusReport) -> String {
-    match report.status {
-        openagents_spark::NetworkStatus::Connected => "connected".to_string(),
-        openagents_spark::NetworkStatus::Disconnected => "disconnected".to_string(),
-    }
 }
 
 fn balance_snapshot(balance: &SparkBalance) -> WalletBalanceSnapshot {
