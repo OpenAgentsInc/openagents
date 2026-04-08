@@ -35,6 +35,7 @@ use unicode_width::UnicodeWidthStr;
 const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(2);
 const GPU_REFRESH_RATE: Duration = Duration::from_secs(30);
+const WALLET_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn shell_border() -> Style {
     Style::default().fg(Color::Rgb(0x73, 0xc2, 0xfb))
@@ -1801,17 +1802,26 @@ impl AppShell {
         let mut presence_snapshot = None::<ProviderPersistedSnapshot>;
         match pylon::ensure_local_setup(self.config_path.as_path()) {
             Ok(_) => {
-                let wallet_status =
-                    match pylon::load_wallet_status_report(self.config_path.as_path()).await {
-                        Ok(report) => {
-                            self.last_wallet_error = None;
-                            Some(report)
-                        }
-                        Err(error) => {
-                            self.last_wallet_error = Some(error.to_string());
-                            None
-                        }
-                    };
+                let wallet_status = match tokio::time::timeout(
+                    WALLET_REFRESH_TIMEOUT,
+                    pylon::load_wallet_status_report(self.config_path.as_path()),
+                )
+                .await
+                {
+                    Ok(Ok(report)) => {
+                        self.last_wallet_error = None;
+                        Some(report)
+                    }
+                    Ok(Err(error)) => {
+                        self.last_wallet_error = Some(error.to_string());
+                        None
+                    }
+                    Err(_) => {
+                        self.last_wallet_error =
+                            Some("wallet status timed out".to_string());
+                        None
+                    }
+                };
                 match pylon::load_config_and_status(self.config_path.as_path()).await {
                     Ok((_, status)) => {
                         presence_snapshot = status.snapshot.clone();
@@ -2602,6 +2612,7 @@ async fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut AppShell,
 ) -> Result<()> {
+    terminal.draw(|frame| app.render(frame))?;
     app.refresh().await;
 
     while !app.should_quit() {
