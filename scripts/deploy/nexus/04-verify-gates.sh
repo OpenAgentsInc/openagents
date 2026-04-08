@@ -29,19 +29,19 @@ HEALTH_RAW="$(gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
-  --command "curl -fsS http://127.0.0.1:8080/healthz")"
+  --command "curl -fsS --max-time 20 http://127.0.0.1:8080/healthz")"
 
 STATS_RAW="$(gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
-  --command "curl -fsS http://127.0.0.1:8080/api/stats")"
+  --command "curl -fsS --max-time 20 http://127.0.0.1:8080/api/stats")"
 
 TREASURY_RAW="$(gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
-  --command "if [[ \"${NEXUS_CONTROL_TREASURY_ENABLED}\" == \"true\" ]]; then curl -fsS http://127.0.0.1:8080/v1/treasury/status; else printf 'null'; fi")"
+  --command "if [[ \"${NEXUS_CONTROL_TREASURY_ENABLED}\" == \"true\" ]]; then curl -fsS --max-time 20 http://127.0.0.1:8080/v1/treasury/status; else printf 'null'; fi")"
 
 SERVICE_STATUS_RAW="$(gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \
