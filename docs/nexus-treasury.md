@@ -39,6 +39,12 @@ The hosted treasury policy and wallet runtime are env-backed:
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
 
+`NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS` is still the per-identity
+stipend cadence. `nexus-control` now phases each identity deterministically
+within that interval, so online Pylons still receive one payout per interval
+but dispatches roll across the window instead of bunching on a single wall-clock
+boundary.
+
 For the production VM, set the payout policy env before running
 `scripts/deploy/nexus/03-configure-and-start.sh`. The deploy script now maps
 the treasury wallet and state onto `${NEXUS_DATA_DIR}/treasury/...` so the

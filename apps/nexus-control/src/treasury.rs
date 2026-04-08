@@ -658,14 +658,18 @@ impl TreasuryState {
             return (Vec::new(), receipt_events);
         }
 
-        let window_started_at_unix_ms =
-            payout_window_started_at(now_unix_ms, config.payout_interval_ms());
-        let window_ends_at_unix_ms =
-            window_started_at_unix_ms.saturating_add(config.payout_interval_ms());
+        let payout_interval_ms = config.payout_interval_ms();
         let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
         let mut dispatch_plans = Vec::new();
 
         for identity in online_identities {
+            let window_started_at_unix_ms = payout_window_started_at_for_identity(
+                now_unix_ms,
+                payout_interval_ms,
+                identity.nostr_pubkey_hex.as_str(),
+            );
+            let window_ends_at_unix_ms =
+                window_started_at_unix_ms.saturating_add(payout_interval_ms);
             let payout_key = payout_window_key(
                 window_started_at_unix_ms,
                 identity.nostr_pubkey_hex.as_str(),
@@ -1478,6 +1482,31 @@ fn payout_window_started_at(now_unix_ms: u64, interval_ms: u64) -> u64 {
     now_unix_ms.saturating_sub(now_unix_ms % interval_ms)
 }
 
+fn payout_window_started_at_for_identity(
+    now_unix_ms: u64,
+    interval_ms: u64,
+    nostr_pubkey_hex: &str,
+) -> u64 {
+    if interval_ms == 0 {
+        return now_unix_ms;
+    }
+    let phase_offset_ms = payout_phase_offset_ms(nostr_pubkey_hex, interval_ms);
+    payout_window_started_at(now_unix_ms.saturating_sub(phase_offset_ms), interval_ms)
+        .saturating_add(phase_offset_ms)
+}
+
+fn payout_phase_offset_ms(nostr_pubkey_hex: &str, interval_ms: u64) -> u64 {
+    if interval_ms <= 1 {
+        return 0;
+    }
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in nostr_pubkey_hex.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash % interval_ms
+}
+
 fn wallet_payment_is_confirmed(payment: &PaymentSummary) -> bool {
     matches!(
         payment.status.to_ascii_lowercase().as_str(),
@@ -1842,7 +1871,8 @@ mod tests {
     use super::{
         OnlinePylonIdentity, TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial,
         TreasuryFundingTargetRequest, TreasuryPublicStats, TreasuryState, TreasuryWalletSnapshot,
-        create_live_funding_target, dispatch_live_payouts, payout_window_started_at,
+        create_live_funding_target, dispatch_live_payouts, payout_phase_offset_ms,
+        payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
         treasury_test_hook_lock, verify_payout_target_registration_signature,
     };
@@ -1918,6 +1948,84 @@ mod tests {
         let (plans_again, skips_again) = state.prepare_due_payouts(&config, &online, now_unix_ms);
         assert!(plans_again.is_empty());
         assert!(skips_again.is_empty());
+    }
+
+    #[test]
+    fn payout_windows_are_staggered_per_identity() {
+        let interval_ms = test_treasury_config().payout_interval_ms();
+        let pubkey_a = "pubkey-a";
+        let pubkey_b = "pubkey-b";
+        let phase_a = payout_phase_offset_ms(pubkey_a, interval_ms);
+        let phase_b = payout_phase_offset_ms(pubkey_b, interval_ms);
+
+        assert_ne!(phase_a, phase_b);
+
+        let now_unix_ms = 1_800_000;
+        let window_a = payout_window_started_at_for_identity(now_unix_ms, interval_ms, pubkey_a);
+        let window_b = payout_window_started_at_for_identity(now_unix_ms, interval_ms, pubkey_b);
+
+        assert_ne!(window_a, window_b);
+        assert_eq!(window_a % interval_ms, phase_a);
+        assert_eq!(window_b % interval_ms, phase_b);
+    }
+
+    #[test]
+    fn payout_preparation_uses_identity_phased_windows() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        for (nostr_pubkey_hex, spark_address) in
+            [("pubkey-a", "spark:alice"), ("pubkey-b", "spark:bob")]
+        {
+            state.payout_targets_by_identity.insert(
+                nostr_pubkey_hex.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    spark_address: spark_address.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let online = vec![
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            },
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                sellable: true,
+            },
+        ];
+        let now_unix_ms = 1_800_000;
+        let (plans, skips) = state.prepare_due_payouts(&config, &online, now_unix_ms);
+
+        assert!(skips.is_empty());
+        assert_eq!(plans.len(), 2);
+        assert_ne!(plans[0].payout_key, plans[1].payout_key);
+
+        let expected_window_a = payout_window_started_at_for_identity(
+            now_unix_ms,
+            config.payout_interval_ms(),
+            "pubkey-a",
+        );
+        let expected_window_b = payout_window_started_at_for_identity(
+            now_unix_ms,
+            config.payout_interval_ms(),
+            "pubkey-b",
+        );
+        assert!(
+            plans
+                .iter()
+                .any(|plan| plan.payout_key == format!("{expected_window_a}:pubkey-a"))
+        );
+        assert!(
+            plans
+                .iter()
+                .any(|plan| plan.payout_key == format!("{expected_window_b}:pubkey-b"))
+        );
     }
 
     #[test]
