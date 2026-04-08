@@ -3,6 +3,8 @@ pub enum SlashCommandId {
     Help,
     Chat,
     Download,
+    Model,
+    Uninstall,
     Announce,
     Provider,
     Job,
@@ -55,6 +57,18 @@ const COMMANDS: &[SlashCommandSpec] = &[
         name: "download",
         usage: "/download [model]",
         summary: "download a curated Gemma GGUF into the local cache",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Model,
+        name: "model",
+        usage: "/model [model]",
+        summary: "target a Gemma model for local runtime use",
+    },
+    SlashCommandSpec {
+        id: SlashCommandId::Uninstall,
+        name: "uninstall",
+        usage: "/uninstall [model]",
+        summary: "remove a Gemma model from local cache and runtime",
     },
     SlashCommandSpec {
         id: SlashCommandId::Announce,
@@ -166,8 +180,21 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "help", "chat", "download", "announce", "provider", "job", "jobs", "earnings",
-                "receipts", "activity", "payout", "relay", "wallet"
+                "help",
+                "chat",
+                "download",
+                "model",
+                "uninstall",
+                "announce",
+                "provider",
+                "job",
+                "jobs",
+                "earnings",
+                "receipts",
+                "activity",
+                "payout",
+                "relay",
+                "wallet"
             ]
         );
     }
@@ -182,13 +209,13 @@ mod tests {
 
     #[test]
     fn parse_submission_resolves_known_command() {
-        let parsed = parse_submission("/download gemma-3-4b");
+        let parsed = parse_submission("/model gemma-4-e2b");
         assert_eq!(
             parsed,
             ParsedSubmission::Command {
-                spec: &registry()[2],
-                args: String::from("gemma-3-4b"),
-                raw: String::from("/download gemma-3-4b"),
+                spec: &registry()[3],
+                args: String::from("gemma-4-e2b"),
+                raw: String::from("/model gemma-4-e2b"),
             }
         );
     }
@@ -208,21 +235,25 @@ mod tests {
     fn help_copy_mentions_plain_text_chat() {
         let lines = help_lines();
         assert!(lines.iter().any(|line| line.contains("/help")));
+        assert!(lines.iter().any(|line| line.contains("/model [model]")));
+        assert!(lines.iter().any(|line| line.contains("/uninstall [model]")));
         assert!(
             lines
                 .iter()
                 .any(|line| line.contains("Plain text without a slash"))
         );
         assert_eq!(registry()[1].id, SlashCommandId::Chat);
-        assert_eq!(registry()[3].id, SlashCommandId::Announce);
-        assert_eq!(registry()[4].id, SlashCommandId::Provider);
-        assert_eq!(registry()[5].id, SlashCommandId::Job);
-        assert_eq!(registry()[6].id, SlashCommandId::Jobs);
-        assert_eq!(registry()[7].id, SlashCommandId::Earnings);
-        assert_eq!(registry()[8].id, SlashCommandId::Receipts);
-        assert_eq!(registry()[9].id, SlashCommandId::Activity);
-        assert_eq!(registry()[10].id, SlashCommandId::Payout);
-        assert_eq!(registry()[11].id, SlashCommandId::Relay);
-        assert_eq!(registry()[12].id, SlashCommandId::Wallet);
+        assert_eq!(registry()[3].id, SlashCommandId::Model);
+        assert_eq!(registry()[4].id, SlashCommandId::Uninstall);
+        assert_eq!(registry()[5].id, SlashCommandId::Announce);
+        assert_eq!(registry()[6].id, SlashCommandId::Provider);
+        assert_eq!(registry()[7].id, SlashCommandId::Job);
+        assert_eq!(registry()[8].id, SlashCommandId::Jobs);
+        assert_eq!(registry()[9].id, SlashCommandId::Earnings);
+        assert_eq!(registry()[10].id, SlashCommandId::Receipts);
+        assert_eq!(registry()[11].id, SlashCommandId::Activity);
+        assert_eq!(registry()[12].id, SlashCommandId::Payout);
+        assert_eq!(registry()[13].id, SlashCommandId::Relay);
+        assert_eq!(registry()[14].id, SlashCommandId::Wallet);
     }
 }

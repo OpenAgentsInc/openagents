@@ -149,6 +149,18 @@ enum WorkerEvent {
         spec: pylon::GemmaDownloadSpec,
         error: String,
     },
+    ModelSelectionFinished {
+        output: String,
+    },
+    ModelSelectionFailed {
+        error: String,
+    },
+    ModelUninstallFinished {
+        output: String,
+    },
+    ModelUninstallFailed {
+        error: String,
+    },
     RelayRefreshFinished {
         report: pylon::RelayReport,
     },
@@ -399,6 +411,36 @@ impl AppShell {
                     self.start_model_download(model_id);
                     return;
                 }
+                SlashCommandId::Model => {
+                    let model_id = args;
+                    if model_id.is_empty() {
+                        self.push_system_message(
+                            "Command Error",
+                            format!(
+                                "Usage: /model [model]. Available: {}",
+                                available_download_ids()
+                            ),
+                        );
+                        return;
+                    }
+                    self.start_model_selection(model_id);
+                    return;
+                }
+                SlashCommandId::Uninstall => {
+                    let model_id = args;
+                    if model_id.is_empty() {
+                        self.push_system_message(
+                            "Command Error",
+                            format!(
+                                "Usage: /uninstall [model]. Available: {}",
+                                available_download_ids()
+                            ),
+                        );
+                        return;
+                    }
+                    self.start_model_uninstall(model_id);
+                    return;
+                }
                 SlashCommandId::Announce => {
                     self.handle_announce_command(args);
                     return;
@@ -536,6 +578,84 @@ impl AppShell {
                 });
             }
         });
+    }
+
+    fn start_model_selection(&mut self, model_id: String) {
+        let Some(spec) = pylon::gemma_download_spec_for_selector(model_id.as_str()) else {
+            self.push_system_message(
+                "Model Error",
+                format!(
+                    "Unknown Gemma model `{model_id}`. Available: {}",
+                    available_download_ids()
+                ),
+            );
+            return;
+        };
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::ModelSelectionFailed {
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                let report =
+                    pylon::select_local_gemma_model(config_path.as_path(), spec.id).await?;
+                Ok::<String, anyhow::Error>(pylon::render_local_gemma_model_selection_report(
+                    &report,
+                ))
+            });
+            match result {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::ModelSelectionFinished { output });
+                }
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::ModelSelectionFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Model", "Selecting local Gemma model...");
+    }
+
+    fn start_model_uninstall(&mut self, model_id: String) {
+        let Some(spec) = pylon::gemma_download_spec_for_selector(model_id.as_str()) else {
+            self.push_system_message(
+                "Uninstall Error",
+                format!(
+                    "Unknown Gemma model `{model_id}`. Available: {}",
+                    available_download_ids()
+                ),
+            );
+            return;
+        };
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            match pylon::uninstall_gemma_model(config_path.as_path(), spec.id) {
+                Ok(report) => {
+                    let _ = tx.send(WorkerEvent::ModelUninstallFinished {
+                        output: pylon::render_gemma_uninstall_report(&report),
+                    });
+                }
+                Err(error) => {
+                    let _ = tx.send(WorkerEvent::ModelUninstallFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Uninstall", "Removing local Gemma cache...");
     }
 
     fn start_chat(&mut self, prompt: String) {
@@ -743,6 +863,20 @@ impl AppShell {
             WorkerEvent::ModelDownloadFailed { spec, error } => {
                 self.gemma_downloads.remove(spec.id);
                 self.push_system_message("Download Error", format!("{}: {}", spec.id, error));
+            }
+            WorkerEvent::ModelSelectionFinished { output } => {
+                self.push_system_lines("Model", text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
+            }
+            WorkerEvent::ModelSelectionFailed { error } => {
+                self.push_system_message("Model Error", error);
+            }
+            WorkerEvent::ModelUninstallFinished { output } => {
+                self.push_system_lines("Uninstall", text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
+            }
+            WorkerEvent::ModelUninstallFailed { error } => {
+                self.push_system_message("Uninstall Error", error);
             }
             WorkerEvent::RelayRefreshFinished { report } => {
                 self.push_system_lines("Relays", relay_report_lines(&report));
@@ -2344,6 +2478,8 @@ Controls:\n\
   Composer:\n\
   [prompt]  stream a reply from local Gemma when weights are loaded\n\
   /help  show available commands\n\
+  /model [model]  target a Gemma model for local runtime use\n\
+  /uninstall [model]  remove a Gemma model from local cache and runtime\n\
   /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
   /jobs [--limit <n>]  show retained provider job history\n\
   /earnings  show retained provider earnings\n\
