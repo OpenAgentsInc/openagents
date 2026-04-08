@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
@@ -13,6 +14,7 @@ use openagents_spark::{
     Network as SparkNetwork, NetworkStatus, PaymentSummary, SparkSigner, SparkWallet, WalletConfig,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::economy::AuthorityReceiptContext;
 
@@ -1055,36 +1057,38 @@ pub async fn create_live_funding_target(
         return hook(request);
     }
 
-    let wallet = open_wallet(config, true).await?;
-    let spark_address = wallet
-        .get_spark_address()
-        .await
-        .context("failed to create treasury Spark receive address")?;
-    let bitcoin_address = wallet
-        .get_bitcoin_address()
-        .await
-        .context("failed to create treasury Bitcoin receive address")?;
-    let bolt11_invoice = match request.amount_sats {
-        Some(amount_sats) if amount_sats > 0 => Some(
-            wallet
-                .create_bolt11_invoice(
-                    amount_sats,
-                    request.description.clone(),
-                    request.expiry_seconds,
-                )
-                .await
-                .context("failed to create treasury Bolt11 invoice")?,
-        ),
-        Some(_) => bail!("treasury funding amount must be greater than 0"),
-        None => None,
-    };
-    let wallet_snapshot = wallet_snapshot_from_wallet(&wallet).await?;
-    Ok(TreasuryFundingMaterial {
-        spark_address,
-        bitcoin_address,
-        bolt11_invoice,
-        wallet_snapshot,
+    with_live_wallet(config, true, |wallet| async move {
+        let spark_address = wallet
+            .get_spark_address()
+            .await
+            .context("failed to create treasury Spark receive address")?;
+        let bitcoin_address = wallet
+            .get_bitcoin_address()
+            .await
+            .context("failed to create treasury Bitcoin receive address")?;
+        let bolt11_invoice = match request.amount_sats {
+            Some(amount_sats) if amount_sats > 0 => Some(
+                wallet
+                    .create_bolt11_invoice(
+                        amount_sats,
+                        request.description.clone(),
+                        request.expiry_seconds,
+                    )
+                    .await
+                    .context("failed to create treasury Bolt11 invoice")?,
+            ),
+            Some(_) => bail!("treasury funding amount must be greater than 0"),
+            None => None,
+        };
+        let wallet_snapshot = wallet_snapshot_from_wallet(wallet.as_ref()).await?;
+        Ok(TreasuryFundingMaterial {
+            spark_address,
+            bitcoin_address,
+            bolt11_invoice,
+            wallet_snapshot,
+        })
     })
+    .await
 }
 
 pub async fn load_live_wallet_snapshot(
@@ -1100,8 +1104,10 @@ pub async fn load_live_wallet_snapshot(
         return hook();
     }
 
-    let wallet = open_wallet(config, create_if_missing).await?;
-    wallet_snapshot_from_wallet(&wallet).await
+    with_live_wallet(config, create_if_missing, |wallet| async move {
+        wallet_snapshot_from_wallet(wallet.as_ref()).await
+    })
+    .await
 }
 
 pub async fn dispatch_live_payouts(
@@ -1126,6 +1132,9 @@ pub async fn dispatch_live_payouts(
             return dispatch_with_test_hooks(plans);
         }
     }
+
+    let operation_lock = live_wallet_operation_lock();
+    let _operation_guard = operation_lock.lock().await;
 
     let wallet = match open_wallet(config, false).await {
         Ok(wallet) => wallet,
@@ -1161,7 +1170,7 @@ pub async fn dispatch_live_payouts(
         }
     }
 
-    let (wallet_snapshot, wallet_error) = match wallet_snapshot_from_wallet(&wallet).await {
+    let (wallet_snapshot, wallet_error) = match wallet_snapshot_from_wallet(wallet.as_ref()).await {
         Ok(snapshot) => (Some(snapshot), None),
         Err(error) => (None, Some(error.to_string())),
     };
@@ -1495,7 +1504,75 @@ fn truncate_target(value: &str) -> String {
     )
 }
 
-async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result<SparkWallet> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LiveWalletCacheKey {
+    wallet_mnemonic_path: PathBuf,
+    wallet_storage_dir: PathBuf,
+    wallet_network: String,
+    wallet_api_key_env: Option<String>,
+}
+
+#[derive(Clone)]
+struct LiveWalletCacheEntry {
+    key: LiveWalletCacheKey,
+    wallet: Arc<SparkWallet>,
+}
+
+fn live_wallet_cache() -> &'static AsyncMutex<Option<LiveWalletCacheEntry>> {
+    static CACHE: OnceLock<AsyncMutex<Option<LiveWalletCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| AsyncMutex::new(None))
+}
+
+fn live_wallet_operation_lock() -> &'static AsyncMutex<()> {
+    static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| AsyncMutex::new(()))
+}
+
+fn live_wallet_cache_key(config: &TreasuryConfig) -> LiveWalletCacheKey {
+    LiveWalletCacheKey {
+        wallet_mnemonic_path: config.wallet_mnemonic_path.clone(),
+        wallet_storage_dir: config.wallet_storage_dir.clone(),
+        wallet_network: config.wallet_network.clone(),
+        wallet_api_key_env: config.wallet_api_key_env.clone(),
+    }
+}
+
+async fn with_live_wallet<F, Fut, T>(
+    config: &TreasuryConfig,
+    create_if_missing: bool,
+    operation: F,
+) -> Result<T>
+where
+    F: FnOnce(Arc<SparkWallet>) -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let operation_lock = live_wallet_operation_lock();
+    let _operation_guard = operation_lock.lock().await;
+    let wallet = open_wallet(config, create_if_missing).await?;
+    operation(wallet).await
+}
+
+async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result<Arc<SparkWallet>> {
+    let cache_key = live_wallet_cache_key(config);
+    let cache = live_wallet_cache();
+    let mut cache_guard = cache.lock().await;
+    if let Some(entry) = cache_guard.as_ref()
+        && entry.key == cache_key
+    {
+        return Ok(entry.wallet.clone());
+    }
+    let wallet = Arc::new(open_wallet_uncached(config, create_if_missing).await?);
+    *cache_guard = Some(LiveWalletCacheEntry {
+        key: cache_key,
+        wallet: wallet.clone(),
+    });
+    Ok(wallet)
+}
+
+async fn open_wallet_uncached(
+    config: &TreasuryConfig,
+    create_if_missing: bool,
+) -> Result<SparkWallet> {
     ensure_rustls_crypto_provider()?;
     let mnemonic =
         ensure_wallet_mnemonic(config.wallet_mnemonic_path.as_path(), create_if_missing)?;
