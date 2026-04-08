@@ -433,7 +433,7 @@ pub struct Cli {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct InitReport {
+pub struct InitReport {
     config_path: String,
     ledger_path: String,
     identity_path: String,
@@ -443,7 +443,7 @@ struct InitReport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct DoctorReport {
+pub struct DoctorReport {
     config_path: String,
     node_label: String,
     payout_destination: Option<String>,
@@ -460,7 +460,7 @@ struct ReportContext {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-struct BackendReport {
+pub struct BackendReport {
     context: ReportContext,
     backends: Vec<BackendEntry>,
 }
@@ -486,7 +486,7 @@ struct BackendEntry {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-struct ProductReport {
+pub struct ProductReport {
     context: ReportContext,
     products: Vec<ProductEntry>,
 }
@@ -531,7 +531,7 @@ struct ProductEntry {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-struct InventoryReport {
+pub struct InventoryReport {
     context: ReportContext,
     rows: Vec<ProviderInventoryRow>,
 }
@@ -583,7 +583,7 @@ pub struct PayoutWithdrawalReport {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-struct SandboxReport {
+pub struct SandboxReport {
     context: ReportContext,
     supported_execution_classes: Vec<String>,
     ready_execution_classes: Vec<String>,
@@ -1645,7 +1645,7 @@ where
     Ok(final_path)
 }
 
-fn gemma_catalog_report(config_path: &Path) -> GemmaCatalogReport {
+pub fn gemma_catalog_report(config_path: &Path) -> GemmaCatalogReport {
     let models_root = gemma_models_root(config_path);
     let models = gemma_local_installations(config_path)
         .into_iter()
@@ -1667,7 +1667,7 @@ fn gemma_catalog_report(config_path: &Path) -> GemmaCatalogReport {
     }
 }
 
-fn render_gemma_catalog_report(report: &GemmaCatalogReport) -> String {
+pub fn render_gemma_catalog_report(report: &GemmaCatalogReport) -> String {
     let mut lines = vec![
         format!("Gemma models root: {}", report.models_root),
         String::new(),
@@ -2730,6 +2730,214 @@ pub fn parse_args(args: Vec<String>) -> Result<Cli> {
         command,
         config_path,
     })
+}
+
+pub fn parse_command_from_input(input: &str) -> Result<Command> {
+    let words: Vec<String> = input.split_whitespace().map(String::from).collect();
+    if words.is_empty() {
+        bail!("empty command");
+    }
+    parse_command(&words, 0)
+}
+
+pub async fn execute_command(config_path: &Path, command: Command) -> Result<String> {
+    match command {
+        Command::Init => {
+            let config = load_or_create_config(config_path)?;
+            let identity = ensure_identity(config.identity_path.as_path())?;
+            let ledger_path = ensure_local_ledger(config_path)?;
+            Ok(serde_json::to_string_pretty(&InitReport {
+                config_path: config_path.display().to_string(),
+                ledger_path: ledger_path.display().to_string(),
+                identity_path: config.identity_path.display().to_string(),
+                npub: identity.npub,
+                payout_destination: config.payout_destination.clone(),
+                admin_listen_addr: config.admin_listen_addr.clone(),
+            })?)
+        }
+        Command::Doctor => {
+            let config = load_or_create_config(config_path)?;
+            let identity = ensure_identity(config.identity_path.as_path())?;
+            let availability = detect_availability(&config).await?;
+            let products =
+                public_product_entries(products_from_availability(&config, &availability));
+            Ok(serde_json::to_string_pretty(&DoctorReport {
+                config_path: config_path.display().to_string(),
+                node_label: config.node_label.clone(),
+                payout_destination: config.payout_destination.clone(),
+                identity: identity_metadata(&identity, config.node_label.as_str()),
+                availability,
+                products,
+            })?)
+        }
+        Command::Serve => bail!("serve is a long-running command and cannot be executed inline"),
+        Command::Status { .. } => {
+            let status = load_status_or_detect(config_path).await?;
+            Ok(render_human_status(&status))
+        }
+        Command::Backends { .. } => {
+            let report = load_backend_report(config_path).await?;
+            Ok(render_backend_report(&report))
+        }
+        Command::Inventory { limit, .. } => {
+            let report = load_inventory_report(config_path, limit).await?;
+            Ok(render_inventory_report(&report))
+        }
+        Command::Products { .. } => {
+            let report = load_product_report(config_path).await?;
+            Ok(render_product_report(&report))
+        }
+        Command::Relays { .. } => {
+            let report = load_relay_report(config_path)?;
+            Ok(render_relay_report(&report))
+        }
+        Command::Sandbox { limit, .. } => {
+            let report = load_sandbox_report(config_path, limit).await?;
+            Ok(render_sandbox_report(&report))
+        }
+        Command::Jobs { limit, .. } => {
+            let report = load_jobs_report(config_path, limit).await?;
+            Ok(render_jobs_report(&report))
+        }
+        Command::Earnings { .. } => {
+            let report = load_earnings_report(config_path).await?;
+            Ok(render_earnings_report(&report))
+        }
+        Command::Receipts { limit, .. } => {
+            let report = load_receipts_report(config_path, limit).await?;
+            Ok(render_receipts_report(&report))
+        }
+        Command::Activity { limit, .. } => {
+            let report = load_relay_activity_report(config_path, limit)?;
+            Ok(render_relay_activity_report(&report))
+        }
+        Command::RelayAdd { url } => {
+            let report = add_configured_relay(config_path, url.as_str())?;
+            Ok(render_relay_report(&report))
+        }
+        Command::RelayRemove { url } => {
+            let report = remove_configured_relay(config_path, url.as_str())?;
+            Ok(render_relay_report(&report))
+        }
+        Command::RelayRefresh { .. } => {
+            let report = refresh_relay_report(config_path).await?;
+            Ok(render_relay_report(&report))
+        }
+        Command::Announcement { action, .. } => {
+            let report = match action {
+                AnnouncementAction::Show => load_announcement_report(config_path).await?,
+                AnnouncementAction::Publish => {
+                    publish_announcement_report(config_path, false).await?
+                }
+                AnnouncementAction::Refresh => {
+                    publish_announcement_report(config_path, true).await?
+                }
+            };
+            Ok(render_announcement_report(&report))
+        }
+        Command::ProviderScan { seconds, .. } => {
+            let report = scan_provider_requests(config_path, seconds).await?;
+            Ok(render_provider_intake_report(&report))
+        }
+        Command::ProviderRun { seconds, .. } => {
+            let report = run_provider_requests(config_path, seconds).await?;
+            Ok(render_provider_run_report(&report))
+        }
+        Command::JobSubmit { request, .. } => {
+            let report = submit_buyer_job(config_path, request).await?;
+            Ok(render_buyer_job_submit_report(&report))
+        }
+        Command::JobWatch { .. } => {
+            bail!("job watch is a streaming command and cannot be executed inline")
+        }
+        Command::JobHistory { limit, .. } => {
+            let report = load_buyer_job_history(config_path, limit)?;
+            Ok(render_buyer_job_history_report(&report))
+        }
+        Command::JobReplay {
+            request_event_id, ..
+        } => {
+            let report = load_buyer_job_replay(config_path, request_event_id.as_str())?;
+            Ok(render_buyer_job_replay_report(&report))
+        }
+        Command::JobApprove {
+            request_event_id, ..
+        } => {
+            let report =
+                approve_buyer_job_payment(config_path, request_event_id.as_str()).await?;
+            Ok(render_buyer_job_payment_report(&report))
+        }
+        Command::JobDeny {
+            request_event_id, ..
+        } => {
+            let report = deny_buyer_job_payment(config_path, request_event_id.as_str())?;
+            Ok(render_buyer_job_payment_report(&report))
+        }
+        Command::JobPolicy { mode, .. } => {
+            let report = apply_buyer_payment_policy(config_path, mode)?;
+            Ok(render_buyer_payment_policy_report(&report))
+        }
+        Command::Payout { limit, .. } => {
+            let report = load_payout_report(config_path, limit).await?;
+            Ok(render_payout_report(&report))
+        }
+        Command::PayoutWithdraw {
+            payment_request,
+            amount_sats,
+            ..
+        } => {
+            let report =
+                run_payout_withdrawal(config_path, payment_request.as_str(), amount_sats).await?;
+            Ok(render_payout_withdrawal_report(&report))
+        }
+        Command::Wallet { command } => run_wallet_command(config_path, &command).await,
+        Command::Gemma { command } => match command {
+            GemmaCommand::List { .. } => {
+                let _ = ensure_local_setup(config_path)?;
+                let report = gemma_catalog_report(config_path);
+                Ok(render_gemma_catalog_report(&report))
+            }
+            GemmaCommand::Download { .. } => {
+                bail!("gemma download is a streaming command and cannot be executed inline")
+            }
+            GemmaCommand::Diagnose { .. } => {
+                bail!("gemma diagnose is a long-running command and cannot be executed inline")
+            }
+            GemmaCommand::Benchmark { .. } => {
+                bail!("gemma benchmark is a long-running command and cannot be executed inline")
+            }
+        },
+        Command::Online => {
+            let status =
+                apply_control_command(config_path, ProviderControlAction::Online).await?;
+            Ok(render_human_status(&status))
+        }
+        Command::Offline => {
+            let status =
+                apply_control_command(config_path, ProviderControlAction::Offline).await?;
+            Ok(render_human_status(&status))
+        }
+        Command::Pause => {
+            let status =
+                apply_control_command(config_path, ProviderControlAction::Pause).await?;
+            Ok(render_human_status(&status))
+        }
+        Command::Resume => {
+            let status =
+                apply_control_command(config_path, ProviderControlAction::Resume).await?;
+            Ok(render_human_status(&status))
+        }
+        Command::ConfigShow => {
+            let config = load_or_create_config(config_path)?;
+            render_public_config_json(&config)
+        }
+        Command::ConfigSet { key, value } => {
+            let mut config = load_or_create_config(config_path)?;
+            apply_config_set(&mut config, key.as_str(), value.as_str())?;
+            save_config(config_path, &config)?;
+            render_public_config_json(&config)
+        }
+    }
 }
 
 pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
@@ -4064,7 +4272,7 @@ fn parse_provider_scan_flags(
     Ok((json, seconds))
 }
 
-fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
+pub fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
     if path.exists() {
         return load_config(path);
     }
@@ -4108,7 +4316,7 @@ fn load_config_required(path: &Path) -> Result<PylonConfig> {
     load_config(path)
 }
 
-fn save_config(path: &Path, config: &PylonConfig) -> Result<()> {
+pub fn save_config(path: &Path, config: &PylonConfig) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create pylon config dir {}", parent.display()))?;
@@ -4118,7 +4326,7 @@ fn save_config(path: &Path, config: &PylonConfig) -> Result<()> {
     Ok(())
 }
 
-fn render_public_config_json(config: &PylonConfig) -> Result<String> {
+pub fn render_public_config_json(config: &PylonConfig) -> Result<String> {
     Ok(serde_json::to_string_pretty(&PylonPublicConfig::from(
         config,
     ))?)
@@ -4283,7 +4491,7 @@ fn default_home_dir() -> PathBuf {
         .join("pylon")
 }
 
-fn ensure_identity(path: &Path) -> Result<NostrIdentity> {
+pub fn ensure_identity(path: &Path) -> Result<NostrIdentity> {
     if path.exists() {
         return load_identity_from_path(path);
     }
@@ -4523,7 +4731,7 @@ async fn sync_live_announcement(
     Ok(Some(publish_announcement_report(config_path, true).await?))
 }
 
-async fn apply_control_command(
+pub async fn apply_control_command(
     config_path: &Path,
     action: ProviderControlAction,
 ) -> Result<ProviderStatusResponse> {
@@ -4600,7 +4808,7 @@ fn inventory_rows(
         .collect()
 }
 
-async fn load_status_or_detect(config_path: &Path) -> Result<ProviderStatusResponse> {
+pub async fn load_status_or_detect(config_path: &Path) -> Result<ProviderStatusResponse> {
     if !config_path.exists() {
         return Ok(build_unconfigured_status_for_path(config_path));
     }
@@ -5086,7 +5294,7 @@ fn identity_metadata(identity: &NostrIdentity, node_label: &str) -> ProviderIden
     }
 }
 
-fn render_human_status(status: &ProviderStatusResponse) -> String {
+pub fn render_human_status(status: &ProviderStatusResponse) -> String {
     let mut lines = vec![
         format!("state: {}", provider_runtime_state_label(status)),
         format!("desired_mode: {}", status.desired_mode.label()),
@@ -5711,7 +5919,7 @@ fn sandbox_backend_entry(
     }
 }
 
-async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
+pub async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let availability = if config_path.exists() {
         try_live_json::<ProviderAvailability>(&config, "/v1/backend-health")
@@ -5752,7 +5960,7 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
     })
 }
 
-async fn load_inventory_report(
+pub async fn load_inventory_report(
     config_path: &Path,
     limit: Option<usize>,
 ) -> Result<InventoryReport> {
@@ -5821,7 +6029,7 @@ fn inventory_row_truth_rank(row: &ProviderInventoryRow) -> (bool, bool, bool) {
     (row.eligible, row.backend_ready, row.enabled)
 }
 
-async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
+pub async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let products = public_product_entries(products_from_status(&config, &status));
     Ok(ProductReport {
@@ -6172,7 +6380,7 @@ async fn observe_relay_auth_state(
     )
 }
 
-async fn load_sandbox_report(config_path: &Path, limit: Option<usize>) -> Result<SandboxReport> {
+pub async fn load_sandbox_report(config_path: &Path, limit: Option<usize>) -> Result<SandboxReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let (runtimes, profiles, last_scan_error) = if config_path.exists() {
         let runtimes = if let Some(runtimes) = try_live_json::<Vec<ProviderSandboxRuntimeHealth>>(
@@ -6752,7 +6960,7 @@ fn render_report_context(context: &ReportContext) -> Vec<String> {
     lines
 }
 
-fn render_backend_report(report: &BackendReport) -> String {
+pub fn render_backend_report(report: &BackendReport) -> String {
     let mut lines = render_report_context(&report.context);
     for backend in &report.backends {
         lines.push(String::new());
@@ -6815,7 +7023,7 @@ fn render_backend_report(report: &BackendReport) -> String {
     lines.join("\n")
 }
 
-fn render_inventory_report(report: &InventoryReport) -> String {
+pub fn render_inventory_report(report: &InventoryReport) -> String {
     let mut lines = render_report_context(&report.context);
     for row in &report.rows {
         lines.push(String::new());
@@ -6833,7 +7041,7 @@ fn render_inventory_report(report: &InventoryReport) -> String {
     lines.join("\n")
 }
 
-fn render_product_report(report: &ProductReport) -> String {
+pub fn render_product_report(report: &ProductReport) -> String {
     let mut lines = render_report_context(&report.context);
     for product in &report.products {
         lines.push(String::new());
@@ -7093,7 +7301,7 @@ pub fn render_relay_activity_report(report: &RelayActivityReport) -> String {
     lines.join("\n")
 }
 
-fn render_sandbox_report(report: &SandboxReport) -> String {
+pub fn render_sandbox_report(report: &SandboxReport) -> String {
     let mut lines = render_report_context(&report.context);
     lines.push(String::new());
     lines.push(format!(
@@ -7997,7 +8205,7 @@ async fn detect_local_gemma(
     }
 }
 
-fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<()> {
+pub fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<()> {
     match key {
         "node_label" => config.node_label = value.to_string(),
         "payout_destination" => {
@@ -8124,11 +8332,11 @@ mod tests {
         inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
         load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
-        load_status_or_detect, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
-        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_public_config_json, render_sandbox_report,
-        report_provider_presence_heartbeat_for_snapshot,
+        load_status_or_detect, mutate_ledger, parse_args, parse_command_from_input,
+        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
+        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
+        remove_configured_relay, render_human_status, render_public_config_json,
+        render_sandbox_report, report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config,
@@ -12724,5 +12932,48 @@ mod tests {
             rendered.contains("execution_class: sandbox.python.exec"),
             "sandbox report should render execution classes for policy matching",
         )
+    }
+
+    #[test]
+    fn parse_command_from_input_supports_status() -> Result<(), Box<dyn std::error::Error>> {
+        let cmd = parse_command_from_input("status")?;
+        ensure(
+            cmd == Command::Status { json: false },
+            "status should parse into non-json status command",
+        )
+    }
+
+    #[test]
+    fn parse_command_from_input_supports_jobs_with_limit() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let cmd = parse_command_from_input("jobs --limit 5")?;
+        ensure(
+            cmd == Command::Jobs {
+                json: false,
+                limit: Some(5),
+            },
+            "jobs --limit 5 should parse into jobs command with limit",
+        )
+    }
+
+    #[test]
+    fn parse_command_from_input_supports_relay_add() -> Result<(), Box<dyn std::error::Error>> {
+        let cmd = parse_command_from_input("relay add wss://example.com")?;
+        ensure(
+            cmd == Command::RelayAdd {
+                url: "wss://example.com".to_string(),
+            },
+            "relay add should parse into relay add command",
+        )
+    }
+
+    #[test]
+    fn parse_command_from_input_rejects_empty() {
+        assert!(parse_command_from_input("").is_err());
+    }
+
+    #[test]
+    fn parse_command_from_input_rejects_unknown() {
+        assert!(parse_command_from_input("nonsense").is_err());
     }
 }

@@ -161,30 +161,6 @@ enum WorkerEvent {
     ModelUninstallFailed {
         error: String,
     },
-    RelayRefreshFinished {
-        report: pylon::RelayReport,
-    },
-    RelayRefreshFailed {
-        error: String,
-    },
-    AnnouncementFinished {
-        output: String,
-    },
-    AnnouncementFailed {
-        error: String,
-    },
-    ProviderScanFinished {
-        output: String,
-    },
-    ProviderScanFailed {
-        error: String,
-    },
-    ProviderRunFinished {
-        output: String,
-    },
-    ProviderRunFailed {
-        error: String,
-    },
     BuyerJobSubmitted {
         report: pylon::BuyerJobSubmitReport,
     },
@@ -194,33 +170,12 @@ enum WorkerEvent {
     BuyerJobWatchFinished {
         report: pylon::BuyerJobWatchReport,
     },
-    BuyerJobCommandFinished {
-        title: String,
-        output: String,
-    },
-    BuyerJobCommandFailed {
-        error: String,
-    },
     TranscriptReportFinished {
         title: String,
         output: String,
     },
     TranscriptReportFailed {
         title: String,
-        error: String,
-    },
-    PayoutCommandFinished {
-        title: String,
-        output: String,
-    },
-    PayoutCommandFailed {
-        error: String,
-    },
-    WalletCommandFinished {
-        title: String,
-        output: String,
-    },
-    WalletCommandFailed {
         error: String,
     },
 }
@@ -441,44 +396,53 @@ impl AppShell {
                     self.start_model_uninstall(model_id);
                     return;
                 }
-                SlashCommandId::Announce => {
-                    self.handle_announce_command(args);
-                    return;
-                }
-                SlashCommandId::Provider => {
-                    self.handle_provider_command(args);
-                    return;
-                }
                 SlashCommandId::Job => {
                     self.handle_job_command(args);
                     return;
                 }
-                SlashCommandId::Jobs => {
-                    self.handle_jobs_command(args);
-                    return;
-                }
-                SlashCommandId::Earnings => {
-                    self.handle_earnings_command(args);
-                    return;
-                }
-                SlashCommandId::Receipts => {
-                    self.handle_receipts_command(args);
-                    return;
-                }
-                SlashCommandId::Activity => {
-                    self.handle_activity_command(args);
-                    return;
-                }
-                SlashCommandId::Payout => {
-                    self.handle_payout_command(args);
-                    return;
-                }
-                SlashCommandId::Relay => {
-                    self.handle_relay_command(args);
-                    return;
-                }
-                SlashCommandId::Wallet => {
-                    self.handle_wallet_command(args);
+                SlashCommandId::Jobs
+                | SlashCommandId::Earnings
+                | SlashCommandId::Receipts
+                | SlashCommandId::Activity
+                | SlashCommandId::Relay
+                | SlashCommandId::Announce
+                | SlashCommandId::Provider
+                | SlashCommandId::Payout
+                | SlashCommandId::Wallet => {
+                    let cli_input = translate_tui_input(spec.name, args.as_str());
+                    let command = match pylon::parse_command_from_input(cli_input.as_str()) {
+                        Ok(cmd) => cmd,
+                        Err(e) => {
+                            self.push_system_message(
+                                format!("/{} Error", spec.name),
+                                e.to_string(),
+                            );
+                            return;
+                        }
+                    };
+                    let (title, progress) = match spec.id {
+                        SlashCommandId::Jobs => ("Jobs", "Loading retained provider jobs..."),
+                        SlashCommandId::Earnings => {
+                            ("Earnings", "Loading retained provider earnings...")
+                        }
+                        SlashCommandId::Receipts => {
+                            ("Receipts", "Loading retained provider receipts...")
+                        }
+                        SlashCommandId::Activity => {
+                            ("Activity", "Loading retained relay activity...")
+                        }
+                        SlashCommandId::Relay => ("Relays", "Loading relay state..."),
+                        SlashCommandId::Announce => {
+                            ("Announcement", "Loading announcement state...")
+                        }
+                        SlashCommandId::Provider => {
+                            ("Provider", "Running provider command...")
+                        }
+                        SlashCommandId::Payout => ("Payout", "Loading provider payout state..."),
+                        SlashCommandId::Wallet => ("Wallet", "Running wallet command..."),
+                        _ => unreachable!(),
+                    };
+                    self.spawn_async_command(title, progress, command);
                     return;
                 }
             },
@@ -878,30 +842,6 @@ impl AppShell {
             WorkerEvent::ModelUninstallFailed { error } => {
                 self.push_system_message("Uninstall Error", error);
             }
-            WorkerEvent::RelayRefreshFinished { report } => {
-                self.push_system_lines("Relays", relay_report_lines(&report));
-            }
-            WorkerEvent::RelayRefreshFailed { error } => {
-                self.push_system_message("Relay Error", error);
-            }
-            WorkerEvent::AnnouncementFinished { output } => {
-                self.push_system_lines("Announcement", text_body_lines(output.as_str()));
-            }
-            WorkerEvent::AnnouncementFailed { error } => {
-                self.push_system_message("Announcement Error", error);
-            }
-            WorkerEvent::ProviderScanFinished { output } => {
-                self.push_system_lines("Provider Intake", text_body_lines(output.as_str()));
-            }
-            WorkerEvent::ProviderScanFailed { error } => {
-                self.push_system_message("Provider Error", error);
-            }
-            WorkerEvent::ProviderRunFinished { output } => {
-                self.push_system_lines("Provider Run", text_body_lines(output.as_str()));
-            }
-            WorkerEvent::ProviderRunFailed { error } => {
-                self.push_system_message("Provider Error", error);
-            }
             WorkerEvent::BuyerJobSubmitted { report } => {
                 let request_event_id = report.request_event_id.clone();
                 self.push_system_lines(
@@ -922,29 +862,11 @@ impl AppShell {
                     text_body_lines(pylon::render_buyer_job_watch_report(&report).as_str()),
                 );
             }
-            WorkerEvent::BuyerJobCommandFinished { title, output } => {
-                self.push_system_lines(title, text_body_lines(output.as_str()));
-            }
-            WorkerEvent::BuyerJobCommandFailed { error } => {
-                self.push_system_message("Buyer Job Error", error);
-            }
             WorkerEvent::TranscriptReportFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
             }
             WorkerEvent::TranscriptReportFailed { title, error } => {
                 self.push_system_message(title, error);
-            }
-            WorkerEvent::PayoutCommandFinished { title, output } => {
-                self.push_system_lines(title, text_body_lines(output.as_str()));
-            }
-            WorkerEvent::PayoutCommandFailed { error } => {
-                self.push_system_message("Payout Error", error);
-            }
-            WorkerEvent::WalletCommandFinished { title, output } => {
-                self.push_system_lines(title, text_body_lines(output.as_str()));
-            }
-            WorkerEvent::WalletCommandFailed { error } => {
-                self.push_system_message("Wallet Error", error);
             }
         }
         self.sync_transcript_scroll_after_update();
@@ -960,374 +882,40 @@ impl AppShell {
         self.sync_transcript_scroll_after_update();
     }
 
-    fn spawn_transcript_report<F>(
-        &mut self,
-        title: &'static str,
-        progress: impl Into<String>,
-        job: F,
-    ) where
-        F: FnOnce(PathBuf) -> Result<String> + Send + 'static,
-    {
+    fn spawn_async_command(&mut self, title: &str, progress: &str, command: pylon::Command) {
         let config_path = self.config_path.clone();
         let tx = self.worker_tx.clone();
-        std::thread::spawn(move || match job(config_path) {
-            Ok(output) => {
-                let _ = tx.send(WorkerEvent::TranscriptReportFinished {
-                    title: title.to_string(),
-                    output,
-                });
-            }
-            Err(error) => {
-                let _ = tx.send(WorkerEvent::TranscriptReportFailed {
-                    title: format!("{title} Error"),
-                    error: error.to_string(),
-                });
+        let title_owned = title.to_string();
+        std::thread::spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = tx.send(WorkerEvent::TranscriptReportFailed {
+                        title: format!("{title_owned} Error"),
+                        error: e.to_string(),
+                    });
+                    return;
+                }
+            };
+            match runtime.block_on(pylon::execute_command(config_path.as_path(), command)) {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::TranscriptReportFinished {
+                        title: title_owned,
+                        output,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(WorkerEvent::TranscriptReportFailed {
+                        title: format!("{title_owned} Error"),
+                        error: e.to_string(),
+                    });
+                }
             }
         });
         self.push_system_message(title, progress);
-    }
-
-    fn handle_relay_command(&mut self, args: String) {
-        let mut parts = args.split_whitespace();
-        match parts.next() {
-            None | Some("list") => match pylon::load_relay_report(self.config_path.as_path()) {
-                Ok(report) => self.push_system_lines("Relays", relay_report_lines(&report)),
-                Err(error) => self.push_system_message("Relay Error", error.to_string()),
-            },
-            Some("add") => {
-                let Some(url) = parts.next() else {
-                    self.push_system_message("Relay Error", "Usage: /relay add <ws://...>");
-                    return;
-                };
-                match pylon::add_configured_relay(self.config_path.as_path(), url) {
-                    Ok(report) => self.push_system_lines("Relays", relay_report_lines(&report)),
-                    Err(error) => self.push_system_message("Relay Error", error.to_string()),
-                }
-            }
-            Some("remove") => {
-                let Some(url) = parts.next() else {
-                    self.push_system_message("Relay Error", "Usage: /relay remove <ws://...>");
-                    return;
-                };
-                match pylon::remove_configured_relay(self.config_path.as_path(), url) {
-                    Ok(report) => self.push_system_lines("Relays", relay_report_lines(&report)),
-                    Err(error) => self.push_system_message("Relay Error", error.to_string()),
-                }
-            }
-            Some("refresh") => {
-                let config_path = self.config_path.clone();
-                let tx = self.worker_tx.clone();
-                std::thread::spawn(move || {
-                    let error_tx = tx.clone();
-                    let runtime = match tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                    {
-                        Ok(runtime) => runtime,
-                        Err(error) => {
-                            let _ = error_tx.send(WorkerEvent::RelayRefreshFailed {
-                                error: error.to_string(),
-                            });
-                            return;
-                        }
-                    };
-                    let result = runtime.block_on(async move {
-                        pylon::refresh_relay_report(config_path.as_path()).await
-                    });
-                    match result {
-                        Ok(report) => {
-                            let _ = tx.send(WorkerEvent::RelayRefreshFinished { report });
-                        }
-                        Err(error) => {
-                            let _ = error_tx.send(WorkerEvent::RelayRefreshFailed {
-                                error: error.to_string(),
-                            });
-                        }
-                    }
-                });
-                self.push_system_message("Relays", "Refreshing configured relay connectivity...");
-            }
-            Some(other) => {
-                self.push_system_message(
-                    "Relay Error",
-                    format!("Unknown relay command `{other}`. Use list, add, remove, or refresh."),
-                );
-            }
-        }
-    }
-
-    fn handle_announce_command(&mut self, args: String) {
-        let (action, title) = match args.trim() {
-            "" | "show" => (
-                pylon::AnnouncementAction::Show,
-                "Loading announcement state...",
-            ),
-            "publish" => (
-                pylon::AnnouncementAction::Publish,
-                "Publishing provider announcement...",
-            ),
-            "refresh" => (
-                pylon::AnnouncementAction::Refresh,
-                "Refreshing provider announcement...",
-            ),
-            other => {
-                self.push_system_message(
-                    "Announcement Error",
-                    format!("Unknown announce command `{other}`. Use show, publish, or refresh."),
-                );
-                return;
-            }
-        };
-        let config_path = self.config_path.clone();
-        let tx = self.worker_tx.clone();
-        std::thread::spawn(move || {
-            let error_tx = tx.clone();
-            let runtime = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::AnnouncementFailed {
-                        error: error.to_string(),
-                    });
-                    return;
-                }
-            };
-            let result = runtime.block_on(async move {
-                let report = match action {
-                    pylon::AnnouncementAction::Show => {
-                        pylon::load_announcement_report(config_path.as_path()).await
-                    }
-                    pylon::AnnouncementAction::Publish => {
-                        pylon::publish_announcement_report(config_path.as_path(), false).await
-                    }
-                    pylon::AnnouncementAction::Refresh => {
-                        pylon::publish_announcement_report(config_path.as_path(), true).await
-                    }
-                }?;
-                Ok::<String, anyhow::Error>(pylon::render_announcement_report(&report))
-            });
-            match result {
-                Ok(output) => {
-                    let _ = tx.send(WorkerEvent::AnnouncementFinished { output });
-                }
-                Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::AnnouncementFailed {
-                        error: error.to_string(),
-                    });
-                }
-            }
-        });
-        self.push_system_message("Announcement", title);
-    }
-
-    fn handle_provider_command(&mut self, args: String) {
-        let mut parts = args.split_whitespace();
-        let Some(subcommand) = parts.next() else {
-            self.push_system_message(
-                "Provider Error",
-                "Usage: /provider [scan|run] [--seconds <n>]",
-            );
-            return;
-        };
-        let action = subcommand.to_string();
-        if !matches!(action.as_str(), "scan" | "run") {
-            self.push_system_message(
-                "Provider Error",
-                format!("Unknown provider command `{action}`. Use scan or run."),
-            );
-            return;
-        }
-
-        let mut seconds = 5u64;
-        while let Some(flag) = parts.next() {
-            match flag {
-                "--seconds" => {
-                    let Some(raw) = parts.next() else {
-                        self.push_system_message("Provider Error", "Missing value for --seconds.");
-                        return;
-                    };
-                    match raw.parse::<u64>() {
-                        Ok(value) if value > 0 => seconds = value,
-                        Ok(_) | Err(_) => {
-                            self.push_system_message(
-                                "Provider Error",
-                                format!("Invalid provider window seconds `{raw}`."),
-                            );
-                            return;
-                        }
-                    }
-                }
-                other => {
-                    self.push_system_message(
-                        "Provider Error",
-                        format!("Unexpected provider flag `{other}`."),
-                    );
-                    return;
-                }
-            }
-        }
-
-        let config_path = self.config_path.clone();
-        let tx = self.worker_tx.clone();
-        let action_for_thread = action.clone();
-        std::thread::spawn(move || {
-            let error_tx = tx.clone();
-            let is_run = action_for_thread == "run";
-            let runtime = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::ProviderScanFailed {
-                        error: error.to_string(),
-                    });
-                    return;
-                }
-            };
-            let result = runtime.block_on(async move {
-                match if is_run { "run" } else { "scan" } {
-                    "scan" => {
-                        let report =
-                            pylon::scan_provider_requests(config_path.as_path(), seconds).await?;
-                        Ok::<(bool, String), anyhow::Error>((
-                            false,
-                            pylon::render_provider_intake_report(&report),
-                        ))
-                    }
-                    "run" => {
-                        let report =
-                            pylon::run_provider_requests(config_path.as_path(), seconds).await?;
-                        Ok::<(bool, String), anyhow::Error>((
-                            true,
-                            pylon::render_provider_run_report(&report),
-                        ))
-                    }
-                    other => Err(anyhow::anyhow!(
-                        "Unknown provider command `{other}`. Use scan or run."
-                    )),
-                }
-            });
-            match result {
-                Ok((is_run, output)) => {
-                    let _ = tx.send(if is_run {
-                        WorkerEvent::ProviderRunFinished { output }
-                    } else {
-                        WorkerEvent::ProviderScanFinished { output }
-                    });
-                }
-                Err(error) => {
-                    let _ = error_tx.send(if is_run {
-                        WorkerEvent::ProviderRunFailed {
-                            error: error.to_string(),
-                        }
-                    } else {
-                        WorkerEvent::ProviderScanFailed {
-                            error: error.to_string(),
-                        }
-                    });
-                }
-            }
-        });
-        self.push_system_message(
-            if action == "run" {
-                "Provider Run"
-            } else {
-                "Provider Intake"
-            },
-            if action == "run" {
-                format!("Running retained provider intake for {}s...", seconds)
-            } else {
-                format!("Scanning configured relays for {}s...", seconds)
-            },
-        );
-    }
-
-    fn handle_jobs_command(&mut self, args: String) {
-        let limit = match parse_tui_optional_limit(args.as_str(), "jobs") {
-            Ok(limit) => limit.or(Some(10)),
-            Err(error) => {
-                self.push_system_message("Jobs Error", error.to_string());
-                return;
-            }
-        };
-        self.spawn_transcript_report(
-            "Jobs",
-            "Loading retained provider jobs...",
-            move |config_path| {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()?;
-                let report = runtime.block_on(async move {
-                    pylon::load_jobs_report(config_path.as_path(), limit).await
-                })?;
-                Ok(pylon::render_jobs_report(&report))
-            },
-        );
-    }
-
-    fn handle_earnings_command(&mut self, args: String) {
-        let trimmed = args.trim();
-        if !(trimmed.is_empty() || trimmed == "show" || trimmed == "status") {
-            self.push_system_message("Earnings Error", "Usage: /earnings");
-            return;
-        }
-        self.spawn_transcript_report(
-            "Earnings",
-            "Loading retained provider earnings...",
-            move |config_path| {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()?;
-                let report = runtime.block_on(async move {
-                    pylon::load_earnings_report(config_path.as_path()).await
-                })?;
-                Ok(pylon::render_earnings_report(&report))
-            },
-        );
-    }
-
-    fn handle_receipts_command(&mut self, args: String) {
-        let limit = match parse_tui_optional_limit(args.as_str(), "receipts") {
-            Ok(limit) => limit.or(Some(10)),
-            Err(error) => {
-                self.push_system_message("Receipts Error", error.to_string());
-                return;
-            }
-        };
-        self.spawn_transcript_report(
-            "Receipts",
-            "Loading retained provider receipts...",
-            move |config_path| {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()?;
-                let report = runtime.block_on(async move {
-                    pylon::load_receipts_report(config_path.as_path(), limit).await
-                })?;
-                Ok(pylon::render_receipts_report(&report))
-            },
-        );
-    }
-
-    fn handle_activity_command(&mut self, args: String) {
-        let limit = match parse_tui_optional_limit(args.as_str(), "activity") {
-            Ok(limit) => limit.or(Some(10)),
-            Err(error) => {
-                self.push_system_message("Activity Error", error.to_string());
-                return;
-            }
-        };
-        self.spawn_transcript_report(
-            "Activity",
-            "Loading retained relay activity...",
-            move |config_path| {
-                let report = pylon::load_relay_activity_report(config_path.as_path(), limit)?;
-                Ok(pylon::render_relay_activity_report(&report))
-            },
-        );
     }
 
     fn handle_job_command(&mut self, args: String) {
@@ -1350,7 +938,8 @@ impl AppShell {
                 {
                     Ok(runtime) => runtime,
                     Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                        let _ = error_tx.send(WorkerEvent::TranscriptReportFailed {
+                            title: "Buyer Job Error".to_string(),
                             error: error.to_string(),
                         });
                         return;
@@ -1364,7 +953,8 @@ impl AppShell {
                         let _ = tx.send(WorkerEvent::BuyerJobSubmitted { report });
                     }
                     Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                        let _ = error_tx.send(WorkerEvent::TranscriptReportFailed {
+                            title: "Buyer Job Error".to_string(),
                             error: error.to_string(),
                         });
                     }
@@ -1382,174 +972,16 @@ impl AppShell {
             }
             return;
         }
-        if let Some(remainder) = trimmed.strip_prefix("history") {
-            let limit = match parse_tui_buyer_job_history_request(remainder) {
-                Ok(limit) => limit,
-                Err(error) => {
-                    self.push_system_message("Buyer Job Error", error.to_string());
-                    return;
-                }
-            };
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                match pylon::load_buyer_job_history(config_path.as_path(), limit) {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
-                            title: "Buyer Job History".to_string(),
-                            output: pylon::render_buyer_job_history_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Buyer Job History", "Loading retained buyer job history...");
-            return;
-        }
-        if let Some(remainder) = trimmed.strip_prefix("replay") {
-            let request_event_id = match parse_tui_buyer_job_request_id(remainder, "job replay") {
-                Ok(request_event_id) => request_event_id,
-                Err(error) => {
-                    self.push_system_message("Buyer Job Error", error.to_string());
-                    return;
-                }
-            };
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                match pylon::load_buyer_job_replay(config_path.as_path(), request_event_id.as_str())
-                {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
-                            title: format!("Buyer Job Replay {}", report.entry.request_event_id),
-                            output: pylon::render_buyer_job_replay_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Buyer Job Replay", "Replaying retained buyer job state...");
-            return;
-        }
-        if let Some(remainder) = trimmed.strip_prefix("approve") {
-            let request_event_id = match parse_tui_buyer_job_request_id(remainder, "job approve") {
-                Ok(request_event_id) => request_event_id,
-                Err(error) => {
-                    self.push_system_message("Buyer Job Error", error.to_string());
-                    return;
-                }
-            };
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                let error_tx = tx.clone();
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
-                            error: error.to_string(),
-                        });
-                        return;
-                    }
-                };
-                let result = runtime.block_on(async move {
-                    pylon::approve_buyer_job_payment(
-                        config_path.as_path(),
-                        request_event_id.as_str(),
-                    )
-                    .await
-                });
-                match result {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
-                            title: "Buyer Payment".to_string(),
-                            output: pylon::render_buyer_job_payment_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Buyer Payment", "Submitting buyer invoice payment...");
-            return;
-        }
-        if let Some(remainder) = trimmed.strip_prefix("deny") {
-            let request_event_id = match parse_tui_buyer_job_request_id(remainder, "job deny") {
-                Ok(request_event_id) => request_event_id,
-                Err(error) => {
-                    self.push_system_message("Buyer Job Error", error.to_string());
-                    return;
-                }
-            };
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                match pylon::deny_buyer_job_payment(
-                    config_path.as_path(),
-                    request_event_id.as_str(),
-                ) {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
-                            title: "Buyer Payment".to_string(),
-                            output: pylon::render_buyer_job_payment_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Buyer Payment", "Denying buyer invoice payment...");
-            return;
-        }
-        if let Some(remainder) = trimmed.strip_prefix("policy") {
-            let mode = match parse_tui_buyer_job_policy_mode(remainder) {
-                Ok(mode) => mode,
-                Err(error) => {
-                    self.push_system_message("Buyer Job Error", error.to_string());
-                    return;
-                }
-            };
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                match pylon::apply_buyer_payment_policy(config_path.as_path(), mode) {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFinished {
-                            title: "Buyer Payment Policy".to_string(),
-                            output: pylon::render_buyer_payment_policy_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = tx.send(WorkerEvent::BuyerJobCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Buyer Payment Policy", "Updating buyer payment policy...");
-            return;
-        }
-        self.push_system_message(
-            "Buyer Job Error",
-            "Usage: /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt> | /job watch [<request_event_id>] [--seconds <n>] | /job history [--limit <n>] | /job replay <request_event_id> | /job approve <request_event_id> | /job deny <request_event_id> | /job policy [show|auto|manual]",
-        );
+        // All other job subcommands go through the unified path.
+        let cli_input = translate_tui_input("job", trimmed);
+        let command = match pylon::parse_command_from_input(cli_input.as_str()) {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                self.push_system_message("Buyer Job Error", e.to_string());
+                return;
+            }
+        };
+        self.spawn_async_command("Buyer Job", "Running buyer job command...", command);
     }
 
     fn start_buyer_job_watch(&mut self, request_event_id: Option<String>, seconds: u64) {
@@ -1565,7 +997,8 @@ impl AppShell {
             {
                 Ok(runtime) => runtime,
                 Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                    let _ = error_tx.send(WorkerEvent::TranscriptReportFailed {
+                        title: "Buyer Job Error".to_string(),
                         error: error.to_string(),
                     });
                     return;
@@ -1587,7 +1020,8 @@ impl AppShell {
                     let _ = tx.send(WorkerEvent::BuyerJobWatchFinished { report });
                 }
                 Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::BuyerJobCommandFailed {
+                    let _ = error_tx.send(WorkerEvent::TranscriptReportFailed {
+                        title: "Buyer Job Error".to_string(),
                         error: error.to_string(),
                     });
                 }
@@ -1600,193 +1034,6 @@ impl AppShell {
             } else {
                 format!("Watching retained buyer jobs for {}s...", seconds)
             },
-        );
-    }
-
-    fn handle_wallet_command(&mut self, args: String) {
-        let mut argv = vec![String::from("wallet")];
-        if args.trim().is_empty() {
-            argv.push(String::from("status"));
-        } else {
-            argv.extend(args.split_whitespace().map(ToString::to_string));
-        }
-        let command = match pylon::parse_wallet_command(argv.as_slice(), 0) {
-            Ok(command) => command,
-            Err(error) => {
-                self.push_system_message("Wallet Error", error.to_string());
-                return;
-            }
-        };
-        let title = wallet_command_title(&command);
-        let config_path = self.config_path.clone();
-        let tx = self.worker_tx.clone();
-        std::thread::spawn(move || {
-            let error_tx = tx.clone();
-            let runtime = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
-                        error: error.to_string(),
-                    });
-                    return;
-                }
-            };
-            let result = runtime.block_on(async move {
-                pylon::run_wallet_command(config_path.as_path(), &command).await
-            });
-            match result {
-                Ok(output) => {
-                    let _ = tx.send(WorkerEvent::WalletCommandFinished { title, output });
-                }
-                Err(error) => {
-                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
-                        error: error.to_string(),
-                    });
-                }
-            }
-        });
-        self.push_system_message("Wallet", "Running wallet command...");
-    }
-
-    fn handle_payout_command(&mut self, args: String) {
-        let trimmed = args.trim();
-        if trimmed.is_empty() || trimmed == "show" || trimmed == "status" {
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                let error_tx = tx.clone();
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
-                            error: error.to_string(),
-                        });
-                        return;
-                    }
-                };
-                let result = runtime.block_on(async move {
-                    pylon::load_payout_report(config_path.as_path(), Some(10)).await
-                });
-                match result {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::PayoutCommandFinished {
-                            title: "Payout".to_string(),
-                            output: pylon::render_payout_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Payout", "Loading provider payout state...");
-            return;
-        }
-        if let Some(remainder) = trimmed.strip_prefix("history") {
-            let limit = match parse_tui_payout_history_request(remainder) {
-                Ok(limit) => limit,
-                Err(error) => {
-                    self.push_system_message("Payout Error", error.to_string());
-                    return;
-                }
-            };
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                let error_tx = tx.clone();
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
-                            error: error.to_string(),
-                        });
-                        return;
-                    }
-                };
-                let result = runtime.block_on(async move {
-                    pylon::load_payout_report(config_path.as_path(), limit).await
-                });
-                match result {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::PayoutCommandFinished {
-                            title: "Payout History".to_string(),
-                            output: pylon::render_payout_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Payout History", "Loading retained payout history...");
-            return;
-        }
-        if let Some(remainder) = trimmed.strip_prefix("withdraw") {
-            let (payment_request, amount_sats) = match parse_tui_payout_withdraw_request(remainder)
-            {
-                Ok(request) => request,
-                Err(error) => {
-                    self.push_system_message("Payout Error", error.to_string());
-                    return;
-                }
-            };
-            let config_path = self.config_path.clone();
-            let tx = self.worker_tx.clone();
-            std::thread::spawn(move || {
-                let error_tx = tx.clone();
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
-                            error: error.to_string(),
-                        });
-                        return;
-                    }
-                };
-                let result = runtime.block_on(async move {
-                    pylon::run_payout_withdrawal(
-                        config_path.as_path(),
-                        payment_request.as_str(),
-                        amount_sats,
-                    )
-                    .await
-                });
-                match result {
-                    Ok(report) => {
-                        let _ = tx.send(WorkerEvent::PayoutCommandFinished {
-                            title: "Payout Withdrawal".to_string(),
-                            output: pylon::render_payout_withdrawal_report(&report),
-                        });
-                    }
-                    Err(error) => {
-                        let _ = error_tx.send(WorkerEvent::PayoutCommandFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                }
-            });
-            self.push_system_message("Payout Withdrawal", "Submitting provider withdrawal...");
-            return;
-        }
-        self.push_system_message(
-            "Payout Error",
-            "Usage: /payout | /payout history [--limit <n>] | /payout withdraw <payment_request> [--amount-sats <n>]",
         );
     }
 
@@ -2266,6 +1513,84 @@ impl AppShell {
     }
 }
 
+fn translate_tui_input(command_name: &str, args: &str) -> String {
+    let trimmed = args.trim();
+    match command_name {
+        "relay" => match trimmed.split_whitespace().next() {
+            None | Some("list") => "relays".to_string(),
+            _ => format!("relay {trimmed}"),
+        },
+        "wallet" => {
+            if trimmed.is_empty() {
+                "wallet status".to_string()
+            } else {
+                format!("wallet {trimmed}")
+            }
+        }
+        "payout" => {
+            if trimmed.is_empty() || trimmed == "show" || trimmed == "status" {
+                "payout --limit 10".to_string()
+            } else if let Some(remainder) = trimmed.strip_prefix("history") {
+                let rest = remainder.trim();
+                if rest.is_empty() {
+                    "payout --limit 10".to_string()
+                } else {
+                    format!("payout {rest}")
+                }
+            } else if let Some(remainder) = trimmed.strip_prefix("withdraw") {
+                format!("payout withdraw {}", remainder.trim())
+            } else {
+                format!("payout {trimmed}")
+            }
+        }
+        "jobs" => {
+            if trimmed.is_empty() {
+                "jobs --limit 10".to_string()
+            } else {
+                format!("jobs {trimmed}")
+            }
+        }
+        "receipts" => {
+            if trimmed.is_empty() {
+                "receipts --limit 10".to_string()
+            } else {
+                format!("receipts {trimmed}")
+            }
+        }
+        "activity" => {
+            if trimmed.is_empty() {
+                "activity --limit 10".to_string()
+            } else {
+                format!("activity {trimmed}")
+            }
+        }
+        "earnings" => {
+            let inner = trimmed.trim();
+            if inner.is_empty() || inner == "show" || inner == "status" {
+                "earnings".to_string()
+            } else {
+                format!("earnings {trimmed}")
+            }
+        }
+        "announce" => {
+            if trimmed.is_empty() {
+                "announce show".to_string()
+            } else {
+                format!("announce {trimmed}")
+            }
+        }
+        "provider" => format!("provider {trimmed}"),
+        "job" => format!("job {trimmed}"),
+        other => {
+            if trimmed.is_empty() {
+                other.to_string()
+            } else {
+                format!("{other} {trimmed}")
+            }
+        }
+    }
+}
+
 fn parse_tui_buyer_job_submit_request(args: &str) -> Result<pylon::BuyerJobSubmitRequest> {
     let mut remainder = args.trim();
     let mut bid_msats = None::<u64>;
@@ -2352,112 +1677,6 @@ fn parse_tui_buyer_job_watch_request(args: &str) -> Result<(Option<String>, u64)
     }
 
     Ok((request_event_id, seconds.max(1)))
-}
-
-fn parse_tui_buyer_job_history_request(args: &str) -> Result<Option<usize>> {
-    let mut remainder = args.trim();
-    let mut limit = None;
-    while !remainder.is_empty() {
-        if let Some(value) = remainder.strip_prefix("--limit ") {
-            let (raw, tail) = take_next_tui_word(value);
-            limit = Some(
-                raw.parse::<usize>()
-                    .map_err(|_| anyhow!("invalid buyer history limit `{raw}`"))?,
-            );
-            remainder = tail;
-            continue;
-        }
-        bail!("unexpected buyer job history argument `{remainder}`");
-    }
-    Ok(limit)
-}
-
-fn parse_tui_buyer_job_request_id(args: &str, command: &str) -> Result<String> {
-    let trimmed = args.trim();
-    if trimmed.is_empty() {
-        bail!("{command} requires <request_event_id>");
-    }
-    let (request_event_id, remainder) = take_next_tui_word(trimmed);
-    if !remainder.is_empty() {
-        bail!("unexpected {command} argument `{remainder}`");
-    }
-    Ok(request_event_id.to_string())
-}
-
-fn parse_tui_buyer_job_policy_mode(args: &str) -> Result<pylon::BuyerPaymentPolicyMode> {
-    match args.trim() {
-        "" | "show" => Ok(pylon::BuyerPaymentPolicyMode::Show),
-        "auto" => Ok(pylon::BuyerPaymentPolicyMode::Auto),
-        "manual" => Ok(pylon::BuyerPaymentPolicyMode::Manual),
-        other => bail!("unknown buyer payment policy mode `{other}`"),
-    }
-}
-
-fn parse_tui_optional_limit(args: &str, command: &str) -> Result<Option<usize>> {
-    let mut remainder = args.trim();
-    if let Some(tail) = remainder.strip_prefix("show") {
-        if !tail.is_empty() && !tail.starts_with(char::is_whitespace) {
-            bail!("unexpected {command} argument `{remainder}`");
-        }
-        remainder = tail.trim_start();
-    }
-    if remainder == "show" {
-        remainder = "";
-    }
-    let mut limit = None;
-    while !remainder.is_empty() {
-        if let Some(value) = remainder.strip_prefix("--limit ") {
-            let (raw, tail) = take_next_tui_word(value);
-            limit = Some(
-                raw.parse::<usize>()
-                    .map_err(|_| anyhow!("invalid {command} limit `{raw}`"))?,
-            );
-            remainder = tail;
-            continue;
-        }
-        bail!("unexpected {command} argument `{remainder}`");
-    }
-    Ok(limit)
-}
-
-fn parse_tui_payout_history_request(args: &str) -> Result<Option<u32>> {
-    let mut remainder = args.trim();
-    let mut limit = None;
-    while !remainder.is_empty() {
-        if let Some(value) = remainder.strip_prefix("--limit ") {
-            let (raw, tail) = take_next_tui_word(value);
-            limit = Some(
-                raw.parse::<u32>()
-                    .map_err(|_| anyhow!("invalid payout history limit `{raw}`"))?,
-            );
-            remainder = tail;
-            continue;
-        }
-        bail!("unexpected payout history argument `{remainder}`");
-    }
-    Ok(limit)
-}
-
-fn parse_tui_payout_withdraw_request(args: &str) -> Result<(String, Option<u64>)> {
-    let trimmed = args.trim();
-    if trimmed.is_empty() {
-        bail!("payout withdraw requires <payment_request>");
-    }
-    let (payment_request, mut remainder) = take_next_tui_word(trimmed);
-    let mut amount_sats = None;
-    while !remainder.is_empty() {
-        if let Some(value) = remainder.strip_prefix("--amount-sats ") {
-            let (raw, tail) = take_next_tui_word(value);
-            amount_sats = Some(
-                raw.parse::<u64>()
-                    .map_err(|_| anyhow!("invalid payout withdraw amount `{raw}`"))?,
-            );
-            remainder = tail;
-            continue;
-        }
-        bail!("unexpected payout withdraw argument `{remainder}`");
-    }
-    Ok((payment_request.to_string(), amount_sats))
 }
 
 fn take_next_tui_word(value: &str) -> (&str, &str) {
@@ -3033,43 +2252,6 @@ fn download_progress_bar(progress: &GemmaDownloadProgressState, width: usize) ->
     )
 }
 
-fn relay_report_lines(report: &pylon::RelayReport) -> Vec<String> {
-    let mut lines = vec![format!(
-        "connect timeout: {}s  ledger: {}",
-        report.relay_config.connect_timeout_seconds, report.relay_config.ledger_path
-    )];
-    if report.relays.is_empty() {
-        lines.push(String::from("no relays configured"));
-        return lines;
-    }
-    for relay in &report.relays {
-        lines.push(String::new());
-        lines.push(format!(
-            "{}  state={}  auth={}",
-            relay.url, relay.state, relay.auth_state
-        ));
-        if let Some(detail) = relay.detail.as_deref() {
-            lines.push(format!("  detail: {detail}"));
-        }
-        if let Some(last_error) = relay.last_error.as_deref() {
-            lines.push(format!("  error: {last_error}"));
-        }
-    }
-    lines
-}
-
-fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
-    match command {
-        pylon::WalletSubcommand::Status { .. } => "Wallet Status",
-        pylon::WalletSubcommand::Balance { .. } => "Wallet Balance",
-        pylon::WalletSubcommand::Address { .. } => "Wallet Address",
-        pylon::WalletSubcommand::Invoice { .. } => "Wallet Invoice",
-        pylon::WalletSubcommand::Pay { .. } => "Wallet Pay",
-        pylon::WalletSubcommand::History { .. } => "Wallet History",
-    }
-    .to_string()
-}
-
 fn transcript_wrap_width(area: Rect) -> u16 {
     area.width.saturating_sub(4).max(1)
 }
@@ -3150,12 +2332,9 @@ mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
         active_chat_title, estimate_token_count, max_transcript_scroll_y,
-        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
-        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
-        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
-        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
+        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
         summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
-        wrapped_row_count,
+        translate_tui_input, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -3244,67 +2423,95 @@ mod tests {
     }
 
     #[test]
-    fn tui_job_history_parser_supports_optional_limit() {
+    fn translate_tui_input_relay_defaults_to_relays() {
+        assert_eq!(translate_tui_input("relay", ""), "relays");
+        assert_eq!(translate_tui_input("relay", "list"), "relays");
         assert_eq!(
-            parse_tui_buyer_job_history_request("").expect("no limit"),
-            None
+            translate_tui_input("relay", "add wss://example.com"),
+            "relay add wss://example.com"
         );
         assert_eq!(
-            parse_tui_buyer_job_history_request("--limit 5").expect("limit"),
-            Some(5)
+            translate_tui_input("relay", "remove wss://example.com"),
+            "relay remove wss://example.com"
+        );
+        assert_eq!(translate_tui_input("relay", "refresh"), "relay refresh");
+    }
+
+    #[test]
+    fn translate_tui_input_wallet_defaults_to_status() {
+        assert_eq!(translate_tui_input("wallet", ""), "wallet status");
+        assert_eq!(
+            translate_tui_input("wallet", "balance"),
+            "wallet balance"
         );
     }
 
     #[test]
-    fn tui_job_request_id_parser_supports_approve_and_deny() {
+    fn translate_tui_input_payout_defaults_to_limit_10() {
+        assert_eq!(translate_tui_input("payout", ""), "payout --limit 10");
+        assert_eq!(translate_tui_input("payout", "show"), "payout --limit 10");
         assert_eq!(
-            parse_tui_buyer_job_request_id("job-001", "job approve").expect("approve id"),
-            "job-001"
+            translate_tui_input("payout", "history"),
+            "payout --limit 10"
         );
         assert_eq!(
-            parse_tui_buyer_job_request_id("job-002", "job deny").expect("deny id"),
-            "job-002"
-        );
-    }
-
-    #[test]
-    fn tui_job_policy_parser_supports_show_auto_and_manual() {
-        assert_eq!(
-            parse_tui_buyer_job_policy_mode("").expect("show"),
-            pylon::BuyerPaymentPolicyMode::Show
+            translate_tui_input("payout", "history --limit 5"),
+            "payout --limit 5"
         );
         assert_eq!(
-            parse_tui_buyer_job_policy_mode("auto").expect("auto"),
-            pylon::BuyerPaymentPolicyMode::Auto
-        );
-        assert_eq!(
-            parse_tui_buyer_job_policy_mode("manual").expect("manual"),
-            pylon::BuyerPaymentPolicyMode::Manual
+            translate_tui_input("payout", "withdraw lnbc1test --amount-sats 21"),
+            "payout withdraw lnbc1test --amount-sats 21"
         );
     }
 
     #[test]
-    fn tui_payout_parsers_support_history_and_withdraw() {
+    fn translate_tui_input_jobs_defaults_to_limit_10() {
+        assert_eq!(translate_tui_input("jobs", ""), "jobs --limit 10");
         assert_eq!(
-            parse_tui_payout_history_request("--limit 4").expect("payout limit"),
-            Some(4)
-        );
-        assert_eq!(
-            parse_tui_payout_withdraw_request("lnbc1test --amount-sats 21")
-                .expect("payout withdraw"),
-            ("lnbc1test".to_string(), Some(21))
+            translate_tui_input("jobs", "--limit 5"),
+            "jobs --limit 5"
         );
     }
 
     #[test]
-    fn tui_transcript_view_parser_supports_optional_limit() {
+    fn translate_tui_input_receipts_defaults_to_limit_10() {
+        assert_eq!(translate_tui_input("receipts", ""), "receipts --limit 10");
+    }
+
+    #[test]
+    fn translate_tui_input_activity_defaults_to_limit_10() {
+        assert_eq!(translate_tui_input("activity", ""), "activity --limit 10");
+    }
+
+    #[test]
+    fn translate_tui_input_earnings_strips_aliases() {
+        assert_eq!(translate_tui_input("earnings", ""), "earnings");
+        assert_eq!(translate_tui_input("earnings", "show"), "earnings");
+        assert_eq!(translate_tui_input("earnings", "status"), "earnings");
+    }
+
+    #[test]
+    fn translate_tui_input_announce_defaults_to_show() {
+        assert_eq!(translate_tui_input("announce", ""), "announce show");
         assert_eq!(
-            parse_tui_optional_limit("", "jobs").expect("no limit"),
-            None
+            translate_tui_input("announce", "publish"),
+            "announce publish"
         );
+    }
+
+    #[test]
+    fn translate_tui_input_provider_passthrough() {
         assert_eq!(
-            parse_tui_optional_limit("show --limit 6", "activity").expect("activity limit"),
-            Some(6)
+            translate_tui_input("provider", "scan --seconds 10"),
+            "provider scan --seconds 10"
+        );
+    }
+
+    #[test]
+    fn translate_tui_input_job_passthrough() {
+        assert_eq!(
+            translate_tui_input("job", "history --limit 5"),
+            "job history --limit 5"
         );
     }
 
