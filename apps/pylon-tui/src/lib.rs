@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use bottom_pane::{BottomPane, ComposerSubmission};
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
@@ -17,7 +17,7 @@ use crossterm::event::{
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture, MouseEvent, MouseEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use openagents_provider_substrate::{ProviderBackendHealth, ProviderPersistedSnapshot};
 use ratatui::backend::CrosstermBackend;
@@ -89,6 +89,7 @@ impl TuiLaunchConfig {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct LoadedState {
     snapshot: Option<ProviderPersistedSnapshot>,
+    wallet_status: Option<pylon::WalletStatusReport>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -247,6 +248,7 @@ struct AppShell {
     system_stats: LiveSystemStats,
     last_refresh_at: Option<Instant>,
     last_error: Option<String>,
+    last_wallet_error: Option<String>,
     next_refresh_at: Instant,
     next_gpu_refresh_at: Instant,
     provider_presence_session_id: String,
@@ -297,6 +299,7 @@ impl AppShell {
             system_stats: LiveSystemStats::default(),
             last_refresh_at: None,
             last_error: None,
+            last_wallet_error: None,
             next_refresh_at: Instant::now(),
             next_gpu_refresh_at: Instant::now(),
             provider_presence_session_id: pylon::new_provider_presence_session_id(),
@@ -936,12 +939,14 @@ impl AppShell {
             }
             WorkerEvent::PayoutCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
             }
             WorkerEvent::PayoutCommandFailed { error } => {
                 self.push_system_message("Payout Error", error);
             }
             WorkerEvent::WalletCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
             }
             WorkerEvent::WalletCommandFailed { error } => {
                 self.push_system_message("Wallet Error", error);
@@ -1795,22 +1800,40 @@ impl AppShell {
         self.installed_gemma_models = installed_gemma_models(self.config_path.as_path());
         let mut presence_snapshot = None::<ProviderPersistedSnapshot>;
         match pylon::ensure_local_setup(self.config_path.as_path()) {
-            Ok(_) => match pylon::load_config_and_status(self.config_path.as_path()).await {
-                Ok((_, status)) => {
-                    presence_snapshot = status.snapshot.clone();
-                    self.loaded = Some(LoadedState {
-                        snapshot: status.snapshot,
-                    });
-                    self.last_error = None;
+            Ok(_) => {
+                let wallet_status =
+                    match pylon::load_wallet_status_report(self.config_path.as_path()).await {
+                        Ok(report) => {
+                            self.last_wallet_error = None;
+                            Some(report)
+                        }
+                        Err(error) => {
+                            self.last_wallet_error = Some(error.to_string());
+                            None
+                        }
+                    };
+                match pylon::load_config_and_status(self.config_path.as_path()).await {
+                    Ok((_, status)) => {
+                        presence_snapshot = status.snapshot.clone();
+                        self.loaded = Some(LoadedState {
+                            snapshot: status.snapshot,
+                            wallet_status,
+                        });
+                        self.last_error = None;
+                    }
+                    Err(error) => {
+                        self.loaded = Some(LoadedState {
+                            snapshot: None,
+                            wallet_status,
+                        });
+                        self.last_error = Some(error.to_string());
+                    }
                 }
-                Err(error) => {
-                    self.loaded = Some(LoadedState { snapshot: None });
-                    self.last_error = Some(error.to_string());
-                }
-            },
+            }
             Err(error) => {
                 self.loaded = None;
                 self.last_error = Some(error.to_string());
+                self.last_wallet_error = None;
             }
         }
         self.sync_provider_presence(presence_snapshot.as_ref())
@@ -1937,7 +1960,7 @@ impl AppShell {
         let middle = Layout::horizontal([Constraint::Percentage(67), Constraint::Percentage(33)])
             .split(vertical[1]);
         self.update_transcript_layout(middle[0]);
-        let system_height = (self.summary_lines().len() as u16 + 2).clamp(8, 16);
+        let system_height = (self.summary_lines().len() as u16 + 2).clamp(10, 20);
         let right_column =
             Layout::vertical([Constraint::Length(system_height), Constraint::Min(10)])
                 .split(middle[1]);
@@ -1972,6 +1995,21 @@ impl AppShell {
                 Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
             ));
         }
+        if let Some(wallet_status) = self
+            .loaded
+            .as_ref()
+            .and_then(|loaded| loaded.wallet_status.as_ref())
+        {
+            spans.push(Span::raw(format!(
+                "  wallet {} sats",
+                wallet_status.balance.total_sats
+            )));
+        } else if self.last_wallet_error.is_some() {
+            spans.push(Span::styled(
+                "  wallet unavailable",
+                Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
+            ));
+        }
         Paragraph::new(Line::from(spans))
             .block(
                 Block::default()
@@ -1984,7 +2022,7 @@ impl AppShell {
     }
 
     fn summary_panel(&self) -> Paragraph<'static> {
-        panel("Gemma + System", Text::from(self.summary_lines()))
+        panel("Gemma + Wallet + System", Text::from(self.summary_lines()))
     }
 
     fn models_panel(&self) -> Paragraph<'static> {
@@ -2046,6 +2084,39 @@ impl AppShell {
                 "models: {}",
                 comma_or_none(gemma.models.as_slice())
             )),
+        ];
+        if let Some(wallet_status) = self
+            .loaded
+            .as_ref()
+            .and_then(|loaded| loaded.wallet_status.as_ref())
+        {
+            lines.push(Line::from(format!(
+                "wallet: {}  total: {} sats",
+                wallet_status.runtime_status, wallet_status.balance.total_sats
+            )));
+            lines.push(Line::from(format!(
+                "spark: {}  lightning: {}  onchain: {}",
+                wallet_status.balance.spark_sats,
+                wallet_status.balance.lightning_sats,
+                wallet_status.balance.onchain_sats
+            )));
+            if let Some(activity) = latest_wallet_activity_line(wallet_status) {
+                lines.push(Line::from(activity));
+            }
+            if wallet_status.runtime_status != "connected" {
+                if let Some(detail) = wallet_status.runtime_detail.as_deref() {
+                    if !detail.trim().is_empty() {
+                        lines.push(Line::from(format!("wallet detail: {detail}")));
+                    }
+                }
+            }
+        } else {
+            lines.push(Line::from("wallet: unavailable"));
+            if let Some(error) = self.last_wallet_error.as_deref() {
+                lines.push(Line::from(format!("wallet error: {error}")));
+            }
+        }
+        lines.extend([
             Line::from(format!(
                 "cpu: {}",
                 self.system_stats
@@ -2142,7 +2213,7 @@ impl AppShell {
                     .unwrap_or("unavailable")
             )),
             Line::from(gemma.note),
-        ];
+        ]);
         if let Some(power) = self.system_stats.power_summary.as_deref() {
             lines.insert(
                 lines.len().saturating_sub(1),
@@ -3070,6 +3141,22 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
     .to_string()
 }
 
+fn latest_wallet_activity_line(report: &pylon::WalletStatusReport) -> Option<String> {
+    let payment = report
+        .recent_payments
+        .iter()
+        .max_by_key(|payment| payment.updated_at_ms)?;
+    let direction = match payment.direction.as_str() {
+        "receive" => "receive",
+        "send" => "send",
+        other => other,
+    };
+    Some(format!(
+        "latest {direction}: {} {} sats via {}",
+        payment.status, payment.amount_sats, payment.method
+    ))
+}
+
 fn transcript_wrap_width(area: Rect) -> u16 {
     area.width.saturating_sub(4).max(1)
 }
@@ -3148,14 +3235,14 @@ fn estimate_token_count(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, WorkerEvent,
         active_chat_title, estimate_token_count, max_transcript_scroll_y,
         parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
         parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
         parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
         parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
         summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
-        wrapped_row_count,
+        wrapped_row_count, ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
+        WorkerEvent,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -3170,6 +3257,46 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn summary_lines_include_live_wallet_balance_and_activity() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.loaded = Some(super::LoadedState {
+            snapshot: Some(Default::default()),
+            wallet_status: Some(pylon::WalletStatusReport {
+                runtime_status: "connected".to_string(),
+                balance: pylon::WalletBalanceSnapshot {
+                    spark_sats: 48,
+                    total_sats: 48,
+                    ..Default::default()
+                },
+                recent_payments: vec![pylon::PylonWalletPaymentRecord {
+                    payment_id: "pay_123".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 2,
+                    fees_sats: 0,
+                    method: "spark".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: 1,
+                    updated_at_ms: 2,
+                }],
+                ..Default::default()
+            }),
+        });
+
+        let summary = app
+            .summary_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(summary.contains("wallet: connected  total: 48 sats"));
+        assert!(summary.contains("spark: 48  lightning: 0  onchain: 0"));
+        assert!(summary.contains("latest receive: completed 2 sats via spark"));
     }
 
     #[test]
