@@ -1,0 +1,487 @@
+{
+  "generated_at": "2026-04-08T19:58:31Z",
+  "vm": "nexus-mainnet-1",
+  "instance_status": "RUNNING",
+  "service_status": "active",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:86703e739927",
+  "health": {
+    "ok": true,
+    "service": "nexus-relay",
+    "relay_backend": "durable-upstream",
+    "upstream_ws_url": "ws://127.0.0.1:42111/",
+    "authority_mode": "in-process",
+    "managed_groups_mode": "deferred",
+    "data_directory": "/var/lib/nexus-relay"
+  },
+  "stats": {
+    "service": "nexus-control",
+    "authority": "openagents-hosted-nexus",
+    "hosted_nexus_relay_url": "wss://nexus.openagents.com/",
+    "as_of_unix_ms": 1775678303529,
+    "window_started_at_unix_ms": 1775591903529,
+    "receipt_count": 8192,
+    "receipt_persistence_enabled": true,
+    "pylons_online_now": 4,
+    "pylons_seen_24h": 4,
+    "pylon_sessions_online_now": 5,
+    "sellable_pylons_online_now": 4,
+    "pylon_presence_stale_after_ms": 30000,
+    "sessions_active": 0,
+    "sessions_issued_24h": 0,
+    "sync_tokens_active": 0,
+    "sync_tokens_issued_24h": 0,
+    "starter_demand_budget_cap_sats": 5000,
+    "starter_demand_budget_allocated_sats": 0,
+    "starter_offers_waiting_ack": 0,
+    "starter_offers_running": 0,
+    "starter_offers_dispatched_24h": 0,
+    "starter_offers_started_24h": 0,
+    "starter_offer_heartbeats_24h": 0,
+    "starter_offers_completed_24h": 0,
+    "starter_offers_released_24h": 0,
+    "starter_offers_expired_24h": 0,
+    "starter_demand_ineligible_polls_24h": 0,
+    "starter_offer_start_rate_24h": 0.0,
+    "starter_offer_completion_rate_24h": 0.0,
+    "starter_offer_loss_rate_24h": 0.0,
+    "starter_demand_paid_sats_24h": 0,
+    "starter_demand_released_sats_24h": 0,
+    "nexus_wallet_runtime_status": "connected",
+    "nexus_wallet_balance_sats": 121960,
+    "nexus_wallet_balance_updated_at_unix_ms": 1775678301880,
+    "nexus_treasury_enabled": true,
+    "nexus_treasury_payout_sats_per_window": 2,
+    "nexus_treasury_payout_interval_seconds": 20,
+    "nexus_treasury_require_sellable": true,
+    "nexus_treasury_daily_budget_cap_sats": 1000000,
+    "nexus_registered_payout_identities": 13,
+    "nexus_payout_sats_paid_total": 6034,
+    "nexus_payout_sats_paid_24h": 6034,
+    "nexus_payouts_dispatched_24h": 50,
+    "nexus_payouts_confirmed_24h": 3017,
+    "nexus_payouts_failed_24h": 3170,
+    "nexus_payouts_skipped_24h": 1739,
+    "compute_products_active": 0,
+    "compute_capacity_lots_open": 0,
+    "compute_capacity_lots_delivering": 0,
+    "compute_instruments_active": 0,
+    "compute_inventory_quantity_open": 0,
+    "compute_inventory_quantity_reserved": 0,
+    "compute_inventory_quantity_delivering": 0,
+    "compute_delivery_proofs_24h": 0,
+    "compute_delivery_quantity_24h": 0,
+    "compute_delivery_rejections_24h": 0,
+    "compute_delivery_variances_24h": 0,
+    "compute_validator_challenges_open": 0,
+    "compute_validator_challenges_queued": 0,
+    "compute_validator_challenges_verified_24h": 0,
+    "compute_validator_challenges_rejected_24h": 0,
+    "compute_validator_challenges_timed_out_24h": 0,
+    "compute_delivery_accept_rate_24h": 0.0,
+    "compute_fill_ratio_24h": 0.0,
+    "compute_priced_instruments_24h": 0,
+    "compute_indices_published_24h": 0,
+    "compute_index_corrections_24h": 0,
+    "compute_index_thin_windows_24h": 0,
+    "compute_index_settlement_eligible_24h": 0,
+    "compute_index_quality_score_24h": 0.0,
+    "compute_active_provider_count": 0,
+    "compute_provider_concentration_hhi": 0.0,
+    "compute_forward_physical_instruments_active": 0,
+    "compute_forward_physical_open_quantity": 0,
+    "compute_forward_physical_defaults_24h": 0,
+    "compute_future_cash_instruments_active": 0,
+    "compute_future_cash_open_interest": 0,
+    "compute_future_cash_cash_settlements_24h": 0,
+    "compute_future_cash_cash_flow_24h": 0,
+    "compute_future_cash_defaults_24h": 0,
+    "compute_future_cash_collateral_shortfall_24h": 0,
+    "compute_structured_instruments_active": 0,
+    "compute_structured_instruments_closed_24h": 0,
+    "compute_max_buyer_concentration_share": 0.0,
+    "compute_paper_to_physical_ratio": 0.0,
+    "compute_deliverable_coverage_ratio": 0.0,
+    "compute_breakers_tripped": 2,
+    "compute_breakers_guarded": 0,
+    "compute_breaker_states": [
+      {
+        "breaker_id": "future_cash.paper_to_physical",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 2.0,
+        "observed_value": 0.0,
+        "action": "halt new future cash issuance when paper exposure outruns deliverable depth"
+      },
+      {
+        "breaker_id": "future_cash.deliverable_coverage",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "narrow or halt future cash issuance until physical coverage recovers"
+      },
+      {
+        "breaker_id": "future_cash.index_quality",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "disable settlement-sensitive issuance until governed indices improve"
+      },
+      {
+        "breaker_id": "future_cash.buyer_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.8,
+        "observed_value": 0.0,
+        "action": "cap marginal hedge issuance to concentrated buyers"
+      },
+      {
+        "breaker_id": "provider_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.6,
+        "observed_value": 0.0,
+        "action": "review provider concentration before widening launch products"
+      },
+      {
+        "breaker_id": "delivery_rejection_rate",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.25,
+        "observed_value": 0.0,
+        "action": "pause advanced compute issuance while delivery integrity degrades"
+      }
+    ],
+    "compute_rollout_gates": [
+      {
+        "gate_id": "forward_physical",
+        "enabled": true,
+        "stage": "phase_5",
+        "description": "Forward physical capacity sales"
+      },
+      {
+        "gate_id": "future_cash",
+        "enabled": true,
+        "stage": "phase_7",
+        "description": "Cash-settled hedge issuance and settlement"
+      },
+      {
+        "gate_id": "structured_products",
+        "enabled": true,
+        "stage": "phase_8",
+        "description": "Reservation rights, swaps, and strips"
+      },
+      {
+        "gate_id": "reconciliation_diagnostics",
+        "enabled": true,
+        "stage": "migration",
+        "description": "Legacy, transitional, and canonical truth diagnostics"
+      }
+    ],
+    "compute_truth_labels": [
+      {
+        "truth_label": "legacy",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "transitional",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "canonical",
+        "count_24h": 0
+      }
+    ],
+    "compute_reconciliation_gap_24h": 0,
+    "compute_policy_bundle_id": "policy.compute.market.default",
+    "compute_policy_version": "1",
+    "liquidity_quotes_active": 0,
+    "liquidity_route_plans_active": 0,
+    "liquidity_envelopes_open": 0,
+    "liquidity_settlements_24h": 0,
+    "liquidity_reserve_partitions_active": 0,
+    "liquidity_value_moved_24h": 0,
+    "risk_coverage_offers_open": 0,
+    "risk_coverage_bindings_active": 0,
+    "risk_prediction_positions_open": 0,
+    "risk_claims_open": 0,
+    "risk_signals_active": 0,
+    "risk_implied_fail_probability_bps": 0,
+    "risk_calibration_score": 0.0,
+    "risk_coverage_concentration_hhi": 0.0,
+    "recent_pylons": [
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "3021075b…1e9793dd",
+        "last_seen_at_unix_ms": 1775678303312,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e4b",
+        "runtime_state": "ready"
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "a3934023…039d8e3b",
+        "last_seen_at_unix_ms": 1775678301901,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4-e4b-local:latest",
+        "runtime_state": "online"
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "a3934023…039d8e3b",
+        "last_seen_at_unix_ms": 1775678298258,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4-e4b-local:latest",
+        "runtime_state": "online"
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "155bb2cf…4d76c8f3",
+        "last_seen_at_unix_ms": 1775678288875,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e4b",
+        "runtime_state": "ready"
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "18270339…65971853",
+        "last_seen_at_unix_ms": 1775678274068,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e4b",
+        "runtime_state": "online"
+      }
+    ],
+    "recent_pylon_diagnostics": [
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "a3934023…039d8e3b",
+        "last_seen_at_unix_ms": 1775678301901,
+        "diagnostic_id": "openagents.pylon.first_run.v1",
+        "model_id": "gemma-4-e4b",
+        "runtime_backend": "local_runtime",
+        "status": "completed",
+        "measured_at_unix_ms": 1775676937744,
+        "load_s": 0.4818584723333333,
+        "mean_total_s": 1.5048195556666666,
+        "mean_decode_tok_s": 104.39783435552177,
+        "repeats": 3
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "a3934023…039d8e3b",
+        "last_seen_at_unix_ms": 1775678298258,
+        "diagnostic_id": "openagents.pylon.first_run.v1",
+        "model_id": "gemma-4-e4b",
+        "runtime_backend": "local_runtime",
+        "status": "completed",
+        "measured_at_unix_ms": 1775676937744,
+        "load_s": 0.4818584723333333,
+        "mean_total_s": 1.5048195556666666,
+        "mean_decode_tok_s": 104.39783435552177,
+        "repeats": 3
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "18270339…65971853",
+        "last_seen_at_unix_ms": 1775678274068,
+        "diagnostic_id": "openagents.pylon.first_run.v1",
+        "model_id": "gemma-4-e4b",
+        "runtime_backend": "local_runtime",
+        "status": "completed",
+        "measured_at_unix_ms": 1775655442637,
+        "load_s": 1.324690722,
+        "mean_total_s": 3.0422212776666666,
+        "mean_ttft_s": 2.0481127495,
+        "mean_decode_tok_s": 27.04604299788307,
+        "repeats": 3
+      }
+    ],
+    "recent_receipts": [
+      {
+        "receipt_id": "nexus-receipt-00028820",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678302574,
+        "request_id": "a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b:pylon_74767cc72f46ef84ab0dfba2f8d77a3e",
+        "status": "registered"
+      },
+      {
+        "receipt_id": "nexus-receipt-00028819",
+        "receipt_type": "treasury.payout.confirmed",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678291978:155bb2cf068ba768702e9cddd7737ab446c352f2c812e9da931a43684d76c8f3",
+        "status": "confirmed",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028818",
+        "receipt_type": "treasury.payout.confirmed",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678292861:18270339c6c52cdfebd529927001dcf4500ff0e3501b3ee9e7b3af1265971853",
+        "status": "confirmed",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028817",
+        "receipt_type": "treasury.payout.confirmed",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678288976:3021075b463512379f76ca650f8ed64a255aa356bd410aebb22963b61e9793dd",
+        "status": "confirmed",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028816",
+        "receipt_type": "treasury.payout.confirmed",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678290851:a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b",
+        "status": "confirmed",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028815",
+        "receipt_type": "treasury.payout.dispatched",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678290851:a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b",
+        "status": "dispatched",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028814",
+        "receipt_type": "treasury.payout.dispatched",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678288976:3021075b463512379f76ca650f8ed64a255aa356bd410aebb22963b61e9793dd",
+        "status": "dispatched",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028813",
+        "receipt_type": "treasury.payout.dispatched",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678292861:18270339c6c52cdfebd529927001dcf4500ff0e3501b3ee9e7b3af1265971853",
+        "status": "dispatched",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028812",
+        "receipt_type": "treasury.payout.dispatched",
+        "recorded_at_unix_ms": 1775678301880,
+        "request_id": "1775678291978:155bb2cf068ba768702e9cddd7737ab446c352f2c812e9da931a43684d76c8f3",
+        "status": "dispatched",
+        "amount_sats": 2
+      },
+      {
+        "receipt_id": "nexus-receipt-00028811",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678298646,
+        "request_id": "a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b:pylon_66249e9db00122de2ee0909878a97f27",
+        "status": "registered"
+      },
+      {
+        "receipt_id": "nexus-receipt-00028810",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678295719,
+        "request_id": "a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b:pylon_74767cc72f46ef84ab0dfba2f8d77a3e",
+        "status": "registered"
+      },
+      {
+        "receipt_id": "nexus-receipt-00028809",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678289345,
+        "request_id": "155bb2cf068ba768702e9cddd7737ab446c352f2c812e9da931a43684d76c8f3:pylon_0a08d1510f0fb6fd919244d50b92072a",
+        "status": "registered"
+      },
+      {
+        "receipt_id": "nexus-receipt-00028808",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678289019,
+        "request_id": "a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b:pylon_74767cc72f46ef84ab0dfba2f8d77a3e",
+        "status": "registered"
+      },
+      {
+        "receipt_id": "nexus-receipt-00028807",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678285951,
+        "request_id": "a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b:pylon_66249e9db00122de2ee0909878a97f27",
+        "status": "registered"
+      },
+      {
+        "receipt_id": "nexus-receipt-00028806",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678285180,
+        "request_id": "3021075b463512379f76ca650f8ed64a255aa356bd410aebb22963b61e9793dd:pylon_213f3495939fdac2243f3705c067e093",
+        "status": "registered"
+      },
+      {
+        "receipt_id": "nexus-receipt-00028805",
+        "receipt_type": "treasury.payout_target.registered",
+        "recorded_at_unix_ms": 1775678281870,
+        "request_id": "a3934023a75e3c09220c91fc34793919eaaec72bba776466f96e0499039d8e3b:pylon_74767cc72f46ef84ab0dfba2f8d77a3e",
+        "status": "registered"
+      }
+    ]
+  },
+  "treasury": {
+    "authority": "openagents-hosted-nexus",
+    "treasury_enabled": true,
+    "payout_sats_per_window": 2,
+    "payout_interval_seconds": 20,
+    "require_sellable": true,
+    "daily_budget_cap_sats": 1000000,
+    "registered_payout_identities": 13,
+    "wallet_balance_sats": 121960,
+    "wallet_balance_updated_at_unix_ms": 1775678305727,
+    "wallet_runtime_status": "connected",
+    "payout_sats_paid_total": 6034,
+    "payout_sats_paid_24h": 6034,
+    "payouts_dispatched_24h": 50,
+    "payouts_confirmed_24h": 3017,
+    "payouts_failed_24h": 3170,
+    "payouts_skipped_24h": 1739
+  },
+  "data_mount": "/dev/sdb on /var/lib/nexus-relay type ext4 (rw,relatime)"
+}

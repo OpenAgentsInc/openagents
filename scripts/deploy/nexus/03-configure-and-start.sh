@@ -17,6 +17,13 @@ if ! instance_exists "$NEXUS_VM"; then
 fi
 [[ -f "$UPSTREAM_CONFIG_SOURCE" ]] || die "Missing upstream config template: ${UPSTREAM_CONFIG_SOURCE}"
 
+if [[ "$NEXUS_VM" == "nexus-mainnet-1" ]] \
+  && [[ "${NEXUS_ALLOW_ZERO_TREASURY_IN_PRODUCTION}" != "true" ]] \
+  && { [[ "${NEXUS_CONTROL_TREASURY_ENABLED}" != "true" ]] \
+    || [[ "${NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW}" == "0" ]]; }; then
+  die "Refusing to deploy ${NEXUS_VM} with treasury disabled or zero payout. Export the production treasury envs first, or set NEXUS_ALLOW_ZERO_TREASURY_IN_PRODUCTION=true to override."
+fi
+
 TMP_ENV="$(mktemp)"
 TMP_UPSTREAM_CONFIG="$(mktemp)"
 TMP_REMOTE_SCRIPT="$(mktemp)"

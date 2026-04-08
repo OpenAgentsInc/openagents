@@ -93,6 +93,9 @@ Treasury deployment note:
   `NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH`, and
   `NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR`
   onto `${NEXUS_DATA_DIR}/treasury/...` so the central wallet survives restarts
+- `scripts/deploy/nexus/03-configure-and-start.sh` now refuses to deploy
+  `nexus-mainnet-1` with `treasury_enabled=false` or `payout_sats_per_window=0`
+  unless `NEXUS_ALLOW_ZERO_TREASURY_IN_PRODUCTION=true` is set explicitly
 - set payout policy via env before running `03-configure-and-start.sh`, for example:
 
 ```bash
