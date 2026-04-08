@@ -43,7 +43,10 @@ The hosted treasury policy and wallet runtime are env-backed:
 stipend cadence. `nexus-control` now phases each identity deterministically
 within that interval, so online Pylons still receive one payout per interval
 but dispatches roll across the window instead of bunching on a single wall-clock
-boundary.
+boundary. The authority also keeps only one live treasury dispatch cycle in
+flight at a time. That prevents heartbeat storms from stacking multiple payout
+batches behind the same central Spark wallet and turning one slow send into an
+unbounded backlog of fake timeout failures.
 
 For the production VM, set the payout policy env before running
 `scripts/deploy/nexus/03-configure-and-start.sh`. The deploy script now maps
