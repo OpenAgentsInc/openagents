@@ -575,16 +575,31 @@ export function isPylonReleaseTag(tagName) {
   );
 }
 
-export function selectLatestPylonRelease(releases) {
+function releaseHasTargetAssets(release, target) {
+  if (!target || !release?.tag_name) {
+    return false;
+  }
+
+  const { archiveName, checksumName } = buildAssetNames(release.tag_name, target);
+  const assetNames = new Set(
+    (Array.isArray(release.assets) ? release.assets : [])
+      .map((asset) => asset?.name)
+      .filter(Boolean),
+  );
+  return assetNames.has(archiveName) && assetNames.has(checksumName);
+}
+
+export function selectLatestPylonRelease(releases, target = null) {
   if (!Array.isArray(releases)) {
     throw new Error("GitHub release lookup did not return a release list.");
   }
 
-  const release = releases
+  const candidates = releases
     .filter((candidate) => !candidate?.draft && isPylonReleaseTag(candidate?.tag_name))
-    .sort((left, right) =>
-      comparePylonReleaseTags(right.tag_name, left.tag_name),
-    )[0];
+    .sort((left, right) => comparePylonReleaseTags(right.tag_name, left.tag_name));
+  const release =
+    candidates.find((candidate) => releaseHasTargetAssets(candidate, target)) ??
+    candidates[0];
   if (!release) {
     throw new Error(
       `GitHub release lookup did not find any published ${PYLON_RELEASE_TAG_PREFIX} releases.`,
@@ -602,6 +617,7 @@ export async function fetchReleaseMetadata({
   apiBase = DEFAULT_RELEASE_API_BASE,
   repo = DEFAULT_RELEASE_REPO,
   version = null,
+  target = null,
 } = {}) {
   const normalizedVersion = normalizeRequestedVersion(version);
   const endpoint = normalizedVersion
@@ -618,7 +634,7 @@ export async function fetchReleaseMetadata({
       ? "GitHub tagged release lookup"
       : "GitHub release list lookup",
   });
-  return normalizedVersion ? payload : selectLatestPylonRelease(payload);
+  return normalizedVersion ? payload : selectLatestPylonRelease(payload, target);
 }
 
 export function selectReleaseAssets(release, target) {
@@ -1337,6 +1353,7 @@ export async function ensureReleaseInstall(
       apiBase: options.apiBase ?? DEFAULT_RELEASE_API_BASE,
       repo: options.repo ?? DEFAULT_RELEASE_REPO,
       version: options.version ?? null,
+      target,
     });
     emitTelemetry(telemetryClient, "installer_release_resolved", {
       release_tag: release?.tag_name ?? null,
