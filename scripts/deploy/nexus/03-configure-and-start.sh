@@ -55,8 +55,12 @@ UPSTREAM_CONFIG_SOURCE_PATH="$3"
 NEXUS_DATA_DIR="$4"
 NEXUS_DATA_DISK_DEVICE_NAME="$5"
 
-sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl jq docker.io sqlite3
+sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -y
+sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+  apt-get install -y \
+  -o Dpkg::Options::=--force-confdef \
+  -o Dpkg::Options::=--force-confold \
+  ca-certificates curl jq docker.io sqlite3
 
 sudo systemctl enable docker
 sudo systemctl start docker
