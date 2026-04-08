@@ -110,6 +110,8 @@ pub struct PylonConfig {
     #[serde(alias = "ollama_base_url")]
     pub local_gemma_base_url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_gemma_preferred_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
@@ -155,6 +157,7 @@ struct PylonPublicConfig {
     buyer_auto_pay_enabled: bool,
     wallet_storage_dir: PathBuf,
     local_gemma_base_url: String,
+    local_gemma_preferred_model: Option<String>,
     inventory_controls: PylonPublicInventoryControls,
     declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
 }
@@ -177,6 +180,7 @@ impl From<&PylonConfig> for PylonPublicConfig {
             buyer_auto_pay_enabled: value.buyer_auto_pay_enabled,
             wallet_storage_dir: value.wallet_storage_dir.clone(),
             local_gemma_base_url: value.local_gemma_base_url.clone(),
+            local_gemma_preferred_model: value.local_gemma_preferred_model.clone(),
             inventory_controls: PylonPublicInventoryControls::from(&value.inventory_controls),
             declared_sandbox_profiles: value.declared_sandbox_profiles.clone(),
         }
@@ -956,6 +960,134 @@ pub fn gemma_download_spec(model_id: &str) -> Option<GemmaDownloadSpec> {
         .find(|spec| spec.id == model_id.trim())
 }
 
+pub fn gemma_download_spec_for_selector(model_id: &str) -> Option<GemmaDownloadSpec> {
+    let trimmed = model_id.trim();
+    gemma_download_spec(trimmed).or_else(|| {
+        GEMMA_DOWNLOAD_SPECS
+            .iter()
+            .copied()
+            .find(|spec| spec.psionic_model_id == trimmed)
+    })
+}
+
+fn canonical_local_gemma_model_id(model_id: &str) -> String {
+    let trimmed = model_id.trim();
+    gemma_download_spec_for_selector(trimmed)
+        .map(|spec| spec.id.to_string())
+        .unwrap_or_else(|| trimmed.to_string())
+}
+
+fn canonical_local_gemma_runtime_model(model_id: &str) -> String {
+    let trimmed = model_id.trim();
+    gemma_download_spec_for_selector(trimmed)
+        .map(|spec| spec.psionic_model_id.to_string())
+        .unwrap_or_else(|| trimmed.to_string())
+}
+
+fn is_local_ollama_endpoint(base_url: &str) -> bool {
+    let normalized = base_url.trim().trim_end_matches('/').to_ascii_lowercase();
+    normalized.starts_with("http://127.0.0.1:")
+        || normalized.starts_with("http://localhost:")
+        || normalized.starts_with("http://[::1]:")
+}
+
+fn uninstall_local_gemma_runtime_model(
+    config: &PylonConfig,
+    runtime_model: &str,
+) -> Result<(bool, Option<String>)> {
+    if !is_local_ollama_endpoint(config.local_gemma_base_url.as_str()) {
+        return Ok((
+            false,
+            Some(
+                "runtime uninstall skipped because local_gemma_base_url is not a local Ollama endpoint."
+                    .to_string(),
+            ),
+        ));
+    }
+
+    let output = match StdCommand::new("ollama")
+        .args(["rm", runtime_model])
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((
+                false,
+                Some(
+                    "runtime uninstall skipped because the `ollama` CLI is not installed."
+                        .to_string(),
+                ),
+            ));
+        }
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!("failed to invoke `ollama rm {runtime_model}` for runtime uninstall")
+            });
+        }
+    };
+
+    if output.status.success() {
+        return Ok((true, None));
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+    let detail_lower = detail.to_ascii_lowercase();
+    if detail_lower.contains("not found")
+        || detail_lower.contains("no such model")
+        || detail_lower.contains("does not exist")
+    {
+        return Ok((false, None));
+    }
+
+    bail!("runtime uninstall failed for `{runtime_model}`: {detail}");
+}
+
+fn import_local_gemma_runtime_model_from_cache(
+    config_path: &Path,
+    runtime_model: &str,
+    model_path: &Path,
+) -> Result<()> {
+    let home_dir = config_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_home_dir);
+    let modelfile_dir = home_dir.join("runtime").join("ollama");
+    std::fs::create_dir_all(modelfile_dir.as_path()).with_context(|| {
+        format!(
+            "failed to create Ollama runtime import dir {}",
+            modelfile_dir.display()
+        )
+    })?;
+    let modelfile_path =
+        modelfile_dir.join(format!("{}.Modelfile", normalize_model_key(runtime_model)));
+    std::fs::write(
+        modelfile_path.as_path(),
+        format!("FROM {}\n", model_path.display()),
+    )
+    .with_context(|| {
+        format!(
+            "failed to write Ollama Modelfile {}",
+            modelfile_path.display()
+        )
+    })?;
+
+    let output = StdCommand::new("ollama")
+        .args(["create", runtime_model, "-f"])
+        .arg(modelfile_path.as_path())
+        .output()
+        .with_context(|| format!("failed to invoke `ollama create {runtime_model}`"))?;
+    let _ = std::fs::remove_file(modelfile_path.as_path());
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+    bail!("runtime import failed for `{runtime_model}`: {detail}");
+}
+
 pub fn gemma_models_root(config_path: &Path) -> PathBuf {
     config_path
         .parent()
@@ -963,6 +1095,195 @@ pub fn gemma_models_root(config_path: &Path) -> PathBuf {
         .unwrap_or_else(default_home_dir)
         .join("models")
         .join("huggingface")
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LocalGemmaModelSelectionReport {
+    pub model_id: String,
+    pub runtime_model: Option<String>,
+    pub ready_in_runtime: bool,
+    pub available_models: Vec<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GemmaUninstallReport {
+    pub model_id: String,
+    pub cache_path: Option<PathBuf>,
+    pub removed_from_cache: bool,
+    pub runtime_model: String,
+    pub removed_from_runtime: bool,
+    pub runtime_uninstall_note: Option<String>,
+    pub preference_cleared: bool,
+}
+
+pub fn render_local_gemma_model_selection_report(
+    report: &LocalGemmaModelSelectionReport,
+) -> String {
+    let mut lines = vec![format!("model_id: {}", report.model_id)];
+    if let Some(runtime_model) = report.runtime_model.as_deref() {
+        lines.push(format!("runtime_model: {runtime_model}"));
+    } else {
+        lines.push("runtime_model: none".to_string());
+    }
+    lines.push(format!("ready_in_runtime: {}", report.ready_in_runtime));
+    if !report.available_models.is_empty() {
+        lines.push(format!(
+            "available_models: {}",
+            report.available_models.join(", ")
+        ));
+    }
+    if let Some(note) = report.note.as_deref() {
+        lines.push(format!("note: {note}"));
+    }
+    lines.join("\n")
+}
+
+pub fn render_gemma_uninstall_report(report: &GemmaUninstallReport) -> String {
+    let mut lines = vec![
+        format!("model_id: {}", report.model_id),
+        format!("removed_from_cache: {}", report.removed_from_cache),
+        format!("runtime_model: {}", report.runtime_model),
+        format!("removed_from_runtime: {}", report.removed_from_runtime),
+        format!("preference_cleared: {}", report.preference_cleared),
+    ];
+    if let Some(cache_path) = report.cache_path.as_ref() {
+        lines.insert(1, format!("cache_path: {}", cache_path.display()));
+    }
+    if let Some(note) = report.runtime_uninstall_note.as_deref() {
+        lines.push(format!("note: {note}"));
+    }
+    lines.join("\n")
+}
+
+pub async fn select_local_gemma_model(
+    config_path: &Path,
+    model_id: &str,
+) -> Result<LocalGemmaModelSelectionReport> {
+    ensure_local_setup(config_path)?;
+    let mut config = load_or_create_config(config_path)?;
+    let canonical_model_id = canonical_local_gemma_model_id(model_id);
+    let runtime_model = canonical_local_gemma_runtime_model(model_id);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .context("failed to build local Gemma model selection client")?;
+
+    let initial_status = load_status_or_detect(config_path).await?;
+    let initial_health = initial_status
+        .snapshot
+        .as_ref()
+        .map(|snapshot| &snapshot.availability.local_gemma);
+    let mut note = None::<String>;
+    let mut imported_from_cache = false;
+    let runtime_visible = initial_health
+        .and_then(|health| runtime_model_for_selector(health, canonical_model_id.as_str()))
+        .is_some();
+    if !runtime_visible {
+        if let Some(spec) = gemma_download_spec_for_selector(canonical_model_id.as_str()) {
+            let model_path = gemma_model_path(config_path, spec);
+            if model_path.exists() && is_local_ollama_endpoint(config.local_gemma_base_url.as_str())
+            {
+                import_local_gemma_runtime_model_from_cache(
+                    config_path,
+                    runtime_model.as_str(),
+                    model_path.as_path(),
+                )?;
+                imported_from_cache = true;
+            }
+        }
+    }
+
+    config.local_gemma_preferred_model = Some(canonical_model_id.clone());
+    save_config(config_path, &config)?;
+    let status = load_status_or_detect(config_path).await?;
+    let health = status
+        .snapshot
+        .as_ref()
+        .map(|snapshot| &snapshot.availability.local_gemma);
+    let resolved_runtime_model = health.and_then(|health| {
+        if !health.reachable {
+            None
+        } else {
+            runtime_model_for_selector(health, canonical_model_id.as_str())
+        }
+    });
+    if resolved_runtime_model.is_none() {
+        let cache_state = gemma_download_spec_for_selector(canonical_model_id.as_str())
+            .map(|spec| gemma_model_path(config_path, spec).exists())
+            .unwrap_or(false);
+        bail!(
+            "selection saved, but `{}` is not available in the local runtime. {}",
+            canonical_model_id,
+            if cache_state {
+                "The model exists in the local Pylon cache, but Pylon could not import it into the configured runtime."
+            } else {
+                "Install it in the runtime first, or download/import it before switching."
+            }
+        );
+    }
+    warm_local_gemma_runtime_model(&client, &config, runtime_model.as_str()).await?;
+    if imported_from_cache {
+        note = Some(
+            "runtime model was imported from the local Pylon cache and warmed successfully."
+                .to_string(),
+        );
+    }
+    let available_models = health
+        .map(|health| health.available_models.clone())
+        .unwrap_or_default();
+    Ok(LocalGemmaModelSelectionReport {
+        model_id: canonical_model_id,
+        runtime_model: Some(runtime_model),
+        ready_in_runtime: true,
+        available_models,
+        note,
+    })
+}
+
+pub fn uninstall_gemma_model(config_path: &Path, model_id: &str) -> Result<GemmaUninstallReport> {
+    ensure_local_setup(config_path)?;
+    let canonical_model_id = canonical_local_gemma_model_id(model_id);
+    let spec = gemma_download_spec_for_selector(canonical_model_id.as_str());
+    let cache_path = spec.map(|spec| gemma_model_path(config_path, spec));
+    let removed_from_cache =
+        if let Some(cache_path) = cache_path.as_ref().filter(|path| path.exists()) {
+            std::fs::remove_file(cache_path.as_path()).with_context(|| {
+                format!(
+                    "failed to remove local Gemma cache {}",
+                    cache_path.display()
+                )
+            })?;
+            true
+        } else {
+            false
+        };
+
+    let mut config = load_or_create_config(config_path)?;
+    let preference_cleared = config
+        .local_gemma_preferred_model
+        .as_deref()
+        .map(|preferred| canonical_local_gemma_model_id(preferred) == canonical_model_id)
+        .unwrap_or(false);
+    if preference_cleared {
+        config.local_gemma_preferred_model = None;
+        save_config(config_path, &config)?;
+    }
+    let runtime_model = spec
+        .map(|spec| spec.psionic_model_id.to_string())
+        .unwrap_or_else(|| canonical_model_id.clone());
+    let (removed_from_runtime, runtime_uninstall_note) =
+        uninstall_local_gemma_runtime_model(&config, runtime_model.as_str())?;
+
+    Ok(GemmaUninstallReport {
+        model_id: canonical_model_id,
+        cache_path,
+        removed_from_cache,
+        runtime_model,
+        removed_from_runtime,
+        runtime_uninstall_note,
+        preference_cleared,
+    })
 }
 
 pub fn gemma_model_path(config_path: &Path, spec: GemmaDownloadSpec) -> PathBuf {
@@ -1916,6 +2237,42 @@ async fn run_local_gemma_diagnostic_once(
         load_s: completion.as_ref().and_then(|value| value.load_s),
         output_text,
     })
+}
+
+async fn warm_local_gemma_runtime_model(
+    client: &reqwest::Client,
+    config: &PylonConfig,
+    runtime_model: &str,
+) -> Result<()> {
+    let url = format!(
+        "{}/api/chat",
+        config.local_gemma_base_url.trim_end_matches('/')
+    );
+    let payload = json!({
+        "model": runtime_model,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Reply with OK.",
+            }
+        ],
+        "stream": false,
+        "options": {
+            "num_predict": 1,
+        },
+    });
+    let response = client
+        .post(url.as_str())
+        .json(&payload)
+        .send()
+        .await
+        .with_context(|| format!("failed to warm local Gemma runtime model `{runtime_model}`"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        bail!("failed to warm local Gemma runtime model `{runtime_model}`: {status} {body}");
+    }
+    Ok(())
 }
 
 fn mean_f64_option(values: impl Iterator<Item = f64>) -> Option<f64> {
@@ -3855,6 +4212,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         buyer_auto_pay_enabled: default_buyer_auto_pay_enabled(),
         wallet_storage_dir: base_dir.join("spark"),
         local_gemma_base_url: "http://127.0.0.1:11434".to_string(),
+        local_gemma_preferred_model: None,
         apple_fm_base_url: None,
         inventory_controls,
         declared_sandbox_profiles: Vec::new(),
@@ -4400,6 +4758,10 @@ fn build_snapshot_from_availability(
                 key: "local_gemma_base_url".to_string(),
                 value: Value::String(config.local_gemma_base_url.clone()),
             },
+            ProviderJsonEntry {
+                key: "local_gemma_preferred_model".to_string(),
+                value: json!(config.local_gemma_preferred_model),
+            },
         ],
         identity: identity.map(|identity| identity_metadata(identity, config.node_label.as_str())),
         runtime,
@@ -4822,8 +5184,9 @@ pub fn resolve_local_gemma_chat_target_from_snapshot(
     config: &PylonConfig,
     snapshot: &ProviderPersistedSnapshot,
 ) -> Result<LocalGemmaChatTarget> {
-    let _ = config;
-    if let Some(model) = gemma_ready_model(&snapshot.availability.local_gemma) {
+    if let Some(model) =
+        selected_local_gemma_runtime_model(config, &snapshot.availability.local_gemma)
+    {
         return Ok(LocalGemmaChatTarget {
             backend: LocalGemmaChatBackend::LocalRuntime,
             model,
@@ -4935,7 +5298,7 @@ fn resolve_local_gemma_chat_target_from_status(
     resolve_local_gemma_chat_target_from_snapshot(config, snapshot)
 }
 
-fn gemma_ready_model(health: &ProviderBackendHealth) -> Option<String> {
+fn first_gemma_ready_model(health: &ProviderBackendHealth) -> Option<String> {
     if let Some(model) = health.ready_model.as_deref() {
         if is_gemma_model(model) {
             return Some(model.to_string());
@@ -4946,6 +5309,49 @@ fn gemma_ready_model(health: &ProviderBackendHealth) -> Option<String> {
         .iter()
         .find(|model| is_gemma_model(model.as_str()))
         .cloned()
+}
+
+fn configured_local_gemma_model(config: &PylonConfig) -> Option<String> {
+    config
+        .local_gemma_preferred_model
+        .as_deref()
+        .map(|model_id| {
+            gemma_download_spec_for_selector(model_id)
+                .map(|spec| spec.id.to_string())
+                .unwrap_or_else(|| model_id.trim().to_string())
+        })
+}
+
+fn runtime_model_for_selector(health: &ProviderBackendHealth, model_id: &str) -> Option<String> {
+    if let Some(spec) = gemma_download_spec_for_selector(model_id) {
+        return runtime_model_for_spec(health, spec);
+    }
+    let normalized_selector = normalize_model_key(model_id);
+    let mut models = Vec::new();
+    if let Some(model) = health.ready_model.as_ref() {
+        models.push(model.clone());
+    }
+    for model in &health.available_models {
+        if !models.iter().any(|existing| existing == model) {
+            models.push(model.clone());
+        }
+    }
+    models.into_iter().find(|model| {
+        let normalized_model = normalize_model_key(model);
+        !normalized_selector.is_empty()
+            && (normalized_model == normalized_selector
+                || normalized_model.contains(normalized_selector.as_str()))
+    })
+}
+
+fn selected_local_gemma_runtime_model(
+    config: &PylonConfig,
+    health: &ProviderBackendHealth,
+) -> Option<String> {
+    if let Some(model_id) = config.local_gemma_preferred_model.as_deref() {
+        return runtime_model_for_selector(health, model_id);
+    }
+    first_gemma_ready_model(health)
 }
 
 fn is_gemma_model(value: &str) -> bool {
@@ -6826,7 +7232,7 @@ async fn report_provider_presence_heartbeat(
             .iter()
             .filter(|row| row.eligible)
             .count() as u64,
-        ready_model: gemma_ready_model(&snapshot.availability.local_gemma),
+        ready_model: selected_local_gemma_runtime_model(config, &snapshot.availability.local_gemma),
         runtime_state: snapshot
             .runtime
             .authoritative_status
@@ -7540,25 +7946,50 @@ async fn detect_local_gemma(
         .into_iter()
         .filter(|model| is_gemma_model(model))
         .collect::<Vec<_>>();
-    let ready = !gemma_models.is_empty();
+    let provisional_health = ProviderBackendHealth {
+        reachable: true,
+        ready: false,
+        configured_model: configured_local_gemma_model(config),
+        ready_model: None,
+        available_models: gemma_models.clone(),
+        ..ProviderBackendHealth::default()
+    };
+    let ready_model = selected_local_gemma_runtime_model(config, &provisional_health);
+    let preferred_model_missing = config.local_gemma_preferred_model.is_some()
+        && ready_model.is_none()
+        && !gemma_models.is_empty();
+    let ready = ready_model.is_some();
     ProviderBackendHealth {
         reachable: true,
         ready,
-        configured_model: gemma_models.first().cloned(),
-        ready_model: gemma_models.first().cloned(),
+        configured_model: configured_local_gemma_model(config)
+            .or_else(|| gemma_models.first().cloned()),
+        ready_model,
         available_models: gemma_models,
-        last_error: (!ready).then(|| {
-            format!(
-                "local Gemma runtime at {url} is reachable, but no Gemma 4 model is loaded. Downloaded GGUF files alone do not make supply eligible; start the runtime with a Gemma model or update local_gemma_base_url."
-            )
-        }),
+        last_error: if preferred_model_missing {
+            Some(format!(
+                "preferred local Gemma model `{}` is not loaded in the runtime at {url}. Available runtime models: {}",
+                configured_local_gemma_model(config).unwrap_or_else(|| "unknown".to_string()),
+                comma_or_none(&provisional_health.available_models)
+            ))
+        } else {
+            (!ready).then(|| {
+                format!(
+                    "local Gemma runtime at {url} is reachable, but no Gemma 4 model is loaded. Downloaded GGUF files alone do not make supply eligible; start the runtime with a Gemma model or update local_gemma_base_url."
+                )
+            })
+        },
         last_action: Some(if ready {
             "health check ready".to_string()
+        } else if preferred_model_missing {
+            "preferred gemma model missing".to_string()
         } else {
             "gemma models not loaded".to_string()
         }),
         availability_message: Some(if ready {
             "gemma_ready".to_string()
+        } else if preferred_model_missing {
+            "gemma_preferred_missing".to_string()
         } else {
             "gemma_missing".to_string()
         }),
@@ -7606,6 +8037,13 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         "wallet_storage_dir" => config.wallet_storage_dir = PathBuf::from(value.trim()),
         "local_gemma_base_url" | "ollama_base_url" => {
             config.local_gemma_base_url = value.to_string();
+        }
+        "local_gemma_preferred_model" => {
+            config.local_gemma_preferred_model = if value.trim().is_empty() {
+                None
+            } else {
+                Some(canonical_local_gemma_model_id(value))
+            };
         }
         "backend.local_gemma_inference_enabled"
         | "backend.gpt_oss_inference_enabled"
@@ -11251,6 +11689,62 @@ mod tests {
     }
 
     #[test]
+    fn resolve_local_gemma_chat_target_uses_preferred_model_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.local_gemma_preferred_model = Some("gemma-4-e2b".to_string());
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let availability = ProviderAvailability {
+            local_gemma: ready_health("gemma4:e4b", &["gemma4:e4b", "gemma4:e2b"], None),
+            apple_foundation_models: ProviderBackendHealth::default(),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+            pooled_inference: ProviderPooledInferenceAvailability::default(),
+            sandbox: ProviderSandboxAvailability::default(),
+        };
+        let snapshot = build_snapshot_from_availability(
+            &config,
+            Some(&identity),
+            ProviderDesiredMode::Offline,
+            None,
+            availability,
+            None,
+        );
+
+        let target = super::resolve_local_gemma_chat_target_from_snapshot(&config, &snapshot)?;
+        ensure(
+            target.backend == LocalGemmaChatBackend::LocalRuntime && target.model == "gemma4:e2b",
+            "resolver should use the configured preferred local Gemma model",
+        )
+    }
+
+    #[test]
+    fn preferred_model_selection_returns_none_when_model_is_not_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        config.local_gemma_preferred_model = Some("gemma-4-e2b".to_string());
+        let health = ProviderBackendHealth {
+            reachable: true,
+            ready: true,
+            configured_model: None,
+            ready_model: Some("gemma4:e4b".to_string()),
+            available_models: vec!["gemma4:e4b".to_string()],
+            ..ProviderBackendHealth::default()
+        };
+        let selected = super::selected_local_gemma_runtime_model(&config, &health);
+        ensure(
+            selected.is_none(),
+            "preferred selection should fail closed when the preferred model is unavailable",
+        )?;
+        ensure(
+            super::configured_local_gemma_model(&config).as_deref() == Some("gemma-4-e2b"),
+            "configured model should preserve the requested Gemma selector",
+        )
+    }
+
+    #[test]
     fn gemma_local_installations_reflect_cached_files() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
@@ -11276,6 +11770,42 @@ mod tests {
         ensure(
             found.file_bytes == Some(4),
             "cached GGUF should report its local file size",
+        )
+    }
+
+    #[test]
+    fn uninstall_gemma_model_removes_cache_and_clears_preference()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.local_gemma_preferred_model = Some("gemma-4-e4b".to_string());
+        config.local_gemma_base_url = "https://example.invalid".to_string();
+        save_config(config_path.as_path(), &config)?;
+        let spec = gemma_download_spec("gemma-4-e4b")
+            .ok_or_else(|| std::io::Error::other("missing gemma-4-e4b spec"))?;
+        let path = super::gemma_model_path(config_path.as_path(), spec);
+        std::fs::create_dir_all(
+            path.parent()
+                .ok_or_else(|| std::io::Error::other("missing model parent"))?,
+        )?;
+        std::fs::write(path.as_path(), b"gguf")?;
+
+        let report = super::uninstall_gemma_model(config_path.as_path(), "gemma-4-e4b")?;
+        let updated = super::load_config(config_path.as_path())?;
+
+        ensure(
+            report.removed_from_cache,
+            "uninstall should remove the cached GGUF",
+        )?;
+        ensure(
+            report.preference_cleared,
+            "uninstall should clear the preferred model",
+        )?;
+        ensure(!path.exists(), "uninstall should delete the cache file")?;
+        ensure(
+            updated.local_gemma_preferred_model.is_none(),
+            "preferred model should be cleared from config",
         )
     }
 
