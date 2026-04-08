@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use bottom_pane::{BottomPane, ComposerSubmission};
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
@@ -17,10 +17,10 @@ use crossterm::event::{
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture, MouseEvent, MouseEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use openagents_provider_substrate::{
-    ProviderBackendHealth, ProviderEarningsSummary, ProviderPersistedSnapshot,
+    ProviderBackendHealth, ProviderDesiredMode, ProviderEarningsSummary, ProviderPersistedSnapshot,
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -1874,7 +1874,11 @@ impl AppShell {
                     let _ = tx.send(WorkerEvent::RefreshCompleted {
                         loaded: None,
                         installed_gemma_models,
-                        economy_stats: compute_economy_sidebar_stats(None, None, config_path.as_path()),
+                        economy_stats: compute_economy_sidebar_stats(
+                            None,
+                            None,
+                            config_path.as_path(),
+                        ),
                         last_error: Some(error.to_string()),
                         last_wallet_error: None,
                         provider_presence_online,
@@ -1895,6 +1899,7 @@ impl AppShell {
                                 let provider_presence_online = sync_provider_presence_for_refresh(
                                     config_path.as_path(),
                                     session_id.as_str(),
+                                    status.desired_mode,
                                     status.snapshot.as_ref(),
                                     provider_presence_online,
                                     heartbeat_due,
@@ -1920,6 +1925,7 @@ impl AppShell {
                                 let provider_presence_online = sync_provider_presence_for_refresh(
                                     config_path.as_path(),
                                     session_id.as_str(),
+                                    ProviderDesiredMode::Offline,
                                     None,
                                     provider_presence_online,
                                     heartbeat_due,
@@ -1947,6 +1953,7 @@ impl AppShell {
                         let provider_presence_online = sync_provider_presence_for_refresh(
                             config_path.as_path(),
                             session_id.as_str(),
+                            ProviderDesiredMode::Offline,
                             None,
                             provider_presence_online,
                             heartbeat_due,
@@ -2414,7 +2421,8 @@ impl AppShell {
                     .unwrap_or_else(|| "none".to_string()),
             )
         } else {
-            let provider = earnings.expect("provider earnings should exist when fallback is disabled");
+            let provider =
+                earnings.expect("provider earnings should exist when fallback is disabled");
             (
                 "earned today",
                 format_sats(provider.sats_today),
@@ -2740,6 +2748,13 @@ Controls:\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
 }
 
+fn should_publish_provider_presence(
+    desired_mode: ProviderDesiredMode,
+    snapshot: Option<&ProviderPersistedSnapshot>,
+) -> bool {
+    desired_mode == ProviderDesiredMode::Online && snapshot.is_some()
+}
+
 pub async fn run_pylon_tui() -> Result<()> {
     run_pylon_tui_with_config(TuiLaunchConfig {
         config_path: pylon::default_config_path(),
@@ -2918,10 +2933,22 @@ fn compute_economy_sidebar_stats(
 async fn sync_provider_presence_for_refresh(
     config_path: &Path,
     provider_presence_session_id: &str,
+    desired_mode: ProviderDesiredMode,
     snapshot: Option<&ProviderPersistedSnapshot>,
     provider_presence_online: bool,
     heartbeat_due: bool,
 ) -> bool {
+    if !should_publish_provider_presence(desired_mode, snapshot) {
+        if provider_presence_online {
+            let _ = pylon::report_provider_presence_offline_for_config(
+                config_path,
+                provider_presence_session_id,
+            )
+            .await;
+        }
+        return false;
+    }
+
     match snapshot {
         Some(snapshot) if !provider_presence_online || heartbeat_due => {
             pylon::report_provider_presence_heartbeat_for_snapshot(
@@ -2933,14 +2960,6 @@ async fn sync_provider_presence_for_refresh(
             .is_ok()
         }
         Some(_) => provider_presence_online,
-        None if provider_presence_online => {
-            let _ = pylon::report_provider_presence_offline_for_config(
-                config_path,
-                provider_presence_session_id,
-            )
-            .await;
-            false
-        }
         None => false,
     }
 }
@@ -2964,7 +2983,10 @@ fn summarize_wallet_receives(ledger: &pylon::PylonLedger) -> WalletReceiveSummar
             .filter(|payment| payment.updated_at_ms / 86_400_000 == current_day)
             .map(|payment| payment.amount_sats)
             .sum(),
-        lifetime_sats: settled_receives.iter().map(|payment| payment.amount_sats).sum(),
+        lifetime_sats: settled_receives
+            .iter()
+            .map(|payment| payment.amount_sats)
+            .sum(),
         count_today: settled_receives
             .iter()
             .filter(|payment| payment.updated_at_ms / 86_400_000 == current_day)
@@ -3518,17 +3540,20 @@ fn estimate_token_count(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        EconomySidebarStats, WalletReceiveSummary, active_chat_title, estimate_token_count, max_transcript_scroll_y,
-        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
-        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
-        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
-        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
+        ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, EconomySidebarStats,
+        WalletReceiveSummary, WorkerEvent, active_chat_title, estimate_token_count,
+        max_transcript_scroll_y, parse_tui_buyer_job_history_request,
+        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
+        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
+        parse_tui_optional_limit, parse_tui_payout_history_request,
+        parse_tui_payout_withdraw_request, should_publish_provider_presence,
         summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
-        wrapped_row_count, ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
-        WorkerEvent,
+        wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use openagents_provider_substrate::ProviderEarningsSummary;
+    use openagents_provider_substrate::{
+        ProviderDesiredMode, ProviderEarningsSummary, ProviderPersistedSnapshot,
+    };
     use ratatui::layout::Rect;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
@@ -3660,6 +3685,28 @@ mod tests {
         assert!(sidebar.contains("credited lifetime: 188 sats"));
         assert!(sidebar.contains("receives today: 12"));
         assert!(sidebar.contains("last credit: completed 2 sats"));
+    }
+
+    #[test]
+    fn provider_presence_only_publishes_while_explicitly_online() {
+        let snapshot = ProviderPersistedSnapshot::default();
+
+        assert!(
+            should_publish_provider_presence(ProviderDesiredMode::Online, Some(&snapshot)),
+            "online mode should publish provider presence when a snapshot exists"
+        );
+        assert!(
+            !should_publish_provider_presence(ProviderDesiredMode::Offline, Some(&snapshot)),
+            "offline mode should stop publishing provider presence even if a snapshot exists"
+        );
+        assert!(
+            !should_publish_provider_presence(ProviderDesiredMode::Paused, Some(&snapshot)),
+            "paused mode should stop publishing provider presence even if a snapshot exists"
+        );
+        assert!(
+            !should_publish_provider_presence(ProviderDesiredMode::Online, None),
+            "online mode still requires a snapshot before publishing provider presence"
+        );
     }
 
     #[test]
