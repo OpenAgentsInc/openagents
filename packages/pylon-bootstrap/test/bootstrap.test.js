@@ -85,7 +85,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
         anonymousActorId: "install-123",
         sessionId: "install-123",
         installId: "install-123",
-        appVersion: "0.1.3",
+        appVersion: "0.1.4",
       });
 
       await telemetryClient.emit("installer_started", {
@@ -101,7 +101,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
           anonymous_actor_id: "install-123",
           session_id: "install-123",
           install_id: "install-123",
-          app_version: "0.1.3",
+          app_version: "0.1.4",
           properties: {
             os: "linux",
             arch: "x86_64",
@@ -130,6 +130,25 @@ describe("@openagentsinc/pylon bootstrap", () => {
     ]);
 
     expect(release.tag_name).toBe("pylon-v0.0.1-rc3");
+  });
+
+  test("selectLatestPylonRelease prefers the highest semver tag over API order", () => {
+    const release = selectLatestPylonRelease([
+      {
+        tag_name: "pylon-v0.0.1-rc9",
+        draft: false,
+      },
+      {
+        tag_name: "pylon-v0.0.1-rc8",
+        draft: false,
+      },
+      {
+        tag_name: "pylon-v0.0.1-rc10",
+        draft: false,
+      },
+    ]);
+
+    expect(release.tag_name).toBe("pylon-v0.0.1-rc10");
   });
 
   describe("ensureReleaseInstall", () => {

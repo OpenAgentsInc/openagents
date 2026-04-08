@@ -47,6 +47,72 @@ function normalizeVersion(value) {
   return value.replace(/^pylon-v/, "").replace(/^v/, "");
 }
 
+function parseComparableVersion(value) {
+  const normalized = normalizeVersion(value).trim();
+  const match = normalized.match(
+    /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+?)(\d+)?)?$/,
+  );
+  if (!match) {
+    return null;
+  }
+
+  return {
+    normalized,
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2], 10),
+    patch: Number.parseInt(match[3], 10),
+    prereleaseLabel: match[4] ?? null,
+    prereleaseNumber:
+      match[5] != null ? Number.parseInt(match[5], 10) : null,
+  };
+}
+
+function comparePylonReleaseTags(leftTagName, rightTagName) {
+  const left = parseComparableVersion(leftTagName);
+  const right = parseComparableVersion(rightTagName);
+
+  if (!left && !right) {
+    return String(leftTagName).localeCompare(String(rightTagName));
+  }
+  if (!left) {
+    return -1;
+  }
+  if (!right) {
+    return 1;
+  }
+
+  for (const key of ["major", "minor", "patch"]) {
+    if (left[key] !== right[key]) {
+      return left[key] > right[key] ? 1 : -1;
+    }
+  }
+
+  if (left.prereleaseLabel == null && right.prereleaseLabel == null) {
+    return 0;
+  }
+  if (left.prereleaseLabel == null) {
+    return 1;
+  }
+  if (right.prereleaseLabel == null) {
+    return -1;
+  }
+
+  const labelComparison = left.prereleaseLabel.localeCompare(
+    right.prereleaseLabel,
+  );
+  if (labelComparison !== 0) {
+    return labelComparison;
+  }
+
+  const leftNumber = left.prereleaseNumber ?? 0;
+  const rightNumber = right.prereleaseNumber ?? 0;
+  if (leftNumber !== rightNumber) {
+    return leftNumber > rightNumber ? 1 : -1;
+  }
+
+  return left.normalized.localeCompare(right.normalized);
+}
+
 function createBootstrapError(message, context = {}) {
   const error = new Error(message);
   Object.assign(error, context);
@@ -514,9 +580,11 @@ export function selectLatestPylonRelease(releases) {
     throw new Error("GitHub release lookup did not return a release list.");
   }
 
-  const release = releases.find(
-    (candidate) => !candidate?.draft && isPylonReleaseTag(candidate?.tag_name),
-  );
+  const release = releases
+    .filter((candidate) => !candidate?.draft && isPylonReleaseTag(candidate?.tag_name))
+    .sort((left, right) =>
+      comparePylonReleaseTags(right.tag_name, left.tag_name),
+    )[0];
   if (!release) {
     throw new Error(
       `GitHub release lookup did not find any published ${PYLON_RELEASE_TAG_PREFIX} releases.`,

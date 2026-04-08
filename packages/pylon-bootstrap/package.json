@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/pylon",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Bootstrap the standalone OpenAgents Pylon release asset and run first-run smoke checks.",
   "type": "module",
   "bin": {
