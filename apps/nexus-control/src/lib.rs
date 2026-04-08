@@ -1320,7 +1320,8 @@ async fn record_provider_presence_heartbeat(
         hosting_telemetry: request.hosting_telemetry,
     };
     let now = now_unix_ms();
-    let (record, dispatch_plans) = {
+    let dispatch_claimed = try_begin_treasury_dispatch_cycle();
+    let store_result: Result<_, ApiError> = (|| {
         let mut store = state.store.write().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "internal_error",
@@ -1329,14 +1330,27 @@ async fn record_provider_presence_heartbeat(
         let record = store
             .provider_presence
             .record_heartbeat(normalized_request, now);
-        let online_identities = store.provider_presence.online_identities(now);
-        let (dispatch_plans, treasury_receipts) = store.treasury.prepare_due_payouts(
-            &state.config.treasury,
-            online_identities.as_slice(),
-            now,
-        );
+        let (dispatch_plans, treasury_receipts) = if dispatch_claimed {
+            let online_identities = store.provider_presence.online_identities(now);
+            store.treasury.prepare_due_payouts(
+                &state.config.treasury,
+                online_identities.as_slice(),
+                now,
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
         record_treasury_receipt_events(&mut store, treasury_receipts, now);
-        (record, dispatch_plans)
+        Ok((record, dispatch_plans))
+    })();
+    let (record, dispatch_plans) = match store_result {
+        Ok(value) => value,
+        Err(error) => {
+            if dispatch_claimed {
+                finish_treasury_dispatch_cycle();
+            }
+            return Err(error);
+        }
     };
     if !dispatch_plans.is_empty() {
         let dispatch_state = state.clone();
@@ -1345,7 +1359,10 @@ async fn record_provider_presence_heartbeat(
                 dispatch_live_payouts(&dispatch_state.config.treasury, dispatch_plans.as_slice())
                     .await;
             apply_treasury_dispatch_batch(&dispatch_state, batch).await;
+            finish_treasury_dispatch_cycle();
         });
+    } else if dispatch_claimed {
+        finish_treasury_dispatch_cycle();
     }
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
@@ -6486,6 +6503,21 @@ enum TreasuryStatusRefreshPolicy {
 fn treasury_wallet_refresh_scheduled_flag() -> &'static AtomicBool {
     static FLAG: OnceLock<AtomicBool> = OnceLock::new();
     FLAG.get_or_init(|| AtomicBool::new(false))
+}
+
+fn treasury_dispatch_in_flight_flag() -> &'static AtomicBool {
+    static FLAG: OnceLock<AtomicBool> = OnceLock::new();
+    FLAG.get_or_init(|| AtomicBool::new(false))
+}
+
+fn try_begin_treasury_dispatch_cycle() -> bool {
+    treasury_dispatch_in_flight_flag()
+        .compare_exchange(false, true, AtomicOrdering::AcqRel, AtomicOrdering::Acquire)
+        .is_ok()
+}
+
+fn finish_treasury_dispatch_cycle() {
+    treasury_dispatch_in_flight_flag().store(false, AtomicOrdering::Release);
 }
 
 fn schedule_treasury_wallet_refresh(state: AppState, create_if_missing: bool) {
