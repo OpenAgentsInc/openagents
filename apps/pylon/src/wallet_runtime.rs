@@ -339,15 +339,20 @@ pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatu
     let runtime = context.runtime.clone();
     let result: Result<WalletStatusReport> = async {
         let wallet = open_wallet(&context).await?;
-        let network_status = wallet.network_status().await;
-        let balance = wallet
-            .get_balance()
-            .await
-            .context("failed to fetch Spark balance")?;
-        let payments = wallet
-            .list_payments(Some(10), None)
-            .await
-            .context("failed to list Spark payments")?;
+        let result: Result<_> = async {
+            let network_status = wallet.network_status().await;
+            let balance = wallet
+                .get_balance()
+                .await
+                .context("failed to fetch Spark balance")?;
+            let payments = wallet
+                .list_payments(Some(10), None)
+                .await
+                .context("failed to list Spark payments")?;
+            Ok((network_status, balance, payments))
+        }
+        .await;
+        let (network_status, balance, payments) = finalize_wallet(wallet, result).await?;
         let report = WalletStatusReport {
             runtime,
             runtime_status: network_status_label(&network_status),
@@ -382,14 +387,19 @@ pub async fn create_wallet_address_report(config_path: &Path) -> Result<WalletAd
     let runtime = context.runtime.clone();
     let result: Result<WalletAddressReport> = async {
         let wallet = open_wallet(&context).await?;
-        let spark_address = wallet
-            .get_spark_address()
-            .await
-            .context("failed to create Spark receive address")?;
-        let bitcoin_address = wallet
-            .get_bitcoin_address()
-            .await
-            .context("failed to create Bitcoin receive address")?;
+        let result: Result<_> = async {
+            let spark_address = wallet
+                .get_spark_address()
+                .await
+                .context("failed to create Spark receive address")?;
+            let bitcoin_address = wallet
+                .get_bitcoin_address()
+                .await
+                .context("failed to create Bitcoin receive address")?;
+            Ok((spark_address, bitcoin_address))
+        }
+        .await;
+        let (spark_address, bitcoin_address) = finalize_wallet(wallet, result).await?;
         let report = WalletAddressReport {
             runtime,
             spark_address,
@@ -423,11 +433,16 @@ pub async fn create_wallet_invoice_report(
     let context = prepare_wallet_context(config_path)?;
     let runtime = context.runtime.clone();
     let result: Result<WalletInvoiceReport> = async {
+        let invoice_description = description.clone();
         let wallet = open_wallet(&context).await?;
-        let payment_request = wallet
-            .create_bolt11_invoice(amount_sats, description.clone(), expiry_seconds)
-            .await
-            .context("failed to create Bolt11 invoice")?;
+        let result: Result<_> = async {
+            wallet
+                .create_bolt11_invoice(amount_sats, invoice_description, expiry_seconds)
+                .await
+                .context("failed to create Bolt11 invoice")
+        }
+        .await;
+        let payment_request = finalize_wallet(wallet, result).await?;
         let invoice = PylonWalletInvoiceRecord {
             invoice_id: format!("bolt11-{}", now_epoch_ms()),
             amount_sats,
@@ -462,19 +477,25 @@ pub async fn pay_wallet_invoice_report(
     let runtime = context.runtime.clone();
     let request = payment_request.trim().to_string();
     let result: Result<WalletPayReport> = async {
+        let request_for_send = request.clone();
         let wallet = open_wallet(&context).await?;
-        let payment_id = wallet
-            .send_payment_simple(request.as_str(), amount_sats)
-            .await
-            .context("failed to send Spark payment")?;
-        let balance = wallet
-            .get_balance()
-            .await
-            .context("failed to refresh Spark balance after send")?;
-        let payments = wallet
-            .list_payments(Some(20), None)
-            .await
-            .context("failed to refresh Spark payment history after send")?;
+        let result: Result<_> = async {
+            let payment_id = wallet
+                .send_payment_simple(request_for_send.as_str(), amount_sats)
+                .await
+                .context("failed to send Spark payment")?;
+            let balance = wallet
+                .get_balance()
+                .await
+                .context("failed to refresh Spark balance after send")?;
+            let payments = wallet
+                .list_payments(Some(20), None)
+                .await
+                .context("failed to refresh Spark payment history after send")?;
+            Ok((payment_id, balance, payments))
+        }
+        .await;
+        let (payment_id, balance, payments) = finalize_wallet(wallet, result).await?;
         let payment = payments
             .iter()
             .find(|payment| payment.id == payment_id)
@@ -524,10 +545,14 @@ pub async fn load_wallet_history_report(
     let runtime = context.runtime.clone();
     let result: Result<WalletHistoryReport> = async {
         let wallet = open_wallet(&context).await?;
-        let payments = wallet
-            .list_payments(limit.or(Some(20)), None)
-            .await
-            .context("failed to list Spark payments")?;
+        let result: Result<_> = async {
+            wallet
+                .list_payments(limit.or(Some(20)), None)
+                .await
+                .context("failed to list Spark payments")
+        }
+        .await;
+        let payments = finalize_wallet(wallet, result).await?;
         let records = payments
             .iter()
             .map(payment_record_from_summary)
@@ -743,6 +768,20 @@ async fn open_wallet(context: &WalletRuntimeContext) -> Result<SparkWallet> {
     )
     .await
     .context("failed to initialize Spark wallet")
+}
+
+async fn finalize_wallet<T>(wallet: SparkWallet, result: Result<T>) -> Result<T> {
+    let disconnect_error = wallet
+        .disconnect()
+        .await
+        .err()
+        .map(|error| anyhow!("failed to disconnect Spark wallet: {error}"));
+    match (result, disconnect_error) {
+        (Ok(value), None) => Ok(value),
+        (Ok(_), Some(error)) => Err(error),
+        (Err(error), None) => Err(error),
+        (Err(error), Some(disconnect_error)) => Err(error.context(disconnect_error.to_string())),
+    }
 }
 
 fn ensure_rustls_crypto_provider() -> Result<()> {

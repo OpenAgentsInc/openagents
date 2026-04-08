@@ -343,6 +343,13 @@ impl SparkWallet {
         }
         Ok(payments)
     }
+
+    pub async fn disconnect(&self) -> Result<(), SparkError> {
+        self.sdk
+            .disconnect()
+            .await
+            .map_err(|error| SparkError::Wallet(error.to_string()))
+    }
 }
 
 fn payment_direction_label(payment_type: PaymentType) -> &'static str {
