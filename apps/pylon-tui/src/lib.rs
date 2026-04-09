@@ -20,7 +20,7 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use openagents_provider_substrate::{
-    ProviderBackendHealth, ProviderDesiredMode, ProviderEarningsSummary, ProviderPersistedSnapshot,
+    ProviderBackendHealth, ProviderDesiredMode, ProviderPersistedSnapshot,
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -37,6 +37,7 @@ use unicode_width::UnicodeWidthStr;
 const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(10);
 const GPU_REFRESH_RATE: Duration = Duration::from_secs(300);
+const LOOKBACK_WINDOW_24H_MS: u64 = 86_400_000;
 
 fn shell_border() -> Style {
     Style::default().fg(Color::Rgb(0x73, 0xc2, 0xfb))
@@ -102,9 +103,56 @@ struct Gemma4Status {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct EconomySidebarStats {
+struct OperatorPanelStats {
+    desired_mode: ProviderDesiredMode,
+    runtime_status: Option<String>,
+    runtime_error: Option<String>,
+    backend_label: Option<String>,
+    provider_presence_online: bool,
     wallet_balance: Option<pylon::WalletBalanceSnapshot>,
-    earnings: Option<ProviderEarningsSummary>,
+    wallet_balance_live: bool,
+    jobs_found_24h: u64,
+    matching_jobs_24h: u64,
+    jobs_processed_24h: u64,
+    jobs_settled_24h: u64,
+    awaiting_payment_jobs: u64,
+    processing_jobs: u64,
+    last_job_result: Option<String>,
+    online_uptime_seconds: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ProviderCommandInFlight {
+    Scan { started_at: Instant, seconds: u64 },
+    Run { started_at: Instant, seconds: u64 },
+}
+
+impl ProviderCommandInFlight {
+    fn state_label(&self) -> &'static str {
+        match self {
+            Self::Scan { .. } => "scan active",
+            Self::Run { .. } => "run active",
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            Self::Scan {
+                started_at,
+                seconds,
+            } => format!(
+                "scanning configured relays for {seconds}s ({})",
+                format_duration(started_at.elapsed())
+            ),
+            Self::Run {
+                started_at,
+                seconds,
+            } => format!(
+                "running retained provider intake for {seconds}s ({})",
+                format_duration(started_at.elapsed())
+            ),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -140,7 +188,7 @@ enum WorkerEvent {
     RefreshCompleted {
         loaded: Option<LoadedState>,
         installed_gemma_models: BTreeMap<String, u64>,
-        economy_stats: EconomySidebarStats,
+        operator_stats: OperatorPanelStats,
         last_error: Option<String>,
         last_wallet_error: Option<String>,
         provider_presence_online: bool,
@@ -284,7 +332,8 @@ struct AppShell {
     pending_chat_prompt: Option<String>,
     installed_gemma_models: BTreeMap<String, u64>,
     gemma_downloads: BTreeMap<String, GemmaDownloadProgressState>,
-    economy_stats: EconomySidebarStats,
+    operator_stats: OperatorPanelStats,
+    provider_command_in_flight: Option<ProviderCommandInFlight>,
     transcript_follow_latest: bool,
     transcript_scroll_y: u16,
     transcript_wrap_width: u16,
@@ -336,7 +385,8 @@ impl AppShell {
             chat_history: Vec::new(),
             pending_chat_prompt: None,
             gemma_downloads: BTreeMap::new(),
-            economy_stats: EconomySidebarStats::default(),
+            operator_stats: OperatorPanelStats::default(),
+            provider_command_in_flight: None,
             transcript_follow_latest: true,
             transcript_scroll_y: 0,
             transcript_wrap_width: 0,
@@ -778,14 +828,14 @@ impl AppShell {
             WorkerEvent::RefreshCompleted {
                 loaded,
                 installed_gemma_models,
-                economy_stats,
+                operator_stats,
                 last_error,
                 last_wallet_error,
                 provider_presence_online,
             } => {
                 self.loaded = loaded;
                 self.installed_gemma_models = installed_gemma_models;
-                self.economy_stats = economy_stats;
+                self.operator_stats = operator_stats;
                 self.last_error = last_error;
                 self.last_wallet_error = last_wallet_error;
                 self.provider_presence_online = provider_presence_online;
@@ -927,26 +977,34 @@ impl AppShell {
             }
             WorkerEvent::RelayRefreshFinished { report } => {
                 self.push_system_lines("Relays", relay_report_lines(&report));
+                self.schedule_refresh_now();
             }
             WorkerEvent::RelayRefreshFailed { error } => {
                 self.push_system_message("Relay Error", error);
             }
             WorkerEvent::AnnouncementFinished { output } => {
                 self.push_system_lines("Announcement", text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
             }
             WorkerEvent::AnnouncementFailed { error } => {
                 self.push_system_message("Announcement Error", error);
             }
             WorkerEvent::ProviderScanFinished { output } => {
+                self.provider_command_in_flight = None;
                 self.push_system_lines("Provider Intake", text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
             }
             WorkerEvent::ProviderScanFailed { error } => {
+                self.provider_command_in_flight = None;
                 self.push_system_message("Provider Error", error);
             }
             WorkerEvent::ProviderRunFinished { output } => {
+                self.provider_command_in_flight = None;
                 self.push_system_lines("Provider Run", text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
             }
             WorkerEvent::ProviderRunFailed { error } => {
+                self.provider_command_in_flight = None;
                 self.push_system_message("Provider Error", error);
             }
             WorkerEvent::BuyerJobSubmitted { report } => {
@@ -971,12 +1029,14 @@ impl AppShell {
             }
             WorkerEvent::BuyerJobCommandFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
             }
             WorkerEvent::BuyerJobCommandFailed { error } => {
                 self.push_system_message("Buyer Job Error", error);
             }
             WorkerEvent::TranscriptReportFinished { title, output } => {
                 self.push_system_lines(title, text_body_lines(output.as_str()));
+                self.schedule_refresh_now();
             }
             WorkerEvent::TranscriptReportFailed { title, error } => {
                 self.push_system_message(title, error);
@@ -1278,6 +1338,17 @@ impl AppShell {
                         }
                     });
                 }
+            }
+        });
+        self.provider_command_in_flight = Some(if action == "run" {
+            ProviderCommandInFlight::Run {
+                started_at: Instant::now(),
+                seconds,
+            }
+        } else {
+            ProviderCommandInFlight::Scan {
+                started_at: Instant::now(),
+                seconds,
             }
         });
         self.push_system_message(
@@ -1865,7 +1936,7 @@ impl AppShell {
                     let _ = tx.send(WorkerEvent::RefreshCompleted {
                         loaded: None,
                         installed_gemma_models,
-                        economy_stats: compute_economy_sidebar_stats(None, None),
+                        operator_stats: OperatorPanelStats::default(),
                         last_error: Some(error.to_string()),
                         last_wallet_error: None,
                         provider_presence_online,
@@ -1892,15 +1963,20 @@ impl AppShell {
                                     heartbeat_due,
                                 )
                                 .await;
+                                let ledger =
+                                    pylon::load_ledger(config_path.as_path()).unwrap_or_default();
                                 WorkerEvent::RefreshCompleted {
                                     loaded: Some(LoadedState {
                                         snapshot: status.snapshot.clone(),
                                         wallet_status: wallet_status.clone(),
                                     }),
                                     installed_gemma_models,
-                                    economy_stats: compute_economy_sidebar_stats(
+                                    operator_stats: compute_operator_panel_stats(
+                                        status.desired_mode,
+                                        provider_presence_online,
                                         wallet_status.as_ref(),
                                         status.snapshot.as_ref(),
+                                        &ledger,
                                     ),
                                     last_error: None,
                                     last_wallet_error,
@@ -1917,15 +1993,20 @@ impl AppShell {
                                     heartbeat_due,
                                 )
                                 .await;
+                                let ledger =
+                                    pylon::load_ledger(config_path.as_path()).unwrap_or_default();
                                 WorkerEvent::RefreshCompleted {
                                     loaded: Some(LoadedState {
                                         snapshot: None,
                                         wallet_status: wallet_status.clone(),
                                     }),
                                     installed_gemma_models,
-                                    economy_stats: compute_economy_sidebar_stats(
+                                    operator_stats: compute_operator_panel_stats(
+                                        ProviderDesiredMode::Offline,
+                                        provider_presence_online,
                                         wallet_status.as_ref(),
                                         None,
+                                        &ledger,
                                     ),
                                     last_error: Some(error.to_string()),
                                     last_wallet_error,
@@ -1944,10 +2025,17 @@ impl AppShell {
                             heartbeat_due,
                         )
                         .await;
+                        let ledger = pylon::load_ledger(config_path.as_path()).unwrap_or_default();
                         WorkerEvent::RefreshCompleted {
                             loaded: None,
                             installed_gemma_models,
-                            economy_stats: compute_economy_sidebar_stats(None, None),
+                            operator_stats: compute_operator_panel_stats(
+                                ProviderDesiredMode::Offline,
+                                provider_presence_online,
+                                None,
+                                None,
+                                &ledger,
+                            ),
                             last_error: Some(error.to_string()),
                             last_wallet_error: None,
                             provider_presence_online,
@@ -2047,11 +2135,11 @@ impl AppShell {
             .split(vertical[1]);
         self.update_transcript_layout(middle[0]);
         let models_height = (self.model_lines().len() as u16 + 2).clamp(10, 14);
-        let economy_height = (self.economy_lines().len() as u16 + 2).clamp(8, 10);
+        let operator_height = (self.operator_lines().len() as u16 + 2).clamp(9, 12);
         let right_column = Layout::vertical([
-            Constraint::Min(8),
+            Constraint::Min(6),
             Constraint::Length(models_height),
-            Constraint::Length(economy_height),
+            Constraint::Length(operator_height),
         ])
         .split(middle[1]);
 
@@ -2059,7 +2147,7 @@ impl AppShell {
         frame.render_widget(self.transcript_panel(), middle[0]);
         frame.render_widget(self.summary_panel(), right_column[0]);
         frame.render_widget(self.models_panel(), right_column[1]);
-        frame.render_widget(self.economy_panel(), right_column[2]);
+        frame.render_widget(self.operator_panel(), right_column[2]);
         self.bottom_pane.render(
             frame,
             vertical[2],
@@ -2071,7 +2159,9 @@ impl AppShell {
     }
 
     fn header_panel(&self) -> Paragraph<'static> {
+        let (operator_state, _) = self.operator_state_label_and_detail();
         let mut spans = vec![Span::styled("Pylon", shell_accent())];
+        spans.push(Span::raw(format!("  {operator_state}")));
         if let Some(refresh_at) = self.last_refresh_at {
             spans.push(Span::raw(format!(
                 "  refreshed {} ago",
@@ -2089,21 +2179,6 @@ impl AppShell {
                 Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
             ));
         }
-        if let Some(wallet_status) = self
-            .loaded
-            .as_ref()
-            .and_then(|loaded| loaded.wallet_status.as_ref())
-        {
-            spans.push(Span::raw(format!(
-                "  wallet {} sats",
-                wallet_status.balance.total_sats
-            )));
-        } else if self.last_wallet_error.is_some() {
-            spans.push(Span::styled(
-                "  wallet unavailable",
-                Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
-            ));
-        }
         Paragraph::new(Line::from(spans))
             .block(
                 Block::default()
@@ -2116,15 +2191,15 @@ impl AppShell {
     }
 
     fn summary_panel(&self) -> Paragraph<'static> {
-        panel("Gemma + Wallet + System", Text::from(self.summary_lines()))
+        panel("System", Text::from(self.summary_lines()))
     }
 
     fn models_panel(&self) -> Paragraph<'static> {
         panel("Gemma Models", Text::from(self.model_lines()))
     }
 
-    fn economy_panel(&self) -> Paragraph<'static> {
-        panel("Balance + Earnings", Text::from(self.economy_lines()))
+    fn operator_panel(&self) -> Paragraph<'static> {
+        panel("Pylon Operator", Text::from(self.operator_lines()))
     }
 
     fn transcript_panel(&self) -> Paragraph<'static> {
@@ -2182,39 +2257,6 @@ impl AppShell {
                 "models: {}",
                 comma_or_none(gemma.models.as_slice())
             )),
-        ];
-        if let Some(wallet_status) = self
-            .loaded
-            .as_ref()
-            .and_then(|loaded| loaded.wallet_status.as_ref())
-        {
-            lines.push(Line::from(format!(
-                "wallet: {}  total: {} sats",
-                wallet_status.runtime_status, wallet_status.balance.total_sats
-            )));
-            lines.push(Line::from(format!(
-                "spark: {}  lightning: {}  onchain: {}",
-                wallet_status.balance.spark_sats,
-                wallet_status.balance.lightning_sats,
-                wallet_status.balance.onchain_sats
-            )));
-            if let Some(activity) = latest_wallet_activity_line(wallet_status) {
-                lines.push(Line::from(activity));
-            }
-            if wallet_status.runtime_status != "connected" {
-                if let Some(detail) = wallet_status.runtime_detail.as_deref() {
-                    if !detail.trim().is_empty() {
-                        lines.push(Line::from(format!("wallet detail: {detail}")));
-                    }
-                }
-            }
-        } else {
-            lines.push(Line::from("wallet: unavailable"));
-            if let Some(error) = self.last_wallet_error.as_deref() {
-                lines.push(Line::from(format!("wallet error: {error}")));
-            }
-        }
-        lines.extend([
             Line::from(format!(
                 "cpu: {}",
                 self.system_stats
@@ -2246,32 +2288,24 @@ impl AppShell {
                     .unwrap_or_else(|| "unknown".to_string())
             )),
             Line::from(format!(
-                "memory: {} free / {} total  used: {}",
+                "memory: {} used / {} total",
                 self.system_stats
-                    .available_memory_bytes
+                    .used_memory_bytes
                     .map(format_byte_size)
                     .unwrap_or_else(|| "unknown".to_string()),
                 self.system_stats
                     .total_memory_bytes
                     .map(format_byte_size)
-                    .unwrap_or_else(|| "unknown".to_string()),
-                self.system_stats
-                    .used_memory_bytes
-                    .map(format_byte_size)
                     .unwrap_or_else(|| "unknown".to_string())
             )),
             Line::from(format!(
-                "swap: {} free / {} total  used: {}",
+                "swap: {} used / {} total",
                 self.system_stats
-                    .free_swap_bytes
+                    .used_swap_bytes
                     .map(format_byte_size)
                     .unwrap_or_else(|| "unknown".to_string()),
                 self.system_stats
                     .total_swap_bytes
-                    .map(format_byte_size)
-                    .unwrap_or_else(|| "unknown".to_string()),
-                self.system_stats
-                    .used_swap_bytes
                     .map(format_byte_size)
                     .unwrap_or_else(|| "unknown".to_string())
             )),
@@ -2283,23 +2317,16 @@ impl AppShell {
                     .unwrap_or("not detected")
             )),
             Line::from(format!(
-                "disk: {}",
-                self.system_stats
-                    .disk_summary
-                    .as_deref()
-                    .unwrap_or("unavailable")
-            )),
-            Line::from(format!(
-                "disk io: {}",
-                self.system_stats
-                    .disk_io_summary
-                    .as_deref()
-                    .unwrap_or("unavailable")
-            )),
-            Line::from(format!(
                 "network: {}",
                 self.system_stats
                     .network_summary
+                    .as_deref()
+                    .unwrap_or("unavailable")
+            )),
+            Line::from(format!(
+                "disk: {}",
+                self.system_stats
+                    .disk_summary
                     .as_deref()
                     .unwrap_or("unavailable")
             )),
@@ -2311,7 +2338,7 @@ impl AppShell {
                     .unwrap_or("unavailable")
             )),
             Line::from(gemma.note),
-        ]);
+        ];
         if let Some(power) = self.system_stats.power_summary.as_deref() {
             lines.insert(
                 lines.len().saturating_sub(1),
@@ -2368,60 +2395,156 @@ impl AppShell {
         lines
     }
 
-    fn economy_lines(&self) -> Vec<Line<'static>> {
+    fn operator_lines(&self) -> Vec<Line<'static>> {
+        let (state_label, state_detail) = self.operator_state_label_and_detail();
+        let runtime_label = self
+            .operator_stats
+            .runtime_status
+            .as_deref()
+            .unwrap_or_else(|| self.operator_stats.desired_mode.label());
         let wallet_total = self
-            .economy_stats
-            .wallet_balance
-            .as_ref()
-            .map(|balance| format_sats(balance.total_sats))
-            .unwrap_or_else(|| "unavailable".to_string());
-        let wallet_breakdown = self
-            .economy_stats
+            .operator_stats
             .wallet_balance
             .as_ref()
             .map(|balance| {
-                format!(
-                    "spark: {}  lightning: {}",
-                    format_sats(balance.spark_sats),
-                    format_sats(balance.lightning_sats)
-                )
+                if self.operator_stats.wallet_balance_live {
+                    format!("wallet: {} total", format_sats(balance.total_sats))
+                } else {
+                    format!(
+                        "wallet: {} total (retained)",
+                        format_sats(balance.total_sats)
+                    )
+                }
             })
-            .unwrap_or_else(|| "spark: unavailable  lightning: unavailable".to_string());
-        let wallet_onchain = self
-            .economy_stats
+            .unwrap_or_else(|| "wallet: unavailable".to_string());
+        let wallet_mix = self
+            .operator_stats
             .wallet_balance
             .as_ref()
-            .map(|balance| format_sats(balance.onchain_sats))
-            .unwrap_or_else(|| "unavailable".to_string());
-        let (today_value, lifetime_value, count_value, last_value) = self
-            .economy_stats
-            .earnings
-            .as_ref()
-            .map(|provider| {
-                (
-                    format_sats(provider.sats_today),
-                    format_sats(provider.lifetime_sats),
-                    provider.jobs_today.to_string(),
-                    provider.last_job_result.clone(),
-                )
+            .map(|balance| {
+                if self.operator_stats.wallet_balance_live {
+                    format!(
+                        "mix: spark {}  lightning {}  onchain {}",
+                        format_sats(balance.spark_sats),
+                        format_sats(balance.lightning_sats),
+                        format_sats(balance.onchain_sats)
+                    )
+                } else {
+                    "mix: retained total only".to_string()
+                }
             })
-            .unwrap_or_else(|| {
-                (
-                    "unavailable".to_string(),
-                    "unavailable".to_string(),
-                    "unavailable".to_string(),
-                    "unavailable".to_string(),
-                )
-            });
-        vec![
-            Line::from(format!("wallet total: {wallet_total}")),
-            Line::from(wallet_breakdown),
-            Line::from(format!("on-chain: {wallet_onchain}")),
-            Line::from(format!("earned today: {today_value}")),
-            Line::from(format!("earned lifetime: {lifetime_value}")),
-            Line::from(format!("jobs today: {count_value}")),
-            Line::from(format!("last job: {last_value}")),
-        ]
+            .unwrap_or_else(|| "mix: unavailable".to_string());
+        let last_job = self
+            .operator_stats
+            .last_job_result
+            .as_deref()
+            .unwrap_or("none");
+        let uptime = self
+            .operator_stats
+            .online_uptime_seconds
+            .map(format_uptime)
+            .unwrap_or_else(|| "0m".to_string());
+
+        let mut lines = vec![
+            Line::from(format!("state: {state_label}")),
+            Line::from(format!(
+                "mode: {}  runtime: {}",
+                self.operator_stats.desired_mode.label(),
+                runtime_label
+            )),
+            Line::from(wallet_total),
+            Line::from(wallet_mix),
+            Line::from(format!(
+                "24h found: {}  matching: {}",
+                format_u64_with_commas(self.operator_stats.jobs_found_24h),
+                format_u64_with_commas(self.operator_stats.matching_jobs_24h)
+            )),
+            Line::from(format!(
+                "24h processed: {}  settled: {}",
+                format_u64_with_commas(self.operator_stats.jobs_processed_24h),
+                format_u64_with_commas(self.operator_stats.jobs_settled_24h)
+            )),
+            Line::from(format!("last job: {last_job}  uptime: {uptime}")),
+        ];
+        if let Some(backend_label) = self.operator_stats.backend_label.as_deref() {
+            lines.push(Line::from(format!("backend: {backend_label}")));
+        }
+        if let Some(detail) = state_detail {
+            lines.push(Line::from(format!("detail: {detail}")));
+        } else if let Some(wallet_error) = self.last_wallet_error.as_deref() {
+            if self.operator_stats.wallet_balance.is_none() {
+                lines.push(Line::from(format!("wallet error: {wallet_error}")));
+            }
+        }
+        lines
+    }
+
+    fn operator_state_label_and_detail(&self) -> (String, Option<String>) {
+        if let Some(command) = self.provider_command_in_flight.as_ref() {
+            return (command.state_label().to_string(), Some(command.detail()));
+        }
+        if self.operator_stats.processing_jobs > 0 {
+            let count = format_u64_with_commas(self.operator_stats.processing_jobs);
+            let job_label = if self.operator_stats.processing_jobs == 1 {
+                "job"
+            } else {
+                "jobs"
+            };
+            return (
+                "processing local".to_string(),
+                Some(format!(
+                    "{count} retained provider {job_label} still in progress"
+                )),
+            );
+        }
+        if self.operator_stats.awaiting_payment_jobs > 0 {
+            let count = format_u64_with_commas(self.operator_stats.awaiting_payment_jobs);
+            let job_label = if self.operator_stats.awaiting_payment_jobs == 1 {
+                "job is"
+            } else {
+                "jobs are"
+            };
+            return (
+                "awaiting payment".to_string(),
+                Some(format!(
+                    "{count} paid provider {job_label} waiting for wallet settlement"
+                )),
+            );
+        }
+        match self.operator_stats.runtime_status.as_deref() {
+            Some("online") if self.operator_stats.provider_presence_online => (
+                "online heartbeat only".to_string(),
+                Some("presence is live to Nexus, but no scan/run command is active".to_string()),
+            ),
+            Some("online") => (
+                "online".to_string(),
+                Some(
+                    "desired mode is online, but provider presence has not landed yet".to_string(),
+                ),
+            ),
+            Some("ready") => (
+                "ready".to_string(),
+                Some("local supply is visible, but the node is still offline".to_string()),
+            ),
+            Some("paused") => ("paused".to_string(), None),
+            Some("degraded") => (
+                "degraded".to_string(),
+                self.operator_stats.runtime_error.clone(),
+            ),
+            Some("error") => (
+                "error".to_string(),
+                self.operator_stats.runtime_error.clone(),
+            ),
+            Some("unconfigured") => (
+                "unconfigured".to_string(),
+                self.operator_stats.runtime_error.clone(),
+            ),
+            Some(other) => (other.to_string(), self.operator_stats.runtime_error.clone()),
+            None => (
+                self.operator_stats.desired_mode.label().to_string(),
+                self.operator_stats.runtime_error.clone(),
+            ),
+        }
     }
 
     fn transcript_body(&self) -> Text<'static> {
@@ -2887,14 +3010,139 @@ fn gemma4_status(loaded: Option<&LoadedState>) -> Gemma4Status {
     }
 }
 
-fn compute_economy_sidebar_stats(
+fn compute_operator_panel_stats(
+    desired_mode: ProviderDesiredMode,
+    provider_presence_online: bool,
     wallet_status: Option<&pylon::WalletStatusReport>,
     snapshot: Option<&ProviderPersistedSnapshot>,
-) -> EconomySidebarStats {
-    EconomySidebarStats {
-        wallet_balance: wallet_status.map(|report| report.balance.clone()),
-        earnings: snapshot.and_then(|value| value.earnings.clone()),
+    ledger: &pylon::PylonLedger,
+) -> OperatorPanelStats {
+    compute_operator_panel_stats_at(
+        desired_mode,
+        provider_presence_online,
+        wallet_status,
+        snapshot,
+        ledger,
+        current_epoch_ms_u64(),
+    )
+}
+
+fn compute_operator_panel_stats_at(
+    desired_mode: ProviderDesiredMode,
+    provider_presence_online: bool,
+    wallet_status: Option<&pylon::WalletStatusReport>,
+    snapshot: Option<&ProviderPersistedSnapshot>,
+    ledger: &pylon::PylonLedger,
+    now_ms: u64,
+) -> OperatorPanelStats {
+    let since_ms = now_ms.saturating_sub(LOOKBACK_WINDOW_24H_MS);
+    let wallet_balance_live = wallet_status.is_some();
+    let wallet_balance = wallet_status
+        .map(|report| report.balance.clone())
+        .or_else(|| {
+            ledger
+                .wallet
+                .last_balance_sats
+                .map(|total_sats| pylon::WalletBalanceSnapshot {
+                    total_sats,
+                    ..pylon::WalletBalanceSnapshot::default()
+                })
+        });
+    let provider_jobs = ledger.jobs.iter().filter(|job| job.direction == "provider");
+
+    let jobs_found_24h = provider_jobs
+        .clone()
+        .filter(|job| job.created_at_ms >= since_ms)
+        .count() as u64;
+    let matching_jobs_24h = provider_jobs
+        .clone()
+        .filter(|job| job.created_at_ms >= since_ms)
+        .filter(|job| provider_job_counted_as_matching(job.status.as_str()))
+        .count() as u64;
+    let jobs_processed_24h = provider_jobs
+        .clone()
+        .filter(|job| job.updated_at_ms >= since_ms)
+        .filter(|job| provider_job_counted_as_processed(job.status.as_str()))
+        .count() as u64;
+    let awaiting_payment_jobs = provider_jobs
+        .clone()
+        .filter(|job| job.status == "payment_required")
+        .count() as u64;
+    let processing_jobs = provider_jobs
+        .clone()
+        .filter(|job| provider_job_is_in_progress(job.status.as_str()))
+        .count() as u64;
+    let jobs_settled_24h = ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider")
+        .filter(|settlement| settlement.status == "settled")
+        .filter(|settlement| settlement.updated_at_ms >= since_ms)
+        .count() as u64;
+    let last_job_result = snapshot
+        .and_then(|value| value.earnings.as_ref())
+        .map(|earnings| earnings.last_job_result.as_str())
+        .filter(|status| !status.trim().is_empty() && *status != "none")
+        .map(str::to_string)
+        .or_else(|| latest_provider_job_status(ledger));
+
+    OperatorPanelStats {
+        desired_mode,
+        runtime_status: snapshot.and_then(|value| value.runtime.authoritative_status.clone()),
+        runtime_error: snapshot.and_then(|value| value.runtime.last_error.clone()),
+        backend_label: snapshot
+            .map(|value| value.runtime.execution_backend_label.clone())
+            .filter(|value| !value.trim().is_empty()),
+        provider_presence_online,
+        wallet_balance,
+        wallet_balance_live,
+        jobs_found_24h,
+        matching_jobs_24h,
+        jobs_processed_24h,
+        jobs_settled_24h,
+        awaiting_payment_jobs,
+        processing_jobs,
+        last_job_result,
+        online_uptime_seconds: snapshot.map(|value| value.runtime.online_uptime_seconds),
     }
+}
+
+fn provider_job_counted_as_matching(status: &str) -> bool {
+    status != "observed_drop"
+}
+
+fn provider_job_counted_as_processed(status: &str) -> bool {
+    matches!(
+        status,
+        "completed_local"
+            | "failed_local"
+            | "publish_failed"
+            | "delivery_failed_after_payment"
+            | "settled"
+    )
+}
+
+fn provider_job_is_in_progress(status: &str) -> bool {
+    matches!(
+        status,
+        "accepted_local" | "processing_local" | "payment_settled"
+    )
+}
+
+fn latest_provider_job_status(ledger: &pylon::PylonLedger) -> Option<String> {
+    ledger
+        .jobs
+        .iter()
+        .filter(|job| job.direction == "provider")
+        .max_by_key(|job| job.updated_at_ms)
+        .map(|job| job.status.clone())
+}
+
+fn current_epoch_ms_u64() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 async fn sync_provider_presence_for_refresh(
@@ -3362,22 +3610,6 @@ fn wallet_command_title(command: &pylon::WalletSubcommand) -> String {
     .to_string()
 }
 
-fn latest_wallet_activity_line(report: &pylon::WalletStatusReport) -> Option<String> {
-    let payment = report
-        .recent_payments
-        .iter()
-        .max_by_key(|payment| payment.updated_at_ms)?;
-    let direction = match payment.direction.as_str() {
-        "receive" => "receive",
-        "send" => "send",
-        other => other,
-    };
-    Some(format!(
-        "latest {direction}: {} {} sats via {}",
-        payment.status, payment.amount_sats, payment.method
-    ))
-}
-
 fn transcript_wrap_width(area: Rect) -> u16 {
     area.width.saturating_sub(4).max(1)
 }
@@ -3456,19 +3688,18 @@ fn estimate_token_count(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, EconomySidebarStats,
-        WorkerEvent, active_chat_title, estimate_token_count, max_transcript_scroll_y,
-        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
-        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
-        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
-        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
-        should_publish_provider_presence, summarize_chat_metrics, transcript_viewport_height,
-        transcript_wrap_width, wrapped_row_count,
+        ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, OperatorPanelStats,
+        ProviderCommandInFlight, WorkerEvent, active_chat_title, compute_operator_panel_stats_at,
+        estimate_token_count, max_transcript_scroll_y, parse_tui_buyer_job_history_request,
+        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
+        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
+        parse_tui_optional_limit, parse_tui_payout_history_request,
+        parse_tui_payout_withdraw_request, should_publish_provider_presence,
+        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
+        wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use openagents_provider_substrate::{
-        ProviderDesiredMode, ProviderEarningsSummary, ProviderPersistedSnapshot,
-    };
+    use openagents_provider_substrate::{ProviderDesiredMode, ProviderPersistedSnapshot};
     use ratatui::layout::Rect;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
@@ -3484,31 +3715,28 @@ mod tests {
     }
 
     #[test]
-    fn summary_lines_include_live_wallet_balance_and_activity() {
+    fn summary_lines_focus_on_system_and_gemma_state() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.system_stats.host_name = Some("rig".to_string());
+        app.system_stats.os_version = Some("macOS 15".to_string());
+        app.system_stats.cpu_arch = Some("arm64".to_string());
+        app.system_stats.uptime_seconds = Some(3_660);
+        app.system_stats.kernel_version = Some("Darwin 24".to_string());
+        app.system_stats.cpu_brand = Some("Apple M4".to_string());
+        app.system_stats.logical_cpus = 12;
+        app.system_stats.cpu_usage_percent = Some(42.0);
+        app.system_stats.load_average = Some((1.0, 0.8, 0.6));
+        app.system_stats.used_memory_bytes = Some(8 * 1024 * 1024 * 1024);
+        app.system_stats.total_memory_bytes = Some(16 * 1024 * 1024 * 1024);
+        app.system_stats.used_swap_bytes = Some(0);
+        app.system_stats.total_swap_bytes = Some(0);
+        app.system_stats.gpu_summary = Some("Apple GPU ready".to_string());
+        app.system_stats.network_summary = Some("wifi up".to_string());
+        app.system_stats.disk_summary = Some("120 GiB free on /".to_string());
+        app.system_stats.thermal_summary = Some("stable".to_string());
         app.loaded = Some(super::LoadedState {
             snapshot: Some(Default::default()),
-            wallet_status: Some(pylon::WalletStatusReport {
-                runtime_status: "connected".to_string(),
-                balance: pylon::WalletBalanceSnapshot {
-                    spark_sats: 48,
-                    total_sats: 48,
-                    ..Default::default()
-                },
-                recent_payments: vec![pylon::PylonWalletPaymentRecord {
-                    payment_id: "pay_123".to_string(),
-                    direction: "receive".to_string(),
-                    status: "completed".to_string(),
-                    amount_sats: 2,
-                    fees_sats: 0,
-                    method: "spark".to_string(),
-                    description: None,
-                    invoice: None,
-                    created_at_ms: 1,
-                    updated_at_ms: 2,
-                }],
-                ..Default::default()
-            }),
+            wallet_status: None,
         });
 
         let summary = app
@@ -3518,103 +3746,140 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        assert!(summary.contains("wallet: connected  total: 48 sats"));
-        assert!(summary.contains("spark: 48  lightning: 0  onchain: 0"));
-        assert!(summary.contains("latest receive: completed 2 sats via spark"));
+        assert!(summary.contains("host: rig  os: macOS 15  arch: arm64"));
+        assert!(summary.contains("uptime: 1h 1m  kernel: Darwin 24"));
+        assert!(summary.contains("cpu: Apple M4"));
+        assert!(summary.contains("memory: 8.0 GiB used / 16.0 GiB total"));
+        assert!(summary.contains("gpu: Apple GPU ready"));
+        assert!(summary.contains("No Gemma 4 weights are visible right now."));
+        assert!(!summary.contains("wallet:"));
     }
 
     #[test]
-    fn economy_sidebar_shows_balance_and_earnings() {
+    fn operator_panel_shows_balance_and_24h_counters() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
-        app.economy_stats = EconomySidebarStats {
+        app.operator_stats = OperatorPanelStats {
+            desired_mode: ProviderDesiredMode::Online,
+            runtime_status: Some("online".to_string()),
+            runtime_error: None,
+            backend_label: Some("local_gemma".to_string()),
+            provider_presence_online: true,
             wallet_balance: Some(pylon::WalletBalanceSnapshot {
                 spark_sats: 21,
                 lightning_sats: 34,
                 onchain_sats: 55,
                 total_sats: 110,
             }),
-            earnings: Some(ProviderEarningsSummary {
-                sats_today: 8,
-                lifetime_sats: 144,
-                jobs_today: 2,
-                online_uptime_seconds: 60,
-                last_job_result: "settled".to_string(),
-                first_job_latency_seconds: None,
-                completion_ratio_bps: None,
-                payout_success_ratio_bps: None,
-                avg_wallet_confirmation_latency_seconds: None,
-            }),
+            wallet_balance_live: true,
+            jobs_found_24h: 8,
+            matching_jobs_24h: 3,
+            jobs_processed_24h: 2,
+            jobs_settled_24h: 1,
+            awaiting_payment_jobs: 0,
+            processing_jobs: 0,
+            last_job_result: Some("settled".to_string()),
+            online_uptime_seconds: Some(60),
         };
 
         let sidebar = app
-            .economy_lines()
+            .operator_lines()
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n");
 
-        assert!(sidebar.contains("wallet total: 110 sats"));
-        assert!(sidebar.contains("spark: 21 sats  lightning: 34 sats"));
-        assert!(sidebar.contains("earned lifetime: 144 sats"));
-        assert!(sidebar.contains("last job: settled"));
+        assert!(sidebar.contains("state: online heartbeat only"));
+        assert!(sidebar.contains("wallet: 110 sats total"));
+        assert!(sidebar.contains("mix: spark 21 sats  lightning 34 sats  onchain 55 sats"));
+        assert!(sidebar.contains("24h found: 8  matching: 3"));
+        assert!(sidebar.contains("24h processed: 2  settled: 1"));
+        assert!(sidebar.contains("last job: settled  uptime: 1m"));
+        assert!(sidebar.contains("backend: local_gemma"));
     }
 
     #[test]
-    fn economy_sidebar_shows_zero_earnings_without_wallet_receive_fallback() {
+    fn operator_panel_marks_run_activity_and_payment_waits_honestly() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
-        app.economy_stats = EconomySidebarStats {
-            wallet_balance: Some(pylon::WalletBalanceSnapshot {
-                spark_sats: 188,
-                lightning_sats: 0,
-                onchain_sats: 0,
-                total_sats: 188,
-            }),
-            earnings: Some(ProviderEarningsSummary {
-                sats_today: 0,
-                lifetime_sats: 0,
-                jobs_today: 0,
-                online_uptime_seconds: 0,
-                last_job_result: "none".to_string(),
-                first_job_latency_seconds: None,
-                completion_ratio_bps: None,
-                payout_success_ratio_bps: None,
-                avg_wallet_confirmation_latency_seconds: None,
-            }),
+        app.operator_stats = OperatorPanelStats {
+            desired_mode: ProviderDesiredMode::Online,
+            runtime_status: Some("online".to_string()),
+            awaiting_payment_jobs: 1,
+            ..OperatorPanelStats::default()
         };
 
-        let sidebar = app
-            .economy_lines()
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
+        let (state, detail) = app.operator_state_label_and_detail();
+        assert_eq!(state, "awaiting payment");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("waiting for wallet settlement"))
+        );
 
-        assert!(sidebar.contains("earned today: 0 sats"));
-        assert!(sidebar.contains("earned lifetime: 0 sats"));
-        assert!(sidebar.contains("jobs today: 0"));
-        assert!(sidebar.contains("last job: none"));
-        assert!(!sidebar.contains("credited"));
+        app.provider_command_in_flight = Some(ProviderCommandInFlight::Run {
+            started_at: Instant::now() - Duration::from_secs(2),
+            seconds: 5,
+        });
+        let (state, detail) = app.operator_state_label_and_detail();
+        assert_eq!(state, "run active");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("running retained provider intake"))
+        );
     }
 
     #[test]
-    fn economy_sidebar_marks_wallet_and_earnings_unavailable_without_live_data() {
-        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
-        app.economy_stats = EconomySidebarStats::default();
+    fn compute_operator_panel_stats_counts_retained_provider_activity() {
+        let now_ms = 1_762_700_500_000_u64;
+        let mut ledger = pylon::PylonLedger::default();
 
-        let sidebar = app
-            .economy_lines()
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
+        let mut settled = pylon::PylonLedgerJob::new("job-settled", "provider", 5050, "settled");
+        settled.created_at_ms = now_ms - 1_000;
+        settled.updated_at_ms = now_ms - 500;
 
-        assert!(sidebar.contains("wallet total: unavailable"));
-        assert!(sidebar.contains("spark: unavailable  lightning: unavailable"));
-        assert!(sidebar.contains("on-chain: unavailable"));
-        assert!(sidebar.contains("earned today: unavailable"));
-        assert!(sidebar.contains("earned lifetime: unavailable"));
-        assert!(sidebar.contains("jobs today: unavailable"));
-        assert!(sidebar.contains("last job: unavailable"));
+        let mut awaiting =
+            pylon::PylonLedgerJob::new("job-awaiting", "provider", 5050, "payment_required");
+        awaiting.created_at_ms = now_ms - 2_000;
+        awaiting.updated_at_ms = now_ms - 1_500;
+
+        let mut dropped =
+            pylon::PylonLedgerJob::new("job-dropped", "provider", 5050, "observed_drop");
+        dropped.created_at_ms = now_ms - 3_000;
+        dropped.updated_at_ms = now_ms - 2_500;
+
+        let mut stale = pylon::PylonLedgerJob::new("job-stale", "provider", 5050, "settled");
+        stale.created_at_ms = now_ms - super::LOOKBACK_WINDOW_24H_MS - 10;
+        stale.updated_at_ms = now_ms - super::LOOKBACK_WINDOW_24H_MS - 5;
+        ledger.jobs = vec![settled, awaiting, dropped, stale];
+
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "settlement-001".to_string(),
+            job_id: "job-settled".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 21_000,
+            payment_reference: Some("payment-001".to_string()),
+            receipt_detail: Some("invoice completed in local wallet".to_string()),
+            created_at_ms: now_ms - 600,
+            updated_at_ms: now_ms - 400,
+        });
+
+        let stats = compute_operator_panel_stats_at(
+            ProviderDesiredMode::Online,
+            true,
+            None,
+            None,
+            &ledger,
+            now_ms,
+        );
+
+        assert_eq!(stats.jobs_found_24h, 3);
+        assert_eq!(stats.matching_jobs_24h, 2);
+        assert_eq!(stats.jobs_processed_24h, 1);
+        assert_eq!(stats.jobs_settled_24h, 1);
+        assert_eq!(stats.awaiting_payment_jobs, 1);
+        assert_eq!(stats.processing_jobs, 0);
+        assert_eq!(stats.last_job_result.as_deref(), Some("settled"));
     }
 
     #[test]
