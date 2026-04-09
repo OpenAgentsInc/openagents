@@ -153,6 +153,16 @@ pub struct PublicStatsSnapshot {
     pub nexus_wallet_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexus_wallet_balance_updated_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexus_treasury_snapshot_generated_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexus_treasury_snapshot_age_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexus_wallet_sync_lag_ms: Option<u64>,
+    #[serde(default)]
+    pub nexus_payout_loop_health: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexus_treasury_degraded_reason: Option<String>,
     #[serde(default)]
     pub nexus_treasury_enabled: bool,
     #[serde(default)]
@@ -262,6 +272,11 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_wallet_last_error: Option<String>,
     pub nexus_wallet_balance_sats: u64,
     pub nexus_wallet_balance_updated_at_unix_ms: Option<u64>,
+    pub nexus_treasury_snapshot_generated_at_unix_ms: Option<u64>,
+    pub nexus_treasury_snapshot_age_ms: Option<u64>,
+    pub nexus_wallet_sync_lag_ms: Option<u64>,
+    pub nexus_payout_loop_health: String,
+    pub nexus_treasury_degraded_reason: Option<String>,
     pub nexus_treasury_enabled: bool,
     pub nexus_treasury_payout_sats_per_window: u64,
     pub nexus_treasury_payout_interval_seconds: u64,
@@ -491,6 +506,12 @@ impl ReceiptLedger {
             nexus_wallet_balance_sats: runtime.nexus_wallet_balance_sats,
             nexus_wallet_balance_updated_at_unix_ms: runtime
                 .nexus_wallet_balance_updated_at_unix_ms,
+            nexus_treasury_snapshot_generated_at_unix_ms: runtime
+                .nexus_treasury_snapshot_generated_at_unix_ms,
+            nexus_treasury_snapshot_age_ms: runtime.nexus_treasury_snapshot_age_ms,
+            nexus_wallet_sync_lag_ms: runtime.nexus_wallet_sync_lag_ms,
+            nexus_payout_loop_health: runtime.nexus_payout_loop_health.clone(),
+            nexus_treasury_degraded_reason: runtime.nexus_treasury_degraded_reason.clone(),
             nexus_treasury_enabled: runtime.nexus_treasury_enabled,
             nexus_treasury_payout_sats_per_window: runtime.nexus_treasury_payout_sats_per_window,
             nexus_treasury_payout_interval_seconds: runtime.nexus_treasury_payout_interval_seconds,
@@ -764,6 +785,11 @@ mod tests {
                 nexus_wallet_last_error: None,
                 nexus_wallet_balance_sats: 0,
                 nexus_wallet_balance_updated_at_unix_ms: None,
+                nexus_treasury_snapshot_generated_at_unix_ms: None,
+                nexus_treasury_snapshot_age_ms: None,
+                nexus_wallet_sync_lag_ms: None,
+                nexus_payout_loop_health: "disabled".to_string(),
+                nexus_treasury_degraded_reason: None,
                 nexus_treasury_enabled: false,
                 nexus_treasury_payout_sats_per_window: 0,
                 nexus_treasury_payout_interval_seconds: 0,

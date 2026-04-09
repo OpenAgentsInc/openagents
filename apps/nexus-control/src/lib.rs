@@ -136,6 +136,10 @@ const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 30_000;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
+const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
+const TREASURY_WALLET_REFRESH_TIMEOUT_MS: u64 = 1_500;
+#[cfg(test)]
+const TREASURY_PUBLIC_STATS_LATENCY_SLO_MS: u64 = 250;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
 const PUBLIC_RECENT_PYLON_LIMIT: usize = 8;
 const MAX_PROVIDER_DIAGNOSTIC_SUMMARIES: usize = 16;
@@ -1287,6 +1291,7 @@ pub async fn run_server(config: ServiceConfig) -> Result<(), anyhow::Error> {
     tracing::info!("nexus-control listening on {}", local_addr);
     let state = build_app_state(config);
     spawn_treasury_dispatch_loop(state.clone());
+    spawn_treasury_wallet_refresh_loop(state.clone());
     axum::serve(listener, build_router_with_state(state)).await?;
     Ok(())
 }
@@ -1302,12 +1307,6 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    match treasury_wallet_refresh_state(&state, now, false)? {
-        TreasuryWalletRefreshState::Unsynced | TreasuryWalletRefreshState::Due => {
-            schedule_treasury_wallet_refresh(state.clone(), true);
-        }
-        TreasuryWalletRefreshState::Fresh => {}
-    }
     let mut store = state.store.write().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -1474,6 +1473,9 @@ async fn register_provider_payout_target(
             error: "bad_request",
             reason: error.to_string(),
         })?;
+    store
+        .treasury
+        .refresh_public_snapshot(&state.config.treasury, now);
     record_treasury_receipt_events(&mut store, receipt_events, now);
     Ok(Json(response))
 }
@@ -1482,18 +1484,6 @@ async fn treasury_status(
     State(state): State<AppState>,
 ) -> Result<Json<TreasuryStatusResponse>, ApiError> {
     let now = now_unix_ms();
-    let refresh_policy = treasury_wallet_refresh_state(&state, now, true)?;
-
-    match refresh_policy {
-        TreasuryWalletRefreshState::Unsynced => {
-            refresh_treasury_wallet_state(&state, true).await;
-        }
-        TreasuryWalletRefreshState::Due => {
-            schedule_treasury_wallet_refresh(state.clone(), true);
-        }
-        TreasuryWalletRefreshState::Fresh => {}
-    }
-
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -1530,6 +1520,9 @@ async fn create_treasury_funding_target(
         let treasury_receipts = store
             .treasury
             .apply_wallet_snapshot(&material.wallet_snapshot, now);
+        store
+            .treasury
+            .refresh_public_snapshot(&state.config.treasury, now);
         record_treasury_receipt_events(&mut store, treasury_receipts, now);
     }
     Ok(Json(TreasuryFundingTargetResponse {
@@ -6456,12 +6449,18 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
         Ok(snapshot) => {
             if let Ok(mut store) = state.store.write() {
                 let receipt_events = store.treasury.apply_wallet_snapshot(&snapshot, now);
+                store
+                    .treasury
+                    .refresh_public_snapshot(&state.config.treasury, now);
                 record_treasury_receipt_events(&mut store, receipt_events, now);
             }
         }
         Err(error) => {
             if let Ok(mut store) = state.store.write() {
                 store.treasury.record_wallet_error(error.to_string());
+                store
+                    .treasury
+                    .refresh_public_snapshot(&state.config.treasury, now);
             }
         }
     }
@@ -6499,7 +6498,7 @@ fn treasury_wallet_refresh_state(
     Ok(TreasuryWalletRefreshState::Fresh)
 }
 
-fn treasury_wallet_refresh_scheduled_flag() -> &'static AtomicBool {
+fn treasury_wallet_refresh_in_flight_flag() -> &'static AtomicBool {
     static FLAG: OnceLock<AtomicBool> = OnceLock::new();
     FLAG.get_or_init(|| AtomicBool::new(false))
 }
@@ -6513,6 +6512,16 @@ fn try_begin_treasury_dispatch_cycle() -> bool {
     treasury_dispatch_in_flight_flag()
         .compare_exchange(false, true, AtomicOrdering::AcqRel, AtomicOrdering::Acquire)
         .is_ok()
+}
+
+fn try_begin_treasury_wallet_refresh_cycle() -> bool {
+    treasury_wallet_refresh_in_flight_flag()
+        .compare_exchange(false, true, AtomicOrdering::AcqRel, AtomicOrdering::Acquire)
+        .is_ok()
+}
+
+fn finish_treasury_wallet_refresh_cycle() {
+    treasury_wallet_refresh_in_flight_flag().store(false, AtomicOrdering::Release);
 }
 
 fn finish_treasury_dispatch_cycle() {
@@ -6531,6 +6540,19 @@ fn spawn_treasury_dispatch_loop(state: AppState) {
     });
 }
 
+fn spawn_treasury_wallet_refresh_loop(state: AppState) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(
+            TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS,
+        ));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            run_treasury_wallet_refresh_cycle(&state, true).await;
+        }
+    });
+}
+
 async fn run_treasury_dispatch_cycle(state: &AppState) {
     if !try_begin_treasury_dispatch_cycle() {
         return;
@@ -6545,6 +6567,9 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
         store
             .treasury
             .note_payout_loop_started(cycle_started_at_unix_ms);
+        store
+            .treasury
+            .refresh_public_snapshot(&state.config.treasury, cycle_started_at_unix_ms);
         store.provider_presence.prune(cycle_started_at_unix_ms);
         let online_identities = store
             .provider_presence
@@ -6570,6 +6595,9 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
                 store
                     .treasury
                     .note_payout_loop_error(cycle_started_at_unix_ms, reason);
+                store
+                    .treasury
+                    .refresh_public_snapshot(&state.config.treasury, cycle_started_at_unix_ms);
             }
             finish_treasury_dispatch_cycle();
             return;
@@ -6591,25 +6619,56 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
             cycle_completed_at_unix_ms,
             preparation.reconciliation_degraded_reason,
         );
+        store
+            .treasury
+            .refresh_public_snapshot(&state.config.treasury, cycle_completed_at_unix_ms);
     } else {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
     }
     finish_treasury_dispatch_cycle();
 }
 
-fn schedule_treasury_wallet_refresh(state: AppState, create_if_missing: bool) {
-    let flag = treasury_wallet_refresh_scheduled_flag();
-    if flag
-        .compare_exchange(false, true, AtomicOrdering::AcqRel, AtomicOrdering::Acquire)
-        .is_err()
-    {
+async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: bool) {
+    let now = now_unix_ms();
+    let refresh_state = match treasury_wallet_refresh_state(state, now, false) {
+        Ok(TreasuryWalletRefreshState::Fresh) => return,
+        Ok(refresh_state) => refresh_state,
+        Err(error) => {
+            tracing::error!("treasury wallet refresh state failed: {}", error.reason);
+            if let Ok(mut store) = state.store.write() {
+                store.treasury.record_wallet_error(error.reason);
+                store
+                    .treasury
+                    .refresh_public_snapshot(&state.config.treasury, now);
+            }
+            return;
+        }
+    };
+    if !matches!(
+        refresh_state,
+        TreasuryWalletRefreshState::Unsynced | TreasuryWalletRefreshState::Due
+    ) {
         return;
     }
-
-    tokio::spawn(async move {
-        refresh_treasury_wallet_state(&state, create_if_missing).await;
-        treasury_wallet_refresh_scheduled_flag().store(false, AtomicOrdering::Release);
-    });
+    if !try_begin_treasury_wallet_refresh_cycle() {
+        return;
+    }
+    let refresh_result = tokio::time::timeout(
+        Duration::from_millis(TREASURY_WALLET_REFRESH_TIMEOUT_MS),
+        refresh_treasury_wallet_state(state, create_if_missing),
+    )
+    .await;
+    if refresh_result.is_err() {
+        let timeout_reason = format!("wallet_refresh_timeout:{TREASURY_WALLET_REFRESH_TIMEOUT_MS}");
+        tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
+        if let Ok(mut store) = state.store.write() {
+            store.treasury.record_wallet_error(timeout_reason);
+            store
+                .treasury
+                .refresh_public_snapshot(&state.config.treasury, now_unix_ms());
+        }
+    }
+    finish_treasury_wallet_refresh_cycle();
 }
 
 async fn apply_treasury_dispatch_batch(state: &AppState, batch: TreasuryDispatchBatchResult) {
@@ -6625,6 +6684,9 @@ async fn apply_treasury_dispatch_batch(state: &AppState, batch: TreasuryDispatch
         if let Some(error) = batch.wallet_error {
             store.treasury.record_wallet_error(error);
         }
+        store
+            .treasury
+            .refresh_public_snapshot(&state.config.treasury, now);
         record_treasury_receipt_events(&mut store, receipt_events, now);
     }
 }
@@ -6685,6 +6747,12 @@ fn runtime_snapshot(
         nexus_wallet_last_error: treasury_runtime.wallet_last_error.clone(),
         nexus_wallet_balance_sats: treasury_runtime.wallet_balance_sats,
         nexus_wallet_balance_updated_at_unix_ms: treasury_runtime.wallet_balance_updated_at_unix_ms,
+        nexus_treasury_snapshot_generated_at_unix_ms: treasury_runtime
+            .public_snapshot_generated_at_unix_ms,
+        nexus_treasury_snapshot_age_ms: treasury_runtime.snapshot_age_ms,
+        nexus_wallet_sync_lag_ms: treasury_runtime.wallet_sync_lag_ms,
+        nexus_payout_loop_health: treasury_runtime.payout_loop_health.clone(),
+        nexus_treasury_degraded_reason: treasury_runtime.degraded_reason.clone(),
         nexus_treasury_enabled: treasury_runtime.treasury_enabled,
         nexus_treasury_payout_sats_per_window: treasury_runtime.payout_sats_per_window,
         nexus_treasury_payout_interval_seconds: treasury_runtime.payout_interval_seconds,
@@ -7106,6 +7174,7 @@ mod tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
+    use std::time::Instant;
     use tower::ServiceExt;
 
     use crate::treasury::{
@@ -7128,7 +7197,7 @@ mod tests {
         StarterDemandCompleteRequest, StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
         SyncTokenResponse, TreasuryConfig, build_app_state, build_router, build_router_with_state,
-        random_token, run_treasury_dispatch_cycle,
+        random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -10168,7 +10237,9 @@ mod tests {
 
     #[tokio::test]
     async fn treasury_status_and_funding_routes_project_wallet_state() -> Result<()> {
-        let app = build_router(test_config()?);
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
         let _guard = treasury_test_hook_lock()
             .lock()
             .expect("treasury hook guard");
@@ -10181,6 +10252,9 @@ mod tests {
                 payments: Vec::new(),
             })
         })));
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        let app = build_router_with_state(state);
 
         let status_response = app
             .clone()
@@ -10333,20 +10407,70 @@ mod tests {
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert!(stats.nexus_treasury_enabled);
         assert_eq!(stats.nexus_treasury_payout_sats_per_window, 120);
-
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            stats.nexus_treasury_degraded_reason.as_deref(),
+            Some("wallet_unsynced")
+        );
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
     }
 
     #[tokio::test]
-    async fn public_stats_refreshes_wallet_state_when_due() -> Result<()> {
+    async fn public_stats_meet_latency_slo_when_wallet_is_slow() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        let app = build_router(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(
+                super::TREASURY_PUBLIC_STATS_LATENCY_SLO_MS.saturating_mul(4),
+            ));
+            anyhow::bail!("public_stats_should_not_touch_wallet");
+        })));
+
+        let started_at = Instant::now();
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        let elapsed = started_at.elapsed();
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            elapsed < std::time::Duration::from_millis(super::TREASURY_PUBLIC_STATS_LATENCY_SLO_MS),
+            "public stats request exceeded latency SLO: {elapsed:?}"
+        );
+        assert!(stats.nexus_treasury_snapshot_generated_at_unix_ms.is_some());
+        assert_eq!(
+            stats.nexus_treasury_degraded_reason.as_deref(),
+            Some("wallet_unsynced")
+        );
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_serves_cached_background_snapshot_when_wallet_refresh_is_due()
+    -> Result<()> {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.wallet_status_refresh_seconds = 1;
-        let app = build_router(config);
+        let state = build_app_state(config.clone());
+        let app = build_router_with_state(state.clone());
         let _guard = treasury_test_hook_lock()
             .lock()
             .expect("treasury hook guard");
@@ -10363,6 +10487,8 @@ mod tests {
             })
         })));
 
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+
         let first_response = app
             .clone()
             .oneshot(
@@ -10373,9 +10499,12 @@ mod tests {
             )
             .await?;
         assert_eq!(first_response.status(), StatusCode::OK);
-        let _: PublicStatsSnapshot = response_json(first_response).await?;
+        let first_stats: PublicStatsSnapshot = response_json(first_response).await?;
+        assert_eq!(first_stats.nexus_wallet_balance_sats, 500);
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(first_stats.nexus_treasury_degraded_reason, None);
 
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
 
         let second_response = app
             .clone()
@@ -10390,11 +10519,21 @@ mod tests {
         let second_stats: PublicStatsSnapshot = response_json(second_response).await?;
         assert_eq!(second_stats.nexus_wallet_balance_sats, 500);
         assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+        assert!(
+            second_stats
+                .nexus_treasury_degraded_reason
+                .as_deref()
+                .is_some_and(|reason| reason.starts_with("wallet_snapshot_stale:"))
+        );
+        assert!(
+            second_stats
+                .nexus_wallet_sync_lag_ms
+                .is_some_and(|lag_ms| lag_ms >= 1_000)
+        );
 
-        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+        run_treasury_wallet_refresh_cycle(&state, true).await;
 
         let third_response = app
-            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -10404,22 +10543,9 @@ mod tests {
             .await?;
         assert_eq!(third_response.status(), StatusCode::OK);
         let third_stats: PublicStatsSnapshot = response_json(third_response).await?;
-        assert_eq!(third_stats.nexus_wallet_balance_sats, 500);
-
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-        let fourth_response = app
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/stats")
-                    .body(Body::empty())?,
-            )
-            .await?;
-        assert_eq!(fourth_response.status(), StatusCode::OK);
-        let fourth_stats: PublicStatsSnapshot = response_json(fourth_response).await?;
-        assert_eq!(fourth_stats.nexus_wallet_balance_sats, 710);
+        assert_eq!(third_stats.nexus_wallet_balance_sats, 710);
         assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(third_stats.nexus_treasury_degraded_reason, None);
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
@@ -10437,7 +10563,8 @@ mod tests {
         ));
         config.treasury.wallet_storage_dir =
             PathBuf::from(format!("/tmp/test-nexus-control-treasury-wallet-{unique}"));
-        let app = build_router(config);
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
         let _guard = treasury_test_hook_lock()
             .lock()
             .expect("treasury hook guard");
@@ -10454,6 +10581,9 @@ mod tests {
             })
         })));
 
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        let app = build_router_with_state(state);
+
         let first_response = app
             .clone()
             .oneshot(
@@ -10467,6 +10597,7 @@ mod tests {
         let first_status: TreasuryStatusResponse = response_json(first_response).await?;
         assert_eq!(first_status.wallet_balance_sats, 500);
         assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(first_status.degraded_reason, None);
 
         let second_response = app
             .oneshot(
