@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
+use futures::stream::{self, StreamExt};
 use openagents_provider_substrate::verify_provider_payout_target_registration_signature;
 use openagents_spark::{
     DepositClaimFeePolicy, Network as SparkNetwork, NetworkStatus, PaymentSummary, SparkSigner,
@@ -70,6 +71,7 @@ const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
+const TREASURY_MAX_CONCURRENT_SENDS: usize = 4;
 
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
@@ -1581,6 +1583,7 @@ impl TreasuryState {
 
     pub fn note_payout_loop_started(&mut self, now_unix_ms: u64) {
         self.payout_loop_runtime_status = Some("running".to_string());
+        self.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms);
         self.payout_loop_last_started_at_unix_ms = Some(now_unix_ms);
     }
 
@@ -1589,7 +1592,6 @@ impl TreasuryState {
         now_unix_ms: u64,
         reconciliation_degraded_reason: Option<String>,
     ) {
-        self.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms);
         self.payout_loop_last_completed_at_unix_ms = Some(now_unix_ms);
         if let Some(reason) = reconciliation_degraded_reason {
             self.payout_loop_runtime_status = Some("degraded".to_string());
@@ -2334,32 +2336,43 @@ pub async fn dispatch_live_payouts(
         }
     };
 
-    let mut outcomes = Vec::with_capacity(plans.len());
-    for plan in plans {
-        match wallet
-            .send_payment_simple(plan.payment_request.as_str(), Some(plan.amount_sats))
-            .await
-        {
-            Ok(payment_id) => outcomes.push(TreasuryDispatchOutcome::Dispatched {
-                payout_key: plan.payout_key.clone(),
-                payment_id,
-            }),
-            Err(error) => outcomes.push(TreasuryDispatchOutcome::Failed {
-                payout_key: plan.payout_key.clone(),
-                reason: error.to_string(),
-            }),
-        }
-    }
-
-    let (wallet_snapshot, wallet_error) = match wallet_snapshot_from_wallet(wallet.as_ref()).await {
-        Ok(snapshot) => (Some(snapshot), None),
-        Err(error) => (None, Some(error.to_string())),
-    };
+    let max_concurrent_sends = plans.len().min(TREASURY_MAX_CONCURRENT_SENDS).max(1);
+    let mut indexed_outcomes = stream::iter(plans.iter().cloned().enumerate())
+        .map(|(index, plan)| {
+            let wallet = wallet.clone();
+            async move {
+                let outcome = match wallet
+                    .send_payment_simple(plan.payment_request.as_str(), Some(plan.amount_sats))
+                    .await
+                {
+                    Ok(payment_id) => TreasuryDispatchOutcome::Dispatched {
+                        payout_key: plan.payout_key,
+                        payment_id,
+                    },
+                    Err(error) => TreasuryDispatchOutcome::Failed {
+                        payout_key: plan.payout_key,
+                        reason: error.to_string(),
+                    },
+                };
+                (index, outcome)
+            }
+        })
+        .buffer_unordered(max_concurrent_sends)
+        .collect::<Vec<_>>()
+        .await;
+    indexed_outcomes.sort_by_key(|(index, _)| *index);
+    let outcomes = indexed_outcomes
+        .into_iter()
+        .map(|(_, outcome)| outcome)
+        .collect();
 
     TreasuryDispatchBatchResult {
         outcomes,
-        wallet_snapshot,
-        wallet_error,
+        // The dedicated wallet refresh loop reconciles confirms and balance.
+        // Keeping the full wallet scan out of the dispatch path preserves the
+        // intended payout cadence even when many Pylons are online.
+        wallet_snapshot: None,
+        wallet_error: None,
     }
 }
 
@@ -4689,6 +4702,19 @@ mod tests {
                 .all(|event| event.receipt_type == "treasury.alert.cleared")
         );
         assert!(state.active_continuity_alerts.is_empty());
+    }
+
+    #[test]
+    fn payout_loop_start_sets_reconciliation_anchor_immediately() {
+        let mut state = TreasuryState::default();
+        state.note_payout_loop_started(1_234_567);
+        assert_eq!(state.payout_loop_runtime_status.as_deref(), Some("running"));
+        assert_eq!(state.payout_loop_last_started_at_unix_ms, Some(1_234_567));
+        assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_234_567));
+
+        state.note_payout_loop_completed(1_345_678, None);
+        assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_234_567));
+        assert_eq!(state.payout_loop_last_completed_at_unix_ms, Some(1_345_678));
     }
 
     #[test]
