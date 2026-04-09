@@ -192,6 +192,9 @@ pub enum Command {
     Init,
     Doctor,
     Serve,
+    Account {
+        command: AccountCommand,
+    },
     Status {
         json: bool,
     },
@@ -300,6 +303,15 @@ pub enum Command {
     ConfigSet {
         key: String,
         value: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountCommand {
+    Link {
+        base_url: String,
+        token: String,
+        json: bool,
     },
 }
 
@@ -450,6 +462,70 @@ struct DoctorReport {
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct AccountLinkReport {
+    linked: bool,
+    base_url: String,
+    identity_key: String,
+    public_key_hex: String,
+    npub: String,
+    node_label: String,
+    runtime_state: String,
+    ready_model: Option<String>,
+    eligible_product_count: u64,
+    products: Vec<String>,
+    observed_pylon_id: u64,
+    account_link_id: u64,
+    user_id: u64,
+    link_state: String,
+    link_method: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OpenAgentsPylonLinkCompletionRequest {
+    token: String,
+    public_key_hex: String,
+    npub: String,
+    node_label: Option<String>,
+    runtime_state: Option<String>,
+    ready_model: Option<String>,
+    eligible_product_count: u64,
+    products: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenAgentsPylonLinkCompletionResponse {
+    linked: bool,
+    observed_pylon: OpenAgentsObservedPylonSummary,
+    account_link: OpenAgentsAccountLinkSummary,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenAgentsObservedPylonSummary {
+    id: u64,
+    identity_key: String,
+    public_key_hex: String,
+    npub: String,
+    node_label: Option<String>,
+    runtime_state: Option<String>,
+    ready_model: Option<String>,
+    eligible_product_count: Option<u64>,
+    #[serde(default)]
+    products: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenAgentsAccountLinkSummary {
+    id: u64,
+    user_id: u64,
+    observed_pylon_id: u64,
+    state: String,
+    method: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -2767,6 +2843,20 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             serve(cli.config_path.as_path(), config).await?;
             Ok(None)
         }
+        Command::Account { command } => match command {
+            AccountCommand::Link {
+                base_url,
+                token,
+                json,
+            } => {
+                let report =
+                    run_account_link_command(cli.config_path.as_path(), &base_url, &token).await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_account_link_report(&report)))
+            }
+        },
         Command::Status { json } => {
             let status = load_status_or_detect(cli.config_path.as_path()).await?;
             if json {
@@ -3078,6 +3168,7 @@ Commands:\n\
   init\n\
   doctor\n\
   serve\n\
+  account link --base-url <url> --token <one_time_token> [--json]\n\
   status [--json]\n\
   backends [--json]\n\
   inventory [--json] [--limit <n>]\n\
@@ -3144,6 +3235,9 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             }
             Ok(Command::Serve)
         }
+        "account" => Ok(Command::Account {
+            command: parse_account_command(args, start_index + 1)?,
+        }),
         "status" => {
             let json = match args.get(start_index + 1) {
                 None => false,
@@ -3418,6 +3512,57 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
         },
         other => bail!("unknown command: {other}"),
     }
+}
+
+fn parse_account_command(args: &[String], start_index: usize) -> Result<AccountCommand> {
+    match args.get(start_index).map(String::as_str) {
+        Some("link") => {
+            let (base_url, token, json) = parse_account_link_command(args, start_index + 1)?;
+            Ok(AccountCommand::Link {
+                base_url,
+                token,
+                json,
+            })
+        }
+        Some(other) => bail!("unknown account command: {other}"),
+        None => bail!("missing account subcommand"),
+    }
+}
+
+fn parse_account_link_command(args: &[String], mut index: usize) -> Result<(String, String, bool)> {
+    let mut base_url = None::<String>;
+    let mut token = None::<String>;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-url" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --base-url"))?;
+                base_url = Some(value.clone());
+                index += 1;
+            }
+            "--token" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --token"))?;
+                token = Some(value.clone());
+                index += 1;
+            }
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            other => bail!("unexpected argument for account link: {other}"),
+        }
+    }
+    Ok((
+        base_url.ok_or_else(|| anyhow!("missing --base-url for account link"))?,
+        token.ok_or_else(|| anyhow!("missing --token for account link"))?,
+        json,
+    ))
 }
 
 fn parse_observability_flags(
@@ -5482,9 +5627,24 @@ fn http_error_message(body: &str) -> String {
         .ok()
         .and_then(|value| {
             value
-                .get("error")
-                .and_then(Value::as_str)
-                .map(ToString::to_string)
+                .get("errors")
+                .and_then(Value::as_object)
+                .and_then(|errors| {
+                    errors.values().find_map(|entry| {
+                        entry.as_array().and_then(|messages| {
+                            messages
+                                .iter()
+                                .find_map(Value::as_str)
+                                .map(ToString::to_string)
+                        })
+                    })
+                })
+                .or_else(|| {
+                    value
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                })
                 .or_else(|| {
                     value
                         .get("message")
@@ -7162,6 +7322,30 @@ fn comma_or_none(values: &[String]) -> String {
     }
 }
 
+fn render_account_link_report(report: &AccountLinkReport) -> String {
+    [
+        format!("linked: {}", report.linked),
+        format!("base_url: {}", report.base_url),
+        format!("identity_key: {}", report.identity_key),
+        format!("node_label: {}", report.node_label),
+        format!("npub: {}", report.npub),
+        format!("public_key_hex: {}", report.public_key_hex),
+        format!("runtime_state: {}", report.runtime_state),
+        format!(
+            "ready_model: {}",
+            report.ready_model.as_deref().unwrap_or("none")
+        ),
+        format!("eligible_product_count: {}", report.eligible_product_count),
+        format!("products: {}", comma_or_none(report.products.as_slice())),
+        format!("account_link_id: {}", report.account_link_id),
+        format!("observed_pylon_id: {}", report.observed_pylon_id),
+        format!("user_id: {}", report.user_id),
+        format!("link_state: {}", report.link_state),
+        format!("link_method: {}", report.link_method),
+    ]
+    .join("\n")
+}
+
 #[derive(Debug, Serialize)]
 struct NexusProviderPresenceHeartbeatRequest {
     nostr_pubkey_hex: String,
@@ -7221,12 +7405,7 @@ async fn report_provider_presence_heartbeat(
         node_label: Some(config.node_label.clone()),
         client_version: Some(format!("pylon/{}", env!("CARGO_PKG_VERSION"))),
         relay_urls: config.relay_urls.clone(),
-        products: snapshot
-            .inventory_rows
-            .iter()
-            .filter(|row| row.eligible)
-            .map(|row| row.target.product_id().to_string())
-            .collect(),
+        products: eligible_product_ids(snapshot),
         eligible_product_count: snapshot
             .inventory_rows
             .iter()
@@ -7284,6 +7463,15 @@ fn build_provider_hosting_telemetry(
         inventory_rows: snapshot.inventory_rows.clone(),
         host: Some(host),
     }
+}
+
+fn eligible_product_ids(snapshot: &ProviderPersistedSnapshot) -> Vec<String> {
+    snapshot
+        .inventory_rows
+        .iter()
+        .filter(|row| row.eligible)
+        .map(|row| row.target.product_id().to_string())
+        .collect()
 }
 
 fn load_cached_provider_host_telemetry(config_path: &Path) -> ProviderHostTelemetrySnapshot {
@@ -7732,12 +7920,133 @@ fn provider_presence_client() -> Result<reqwest::Client> {
         .context("failed to build pylon provider-presence client")
 }
 
+fn openagents_account_link_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .context("failed to build OpenAgents account-link client")
+}
+
 fn nexus_control_url(config: &PylonConfig, path: &str) -> String {
     format!(
         "{}/{}",
         config.nexus_control_base_url.trim_end_matches('/'),
         path.trim_start_matches('/')
     )
+}
+
+fn openagents_account_link_url(base_url: &str) -> Result<reqwest::Url> {
+    let parsed = reqwest::Url::parse(base_url)
+        .with_context(|| format!("invalid OpenAgents base URL: {base_url}"))?;
+    parsed.join("/api/pylon-links/complete").with_context(|| {
+        format!("failed to build OpenAgents account-link endpoint from {base_url}")
+    })
+}
+
+fn build_openagents_account_link_request(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    status: &ProviderStatusResponse,
+    token: &str,
+) -> OpenAgentsPylonLinkCompletionRequest {
+    let (ready_model, products) = status
+        .snapshot
+        .as_ref()
+        .map(|snapshot| {
+            (
+                selected_local_gemma_runtime_model(config, &snapshot.availability.local_gemma),
+                eligible_product_ids(snapshot),
+            )
+        })
+        .unwrap_or_else(|| (None, Vec::new()));
+
+    OpenAgentsPylonLinkCompletionRequest {
+        token: token.to_string(),
+        public_key_hex: identity.public_key_hex.clone(),
+        npub: identity.npub.clone(),
+        node_label: Some(config.node_label.clone()),
+        runtime_state: Some(provider_runtime_state_label(status)),
+        ready_model,
+        eligible_product_count: products.len() as u64,
+        products,
+    }
+}
+
+fn build_account_link_report(
+    base_url: &str,
+    response: OpenAgentsPylonLinkCompletionResponse,
+) -> AccountLinkReport {
+    let OpenAgentsPylonLinkCompletionResponse {
+        linked,
+        observed_pylon,
+        account_link,
+    } = response;
+    let products = observed_pylon.products;
+    AccountLinkReport {
+        linked,
+        base_url: base_url.trim_end_matches('/').to_string(),
+        identity_key: observed_pylon.identity_key,
+        public_key_hex: observed_pylon.public_key_hex,
+        npub: observed_pylon.npub,
+        node_label: observed_pylon
+            .node_label
+            .unwrap_or_else(|| "pylon".to_string()),
+        runtime_state: observed_pylon
+            .runtime_state
+            .unwrap_or_else(|| "unknown".to_string()),
+        ready_model: observed_pylon.ready_model,
+        eligible_product_count: observed_pylon
+            .eligible_product_count
+            .unwrap_or(products.len() as u64),
+        products,
+        observed_pylon_id: observed_pylon.id,
+        account_link_id: account_link.id,
+        user_id: account_link.user_id,
+        link_state: account_link.state,
+        link_method: account_link.method,
+    }
+}
+
+async fn complete_openagents_account_link(
+    client: &reqwest::Client,
+    base_url: &str,
+    payload: &OpenAgentsPylonLinkCompletionRequest,
+) -> Result<OpenAgentsPylonLinkCompletionResponse> {
+    let url = openagents_account_link_url(base_url)?;
+    let response = client
+        .post(url.clone())
+        .json(payload)
+        .send()
+        .await
+        .with_context(|| format!("failed to post Pylon account link to {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode OpenAgents account-link error".to_string());
+        bail!(
+            "OpenAgents account link failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+    response
+        .json::<OpenAgentsPylonLinkCompletionResponse>()
+        .await
+        .with_context(|| format!("failed to decode OpenAgents account-link response from {url}"))
+}
+
+async fn run_account_link_command(
+    config_path: &Path,
+    base_url: &str,
+    token: &str,
+) -> Result<AccountLinkReport> {
+    let config = ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let status = load_status_or_detect(config_path).await?;
+    let payload = build_openagents_account_link_request(&config, &identity, &status, token);
+    let client = openagents_account_link_client()?;
+    let response = complete_openagents_account_link(&client, base_url, &payload).await?;
+    Ok(build_account_link_report(base_url, response))
 }
 
 async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusResponse>> {
@@ -8109,26 +8418,26 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::{
-        AnnouncementAction, BuyerJobSubmitRequest, Cli, Command, DEFAULT_GEMMA_BENCH_PROMPT,
-        DEFAULT_GEMMA_DIAGNOSTIC_ID, GemmaBenchExecutionMode, GemmaBenchmarkMode,
-        GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand, GemmaDiagnosticReceipt,
-        GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
-        GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
-        LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage, PylonConfig,
-        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, WalletAddressReport,
-        WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
-        apply_config_set, apply_control_command, build_snapshot_from_availability, default_config,
-        detect_availability, download_gemma_model_from_base_url,
-        download_gemma_model_from_base_url_with_transport, ensure_identity,
-        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
-        inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
-        load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
-        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
-        load_status_or_detect, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
-        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_public_config_json, render_sandbox_report,
-        report_provider_presence_heartbeat_for_snapshot,
+        AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, Command,
+        DEFAULT_GEMMA_BENCH_PROMPT, DEFAULT_GEMMA_DIAGNOSTIC_ID, GemmaBenchExecutionMode,
+        GemmaBenchmarkMode, GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand,
+        GemmaDiagnosticReceipt, GemmaDiagnosticReport, GemmaDiagnosticRequest,
+        GemmaDiagnosticResult, GemmaDiagnosticRunReceipt, GemmaDownloadEvent,
+        GemmaDownloadTransport, GemmaSelector, LocalGemmaChatBackend, LocalGemmaChatEvent,
+        LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+        WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
+        add_configured_relay, apply_config_set, apply_control_command,
+        build_snapshot_from_availability, default_config, detect_availability,
+        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
+        ensure_identity, gemma_diagnostic_latest_report_path, gemma_download_spec,
+        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
+        load_or_create_config, load_product_report, load_receipts_report, load_relay_report,
+        load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
+        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
+        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
+        remove_configured_relay, render_human_status, render_public_config_json,
+        render_sandbox_report, report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config,
@@ -8184,6 +8493,30 @@ mod tests {
         ensure(
             parse_args(vec!["resume".to_string()])?.command == Command::Resume,
             "resume should parse into the resume command",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_account_link_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "account".to_string(),
+                "link".to_string(),
+                "--base-url".to_string(),
+                "https://openagents.com".to_string(),
+                "--token".to_string(),
+                "link-token-001".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Account {
+                    command: AccountCommand::Link {
+                        base_url: "https://openagents.com".to_string(),
+                        token: "link-token-001".to_string(),
+                        json: true,
+                    },
+                },
+            "account link should parse base URL, token, and json flags",
         )
     }
 
@@ -8646,6 +8979,215 @@ mod tests {
                 .as_str()
                 .is_some_and(|value| !value.is_empty()),
             "registered payout target should include a signed challenge proof",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn account_link_command_posts_local_identity_and_snapshot_to_openagents()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let openagents_base_url = start_mock_http_server(move |method, path, body| {
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            recorded_requests_for_server
+                .lock()
+                .expect("account-link request log")
+                .push((format!("{method} {path}"), payload.clone()));
+            match (method.as_str(), path.as_str()) {
+                ("POST", "/api/pylon-links/complete") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "linked": true,
+                        "observedPylon": {
+                            "id": 41,
+                            "identityKey": "11111111...22222222",
+                            "publicKeyHex": payload["public_key_hex"],
+                            "npub": payload["npub"],
+                            "nodeLabel": payload["node_label"],
+                            "runtimeState": payload["runtime_state"],
+                            "readyModel": payload["ready_model"],
+                            "eligibleProductCount": payload["eligible_product_count"],
+                            "products": payload["products"]
+                        },
+                        "accountLink": {
+                            "id": 91,
+                            "userId": 7,
+                            "observedPylonId": 41,
+                            "state": "active",
+                            "method": "cli_token"
+                        }
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+        let local_gemma_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/api/tags") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "models": [
+                            {"name": "gemma4:e4b"}
+                        ]
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = seed_observability_snapshot(config_path.as_path())?;
+        config.node_label = "linked-pylon-alpha".to_string();
+        config.local_gemma_base_url = local_gemma_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let output = run_cli(Cli {
+            command: Command::Account {
+                command: AccountCommand::Link {
+                    base_url: openagents_base_url.clone(),
+                    token: "link-token-001".to_string(),
+                    json: true,
+                },
+            },
+            config_path: config_path.clone(),
+        })
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing account-link output"))?;
+        let report = serde_json::from_str::<Value>(output.as_str())?;
+
+        ensure(
+            report["linked"] == json!(true)
+                && report["base_url"] == json!(openagents_base_url)
+                && report["node_label"] == json!("linked-pylon-alpha"),
+            "account link report should confirm the linked site and node label",
+        )?;
+        ensure(
+            report["public_key_hex"] == json!(identity.public_key_hex)
+                && report["npub"] == json!(identity.npub)
+                && report["runtime_state"] == json!("online"),
+            "account link report should echo the local identity and runtime state",
+        )?;
+        ensure(
+            report["ready_model"] == json!("gemma4:e4b")
+                && report["eligible_product_count"] == json!(2),
+            "account link report should include the ready model and eligible product count",
+        )?;
+        ensure(
+            report["products"]
+                .as_array()
+                .is_some_and(|products| products.len() == 2),
+            "account link report should retain the eligible product ids for automation",
+        )?;
+        ensure(
+            report["account_link_id"] == json!(91)
+                && report["observed_pylon_id"] == json!(41)
+                && report["user_id"] == json!(7)
+                && report["link_method"] == json!("cli_token"),
+            "account link report should retain ownership ids from the website response",
+        )?;
+
+        let requests = recorded_requests
+            .lock()
+            .expect("account-link request log")
+            .clone();
+        let completion_request = requests
+            .iter()
+            .find(|(route, _)| route == "POST /api/pylon-links/complete")
+            .ok_or_else(|| std::io::Error::other("missing account-link completion request"))?;
+
+        ensure(
+            completion_request.1["token"] == json!("link-token-001")
+                && completion_request.1["public_key_hex"] == json!(identity.public_key_hex)
+                && completion_request.1["npub"] == json!(identity.npub),
+            "account link request should include the local identity and challenge token",
+        )?;
+        ensure(
+            completion_request.1["node_label"] == json!("linked-pylon-alpha")
+                && completion_request.1["runtime_state"] == json!("online")
+                && completion_request.1["ready_model"] == json!("gemma4:e4b"),
+            "account link request should include the current local node label and runtime summary",
+        )?;
+        ensure(
+            completion_request.1["eligible_product_count"] == json!(2),
+            "account link request should include the count of eligible products",
+        )?;
+        let product_ids = completion_request.1["products"]
+            .as_array()
+            .ok_or_else(|| std::io::Error::other("missing account-link products"))?;
+        ensure(
+            product_ids
+                .iter()
+                .any(|value| value.as_str() == Some("psionic.local.inference.gemma.single_node"))
+                && product_ids.iter().any(|value| {
+                    value.as_str()
+                        == Some(
+                            "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated",
+                        )
+                }),
+            "account link request should send the canonical eligible product ids",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn account_link_command_surfaces_laravel_validation_errors()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let openagents_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("POST", "/api/pylon-links/complete") => (
+                    422,
+                    "application/json",
+                    json!({
+                        "message": "The given data was invalid.",
+                        "errors": {
+                            "token": ["This link token has expired."]
+                        }
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        seed_observability_snapshot(config_path.as_path())?;
+
+        let error = match run_cli(Cli {
+            command: Command::Account {
+                command: AccountCommand::Link {
+                    base_url: openagents_base_url,
+                    token: "expired-token-001".to_string(),
+                    json: false,
+                },
+            },
+            config_path,
+        })
+        .await
+        {
+            Ok(_) => {
+                return Err(std::io::Error::other(
+                    "account link should fail for an expired one-time token",
+                )
+                .into());
+            }
+            Err(error) => error,
+        };
+
+        ensure(
+            error
+                .to_string()
+                .contains("OpenAgents account link failed: This link token has expired."),
+            "account link should surface the actionable Laravel validation error",
         )
     }
 

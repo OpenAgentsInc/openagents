@@ -18,6 +18,16 @@ cargo pylon-headless <command>
 
 It is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
 
+Optional account visibility now also has an explicit headless lane:
+
+```bash
+cargo pylon-headless account link --base-url https://openagents.com --token <one_time_token>
+```
+
+That command is optional. It is meant for operators who choose to connect a
+local Pylon to a signed-in OpenAgents account so the web dashboard can show the
+node. It does not run during install, bootstrap, or local bring-up by default.
+
 ## Install Paths
 
 Prefer the npm bootstrap lane when the operator already has `npm` or `bun`:
