@@ -27,6 +27,9 @@ cargo pylon-headless account link --base-url https://openagents.com --token <one
 That command is optional. It is meant for operators who choose to connect a
 local Pylon to a signed-in OpenAgents account so the web dashboard can show the
 node. It does not run during install, bootstrap, or local bring-up by default.
+The completion request also carries a NIP-98 signed proof tied to the local
+node identity; see `docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md` for the server
+verification contract.
 
 ## Install Paths
 
