@@ -68,6 +68,8 @@ const TREASURY_RECEIVE_LIMIT: usize = 16_384;
 const TREASURY_POLICY_CHANGE_LIMIT: usize = 64;
 const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
+const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
+const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
@@ -358,6 +360,34 @@ pub struct TreasuryWalletRecoveryCutoverResponse {
     pub cutover_completed_at_unix_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryReasonMetric {
+    pub reason: String,
+    pub count: u64,
+    pub total_sats: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryContinuityAlert {
+    pub alert_id: String,
+    pub severity: String,
+    pub reason: String,
+    pub started_at_unix_ms: u64,
+    pub observed_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+struct TreasuryContinuitySignalSnapshot {
+    eligible_online_payout_targets: u64,
+    sellable_pylons_online_now: u64,
+    latest_eligible_window_started_at_unix_ms: Option<u64>,
+    last_dispatch_at_unix_ms: Option<u64>,
+    last_confirmed_at_unix_ms: Option<u64>,
+    skip_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    fail_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    active_alerts: Vec<TreasuryContinuityAlert>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryRuntimePolicy {
     pub schema_version: u32,
@@ -486,6 +516,22 @@ pub struct TreasuryStatusResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_sync_lag_ms: Option<u64>,
     #[serde(default)]
+    pub eligible_online_payout_targets: u64,
+    #[serde(default)]
+    pub sellable_pylons_online_now: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_eligible_window_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_dispatch_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_confirmed_payout_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eligible_window_lag_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch_lag_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirm_lag_ms: Option<u64>,
+    #[serde(default)]
     pub payout_loop_health: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
@@ -504,6 +550,12 @@ pub struct TreasuryStatusResponse {
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
     pub payouts_skipped_24h: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fail_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -543,6 +595,20 @@ pub struct TreasuryPublicSnapshot {
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
     pub payouts_skipped_24h: u64,
+    pub eligible_online_payout_targets: u64,
+    pub sellable_pylons_online_now: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_eligible_window_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_dispatch_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_confirmed_payout_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fail_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
 }
@@ -590,6 +656,14 @@ pub struct TreasuryPublicStats {
     pub public_snapshot_generated_at_unix_ms: Option<u64>,
     pub snapshot_age_ms: Option<u64>,
     pub wallet_sync_lag_ms: Option<u64>,
+    pub eligible_online_payout_targets: u64,
+    pub sellable_pylons_online_now: u64,
+    pub latest_eligible_window_started_at_unix_ms: Option<u64>,
+    pub last_dispatch_at_unix_ms: Option<u64>,
+    pub last_confirmed_payout_at_unix_ms: Option<u64>,
+    pub eligible_window_lag_ms: Option<u64>,
+    pub dispatch_lag_ms: Option<u64>,
+    pub confirm_lag_ms: Option<u64>,
     pub payout_loop_health: String,
     pub degraded_reason: Option<String>,
     pub payout_sats_paid_total: u64,
@@ -598,6 +672,9 @@ pub struct TreasuryPublicStats {
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
     pub payouts_skipped_24h: u64,
+    pub skip_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    pub fail_reason_metrics_24h: Vec<TreasuryReasonMetric>,
+    pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -715,6 +792,18 @@ pub struct TreasuryState {
     pub payout_loop_last_started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
+    #[serde(default)]
+    pub eligible_online_payout_targets: u64,
+    #[serde(default)]
+    pub sellable_pylons_online_now: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_eligible_window_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_dispatch_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_confirmed_payout_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
     #[serde(default)]
     pub payout_sats_paid_total: u64,
     #[serde(default)]
@@ -889,6 +978,20 @@ impl TreasuryState {
         if !self.treasury_enabled(config) {
             return "disabled".to_string();
         }
+        if self
+            .active_continuity_alerts
+            .iter()
+            .any(|alert| alert.severity == "critical")
+        {
+            return "degraded".to_string();
+        }
+        if self
+            .active_continuity_alerts
+            .iter()
+            .any(|alert| alert.severity == "warning")
+        {
+            return "warning".to_string();
+        }
         self.payout_loop_runtime_status
             .clone()
             .unwrap_or_else(|| "unknown".to_string())
@@ -907,6 +1010,262 @@ impl TreasuryState {
             .fold(0u64, |total, receive| {
                 total.saturating_add(receive.amount_sats)
             })
+    }
+
+    pub fn observe_payout_eligibility(
+        &mut self,
+        config: &TreasuryConfig,
+        online_identities: &[OnlinePylonIdentity],
+        now_unix_ms: u64,
+    ) {
+        let policy = self.active_policy(config);
+        self.sellable_pylons_online_now = online_identities
+            .iter()
+            .filter(|identity| identity.sellable)
+            .count() as u64;
+        self.eligible_online_payout_targets = 0;
+        if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
+            return;
+        }
+
+        let payout_interval_ms = policy.payout_interval_ms();
+        let mut latest_eligible_window_started_at_unix_ms: Option<u64> = None;
+        for identity in online_identities {
+            if policy.require_sellable && !identity.sellable {
+                continue;
+            }
+            if !self
+                .payout_targets_by_identity
+                .contains_key(identity.nostr_pubkey_hex.as_str())
+            {
+                continue;
+            }
+            self.eligible_online_payout_targets =
+                self.eligible_online_payout_targets.saturating_add(1);
+            let window_started_at_unix_ms = payout_window_started_at_for_identity(
+                now_unix_ms,
+                payout_interval_ms,
+                identity.nostr_pubkey_hex.as_str(),
+            );
+            latest_eligible_window_started_at_unix_ms =
+                Some(match latest_eligible_window_started_at_unix_ms {
+                    Some(existing) => existing.max(window_started_at_unix_ms),
+                    None => window_started_at_unix_ms,
+                });
+        }
+
+        if let Some(window_started_at_unix_ms) = latest_eligible_window_started_at_unix_ms {
+            self.latest_eligible_window_started_at_unix_ms = Some(
+                self.latest_eligible_window_started_at_unix_ms
+                    .unwrap_or(window_started_at_unix_ms)
+                    .max(window_started_at_unix_ms),
+            );
+        }
+    }
+
+    fn reason_metrics_24h(
+        &self,
+        now_unix_ms: u64,
+    ) -> (Vec<TreasuryReasonMetric>, Vec<TreasuryReasonMetric>) {
+        let cutoff = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
+        let mut skip_metrics = BTreeMap::<String, TreasuryReasonMetric>::new();
+        let mut fail_metrics = BTreeMap::<String, TreasuryReasonMetric>::new();
+        for record in self.payout_records_by_key.values() {
+            if record.updated_at_unix_ms < cutoff {
+                continue;
+            }
+            let reason = record
+                .reason
+                .clone()
+                .unwrap_or_else(|| "unspecified".to_string());
+            match record.status.as_str() {
+                "skipped" => {
+                    let metric =
+                        skip_metrics
+                            .entry(reason.clone())
+                            .or_insert(TreasuryReasonMetric {
+                                reason,
+                                count: 0,
+                                total_sats: 0,
+                            });
+                    metric.count = metric.count.saturating_add(1);
+                    metric.total_sats = metric.total_sats.saturating_add(record.amount_sats);
+                }
+                "failed" => {
+                    let metric =
+                        fail_metrics
+                            .entry(reason.clone())
+                            .or_insert(TreasuryReasonMetric {
+                                reason,
+                                count: 0,
+                                total_sats: 0,
+                            });
+                    metric.count = metric.count.saturating_add(1);
+                    metric.total_sats = metric.total_sats.saturating_add(record.amount_sats);
+                }
+                _ => {}
+            }
+        }
+        (
+            skip_metrics.into_values().collect(),
+            fail_metrics.into_values().collect(),
+        )
+    }
+
+    fn continuity_signal_snapshot(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> TreasuryContinuitySignalSnapshot {
+        let (skip_reason_metrics_24h, fail_reason_metrics_24h) =
+            self.reason_metrics_24h(now_unix_ms);
+        let mut active_alerts = Vec::new();
+        let latest_eligible_window_started_at_unix_ms =
+            self.latest_eligible_window_started_at_unix_ms;
+
+        if self.treasury_enabled(config) {
+            if latest_eligible_window_started_at_unix_ms.is_some_and(|window_started_at| {
+                self.eligible_online_payout_targets > 0
+                    && window_started_at > self.last_dispatch_at_unix_ms.unwrap_or(0)
+                    && now_unix_ms.saturating_sub(window_started_at)
+                        >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+            }) {
+                active_alerts.push(TreasuryContinuityAlert {
+                    alert_id: "dispatch_stalled".to_string(),
+                    severity: "critical".to_string(),
+                    reason: "eligible_windows_not_dispatching".to_string(),
+                    started_at_unix_ms: latest_eligible_window_started_at_unix_ms
+                        .unwrap_or(now_unix_ms),
+                    observed_at_unix_ms: now_unix_ms,
+                });
+            }
+
+            if latest_eligible_window_started_at_unix_ms.is_some_and(|window_started_at| {
+                self.eligible_online_payout_targets > 0
+                    && window_started_at > self.last_confirmed_payout_at_unix_ms.unwrap_or(0)
+                    && now_unix_ms.saturating_sub(window_started_at)
+                        >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+            }) {
+                active_alerts.push(TreasuryContinuityAlert {
+                    alert_id: "confirmations_stalled".to_string(),
+                    severity: "critical".to_string(),
+                    reason: "eligible_windows_not_confirming".to_string(),
+                    started_at_unix_ms: latest_eligible_window_started_at_unix_ms
+                        .unwrap_or(now_unix_ms),
+                    observed_at_unix_ms: now_unix_ms,
+                });
+            }
+
+            if self.eligible_online_payout_targets > 0
+                && skip_reason_metrics_24h.iter().any(|metric| {
+                    metric.reason == "daily_budget_cap_reached"
+                        && metric.count > 0
+                        && latest_eligible_window_started_at_unix_ms.is_some_and(
+                            |window_started_at| {
+                                now_unix_ms.saturating_sub(window_started_at)
+                                    <= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+                            },
+                        )
+                })
+            {
+                active_alerts.push(TreasuryContinuityAlert {
+                    alert_id: "budget_cap_exhausted".to_string(),
+                    severity: "critical".to_string(),
+                    reason: "daily_budget_cap_reached".to_string(),
+                    started_at_unix_ms: latest_eligible_window_started_at_unix_ms
+                        .unwrap_or(now_unix_ms),
+                    observed_at_unix_ms: now_unix_ms,
+                });
+            }
+        }
+
+        if matches!(self.policy_runtime_status.as_deref(), Some("blocked")) {
+            active_alerts.push(TreasuryContinuityAlert {
+                alert_id: "policy_runtime_blocked".to_string(),
+                severity: "critical".to_string(),
+                reason: self
+                    .policy_last_error
+                    .clone()
+                    .unwrap_or_else(|| "policy_blocked".to_string()),
+                started_at_unix_ms: self
+                    .payout_loop_last_completed_at_unix_ms
+                    .unwrap_or(now_unix_ms),
+                observed_at_unix_ms: now_unix_ms,
+            });
+        }
+
+        let snapshot_age_ms = self
+            .public_snapshot
+            .as_ref()
+            .map(|snapshot| now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms));
+        let wallet_sync_lag_ms = self
+            .last_wallet_sync_at_unix_ms
+            .map(|last_sync| now_unix_ms.saturating_sub(last_sync));
+
+        if snapshot_age_ms.is_some_and(|lag| lag >= TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS)
+            || wallet_sync_lag_ms
+                .is_some_and(|lag| lag >= TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS)
+        {
+            active_alerts.push(TreasuryContinuityAlert {
+                alert_id: "snapshot_stale".to_string(),
+                severity: "warning".to_string(),
+                reason: "treasury_snapshot_or_wallet_sync_stale".to_string(),
+                started_at_unix_ms: self
+                    .public_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.generated_at_unix_ms)
+                    .unwrap_or(now_unix_ms),
+                observed_at_unix_ms: now_unix_ms,
+            });
+        }
+
+        TreasuryContinuitySignalSnapshot {
+            eligible_online_payout_targets: self.eligible_online_payout_targets,
+            sellable_pylons_online_now: self.sellable_pylons_online_now,
+            latest_eligible_window_started_at_unix_ms,
+            last_dispatch_at_unix_ms: self.last_dispatch_at_unix_ms,
+            last_confirmed_at_unix_ms: self.last_confirmed_payout_at_unix_ms,
+            skip_reason_metrics_24h,
+            fail_reason_metrics_24h,
+            active_alerts,
+        }
+    }
+
+    pub fn sync_continuity_alerts(
+        &mut self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> Vec<TreasuryReceiptEvent> {
+        let desired = self.continuity_signal_snapshot(config, now_unix_ms);
+        let previous = self.active_continuity_alerts.clone();
+        let mut receipts = Vec::new();
+        let mut next_alerts = Vec::new();
+
+        for alert in desired.active_alerts {
+            if let Some(existing) = previous.iter().find(|row| row.alert_id == alert.alert_id) {
+                next_alerts.push(TreasuryContinuityAlert {
+                    alert_id: alert.alert_id.clone(),
+                    severity: alert.severity.clone(),
+                    reason: alert.reason.clone(),
+                    started_at_unix_ms: existing.started_at_unix_ms,
+                    observed_at_unix_ms: now_unix_ms,
+                });
+            } else {
+                receipts.push(treasury_alert_raised_receipt(&alert));
+                next_alerts.push(alert);
+            }
+        }
+
+        for alert in previous {
+            if next_alerts.iter().any(|row| row.alert_id == alert.alert_id) {
+                continue;
+            }
+            receipts.push(treasury_alert_cleared_receipt(&alert, now_unix_ms));
+        }
+
+        self.active_continuity_alerts = next_alerts;
+        self.persist();
+        receipts
     }
 
     fn impossible_zero_balance_with_receive_history(&self) -> bool {
@@ -932,6 +1291,13 @@ impl TreasuryState {
                 .payout_loop_last_error
                 .clone()
                 .or_else(|| Some("payout_loop_unhealthy".to_string()));
+        }
+        if let Some(alert) = self
+            .active_continuity_alerts
+            .iter()
+            .find(|alert| alert.severity == "critical")
+        {
+            return Some(format!("continuity_alert:{}", alert.alert_id));
         }
         if matches!(self.wallet_runtime_status.as_deref(), Some("error")) {
             return self
@@ -978,6 +1344,7 @@ impl TreasuryState {
         config: &TreasuryConfig,
         now_unix_ms: u64,
     ) -> TreasuryPublicSnapshot {
+        let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let policy = self.active_policy(config);
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
         let mut payout_sats_paid_24h = 0u64;
@@ -1034,6 +1401,15 @@ impl TreasuryState {
             payouts_confirmed_24h,
             payouts_failed_24h,
             payouts_skipped_24h,
+            eligible_online_payout_targets: continuity.eligible_online_payout_targets,
+            sellable_pylons_online_now: continuity.sellable_pylons_online_now,
+            latest_eligible_window_started_at_unix_ms: continuity
+                .latest_eligible_window_started_at_unix_ms,
+            last_dispatch_at_unix_ms: continuity.last_dispatch_at_unix_ms,
+            last_confirmed_payout_at_unix_ms: continuity.last_confirmed_at_unix_ms,
+            skip_reason_metrics_24h: continuity.skip_reason_metrics_24h,
+            fail_reason_metrics_24h: continuity.fail_reason_metrics_24h,
+            active_continuity_alerts: self.active_continuity_alerts.clone(),
             degraded_reason: self.degraded_reason(config, now_unix_ms),
         }
     }
@@ -1071,6 +1447,18 @@ impl TreasuryState {
             public_snapshot_generated_at_unix_ms: Some(snapshot.generated_at_unix_ms),
             snapshot_age_ms: Some(now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms)),
             wallet_sync_lag_ms,
+            eligible_online_payout_targets: snapshot.eligible_online_payout_targets,
+            sellable_pylons_online_now: snapshot.sellable_pylons_online_now,
+            latest_eligible_window_started_at_unix_ms: snapshot
+                .latest_eligible_window_started_at_unix_ms,
+            last_dispatch_at_unix_ms: snapshot.last_dispatch_at_unix_ms,
+            last_confirmed_payout_at_unix_ms: snapshot.last_confirmed_payout_at_unix_ms,
+            eligible_window_lag_ms: lag_since(
+                now_unix_ms,
+                snapshot.latest_eligible_window_started_at_unix_ms,
+            ),
+            dispatch_lag_ms: lag_since(now_unix_ms, snapshot.last_dispatch_at_unix_ms),
+            confirm_lag_ms: lag_since(now_unix_ms, snapshot.last_confirmed_payout_at_unix_ms),
             payout_loop_health: self.payout_loop_health(config),
             degraded_reason: self.degraded_reason(config, now_unix_ms),
             payout_sats_paid_total: snapshot.payout_sats_paid_total,
@@ -1079,6 +1467,9 @@ impl TreasuryState {
             payouts_confirmed_24h: snapshot.payouts_confirmed_24h,
             payouts_failed_24h: snapshot.payouts_failed_24h,
             payouts_skipped_24h: snapshot.payouts_skipped_24h,
+            skip_reason_metrics_24h: snapshot.skip_reason_metrics_24h,
+            fail_reason_metrics_24h: snapshot.fail_reason_metrics_24h,
+            active_continuity_alerts: snapshot.active_continuity_alerts,
         }
     }
 
@@ -1121,6 +1512,15 @@ impl TreasuryState {
             public_snapshot_generated_at_unix_ms: stats.public_snapshot_generated_at_unix_ms,
             snapshot_age_ms: stats.snapshot_age_ms,
             wallet_sync_lag_ms: stats.wallet_sync_lag_ms,
+            eligible_online_payout_targets: stats.eligible_online_payout_targets,
+            sellable_pylons_online_now: stats.sellable_pylons_online_now,
+            latest_eligible_window_started_at_unix_ms: stats
+                .latest_eligible_window_started_at_unix_ms,
+            last_dispatch_at_unix_ms: stats.last_dispatch_at_unix_ms,
+            last_confirmed_payout_at_unix_ms: stats.last_confirmed_payout_at_unix_ms,
+            eligible_window_lag_ms: stats.eligible_window_lag_ms,
+            dispatch_lag_ms: stats.dispatch_lag_ms,
+            confirm_lag_ms: stats.confirm_lag_ms,
             payout_loop_health: stats.payout_loop_health,
             degraded_reason: stats.degraded_reason,
             policy_schema_version: policy.schema_version,
@@ -1140,6 +1540,9 @@ impl TreasuryState {
             payouts_confirmed_24h: stats.payouts_confirmed_24h,
             payouts_failed_24h: stats.payouts_failed_24h,
             payouts_skipped_24h: stats.payouts_skipped_24h,
+            skip_reason_metrics_24h: stats.skip_reason_metrics_24h,
+            fail_reason_metrics_24h: stats.fail_reason_metrics_24h,
+            active_continuity_alerts: stats.active_continuity_alerts,
         }
     }
 
@@ -1531,6 +1934,11 @@ impl TreasuryState {
                 payout_key,
                 payment_id,
             } => {
+                self.last_dispatch_at_unix_ms = Some(
+                    self.last_dispatch_at_unix_ms
+                        .unwrap_or(now_unix_ms)
+                        .max(now_unix_ms),
+                );
                 if let Some(record) = self.payout_records_by_key.get_mut(&payout_key) {
                     record.status = "dispatched".to_string();
                     record.reason = None;
@@ -1570,6 +1978,7 @@ impl TreasuryState {
         self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
 
         let mut receipt_events = Vec::new();
+        let mut last_confirmed_payout_at_unix_ms = self.last_confirmed_payout_at_unix_ms;
         for payment in &snapshot.payments {
             if payment.direction.eq_ignore_ascii_case("receive") {
                 self.funding_receives_by_payment_id
@@ -1604,6 +2013,12 @@ impl TreasuryState {
             };
             record.updated_at_unix_ms = payment.timestamp.saturating_mul(1_000);
             if wallet_payment_is_confirmed(payment) {
+                let confirmed_at_unix_ms = payment.timestamp.saturating_mul(1_000);
+                last_confirmed_payout_at_unix_ms = Some(
+                    last_confirmed_payout_at_unix_ms
+                        .unwrap_or(confirmed_at_unix_ms)
+                        .max(confirmed_at_unix_ms),
+                );
                 record.status = "confirmed".to_string();
                 record.reason = None;
                 if !record.confirm_receipt_recorded {
@@ -1628,6 +2043,7 @@ impl TreasuryState {
                 }
             }
         }
+        self.last_confirmed_payout_at_unix_ms = last_confirmed_payout_at_unix_ms;
 
         self.trim_retention();
         self.persist();
@@ -2091,6 +2507,7 @@ pub async fn run_treasury_command(
             let now_unix_ms = now_unix_ms();
             state.initialize_runtime_policy(config, now_unix_ms);
             state.apply_wallet_snapshot(&snapshot, now_unix_ms);
+            state.sync_continuity_alerts(config, now_unix_ms);
             state.refresh_public_snapshot(config, now_unix_ms);
             let response = state.status_response(config, now_unix_ms);
             if *json {
@@ -2323,6 +2740,10 @@ fn signed_balance_delta(newer: u64, older: u64) -> Option<i64> {
             .ok()
             .map(|delta| -delta)
     }
+}
+
+fn lag_since(now_unix_ms: u64, timestamp_unix_ms: Option<u64>) -> Option<u64> {
+    timestamp_unix_ms.map(|timestamp| now_unix_ms.saturating_sub(timestamp))
 }
 
 fn build_treasury_wallet_recovery_comparison(
@@ -2870,6 +3291,59 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     if let Some(wallet_sync_lag_ms) = response.wallet_sync_lag_ms {
         lines.push(format!("wallet_sync_lag_ms: {wallet_sync_lag_ms}"));
     }
+    lines.push(format!(
+        "eligible_online_payout_targets: {}",
+        response.eligible_online_payout_targets
+    ));
+    lines.push(format!(
+        "sellable_pylons_online_now: {}",
+        response.sellable_pylons_online_now
+    ));
+    if let Some(window_started_at_unix_ms) = response.latest_eligible_window_started_at_unix_ms {
+        lines.push(format!(
+            "latest_eligible_window_started_at_unix_ms: {window_started_at_unix_ms}"
+        ));
+    }
+    if let Some(last_dispatch_at_unix_ms) = response.last_dispatch_at_unix_ms {
+        lines.push(format!(
+            "last_dispatch_at_unix_ms: {last_dispatch_at_unix_ms}"
+        ));
+    }
+    if let Some(last_confirmed_payout_at_unix_ms) = response.last_confirmed_payout_at_unix_ms {
+        lines.push(format!(
+            "last_confirmed_payout_at_unix_ms: {last_confirmed_payout_at_unix_ms}"
+        ));
+    }
+    if let Some(eligible_window_lag_ms) = response.eligible_window_lag_ms {
+        lines.push(format!("eligible_window_lag_ms: {eligible_window_lag_ms}"));
+    }
+    if let Some(dispatch_lag_ms) = response.dispatch_lag_ms {
+        lines.push(format!("dispatch_lag_ms: {dispatch_lag_ms}"));
+    }
+    if let Some(confirm_lag_ms) = response.confirm_lag_ms {
+        lines.push(format!("confirm_lag_ms: {confirm_lag_ms}"));
+    }
+    if !response.skip_reason_metrics_24h.is_empty() {
+        lines.push(format!(
+            "skip_reason_metrics_24h: {}",
+            serde_json::to_string(&response.skip_reason_metrics_24h)
+                .unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
+    if !response.fail_reason_metrics_24h.is_empty() {
+        lines.push(format!(
+            "fail_reason_metrics_24h: {}",
+            serde_json::to_string(&response.fail_reason_metrics_24h)
+                .unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
+    if !response.active_continuity_alerts.is_empty() {
+        lines.push(format!(
+            "active_continuity_alerts: {}",
+            serde_json::to_string(&response.active_continuity_alerts)
+                .unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
     if let Some(reason) = response.degraded_reason.as_deref() {
         lines.push(format!("degraded_reason: {reason}"));
     }
@@ -3044,6 +3518,45 @@ fn skipped_payout_receipt(record: &TreasuryPayoutRecord) -> TreasuryReceiptEvent
             reason: record.reason.clone(),
             amount_sats: Some(record.amount_sats),
             attributes: payout_receipt_attributes(record),
+            ..AuthorityReceiptContext::default()
+        },
+    }
+}
+
+fn treasury_alert_raised_receipt(alert: &TreasuryContinuityAlert) -> TreasuryReceiptEvent {
+    let mut attributes = BTreeMap::new();
+    attributes.insert("alert_id".to_string(), alert.alert_id.clone());
+    attributes.insert("severity".to_string(), alert.severity.clone());
+    TreasuryReceiptEvent {
+        receipt_type: "treasury.alert.raised",
+        context: AuthorityReceiptContext {
+            request_id: Some(format!("treasury-alert-{}", alert.alert_id)),
+            status: Some("active".to_string()),
+            reason: Some(alert.reason.clone()),
+            attributes,
+            ..AuthorityReceiptContext::default()
+        },
+    }
+}
+
+fn treasury_alert_cleared_receipt(
+    alert: &TreasuryContinuityAlert,
+    cleared_at_unix_ms: u64,
+) -> TreasuryReceiptEvent {
+    let mut attributes = BTreeMap::new();
+    attributes.insert("alert_id".to_string(), alert.alert_id.clone());
+    attributes.insert("severity".to_string(), alert.severity.clone());
+    attributes.insert(
+        "cleared_at_unix_ms".to_string(),
+        cleared_at_unix_ms.to_string(),
+    );
+    TreasuryReceiptEvent {
+        receipt_type: "treasury.alert.cleared",
+        context: AuthorityReceiptContext {
+            request_id: Some(format!("treasury-alert-{}", alert.alert_id)),
+            status: Some("cleared".to_string()),
+            reason: Some(alert.reason.clone()),
+            attributes,
             ..AuthorityReceiptContext::default()
         },
     }
@@ -4039,6 +4552,143 @@ mod tests {
             stats.degraded_reason.as_deref(),
             Some("wallet_balance_zero_with_receive_history:100000:2000")
         );
+    }
+
+    #[test]
+    fn reason_metrics_break_out_skip_and_fail_reasons() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "skip-a".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "skip-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 120,
+                status: "skipped".to_string(),
+                reason: Some("daily_budget_cap_reached".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 200,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: true,
+                counted_in_paid_total: false,
+            },
+        );
+        state.payout_records_by_key.insert(
+            "skip-b".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "skip-b".to_string(),
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                payout_target: String::new(),
+                amount_sats: 120,
+                status: "skipped".to_string(),
+                reason: Some("missing_payout_target".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 210,
+                updated_at_unix_ms: 210,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: true,
+                counted_in_paid_total: false,
+            },
+        );
+        state.payout_records_by_key.insert(
+            "fail-a".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "fail-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 120,
+                status: "failed".to_string(),
+                reason: Some("wallet_send_failed".to_string()),
+                payment_id: Some("payment-1".to_string()),
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 220,
+                updated_at_unix_ms: 220,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+            },
+        );
+
+        let (skip_metrics, fail_metrics) = state.reason_metrics_24h(1_000);
+        assert_eq!(skip_metrics.len(), 2);
+        assert!(skip_metrics.iter().any(|metric| {
+            metric.reason == "daily_budget_cap_reached"
+                && metric.count == 1
+                && metric.total_sats == 120
+        }));
+        assert!(skip_metrics.iter().any(|metric| {
+            metric.reason == "missing_payout_target"
+                && metric.count == 1
+                && metric.total_sats == 120
+        }));
+        assert_eq!(fail_metrics.len(), 1);
+        assert_eq!(fail_metrics[0].reason, "wallet_send_failed");
+        assert_eq!(fail_metrics[0].count, 1);
+        assert_eq!(fail_metrics[0].total_sats, 120);
+    }
+
+    #[test]
+    fn continuity_alerts_raise_and_clear_for_stalled_windows() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let eligible_at_unix_ms = 1_800_000;
+        state.observe_payout_eligibility(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            }],
+            eligible_at_unix_ms,
+        );
+
+        let alert_at_unix_ms =
+            eligible_at_unix_ms + super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 1;
+        let raised = state.sync_continuity_alerts(&config, alert_at_unix_ms);
+        assert_eq!(raised.len(), 2);
+        assert!(
+            raised
+                .iter()
+                .any(|event| event.receipt_type == "treasury.alert.raised")
+        );
+        assert_eq!(state.active_continuity_alerts.len(), 2);
+
+        state.last_dispatch_at_unix_ms = Some(alert_at_unix_ms);
+        state.last_confirmed_payout_at_unix_ms = Some(alert_at_unix_ms);
+        let cleared = state.sync_continuity_alerts(&config, alert_at_unix_ms + 1);
+        assert_eq!(cleared.len(), 2);
+        assert!(
+            cleared
+                .iter()
+                .all(|event| event.receipt_type == "treasury.alert.cleared")
+        );
+        assert!(state.active_continuity_alerts.is_empty());
     }
 
     #[test]

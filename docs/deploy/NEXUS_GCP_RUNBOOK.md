@@ -71,6 +71,30 @@ scripts/deploy/nexus/03-configure-and-start.sh
 scripts/deploy/nexus/04-verify-gates.sh
 ```
 
+The verifier is now a real gate, not just a receipt dumper. By default it fails
+the rollout if:
+
+- the VM or `nexus-relay` systemd service is not healthy
+- `/healthz`, `/api/stats`, or `/v1/treasury/status` latency regresses past the
+  configured thresholds
+- treasury policy on the live status surface drifts from
+  `/etc/nexus-relay/nexus-relay.env`
+- treasury snapshot freshness or wallet-sync freshness crosses the configured
+  threshold
+- treasury continuity exposes active critical alerts such as dispatch stalls,
+  confirmation stalls, budget-cap exhaustion, or blocked policy runtime
+
+Optional local threshold overrides:
+
+```bash
+VERIFY_HEALTH_LATENCY_MAX_MS=1000 \
+VERIFY_STATS_LATENCY_MAX_MS=1000 \
+VERIFY_TREASURY_LATENCY_MAX_MS=1000 \
+VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS=15000 \
+VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS=15000 \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
 ## 4) Runtime model
 
 The deployed service is the `nexus-relay` container built from `apps/nexus-relay/Dockerfile`.
@@ -156,6 +180,16 @@ Rollback after cutover:
 Verification receipts land under:
 
 - `docs/reports/nexus/*-deploy-receipt.json`
+
+Deploy receipts now include:
+
+- endpoint latency evidence for `/healthz`, `/api/stats`, and
+  `/v1/treasury/status`
+- explicit gate rows with pass/fail reasons
+- live treasury policy as reported by `GET /v1/treasury/status`
+- treasury policy parsed from `/etc/nexus-relay/nexus-relay.env`
+- recent payout activity, reason breakdowns, snapshot freshness, and active
+  treasury continuity alerts
 
 ## 6) Operational notes
 

@@ -240,6 +240,17 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `public_snapshot_generated_at_unix_ms`
 - `snapshot_age_ms`
 - `wallet_sync_lag_ms`
+- `eligible_online_payout_targets`
+- `sellable_pylons_online_now`
+- `latest_eligible_window_started_at_unix_ms`
+- `last_dispatch_at_unix_ms`
+- `last_confirmed_payout_at_unix_ms`
+- `eligible_window_lag_ms`
+- `dispatch_lag_ms`
+- `confirm_lag_ms`
+- `skip_reason_metrics_24h`
+- `fail_reason_metrics_24h`
+- `active_continuity_alerts`
 - `payout_loop_health`
 - `degraded_reason`
 
@@ -250,3 +261,32 @@ Operator-safe policy audit now also projects through `GET /v1/treasury/status`:
 - `policy_runtime_status`
 - `policy_last_error`
 - `recent_policy_changes`
+
+Continuity alerts:
+
+- `treasury.alert.raised` receipts fire when Nexus detects payout continuity
+  breakage such as dispatch stalls, confirmation stalls, budget-cap exhaustion,
+  policy-runtime blocking, or stale treasury snapshots.
+- `treasury.alert.cleared` receipts fire when that condition recovers.
+- critical alerts are also reflected directly in `payout_loop_health` and
+  `degraded_reason`, so operators do not need to infer failures from homepage
+  behavior.
+
+Reason metrics:
+
+- `skip_reason_metrics_24h` is the 24-hour grouped breakdown of skipped payout
+  reasons such as `daily_budget_cap_reached` and `missing_payout_target`
+- `fail_reason_metrics_24h` is the 24-hour grouped breakdown of failed payout
+  reasons such as wallet dispatch failures or dispatch timeouts
+
+Deployment gating:
+
+- `scripts/deploy/nexus/04-verify-gates.sh` now measures `/healthz`,
+  `/api/stats`, and `/v1/treasury/status` latency directly on the VM and fails
+  the rollout if latency exceeds the configured thresholds
+- the deploy verifier now fails if live treasury policy diverges from the VM env
+  file, if snapshot freshness regresses, or if critical treasury continuity
+  alerts are active
+- the deploy receipt now includes explicit gate pass/fail rows, endpoint
+  latency, treasury policy evidence, recent payout activity, snapshot freshness,
+  and active continuity alerts

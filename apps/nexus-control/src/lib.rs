@@ -6448,7 +6448,12 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
     match load_live_wallet_snapshot(&state.config.treasury, create_if_missing).await {
         Ok(snapshot) => {
             if let Ok(mut store) = state.store.write() {
-                let receipt_events = store.treasury.apply_wallet_snapshot(&snapshot, now);
+                let mut receipt_events = store.treasury.apply_wallet_snapshot(&snapshot, now);
+                receipt_events.extend(
+                    store
+                        .treasury
+                        .sync_continuity_alerts(&state.config.treasury, now),
+                );
                 store
                     .treasury
                     .refresh_public_snapshot(&state.config.treasury, now);
@@ -6458,9 +6463,13 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
         Err(error) => {
             if let Ok(mut store) = state.store.write() {
                 store.treasury.record_wallet_error(error.to_string());
+                let receipt_events = store
+                    .treasury
+                    .sync_continuity_alerts(&state.config.treasury, now);
                 store
                     .treasury
                     .refresh_public_snapshot(&state.config.treasury, now);
+                record_treasury_receipt_events(&mut store, receipt_events, now);
             }
         }
     }
@@ -6574,6 +6583,11 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
         let online_identities = store
             .provider_presence
             .online_identities(cycle_started_at_unix_ms);
+        store.treasury.observe_payout_eligibility(
+            &state.config.treasury,
+            online_identities.as_slice(),
+            cycle_started_at_unix_ms,
+        );
         let preparation = store.treasury.prepare_due_payouts(
             &state.config.treasury,
             online_identities.as_slice(),
@@ -6619,9 +6633,13 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
             cycle_completed_at_unix_ms,
             preparation.reconciliation_degraded_reason,
         );
+        let receipt_events = store
+            .treasury
+            .sync_continuity_alerts(&state.config.treasury, cycle_completed_at_unix_ms);
         store
             .treasury
             .refresh_public_snapshot(&state.config.treasury, cycle_completed_at_unix_ms);
+        record_treasury_receipt_events(&mut store, receipt_events, cycle_completed_at_unix_ms);
     } else {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
     }
@@ -6684,6 +6702,11 @@ async fn apply_treasury_dispatch_batch(state: &AppState, batch: TreasuryDispatch
         if let Some(error) = batch.wallet_error {
             store.treasury.record_wallet_error(error);
         }
+        receipt_events.extend(
+            store
+                .treasury
+                .sync_continuity_alerts(&state.config.treasury, now),
+        );
         store
             .treasury
             .refresh_public_snapshot(&state.config.treasury, now);
