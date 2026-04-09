@@ -122,6 +122,35 @@ deploy change:
 - if needed, compare that reused storage against a fresh storage rebuild from
   the same mnemonic before deciding whether funds were actually spent
 
+Validated recovery/cutover flow:
+
+1. Generate and inspect `recovery-report.json` against a copied production-like
+   wallet first.
+2. Copy the validated recovery work dir onto the VM data disk if needed.
+3. Set the report path and run the production cutover wrapper:
+
+```bash
+export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
+scripts/deploy/nexus/09-recover-treasury-wallet.sh
+```
+
+What the wrapper does:
+
+- stops `nexus-relay`
+- runs `treasury recovery-cutover --report-path ... --json` inside the deployed
+  Nexus image against the live data disk
+- atomically swaps the validated rebuilt wallet storage into the active treasury
+  path while preserving a rollback dir
+- starts `nexus-relay` again and verifies the local treasury status endpoint
+
+Rollback after cutover:
+
+- stop `nexus-relay`
+- move the active rebuilt wallet dir aside
+- move the reported `wallet_storage_rollback_dir` back onto
+  `NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR`
+- start `nexus-relay`
+
 ## 5) Deploy artifacts
 
 Verification receipts land under:
@@ -134,6 +163,8 @@ Verification receipts land under:
 - The persistent disk is mounted at `/var/lib/nexus-relay` and should survive service restarts and VM reboots.
 - The deploy path assumes the VM service account can read from Artifact Registry.
 - The durable relay data path and Nexus control receipt log path both live on the persistent disk.
+- Wallet recovery reports and rebuilt-storage candidates should also live on the
+  persistent disk so cutover and rollback survive reboots.
 
 ## 7) Public cutover
 

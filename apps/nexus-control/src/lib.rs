@@ -6745,6 +6745,7 @@ fn runtime_snapshot(
         starter_offers_running,
         nexus_wallet_runtime_status: treasury_runtime.wallet_runtime_status.clone(),
         nexus_wallet_last_error: treasury_runtime.wallet_last_error.clone(),
+        nexus_wallet_storage_runtime_mode: treasury_runtime.wallet_storage_runtime_mode.clone(),
         nexus_wallet_balance_sats: treasury_runtime.wallet_balance_sats,
         nexus_wallet_balance_updated_at_unix_ms: treasury_runtime.wallet_balance_updated_at_unix_ms,
         nexus_treasury_snapshot_generated_at_unix_ms: treasury_runtime

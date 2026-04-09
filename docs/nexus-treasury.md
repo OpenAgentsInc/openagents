@@ -12,6 +12,8 @@ CLI:
 cargo run -p nexus-control -- treasury status
 cargo run -p nexus-control -- treasury funding-target
 cargo run -p nexus-control -- treasury funding-target --amount-sats 2100 --description "fund nexus treasury"
+cargo run -p nexus-control -- treasury recovery-report --work-dir /tmp/nexus-treasury-recovery --json
+cargo run -p nexus-control -- treasury recovery-cutover --report-path /tmp/nexus-treasury-recovery/recovery-report.json --json
 ```
 
 HTTP:
@@ -127,6 +129,69 @@ For production-like recovery work:
 - do not conclude that funds were spent merely because the old local storage
   view is empty
 
+## Wallet Recovery Workflow
+
+Use the recovery flow when treasury reports `0 sats` or an obviously stale
+balance despite funded receive history.
+
+1. Validate on a copied wallet first.
+
+```bash
+export NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH=/path/to/copied/treasury.mnemonic
+export NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR=/path/to/copied/treasury-wallet
+export NEXUS_CONTROL_TREASURY_STATE_PATH=/path/to/copied/treasury-state.json
+
+cargo run -p nexus-control -- treasury recovery-report --work-dir /tmp/nexus-treasury-recovery --json
+```
+
+What `recovery-report` does:
+
+- copies the current wallet storage into `backup/current-storage`
+- copies the mnemonic and treasury state into the same recovery work dir
+- builds a fresh wallet state from the same mnemonic into `rebuilt-storage`
+- writes a machine-readable `recovery-report.json`
+- records the latest report summary in treasury state/status
+
+The report compares, at minimum:
+
+- wallet identity pubkey
+- current-storage reported balance
+- rebuilt-storage reported balance
+- completed receive/send payment counts and totals
+- unclaimed deposit counts
+- whether the rebuilt wallet materially diverges from the copied current storage
+
+2. Only cut over after the report says `validation_passed=true`.
+
+Local/manual cutover:
+
+```bash
+cargo run -p nexus-control -- treasury recovery-cutover --report-path /tmp/nexus-treasury-recovery/recovery-report.json --json
+```
+
+Production VM cutover:
+
+```bash
+export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
+scripts/deploy/nexus/09-recover-treasury-wallet.sh
+```
+
+The cutover path:
+
+- preserves the live wallet storage by renaming it into a rollback dir
+- atomically swaps the validated rebuilt storage into the active wallet path
+- updates treasury state so status surfaces show `wallet_storage_runtime_mode=rebuilt`
+- seeds treasury state with the rebuilt wallet balance so payouts can resume
+  immediately after restart
+
+Rollback procedure:
+
+1. stop `nexus-relay`
+2. move the active rebuilt storage dir aside
+3. move `wallet_storage_rollback_dir` back onto
+   `NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR`
+4. start `nexus-relay`
+
 ## Public Stats
 
 `nexus-control` now persists an atomic last-good treasury public snapshot inside
@@ -138,6 +203,7 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 
 - `nexus_wallet_runtime_status`
 - `nexus_wallet_last_error`
+- `nexus_wallet_storage_runtime_mode`
 - `nexus_wallet_balance_sats`
 - `nexus_wallet_balance_updated_at_unix_ms`
 - `nexus_treasury_snapshot_generated_at_unix_ms`
@@ -160,6 +226,12 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 
 Operator-safe loop health now projects through `GET /v1/treasury/status`:
 
+- `wallet_storage_runtime_mode`
+- `wallet_storage_report_path`
+- `wallet_storage_rollback_dir`
+- `wallet_storage_cutover_at_unix_ms`
+- `wallet_recovery_last_report_generated_at_unix_ms`
+- `wallet_recovery_last_report_validation_passed`
 - `payout_loop_runtime_status`
 - `payout_loop_last_error`
 - `last_payout_reconciliation_at_unix_ms`
