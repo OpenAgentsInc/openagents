@@ -11,6 +11,7 @@ description = "OpenAgents Nexus control API for desktop sessions and sync token 
 anyhow.workspace = true
 axum = "0.8"
 bip39 = "2.2.0"
+futures = "0.3"
 hex.workspace = true
 http = "1"
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
