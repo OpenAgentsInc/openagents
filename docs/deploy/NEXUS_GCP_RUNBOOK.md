@@ -65,6 +65,14 @@ scripts/deploy/nexus/02-provision-baseline.sh
 scripts/deploy/nexus/03-configure-and-start.sh
 ```
 
+`03-configure-and-start.sh` now also installs the treasury continuity watchdog
+by default. If you need to install or refresh only that watchdog without
+redeploying the Nexus container:
+
+```bash
+scripts/deploy/nexus/10-install-treasury-watchdog.sh
+```
+
 4. Verify health and emit a deploy receipt.
 
 ```bash
@@ -151,6 +159,21 @@ Why the extra two envs matter:
   dispatch loop from batching too few sends under one wallet-operation lock,
   which had stretched per-pylon credits from the configured `20s` interval to
   roughly `40-60s` once the eligible target set grew into the twenties
+- `scripts/deploy/nexus/10-install-treasury-watchdog.sh` installs a systemd
+  timer on the VM that runs every 5 minutes, checks the local treasury status
+  plus recent completed-send journal entries, and restarts `nexus-relay` only
+  when payouts have actually gone idle or the wallet/runtime has entered a hard
+  error state
+
+Watchdog env overrides:
+
+```bash
+export NEXUS_TREASURY_WATCHDOG_ENABLED=true
+export NEXUS_TREASURY_WATCHDOG_INTERVAL_SECONDS=300
+export NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS=300
+export NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS=300
+export NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR=6
+```
 
 If treasury status ever collapses to `0 sats` unexpectedly after a backend or
 deploy change:

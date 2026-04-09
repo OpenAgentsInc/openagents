@@ -124,6 +124,40 @@ refreshes only when the cached wallet snapshot is missing or stale, and gives
 each wallet refresh a 1.5 second timeout budget. `/api/stats` and
 `GET /v1/treasury/status` no longer trigger wallet refresh inline.
 
+## Production Watchdog
+
+Production payout continuity now also has a host-side watchdog installer:
+
+```bash
+scripts/deploy/nexus/10-install-treasury-watchdog.sh
+```
+
+`03-configure-and-start.sh` runs that installer by default when
+`NEXUS_TREASURY_WATCHDOG_ENABLED=true`.
+
+The watchdog runs on the VM every 5 minutes and uses two signals:
+
+- the local `http://127.0.0.1:8080/v1/treasury/status` endpoint
+- recent `Inserted payment ... status: Completed` journal lines from
+  `nexus-relay`
+
+That split matters operationally:
+
+- a stale public snapshot alone should not trigger restart if fresh completed
+  sends are still flowing
+- wallet/runtime hard errors, unreachable local treasury status, or sustained
+  payout idleness with sellable Pylons online should trigger an automatic
+  `systemctl restart nexus-relay`
+
+Watchdog knobs:
+
+- `NEXUS_TREASURY_WATCHDOG_INTERVAL_SECONDS`
+- `NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS`
+- `NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS`
+- `NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR`
+- `NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL`
+- `NEXUS_TREASURY_WATCHDOG_SERVICE_NAME`
+
 ## Upgrade Validation
 
 Before or immediately after a Spark SDK roll-forward, validate all of the

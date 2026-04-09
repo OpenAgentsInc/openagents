@@ -317,3 +317,7 @@ gcloud compute ssh "$NEXUS_VM" \
   --command "chmod +x /tmp/nexus-bootstrap.sh && /tmp/nexus-bootstrap.sh '$DEPLOY_IMAGE' '/tmp/nexus-relay.env' '/tmp/upstream-config.toml' '$NEXUS_DATA_DIR' '$NEXUS_DATA_DISK_DEVICE_NAME'"
 
 log "Nexus deployment refreshed on ${NEXUS_VM} using image ${DEPLOY_IMAGE}"
+
+if [[ "${NEXUS_TREASURY_WATCHDOG_ENABLED}" == "true" ]]; then
+  "${SCRIPT_DIR}/10-install-treasury-watchdog.sh"
+fi
