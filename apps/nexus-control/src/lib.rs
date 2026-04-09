@@ -82,9 +82,9 @@ use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
     ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
-    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryReceiptEvent,
-    TreasuryState, TreasuryStatusResponse, create_live_funding_target, dispatch_live_payouts,
-    load_live_wallet_snapshot,
+    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutPreparation,
+    TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse, create_live_funding_target,
+    dispatch_live_payouts, load_live_wallet_snapshot,
 };
 
 pub use crate::treasury::{
@@ -135,6 +135,7 @@ const DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS: u64 = 15;
 const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 30_000;
+const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
 const PUBLIC_RECENT_PYLON_LIMIT: usize = 8;
 const MAX_PROVIDER_DIAGNOSTIC_SUMMARIES: usize = 16;
@@ -941,20 +942,31 @@ impl IntoResponse for ApiError {
 }
 
 pub fn build_router(config: ServiceConfig) -> Router {
-    Router::new()
-        .route("/healthz", get(healthz))
-        .merge(build_api_router(config))
+    build_router_with_state(build_app_state(config))
 }
 
 pub fn build_api_router(config: ServiceConfig) -> Router {
+    build_api_router_with_state(build_app_state(config))
+}
+
+fn build_app_state(config: ServiceConfig) -> AppState {
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
-    let state = AppState {
+    AppState {
         store: Arc::new(RwLock::new(ControlStore::new(&config))),
         config,
         kernel_receipt_tx,
         kernel_snapshot_tx,
-    };
+    }
+}
+
+fn build_router_with_state(state: AppState) -> Router {
+    Router::new()
+        .route("/healthz", get(healthz))
+        .merge(build_api_router_with_state(state))
+}
+
+fn build_api_router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/stats", get(public_stats))
         .route("/api/stats", get(public_stats))
@@ -1267,7 +1279,9 @@ pub async fn run_server(config: ServiceConfig) -> Result<(), anyhow::Error> {
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
     let local_addr = listener.local_addr()?;
     tracing::info!("nexus-control listening on {}", local_addr);
-    axum::serve(listener, build_router(config)).await?;
+    let state = build_app_state(config);
+    spawn_treasury_dispatch_loop(state.clone());
+    axum::serve(listener, build_router_with_state(state)).await?;
     Ok(())
 }
 
@@ -1326,50 +1340,14 @@ async fn record_provider_presence_heartbeat(
         hosting_telemetry: request.hosting_telemetry,
     };
     let now = now_unix_ms();
-    let dispatch_claimed = try_begin_treasury_dispatch_cycle();
-    let store_result: Result<_, ApiError> = (|| {
-        let mut store = state.store.write().map_err(|_| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error: "internal_error",
-            reason: "session_store_poisoned".to_string(),
-        })?;
-        let record = store
-            .provider_presence
-            .record_heartbeat(normalized_request, now);
-        let (dispatch_plans, treasury_receipts) = if dispatch_claimed {
-            let online_identities = store.provider_presence.online_identities(now);
-            store.treasury.prepare_due_payouts(
-                &state.config.treasury,
-                online_identities.as_slice(),
-                now,
-            )
-        } else {
-            (Vec::new(), Vec::new())
-        };
-        record_treasury_receipt_events(&mut store, treasury_receipts, now);
-        Ok((record, dispatch_plans))
-    })();
-    let (record, dispatch_plans) = match store_result {
-        Ok(value) => value,
-        Err(error) => {
-            if dispatch_claimed {
-                finish_treasury_dispatch_cycle();
-            }
-            return Err(error);
-        }
-    };
-    if !dispatch_plans.is_empty() {
-        let dispatch_state = state.clone();
-        tokio::spawn(async move {
-            let batch =
-                dispatch_live_payouts(&dispatch_state.config.treasury, dispatch_plans.as_slice())
-                    .await;
-            apply_treasury_dispatch_batch(&dispatch_state, batch).await;
-            finish_treasury_dispatch_cycle();
-        });
-    } else if dispatch_claimed {
-        finish_treasury_dispatch_cycle();
-    }
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let record = store
+        .provider_presence
+        .record_heartbeat(normalized_request, now);
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id: record.session_id,
@@ -6536,6 +6514,84 @@ fn finish_treasury_dispatch_cycle() {
     treasury_dispatch_in_flight_flag().store(false, AtomicOrdering::Release);
 }
 
+fn spawn_treasury_dispatch_loop(state: AppState) {
+    tokio::spawn(async move {
+        let mut interval =
+            tokio::time::interval(Duration::from_millis(TREASURY_DISPATCH_LOOP_INTERVAL_MS));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            run_treasury_dispatch_cycle(&state).await;
+        }
+    });
+}
+
+async fn run_treasury_dispatch_cycle(state: &AppState) {
+    if !try_begin_treasury_dispatch_cycle() {
+        return;
+    }
+
+    let cycle_started_at_unix_ms = now_unix_ms();
+    let preparation = (|| -> Result<TreasuryPayoutPreparation, String> {
+        let mut store = state
+            .store
+            .write()
+            .map_err(|_| "session_store_poisoned".to_string())?;
+        store
+            .treasury
+            .note_payout_loop_started(cycle_started_at_unix_ms);
+        store.provider_presence.prune(cycle_started_at_unix_ms);
+        let online_identities = store
+            .provider_presence
+            .online_identities(cycle_started_at_unix_ms);
+        let preparation = store.treasury.prepare_due_payouts(
+            &state.config.treasury,
+            online_identities.as_slice(),
+            cycle_started_at_unix_ms,
+        );
+        record_treasury_receipt_events(
+            &mut store,
+            preparation.receipt_events.clone(),
+            cycle_started_at_unix_ms,
+        );
+        Ok(preparation)
+    })();
+
+    let preparation = match preparation {
+        Ok(preparation) => preparation,
+        Err(reason) => {
+            tracing::error!("treasury dispatch cycle setup failed: {reason}");
+            if let Ok(mut store) = state.store.write() {
+                store
+                    .treasury
+                    .note_payout_loop_error(cycle_started_at_unix_ms, reason);
+            }
+            finish_treasury_dispatch_cycle();
+            return;
+        }
+    };
+
+    if !preparation.dispatch_plans.is_empty() {
+        let batch = dispatch_live_payouts(
+            &state.config.treasury,
+            preparation.dispatch_plans.as_slice(),
+        )
+        .await;
+        apply_treasury_dispatch_batch(state, batch).await;
+    }
+
+    let cycle_completed_at_unix_ms = now_unix_ms();
+    if let Ok(mut store) = state.store.write() {
+        store.treasury.note_payout_loop_completed(
+            cycle_completed_at_unix_ms,
+            preparation.reconciliation_degraded_reason,
+        );
+    } else {
+        tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
+    }
+    finish_treasury_dispatch_cycle();
+}
+
 fn schedule_treasury_wallet_refresh(state: AppState, create_if_missing: bool) {
     let flag = treasury_wallet_refresh_scheduled_flag();
     if flag
@@ -7050,9 +7106,10 @@ mod tests {
     use crate::treasury::{
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
-        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
-        TreasuryStatusResponse, TreasuryWalletSnapshot, set_test_wallet_funding_hook,
-        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+        RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
+        TreasuryFundingTargetResponse, TreasuryStatusResponse, TreasuryWalletSnapshot,
+        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
+        treasury_test_hook_lock,
     };
 
     use super::{
@@ -7065,7 +7122,8 @@ mod tests {
         ServiceConfig, StarterDemandAckRequest, StarterDemandAckResponse,
         StarterDemandCompleteRequest, StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
-        SyncTokenResponse, TreasuryConfig, build_router, random_token,
+        SyncTokenResponse, TreasuryConfig, build_app_state, build_router, build_router_with_state,
+        random_token, run_treasury_dispatch_cycle,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -7100,6 +7158,7 @@ mod tests {
                 payout_interval_seconds: 60,
                 require_sellable: false,
                 daily_budget_cap_sats: 1_000,
+                reconciliation_horizon_seconds: 300,
                 state_path: PathBuf::from(format!(
                     "/tmp/test-nexus-control-treasury-state-{unique}.json"
                 )),
@@ -9716,6 +9775,125 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 2);
         assert_eq!(stats.pylon_sessions_online_now, 2);
         assert_eq!(stats.sellable_pylons_online_now, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_presence_heartbeat_does_not_dispatch_treasury_inline() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 120;
+        let state = build_app_state(config);
+        {
+            let mut store = state.store.write().expect("control store");
+            store.treasury.payout_targets_by_identity.insert(
+                "aabbccdd00112233".to_string(),
+                RegisteredPayoutTarget {
+                    nostr_pubkey_hex: "aabbccdd00112233".to_string(),
+                    source_session_id: "session-a".to_string(),
+                    spark_address: "spark:alice".to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+        let app = build_router_with_state(state);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let send_calls = Arc::new(AtomicUsize::new(0));
+        let send_calls_clone = send_calls.clone();
+        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats| {
+            send_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Ok("payment-send-inline".to_string())
+        })));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/heartbeat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&provider_presence_request(
+                        "aabbccdd00112233",
+                        "session-a",
+                        "alpha",
+                        1,
+                        "online",
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(send_calls.load(Ordering::SeqCst), 0);
+
+        set_test_wallet_send_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_dispatch_cycle_reconciles_missed_windows() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 120;
+        let payout_interval_ms = config.treasury.payout_interval_ms();
+        let state = build_app_state(config.clone());
+        let now_unix_ms = super::now_unix_ms();
+        {
+            let mut store = state.store.write().expect("control store");
+            store.treasury.payout_targets_by_identity.insert(
+                "aabbccdd00112233".to_string(),
+                RegisteredPayoutTarget {
+                    nostr_pubkey_hex: "aabbccdd00112233".to_string(),
+                    source_session_id: "session-a".to_string(),
+                    spark_address: "spark:alice".to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+            store.treasury.last_payout_reconciliation_at_unix_ms =
+                Some(now_unix_ms.saturating_sub(payout_interval_ms.saturating_mul(2)));
+            store.provider_presence.record_heartbeat(
+                provider_presence_request("aabbccdd00112233", "session-a", "alpha", 1, "online"),
+                now_unix_ms,
+            );
+        }
+
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let send_calls = Arc::new(AtomicUsize::new(0));
+        let send_calls_clone = send_calls.clone();
+        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats| {
+            let call_index = send_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(format!("payment-send-{call_index}"))
+        })));
+
+        run_treasury_dispatch_cycle(&state).await;
+
+        let store = state.store.read().expect("control store");
+        let dispatched = store
+            .treasury
+            .payout_records_by_key
+            .values()
+            .filter(|record| record.status == "dispatched")
+            .count();
+        assert_eq!(send_calls.load(Ordering::SeqCst), 3);
+        assert_eq!(dispatched, 3);
+        assert_eq!(
+            store.treasury.payout_loop_runtime_status.as_deref(),
+            Some("idle")
+        );
+        assert!(
+            store
+                .treasury
+                .last_payout_reconciliation_at_unix_ms
+                .is_some()
+        );
+
+        set_test_wallet_send_hook(None);
         Ok(())
     }
 

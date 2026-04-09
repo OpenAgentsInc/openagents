@@ -37,16 +37,21 @@ The hosted treasury policy and wallet runtime are env-backed:
 - `NEXUS_CONTROL_TREASURY_WALLET_NETWORK`
 - `NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV`
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS`
+- `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
 
 `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS` is still the per-identity
 stipend cadence. `nexus-control` now phases each identity deterministically
 within that interval, so online Pylons still receive one payout per interval
 but dispatches roll across the window instead of bunching on a single wall-clock
-boundary. The authority also keeps only one live treasury dispatch cycle in
-flight at a time. That prevents heartbeat storms from stacking multiple payout
-batches behind the same central Spark wallet and turning one slow send into an
-unbounded backlog of fake timeout failures.
+boundary.
+
+`run_server()` now starts a dedicated treasury payout loop every 2 seconds. The
+provider heartbeat route only updates presence; it no longer dispatches wallet
+sends inline. The treasury loop keeps only one live payout cycle in flight at a
+time, reconciles any missed per-identity windows after restarts, and clamps
+recovery to `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS` so a stale
+node does not try to replay an unbounded backlog blindly.
 
 For the production VM, set the payout policy env before running
 `scripts/deploy/nexus/03-configure-and-start.sh`. The deploy script now maps
@@ -77,3 +82,11 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 - `nexus_payouts_confirmed_24h`
 - `nexus_payouts_failed_24h`
 - `nexus_payouts_skipped_24h`
+
+Operator-safe loop health now projects through `GET /v1/treasury/status`:
+
+- `payout_loop_runtime_status`
+- `payout_loop_last_error`
+- `last_payout_reconciliation_at_unix_ms`
+- `payout_loop_last_started_at_unix_ms`
+- `payout_loop_last_completed_at_unix_ms`
