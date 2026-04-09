@@ -367,6 +367,16 @@ pub struct TreasuryStatusResponse {
     pub payout_loop_last_started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_snapshot_generated_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_age_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_sync_lag_ms: Option<u64>,
+    #[serde(default)]
+    pub payout_loop_health: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
     pub policy_schema_version: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_checksum: Option<String>,
@@ -382,6 +392,45 @@ pub struct TreasuryStatusResponse {
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
     pub payouts_skipped_24h: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryPublicSnapshot {
+    pub generated_at_unix_ms: u64,
+    pub treasury_enabled: bool,
+    pub payout_sats_per_window: u64,
+    pub payout_interval_seconds: u64,
+    pub require_sellable: bool,
+    pub daily_budget_cap_sats: u64,
+    pub registered_payout_identities: u64,
+    pub wallet_balance_sats: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_balance_updated_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_wallet_sync_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_error: Option<String>,
+    pub payout_loop_health: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_payout_reconciliation_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_completed_at_unix_ms: Option<u64>,
+    pub payout_sats_paid_total: u64,
+    pub payout_sats_paid_24h: u64,
+    pub payouts_dispatched_24h: u64,
+    pub payouts_confirmed_24h: u64,
+    pub payouts_failed_24h: u64,
+    pub payouts_skipped_24h: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -414,6 +463,11 @@ pub struct TreasuryPublicStats {
     pub last_payout_reconciliation_at_unix_ms: Option<u64>,
     pub payout_loop_last_started_at_unix_ms: Option<u64>,
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
+    pub public_snapshot_generated_at_unix_ms: Option<u64>,
+    pub snapshot_age_ms: Option<u64>,
+    pub wallet_sync_lag_ms: Option<u64>,
+    pub payout_loop_health: String,
+    pub degraded_reason: Option<String>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
     pub payouts_dispatched_24h: u64,
@@ -499,6 +553,8 @@ pub struct TreasuryState {
     pub policy_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_snapshot: Option<TreasuryPublicSnapshot>,
     #[serde(default)]
     pub payout_targets_by_identity: BTreeMap<String, RegisteredPayoutTarget>,
     #[serde(default)]
@@ -626,21 +682,21 @@ impl TreasuryState {
             self.trim_policy_change_history();
             self.policy_runtime_status = Some("bootstrapped".to_string());
             self.policy_last_error = None;
-            self.persist();
+            self.refresh_public_snapshot(config, now_unix_ms);
             return Vec::new();
         };
 
         if active_policy == requested_policy {
             self.policy_runtime_status = Some("persisted".to_string());
             self.policy_last_error = None;
-            self.persist();
+            self.refresh_public_snapshot(config, now_unix_ms);
             return Vec::new();
         }
 
         if !config.apply_env_policy {
             self.policy_runtime_status = Some("persisted".to_string());
             self.policy_last_error = None;
-            self.persist();
+            self.refresh_public_snapshot(config, now_unix_ms);
             return Vec::new();
         }
 
@@ -650,7 +706,7 @@ impl TreasuryState {
             self.policy_runtime_status = Some("blocked".to_string());
             self.policy_last_error =
                 Some("destructive_policy_change_requires_explicit_override".to_string());
-            self.persist();
+            self.refresh_public_snapshot(config, now_unix_ms);
             return vec![treasury_policy_change_blocked_receipt(
                 &active_policy,
                 &requested_policy,
@@ -675,7 +731,7 @@ impl TreasuryState {
         self.trim_policy_change_history();
         self.policy_runtime_status = Some("updated".to_string());
         self.policy_last_error = None;
-        self.persist();
+        self.refresh_public_snapshot(config, now_unix_ms);
         vec![treasury_policy_change_receipt(&change_record)]
     }
 
@@ -695,7 +751,54 @@ impl TreasuryState {
         })
     }
 
-    pub fn public_stats(&self, config: &TreasuryConfig, now_unix_ms: u64) -> TreasuryPublicStats {
+    fn payout_loop_health(&self, config: &TreasuryConfig) -> String {
+        if !self.treasury_enabled(config) {
+            return "disabled".to_string();
+        }
+        self.payout_loop_runtime_status
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+
+    fn degraded_reason(&self, config: &TreasuryConfig, now_unix_ms: u64) -> Option<String> {
+        if matches!(self.policy_runtime_status.as_deref(), Some("blocked")) {
+            return self
+                .policy_last_error
+                .clone()
+                .or_else(|| Some("policy_blocked".to_string()));
+        }
+        if matches!(
+            self.payout_loop_runtime_status.as_deref(),
+            Some("error" | "degraded")
+        ) {
+            return self
+                .payout_loop_last_error
+                .clone()
+                .or_else(|| Some("payout_loop_unhealthy".to_string()));
+        }
+        if matches!(self.wallet_runtime_status.as_deref(), Some("error")) {
+            return self
+                .wallet_last_error
+                .clone()
+                .or_else(|| Some("wallet_error".to_string()));
+        }
+        if self.treasury_enabled(config) {
+            let Some(last_wallet_sync_at_unix_ms) = self.last_wallet_sync_at_unix_ms else {
+                return Some("wallet_unsynced".to_string());
+            };
+            if self.wallet_refresh_due(config, now_unix_ms) {
+                let lag_ms = now_unix_ms.saturating_sub(last_wallet_sync_at_unix_ms);
+                return Some(format!("wallet_snapshot_stale:{lag_ms}"));
+            }
+        }
+        None
+    }
+
+    fn build_public_snapshot(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> TreasuryPublicSnapshot {
         let policy = self.active_policy(config);
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
         let mut payout_sats_paid_24h = 0u64;
@@ -726,7 +829,8 @@ impl TreasuryState {
             }
         }
 
-        TreasuryPublicStats {
+        TreasuryPublicSnapshot {
+            generated_at_unix_ms: now_unix_ms,
             treasury_enabled: policy.treasury_enabled,
             payout_sats_per_window: policy.payout_sats_per_window,
             payout_interval_seconds: policy.payout_interval_seconds,
@@ -735,10 +839,12 @@ impl TreasuryState {
             registered_payout_identities: self.payout_targets_by_identity.len() as u64,
             wallet_balance_sats: self.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
+            last_wallet_sync_at_unix_ms: self.last_wallet_sync_at_unix_ms,
             wallet_runtime_status: self.wallet_runtime_status.clone(),
             wallet_last_error: self.wallet_last_error.clone(),
             payout_loop_runtime_status: self.payout_loop_runtime_status.clone(),
             payout_loop_last_error: self.payout_loop_last_error.clone(),
+            payout_loop_health: self.payout_loop_health(config),
             last_payout_reconciliation_at_unix_ms: self.last_payout_reconciliation_at_unix_ms,
             payout_loop_last_started_at_unix_ms: self.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: self.payout_loop_last_completed_at_unix_ms,
@@ -748,6 +854,50 @@ impl TreasuryState {
             payouts_confirmed_24h,
             payouts_failed_24h,
             payouts_skipped_24h,
+            degraded_reason: self.degraded_reason(config, now_unix_ms),
+        }
+    }
+
+    pub fn refresh_public_snapshot(&mut self, config: &TreasuryConfig, now_unix_ms: u64) {
+        self.public_snapshot = Some(self.build_public_snapshot(config, now_unix_ms));
+        self.persist();
+    }
+
+    pub fn public_stats(&self, config: &TreasuryConfig, now_unix_ms: u64) -> TreasuryPublicStats {
+        let snapshot = self
+            .public_snapshot
+            .clone()
+            .unwrap_or_else(|| self.build_public_snapshot(config, now_unix_ms));
+        let wallet_sync_lag_ms = self
+            .last_wallet_sync_at_unix_ms
+            .map(|last_sync| now_unix_ms.saturating_sub(last_sync));
+        TreasuryPublicStats {
+            treasury_enabled: snapshot.treasury_enabled,
+            payout_sats_per_window: snapshot.payout_sats_per_window,
+            payout_interval_seconds: snapshot.payout_interval_seconds,
+            require_sellable: snapshot.require_sellable,
+            daily_budget_cap_sats: snapshot.daily_budget_cap_sats,
+            registered_payout_identities: snapshot.registered_payout_identities,
+            wallet_balance_sats: snapshot.wallet_balance_sats,
+            wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
+            wallet_runtime_status: snapshot.wallet_runtime_status,
+            wallet_last_error: snapshot.wallet_last_error,
+            payout_loop_runtime_status: snapshot.payout_loop_runtime_status,
+            payout_loop_last_error: snapshot.payout_loop_last_error,
+            last_payout_reconciliation_at_unix_ms: snapshot.last_payout_reconciliation_at_unix_ms,
+            payout_loop_last_started_at_unix_ms: snapshot.payout_loop_last_started_at_unix_ms,
+            payout_loop_last_completed_at_unix_ms: snapshot.payout_loop_last_completed_at_unix_ms,
+            public_snapshot_generated_at_unix_ms: Some(snapshot.generated_at_unix_ms),
+            snapshot_age_ms: Some(now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms)),
+            wallet_sync_lag_ms,
+            payout_loop_health: self.payout_loop_health(config),
+            degraded_reason: self.degraded_reason(config, now_unix_ms),
+            payout_sats_paid_total: snapshot.payout_sats_paid_total,
+            payout_sats_paid_24h: snapshot.payout_sats_paid_24h,
+            payouts_dispatched_24h: snapshot.payouts_dispatched_24h,
+            payouts_confirmed_24h: snapshot.payouts_confirmed_24h,
+            payouts_failed_24h: snapshot.payouts_failed_24h,
+            payouts_skipped_24h: snapshot.payouts_skipped_24h,
         }
     }
 
@@ -775,6 +925,11 @@ impl TreasuryState {
             last_payout_reconciliation_at_unix_ms: stats.last_payout_reconciliation_at_unix_ms,
             payout_loop_last_started_at_unix_ms: stats.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: stats.payout_loop_last_completed_at_unix_ms,
+            public_snapshot_generated_at_unix_ms: stats.public_snapshot_generated_at_unix_ms,
+            snapshot_age_ms: stats.snapshot_age_ms,
+            wallet_sync_lag_ms: stats.wallet_sync_lag_ms,
+            payout_loop_health: stats.payout_loop_health,
+            degraded_reason: stats.degraded_reason,
             policy_schema_version: policy.schema_version,
             policy_checksum: Some(policy.checksum.clone()),
             policy_runtime_status: self.policy_runtime_status.clone(),
@@ -964,7 +1119,7 @@ impl TreasuryState {
             || policy.payout_interval_seconds == 0
             || online_identities.is_empty()
         {
-            self.persist();
+            self.refresh_public_snapshot(config, now_unix_ms);
             return TreasuryPayoutPreparation {
                 dispatch_plans: Vec::new(),
                 receipt_events,
@@ -1137,7 +1292,7 @@ impl TreasuryState {
             }
         }
 
-        self.persist();
+        self.refresh_public_snapshot(config, now_unix_ms);
         TreasuryPayoutPreparation {
             dispatch_plans,
             receipt_events,
@@ -1653,6 +1808,7 @@ pub async fn run_treasury_command(
             let now_unix_ms = now_unix_ms();
             state.initialize_runtime_policy(config, now_unix_ms);
             state.apply_wallet_snapshot(&snapshot, now_unix_ms);
+            state.refresh_public_snapshot(config, now_unix_ms);
             let response = state.status_response(config, now_unix_ms);
             if *json {
                 return Ok(serde_json::to_string_pretty(&response)?);
@@ -1860,6 +2016,10 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     if let Some(status) = response.payout_loop_runtime_status.as_deref() {
         lines.push(format!("payout_loop_runtime_status: {status}"));
     }
+    lines.push(format!(
+        "payout_loop_health: {}",
+        response.payout_loop_health
+    ));
     if let Some(error) = response.payout_loop_last_error.as_deref() {
         lines.push(format!("payout_loop_last_error: {error}"));
     }
@@ -1867,6 +2027,20 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         lines.push(format!(
             "last_payout_reconciliation_at_unix_ms: {last_reconciliation_at_unix_ms}"
         ));
+    }
+    if let Some(snapshot_generated_at_unix_ms) = response.public_snapshot_generated_at_unix_ms {
+        lines.push(format!(
+            "public_snapshot_generated_at_unix_ms: {snapshot_generated_at_unix_ms}"
+        ));
+    }
+    if let Some(snapshot_age_ms) = response.snapshot_age_ms {
+        lines.push(format!("snapshot_age_ms: {snapshot_age_ms}"));
+    }
+    if let Some(wallet_sync_lag_ms) = response.wallet_sync_lag_ms {
+        lines.push(format!("wallet_sync_lag_ms: {wallet_sync_lag_ms}"));
+    }
+    if let Some(reason) = response.degraded_reason.as_deref() {
+        lines.push(format!("degraded_reason: {reason}"));
     }
     if let Some(policy_checksum) = response.policy_checksum.as_deref() {
         lines.push(format!("policy_checksum: {policy_checksum}"));

@@ -82,10 +82,18 @@ lowering the daily budget cap, widening the payout interval, or turning on
 script now fails closed.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
-`nexus-control` now refreshes wallet-backed public stats every 3 seconds by
-default.
+`nexus-control` now treats wallet snapshots as stale after 3 seconds by
+default. A dedicated background wallet refresh loop wakes every 1 second,
+refreshes only when the cached wallet snapshot is missing or stale, and gives
+each wallet refresh a 1.5 second timeout budget. `/api/stats` and
+`GET /v1/treasury/status` no longer trigger wallet refresh inline.
 
 ## Public Stats
+
+`nexus-control` now persists an atomic last-good treasury public snapshot inside
+the treasury state. The website-facing stats route reads that snapshot directly
+and only computes freshness metadata live, so a slow wallet serves stale-safe
+data instead of blocking the request path.
 
 Public-safe treasury counters now project through `nexus-control /api/stats`:
 
@@ -93,6 +101,11 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 - `nexus_wallet_last_error`
 - `nexus_wallet_balance_sats`
 - `nexus_wallet_balance_updated_at_unix_ms`
+- `nexus_treasury_snapshot_generated_at_unix_ms`
+- `nexus_treasury_snapshot_age_ms`
+- `nexus_wallet_sync_lag_ms`
+- `nexus_payout_loop_health`
+- `nexus_treasury_degraded_reason`
 - `nexus_treasury_enabled`
 - `nexus_treasury_payout_sats_per_window`
 - `nexus_treasury_payout_interval_seconds`
@@ -113,6 +126,11 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `last_payout_reconciliation_at_unix_ms`
 - `payout_loop_last_started_at_unix_ms`
 - `payout_loop_last_completed_at_unix_ms`
+- `public_snapshot_generated_at_unix_ms`
+- `snapshot_age_ms`
+- `wallet_sync_lag_ms`
+- `payout_loop_health`
+- `degraded_reason`
 
 Operator-safe policy audit now also projects through `GET /v1/treasury/status`:
 
