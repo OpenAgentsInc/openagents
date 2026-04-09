@@ -570,6 +570,7 @@ struct ControlStore {
 
 impl ControlStore {
     fn new(config: &ServiceConfig) -> Self {
+        let now_unix_ms = now_unix_ms();
         let mut kernel = KernelState::new_with_persistence(config.kernel_state_path.clone());
         kernel.set_compute_runtime_policy(crate::kernel::ComputeRuntimePolicy {
             enable_forward_physical: config.compute_enable_forward_physical,
@@ -579,7 +580,7 @@ impl ControlStore {
             policy_bundle_id: config.compute_policy_bundle_id.clone(),
             policy_version: config.compute_policy_version.clone(),
         });
-        Self {
+        let mut store = Self {
             sessions_by_access_token: HashMap::new(),
             sync_tokens: HashMap::new(),
             provider_presence: ProviderPresenceState::default(),
@@ -587,7 +588,12 @@ impl ControlStore {
             treasury: TreasuryState::new(config.treasury.state_path.clone()),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
             kernel,
-        }
+        };
+        let treasury_receipts = store
+            .treasury
+            .initialize_runtime_policy(&config.treasury, now_unix_ms);
+        record_treasury_receipt_events(&mut store, treasury_receipts, now_unix_ms);
+        store
     }
 }
 
@@ -6473,15 +6479,14 @@ fn treasury_wallet_refresh_state(
     now_unix_ms: u64,
     allow_disabled_treasury: bool,
 ) -> Result<TreasuryWalletRefreshState, ApiError> {
-    if !allow_disabled_treasury && !state.config.treasury.enabled {
-        return Ok(TreasuryWalletRefreshState::Fresh);
-    }
-
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
+    if !allow_disabled_treasury && !store.treasury.treasury_enabled(&state.config.treasury) {
+        return Ok(TreasuryWalletRefreshState::Fresh);
+    }
     if store.treasury.last_wallet_sync_at_unix_ms.is_none() {
         return Ok(TreasuryWalletRefreshState::Unsynced);
     }
@@ -7107,9 +7112,9 @@ mod tests {
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
         RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
-        TreasuryFundingTargetResponse, TreasuryStatusResponse, TreasuryWalletSnapshot,
-        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock,
+        TreasuryFundingTargetResponse, TreasuryState, TreasuryStatusResponse,
+        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
+        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
     };
 
     use super::{
@@ -7159,6 +7164,9 @@ mod tests {
                 require_sellable: false,
                 daily_budget_cap_sats: 1_000,
                 reconciliation_horizon_seconds: 300,
+                apply_env_policy: false,
+                allow_destructive_env_policy_change: false,
+                policy_change_reason: None,
                 state_path: PathBuf::from(format!(
                     "/tmp/test-nexus-control-treasury-state-{unique}.json"
                 )),
@@ -10268,6 +10276,66 @@ mod tests {
         assert_eq!(stats_response.status(), StatusCode::OK);
         let _: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(hook_calls.load(Ordering::SeqCst), 0);
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_uses_persisted_treasury_policy_when_env_drifts() -> Result<()> {
+        let mut bootstrap_config = test_config()?;
+        let unique = random_token();
+        bootstrap_config.treasury.state_path = PathBuf::from(format!(
+            "/tmp/test-nexus-control-treasury-policy-state-{unique}.json"
+        ));
+        bootstrap_config.treasury.wallet_mnemonic_path = PathBuf::from(format!(
+            "/tmp/test-nexus-control-treasury-policy-{unique}.mnemonic"
+        ));
+        bootstrap_config.treasury.wallet_storage_dir = PathBuf::from(format!(
+            "/tmp/test-nexus-control-treasury-policy-wallet-{unique}"
+        ));
+        bootstrap_config.treasury.enabled = true;
+        bootstrap_config.treasury.payout_sats_per_window = 120;
+
+        let mut bootstrap_state = TreasuryState::new(bootstrap_config.treasury.state_path.clone());
+        bootstrap_state.initialize_runtime_policy(&bootstrap_config.treasury, super::now_unix_ms());
+
+        let mut drift_config = bootstrap_config.clone();
+        drift_config.treasury.enabled = false;
+        drift_config.treasury.payout_sats_per_window = 0;
+        let app = build_router(drift_config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 500,
+                payments: Vec::new(),
+            })
+        })));
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert!(stats.nexus_treasury_enabled);
+        assert_eq!(stats.nexus_treasury_payout_sats_per_window, 120);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
 
         set_test_wallet_snapshot_hook(None);
         Ok(())

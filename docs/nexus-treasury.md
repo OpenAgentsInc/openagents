@@ -25,13 +25,13 @@ Bolt11 invoice when an amount is requested.
 
 ## Runtime Configuration
 
-The hosted treasury policy and wallet runtime are env-backed:
+The hosted treasury wallet runtime is still env-backed, but the payout policy
+is now a persisted runtime object inside the treasury state file. On first boot,
+`nexus-control` bootstraps that policy from env. After that, the persisted
+policy is authoritative by default.
 
-- `NEXUS_CONTROL_TREASURY_ENABLED`
-- `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW`
-- `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS`
-- `NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE`
-- `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS`
+Wallet/runtime envs:
+
 - `NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH`
 - `NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR`
 - `NEXUS_CONTROL_TREASURY_WALLET_NETWORK`
@@ -39,6 +39,17 @@ The hosted treasury policy and wallet runtime are env-backed:
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS`
 - `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
+
+Bootstrap / explicit policy-apply envs:
+
+- `NEXUS_CONTROL_TREASURY_ENABLED`
+- `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW`
+- `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS`
+- `NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE`
+- `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS`
+- `NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV`
+- `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE`
+- `NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON`
 
 `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS` is still the per-identity
 stipend cadence. `nexus-control` now phases each identity deterministically
@@ -53,10 +64,22 @@ time, reconciles any missed per-identity windows after restarts, and clamps
 recovery to `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS` so a stale
 node does not try to replay an unbounded backlog blindly.
 
-For the production VM, set the payout policy env before running
-`scripts/deploy/nexus/03-configure-and-start.sh`. The deploy script now maps
-the treasury wallet and state onto `${NEXUS_DATA_DIR}/treasury/...` so the
-central wallet survives container restarts.
+For the production VM, `scripts/deploy/nexus/03-configure-and-start.sh` now
+loads the persisted policy from `${NEXUS_CONTROL_TREASURY_STATE_PATH}` by
+default and writes those values back into the container env file. That keeps
+redeploys and rollbacks aligned with the live policy on the data disk.
+
+To intentionally change policy through deploy env:
+
+1. set the new policy env values
+2. set `NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV=true`
+3. set `NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON=<why>`
+4. if the change is destructive, also set `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE=true`
+
+Destructive policy changes include disabling treasury, lowering payout amount,
+lowering the daily budget cap, widening the payout interval, or turning on
+`require_sellable`. Without the explicit destructive override, the deploy
+script now fails closed.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
 `nexus-control` now refreshes wallet-backed public stats every 3 seconds by
@@ -90,3 +113,11 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `last_payout_reconciliation_at_unix_ms`
 - `payout_loop_last_started_at_unix_ms`
 - `payout_loop_last_completed_at_unix_ms`
+
+Operator-safe policy audit now also projects through `GET /v1/treasury/status`:
+
+- `policy_schema_version`
+- `policy_checksum`
+- `policy_runtime_status`
+- `policy_last_error`
+- `recent_policy_changes`
