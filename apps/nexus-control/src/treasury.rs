@@ -33,6 +33,8 @@ const ENV_TREASURY_WALLET_NETWORK: &str = "NEXUS_CONTROL_TREASURY_WALLET_NETWORK
 const ENV_TREASURY_WALLET_API_KEY_ENV: &str = "NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV";
 const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
+const ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS: &str =
+    "NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS";
 const ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS";
 
@@ -46,13 +48,14 @@ const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
+const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
-const TREASURY_PAYOUT_LIMIT: usize = 16_384;
+const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
 
 #[derive(Debug, Clone)]
@@ -62,6 +65,7 @@ pub struct TreasuryConfig {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    pub reconciliation_horizon_seconds: u64,
     pub state_path: PathBuf,
     pub wallet_mnemonic_path: PathBuf,
     pub wallet_storage_dir: PathBuf,
@@ -100,6 +104,11 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
         )?
         .max(1);
+        let reconciliation_horizon_seconds = parse_u64_env(
+            ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS,
+            DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS,
+        )?
+        .max(1);
         let registration_challenge_ttl_seconds = parse_u64_env(
             ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS,
             DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS,
@@ -112,6 +121,7 @@ impl TreasuryConfig {
             payout_interval_seconds,
             require_sellable,
             daily_budget_cap_sats,
+            reconciliation_horizon_seconds,
             state_path: read_path_env(ENV_TREASURY_STATE_PATH, DEFAULT_TREASURY_STATE_PATH),
             wallet_mnemonic_path: read_path_env(
                 ENV_TREASURY_WALLET_MNEMONIC_PATH,
@@ -137,6 +147,10 @@ impl TreasuryConfig {
 
     pub fn wallet_status_refresh_interval_ms(&self) -> u64 {
         self.wallet_status_refresh_seconds.saturating_mul(1_000)
+    }
+
+    pub fn reconciliation_horizon_ms(&self) -> u64 {
+        self.reconciliation_horizon_seconds.saturating_mul(1_000)
     }
 
     pub fn registration_challenge_ttl_ms(&self) -> u64 {
@@ -233,6 +247,16 @@ pub struct TreasuryStatusResponse {
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_payout_reconciliation_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
     pub payouts_dispatched_24h: u64,
@@ -266,6 +290,11 @@ pub struct TreasuryPublicStats {
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     pub wallet_runtime_status: Option<String>,
     pub wallet_last_error: Option<String>,
+    pub payout_loop_runtime_status: Option<String>,
+    pub payout_loop_last_error: Option<String>,
+    pub last_payout_reconciliation_at_unix_ms: Option<u64>,
+    pub payout_loop_last_started_at_unix_ms: Option<u64>,
+    pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
     pub payouts_dispatched_24h: u64,
@@ -359,6 +388,16 @@ pub struct TreasuryState {
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_wallet_sync_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_payout_reconciliation_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     #[serde(default)]
     pub payout_sats_paid_total: u64,
     #[serde(default)]
@@ -382,6 +421,13 @@ pub struct TreasuryDispatchPlan {
     pub payout_key: String,
     pub payment_request: String,
     pub amount_sats: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TreasuryPayoutPreparation {
+    pub dispatch_plans: Vec<TreasuryDispatchPlan>,
+    pub receipt_events: Vec<TreasuryReceiptEvent>,
+    pub reconciliation_degraded_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -480,6 +526,11 @@ impl TreasuryState {
             wallet_balance_updated_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status: self.wallet_runtime_status.clone(),
             wallet_last_error: self.wallet_last_error.clone(),
+            payout_loop_runtime_status: self.payout_loop_runtime_status.clone(),
+            payout_loop_last_error: self.payout_loop_last_error.clone(),
+            last_payout_reconciliation_at_unix_ms: self.last_payout_reconciliation_at_unix_ms,
+            payout_loop_last_started_at_unix_ms: self.payout_loop_last_started_at_unix_ms,
+            payout_loop_last_completed_at_unix_ms: self.payout_loop_last_completed_at_unix_ms,
             payout_sats_paid_total: self.payout_sats_paid_total,
             payout_sats_paid_24h,
             payouts_dispatched_24h,
@@ -507,6 +558,11 @@ impl TreasuryState {
             wallet_balance_updated_at_unix_ms: stats.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status: stats.wallet_runtime_status,
             wallet_last_error: stats.wallet_last_error,
+            payout_loop_runtime_status: stats.payout_loop_runtime_status,
+            payout_loop_last_error: stats.payout_loop_last_error,
+            last_payout_reconciliation_at_unix_ms: stats.last_payout_reconciliation_at_unix_ms,
+            payout_loop_last_started_at_unix_ms: stats.payout_loop_last_started_at_unix_ms,
+            payout_loop_last_completed_at_unix_ms: stats.payout_loop_last_completed_at_unix_ms,
             payout_sats_paid_total: stats.payout_sats_paid_total,
             payout_sats_paid_24h: stats.payout_sats_paid_24h,
             payouts_dispatched_24h: stats.payouts_dispatched_24h,
@@ -519,6 +575,35 @@ impl TreasuryState {
     pub fn record_wallet_error(&mut self, detail: impl Into<String>) {
         self.wallet_runtime_status = Some("error".to_string());
         self.wallet_last_error = Some(detail.into());
+        self.persist();
+    }
+
+    pub fn note_payout_loop_started(&mut self, now_unix_ms: u64) {
+        self.payout_loop_runtime_status = Some("running".to_string());
+        self.payout_loop_last_started_at_unix_ms = Some(now_unix_ms);
+    }
+
+    pub fn note_payout_loop_completed(
+        &mut self,
+        now_unix_ms: u64,
+        reconciliation_degraded_reason: Option<String>,
+    ) {
+        self.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms);
+        self.payout_loop_last_completed_at_unix_ms = Some(now_unix_ms);
+        if let Some(reason) = reconciliation_degraded_reason {
+            self.payout_loop_runtime_status = Some("degraded".to_string());
+            self.payout_loop_last_error = Some(reason);
+        } else {
+            self.payout_loop_runtime_status = Some("idle".to_string());
+            self.payout_loop_last_error = None;
+        }
+        self.persist();
+    }
+
+    pub fn note_payout_loop_error(&mut self, now_unix_ms: u64, detail: impl Into<String>) {
+        self.payout_loop_runtime_status = Some("error".to_string());
+        self.payout_loop_last_error = Some(detail.into());
+        self.payout_loop_last_completed_at_unix_ms = Some(now_unix_ms);
         self.persist();
     }
 
@@ -647,7 +732,7 @@ impl TreasuryState {
         config: &TreasuryConfig,
         online_identities: &[OnlinePylonIdentity],
         now_unix_ms: u64,
-    ) -> (Vec<TreasuryDispatchPlan>, Vec<TreasuryReceiptEvent>) {
+    ) -> TreasuryPayoutPreparation {
         self.trim_retention();
         let mut receipt_events = self.expire_stale_dispatches(config, now_unix_ms);
         if !config.enabled
@@ -656,147 +741,184 @@ impl TreasuryState {
             || online_identities.is_empty()
         {
             self.persist();
-            return (Vec::new(), receipt_events);
+            return TreasuryPayoutPreparation {
+                dispatch_plans: Vec::new(),
+                receipt_events,
+                reconciliation_degraded_reason: None,
+            };
         }
 
         let payout_interval_ms = config.payout_interval_ms();
+        let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
+            self.payout_reconciliation_started_at(config, now_unix_ms);
         let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
         let mut dispatch_plans = Vec::new();
 
         for identity in online_identities {
-            let window_started_at_unix_ms = payout_window_started_at_for_identity(
+            let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
                 now_unix_ms,
                 payout_interval_ms,
                 identity.nostr_pubkey_hex.as_str(),
             );
-            let window_ends_at_unix_ms =
-                window_started_at_unix_ms.saturating_add(payout_interval_ms);
-            let payout_key = payout_window_key(
-                window_started_at_unix_ms,
+            let mut window_started_at_unix_ms = payout_window_started_at_for_identity(
+                reconciliation_started_at_unix_ms,
+                payout_interval_ms,
                 identity.nostr_pubkey_hex.as_str(),
             );
-            if self.payout_records_by_key.contains_key(&payout_key) {
-                continue;
+            loop {
+                let window_ends_at_unix_ms =
+                    window_started_at_unix_ms.saturating_add(payout_interval_ms);
+                let payout_key = payout_window_key(
+                    window_started_at_unix_ms,
+                    identity.nostr_pubkey_hex.as_str(),
+                );
+
+                if !self.payout_records_by_key.contains_key(&payout_key) {
+                    let Some(target) = self
+                        .payout_targets_by_identity
+                        .get(identity.nostr_pubkey_hex.as_str())
+                        .cloned()
+                    else {
+                        let record = TreasuryPayoutRecord {
+                            payout_key: payout_key.clone(),
+                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                            payout_target: String::new(),
+                            amount_sats: config.payout_sats_per_window,
+                            status: "skipped".to_string(),
+                            reason: Some("missing_payout_target".to_string()),
+                            payment_id: None,
+                            window_started_at_unix_ms,
+                            window_ends_at_unix_ms,
+                            created_at_unix_ms: now_unix_ms,
+                            updated_at_unix_ms: now_unix_ms,
+                            sellable_at_window_open: identity.sellable,
+                            dispatch_receipt_recorded: false,
+                            confirm_receipt_recorded: false,
+                            fail_receipt_recorded: false,
+                            skip_receipt_recorded: true,
+                            counted_in_paid_total: false,
+                        };
+                        self.payout_records_by_key
+                            .insert(payout_key, record.clone());
+                        receipt_events.push(skipped_payout_receipt(&record));
+                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
+                            break;
+                        }
+                        window_started_at_unix_ms =
+                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
+                        continue;
+                    };
+
+                    if config.require_sellable && !identity.sellable {
+                        let record = TreasuryPayoutRecord {
+                            payout_key: payout_key.clone(),
+                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                            payout_target: target.spark_address.clone(),
+                            amount_sats: config.payout_sats_per_window,
+                            status: "skipped".to_string(),
+                            reason: Some("requires_sellable_supply".to_string()),
+                            payment_id: None,
+                            window_started_at_unix_ms,
+                            window_ends_at_unix_ms,
+                            created_at_unix_ms: now_unix_ms,
+                            updated_at_unix_ms: now_unix_ms,
+                            sellable_at_window_open: identity.sellable,
+                            dispatch_receipt_recorded: false,
+                            confirm_receipt_recorded: false,
+                            fail_receipt_recorded: false,
+                            skip_receipt_recorded: true,
+                            counted_in_paid_total: false,
+                        };
+                        self.payout_records_by_key
+                            .insert(payout_key, record.clone());
+                        receipt_events.push(skipped_payout_receipt(&record));
+                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
+                            break;
+                        }
+                        window_started_at_unix_ms =
+                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
+                        continue;
+                    }
+
+                    if config.daily_budget_cap_sats > 0
+                        && reserved_budget_sats.saturating_add(config.payout_sats_per_window)
+                            > config.daily_budget_cap_sats
+                    {
+                        let record = TreasuryPayoutRecord {
+                            payout_key: payout_key.clone(),
+                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                            payout_target: target.spark_address.clone(),
+                            amount_sats: config.payout_sats_per_window,
+                            status: "skipped".to_string(),
+                            reason: Some("daily_budget_cap_reached".to_string()),
+                            payment_id: None,
+                            window_started_at_unix_ms,
+                            window_ends_at_unix_ms,
+                            created_at_unix_ms: now_unix_ms,
+                            updated_at_unix_ms: now_unix_ms,
+                            sellable_at_window_open: identity.sellable,
+                            dispatch_receipt_recorded: false,
+                            confirm_receipt_recorded: false,
+                            fail_receipt_recorded: false,
+                            skip_receipt_recorded: true,
+                            counted_in_paid_total: false,
+                        };
+                        self.payout_records_by_key
+                            .insert(payout_key, record.clone());
+                        receipt_events.push(skipped_payout_receipt(&record));
+                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
+                            break;
+                        }
+                        window_started_at_unix_ms =
+                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
+                        continue;
+                    }
+
+                    reserved_budget_sats =
+                        reserved_budget_sats.saturating_add(config.payout_sats_per_window);
+                    self.payout_records_by_key.insert(
+                        payout_key.clone(),
+                        TreasuryPayoutRecord {
+                            payout_key: payout_key.clone(),
+                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                            payout_target: target.spark_address.clone(),
+                            amount_sats: config.payout_sats_per_window,
+                            status: "dispatching".to_string(),
+                            reason: None,
+                            payment_id: None,
+                            window_started_at_unix_ms,
+                            window_ends_at_unix_ms,
+                            created_at_unix_ms: now_unix_ms,
+                            updated_at_unix_ms: now_unix_ms,
+                            sellable_at_window_open: identity.sellable,
+                            dispatch_receipt_recorded: false,
+                            confirm_receipt_recorded: false,
+                            fail_receipt_recorded: false,
+                            skip_receipt_recorded: false,
+                            counted_in_paid_total: false,
+                        },
+                    );
+                    dispatch_plans.push(TreasuryDispatchPlan {
+                        payout_key,
+                        payment_request: target.spark_address,
+                        amount_sats: config.payout_sats_per_window,
+                    });
+                }
+
+                if window_started_at_unix_ms >= current_window_started_at_unix_ms {
+                    break;
+                }
+                window_started_at_unix_ms =
+                    window_started_at_unix_ms.saturating_add(payout_interval_ms);
             }
-
-            let Some(target) = self
-                .payout_targets_by_identity
-                .get(identity.nostr_pubkey_hex.as_str())
-                .cloned()
-            else {
-                let record = TreasuryPayoutRecord {
-                    payout_key: payout_key.clone(),
-                    nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                    payout_target: String::new(),
-                    amount_sats: config.payout_sats_per_window,
-                    status: "skipped".to_string(),
-                    reason: Some("missing_payout_target".to_string()),
-                    payment_id: None,
-                    window_started_at_unix_ms,
-                    window_ends_at_unix_ms,
-                    created_at_unix_ms: now_unix_ms,
-                    updated_at_unix_ms: now_unix_ms,
-                    sellable_at_window_open: identity.sellable,
-                    dispatch_receipt_recorded: false,
-                    confirm_receipt_recorded: false,
-                    fail_receipt_recorded: false,
-                    skip_receipt_recorded: true,
-                    counted_in_paid_total: false,
-                };
-                self.payout_records_by_key
-                    .insert(payout_key, record.clone());
-                receipt_events.push(skipped_payout_receipt(&record));
-                continue;
-            };
-
-            if config.require_sellable && !identity.sellable {
-                let record = TreasuryPayoutRecord {
-                    payout_key: payout_key.clone(),
-                    nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                    payout_target: target.spark_address.clone(),
-                    amount_sats: config.payout_sats_per_window,
-                    status: "skipped".to_string(),
-                    reason: Some("requires_sellable_supply".to_string()),
-                    payment_id: None,
-                    window_started_at_unix_ms,
-                    window_ends_at_unix_ms,
-                    created_at_unix_ms: now_unix_ms,
-                    updated_at_unix_ms: now_unix_ms,
-                    sellable_at_window_open: identity.sellable,
-                    dispatch_receipt_recorded: false,
-                    confirm_receipt_recorded: false,
-                    fail_receipt_recorded: false,
-                    skip_receipt_recorded: true,
-                    counted_in_paid_total: false,
-                };
-                self.payout_records_by_key
-                    .insert(payout_key, record.clone());
-                receipt_events.push(skipped_payout_receipt(&record));
-                continue;
-            }
-
-            if config.daily_budget_cap_sats > 0
-                && reserved_budget_sats.saturating_add(config.payout_sats_per_window)
-                    > config.daily_budget_cap_sats
-            {
-                let record = TreasuryPayoutRecord {
-                    payout_key: payout_key.clone(),
-                    nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                    payout_target: target.spark_address.clone(),
-                    amount_sats: config.payout_sats_per_window,
-                    status: "skipped".to_string(),
-                    reason: Some("daily_budget_cap_reached".to_string()),
-                    payment_id: None,
-                    window_started_at_unix_ms,
-                    window_ends_at_unix_ms,
-                    created_at_unix_ms: now_unix_ms,
-                    updated_at_unix_ms: now_unix_ms,
-                    sellable_at_window_open: identity.sellable,
-                    dispatch_receipt_recorded: false,
-                    confirm_receipt_recorded: false,
-                    fail_receipt_recorded: false,
-                    skip_receipt_recorded: true,
-                    counted_in_paid_total: false,
-                };
-                self.payout_records_by_key
-                    .insert(payout_key, record.clone());
-                receipt_events.push(skipped_payout_receipt(&record));
-                continue;
-            }
-
-            reserved_budget_sats =
-                reserved_budget_sats.saturating_add(config.payout_sats_per_window);
-            self.payout_records_by_key.insert(
-                payout_key.clone(),
-                TreasuryPayoutRecord {
-                    payout_key: payout_key.clone(),
-                    nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                    payout_target: target.spark_address.clone(),
-                    amount_sats: config.payout_sats_per_window,
-                    status: "dispatching".to_string(),
-                    reason: None,
-                    payment_id: None,
-                    window_started_at_unix_ms,
-                    window_ends_at_unix_ms,
-                    created_at_unix_ms: now_unix_ms,
-                    updated_at_unix_ms: now_unix_ms,
-                    sellable_at_window_open: identity.sellable,
-                    dispatch_receipt_recorded: false,
-                    confirm_receipt_recorded: false,
-                    fail_receipt_recorded: false,
-                    skip_receipt_recorded: false,
-                    counted_in_paid_total: false,
-                },
-            );
-            dispatch_plans.push(TreasuryDispatchPlan {
-                payout_key,
-                payment_request: target.spark_address,
-                amount_sats: config.payout_sats_per_window,
-            });
         }
 
         self.persist();
-        (dispatch_plans, receipt_events)
+        TreasuryPayoutPreparation {
+            dispatch_plans,
+            receipt_events,
+            reconciliation_degraded_reason,
+        }
     }
 
     pub fn apply_dispatch_outcome(
@@ -956,6 +1078,32 @@ impl TreasuryState {
             }
         }
         receipt_events
+    }
+
+    fn payout_reconciliation_started_at(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> (u64, Option<String>) {
+        let Some(last_reconciliation_at_unix_ms) = self.last_payout_reconciliation_at_unix_ms
+        else {
+            return (now_unix_ms, None);
+        };
+
+        let mut reconciliation_started_at_unix_ms = last_reconciliation_at_unix_ms.min(now_unix_ms);
+        let oldest_recoverable_at_unix_ms =
+            now_unix_ms.saturating_sub(config.reconciliation_horizon_ms());
+        if reconciliation_started_at_unix_ms < oldest_recoverable_at_unix_ms {
+            reconciliation_started_at_unix_ms = oldest_recoverable_at_unix_ms;
+            return (
+                reconciliation_started_at_unix_ms,
+                Some(format!(
+                    "reconciliation_horizon_exceeded:{last_reconciliation_at_unix_ms}"
+                )),
+            );
+        }
+
+        (reconciliation_started_at_unix_ms, None)
     }
 
     fn prune_challenges(&mut self, now_unix_ms: u64) {
@@ -1344,6 +1492,17 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     }
     if let Some(error) = response.wallet_last_error.as_deref() {
         lines.push(format!("wallet_last_error: {error}"));
+    }
+    if let Some(status) = response.payout_loop_runtime_status.as_deref() {
+        lines.push(format!("payout_loop_runtime_status: {status}"));
+    }
+    if let Some(error) = response.payout_loop_last_error.as_deref() {
+        lines.push(format!("payout_loop_last_error: {error}"));
+    }
+    if let Some(last_reconciliation_at_unix_ms) = response.last_payout_reconciliation_at_unix_ms {
+        lines.push(format!(
+            "last_payout_reconciliation_at_unix_ms: {last_reconciliation_at_unix_ms}"
+        ));
     }
     lines.join("\n")
 }
@@ -1890,6 +2049,7 @@ mod tests {
             payout_interval_seconds: 60,
             require_sellable: false,
             daily_budget_cap_sats: 1_000,
+            reconciliation_horizon_seconds: 300,
             state_path: PathBuf::from("/tmp/test-nexus-treasury-state.json"),
             wallet_mnemonic_path: PathBuf::from("/tmp/test-nexus-treasury.mnemonic"),
             wallet_storage_dir: PathBuf::from("/tmp/test-nexus-treasury-wallet"),
@@ -1943,13 +2103,13 @@ mod tests {
             sellable: true,
         }];
         let now_unix_ms = super::now_unix_ms();
-        let (plans, skips) = state.prepare_due_payouts(&config, &online, now_unix_ms);
-        assert_eq!(plans.len(), 1);
-        assert!(skips.is_empty());
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert!(prepared.receipt_events.is_empty());
 
-        let (plans_again, skips_again) = state.prepare_due_payouts(&config, &online, now_unix_ms);
-        assert!(plans_again.is_empty());
-        assert!(skips_again.is_empty());
+        let prepared_again = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert!(prepared_again.dispatch_plans.is_empty());
+        assert!(prepared_again.receipt_events.is_empty());
     }
 
     #[test]
@@ -2002,11 +2162,14 @@ mod tests {
             },
         ];
         let now_unix_ms = 1_800_000;
-        let (plans, skips) = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
 
-        assert!(skips.is_empty());
-        assert_eq!(plans.len(), 2);
-        assert_ne!(plans[0].payout_key, plans[1].payout_key);
+        assert!(prepared.receipt_events.is_empty());
+        assert_eq!(prepared.dispatch_plans.len(), 2);
+        assert_ne!(
+            prepared.dispatch_plans[0].payout_key,
+            prepared.dispatch_plans[1].payout_key
+        );
 
         let expected_window_a = payout_window_started_at_for_identity(
             now_unix_ms,
@@ -2019,14 +2182,86 @@ mod tests {
             "pubkey-b",
         );
         assert!(
-            plans
+            prepared
+                .dispatch_plans
                 .iter()
                 .any(|plan| plan.payout_key == format!("{expected_window_a}:pubkey-a"))
         );
         assert!(
-            plans
+            prepared
+                .dispatch_plans
                 .iter()
                 .any(|plan| plan.payout_key == format!("{expected_window_b}:pubkey-b"))
+        );
+    }
+
+    #[test]
+    fn payout_preparation_reconciles_missed_windows_within_horizon() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let interval_ms = config.payout_interval_ms();
+        let now_unix_ms = 1_800_000;
+        state.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms - (interval_ms * 3));
+
+        let prepared = state.prepare_due_payouts(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            }],
+            now_unix_ms,
+        );
+
+        assert_eq!(prepared.dispatch_plans.len(), 4);
+        assert!(prepared.reconciliation_degraded_reason.is_none());
+    }
+
+    #[test]
+    fn payout_preparation_clamps_reconciliation_to_horizon() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.reconciliation_horizon_seconds = 120;
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let interval_ms = config.payout_interval_ms();
+        let now_unix_ms = 1_800_000;
+        state.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms - (interval_ms * 10));
+
+        let prepared = state.prepare_due_payouts(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            }],
+            now_unix_ms,
+        );
+
+        assert_eq!(prepared.dispatch_plans.len(), 3);
+        assert_eq!(
+            prepared.reconciliation_degraded_reason.as_deref(),
+            Some("reconciliation_horizon_exceeded:1200000")
         );
     }
 
@@ -2163,7 +2398,7 @@ mod tests {
             },
         );
 
-        let (plans, receipts) = state.prepare_due_payouts(
+        let prepared = state.prepare_due_payouts(
             &config,
             &[OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
@@ -2172,9 +2407,12 @@ mod tests {
             now_unix_ms,
         );
 
-        assert_eq!(plans.len(), 1);
-        assert_eq!(receipts.len(), 1);
-        assert_eq!(receipts[0].receipt_type, "treasury.payout.failed");
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.receipt_events.len(), 1);
+        assert_eq!(
+            prepared.receipt_events[0].receipt_type,
+            "treasury.payout.failed"
+        );
         assert_eq!(
             state
                 .payout_records_by_key
