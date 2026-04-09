@@ -335,6 +335,7 @@ impl SparkWallet {
                         .unwrap_or_else(|| "openagents-spark-invoice".to_string()),
                     amount_sats: Some(amount_sats),
                     expiry_secs: expiry_seconds,
+                    payment_hash: None,
                 },
             })
             .await
@@ -361,6 +362,8 @@ impl SparkWallet {
                 payment_request: request.to_string(),
                 amount: amount_sats.map(u128::from),
                 token_identifier: None,
+                conversion_options: None,
+                fee_policy: None,
             })
             .await
             .map_err(|error| SparkError::Wallet(error.to_string()))?;
@@ -491,17 +494,19 @@ fn payment_summary_from_sdk_payment(payment: Payment) -> PaymentSummary {
         match details {
             PaymentDetails::Lightning {
                 description: lightning_description,
-                preimage,
                 invoice: lightning_invoice,
-                payment_hash: lightning_payment_hash,
                 destination_pubkey: lightning_destination_pubkey,
+                htlc_details,
                 ..
             } => {
                 description.clone_from(lightning_description);
                 invoice = Some(lightning_invoice.clone());
                 destination_pubkey = Some(lightning_destination_pubkey.clone());
-                payment_hash = Some(lightning_payment_hash.clone());
-                if matches!(payment.status, PaymentStatus::Failed) && preimage.is_none() {
+                payment_hash = Some(htlc_details.payment_hash.clone());
+                htlc_expiry_epoch_seconds = Some(htlc_details.expiry_time);
+                if matches!(payment.status, PaymentStatus::Failed)
+                    && htlc_details.preimage.is_none()
+                {
                     htlc_status = Some("preimage-missing".to_string());
                 }
             }
@@ -630,6 +635,7 @@ mod tests {
     use crate::SparkError;
     use breez_sdk_spark::{
         DepositClaimError, Fee, Payment, PaymentDetails, PaymentMethod, PaymentStatus,
+        SparkHtlcDetails, SparkHtlcStatus,
     };
 
     #[test]
@@ -717,16 +723,22 @@ mod tests {
             method: PaymentMethod::Lightning,
             details: Some(PaymentDetails::Lightning {
                 description: Some("DVM textgen".to_string()),
-                preimage: None,
                 invoice: "lnbc250n1example".to_string(),
-                payment_hash: "6b4921d489584b67a8d073e152eda483e69397d7ff06b33b45b74fc37b88d01a"
-                    .to_string(),
                 destination_pubkey:
                     "02c8e87a7ab29092eba909533919c508839aea48d8e6a88c39c42a0f198a5f6401".to_string(),
+                htlc_details: SparkHtlcDetails {
+                    payment_hash:
+                        "6b4921d489584b67a8d073e152eda483e69397d7ff06b33b45b74fc37b88d01a"
+                            .to_string(),
+                    preimage: None,
+                    expiry_time: 1_773_249_700,
+                    status: SparkHtlcStatus::Returned,
+                },
                 lnurl_pay_info: None,
                 lnurl_withdraw_info: None,
                 lnurl_receive_metadata: None,
             }),
+            conversion_details: None,
         };
 
         let summary = payment_summary_from_sdk_payment(payment);

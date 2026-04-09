@@ -23,6 +23,25 @@ HTTP:
 current treasury Spark receive address, Bitcoin receive address, and an optional
 Bolt11 invoice when an amount is requested.
 
+## Supported Breez Floor
+
+The repo-owned Spark integration is now pinned to `breez/spark-sdk 0.12.2`.
+Do not roll production Nexus treasury back onto `0.6.6`.
+
+Why this floor exists:
+
+- `0.6.6` hard-failed on newer backend tree node statuses such as
+  `PARENT_EXITED`
+- that failure can collapse treasury wallet visibility to `0 sats` even when
+  funds still exist in the wallet
+- `0.12.2` includes the upstream `PARENT_EXITED` fix and tolerant unknown-status
+  parsing
+
+If a copied treasury wallet still reports suspiciously low or zero balance on
+`0.12.2`, treat that as stale local wallet state, not proof that funds are
+gone. Rebuild validation from the mnemonic into a fresh storage dir before
+making operator decisions about payout continuity or treasury solvency.
+
 ## Runtime Configuration
 
 The hosted treasury wallet runtime is still env-backed, but the payout policy
@@ -87,6 +106,26 @@ default. A dedicated background wallet refresh loop wakes every 1 second,
 refreshes only when the cached wallet snapshot is missing or stale, and gives
 each wallet refresh a 1.5 second timeout budget. `/api/stats` and
 `GET /v1/treasury/status` no longer trigger wallet refresh inline.
+
+## Upgrade Validation
+
+Before or immediately after a Spark SDK roll-forward, validate all of the
+following on the upgraded tree:
+
+```bash
+cargo test -p openagents-spark
+cargo check -p nexus-control -p pylon -p autopilot-desktop -p openagents-provider-substrate
+cargo run -p nexus-control -- treasury status
+```
+
+For production-like recovery work:
+
+- use a copied mnemonic and copied wallet storage, never the live production
+  files in place
+- if the reused storage still reports `0 sats` or an obviously stale balance on
+  `0.12.2`, rebuild into a fresh storage dir from the same mnemonic and compare
+- do not conclude that funds were spent merely because the old local storage
+  view is empty
 
 ## Public Stats
 

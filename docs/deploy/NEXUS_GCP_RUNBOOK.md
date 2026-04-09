@@ -88,6 +88,10 @@ The baseline bind is `0.0.0.0:8080` on the VM. Public DNS/TLS exposure is a late
 Treasury deployment note:
 
 - do not rely on the repo-relative treasury defaults in production
+- the supported Breez Spark SDK floor for treasury is now `0.12.2`
+- do not redeploy or roll back production Nexus onto the older `0.6.6` Spark
+  pin; that version can report `0 sats` after backend enum drift even when the
+  wallet still has funds
 - `scripts/deploy/nexus/03-configure-and-start.sh` now writes
   `NEXUS_CONTROL_TREASURY_STATE_PATH`,
   `NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH`, and
@@ -108,6 +112,15 @@ export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=20
 export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
 export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
 ```
+
+If treasury status ever collapses to `0 sats` unexpectedly after a backend or
+deploy change:
+
+- stop treating the old local wallet storage as authoritative
+- copy the mnemonic and wallet storage off the VM
+- validate the copied wallet on the upgraded tree first
+- if needed, compare that reused storage against a fresh storage rebuild from
+  the same mnemonic before deciding whether funds were actually spent
 
 ## 5) Deploy artifacts
 
