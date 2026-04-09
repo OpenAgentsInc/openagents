@@ -1284,7 +1284,7 @@ async fn public_stats(
     let now = now_unix_ms();
     match treasury_wallet_refresh_state(&state, now, false)? {
         TreasuryWalletRefreshState::Unsynced | TreasuryWalletRefreshState::Due => {
-            refresh_treasury_wallet_state(&state, true).await;
+            schedule_treasury_wallet_refresh(state.clone(), true);
         }
         TreasuryWalletRefreshState::Fresh => {}
     }
@@ -10127,9 +10127,9 @@ mod tests {
             )
             .await?;
         assert_eq!(first_response.status(), StatusCode::OK);
-        let first_stats: PublicStatsSnapshot = response_json(first_response).await?;
-        assert_eq!(first_stats.nexus_wallet_balance_sats, 500);
-        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+        let _: PublicStatsSnapshot = response_json(first_response).await?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         let second_response = app
             .clone()
@@ -10148,6 +10148,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
 
         let third_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -10157,7 +10158,21 @@ mod tests {
             .await?;
         assert_eq!(third_response.status(), StatusCode::OK);
         let third_stats: PublicStatsSnapshot = response_json(third_response).await?;
-        assert_eq!(third_stats.nexus_wallet_balance_sats, 710);
+        assert_eq!(third_stats.nexus_wallet_balance_sats, 500);
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let fourth_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fourth_response.status(), StatusCode::OK);
+        let fourth_stats: PublicStatsSnapshot = response_json(fourth_response).await?;
+        assert_eq!(fourth_stats.nexus_wallet_balance_sats, 710);
         assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
 
         set_test_wallet_snapshot_hook(None);
