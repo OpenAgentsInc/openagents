@@ -8,10 +8,16 @@ TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS
   NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE
   NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS
+  NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS
   NEXUS_CONTROL_TREASURY_STATE_PATH
   NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH
   NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR
   NEXUS_CONTROL_TREASURY_WALLET_NETWORK
+  NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV
+  NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS
+  NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV
+  NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE
+  NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON
 )
 EXPLICIT_TREASURY_ENV_VARS=""
 for var in "${TREASURY_ENV_VARS[@]}"; do
@@ -49,6 +55,13 @@ preserve_remote_treasury_env() {
   while IFS='=' read -r key value; do
     case "$key" in
       NEXUS_CONTROL_TREASURY_*)
+        case "$key" in
+          NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV|\
+          NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE|\
+          NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON)
+            continue
+            ;;
+        esac
         value="${value%$'\r'}"
         [[ -n "$value" ]] || continue
         if treasury_env_is_explicit "$key"; then
@@ -61,6 +74,74 @@ preserve_remote_treasury_env() {
   done <<< "$remote_env"
 }
 
+load_remote_treasury_policy() {
+  local remote_state_path="${NEXUS_CONTROL_TREASURY_STATE_PATH:-}"
+  [[ -n "$remote_state_path" ]] || return 0
+
+  gcloud compute ssh "$NEXUS_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command "sudo test -f '${remote_state_path}' && sudo jq -c '.active_policy // empty' '${remote_state_path}' || true"
+}
+
+treasury_policy_change_requested() {
+  local persisted_policy_json="$1"
+  [[ "$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_ENABLED}" ]] && return 0
+  [[ "$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW}" ]] && return 0
+  [[ "$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}" ]] && return 0
+  [[ "$(jq -r '.require_sellable' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" ]] && return 0
+  [[ "$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}" ]] && return 0
+  return 1
+}
+
+treasury_policy_change_is_destructive() {
+  local persisted_policy_json="$1"
+  local persisted_enabled persisted_payout persisted_interval persisted_require_sellable persisted_budget
+  persisted_enabled="$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")"
+  persisted_payout="$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")"
+  persisted_interval="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
+  persisted_require_sellable="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
+  persisted_budget="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
+
+  [[ "$persisted_enabled" == "true" && "${NEXUS_CONTROL_TREASURY_ENABLED}" != "true" ]] && return 0
+  (( NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW < persisted_payout )) && return 0
+  (( NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS > persisted_interval )) && return 0
+  (( NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS < persisted_budget )) && return 0
+  [[ "$persisted_require_sellable" != "true" && "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" == "true" ]] && return 0
+  return 1
+}
+
+preserve_or_validate_persisted_treasury_policy() {
+  local persisted_policy_json
+  persisted_policy_json="$(load_remote_treasury_policy)"
+  [[ -n "$persisted_policy_json" ]] || return 0
+
+  if [[ "${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV}" != "true" ]]; then
+    export NEXUS_CONTROL_TREASURY_ENABLED="$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW="$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
+    log "Preserving persisted treasury policy checksum=$(jq -r '.checksum' <<<"$persisted_policy_json")"
+    return 0
+  fi
+
+  if ! treasury_policy_change_requested "$persisted_policy_json"; then
+    log "Treasury policy apply requested but the requested policy already matches persisted state"
+    return 0
+  fi
+
+  [[ -n "${NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON}" ]] || die "Explicit treasury policy apply requires NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON"
+
+  if treasury_policy_change_is_destructive "$persisted_policy_json" \
+    && [[ "${NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE}" != "true" ]]; then
+    die "Refusing destructive treasury policy change without NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE=true"
+  fi
+
+  log "Applying explicit treasury policy override against persisted checksum=$(jq -r '.checksum' <<<"$persisted_policy_json")"
+}
+
 DEPLOY_IMAGE="${DEPLOY_IMAGE:-${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${NEXUS_ARTIFACT_REPO}/${NEXUS_IMAGE_NAME}:latest}"
 UPSTREAM_CONFIG_SOURCE="${ROOT_DIR}/apps/nexus-relay/deploy/upstream-config.toml"
 
@@ -70,6 +151,14 @@ fi
 [[ -f "$UPSTREAM_CONFIG_SOURCE" ]] || die "Missing upstream config template: ${UPSTREAM_CONFIG_SOURCE}"
 
 preserve_remote_treasury_env
+
+: "${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV:=false}"
+: "${NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE:=false}"
+: "${NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON:=}"
+: "${NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV:=}"
+: "${NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS:=300}"
+
+preserve_or_validate_persisted_treasury_policy
 
 if [[ "$NEXUS_VM" == "nexus-mainnet-1" ]] \
   && [[ "${NEXUS_ALLOW_ZERO_TREASURY_IN_PRODUCTION}" != "true" ]] \
@@ -100,10 +189,16 @@ NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=${NEXUS_CONTROL_TREASURY_PAYOUT_SA
 NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}
 NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}
 NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}
+NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS=${NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS}
 NEXUS_CONTROL_TREASURY_STATE_PATH=${NEXUS_CONTROL_TREASURY_STATE_PATH}
 NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH=${NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH}
 NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR=${NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR}
 NEXUS_CONTROL_TREASURY_WALLET_NETWORK=${NEXUS_CONTROL_TREASURY_WALLET_NETWORK}
+NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV=${NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV}
+NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS=${NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS}
+NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV=${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV}
+NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE=${NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE}
+NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON=${NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON}
 ENV
 
 cat >"$TMP_REMOTE_SCRIPT" <<'REMOTE'

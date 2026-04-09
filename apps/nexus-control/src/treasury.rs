@@ -15,6 +15,7 @@ use openagents_spark::{
     SparkWallet, WalletConfig,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::economy::AuthorityReceiptContext;
@@ -35,6 +36,10 @@ const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
 const ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS";
+const ENV_TREASURY_POLICY_APPLY_ENV: &str = "NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV";
+const ENV_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: &str =
+    "NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE";
+const ENV_TREASURY_POLICY_CHANGE_REASON: &str = "NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON";
 const ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS";
 
@@ -49,14 +54,19 @@ const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wa
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
 const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
+const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
+const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
+const TREASURY_POLICY_SCHEMA_VERSION: u32 = 1;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
 const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
+const TREASURY_POLICY_CHANGE_LIMIT: usize = 64;
+const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
@@ -66,6 +76,9 @@ pub struct TreasuryConfig {
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
     pub reconciliation_horizon_seconds: u64,
+    pub apply_env_policy: bool,
+    pub allow_destructive_env_policy_change: bool,
+    pub policy_change_reason: Option<String>,
     pub state_path: PathBuf,
     pub wallet_mnemonic_path: PathBuf,
     pub wallet_storage_dir: PathBuf,
@@ -109,6 +122,14 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS,
         )?
         .max(1);
+        let apply_env_policy = parse_bool_env(
+            ENV_TREASURY_POLICY_APPLY_ENV,
+            DEFAULT_TREASURY_POLICY_APPLY_ENV,
+        )?;
+        let allow_destructive_env_policy_change = parse_bool_env(
+            ENV_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE,
+            DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE,
+        )?;
         let registration_challenge_ttl_seconds = parse_u64_env(
             ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS,
             DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS,
@@ -122,6 +143,12 @@ impl TreasuryConfig {
             require_sellable,
             daily_budget_cap_sats,
             reconciliation_horizon_seconds,
+            apply_env_policy,
+            allow_destructive_env_policy_change,
+            policy_change_reason: std::env::var(ENV_TREASURY_POLICY_CHANGE_REASON)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
             state_path: read_path_env(ENV_TREASURY_STATE_PATH, DEFAULT_TREASURY_STATE_PATH),
             wallet_mnemonic_path: read_path_env(
                 ENV_TREASURY_WALLET_MNEMONIC_PATH,
@@ -162,10 +189,10 @@ impl TreasuryConfig {
         self.payout_interval_seconds.saturating_mul(1_000)
     }
 
-    pub fn dispatch_result_timeout_ms(&self) -> u64 {
+    pub fn dispatch_result_timeout_ms(&self, payout_interval_ms: u64) -> u64 {
         TREASURY_DISPATCH_RESULT_TIMEOUT_MS
             .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
-            .max(self.payout_interval_ms().saturating_mul(2))
+            .max(payout_interval_ms.saturating_mul(2))
     }
 }
 
@@ -232,6 +259,89 @@ pub struct TreasuryFundingTargetResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryRuntimePolicy {
+    pub schema_version: u32,
+    pub treasury_enabled: bool,
+    pub payout_sats_per_window: u64,
+    pub payout_interval_seconds: u64,
+    pub require_sellable: bool,
+    pub daily_budget_cap_sats: u64,
+    pub checksum: String,
+}
+
+impl TreasuryRuntimePolicy {
+    pub fn from_config(config: &TreasuryConfig) -> Self {
+        Self::new(
+            config.enabled,
+            config.payout_sats_per_window,
+            config.payout_interval_seconds,
+            config.require_sellable,
+            config.daily_budget_cap_sats,
+        )
+    }
+
+    pub fn new(
+        treasury_enabled: bool,
+        payout_sats_per_window: u64,
+        payout_interval_seconds: u64,
+        require_sellable: bool,
+        daily_budget_cap_sats: u64,
+    ) -> Self {
+        let payload = TreasuryRuntimePolicyChecksumPayload {
+            schema_version: TREASURY_POLICY_SCHEMA_VERSION,
+            treasury_enabled,
+            payout_sats_per_window,
+            payout_interval_seconds,
+            require_sellable,
+            daily_budget_cap_sats,
+        };
+        let checksum = format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(
+                serde_json::to_vec(&payload).expect("treasury policy checksum payload")
+            ))
+        );
+        Self {
+            schema_version: TREASURY_POLICY_SCHEMA_VERSION,
+            treasury_enabled,
+            payout_sats_per_window,
+            payout_interval_seconds,
+            require_sellable,
+            daily_budget_cap_sats,
+            checksum,
+        }
+    }
+
+    pub fn payout_interval_ms(&self) -> u64 {
+        self.payout_interval_seconds.saturating_mul(1_000)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TreasuryRuntimePolicyChecksumPayload {
+    schema_version: u32,
+    treasury_enabled: bool,
+    payout_sats_per_window: u64,
+    payout_interval_seconds: u64,
+    require_sellable: bool,
+    daily_budget_cap_sats: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryPolicyChangeRecord {
+    pub change_id: String,
+    pub applied_at_unix_ms: u64,
+    pub source: String,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_before: Option<String>,
+    pub checksum_after: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changed_fields: Vec<String>,
+    pub destructive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryStatusResponse {
     pub authority: String,
     pub treasury_enabled: bool,
@@ -257,6 +367,15 @@ pub struct TreasuryStatusResponse {
     pub payout_loop_last_started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
+    pub policy_schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_checksum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_policy_changes: Vec<TreasuryPolicyChangeRecord>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
     pub payouts_dispatched_24h: u64,
@@ -372,6 +491,14 @@ pub struct TreasuryPayoutRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TreasuryState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_policy: Option<TreasuryRuntimePolicy>,
+    #[serde(default)]
+    pub policy_change_history: Vec<TreasuryPolicyChangeRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_last_error: Option<String>,
     #[serde(default)]
     pub payout_targets_by_identity: BTreeMap<String, RegisteredPayoutTarget>,
     #[serde(default)]
@@ -475,8 +602,91 @@ impl TreasuryState {
         if loaded.next_challenge_nonce == 0 {
             loaded.next_challenge_nonce = 1;
         }
+        loaded.trim_policy_change_history();
         loaded.trim_retention();
         loaded
+    }
+
+    pub fn initialize_runtime_policy(
+        &mut self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> Vec<TreasuryReceiptEvent> {
+        let requested_policy = TreasuryRuntimePolicy::from_config(config);
+        let Some(active_policy) = self.active_policy.clone() else {
+            let bootstrap_record = build_treasury_policy_change_record(
+                None,
+                &requested_policy,
+                "bootstrap_env",
+                "bootstrap_env",
+                now_unix_ms,
+            );
+            self.active_policy = Some(requested_policy.clone());
+            self.policy_change_history.push(bootstrap_record);
+            self.trim_policy_change_history();
+            self.policy_runtime_status = Some("bootstrapped".to_string());
+            self.policy_last_error = None;
+            self.persist();
+            return Vec::new();
+        };
+
+        if active_policy == requested_policy {
+            self.policy_runtime_status = Some("persisted".to_string());
+            self.policy_last_error = None;
+            self.persist();
+            return Vec::new();
+        }
+
+        if !config.apply_env_policy {
+            self.policy_runtime_status = Some("persisted".to_string());
+            self.policy_last_error = None;
+            self.persist();
+            return Vec::new();
+        }
+
+        let changed_fields = treasury_policy_changed_fields(&active_policy, &requested_policy);
+        let destructive = treasury_policy_change_is_destructive(&active_policy, &requested_policy);
+        if destructive && !config.allow_destructive_env_policy_change {
+            self.policy_runtime_status = Some("blocked".to_string());
+            self.policy_last_error =
+                Some("destructive_policy_change_requires_explicit_override".to_string());
+            self.persist();
+            return vec![treasury_policy_change_blocked_receipt(
+                &active_policy,
+                &requested_policy,
+                changed_fields.as_slice(),
+                now_unix_ms,
+            )];
+        }
+
+        let reason = config
+            .policy_change_reason
+            .clone()
+            .unwrap_or_else(|| "env_override".to_string());
+        let change_record = build_treasury_policy_change_record(
+            Some(&active_policy),
+            &requested_policy,
+            "env_apply",
+            reason.as_str(),
+            now_unix_ms,
+        );
+        self.active_policy = Some(requested_policy.clone());
+        self.policy_change_history.push(change_record.clone());
+        self.trim_policy_change_history();
+        self.policy_runtime_status = Some("updated".to_string());
+        self.policy_last_error = None;
+        self.persist();
+        vec![treasury_policy_change_receipt(&change_record)]
+    }
+
+    fn active_policy(&self, config: &TreasuryConfig) -> TreasuryRuntimePolicy {
+        self.active_policy
+            .clone()
+            .unwrap_or_else(|| TreasuryRuntimePolicy::from_config(config))
+    }
+
+    pub fn treasury_enabled(&self, config: &TreasuryConfig) -> bool {
+        self.active_policy(config).treasury_enabled
     }
 
     pub fn wallet_refresh_due(&self, config: &TreasuryConfig, now_unix_ms: u64) -> bool {
@@ -486,6 +696,7 @@ impl TreasuryState {
     }
 
     pub fn public_stats(&self, config: &TreasuryConfig, now_unix_ms: u64) -> TreasuryPublicStats {
+        let policy = self.active_policy(config);
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
         let mut payout_sats_paid_24h = 0u64;
         let mut payouts_dispatched_24h = 0u64;
@@ -516,11 +727,11 @@ impl TreasuryState {
         }
 
         TreasuryPublicStats {
-            treasury_enabled: config.enabled,
-            payout_sats_per_window: config.payout_sats_per_window,
-            payout_interval_seconds: config.payout_interval_seconds,
-            require_sellable: config.require_sellable,
-            daily_budget_cap_sats: config.daily_budget_cap_sats,
+            treasury_enabled: policy.treasury_enabled,
+            payout_sats_per_window: policy.payout_sats_per_window,
+            payout_interval_seconds: policy.payout_interval_seconds,
+            require_sellable: policy.require_sellable,
+            daily_budget_cap_sats: policy.daily_budget_cap_sats,
             registered_payout_identities: self.payout_targets_by_identity.len() as u64,
             wallet_balance_sats: self.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
@@ -546,6 +757,7 @@ impl TreasuryState {
         now_unix_ms: u64,
     ) -> TreasuryStatusResponse {
         let stats = self.public_stats(config, now_unix_ms);
+        let policy = self.active_policy(config);
         TreasuryStatusResponse {
             authority: "openagents-hosted-nexus".to_string(),
             treasury_enabled: stats.treasury_enabled,
@@ -563,6 +775,17 @@ impl TreasuryState {
             last_payout_reconciliation_at_unix_ms: stats.last_payout_reconciliation_at_unix_ms,
             payout_loop_last_started_at_unix_ms: stats.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: stats.payout_loop_last_completed_at_unix_ms,
+            policy_schema_version: policy.schema_version,
+            policy_checksum: Some(policy.checksum.clone()),
+            policy_runtime_status: self.policy_runtime_status.clone(),
+            policy_last_error: self.policy_last_error.clone(),
+            recent_policy_changes: self
+                .policy_change_history
+                .iter()
+                .rev()
+                .take(TREASURY_STATUS_POLICY_CHANGE_LIMIT)
+                .cloned()
+                .collect(),
             payout_sats_paid_total: stats.payout_sats_paid_total,
             payout_sats_paid_24h: stats.payout_sats_paid_24h,
             payouts_dispatched_24h: stats.payouts_dispatched_24h,
@@ -735,9 +958,10 @@ impl TreasuryState {
     ) -> TreasuryPayoutPreparation {
         self.trim_retention();
         let mut receipt_events = self.expire_stale_dispatches(config, now_unix_ms);
-        if !config.enabled
-            || config.payout_sats_per_window == 0
-            || config.payout_interval_seconds == 0
+        let policy = self.active_policy(config);
+        if !policy.treasury_enabled
+            || policy.payout_sats_per_window == 0
+            || policy.payout_interval_seconds == 0
             || online_identities.is_empty()
         {
             self.persist();
@@ -748,7 +972,7 @@ impl TreasuryState {
             };
         }
 
-        let payout_interval_ms = config.payout_interval_ms();
+        let payout_interval_ms = policy.payout_interval_ms();
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
         let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
@@ -783,7 +1007,7 @@ impl TreasuryState {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
                             payout_target: String::new(),
-                            amount_sats: config.payout_sats_per_window,
+                            amount_sats: policy.payout_sats_per_window,
                             status: "skipped".to_string(),
                             reason: Some("missing_payout_target".to_string()),
                             payment_id: None,
@@ -809,12 +1033,12 @@ impl TreasuryState {
                         continue;
                     };
 
-                    if config.require_sellable && !identity.sellable {
+                    if policy.require_sellable && !identity.sellable {
                         let record = TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
                             payout_target: target.spark_address.clone(),
-                            amount_sats: config.payout_sats_per_window,
+                            amount_sats: policy.payout_sats_per_window,
                             status: "skipped".to_string(),
                             reason: Some("requires_sellable_supply".to_string()),
                             payment_id: None,
@@ -840,15 +1064,15 @@ impl TreasuryState {
                         continue;
                     }
 
-                    if config.daily_budget_cap_sats > 0
-                        && reserved_budget_sats.saturating_add(config.payout_sats_per_window)
-                            > config.daily_budget_cap_sats
+                    if policy.daily_budget_cap_sats > 0
+                        && reserved_budget_sats.saturating_add(policy.payout_sats_per_window)
+                            > policy.daily_budget_cap_sats
                     {
                         let record = TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
                             payout_target: target.spark_address.clone(),
-                            amount_sats: config.payout_sats_per_window,
+                            amount_sats: policy.payout_sats_per_window,
                             status: "skipped".to_string(),
                             reason: Some("daily_budget_cap_reached".to_string()),
                             payment_id: None,
@@ -875,14 +1099,14 @@ impl TreasuryState {
                     }
 
                     reserved_budget_sats =
-                        reserved_budget_sats.saturating_add(config.payout_sats_per_window);
+                        reserved_budget_sats.saturating_add(policy.payout_sats_per_window);
                     self.payout_records_by_key.insert(
                         payout_key.clone(),
                         TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
                             payout_target: target.spark_address.clone(),
-                            amount_sats: config.payout_sats_per_window,
+                            amount_sats: policy.payout_sats_per_window,
                             status: "dispatching".to_string(),
                             reason: None,
                             payment_id: None,
@@ -901,7 +1125,7 @@ impl TreasuryState {
                     dispatch_plans.push(TreasuryDispatchPlan {
                         payout_key,
                         payment_request: target.spark_address,
-                        amount_sats: config.payout_sats_per_window,
+                        amount_sats: policy.payout_sats_per_window,
                     });
                 }
 
@@ -1060,7 +1284,8 @@ impl TreasuryState {
         config: &TreasuryConfig,
         now_unix_ms: u64,
     ) -> Vec<TreasuryReceiptEvent> {
-        let timeout_ms = config.dispatch_result_timeout_ms();
+        let timeout_ms =
+            config.dispatch_result_timeout_ms(self.active_policy(config).payout_interval_ms());
         let mut receipt_events = Vec::new();
         for record in self.payout_records_by_key.values_mut() {
             if record.status != "dispatching" || record.payment_id.is_some() {
@@ -1106,6 +1331,17 @@ impl TreasuryState {
         (reconciliation_started_at_unix_ms, None)
     }
 
+    fn trim_policy_change_history(&mut self) {
+        if self.policy_change_history.len() <= TREASURY_POLICY_CHANGE_LIMIT {
+            return;
+        }
+        let overflow = self
+            .policy_change_history
+            .len()
+            .saturating_sub(TREASURY_POLICY_CHANGE_LIMIT);
+        self.policy_change_history.drain(0..overflow);
+    }
+
     fn prune_challenges(&mut self, now_unix_ms: u64) {
         self.registration_challenges_by_key.retain(|_, challenge| {
             !challenge.consumed && now_unix_ms <= challenge.expires_at_unix_ms
@@ -1116,6 +1352,7 @@ impl TreasuryState {
         if self.next_challenge_nonce == 0 {
             self.next_challenge_nonce = 1;
         }
+        self.trim_policy_change_history();
         if self.payout_targets_by_identity.len() > TREASURY_TARGET_LIMIT {
             let overflow = self
                 .payout_targets_by_identity
@@ -1414,6 +1651,7 @@ pub async fn run_treasury_command(
             let snapshot = load_live_wallet_snapshot(config, true).await?;
             let mut state = TreasuryState::new(config.state_path.clone());
             let now_unix_ms = now_unix_ms();
+            state.initialize_runtime_policy(config, now_unix_ms);
             state.apply_wallet_snapshot(&snapshot, now_unix_ms);
             let response = state.status_response(config, now_unix_ms);
             if *json {
@@ -1451,6 +1689,132 @@ pub async fn run_treasury_command(
             }
             Ok(render_treasury_funding_target_response(&response))
         }
+    }
+}
+
+fn treasury_policy_changed_fields(
+    before: &TreasuryRuntimePolicy,
+    after: &TreasuryRuntimePolicy,
+) -> Vec<String> {
+    let mut changed_fields = Vec::new();
+    if before.treasury_enabled != after.treasury_enabled {
+        changed_fields.push("treasury_enabled".to_string());
+    }
+    if before.payout_sats_per_window != after.payout_sats_per_window {
+        changed_fields.push("payout_sats_per_window".to_string());
+    }
+    if before.payout_interval_seconds != after.payout_interval_seconds {
+        changed_fields.push("payout_interval_seconds".to_string());
+    }
+    if before.require_sellable != after.require_sellable {
+        changed_fields.push("require_sellable".to_string());
+    }
+    if before.daily_budget_cap_sats != after.daily_budget_cap_sats {
+        changed_fields.push("daily_budget_cap_sats".to_string());
+    }
+    changed_fields
+}
+
+fn treasury_policy_change_is_destructive(
+    before: &TreasuryRuntimePolicy,
+    after: &TreasuryRuntimePolicy,
+) -> bool {
+    (before.treasury_enabled && !after.treasury_enabled)
+        || after.payout_sats_per_window < before.payout_sats_per_window
+        || after.daily_budget_cap_sats < before.daily_budget_cap_sats
+        || after.payout_interval_seconds > before.payout_interval_seconds
+        || (!before.require_sellable && after.require_sellable)
+}
+
+fn build_treasury_policy_change_record(
+    before: Option<&TreasuryRuntimePolicy>,
+    after: &TreasuryRuntimePolicy,
+    source: &str,
+    reason: &str,
+    now_unix_ms: u64,
+) -> TreasuryPolicyChangeRecord {
+    let changed_fields = before
+        .map(|before| treasury_policy_changed_fields(before, after))
+        .unwrap_or_else(|| {
+            vec![
+                "treasury_enabled".to_string(),
+                "payout_sats_per_window".to_string(),
+                "payout_interval_seconds".to_string(),
+                "require_sellable".to_string(),
+                "daily_budget_cap_sats".to_string(),
+            ]
+        });
+    let destructive = before
+        .map(|before| treasury_policy_change_is_destructive(before, after))
+        .unwrap_or(false);
+    let checksum_after_suffix = after.checksum.trim_start_matches("sha256:");
+    TreasuryPolicyChangeRecord {
+        change_id: format!("treasury-policy-{now_unix_ms}-{checksum_after_suffix}"),
+        applied_at_unix_ms: now_unix_ms,
+        source: source.to_string(),
+        reason: reason.to_string(),
+        checksum_before: before.map(|policy| policy.checksum.clone()),
+        checksum_after: after.checksum.clone(),
+        changed_fields,
+        destructive,
+    }
+}
+
+fn treasury_policy_change_receipt(
+    change_record: &TreasuryPolicyChangeRecord,
+) -> TreasuryReceiptEvent {
+    let mut attributes = BTreeMap::new();
+    attributes.insert("source".to_string(), change_record.source.clone());
+    attributes.insert("reason".to_string(), change_record.reason.clone());
+    attributes.insert(
+        "checksum_after".to_string(),
+        change_record.checksum_after.clone(),
+    );
+    attributes.insert(
+        "destructive".to_string(),
+        change_record.destructive.to_string(),
+    );
+    if let Some(checksum_before) = change_record.checksum_before.as_ref() {
+        attributes.insert("checksum_before".to_string(), checksum_before.clone());
+    }
+    if !change_record.changed_fields.is_empty() {
+        attributes.insert(
+            "changed_fields".to_string(),
+            change_record.changed_fields.join(","),
+        );
+    }
+    TreasuryReceiptEvent {
+        receipt_type: "treasury.policy.changed",
+        context: AuthorityReceiptContext {
+            request_id: Some(change_record.change_id.clone()),
+            status: Some("applied".to_string()),
+            attributes,
+            ..AuthorityReceiptContext::default()
+        },
+    }
+}
+
+fn treasury_policy_change_blocked_receipt(
+    before: &TreasuryRuntimePolicy,
+    after: &TreasuryRuntimePolicy,
+    changed_fields: &[String],
+    now_unix_ms: u64,
+) -> TreasuryReceiptEvent {
+    let mut attributes = BTreeMap::new();
+    attributes.insert("checksum_before".to_string(), before.checksum.clone());
+    attributes.insert("checksum_after".to_string(), after.checksum.clone());
+    attributes.insert("changed_fields".to_string(), changed_fields.join(","));
+    TreasuryReceiptEvent {
+        receipt_type: "treasury.policy.change_blocked",
+        context: AuthorityReceiptContext {
+            request_id: Some(format!(
+                "treasury-policy-blocked-{now_unix_ms}-{}",
+                after.checksum.trim_start_matches("sha256:")
+            )),
+            status: Some("blocked".to_string()),
+            attributes,
+            ..AuthorityReceiptContext::default()
+        },
     }
 }
 
@@ -1503,6 +1867,15 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         lines.push(format!(
             "last_payout_reconciliation_at_unix_ms: {last_reconciliation_at_unix_ms}"
         ));
+    }
+    if let Some(policy_checksum) = response.policy_checksum.as_deref() {
+        lines.push(format!("policy_checksum: {policy_checksum}"));
+    }
+    if let Some(status) = response.policy_runtime_status.as_deref() {
+        lines.push(format!("policy_runtime_status: {status}"));
+    }
+    if let Some(error) = response.policy_last_error.as_deref() {
+        lines.push(format!("policy_last_error: {error}"));
     }
     lines.join("\n")
 }
@@ -2050,6 +2423,9 @@ mod tests {
             require_sellable: false,
             daily_budget_cap_sats: 1_000,
             reconciliation_horizon_seconds: 300,
+            apply_env_policy: false,
+            allow_destructive_env_policy_change: false,
+            policy_change_reason: None,
             state_path: PathBuf::from("/tmp/test-nexus-treasury-state.json"),
             wallet_mnemonic_path: PathBuf::from("/tmp/test-nexus-treasury.mnemonic"),
             wallet_storage_dir: PathBuf::from("/tmp/test-nexus-treasury-wallet"),
@@ -2058,6 +2434,16 @@ mod tests {
             wallet_status_refresh_seconds: 30,
             registration_challenge_ttl_seconds: 300,
         }
+    }
+
+    fn unique_treasury_state_path(label: &str) -> PathBuf {
+        PathBuf::from(format!(
+            "/tmp/test-nexus-treasury-{label}-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ))
     }
 
     #[test]
@@ -2080,6 +2466,134 @@ mod tests {
             signature.as_str(),
         )
         .expect("signature should verify");
+    }
+
+    #[test]
+    fn runtime_policy_bootstraps_and_preserves_persisted_policy() {
+        let mut config = test_treasury_config();
+        config.state_path = unique_treasury_state_path("bootstrap");
+        let mut state = TreasuryState::new(config.state_path.clone());
+
+        let receipts = state.initialize_runtime_policy(&config, 100);
+        assert!(receipts.is_empty());
+        assert_eq!(state.policy_runtime_status.as_deref(), Some("bootstrapped"));
+        assert_eq!(state.policy_change_history.len(), 1);
+        let bootstrapped_policy = state
+            .active_policy
+            .clone()
+            .expect("bootstrapped treasury policy");
+
+        let mut drift_config = config.clone();
+        drift_config.enabled = false;
+        drift_config.payout_sats_per_window = 0;
+        drift_config.daily_budget_cap_sats = 1;
+        state.initialize_runtime_policy(&drift_config, 200);
+
+        assert_eq!(
+            state
+                .active_policy
+                .as_ref()
+                .map(|policy| policy.checksum.as_str()),
+            Some(bootstrapped_policy.checksum.as_str())
+        );
+        assert_eq!(state.policy_change_history.len(), 1);
+    }
+
+    #[test]
+    fn runtime_policy_applies_explicit_safe_env_change() {
+        let mut config = test_treasury_config();
+        config.state_path = unique_treasury_state_path("safe-change");
+        let mut state = TreasuryState::new(config.state_path.clone());
+        state.initialize_runtime_policy(&config, 100);
+
+        let mut updated_config = config.clone();
+        updated_config.apply_env_policy = true;
+        updated_config.daily_budget_cap_sats = 2_000;
+        updated_config.policy_change_reason = Some("raise_daily_budget".to_string());
+        let receipts = state.initialize_runtime_policy(&updated_config, 200);
+
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].receipt_type, "treasury.policy.changed");
+        assert_eq!(
+            state
+                .active_policy
+                .as_ref()
+                .map(|policy| policy.daily_budget_cap_sats),
+            Some(2_000)
+        );
+        let status = state.status_response(&updated_config, 200);
+        assert_eq!(status.policy_runtime_status.as_deref(), Some("updated"));
+        assert_eq!(status.recent_policy_changes.len(), 2);
+        assert_eq!(status.recent_policy_changes[0].reason, "raise_daily_budget");
+    }
+
+    #[test]
+    fn runtime_policy_blocks_destructive_change_without_override() {
+        let mut config = test_treasury_config();
+        config.state_path = unique_treasury_state_path("blocked-change");
+        let mut state = TreasuryState::new(config.state_path.clone());
+        state.initialize_runtime_policy(&config, 100);
+        let original_checksum = state
+            .active_policy
+            .as_ref()
+            .map(|policy| policy.checksum.clone())
+            .expect("bootstrapped policy checksum");
+
+        let mut destructive_config = config.clone();
+        destructive_config.apply_env_policy = true;
+        destructive_config.daily_budget_cap_sats = 60;
+        destructive_config.policy_change_reason = Some("lower_daily_budget".to_string());
+        let receipts = state.initialize_runtime_policy(&destructive_config, 200);
+
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].receipt_type, "treasury.policy.change_blocked");
+        assert_eq!(state.policy_runtime_status.as_deref(), Some("blocked"));
+        assert_eq!(
+            state
+                .active_policy
+                .as_ref()
+                .map(|policy| policy.checksum.as_str()),
+            Some(original_checksum.as_str())
+        );
+        assert_eq!(state.policy_change_history.len(), 1);
+    }
+
+    #[test]
+    fn payout_preparation_uses_persisted_policy_instead_of_env_drift() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.initialize_runtime_policy(&config, 100);
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let mut drift_config = config.clone();
+        drift_config.enabled = false;
+        drift_config.payout_sats_per_window = 0;
+        state.initialize_runtime_policy(&drift_config, 200);
+
+        let now_unix_ms = super::now_unix_ms();
+        let prepared = state.prepare_due_payouts(
+            &drift_config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            }],
+            now_unix_ms,
+        );
+
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        let stats = state.public_stats(&drift_config, now_unix_ms);
+        assert!(stats.treasury_enabled);
+        assert_eq!(stats.payout_sats_per_window, config.payout_sats_per_window);
     }
 
     #[test]
@@ -2369,7 +2883,9 @@ mod tests {
 
         let now_unix_ms = super::now_unix_ms();
         let stale_window_started_at_unix_ms = payout_window_started_at(
-            now_unix_ms.saturating_sub(config.dispatch_result_timeout_ms() + 5_000),
+            now_unix_ms.saturating_sub(
+                config.dispatch_result_timeout_ms(config.payout_interval_ms()) + 5_000,
+            ),
             config.payout_interval_ms(),
         );
         let stale_payout_key = format!("{stale_window_started_at_unix_ms}:pubkey-stale");
@@ -2387,8 +2903,9 @@ mod tests {
                 window_ends_at_unix_ms: stale_window_started_at_unix_ms
                     + config.payout_interval_ms(),
                 created_at_unix_ms: stale_window_started_at_unix_ms,
-                updated_at_unix_ms: now_unix_ms
-                    .saturating_sub(config.dispatch_result_timeout_ms() + 1),
+                updated_at_unix_ms: now_unix_ms.saturating_sub(
+                    config.dispatch_result_timeout_ms(config.payout_interval_ms()) + 1,
+                ),
                 sellable_at_window_open: true,
                 dispatch_receipt_recorded: false,
                 confirm_receipt_recorded: false,
