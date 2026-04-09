@@ -11996,8 +11996,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn local_gemma_chat_stream_sends_prior_messages() -> Result<(), Box<dyn std::error::Error>>
-    {
+    async fn local_gemma_chat_stream_sends_system_and_prior_messages()
+    -> Result<(), Box<dyn std::error::Error>> {
         let base_url =
             start_mock_http_server(
                 |method, path, body| match (method.as_str(), path.as_str()) {
@@ -12014,13 +12014,18 @@ mod tests {
                     ("POST", "/api/chat") => {
                         let request: serde_json::Value =
                             serde_json::from_str(body.as_str()).expect("valid ollama chat body");
-                        assert_eq!(request["messages"][0]["role"], json!("user"));
-                        assert_eq!(request["messages"][0]["content"], json!("who are you"));
-                        assert_eq!(request["messages"][1]["role"], json!("assistant"));
-                        assert_eq!(request["messages"][1]["content"], json!("I am Gemma 4."),);
-                        assert_eq!(request["messages"][2]["role"], json!("user"));
+                        assert_eq!(request["messages"][0]["role"], json!("system"));
                         assert_eq!(
-                            request["messages"][2]["content"],
+                            request["messages"][0]["content"],
+                            json!("Reply in plain terminal text only. No Markdown or LaTeX.")
+                        );
+                        assert_eq!(request["messages"][1]["role"], json!("user"));
+                        assert_eq!(request["messages"][1]["content"], json!("who are you"));
+                        assert_eq!(request["messages"][2]["role"], json!("assistant"));
+                        assert_eq!(request["messages"][2]["content"], json!("I am Gemma 4."),);
+                        assert_eq!(request["messages"][3]["role"], json!("user"));
+                        assert_eq!(
+                            request["messages"][3]["content"],
                             json!("say that in french"),
                         );
                         (
@@ -12049,6 +12054,9 @@ mod tests {
         let target = run_local_gemma_chat_messages_stream(
             config_path.as_path(),
             &[
+                LocalGemmaChatMessage::system(
+                    "Reply in plain terminal text only. No Markdown or LaTeX.",
+                ),
                 LocalGemmaChatMessage::user("who are you"),
                 LocalGemmaChatMessage::assistant("I am Gemma 4."),
                 LocalGemmaChatMessage::user("say that in french"),

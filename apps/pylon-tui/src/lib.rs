@@ -38,6 +38,7 @@ const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(10);
 const GPU_REFRESH_RATE: Duration = Duration::from_secs(300);
 const LOOKBACK_WINDOW_24H_MS: u64 = 86_400_000;
+const LOCAL_CHAT_PLAIN_TEXT_POLICY: &str = "Reply in plain terminal text only. Do not use Markdown, LaTeX, HTML, tables, or code fences. For math, use plain text or simple Unicode, not TeX commands or delimiters.";
 
 fn shell_border() -> Style {
     Style::default().fg(Color::Rgb(0x73, 0xc2, 0xfb))
@@ -758,8 +759,7 @@ impl AppShell {
             }
         };
 
-        let mut messages = self.chat_history.clone();
-        messages.push(pylon::LocalGemmaChatMessage::user(prompt.clone()));
+        let messages = local_chat_request_messages(self.chat_history.as_slice(), prompt.as_str());
         self.chat_in_flight = true;
         self.active_chat_target = None;
         self.active_chat_text.clear();
@@ -3145,6 +3145,19 @@ fn current_epoch_ms_u64() -> u64 {
         .unwrap_or(0)
 }
 
+fn local_chat_request_messages(
+    history: &[pylon::LocalGemmaChatMessage],
+    prompt: &str,
+) -> Vec<pylon::LocalGemmaChatMessage> {
+    let mut messages = Vec::with_capacity(history.len() + 2);
+    messages.push(pylon::LocalGemmaChatMessage::system(
+        LOCAL_CHAT_PLAIN_TEXT_POLICY,
+    ));
+    messages.extend(history.iter().cloned());
+    messages.push(pylon::LocalGemmaChatMessage::user(prompt));
+    messages
+}
+
 async fn sync_provider_presence_for_refresh(
     config_path: &Path,
     provider_presence_session_id: &str,
@@ -3688,9 +3701,10 @@ fn estimate_token_count(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission, OperatorPanelStats,
-        ProviderCommandInFlight, WorkerEvent, active_chat_title, compute_operator_panel_stats_at,
-        estimate_token_count, max_transcript_scroll_y, parse_tui_buyer_job_history_request,
+        ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
+        LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, ProviderCommandInFlight, WorkerEvent,
+        active_chat_title, compute_operator_panel_stats_at, estimate_token_count,
+        local_chat_request_messages, max_transcript_scroll_y, parse_tui_buyer_job_history_request,
         parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
         parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
         parse_tui_optional_limit, parse_tui_payout_history_request,
@@ -3917,6 +3931,33 @@ mod tests {
         assert!(transcript.contains("hello"));
         assert!(transcript.contains("[system] Chat Error"));
         assert!(transcript.contains("No local Gemma weights are visible right now."));
+    }
+
+    #[test]
+    fn local_chat_request_messages_prepend_plain_text_policy() {
+        let history = vec![
+            pylon::LocalGemmaChatMessage::user("who are you"),
+            pylon::LocalGemmaChatMessage::assistant("I am Gemma 4."),
+        ];
+
+        let messages = local_chat_request_messages(history.as_slice(), "say that in french");
+
+        assert_eq!(
+            messages,
+            vec![
+                pylon::LocalGemmaChatMessage::system(LOCAL_CHAT_PLAIN_TEXT_POLICY),
+                pylon::LocalGemmaChatMessage::user("who are you"),
+                pylon::LocalGemmaChatMessage::assistant("I am Gemma 4."),
+                pylon::LocalGemmaChatMessage::user("say that in french"),
+            ]
+        );
+        assert_eq!(
+            history,
+            vec![
+                pylon::LocalGemmaChatMessage::user("who are you"),
+                pylon::LocalGemmaChatMessage::assistant("I am Gemma 4."),
+            ]
+        );
     }
 
     #[test]
