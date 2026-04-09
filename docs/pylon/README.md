@@ -31,6 +31,45 @@ The completion request also carries a NIP-98 signed proof tied to the local
 node identity; see `docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md` for the server
 verification contract.
 
+## Optional OpenAgents Dashboard Linking
+
+Local bring-up is complete even if you never sign in to OpenAgents and never
+link a node. Installing `Pylon`, bringing a local runtime online, checking
+`pylon status --json`, and running provider commands are already valid on their
+own.
+
+Only use account linking if you want the signed-in OpenAgents web dashboard to
+show one of your Pylons under `My Pylons`.
+
+Current dashboard flow:
+
+1. Sign in at `https://openagents.com/login` only if you want the web
+   dashboard.
+2. Open the signed-in dashboard at `https://openagents.com/dashboard`.
+3. In the optional linking section, use `Link a Pylon`, then `Generate link command`.
+4. Run the generated `pylon account link --base-url https://openagents.com --token <one_time_token>`
+   command in the shell where that local Pylon is installed.
+5. If you are working from a source checkout instead of an installed `pylon`
+   binary, run the equivalent repo command:
+
+```bash
+cargo pylon-headless account link --base-url https://openagents.com --token <one_time_token>
+```
+
+6. After the command succeeds, refresh `https://openagents.com/dashboard` or
+   use the dashboard's `Refresh after linking` action.
+7. The linked node should then appear in `My Pylons` with its current label,
+   identity, runtime state, ready model, and eligible product summary.
+
+Keep the product posture explicit:
+
+- account linking is optional
+- local install and provider bring-up do not depend on login
+- the dashboard flow exists for operators who want account-level visibility of
+  their nodes
+- the one-time token is short-lived, so generate a fresh command if the old one
+  expires
+
 ## Install Paths
 
 Prefer the npm bootstrap lane when the operator already has `npm` or `bun`:
