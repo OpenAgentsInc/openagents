@@ -252,6 +252,16 @@ AR_HOST="$(echo "$DEPLOY_IMAGE" | cut -d'/' -f1)"
 ACCESS_TOKEN="$(curl -fsS -H 'Metadata-Flavor: Google' \
   'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token')"
 
+sudo tee /usr/local/bin/nexus-registry-login.sh >/dev/null <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+AR_HOST="${AR_HOST}"
+ACCESS_TOKEN="\$(curl -fsS -H 'Metadata-Flavor: Google' \
+  'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token')"
+printf '%s' "\${ACCESS_TOKEN}" | /usr/bin/docker login -u oauth2accesstoken --password-stdin "https://\${AR_HOST}"
+SCRIPT
+sudo chmod 755 /usr/local/bin/nexus-registry-login.sh
+
 echo "$ACCESS_TOKEN" | sudo docker login -u oauth2accesstoken --password-stdin "https://${AR_HOST}"
 sudo docker pull "$DEPLOY_IMAGE"
 
@@ -267,6 +277,7 @@ Type=simple
 Restart=always
 RestartSec=10
 ExecStartPre=-/usr/bin/docker rm -f nexus-relay
+ExecStartPre=/usr/local/bin/nexus-registry-login.sh
 ExecStartPre=/usr/bin/docker pull ${DEPLOY_IMAGE}
 ExecStart=/usr/bin/docker run --rm --name nexus-relay --network host \
   --env-file /etc/nexus-relay/nexus-relay.env \
