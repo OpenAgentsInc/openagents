@@ -63,6 +63,25 @@ Default to:
   domain entry flows, switch repos. Do not edit or recreate
   `apps/openagents.com/` here.
 
+## Nexus Release Process
+
+- There is one production Nexus release path.
+- Use a clean `openagents` checkout or temporary worktree at the exact commit
+  being shipped.
+- Build and push the registry image with:
+  `bash scripts/deploy/nexus/01-build-and-push-image.sh`
+- Deploy that registry image with:
+  `DEPLOY_IMAGE=... bash scripts/deploy/nexus/03-configure-and-start.sh`
+- Verify the same deployment with:
+  `DEPLOY_IMAGE=... bash scripts/deploy/nexus/04-verify-gates.sh`
+- After deploy, also verify `https://nexus.openagents.com/v1/treasury/status`
+  and any task-specific payout or receipt checks required by the change.
+- Do not bypass this path with VM-local `docker build`, VM-local image tags,
+  manual systemd drop-ins, or ad hoc `docker run` replacements on
+  `nexus-mainnet-1`.
+- If the registry build or scripted deploy is blocked, report the blocker.
+  Do not leave production pinned to a VM-local image as the steady state.
+
 ## Psionic Specs
 
 - Psionic now lives in the standalone `OpenAgentsInc/psionic` repo.
