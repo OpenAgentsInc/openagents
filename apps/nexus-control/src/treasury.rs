@@ -67,6 +67,7 @@ const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
 const TREASURY_POLICY_CHANGE_LIMIT: usize = 64;
 const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
+const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
@@ -258,6 +259,105 @@ pub struct TreasuryFundingTargetResponse {
     pub bolt11_invoice: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryWalletPaymentAggregate {
+    pub total_payments: u64,
+    pub completed_receive_count: u64,
+    pub completed_receive_total_sats: u64,
+    pub completed_send_count: u64,
+    pub completed_send_total_sats: u64,
+    pub max_completed_send_sats: u64,
+    pub pending_send_count: u64,
+    pub pending_send_total_sats: u64,
+    pub failed_send_count: u64,
+    pub failed_send_total_sats: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryWalletUnclaimedDepositAggregate {
+    pub count: u64,
+    pub total_sats: u64,
+    pub with_claim_error_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryWalletInspection {
+    pub wallet_identity_pubkey: String,
+    pub inspected_storage_dir: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub balance_sats: Option<u64>,
+    #[serde(default)]
+    pub payment_totals: TreasuryWalletPaymentAggregate,
+    #[serde(default)]
+    pub unclaimed_deposit_totals: TreasuryWalletUnclaimedDepositAggregate,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryWalletRecoveryComparison {
+    pub wallet_identity_pubkey_match: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rebuilt_minus_current_balance_sats: Option<i64>,
+    pub current_zero_with_receive_history: bool,
+    pub major_divergence_detected: bool,
+    pub validation_passed: bool,
+    pub recommended_action: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryWalletRecoveryReportSummary {
+    pub generated_at_unix_ms: u64,
+    pub report_path: String,
+    pub current_storage_dir: String,
+    pub rebuilt_storage_dir: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_balance_sats: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rebuilt_balance_sats: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rebuilt_minus_current_balance_sats: Option<i64>,
+    pub major_divergence_detected: bool,
+    pub validation_passed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryWalletRecoveryReport {
+    pub authority: String,
+    pub generated_at_unix_ms: u64,
+    pub source_wallet_storage_dir: String,
+    pub backup_root_dir: String,
+    pub current_storage_backup_dir: String,
+    pub rebuilt_storage_dir: String,
+    pub report_path: String,
+    pub mnemonic_backup_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_backup_path: Option<String>,
+    pub current_storage: TreasuryWalletInspection,
+    pub rebuilt_storage: TreasuryWalletInspection,
+    pub comparison: TreasuryWalletRecoveryComparison,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutover_active_storage_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutover_rollback_storage_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutover_completed_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryWalletRecoveryCutoverResponse {
+    pub authority: String,
+    pub report_path: String,
+    pub active_storage_dir: String,
+    pub rollback_storage_dir: String,
+    pub wallet_storage_runtime_mode: String,
+    pub cutover_completed_at_unix_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryRuntimePolicy {
     pub schema_version: u32,
@@ -357,6 +457,18 @@ pub struct TreasuryStatusResponse {
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
+    #[serde(default = "default_wallet_storage_runtime_mode")]
+    pub wallet_storage_runtime_mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_storage_report_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_storage_rollback_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_storage_cutover_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_recovery_last_report_generated_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_recovery_last_report_validation_passed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_loop_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -412,6 +524,8 @@ pub struct TreasuryPublicSnapshot {
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
+    #[serde(default = "default_wallet_storage_runtime_mode")]
+    pub wallet_storage_runtime_mode: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_loop_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -444,6 +558,15 @@ pub enum TreasuryCommand {
         expiry_seconds: Option<u32>,
         json: bool,
     },
+    RecoveryReport {
+        work_dir: Option<PathBuf>,
+        report_path: Option<PathBuf>,
+        json: bool,
+    },
+    RecoveryCutover {
+        report_path: PathBuf,
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -458,6 +581,7 @@ pub struct TreasuryPublicStats {
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     pub wallet_runtime_status: Option<String>,
     pub wallet_last_error: Option<String>,
+    pub wallet_storage_runtime_mode: String,
     pub payout_loop_runtime_status: Option<String>,
     pub payout_loop_last_error: Option<String>,
     pub last_payout_reconciliation_at_unix_ms: Option<u64>,
@@ -565,6 +689,16 @@ pub struct TreasuryState {
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_storage_runtime_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_storage_report_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_storage_rollback_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_storage_cutover_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_wallet_recovery_report: Option<TreasuryWalletRecoveryReportSummary>,
     #[serde(default)]
     pub wallet_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -760,6 +894,29 @@ impl TreasuryState {
             .unwrap_or_else(|| "unknown".to_string())
     }
 
+    fn wallet_storage_runtime_mode(&self) -> String {
+        self.wallet_storage_runtime_mode
+            .clone()
+            .unwrap_or_else(default_wallet_storage_runtime_mode)
+    }
+
+    fn completed_funding_receive_total_sats(&self) -> u64 {
+        self.funding_receives_by_payment_id
+            .values()
+            .filter(|receive| receive.status.eq_ignore_ascii_case("completed"))
+            .fold(0u64, |total, receive| {
+                total.saturating_add(receive.amount_sats)
+            })
+    }
+
+    fn impossible_zero_balance_with_receive_history(&self) -> bool {
+        self.wallet_balance_sats == 0
+            && self.completed_funding_receive_total_sats()
+                > self
+                    .payout_sats_paid_total
+                    .saturating_add(TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS)
+    }
+
     fn degraded_reason(&self, config: &TreasuryConfig, now_unix_ms: u64) -> Option<String> {
         if matches!(self.policy_runtime_status.as_deref(), Some("blocked")) {
             return self
@@ -781,6 +938,28 @@ impl TreasuryState {
                 .wallet_last_error
                 .clone()
                 .or_else(|| Some("wallet_error".to_string()));
+        }
+        if self.impossible_zero_balance_with_receive_history() {
+            return Some(format!(
+                "wallet_balance_zero_with_receive_history:{}:{}",
+                self.completed_funding_receive_total_sats(),
+                self.payout_sats_paid_total
+            ));
+        }
+        if self.wallet_storage_runtime_mode() == "original"
+            && self
+                .last_wallet_recovery_report
+                .as_ref()
+                .is_some_and(|summary| {
+                    summary.validation_passed && summary.major_divergence_detected
+                })
+        {
+            let delta = self
+                .last_wallet_recovery_report
+                .as_ref()
+                .and_then(|summary| summary.rebuilt_minus_current_balance_sats)
+                .unwrap_or_default();
+            return Some(format!("wallet_storage_diverges_from_rebuild:{delta}"));
         }
         if self.treasury_enabled(config) {
             let Some(last_wallet_sync_at_unix_ms) = self.last_wallet_sync_at_unix_ms else {
@@ -842,6 +1021,7 @@ impl TreasuryState {
             last_wallet_sync_at_unix_ms: self.last_wallet_sync_at_unix_ms,
             wallet_runtime_status: self.wallet_runtime_status.clone(),
             wallet_last_error: self.wallet_last_error.clone(),
+            wallet_storage_runtime_mode: self.wallet_storage_runtime_mode(),
             payout_loop_runtime_status: self.payout_loop_runtime_status.clone(),
             payout_loop_last_error: self.payout_loop_last_error.clone(),
             payout_loop_health: self.payout_loop_health(config),
@@ -882,6 +1062,7 @@ impl TreasuryState {
             wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status: snapshot.wallet_runtime_status,
             wallet_last_error: snapshot.wallet_last_error,
+            wallet_storage_runtime_mode: snapshot.wallet_storage_runtime_mode,
             payout_loop_runtime_status: snapshot.payout_loop_runtime_status,
             payout_loop_last_error: snapshot.payout_loop_last_error,
             last_payout_reconciliation_at_unix_ms: snapshot.last_payout_reconciliation_at_unix_ms,
@@ -920,6 +1101,18 @@ impl TreasuryState {
             wallet_balance_updated_at_unix_ms: stats.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status: stats.wallet_runtime_status,
             wallet_last_error: stats.wallet_last_error,
+            wallet_storage_runtime_mode: stats.wallet_storage_runtime_mode,
+            wallet_storage_report_path: self.wallet_storage_report_path.clone(),
+            wallet_storage_rollback_dir: self.wallet_storage_rollback_dir.clone(),
+            wallet_storage_cutover_at_unix_ms: self.wallet_storage_cutover_at_unix_ms,
+            wallet_recovery_last_report_generated_at_unix_ms: self
+                .last_wallet_recovery_report
+                .as_ref()
+                .map(|summary| summary.generated_at_unix_ms),
+            wallet_recovery_last_report_validation_passed: self
+                .last_wallet_recovery_report
+                .as_ref()
+                .map(|summary| summary.validation_passed),
             payout_loop_runtime_status: stats.payout_loop_runtime_status,
             payout_loop_last_error: stats.payout_loop_last_error,
             last_payout_reconciliation_at_unix_ms: stats.last_payout_reconciliation_at_unix_ms,
@@ -954,6 +1147,33 @@ impl TreasuryState {
         self.wallet_runtime_status = Some("error".to_string());
         self.wallet_last_error = Some(detail.into());
         self.persist();
+    }
+
+    pub fn note_wallet_recovery_report(&mut self, report: &TreasuryWalletRecoveryReport) {
+        self.wallet_storage_report_path = Some(report.report_path.clone());
+        self.last_wallet_recovery_report = Some(TreasuryWalletRecoveryReportSummary {
+            generated_at_unix_ms: report.generated_at_unix_ms,
+            report_path: report.report_path.clone(),
+            current_storage_dir: report.current_storage_backup_dir.clone(),
+            rebuilt_storage_dir: report.rebuilt_storage_dir.clone(),
+            current_balance_sats: report.current_storage.balance_sats,
+            rebuilt_balance_sats: report.rebuilt_storage.balance_sats,
+            rebuilt_minus_current_balance_sats: report
+                .comparison
+                .rebuilt_minus_current_balance_sats,
+            major_divergence_detected: report.comparison.major_divergence_detected,
+            validation_passed: report.comparison.validation_passed,
+        });
+    }
+
+    pub fn note_wallet_recovery_cutover(
+        &mut self,
+        response: &TreasuryWalletRecoveryCutoverResponse,
+    ) {
+        self.wallet_storage_runtime_mode = Some(response.wallet_storage_runtime_mode.clone());
+        self.wallet_storage_report_path = Some(response.report_path.clone());
+        self.wallet_storage_rollback_dir = Some(response.rollback_storage_dir.clone());
+        self.wallet_storage_cutover_at_unix_ms = Some(response.cutover_completed_at_unix_ms);
     }
 
     pub fn note_payout_loop_started(&mut self, now_unix_ms: u64) {
@@ -1793,6 +2013,69 @@ pub fn parse_treasury_command(args: &[String]) -> Result<TreasuryCommand> {
                 json,
             })
         }
+        Some("recovery-report") => {
+            let mut work_dir = None;
+            let mut report_path = None;
+            let mut json = false;
+            let mut index = 3usize;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--work-dir" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --work-dir"))?;
+                        work_dir = Some(PathBuf::from(raw));
+                        index += 1;
+                    }
+                    "--report-path" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --report-path"))?;
+                        report_path = Some(PathBuf::from(raw));
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for treasury recovery-report: {other}"),
+                }
+            }
+            Ok(TreasuryCommand::RecoveryReport {
+                work_dir,
+                report_path,
+                json,
+            })
+        }
+        Some("recovery-cutover") => {
+            let mut report_path = None;
+            let mut json = false;
+            let mut index = 3usize;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--report-path" => {
+                        index += 1;
+                        let raw = args
+                            .get(index)
+                            .ok_or_else(|| anyhow!("missing value for --report-path"))?;
+                        report_path = Some(PathBuf::from(raw));
+                        index += 1;
+                    }
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for treasury recovery-cutover: {other}"),
+                }
+            }
+            Ok(TreasuryCommand::RecoveryCutover {
+                report_path: report_path
+                    .ok_or_else(|| anyhow!("treasury recovery-cutover requires --report-path"))?,
+                json,
+            })
+        }
         Some(other) => bail!("unsupported treasury command: {other}"),
     }
 }
@@ -1845,7 +2128,530 @@ pub async fn run_treasury_command(
             }
             Ok(render_treasury_funding_target_response(&response))
         }
+        TreasuryCommand::RecoveryReport {
+            work_dir,
+            report_path,
+            json,
+        } => {
+            let report = generate_treasury_wallet_recovery_report(
+                config,
+                work_dir.as_deref(),
+                report_path.as_deref(),
+            )
+            .await?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&report)?);
+            }
+            Ok(render_treasury_wallet_recovery_report(&report))
+        }
+        TreasuryCommand::RecoveryCutover { report_path, json } => {
+            let response = apply_treasury_wallet_recovery_cutover(config, report_path.as_path())?;
+            if *json {
+                return Ok(serde_json::to_string_pretty(&response)?);
+            }
+            Ok(render_treasury_wallet_recovery_cutover_response(&response))
+        }
     }
+}
+
+fn default_wallet_storage_runtime_mode() -> String {
+    "original".to_string()
+}
+
+fn default_treasury_wallet_recovery_work_dir(config: &TreasuryConfig, now_unix_ms: u64) -> PathBuf {
+    config
+        .state_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("treasury-wallet-recovery-{now_unix_ms}"))
+}
+
+fn ensure_directory_empty(path: &Path, label: &str) -> Result<()> {
+    if path.exists() {
+        if path.is_file() {
+            bail!("{label} must be a directory: {}", path.display());
+        }
+        let mut entries = fs::read_dir(path)
+            .with_context(|| format!("failed to read {label} {}", path.display()))?;
+        if entries.next().transpose()?.is_some() {
+            bail!(
+                "{label} already exists and is not empty: {}",
+                path.display()
+            );
+        }
+    } else {
+        fs::create_dir_all(path)
+            .with_context(|| format!("failed to create {label} {}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn copy_file_preserving_permissions(source: &Path, destination: &Path) -> Result<()> {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create dir {}", parent.display()))?;
+    }
+    fs::copy(source, destination).with_context(|| {
+        format!(
+            "failed to copy file {} -> {}",
+            source.display(),
+            destination.display()
+        )
+    })?;
+    let permissions = fs::metadata(source)
+        .with_context(|| format!("failed to stat {}", source.display()))?
+        .permissions();
+    fs::set_permissions(destination, permissions)
+        .with_context(|| format!("failed to set permissions on {}", destination.display()))?;
+    Ok(())
+}
+
+fn copy_directory_tree(source: &Path, destination: &Path) -> Result<()> {
+    if !source.exists() {
+        bail!("source path does not exist: {}", source.display());
+    }
+    if source.is_file() {
+        return copy_file_preserving_permissions(source, destination);
+    }
+    fs::create_dir_all(destination)
+        .with_context(|| format!("failed to create dir {}", destination.display()))?;
+    for entry in fs::read_dir(source)
+        .with_context(|| format!("failed to read source dir {}", source.display()))?
+    {
+        let entry = entry.with_context(|| format!("failed to read {}", source.display()))?;
+        let entry_type = entry
+            .file_type()
+            .with_context(|| format!("failed to inspect {}", entry.path().display()))?;
+        let target_path = destination.join(entry.file_name());
+        if entry_type.is_dir() {
+            copy_directory_tree(entry.path().as_path(), target_path.as_path())?;
+        } else if entry_type.is_file() {
+            copy_file_preserving_permissions(entry.path().as_path(), target_path.as_path())?;
+        } else {
+            bail!(
+                "unsupported file type in treasury wallet backup: {}",
+                entry.path().display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create dir {}", parent.display()))?;
+    }
+    let payload = serde_json::to_string_pretty(value)?;
+    fs::write(path, format!("{payload}\n"))
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn write_secret_file(path: &Path, contents: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create dir {}", parent.display()))?;
+    }
+    fs::write(path, contents).with_context(|| format!("failed to write {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("failed to chmod {}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn aggregate_payment_summaries(payments: &[PaymentSummary]) -> TreasuryWalletPaymentAggregate {
+    let mut aggregate = TreasuryWalletPaymentAggregate {
+        total_payments: payments.len() as u64,
+        ..TreasuryWalletPaymentAggregate::default()
+    };
+    for payment in payments {
+        let direction = payment.direction.as_str();
+        let status = payment.status.as_str();
+        if direction.eq_ignore_ascii_case("receive") && status.eq_ignore_ascii_case("completed") {
+            aggregate.completed_receive_count = aggregate.completed_receive_count.saturating_add(1);
+            aggregate.completed_receive_total_sats = aggregate
+                .completed_receive_total_sats
+                .saturating_add(payment.amount_sats);
+        }
+        if direction.eq_ignore_ascii_case("send") {
+            if status.eq_ignore_ascii_case("completed") {
+                aggregate.completed_send_count = aggregate.completed_send_count.saturating_add(1);
+                aggregate.completed_send_total_sats = aggregate
+                    .completed_send_total_sats
+                    .saturating_add(payment.amount_sats);
+                aggregate.max_completed_send_sats =
+                    aggregate.max_completed_send_sats.max(payment.amount_sats);
+            } else if status.eq_ignore_ascii_case("pending") {
+                aggregate.pending_send_count = aggregate.pending_send_count.saturating_add(1);
+                aggregate.pending_send_total_sats = aggregate
+                    .pending_send_total_sats
+                    .saturating_add(payment.amount_sats);
+            } else if status.eq_ignore_ascii_case("failed") {
+                aggregate.failed_send_count = aggregate.failed_send_count.saturating_add(1);
+                aggregate.failed_send_total_sats = aggregate
+                    .failed_send_total_sats
+                    .saturating_add(payment.amount_sats);
+            }
+        }
+    }
+    aggregate
+}
+
+fn aggregate_unclaimed_deposits(
+    deposits: &[openagents_spark::UnclaimedDeposit],
+) -> TreasuryWalletUnclaimedDepositAggregate {
+    let mut aggregate = TreasuryWalletUnclaimedDepositAggregate::default();
+    for deposit in deposits {
+        aggregate.count = aggregate.count.saturating_add(1);
+        aggregate.total_sats = aggregate.total_sats.saturating_add(deposit.amount_sats);
+        if deposit.claim_error.is_some() {
+            aggregate.with_claim_error_count = aggregate.with_claim_error_count.saturating_add(1);
+        }
+    }
+    aggregate
+}
+
+fn signed_balance_delta(newer: u64, older: u64) -> Option<i64> {
+    if newer >= older {
+        i64::try_from(newer.saturating_sub(older)).ok()
+    } else {
+        i64::try_from(older.saturating_sub(newer))
+            .ok()
+            .map(|delta| -delta)
+    }
+}
+
+fn build_treasury_wallet_recovery_comparison(
+    current_storage: &TreasuryWalletInspection,
+    rebuilt_storage: &TreasuryWalletInspection,
+) -> TreasuryWalletRecoveryComparison {
+    let wallet_identity_pubkey_match = !current_storage.wallet_identity_pubkey.is_empty()
+        && current_storage.wallet_identity_pubkey == rebuilt_storage.wallet_identity_pubkey;
+    let rebuilt_minus_current_balance_sats =
+        match (rebuilt_storage.balance_sats, current_storage.balance_sats) {
+            (Some(rebuilt), Some(current)) => signed_balance_delta(rebuilt, current),
+            _ => None,
+        };
+    let current_zero_with_receive_history = current_storage.balance_sats == Some(0)
+        && current_storage.payment_totals.completed_receive_total_sats
+            > current_storage
+                .payment_totals
+                .completed_send_total_sats
+                .saturating_add(TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS);
+    let major_divergence_detected =
+        match (current_storage.balance_sats, rebuilt_storage.balance_sats) {
+            (Some(current), Some(rebuilt)) => {
+                let delta = current.abs_diff(rebuilt);
+                let larger_balance = current.max(rebuilt);
+                current_zero_with_receive_history
+                    || delta >= TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS
+                    || (larger_balance > 0 && delta.saturating_mul(100) >= larger_balance * 10)
+            }
+            _ => current_zero_with_receive_history,
+        };
+    let validation_passed = current_storage.error.is_none()
+        && rebuilt_storage.error.is_none()
+        && wallet_identity_pubkey_match;
+    let recommended_action = if !validation_passed {
+        "inspect_errors".to_string()
+    } else if major_divergence_detected {
+        "cutover_rebuilt_storage_after_service_stop".to_string()
+    } else {
+        "no_cutover_needed".to_string()
+    };
+    TreasuryWalletRecoveryComparison {
+        wallet_identity_pubkey_match,
+        rebuilt_minus_current_balance_sats,
+        current_zero_with_receive_history,
+        major_divergence_detected,
+        validation_passed,
+        recommended_action,
+    }
+}
+
+async fn inspect_treasury_wallet_storage(
+    config: &TreasuryConfig,
+    mnemonic: &str,
+    storage_dir: &Path,
+) -> TreasuryWalletInspection {
+    let mut inspection = TreasuryWalletInspection {
+        inspected_storage_dir: storage_dir.display().to_string(),
+        ..TreasuryWalletInspection::default()
+    };
+    let signer = match SparkSigner::from_mnemonic(mnemonic, "") {
+        Ok(signer) => {
+            inspection.wallet_identity_pubkey = signer.public_key_hex();
+            signer
+        }
+        Err(error) => {
+            inspection.error = Some(format!("failed to derive treasury Spark signer: {error}"));
+            return inspection;
+        }
+    };
+    let network = match parse_wallet_network(config.wallet_network.as_str()) {
+        Ok(network) => network,
+        Err(error) => {
+            inspection.error = Some(error.to_string());
+            return inspection;
+        }
+    };
+    let wallet = match SparkWallet::new(
+        signer,
+        WalletConfig {
+            network,
+            api_key: resolve_wallet_api_key(config.wallet_api_key_env.as_deref()),
+            storage_dir: storage_dir.to_path_buf(),
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+        },
+    )
+    .await
+    {
+        Ok(wallet) => wallet,
+        Err(error) => {
+            inspection.error = Some(format!(
+                "failed to initialize treasury Spark wallet: {error}"
+            ));
+            return inspection;
+        }
+    };
+
+    let network_status = wallet.network_status().await;
+    inspection.runtime_status = Some(wallet_network_status_label(&network_status).to_string());
+    inspection.runtime_detail = network_status.detail;
+
+    match wallet.get_balance().await {
+        Ok(balance) => inspection.balance_sats = Some(balance.total_sats()),
+        Err(error) => {
+            inspection.error = Some(format!("failed to fetch treasury Spark balance: {error}"));
+            let _ = wallet.disconnect().await;
+            return inspection;
+        }
+    }
+
+    match wallet.list_all_payments().await {
+        Ok(payments) => {
+            inspection.payment_totals = aggregate_payment_summaries(&payments);
+        }
+        Err(error) => {
+            inspection.error = Some(format!("failed to list treasury Spark payments: {error}"));
+            let _ = wallet.disconnect().await;
+            return inspection;
+        }
+    }
+
+    match wallet.list_unclaimed_deposits().await {
+        Ok(deposits) => {
+            inspection.unclaimed_deposit_totals = aggregate_unclaimed_deposits(&deposits);
+        }
+        Err(error) => {
+            inspection.error = Some(format!(
+                "failed to list treasury Spark unclaimed deposits: {error}"
+            ));
+            let _ = wallet.disconnect().await;
+            return inspection;
+        }
+    }
+
+    let _ = wallet.disconnect().await;
+    inspection
+}
+
+async fn generate_treasury_wallet_recovery_report(
+    config: &TreasuryConfig,
+    work_dir_override: Option<&Path>,
+    report_path_override: Option<&Path>,
+) -> Result<TreasuryWalletRecoveryReport> {
+    let now_unix_ms = now_unix_ms();
+    let work_dir = work_dir_override
+        .map(PathBuf::from)
+        .or_else(|| report_path_override.and_then(|path| path.parent().map(PathBuf::from)))
+        .unwrap_or_else(|| default_treasury_wallet_recovery_work_dir(config, now_unix_ms));
+    ensure_directory_empty(work_dir.as_path(), "treasury recovery work dir")?;
+
+    let backup_root_dir = work_dir.join("backup");
+    let current_storage_backup_dir = backup_root_dir.join("current-storage");
+    let rebuilt_storage_dir = work_dir.join("rebuilt-storage");
+    let report_path = report_path_override
+        .map(PathBuf::from)
+        .unwrap_or_else(|| work_dir.join("recovery-report.json"));
+    let mnemonic_backup_path = backup_root_dir.join("treasury.mnemonic");
+    let state_backup_path = if config.state_path.exists() {
+        Some(backup_root_dir.join("treasury-state.json"))
+    } else {
+        None
+    };
+
+    ensure_directory_empty(backup_root_dir.as_path(), "treasury recovery backup dir")?;
+    ensure_directory_empty(
+        rebuilt_storage_dir.as_path(),
+        "treasury recovery rebuilt storage dir",
+    )?;
+    copy_directory_tree(
+        config.wallet_storage_dir.as_path(),
+        current_storage_backup_dir.as_path(),
+    )?;
+
+    let mnemonic = ensure_wallet_mnemonic(config.wallet_mnemonic_path.as_path(), false)?;
+    write_secret_file(
+        mnemonic_backup_path.as_path(),
+        format!("{mnemonic}\n").as_str(),
+    )?;
+    if let Some(state_backup_path) = state_backup_path.as_ref() {
+        copy_file_preserving_permissions(config.state_path.as_path(), state_backup_path.as_path())?;
+    }
+
+    let current_storage = inspect_treasury_wallet_storage(
+        config,
+        mnemonic.as_str(),
+        current_storage_backup_dir.as_path(),
+    )
+    .await;
+    let rebuilt_storage =
+        inspect_treasury_wallet_storage(config, mnemonic.as_str(), rebuilt_storage_dir.as_path())
+            .await;
+    let comparison = build_treasury_wallet_recovery_comparison(&current_storage, &rebuilt_storage);
+
+    let report = TreasuryWalletRecoveryReport {
+        authority: "openagents-hosted-nexus".to_string(),
+        generated_at_unix_ms: now_unix_ms,
+        source_wallet_storage_dir: config.wallet_storage_dir.display().to_string(),
+        backup_root_dir: backup_root_dir.display().to_string(),
+        current_storage_backup_dir: current_storage_backup_dir.display().to_string(),
+        rebuilt_storage_dir: rebuilt_storage_dir.display().to_string(),
+        report_path: report_path.display().to_string(),
+        mnemonic_backup_path: mnemonic_backup_path.display().to_string(),
+        state_backup_path: state_backup_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        current_storage,
+        rebuilt_storage,
+        comparison,
+        cutover_active_storage_dir: None,
+        cutover_rollback_storage_dir: None,
+        cutover_completed_at_unix_ms: None,
+    };
+    write_json_file(report_path.as_path(), &report)?;
+
+    let mut state = TreasuryState::new(config.state_path.clone());
+    state.note_wallet_recovery_report(&report);
+    state.refresh_public_snapshot(config, now_unix_ms);
+
+    Ok(report)
+}
+
+fn load_treasury_wallet_recovery_report(path: &Path) -> Result<TreasuryWalletRecoveryReport> {
+    let payload =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str::<TreasuryWalletRecoveryReport>(payload.as_str())
+        .with_context(|| format!("failed to parse {}", path.display()))
+}
+
+fn recovery_cutover_rollback_dir(active_storage_dir: &Path, now_unix_ms: u64) -> PathBuf {
+    let file_name = active_storage_dir
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "treasury-wallet".to_string());
+    active_storage_dir
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("{file_name}-rollback-{now_unix_ms}"))
+}
+
+fn apply_treasury_wallet_recovery_cutover(
+    config: &TreasuryConfig,
+    report_path: &Path,
+) -> Result<TreasuryWalletRecoveryCutoverResponse> {
+    let mut report = load_treasury_wallet_recovery_report(report_path)?;
+    if report.source_wallet_storage_dir != config.wallet_storage_dir.display().to_string() {
+        bail!(
+            "recovery report source storage {} does not match configured live storage {}",
+            report.source_wallet_storage_dir,
+            config.wallet_storage_dir.display()
+        );
+    }
+    if !report.comparison.validation_passed {
+        bail!("recovery report did not pass validation");
+    }
+    if !report.comparison.wallet_identity_pubkey_match {
+        bail!("recovery report wallet identity does not match");
+    }
+
+    let rebuilt_storage_dir = PathBuf::from(report.rebuilt_storage_dir.as_str());
+    if !rebuilt_storage_dir.exists() {
+        bail!(
+            "rebuilt storage dir missing: {}",
+            rebuilt_storage_dir.display()
+        );
+    }
+
+    let now_unix_ms = now_unix_ms();
+    let rollback_storage_dir =
+        recovery_cutover_rollback_dir(config.wallet_storage_dir.as_path(), now_unix_ms);
+    if config.wallet_storage_dir.exists() {
+        fs::rename(
+            config.wallet_storage_dir.as_path(),
+            rollback_storage_dir.as_path(),
+        )
+        .with_context(|| {
+            format!(
+                "failed to preserve rollback wallet storage {} -> {}",
+                config.wallet_storage_dir.display(),
+                rollback_storage_dir.display()
+            )
+        })?;
+    } else {
+        bail!(
+            "configured live wallet storage dir is missing: {}",
+            config.wallet_storage_dir.display()
+        );
+    }
+
+    if let Err(error) = fs::rename(
+        rebuilt_storage_dir.as_path(),
+        config.wallet_storage_dir.as_path(),
+    ) {
+        let restore_result = fs::rename(
+            rollback_storage_dir.as_path(),
+            config.wallet_storage_dir.as_path(),
+        );
+        if let Err(restore_error) = restore_result {
+            bail!(
+                "failed to activate rebuilt storage: {error}; failed to restore rollback: {restore_error}"
+            );
+        }
+        bail!("failed to activate rebuilt storage: {error}");
+    }
+
+    let response = TreasuryWalletRecoveryCutoverResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        report_path: report_path.display().to_string(),
+        active_storage_dir: config.wallet_storage_dir.display().to_string(),
+        rollback_storage_dir: rollback_storage_dir.display().to_string(),
+        wallet_storage_runtime_mode: "rebuilt".to_string(),
+        cutover_completed_at_unix_ms: now_unix_ms,
+    };
+    report.cutover_active_storage_dir = Some(response.active_storage_dir.clone());
+    report.cutover_rollback_storage_dir = Some(response.rollback_storage_dir.clone());
+    report.cutover_completed_at_unix_ms = Some(now_unix_ms);
+    write_json_file(report_path, &report)?;
+
+    let mut state = TreasuryState::new(config.state_path.clone());
+    state.note_wallet_recovery_report(&report);
+    state.note_wallet_recovery_cutover(&response);
+    if let Some(balance_sats) = report.rebuilt_storage.balance_sats {
+        state.wallet_balance_sats = balance_sats;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+    }
+    state.wallet_runtime_status = report.rebuilt_storage.runtime_status.clone();
+    state.wallet_last_error = report.rebuilt_storage.error.clone();
+    state.refresh_public_snapshot(config, now_unix_ms);
+
+    Ok(response)
 }
 
 fn treasury_policy_changed_fields(
@@ -1975,7 +2781,7 @@ fn treasury_policy_change_blocked_receipt(
 }
 
 pub const fn treasury_usage() -> &'static str {
-    "treasury [status [--json] | funding-target [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json]]"
+    "treasury [status [--json] | funding-target [--amount-sats <n>] [--description <text>] [--expiry-seconds <n>] [--json] | recovery-report [--work-dir <path>] [--report-path <path>] [--json] | recovery-cutover --report-path <path> [--json]]"
 }
 
 fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<bool> {
@@ -1998,6 +2804,10 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         format!("treasury_enabled: {}", response.treasury_enabled),
         format!("wallet_balance_sats: {}", response.wallet_balance_sats),
         format!(
+            "wallet_storage_runtime_mode: {}",
+            response.wallet_storage_runtime_mode
+        ),
+        format!(
             "payout_sats_paid_total: {}",
             response.payout_sats_paid_total
         ),
@@ -2012,6 +2822,27 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     }
     if let Some(error) = response.wallet_last_error.as_deref() {
         lines.push(format!("wallet_last_error: {error}"));
+    }
+    if let Some(report_path) = response.wallet_storage_report_path.as_deref() {
+        lines.push(format!("wallet_storage_report_path: {report_path}"));
+    }
+    if let Some(rollback_dir) = response.wallet_storage_rollback_dir.as_deref() {
+        lines.push(format!("wallet_storage_rollback_dir: {rollback_dir}"));
+    }
+    if let Some(cutover_at_unix_ms) = response.wallet_storage_cutover_at_unix_ms {
+        lines.push(format!(
+            "wallet_storage_cutover_at_unix_ms: {cutover_at_unix_ms}"
+        ));
+    }
+    if let Some(generated_at_unix_ms) = response.wallet_recovery_last_report_generated_at_unix_ms {
+        lines.push(format!(
+            "wallet_recovery_last_report_generated_at_unix_ms: {generated_at_unix_ms}"
+        ));
+    }
+    if let Some(validation_passed) = response.wallet_recovery_last_report_validation_passed {
+        lines.push(format!(
+            "wallet_recovery_last_report_validation_passed: {validation_passed}"
+        ));
     }
     if let Some(status) = response.payout_loop_runtime_status.as_deref() {
         lines.push(format!("payout_loop_runtime_status: {status}"));
@@ -2068,6 +2899,73 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
         lines.push(format!("wallet_runtime_detail: {detail}"));
     }
     lines.join("\n")
+}
+
+fn render_treasury_wallet_recovery_report(report: &TreasuryWalletRecoveryReport) -> String {
+    let mut lines = vec![
+        format!("report_path: {}", report.report_path),
+        format!(
+            "source_wallet_storage_dir: {}",
+            report.source_wallet_storage_dir
+        ),
+        format!(
+            "current_storage_backup_dir: {}",
+            report.current_storage_backup_dir
+        ),
+        format!("rebuilt_storage_dir: {}", report.rebuilt_storage_dir),
+        format!(
+            "wallet_identity_pubkey_match: {}",
+            report.comparison.wallet_identity_pubkey_match
+        ),
+        format!("validation_passed: {}", report.comparison.validation_passed),
+        format!(
+            "major_divergence_detected: {}",
+            report.comparison.major_divergence_detected
+        ),
+        format!(
+            "recommended_action: {}",
+            report.comparison.recommended_action
+        ),
+    ];
+    if let Some(current_balance_sats) = report.current_storage.balance_sats {
+        lines.push(format!(
+            "current_storage_balance_sats: {current_balance_sats}"
+        ));
+    }
+    if let Some(rebuilt_balance_sats) = report.rebuilt_storage.balance_sats {
+        lines.push(format!(
+            "rebuilt_storage_balance_sats: {rebuilt_balance_sats}"
+        ));
+    }
+    if let Some(delta_sats) = report.comparison.rebuilt_minus_current_balance_sats {
+        lines.push(format!("rebuilt_minus_current_balance_sats: {delta_sats}"));
+    }
+    if let Some(error) = report.current_storage.error.as_deref() {
+        lines.push(format!("current_storage_error: {error}"));
+    }
+    if let Some(error) = report.rebuilt_storage.error.as_deref() {
+        lines.push(format!("rebuilt_storage_error: {error}"));
+    }
+    lines.join("\n")
+}
+
+fn render_treasury_wallet_recovery_cutover_response(
+    response: &TreasuryWalletRecoveryCutoverResponse,
+) -> String {
+    [
+        format!("report_path: {}", response.report_path),
+        format!("active_storage_dir: {}", response.active_storage_dir),
+        format!("rollback_storage_dir: {}", response.rollback_storage_dir),
+        format!(
+            "wallet_storage_runtime_mode: {}",
+            response.wallet_storage_runtime_mode
+        ),
+        format!(
+            "cutover_completed_at_unix_ms: {}",
+            response.cutover_completed_at_unix_ms
+        ),
+    ]
+    .join("\n")
 }
 
 pub fn verify_payout_target_registration_signature(
@@ -2578,14 +3476,18 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 mod tests {
     use super::{
         OnlinePylonIdentity, TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial,
-        TreasuryFundingTargetRequest, TreasuryPublicStats, TreasuryState, TreasuryWalletSnapshot,
-        create_live_funding_target, dispatch_live_payouts, payout_phase_offset_ms,
-        payout_window_started_at, payout_window_started_at_for_identity,
+        TreasuryFundingTargetRequest, TreasuryPublicStats, TreasuryState, TreasuryWalletInspection,
+        TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
+        TreasuryWalletRecoveryReport, TreasuryWalletSnapshot,
+        apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
+        create_live_funding_target, dispatch_live_payouts, parse_treasury_command,
+        payout_phase_offset_ms, payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock, verify_payout_target_registration_signature,
+        treasury_test_hook_lock, verify_payout_target_registration_signature, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -2620,6 +3522,16 @@ mod tests {
         ))
     }
 
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        PathBuf::from(format!(
+            "/tmp/test-nexus-treasury-{label}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ))
+    }
+
     #[test]
     fn payout_target_signature_round_trip_is_valid() {
         let private_key_hex = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -2640,6 +3552,42 @@ mod tests {
             signature.as_str(),
         )
         .expect("signature should verify");
+    }
+
+    #[test]
+    fn parse_treasury_command_supports_recovery_commands() {
+        let recovery_report = parse_treasury_command(&[
+            "nexus-control".to_string(),
+            "treasury".to_string(),
+            "recovery-report".to_string(),
+            "--work-dir".to_string(),
+            "/tmp/recovery-work".to_string(),
+            "--report-path".to_string(),
+            "/tmp/recovery-work/report.json".to_string(),
+            "--json".to_string(),
+        ])
+        .expect("recovery-report should parse");
+        assert!(matches!(
+            recovery_report,
+            super::TreasuryCommand::RecoveryReport {
+                work_dir: Some(_),
+                report_path: Some(_),
+                json: true,
+            }
+        ));
+
+        let recovery_cutover = parse_treasury_command(&[
+            "nexus-control".to_string(),
+            "treasury".to_string(),
+            "recovery-cutover".to_string(),
+            "--report-path".to_string(),
+            "/tmp/recovery-work/report.json".to_string(),
+        ])
+        .expect("recovery-cutover should parse");
+        assert!(matches!(
+            recovery_cutover,
+            super::TreasuryCommand::RecoveryCutover { .. }
+        ));
     }
 
     #[test]
@@ -2730,6 +3678,38 @@ mod tests {
             Some(original_checksum.as_str())
         );
         assert_eq!(state.policy_change_history.len(), 1);
+    }
+
+    #[test]
+    fn recovery_comparison_detects_zero_balance_divergence() {
+        let comparison = build_treasury_wallet_recovery_comparison(
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/current".to_string(),
+                balance_sats: Some(0),
+                payment_totals: TreasuryWalletPaymentAggregate {
+                    completed_receive_total_sats: 100_000,
+                    completed_send_total_sats: 20_000,
+                    ..TreasuryWalletPaymentAggregate::default()
+                },
+                ..TreasuryWalletInspection::default()
+            },
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                balance_sats: Some(80_000),
+                ..TreasuryWalletInspection::default()
+            },
+        );
+
+        assert!(comparison.wallet_identity_pubkey_match);
+        assert!(comparison.current_zero_with_receive_history);
+        assert!(comparison.major_divergence_detected);
+        assert!(comparison.validation_passed);
+        assert_eq!(
+            comparison.recommended_action,
+            "cutover_rebuilt_storage_after_service_stop"
+        );
     }
 
     #[test]
@@ -3035,6 +4015,137 @@ mod tests {
         assert_eq!(stats.payout_sats_paid_total, 120);
         assert_eq!(stats.payout_sats_paid_24h, 120);
         assert_eq!(stats.payouts_confirmed_24h, 1);
+    }
+
+    #[test]
+    fn degraded_reason_flags_zero_balance_with_receive_history() {
+        let mut state = TreasuryState::default();
+        state.wallet_balance_sats = 0;
+        state.funding_receives_by_payment_id.insert(
+            "payment-receive-001".to_string(),
+            super::TreasuryFundingReceive {
+                payment_id: "payment-receive-001".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 100_000,
+                method: "spark".to_string(),
+                description: Some("fund treasury".to_string()),
+                recorded_at_unix_ms: 100,
+                updated_at_unix_ms: 100,
+            },
+        );
+        state.payout_sats_paid_total = 2_000;
+        let stats = state.public_stats(&test_treasury_config(), 200);
+        assert_eq!(
+            stats.degraded_reason.as_deref(),
+            Some("wallet_balance_zero_with_receive_history:100000:2000")
+        );
+    }
+
+    #[test]
+    fn recovery_cutover_swaps_storage_and_updates_state() {
+        let work_dir = unique_temp_dir("cutover");
+        let current_storage_dir = work_dir.join("current-wallet");
+        let rebuilt_storage_dir = work_dir.join("rebuilt-wallet");
+        let state_path = work_dir.join("treasury-state.json");
+        let report_path = work_dir.join("recovery-report.json");
+        fs::create_dir_all(current_storage_dir.as_path()).expect("current dir");
+        fs::create_dir_all(rebuilt_storage_dir.as_path()).expect("rebuilt dir");
+        fs::write(current_storage_dir.join("storage.sql"), "current").expect("current wallet");
+        fs::write(rebuilt_storage_dir.join("storage.sql"), "rebuilt").expect("rebuilt wallet");
+
+        let mut config = test_treasury_config();
+        config.state_path = state_path.clone();
+        config.wallet_storage_dir = current_storage_dir.clone();
+
+        let report = TreasuryWalletRecoveryReport {
+            authority: "openagents-hosted-nexus".to_string(),
+            generated_at_unix_ms: 100,
+            source_wallet_storage_dir: current_storage_dir.display().to_string(),
+            backup_root_dir: work_dir.join("backup").display().to_string(),
+            current_storage_backup_dir: work_dir
+                .join("backup/current-storage")
+                .display()
+                .to_string(),
+            rebuilt_storage_dir: rebuilt_storage_dir.display().to_string(),
+            report_path: report_path.display().to_string(),
+            mnemonic_backup_path: work_dir
+                .join("backup/treasury.mnemonic")
+                .display()
+                .to_string(),
+            state_backup_path: None,
+            current_storage: TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: work_dir
+                    .join("backup/current-storage")
+                    .display()
+                    .to_string(),
+                balance_sats: Some(0),
+                ..TreasuryWalletInspection::default()
+            },
+            rebuilt_storage: TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: rebuilt_storage_dir.display().to_string(),
+                runtime_status: Some("connected".to_string()),
+                balance_sats: Some(80_000),
+                ..TreasuryWalletInspection::default()
+            },
+            comparison: TreasuryWalletRecoveryComparison {
+                wallet_identity_pubkey_match: true,
+                rebuilt_minus_current_balance_sats: Some(80_000),
+                current_zero_with_receive_history: true,
+                major_divergence_detected: true,
+                validation_passed: true,
+                recommended_action: "cutover_rebuilt_storage_after_service_stop".to_string(),
+            },
+            cutover_active_storage_dir: None,
+            cutover_rollback_storage_dir: None,
+            cutover_completed_at_unix_ms: None,
+        };
+        write_json_file(report_path.as_path(), &report).expect("report file");
+
+        let response = apply_treasury_wallet_recovery_cutover(&config, report_path.as_path())
+            .expect("cutover");
+        assert_eq!(response.wallet_storage_runtime_mode, "rebuilt");
+        assert!(config.wallet_storage_dir.join("storage.sql").exists());
+        assert_eq!(
+            fs::read_to_string(config.wallet_storage_dir.join("storage.sql")).expect("active"),
+            "rebuilt"
+        );
+        assert!(
+            PathBuf::from(response.rollback_storage_dir.as_str())
+                .join("storage.sql")
+                .exists()
+        );
+        assert_eq!(
+            fs::read_to_string(
+                PathBuf::from(response.rollback_storage_dir.as_str()).join("storage.sql")
+            )
+            .expect("rollback"),
+            "current"
+        );
+
+        let state = TreasuryState::new(state_path.clone());
+        assert_eq!(
+            state.wallet_storage_runtime_mode.as_deref(),
+            Some("rebuilt")
+        );
+        assert_eq!(state.wallet_balance_sats, 80_000);
+        assert_eq!(
+            state
+                .last_wallet_recovery_report
+                .as_ref()
+                .map(|summary| summary.validation_passed),
+            Some(true)
+        );
+
+        let updated_report = fs::read_to_string(report_path.as_path()).expect("updated report");
+        let parsed_report: TreasuryWalletRecoveryReport =
+            serde_json::from_str(updated_report.as_str()).expect("report json");
+        assert_eq!(
+            parsed_report.cutover_active_storage_dir.as_deref(),
+            Some(config.wallet_storage_dir.display().to_string().as_str())
+        );
+        assert!(parsed_report.cutover_completed_at_unix_ms.is_some());
     }
 
     #[test]

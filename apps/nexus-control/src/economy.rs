@@ -13,6 +13,10 @@ const RECEIPT_RETENTION_LIMIT: usize = 8_192;
 const PUBLIC_RECENT_RECEIPT_LIMIT: usize = 16;
 const PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 
+fn default_wallet_storage_runtime_mode() -> String {
+    "original".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct AuthorityReceiptContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -149,6 +153,8 @@ pub struct PublicStatsSnapshot {
     pub nexus_wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexus_wallet_last_error: Option<String>,
+    #[serde(default = "default_wallet_storage_runtime_mode")]
+    pub nexus_wallet_storage_runtime_mode: String,
     #[serde(default)]
     pub nexus_wallet_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -270,6 +276,7 @@ pub struct PublicRuntimeSnapshot {
     pub starter_offers_running: usize,
     pub nexus_wallet_runtime_status: Option<String>,
     pub nexus_wallet_last_error: Option<String>,
+    pub nexus_wallet_storage_runtime_mode: String,
     pub nexus_wallet_balance_sats: u64,
     pub nexus_wallet_balance_updated_at_unix_ms: Option<u64>,
     pub nexus_treasury_snapshot_generated_at_unix_ms: Option<u64>,
@@ -503,6 +510,7 @@ impl ReceiptLedger {
             starter_demand_released_sats_24h,
             nexus_wallet_runtime_status: runtime.nexus_wallet_runtime_status.clone(),
             nexus_wallet_last_error: runtime.nexus_wallet_last_error.clone(),
+            nexus_wallet_storage_runtime_mode: runtime.nexus_wallet_storage_runtime_mode.clone(),
             nexus_wallet_balance_sats: runtime.nexus_wallet_balance_sats,
             nexus_wallet_balance_updated_at_unix_ms: runtime
                 .nexus_wallet_balance_updated_at_unix_ms,
@@ -783,6 +791,7 @@ mod tests {
                 starter_offers_running: 0,
                 nexus_wallet_runtime_status: None,
                 nexus_wallet_last_error: None,
+                nexus_wallet_storage_runtime_mode: "original".to_string(),
                 nexus_wallet_balance_sats: 0,
                 nexus_wallet_balance_updated_at_unix_ms: None,
                 nexus_treasury_snapshot_generated_at_unix_ms: None,
