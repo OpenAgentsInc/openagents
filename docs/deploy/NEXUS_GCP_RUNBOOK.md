@@ -96,6 +96,9 @@ Treasury deployment note:
 - `scripts/deploy/nexus/03-configure-and-start.sh` now refuses to deploy
   `nexus-mainnet-1` with `treasury_enabled=false` or `payout_sats_per_window=0`
   unless `NEXUS_ALLOW_ZERO_TREASURY_IN_PRODUCTION=true` is set explicitly
+- `scripts/deploy/nexus/03-configure-and-start.sh` preserves the live
+  `NEXUS_CONTROL_TREASURY_*` values from `/etc/nexus-relay/nexus-relay.env`
+  unless you explicitly export replacements before redeploying
 - set payout policy via env before running `03-configure-and-start.sh`, for example:
 
 ```bash
@@ -103,7 +106,7 @@ export NEXUS_CONTROL_TREASURY_ENABLED=true
 export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=2
 export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=20
 export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
-export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000
+export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
 ```
 
 ## 5) Deploy artifacts
