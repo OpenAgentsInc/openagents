@@ -78,7 +78,14 @@ within that interval, so online Pylons still receive one payout per interval
 but dispatches roll across the window instead of bunching on a single wall-clock
 boundary.
 
-`run_server()` now starts a dedicated treasury payout loop every 2 seconds. The
+Any server path that mounts the in-process authority APIs must also start the
+treasury background runtime. The standalone `nexus-control run_server()` path
+does this directly, and the production durable shell in
+`apps/nexus-relay/src/durable.rs` must use
+`build_api_router_with_background_tasks(...)` rather than only merging the
+routes.
+
+That treasury runtime starts a dedicated payout loop every 2 seconds. The
 provider heartbeat route only updates presence; it no longer dispatches wallet
 sends inline. The treasury loop keeps only one live payout cycle in flight at a
 time, reconciles any missed per-identity windows after restarts, and clamps
