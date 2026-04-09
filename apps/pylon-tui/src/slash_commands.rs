@@ -127,8 +127,8 @@ const COMMANDS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
         id: SlashCommandId::Wallet,
         name: "wallet",
-        usage: "/wallet [status|balance|address|invoice|pay|history]",
-        summary: "run retained Spark wallet commands inside the shell",
+        usage: "/wallet [show|receive|withdraw|recovery|status|balance|address|invoice|pay|history]",
+        summary: "open the wallet surface, receive sats, withdraw by invoice, or inspect history",
     },
 ];
 
@@ -157,6 +157,66 @@ pub fn parse_submission(text: &str) -> ParsedSubmission {
     }
 }
 
+pub fn active_slash_query(text: &str, cursor: usize) -> Option<SlashQueryContext> {
+    if cursor > text.len() {
+        return None;
+    }
+
+    let line_start = text[..cursor].rfind('\n').map_or(0, |index| index + 1);
+    let current_line = &text[line_start..];
+    let leading_ws = current_line
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(index, _)| index)
+        .unwrap_or(current_line.len());
+    let command_start = line_start + leading_ws;
+    if command_start >= text.len() || !text[command_start..].starts_with('/') {
+        return None;
+    }
+
+    let command_end = text[command_start..]
+        .find(char::is_whitespace)
+        .map_or(text.len(), |offset| command_start + offset);
+    if cursor < command_start + 1 || cursor > command_end {
+        return None;
+    }
+
+    Some(SlashQueryContext {
+        query: text[command_start + 1..cursor].to_string(),
+        replace_start: command_start,
+        replace_end: command_end,
+    })
+}
+
+pub fn suggestions_for_query(query: &str) -> Vec<&'static SlashCommandSpec> {
+    if query.trim().is_empty() {
+        return registry().iter().collect();
+    }
+
+    let query = query.trim().to_ascii_lowercase();
+    let mut prefix = Vec::new();
+    let mut contains = Vec::new();
+    for spec in registry() {
+        let name = spec.name.to_ascii_lowercase();
+        let usage = spec.usage.to_ascii_lowercase();
+        let summary = spec.summary.to_ascii_lowercase();
+        if name.starts_with(&query) {
+            prefix.push(spec);
+        } else if usage.contains(&query) || summary.contains(&query) {
+            contains.push(spec);
+        }
+    }
+    prefix.into_iter().chain(contains).collect()
+}
+
+pub fn insertion_text(spec: &SlashCommandSpec) -> String {
+    if spec.usage.contains(' ') {
+        format!("/{} ", spec.name)
+    } else {
+        format!("/{}", spec.name)
+    }
+}
+
 pub fn help_lines() -> Vec<String> {
     let mut lines = vec![String::from("Available commands:")];
     lines.extend(
@@ -172,7 +232,10 @@ pub fn help_lines() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ParsedSubmission, SlashCommandId, help_lines, parse_submission, registry};
+    use super::{
+        ParsedSubmission, SlashCommandId, active_slash_query, help_lines, insertion_text,
+        parse_submission, registry, suggestions_for_query,
+    };
 
     #[test]
     fn registry_includes_retained_commands() {
@@ -256,4 +319,33 @@ mod tests {
         assert_eq!(registry()[13].id, SlashCommandId::Relay);
         assert_eq!(registry()[14].id, SlashCommandId::Wallet);
     }
+
+    #[test]
+    fn active_slash_query_detects_first_token_only() {
+        let query = active_slash_query("/pro", 4).expect("slash query");
+        assert_eq!(query.query, "pro");
+        assert_eq!(query.replace_start, 0);
+        assert_eq!(query.replace_end, 4);
+
+        assert!(active_slash_query("hello /pro", 10).is_none());
+        assert!(active_slash_query("/provider run", 12).is_none());
+    }
+
+    #[test]
+    fn suggestions_rank_prefix_matches_first() {
+        let matches = suggestions_for_query("pro");
+        assert_eq!(matches.first().map(|spec| spec.name), Some("provider"));
+    }
+
+    #[test]
+    fn insertion_text_adds_trailing_space_for_argument_commands() {
+        assert_eq!(insertion_text(&registry()[0]), "/help");
+        assert_eq!(insertion_text(&registry()[6]), "/provider ");
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SlashQueryContext {
+    pub query: String,
+    pub replace_start: usize,
+    pub replace_end: usize,
 }
