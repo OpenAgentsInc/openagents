@@ -53,6 +53,10 @@ For the production VM, set the payout policy env before running
 the treasury wallet and state onto `${NEXUS_DATA_DIR}/treasury/...` so the
 central wallet survives container restarts.
 
+If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
+`nexus-control` now refreshes wallet-backed public stats every 3 seconds by
+default.
+
 ## Public Stats
 
 Public-safe treasury counters now project through `nexus-control /api/stats`:

@@ -1282,6 +1282,12 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
+    match treasury_wallet_refresh_state(&state, now, false)? {
+        TreasuryWalletRefreshState::Unsynced | TreasuryWalletRefreshState::Due => {
+            refresh_treasury_wallet_state(&state, true).await;
+        }
+        TreasuryWalletRefreshState::Fresh => {}
+    }
     let mut store = state.store.write().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -1492,32 +1498,16 @@ async fn treasury_status(
     State(state): State<AppState>,
 ) -> Result<Json<TreasuryStatusResponse>, ApiError> {
     let now = now_unix_ms();
-    let refresh_policy = {
-        let store = state.store.read().map_err(|_| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error: "internal_error",
-            reason: "session_store_poisoned".to_string(),
-        })?;
-        if store.treasury.last_wallet_sync_at_unix_ms.is_none() {
-            TreasuryStatusRefreshPolicy::Immediate
-        } else if store
-            .treasury
-            .wallet_refresh_due(&state.config.treasury, now)
-        {
-            TreasuryStatusRefreshPolicy::Background
-        } else {
-            TreasuryStatusRefreshPolicy::CachedOnly
-        }
-    };
+    let refresh_policy = treasury_wallet_refresh_state(&state, now, true)?;
 
     match refresh_policy {
-        TreasuryStatusRefreshPolicy::Immediate => {
+        TreasuryWalletRefreshState::Unsynced => {
             refresh_treasury_wallet_state(&state, true).await;
         }
-        TreasuryStatusRefreshPolicy::Background => {
+        TreasuryWalletRefreshState::Due => {
             schedule_treasury_wallet_refresh(state.clone(), true);
         }
-        TreasuryStatusRefreshPolicy::CachedOnly => {}
+        TreasuryWalletRefreshState::Fresh => {}
     }
 
     let store = state.store.read().map_err(|_| ApiError {
@@ -6494,10 +6484,36 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TreasuryStatusRefreshPolicy {
-    Immediate,
-    Background,
-    CachedOnly,
+enum TreasuryWalletRefreshState {
+    Unsynced,
+    Due,
+    Fresh,
+}
+
+fn treasury_wallet_refresh_state(
+    state: &AppState,
+    now_unix_ms: u64,
+    allow_disabled_treasury: bool,
+) -> Result<TreasuryWalletRefreshState, ApiError> {
+    if !allow_disabled_treasury && !state.config.treasury.enabled {
+        return Ok(TreasuryWalletRefreshState::Fresh);
+    }
+
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    if store.treasury.last_wallet_sync_at_unix_ms.is_none() {
+        return Ok(TreasuryWalletRefreshState::Unsynced);
+    }
+    if store
+        .treasury
+        .wallet_refresh_due(&state.config.treasury, now_unix_ms)
+    {
+        return Ok(TreasuryWalletRefreshState::Due);
+    }
+    Ok(TreasuryWalletRefreshState::Fresh)
 }
 
 fn treasury_wallet_refresh_scheduled_flag() -> &'static AtomicBool {
@@ -10050,7 +10066,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn public_stats_does_not_refresh_wallet_state() -> Result<()> {
+    async fn public_stats_uses_cached_wallet_state_when_treasury_disabled() -> Result<()> {
         let app = build_router(test_config()?);
         let _guard = treasury_test_hook_lock()
             .lock()
@@ -10074,6 +10090,75 @@ mod tests {
         assert_eq!(stats_response.status(), StatusCode::OK);
         let _: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(hook_calls.load(Ordering::SeqCst), 0);
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_refreshes_wallet_state_when_due() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.wallet_status_refresh_seconds = 1;
+        let app = build_router(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            let call_index = hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: if call_index == 0 { 500 } else { 710 },
+                payments: Vec::new(),
+            })
+        })));
+
+        let first_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        let first_stats: PublicStatsSnapshot = response_json(first_response).await?;
+        assert_eq!(first_stats.nexus_wallet_balance_sats, 500);
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        let second_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(second_response.status(), StatusCode::OK);
+        let second_stats: PublicStatsSnapshot = response_json(second_response).await?;
+        assert_eq!(second_stats.nexus_wallet_balance_sats, 500);
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+
+        let third_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(third_response.status(), StatusCode::OK);
+        let third_stats: PublicStatsSnapshot = response_json(third_response).await?;
+        assert_eq!(third_stats.nexus_wallet_balance_sats, 710);
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
