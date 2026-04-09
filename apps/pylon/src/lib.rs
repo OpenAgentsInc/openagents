@@ -11,7 +11,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
-use nostr::{NostrIdentity, derive_keypair, load_identity_from_path};
+use nostr::{
+    NostrIdentity, derive_keypair, load_identity_from_path,
+    nip98::{
+        HttpAuth, HttpMethod, create_http_auth_event, encode_authorization_header, hash_payload,
+    },
+};
 use nostr_client::{
     ConnectionState, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
 };
@@ -481,6 +486,17 @@ struct AccountLinkReport {
     user_id: u64,
     link_state: String,
     link_method: String,
+    proof_scheme: String,
+    proof_event_id: String,
+    proof_payload_hash: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct OpenAgentsAccountLinkProof {
+    authorization_header: String,
+    event_id: String,
+    payload_hash: String,
+    created_at: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -7342,6 +7358,9 @@ fn render_account_link_report(report: &AccountLinkReport) -> String {
         format!("user_id: {}", report.user_id),
         format!("link_state: {}", report.link_state),
         format!("link_method: {}", report.link_method),
+        format!("proof_scheme: {}", report.proof_scheme),
+        format!("proof_event_id: {}", report.proof_event_id),
+        format!("proof_payload_hash: {}", report.proof_payload_hash),
     ]
     .join("\n")
 }
@@ -7943,6 +7962,18 @@ fn openagents_account_link_url(base_url: &str) -> Result<reqwest::Url> {
     })
 }
 
+fn decode_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
+    let key_bytes = hex::decode(private_key_hex.trim())
+        .with_context(|| format!("invalid identity private_key_hex: {private_key_hex}"))?;
+    let key_length = key_bytes.len();
+    key_bytes.try_into().map_err(|_| {
+        anyhow!(
+            "invalid identity private_key_hex length {}, expected 32 bytes",
+            key_length
+        )
+    })
+}
+
 fn build_openagents_account_link_request(
     config: &PylonConfig,
     identity: &NostrIdentity,
@@ -7972,9 +8003,41 @@ fn build_openagents_account_link_request(
     }
 }
 
+fn build_openagents_account_link_body(
+    payload: &OpenAgentsPylonLinkCompletionRequest,
+) -> Result<Vec<u8>> {
+    serde_json::to_vec(payload).context("failed to serialize Pylon account-link payload")
+}
+
+fn build_openagents_account_link_proof(
+    identity: &NostrIdentity,
+    url: &reqwest::Url,
+    body: &[u8],
+) -> Result<OpenAgentsAccountLinkProof> {
+    let payload_hash = hash_payload(body);
+    let auth = HttpAuth::new(url.as_str().to_string(), HttpMethod::Post)
+        .with_payload_hash(payload_hash.clone());
+    let secret_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
+    let created_at = nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?;
+    let event =
+        create_http_auth_event(&auth, &secret_key, created_at).map_err(anyhow::Error::msg)?;
+    let event_json = serde_json::to_string(&event)
+        .context("failed to serialize Pylon account-link proof event")?;
+    let authorization_header =
+        encode_authorization_header(event_json.as_str()).map_err(anyhow::Error::msg)?;
+
+    Ok(OpenAgentsAccountLinkProof {
+        authorization_header,
+        event_id: event.id,
+        payload_hash,
+        created_at,
+    })
+}
+
 fn build_account_link_report(
     base_url: &str,
     response: OpenAgentsPylonLinkCompletionResponse,
+    proof: &OpenAgentsAccountLinkProof,
 ) -> AccountLinkReport {
     let OpenAgentsPylonLinkCompletionResponse {
         linked,
@@ -8004,18 +8067,32 @@ fn build_account_link_report(
         user_id: account_link.user_id,
         link_state: account_link.state,
         link_method: account_link.method,
+        proof_scheme: "nip98".to_string(),
+        proof_event_id: proof.event_id.clone(),
+        proof_payload_hash: proof.payload_hash.clone(),
     }
 }
 
 async fn complete_openagents_account_link(
     client: &reqwest::Client,
     base_url: &str,
+    identity: &NostrIdentity,
     payload: &OpenAgentsPylonLinkCompletionRequest,
-) -> Result<OpenAgentsPylonLinkCompletionResponse> {
+) -> Result<(
+    OpenAgentsPylonLinkCompletionResponse,
+    OpenAgentsAccountLinkProof,
+)> {
     let url = openagents_account_link_url(base_url)?;
+    let body = build_openagents_account_link_body(payload)?;
+    let proof = build_openagents_account_link_proof(identity, &url, body.as_slice())?;
     let response = client
         .post(url.clone())
-        .json(payload)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body)
         .send()
         .await
         .with_context(|| format!("failed to post Pylon account link to {url}"))?;
@@ -8033,6 +8110,7 @@ async fn complete_openagents_account_link(
         .json::<OpenAgentsPylonLinkCompletionResponse>()
         .await
         .with_context(|| format!("failed to decode OpenAgents account-link response from {url}"))
+        .map(|response| (response, proof))
 }
 
 async fn run_account_link_command(
@@ -8045,8 +8123,9 @@ async fn run_account_link_command(
     let status = load_status_or_detect(config_path).await?;
     let payload = build_openagents_account_link_request(&config, &identity, &status, token);
     let client = openagents_account_link_client()?;
-    let response = complete_openagents_account_link(&client, base_url, &payload).await?;
-    Ok(build_account_link_report(base_url, response))
+    let (response, proof) =
+        complete_openagents_account_link(&client, base_url, &identity, &payload).await?;
+    Ok(build_account_link_report(base_url, response, &proof))
 }
 
 async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusResponse>> {
@@ -9094,6 +9173,16 @@ mod tests {
                 && report["link_method"] == json!("cli_token"),
             "account link report should retain ownership ids from the website response",
         )?;
+        ensure(
+            report["proof_scheme"] == json!("nip98")
+                && report["proof_event_id"]
+                    .as_str()
+                    .is_some_and(|value| !value.trim().is_empty())
+                && report["proof_payload_hash"]
+                    .as_str()
+                    .is_some_and(|value| value.len() == 64),
+            "account link report should retain NIP-98 proof metadata for automation",
+        )?;
 
         let requests = recorded_requests
             .lock()
@@ -9134,6 +9223,61 @@ mod tests {
                         )
                 }),
             "account link request should send the canonical eligible product ids",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn account_link_proof_round_trips_through_nip98_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let local_gemma_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/api/tags") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "models": [
+                            {"name": "gemma4:e4b"}
+                        ]
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = seed_observability_snapshot(config_path.as_path())?;
+        config.node_label = "linked-pylon-proof".to_string();
+        config.local_gemma_base_url = local_gemma_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        let payload = super::build_openagents_account_link_request(
+            &config,
+            &identity,
+            &status,
+            "link-token-proof-001",
+        );
+        let url = super::openagents_account_link_url("https://openagents.com")?;
+        let body = super::build_openagents_account_link_body(&payload)?;
+        let proof = super::build_openagents_account_link_proof(&identity, &url, body.as_slice())?;
+
+        let event = nostr::nip98::validate_authorization_header(
+            proof.authorization_header.as_str(),
+            &nostr::nip98::ValidationParams::new(
+                url.to_string(),
+                nostr::nip98::HttpMethod::Post,
+                proof.created_at,
+            )
+            .with_payload_hash(proof.payload_hash.clone()),
+        )
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+
+        ensure(
+            event.id == proof.event_id && event.pubkey == identity.public_key_hex,
+            "account link proof should round-trip through NIP-98 validation with the node identity",
         )
     }
 

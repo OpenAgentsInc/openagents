@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[cfg(feature = "full")]
+use crate::nip01::{Event, EventTemplate, finalize_event, verify_event};
+#[cfg(feature = "full")]
 use base64::Engine;
 #[cfg(feature = "full")]
 use sha2::{Digest, Sha256};
@@ -65,6 +67,12 @@ pub enum Nip98Error {
 
     #[error("invalid authorization header: {0}")]
     InvalidAuthHeader(String),
+
+    #[error("event signing error: {0}")]
+    EventSigning(String),
+
+    #[error("event verification error: {0}")]
+    EventVerification(String),
 }
 
 /// HTTP method
@@ -298,6 +306,62 @@ impl ValidationParams {
     }
 }
 
+/// Create an unsigned NIP-98 event template for a specific HTTP request.
+#[cfg(feature = "full")]
+pub fn create_http_auth_event_template(auth: &HttpAuth, created_at: u64) -> EventTemplate {
+    EventTemplate {
+        created_at,
+        kind: KIND_HTTP_AUTH,
+        tags: auth.to_tags(),
+        content: String::new(),
+    }
+}
+
+/// Create a signed NIP-98 event for a specific HTTP request.
+#[cfg(feature = "full")]
+pub fn create_http_auth_event(
+    auth: &HttpAuth,
+    secret_key: &[u8; 32],
+    created_at: u64,
+) -> Result<Event, Nip98Error> {
+    let template = create_http_auth_event_template(auth, created_at);
+    finalize_event(&template, secret_key)
+        .map_err(|error| Nip98Error::EventSigning(error.to_string()))
+}
+
+/// Create an Authorization header value for a signed NIP-98 event.
+#[cfg(feature = "full")]
+pub fn create_authorization_header(
+    auth: &HttpAuth,
+    secret_key: &[u8; 32],
+    created_at: u64,
+) -> Result<String, Nip98Error> {
+    let event = create_http_auth_event(auth, secret_key, created_at)?;
+    let event_json = serde_json::to_string(&event)
+        .map_err(|error| Nip98Error::JsonSerialize(error.to_string()))?;
+    encode_authorization_header(event_json.as_str())
+}
+
+/// Decode, verify, and validate a NIP-98 Authorization header.
+#[cfg(feature = "full")]
+pub fn validate_authorization_header(
+    header: &str,
+    params: &ValidationParams,
+) -> Result<Event, Nip98Error> {
+    let event_json = decode_authorization_header(header)?;
+    let event = serde_json::from_str::<Event>(event_json.as_str())
+        .map_err(|error| Nip98Error::JsonDeserialize(error.to_string()))?;
+    let valid_signature =
+        verify_event(&event).map_err(|error| Nip98Error::EventVerification(error.to_string()))?;
+    if !valid_signature {
+        return Err(Nip98Error::EventVerification(
+            "event signature verification failed".to_string(),
+        ));
+    }
+    validate_http_auth_event(event.kind, event.created_at, &event.tags, params)?;
+    Ok(event)
+}
+
 /// Validate HTTP auth event
 ///
 /// Performs the following checks:
@@ -500,6 +564,53 @@ mod tests {
         let header = "Nostr";
         let result = decode_authorization_header(header);
         assert!(result.is_err());
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn test_create_and_validate_authorization_header_round_trip() {
+        let secret_key = [1_u8; 32];
+        let url = "https://openagents.com/api/pylon-links/complete".to_string();
+        let payload_hash = hash_payload(br#"{"token":"link-token-001"}"#);
+        let auth =
+            HttpAuth::new(url.clone(), HttpMethod::Post).with_payload_hash(payload_hash.clone());
+
+        let header = create_authorization_header(&auth, &secret_key, 1_000).unwrap();
+        let event = validate_authorization_header(
+            header.as_str(),
+            &ValidationParams::new(url.clone(), HttpMethod::Post, 1_000)
+                .with_payload_hash(payload_hash.clone()),
+        )
+        .unwrap();
+
+        assert_eq!(event.kind, KIND_HTTP_AUTH);
+        assert_eq!(
+            event.pubkey,
+            crate::nip01::get_public_key_hex(&secret_key).unwrap()
+        );
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn test_validate_authorization_header_rejects_tampered_signature() {
+        let secret_key = [2_u8; 32];
+        let url = "https://openagents.com/api/pylon-links/complete".to_string();
+        let payload_hash = hash_payload(br#"{"token":"link-token-002"}"#);
+        let auth =
+            HttpAuth::new(url.clone(), HttpMethod::Post).with_payload_hash(payload_hash.clone());
+        let event = create_http_auth_event(&auth, &secret_key, 1_000).unwrap();
+        let mut tampered = event.clone();
+        tampered.sig = "00".repeat(64);
+
+        let header =
+            encode_authorization_header(&serde_json::to_string(&tampered).unwrap()).unwrap();
+        let error = validate_authorization_header(
+            header.as_str(),
+            &ValidationParams::new(url, HttpMethod::Post, 1_000).with_payload_hash(payload_hash),
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, Nip98Error::EventVerification(_)));
     }
 
     #[test]
