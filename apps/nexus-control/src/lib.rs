@@ -959,6 +959,12 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
     build_api_router_with_state(build_app_state(config))
 }
 
+pub fn build_api_router_with_background_tasks(config: ServiceConfig) -> Router {
+    let state = build_app_state(config);
+    spawn_background_tasks(state.clone());
+    build_api_router_with_state(state)
+}
+
 fn build_app_state(config: ServiceConfig) -> AppState {
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
@@ -1290,8 +1296,7 @@ pub async fn run_server(config: ServiceConfig) -> Result<(), anyhow::Error> {
     let local_addr = listener.local_addr()?;
     tracing::info!("nexus-control listening on {}", local_addr);
     let state = build_app_state(config);
-    spawn_treasury_dispatch_loop(state.clone());
-    spawn_treasury_wallet_refresh_loop(state.clone());
+    spawn_background_tasks(state.clone());
     axum::serve(listener, build_router_with_state(state)).await?;
     Ok(())
 }
@@ -6537,6 +6542,11 @@ fn finish_treasury_dispatch_cycle() {
     treasury_dispatch_in_flight_flag().store(false, AtomicOrdering::Release);
 }
 
+fn spawn_background_tasks(state: AppState) {
+    spawn_treasury_dispatch_loop(state.clone());
+    spawn_treasury_wallet_refresh_loop(state);
+}
+
 fn spawn_treasury_dispatch_loop(state: AppState) {
     tokio::spawn(async move {
         let mut interval =
@@ -10570,6 +10580,43 @@ mod tests {
         assert_eq!(third_stats.nexus_wallet_balance_sats, 710);
         assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
         assert_eq!(third_stats.nexus_treasury_degraded_reason, None);
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn spawned_background_tasks_start_treasury_runtime() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.wallet_status_refresh_seconds = 1;
+        let state = build_app_state(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(|| {
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 500,
+                payments: Vec::new(),
+            })
+        })));
+
+        super::spawn_background_tasks(state.clone());
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let store = state.store.read().expect("session store read");
+        assert!(store.treasury.last_wallet_sync_at_unix_ms.is_some());
+        assert!(store.treasury.payout_loop_last_started_at_unix_ms.is_some());
+        assert!(
+            store
+                .treasury
+                .payout_loop_last_completed_at_unix_ms
+                .is_some()
+        );
+        assert_eq!(store.treasury.wallet_balance_sats, 500);
 
         set_test_wallet_snapshot_hook(None);
         Ok(())

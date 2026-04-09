@@ -183,7 +183,9 @@ fn build_router(
         .route("/metrics", get(proxy_upstream_metrics))
         .route("/healthz", get(healthz))
         .with_state(state);
-    shell_router.merge(nexus_control::build_api_router(authority_config))
+    shell_router.merge(nexus_control::build_api_router_with_background_tasks(
+        authority_config,
+    ))
 }
 
 async fn relay_root(State(state): State<AppState>, request: Request) -> Response {
