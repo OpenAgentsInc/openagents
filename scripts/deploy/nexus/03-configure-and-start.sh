@@ -2,12 +2,64 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TREASURY_ENV_VARS=(
+  NEXUS_CONTROL_TREASURY_ENABLED
+  NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW
+  NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS
+  NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE
+  NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS
+  NEXUS_CONTROL_TREASURY_STATE_PATH
+  NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH
+  NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR
+  NEXUS_CONTROL_TREASURY_WALLET_NETWORK
+)
+EXPLICIT_TREASURY_ENV_VARS=""
+for var in "${TREASURY_ENV_VARS[@]}"; do
+  if [[ ${!var+x} == x ]]; then
+    EXPLICIT_TREASURY_ENV_VARS+=" ${var}"
+  fi
+done
 source "${SCRIPT_DIR}/common.sh"
 
 require_cmd gcloud
 require_cmd jq
 
 ensure_gcloud_context
+
+treasury_env_is_explicit() {
+  case " ${EXPLICIT_TREASURY_ENV_VARS} " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+preserve_remote_treasury_env() {
+  local remote_env_path="/etc/nexus-relay/nexus-relay.env"
+  local remote_env
+  remote_env="$(
+    gcloud compute ssh "$NEXUS_VM" \
+      --tunnel-through-iap \
+      --project "$GCP_PROJECT" \
+      --zone "$GCP_ZONE" \
+      --command "sudo test -f '${remote_env_path}' && sudo cat '${remote_env_path}' || true"
+  )"
+
+  [[ -n "$remote_env" ]] || return 0
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+      NEXUS_CONTROL_TREASURY_*)
+        value="${value%$'\r'}"
+        [[ -n "$value" ]] || continue
+        if treasury_env_is_explicit "$key"; then
+          continue
+        fi
+        export "${key}=${value}"
+        log "Preserving live treasury env ${key}=${value}"
+        ;;
+    esac
+  done <<< "$remote_env"
+}
 
 DEPLOY_IMAGE="${DEPLOY_IMAGE:-${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${NEXUS_ARTIFACT_REPO}/${NEXUS_IMAGE_NAME}:latest}"
 UPSTREAM_CONFIG_SOURCE="${ROOT_DIR}/apps/nexus-relay/deploy/upstream-config.toml"
@@ -16,6 +68,8 @@ if ! instance_exists "$NEXUS_VM"; then
   die "VM does not exist: ${NEXUS_VM}. Run 02-provision-baseline.sh first."
 fi
 [[ -f "$UPSTREAM_CONFIG_SOURCE" ]] || die "Missing upstream config template: ${UPSTREAM_CONFIG_SOURCE}"
+
+preserve_remote_treasury_env
 
 if [[ "$NEXUS_VM" == "nexus-mainnet-1" ]] \
   && [[ "${NEXUS_ALLOW_ZERO_TREASURY_IN_PRODUCTION}" != "true" ]] \
