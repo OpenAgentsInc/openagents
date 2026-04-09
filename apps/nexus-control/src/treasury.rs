@@ -760,6 +760,8 @@ pub struct TreasuryState {
     pub payout_targets_by_identity: BTreeMap<String, RegisteredPayoutTarget>,
     #[serde(default)]
     pub payout_records_by_key: BTreeMap<String, TreasuryPayoutRecord>,
+    #[serde(skip)]
+    payout_key_by_payment_id: BTreeMap<String, String>,
     #[serde(default)]
     pub funding_receives_by_payment_id: BTreeMap<String, TreasuryFundingReceive>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -883,6 +885,7 @@ impl TreasuryState {
         }
         loaded.trim_policy_change_history();
         loaded.trim_retention();
+        loaded.rebuild_payment_index();
         loaded
     }
 
@@ -1949,6 +1952,7 @@ impl TreasuryState {
                         receipt_events.push(dispatched_payout_receipt(record, payment_id.as_str()));
                     }
                 }
+                self.payout_key_by_payment_id.insert(payment_id, payout_key);
             }
             TreasuryDispatchOutcome::Failed { payout_key, reason } => {
                 if let Some(record) = self.payout_records_by_key.get_mut(&payout_key) {
@@ -2004,11 +2008,11 @@ impl TreasuryState {
             if !payment.direction.eq_ignore_ascii_case("send") {
                 continue;
             }
-            let Some(record) = self
-                .payout_records_by_key
-                .values_mut()
-                .find(|record| record.payment_id.as_deref() == Some(payment.id.as_str()))
-            else {
+            let Some(payout_key) = self.payout_key_for_payment_id(payment.id.as_str()) else {
+                continue;
+            };
+            let Some(record) = self.payout_records_by_key.get_mut(&payout_key) else {
+                self.payout_key_by_payment_id.remove(payment.id.as_str());
                 continue;
             };
             record.updated_at_unix_ms = payment.timestamp.saturating_mul(1_000);
@@ -2191,6 +2195,38 @@ impl TreasuryState {
         self.funding_receives_by_payment_id
             .retain(|_, receive| receive.updated_at_unix_ms >= oldest_allowed);
         self.prune_challenges(now_unix_ms);
+        self.rebuild_payment_index();
+    }
+
+    fn rebuild_payment_index(&mut self) {
+        self.payout_key_by_payment_id = self
+            .payout_records_by_key
+            .iter()
+            .filter_map(|(payout_key, record)| {
+                record
+                    .payment_id
+                    .as_ref()
+                    .map(|payment_id| (payment_id.clone(), payout_key.clone()))
+            })
+            .collect();
+    }
+
+    fn payout_key_for_payment_id(&mut self, payment_id: &str) -> Option<String> {
+        if let Some(payout_key) = self.payout_key_by_payment_id.get(payment_id) {
+            return Some(payout_key.clone());
+        }
+
+        let payout_key = self
+            .payout_records_by_key
+            .iter()
+            .find_map(|(payout_key, record)| {
+                (record.payment_id.as_deref() == Some(payment_id)).then(|| payout_key.clone())
+            })?;
+
+        self.payout_key_by_payment_id
+            .insert(payment_id.to_string(), payout_key.clone());
+
+        Some(payout_key)
     }
 
     fn persist(&mut self) {

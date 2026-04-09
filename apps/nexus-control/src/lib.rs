@@ -557,6 +557,7 @@ struct ErrorResponse {
 struct AppState {
     config: ServiceConfig,
     store: Arc<RwLock<ControlStore>>,
+    public_stats_cache: Arc<RwLock<PublicStatsSnapshot>>,
     kernel_receipt_tx: broadcast::Sender<ReceiptProjectionEvent>,
     kernel_snapshot_tx: broadcast::Sender<SnapshotProjectionEvent>,
 }
@@ -960,10 +961,13 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
 }
 
 fn build_app_state(config: ServiceConfig) -> AppState {
+    let store = ControlStore::new(&config);
+    let initial_public_stats = build_public_stats_snapshot(&config, &store, now_unix_ms());
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
     AppState {
-        store: Arc::new(RwLock::new(ControlStore::new(&config))),
+        store: Arc::new(RwLock::new(store)),
+        public_stats_cache: Arc::new(RwLock::new(initial_public_stats)),
         config,
         kernel_receipt_tx,
         kernel_snapshot_tx,
@@ -1307,20 +1311,25 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    let mut store = state.store.write().map_err(|_| ApiError {
+    if let Ok(store) = state.store.try_read() {
+        let stats = build_public_stats_snapshot(&state.config, &store, now);
+        replace_public_stats_cache(&state, stats.clone());
+
+        return Ok(Json(stats));
+    }
+
+    if let Some(stats) = cached_public_stats_snapshot(&state) {
+        return Ok(Json(stats));
+    }
+
+    let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    store.provider_presence.prune(now);
-    let expired_events =
-        prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
-    record_expired_offer_receipts(&mut store, expired_events, now);
-    let treasury_runtime = store.treasury.public_stats(&state.config.treasury, now);
-    let stats = store.economy.snapshot(
-        &runtime_snapshot(&state.config, &store, &treasury_runtime, now),
-        now,
-    );
+    let stats = build_public_stats_snapshot(&state.config, &store, now);
+    replace_public_stats_cache(&state, stats.clone());
+
     Ok(Json(stats))
 }
 
@@ -6613,6 +6622,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
                     .treasury
                     .refresh_public_snapshot(&state.config.treasury, cycle_started_at_unix_ms);
             }
+            let _ = refresh_public_stats_cache(state, cycle_started_at_unix_ms);
             finish_treasury_dispatch_cycle();
             return;
         }
@@ -6643,6 +6653,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
     } else {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
     }
+    let _ = refresh_public_stats_cache(state, cycle_completed_at_unix_ms);
     finish_treasury_dispatch_cycle();
 }
 
@@ -6659,6 +6670,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
                     .treasury
                     .refresh_public_snapshot(&state.config.treasury, now);
             }
+            let _ = refresh_public_stats_cache(state, now);
             return;
         }
     };
@@ -6686,6 +6698,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
                 .refresh_public_snapshot(&state.config.treasury, now_unix_ms());
         }
     }
+    let _ = refresh_public_stats_cache(state, now_unix_ms());
     finish_treasury_wallet_refresh_cycle();
 }
 
@@ -6868,6 +6881,40 @@ fn runtime_snapshot(
         recent_pylons: provider_presence_metrics.recent_pylons,
         recent_pylon_diagnostics: provider_presence_metrics.recent_pylon_diagnostics,
     }
+}
+
+fn build_public_stats_snapshot(
+    config: &ServiceConfig,
+    store: &ControlStore,
+    now_unix_ms: u64,
+) -> PublicStatsSnapshot {
+    let treasury_runtime = store.treasury.public_stats(&config.treasury, now_unix_ms);
+    store.economy.snapshot(
+        &runtime_snapshot(config, store, &treasury_runtime, now_unix_ms),
+        now_unix_ms,
+    )
+}
+
+fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
+    if let Ok(mut cache) = state.public_stats_cache.write() {
+        *cache = snapshot;
+    }
+}
+
+fn cached_public_stats_snapshot(state: &AppState) -> Option<PublicStatsSnapshot> {
+    state
+        .public_stats_cache
+        .read()
+        .ok()
+        .map(|snapshot| snapshot.clone())
+}
+
+fn refresh_public_stats_cache(state: &AppState, now_unix_ms: u64) -> Option<PublicStatsSnapshot> {
+    let store = state.store.read().ok()?;
+    let snapshot = build_public_stats_snapshot(&state.config, &store, now_unix_ms);
+    drop(store);
+    replace_public_stats_cache(state, snapshot.clone());
+    Some(snapshot)
 }
 
 fn desktop_session_receipt_context(record: &DesktopSessionRecord) -> AuthorityReceiptContext {
@@ -10481,6 +10528,60 @@ mod tests {
         assert_eq!(
             stats.nexus_treasury_degraded_reason.as_deref(),
             Some("wallet_unsynced")
+        );
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_returns_cached_snapshot_while_store_writer_is_busy() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_router_with_state(state.clone());
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 500,
+                payments: Vec::new(),
+            })
+        })));
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+
+        let store_guard = state
+            .store
+            .write()
+            .expect("store write lock for cached snapshot test");
+
+        let started_at = Instant::now();
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        let elapsed = started_at.elapsed();
+        drop(store_guard);
+
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        assert!(
+            elapsed < std::time::Duration::from_millis(super::TREASURY_PUBLIC_STATS_LATENCY_SLO_MS),
+            "cached public stats request exceeded latency SLO: {elapsed:?}"
+        );
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_wallet_balance_sats, 500);
+        assert_eq!(
+            stats.nexus_wallet_runtime_status.as_deref(),
+            Some("connected")
         );
 
         set_test_wallet_snapshot_hook(None);
