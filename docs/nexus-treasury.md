@@ -58,6 +58,7 @@ Wallet/runtime envs:
 - `NEXUS_CONTROL_TREASURY_WALLET_NETWORK`
 - `NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV`
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS`
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS`
 - `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
 
@@ -91,6 +92,13 @@ sends inline. The treasury loop keeps only one live payout cycle in flight at a
 time, reconciles any missed per-identity windows after restarts, and clamps
 recovery to `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS` so a stale
 node does not try to replay an unbounded backlog blindly.
+
+`NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` controls how many live wallet
+sends can be dispatched concurrently inside one payout cycle. The default is
+`16`, clamped to `64`. This matters in production because too-low concurrency
+can hold the wallet-operation lock long enough that a nominal `20s` payout
+interval stretches into `40-60s` effective receive spacing once many Pylons are
+eligible at the same time.
 
 For the production VM, `scripts/deploy/nexus/03-configure-and-start.sh` now
 loads the persisted policy from `${NEXUS_CONTROL_TREASURY_STATE_PATH}` by
