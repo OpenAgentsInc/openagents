@@ -7282,6 +7282,7 @@ mod tests {
                 wallet_network: "regtest".to_string(),
                 wallet_api_key_env: None,
                 wallet_status_refresh_seconds: 30,
+                max_concurrent_sends: 16,
                 registration_challenge_ttl_seconds: 300,
             },
         })

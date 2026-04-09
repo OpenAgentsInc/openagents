@@ -35,6 +35,7 @@ const ENV_TREASURY_WALLET_NETWORK: &str = "NEXUS_CONTROL_TREASURY_WALLET_NETWORK
 const ENV_TREASURY_WALLET_API_KEY_ENV: &str = "NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV";
 const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
+const ENV_TREASURY_MAX_CONCURRENT_SENDS: &str = "NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS";
 const ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS";
 const ENV_TREASURY_POLICY_APPLY_ENV: &str = "NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV";
@@ -54,6 +55,7 @@ const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
+const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
 const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
 const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
 const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
@@ -71,7 +73,7 @@ const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
-const TREASURY_MAX_CONCURRENT_SENDS: usize = 4;
+const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
 
 #[derive(Debug, Clone)]
@@ -91,6 +93,7 @@ pub struct TreasuryConfig {
     pub wallet_network: String,
     pub wallet_api_key_env: Option<String>,
     pub wallet_status_refresh_seconds: u64,
+    pub max_concurrent_sends: usize,
     pub registration_challenge_ttl_seconds: u64,
 }
 
@@ -123,6 +126,12 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
         )?
         .max(1);
+        let max_concurrent_sends = parse_u64_env(
+            ENV_TREASURY_MAX_CONCURRENT_SENDS,
+            DEFAULT_TREASURY_MAX_CONCURRENT_SENDS as u64,
+        )?
+        .clamp(1, TREASURY_MAX_CONCURRENT_SENDS_LIMIT as u64)
+            as usize;
         let reconciliation_horizon_seconds = parse_u64_env(
             ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS,
             DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS,
@@ -174,6 +183,7 @@ impl TreasuryConfig {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
             wallet_status_refresh_seconds,
+            max_concurrent_sends,
             registration_challenge_ttl_seconds,
         })
     }
@@ -204,6 +214,10 @@ impl TreasuryConfig {
         TREASURY_DISPATCH_RESULT_TIMEOUT_MS
             .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
             .max(payout_interval_ms.saturating_mul(2))
+    }
+
+    pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
+        plan_count.min(self.max_concurrent_sends).max(1)
     }
 }
 
@@ -2350,7 +2364,9 @@ pub async fn dispatch_live_payouts(
         }
     };
 
-    let max_concurrent_sends = plans.len().min(TREASURY_MAX_CONCURRENT_SENDS).max(1);
+    // Keep the wallet lock held for less than one payout interval even when a
+    // large provider set becomes due in the same cycle.
+    let max_concurrent_sends = config.max_concurrent_send_operations(plans.len());
     let mut indexed_outcomes = stream::iter(plans.iter().cloned().enumerate())
         .map(|(index, plan)| {
             let wallet = wallet.clone();
@@ -4048,6 +4064,7 @@ mod tests {
             wallet_network: "regtest".to_string(),
             wallet_api_key_env: None,
             wallet_status_refresh_seconds: 30,
+            max_concurrent_sends: 16,
             registration_challenge_ttl_seconds: 300,
         }
     }
@@ -4969,6 +4986,17 @@ mod tests {
                 .and_then(|record| record.reason.as_deref()),
             Some("dispatch_outcome_timeout")
         );
+    }
+
+    #[test]
+    fn max_concurrent_send_operations_clamps_to_configured_limit() {
+        let mut config = test_treasury_config();
+        config.max_concurrent_sends = 12;
+
+        assert_eq!(config.max_concurrent_send_operations(0), 1);
+        assert_eq!(config.max_concurrent_send_operations(3), 3);
+        assert_eq!(config.max_concurrent_send_operations(12), 12);
+        assert_eq!(config.max_concurrent_send_operations(24), 12);
     }
 
     #[tokio::test]
