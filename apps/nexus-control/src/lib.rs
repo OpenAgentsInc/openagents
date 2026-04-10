@@ -12,6 +12,7 @@
 
 mod economy;
 mod kernel;
+mod training_trn_mapping;
 mod treasury;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -88,7 +89,7 @@ use openagents_provider_substrate::{
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
@@ -5558,43 +5559,12 @@ async fn publish_training_trn_signed_event(
     Ok(event)
 }
 
-fn training_trn_template(
-    event_kind: u16,
-    tags: Vec<Vec<String>>,
-    content: serde_json::Value,
-) -> Result<(EventTemplate, String), String> {
-    let fingerprint_payload = serde_json::to_vec(&json!({
-        "kind": event_kind,
-        "tags": tags,
-        "content": content,
-    }))
-    .map_err(|error| format!("training_trn_fingerprint_encode_failed:{error}"))?;
-    let fingerprint = sha256_prefixed_bytes(fingerprint_payload.as_slice());
-    let template = EventTemplate {
-        created_at: nostr::nip01::unix_now_secs()
-            .map_err(|error| format!("training_trn_timestamp_failed:{error}"))?,
-        kind: event_kind,
-        tags,
-        content: serde_json::to_string(&content)
-            .map_err(|error| format!("training_trn_content_encode_failed:{error}"))?,
-    };
-    Ok((template, fingerprint))
-}
-
-fn training_trn_network_coordinate(coordinator_pubkey: &str, network_id: &str) -> String {
-    format!("39500:{coordinator_pubkey}:{network_id}")
-}
-
-fn training_trn_window_coordinate(coordinator_pubkey: &str, window_id: &str) -> String {
-    format!("39510:{coordinator_pubkey}:{window_id}")
+fn training_trn_template(event: &nostr::TrnEvent) -> Result<(EventTemplate, String), String> {
+    training_trn_mapping::event_template_and_fingerprint(event)
 }
 
 fn training_trn_closeout_coordinate(coordinator_pubkey: &str, outcome_id: &str) -> String {
     format!("39530:{coordinator_pubkey}:{outcome_id}")
-}
-
-fn training_trn_artifact_coordinate(coordinator_pubkey: &str, artifact_id: &str) -> String {
-    format!("39520:{coordinator_pubkey}:{artifact_id}")
 }
 
 fn training_trn_network_status(source: &TrainingTrnNetworkContractSource) -> &'static str {
@@ -5868,39 +5838,13 @@ async fn publish_training_trn_state(
     };
 
     for source in network_sources {
-        let status = training_trn_network_status(&source).to_string();
-        let a_ref = training_trn_network_coordinate(
-            identity.public_key_hex.as_str(),
-            source.network_id.as_str(),
-        );
-        let mut tags = vec![
-            vec!["d".to_string(), source.network_id.clone()],
-            vec!["network".to_string(), source.network_id.clone()],
-            vec!["status".to_string(), status.clone()],
-            vec!["class".to_string(), "training_network_contract".to_string()],
-        ];
-        for training_run_id in &source.training_run_ids {
-            tags.push(vec!["run".to_string(), training_run_id.clone()]);
-        }
-        let content = json!({
-            "network_id": source.network_id,
-            "artifact_bucket_uri": source.artifact_bucket_uri,
-            "worker_count": source.worker_count,
-            "validator_count": source.validator_count,
-            "recovery_source_count": source.recovery_source_count,
-            "checkpoint_refs": source.checkpoint_refs.into_iter().collect::<Vec<_>>(),
-            "initial_window_ids": source.initial_window_ids.into_iter().collect::<Vec<_>>(),
-            "training_policy_refs": source.training_policy_refs.into_iter().collect::<Vec<_>>(),
-            "validator_policy_refs": source.validator_policy_refs.into_iter().collect::<Vec<_>>(),
-            "checkpoint_families": source.checkpoint_families.into_iter().collect::<Vec<_>>(),
-            "environment_refs": source.environment_refs.into_iter().collect::<Vec<_>>(),
-            "benchmark_package_refs": source.benchmark_package_refs.into_iter().collect::<Vec<_>>(),
-            "training_run_ids": source.training_run_ids,
-            "kernel_object_ids": source.training_run_ids,
-            "kernel_receipt_ids": source.kernel_receipt_ids,
-        });
+        let event = training_trn_mapping::network_contract_event(&source).map_err(kernel_api_error)?;
+        let status = event.status.clone();
+        let a_ref = event
+            .coordinate(identity.public_key_hex.as_str())
+            .map_err(|error| kernel_api_error(error.to_string()))?;
         let (template, fingerprint) =
-            training_trn_template(TRN_TRAINING_NETWORK_CONTRACT_KIND, tags, content)
+            training_trn_template(&nostr::TrnEvent::NetworkContract(event))
                 .map_err(kernel_api_error)?;
         let (publication_state, pointer) = publish_training_trn_pointer(
             &state,
@@ -5939,56 +5883,14 @@ async fn publish_training_trn_state(
     for source in &window_sources {
         let metadata = training_window_metadata_from_value(&source.window.metadata)
             .map_err(kernel_api_error)?;
-        let network_id = metadata.network_id.clone();
-        let training_run_id = source.window.training_run_id.clone();
-        let window_id = source.window.window_id.clone();
-        let status = source.window.status.label().to_string();
-        let a_ref = training_trn_window_coordinate(
-            identity.public_key_hex.as_str(),
-            source.window.window_id.as_str(),
-        );
-        let mut tags = vec![
-            vec!["d".to_string(), window_id.clone()],
-            vec!["network".to_string(), network_id.clone()],
-            vec!["run".to_string(), training_run_id.clone()],
-            vec!["window".to_string(), window_id.clone()],
-            vec!["status".to_string(), status.clone()],
-            vec!["class".to_string(), "training_window".to_string()],
-            vec![
-                "policy".to_string(),
-                source.window.validator_policy_ref.clone(),
-            ],
-        ];
-        if let Some(accepted_outcome_id) = source.window.accepted_outcome_id.as_ref()
-            && let Some(closeout_status) =
-                closeout_status_by_outcome_id.get(accepted_outcome_id.as_str())
-        {
-            tags.push(vec!["closeout".to_string(), closeout_status.clone()]);
-        }
-        let content = json!({
-            "network_id": network_id,
-            "artifact_bucket_uri": metadata.artifact_bucket_uri,
-            "membership_revision": metadata.membership_revision,
-            "assignment_plan_count": metadata.assignment_plans.len(),
-            "planned_at_ms": metadata.planned_at_ms,
-            "activated_at_ms": metadata.activated_at_ms,
-            "sealed_at_ms": metadata.sealed_at_ms,
-            "reconciled_at_ms": metadata.reconciled_at_ms,
-            "seal_deadline_ms": metadata.seal_deadline_ms,
-            "training_run_id": training_run_id,
-            "window_id": window_id,
-            "status": status,
-            "stage_id": source.window.stage_id,
-            "contributor_set_revision_id": source.window.contributor_set_revision_id,
-            "window_summary_digest": source.window.window_summary_digest,
-            "aggregated_delta_digest": source.window.aggregated_delta_digest,
-            "accepted_outcome_id": source.window.accepted_outcome_id,
-            "kernel_object_id": source.window.window_id,
-            "kernel_receipt_ids": vec![source.receipt_id.clone()],
-        });
-        let (template, fingerprint) =
-            training_trn_template(TRN_TRAINING_WINDOW_KIND, tags, content)
-                .map_err(kernel_api_error)?;
+        let event = training_trn_mapping::window_event(source, &closeout_status_by_outcome_id)
+            .map_err(kernel_api_error)?;
+        let status = event.status.clone();
+        let a_ref = event
+            .coordinate(identity.public_key_hex.as_str())
+            .map_err(|error| kernel_api_error(error.to_string()))?;
+        let (template, fingerprint) = training_trn_template(&nostr::TrnEvent::Window(event))
+            .map_err(kernel_api_error)?;
         let (publication_state, pointer) = publish_training_trn_pointer(
             &state,
             &pool,
@@ -6022,24 +5924,11 @@ async fn publish_training_trn_state(
             object_ref: None,
         });
 
-        let receipt_status = source.window.status.label().to_string();
-        let receipt_tags = vec![
-            vec!["network".to_string(), metadata.network_id.clone()],
-            vec!["run".to_string(), source.window.training_run_id.clone()],
-            vec!["window".to_string(), source.window.window_id.clone()],
-            vec!["status".to_string(), receipt_status.clone()],
-            vec!["class".to_string(), "coordinator_window_state".to_string()],
-        ];
-        let receipt_content = json!({
-            "network_id": metadata.network_id,
-            "training_run_id": source.window.training_run_id,
-            "window_id": source.window.window_id,
-            "status": receipt_status,
-            "kernel_object_id": source.window.window_id,
-            "kernel_receipt_ids": vec![source.receipt_id.clone()],
-        });
+        let receipt_event =
+            training_trn_mapping::window_receipt_event(source).map_err(kernel_api_error)?;
+        let receipt_status = receipt_event.status.clone();
         let (receipt_template, receipt_fingerprint) =
-            training_trn_template(TRN_TRAINING_RECEIPT_KIND, receipt_tags, receipt_content)
+            training_trn_template(&nostr::TrnEvent::Receipt(receipt_event))
                 .map_err(kernel_api_error)?;
         let (publication_state, pointer) = publish_training_trn_pointer(
             &state,
@@ -6093,34 +5982,13 @@ async fn publish_training_trn_state(
         };
         let metadata = training_window_metadata_from_value(&window_source.window.metadata)
             .map_err(kernel_api_error)?;
-        let tags = vec![
-            vec!["network".to_string(), metadata.network_id.clone()],
-            vec!["run".to_string(), contribution.training_run_id.clone()],
-            vec!["window".to_string(), contribution.window_id.clone()],
-            vec!["status".to_string(), "replay_requested".to_string()],
-            vec!["assignment".to_string(), contribution.assignment_id.clone()],
-            vec![
-                "contribution".to_string(),
-                contribution.contribution_id.clone(),
-            ],
-            vec![
-                "class".to_string(),
-                "contribution_replay_request".to_string(),
-            ],
-        ];
-        let content = json!({
-            "network_id": metadata.network_id,
-            "training_run_id": contribution.training_run_id,
-            "window_id": contribution.window_id,
-            "assignment_id": contribution.assignment_id,
-            "contribution_id": contribution.contribution_id,
-            "manifest_digest": contribution.manifest_digest,
-            "object_digest": contribution.object_digest,
-            "kernel_object_id": contribution.contribution_id,
-            "kernel_receipt_ids": vec![window_receipt_id.clone()],
-        });
+        let event = training_trn_mapping::replay_required_receipt_event(
+            &contribution,
+            metadata.network_id.as_str(),
+            window_receipt_id.as_str(),
+        );
         let (template, fingerprint) =
-            training_trn_template(TRN_TRAINING_RECEIPT_KIND, tags, content)
+            training_trn_template(&nostr::TrnEvent::Receipt(event))
                 .map_err(kernel_api_error)?;
         let (publication_state, pointer) = publish_training_trn_pointer(
             &state,
@@ -6160,46 +6028,16 @@ async fn publish_training_trn_state(
     }
 
     for source in closeout_sources {
-        let network_id = source
-            .outcome
-            .metadata
-            .get("network_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| kernel_api_error("training_closeout_network_missing".to_string()))?
-            .to_string();
-        let window_id = source
-            .outcome
-            .metadata
-            .get("window_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| kernel_api_error("training_closeout_window_missing".to_string()))?
-            .to_string();
-        let closeout_status = training_trn_closeout_status(&source);
+        let event = training_trn_mapping::closeout_event(&source).map_err(kernel_api_error)?;
+        let network_id = event.network_id.clone();
+        let window_id = event.window_id.clone();
+        let closeout_status = event.status.clone();
         let a_ref = training_trn_closeout_coordinate(
             identity.public_key_hex.as_str(),
             source.outcome.outcome_id.as_str(),
         );
-        let tags = vec![
-            vec!["d".to_string(), source.outcome.outcome_id.clone()],
-            vec!["network".to_string(), network_id.clone()],
-            vec!["run".to_string(), source.outcome.source_run_id.clone()],
-            vec!["window".to_string(), window_id.clone()],
-            vec!["status".to_string(), closeout_status.clone()],
-            vec!["class".to_string(), "training_closeout".to_string()],
-        ];
-        let content = json!({
-            "network_id": network_id,
-            "training_run_id": source.outcome.source_run_id,
-            "window_id": window_id,
-            "closeout_status": closeout_status,
-            "payout_eligible": source.outcome.metadata.get("payout_eligible").cloned(),
-            "training_summary": source.outcome.training_summary,
-            "kernel_object_id": source.outcome.outcome_id,
-            "kernel_receipt_ids": vec![source.receipt_id.clone()],
-        });
-        let (template, fingerprint) =
-            training_trn_template(TRN_TRAINING_CLOSEOUT_KIND, tags, content)
-                .map_err(kernel_api_error)?;
+        let (template, fingerprint) = training_trn_template(&nostr::TrnEvent::Closeout(event))
+            .map_err(kernel_api_error)?;
         let (publication_state, pointer) = publish_training_trn_pointer(
             &state,
             &pool,
@@ -6240,44 +6078,23 @@ async fn publish_training_trn_state(
         };
         let challenge_id = snapshot.request.context.challenge_id.clone();
         let challenge_status = canonical_challenge_status(snapshot.status);
-        let challenge_verdict = canonical_challenge_verdict(result.verdict);
         let Some(binding) = challenge_bindings.get(challenge_id.as_str()) else {
             continue;
         };
         let Some(receipt_id) = validator_receipt_ids.get(challenge_id.as_str()).cloned() else {
             continue;
         };
-        let a_ref = training_trn_artifact_coordinate(
-            identity.public_key_hex.as_str(),
-            challenge_id.as_str(),
+        let event = training_trn_mapping::validator_score_locator_event(
+            &snapshot,
+            result,
+            binding,
+            receipt_id.as_str(),
         );
-        let tags = vec![
-            vec!["d".to_string(), challenge_id.clone()],
-            vec!["network".to_string(), binding.network_id.clone()],
-            vec!["run".to_string(), binding.training_run_id.clone()],
-            vec!["window".to_string(), binding.window_id.clone()],
-            vec!["challenge".to_string(), challenge_id.clone()],
-            vec!["status".to_string(), challenge_status.label().to_string()],
-            vec!["class".to_string(), "score".to_string()],
-            vec!["x".to_string(), result.result_digest.clone()],
-            vec!["url".to_string(), result.challenge_result_ref.clone()],
-        ];
-        let content = json!({
-            "network_id": binding.network_id,
-            "training_run_id": binding.training_run_id,
-            "window_id": binding.window_id,
-            "challenge_id": challenge_id,
-            "challenge_kind": binding.challenge_kind,
-            "validator_status": challenge_status.label(),
-            "validator_verdict": challenge_verdict.label(),
-            "verified_row_count": result.verified_row_count,
-            "challenge_result_ref": result.challenge_result_ref,
-            "result_digest": result.result_digest,
-            "kernel_object_id": challenge_id,
-            "kernel_receipt_ids": vec![receipt_id.clone()],
-        });
+        let a_ref = event
+            .coordinate(identity.public_key_hex.as_str())
+            .map_err(|error| kernel_api_error(error.to_string()))?;
         let (template, fingerprint) =
-            training_trn_template(TRN_TRAINING_ARTIFACT_LOCATOR_KIND, tags, content)
+            training_trn_template(&nostr::TrnEvent::ArtifactLocator(event))
                 .map_err(kernel_api_error)?;
         let (publication_state, pointer) = publish_training_trn_pointer(
             &state,
@@ -20211,6 +20028,11 @@ mod tests {
         );
         assert!(config.training_trn_identity_path.is_file());
         let first_events = collect_training_trn_events(&mut event_rx).await;
+        let first_trn_events = first_events
+            .iter()
+            .map(nostr::TrnEvent::from_event)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         let first_kinds = first_events
             .iter()
             .map(|event| event.kind)
@@ -20218,6 +20040,20 @@ mod tests {
         assert!(first_kinds.contains(&TRN_TRAINING_NETWORK_CONTRACT_KIND));
         assert!(first_kinds.contains(&TRN_TRAINING_WINDOW_KIND));
         assert!(first_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
+        assert!(first_trn_events.iter().any(|event| {
+            matches!(
+                event,
+                nostr::TrnEvent::NetworkContract(contract)
+                    if contract.network_id == "trainnet.alpha" && contract.status == "active"
+            )
+        }));
+        assert!(first_trn_events.iter().any(|event| {
+            matches!(
+                event,
+                nostr::TrnEvent::Window(window)
+                    if window.identifier == "window.0001" && window.status == "sealed"
+            )
+        }));
 
         let claimed_one = app
             .clone()
@@ -20424,6 +20260,11 @@ mod tests {
                     && entry.object_ref.is_some())
         );
         let second_events = collect_training_trn_events(&mut event_rx).await;
+        let second_trn_events = second_events
+            .iter()
+            .map(nostr::TrnEvent::from_event)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         let second_kinds = second_events
             .iter()
             .map(|event| event.kind)
@@ -20432,6 +20273,21 @@ mod tests {
         assert!(second_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
         assert!(second_kinds.contains(&TRN_TRAINING_ARTIFACT_LOCATOR_KIND));
         assert!(second_kinds.contains(&TRN_TRAINING_CLOSEOUT_KIND));
+        assert!(second_trn_events.iter().any(|event| {
+            matches!(
+                event,
+                nostr::TrnEvent::Closeout(closeout)
+                    if closeout.window_id == "window.0001" && closeout.status == "rewarded"
+            )
+        }));
+        assert!(second_trn_events.iter().any(|event| {
+            matches!(
+                event,
+                nostr::TrnEvent::ArtifactLocator(locator)
+                    if locator.artifact_class.as_deref() == Some("score")
+                        && locator.identifier.starts_with("challenge.")
+            )
+        }));
 
         let third_report = publish_training_trn(&app, vec![relay_url.clone()]).await?;
         assert!(

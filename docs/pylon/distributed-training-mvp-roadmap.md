@@ -1570,6 +1570,21 @@ Current status:
 - Add one mapping layer from validator results into verdict events and `NIP-32`
   labels.
 
+Current status:
+- `apps/nexus-control/src/training_trn_mapping.rs` now owns the canonical
+  mapping from training network, window, receipt, closeout, and validator score
+  sources into typed TRN events before relay publication.
+- The same Nexus mapping layer now includes typed helpers for validator verdict
+  events and reputation-label projection from retained validator records, with
+  unit coverage locking those public conversions before the runtime emits them
+  live.
+- `apps/pylon/src/training_trn_mapping.rs` now owns the canonical mapping from
+  retained manifest state and artifact-transfer state into typed node-record,
+  receipt, and artifact-locator events.
+- The publish-path regression tests in both `nexus-control` and `pylon` now
+  parse the emitted relay events back through `nostr::TrnEvent` so the public
+  TRN surface is checked as typed protocol output instead of raw tag arrays.
+
 ### 5.3 NIP-32 reputation helpers
 
 - Add TRN-specific `NIP-32` namespace helpers for:

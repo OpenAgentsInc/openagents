@@ -1,5 +1,6 @@
 mod ledger;
 mod nip90_runtime;
+mod training_trn_mapping;
 mod wallet_runtime;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -8420,127 +8421,14 @@ fn build_training_node_record_template(
     state: &PylonTrainingRuntimeState,
     contexts: &[&TrainingManifestInspectionContext],
 ) -> Result<(String, String, EventTemplate)> {
-    let network_id = contexts
-        .first()
-        .map(|context| context.manifest.network_id.clone())
-        .ok_or_else(|| anyhow!("training node record requires at least one manifest"))?;
-    let status = training_node_record_status(state, contexts);
-    let roles = contexts
-        .iter()
-        .map(|context| training_manifest_role_label(context.manifest.role).to_string())
-        .chain(
-            config
-                .training
-                .role_claims
-                .iter()
-                .map(|role| role.label().to_string()),
-        )
-        .collect::<BTreeSet<_>>();
-    let mut tags = vec![
-        vec!["d".to_string(), network_id.clone()],
-        vec!["network".to_string(), network_id.clone()],
-        vec!["status".to_string(), status.to_string()],
-        vec!["class".to_string(), "psionic_train".to_string()],
-    ];
-    for role in roles {
-        tags.push(vec!["role".to_string(), role]);
-    }
-    for backend_family in contexts
-        .iter()
-        .map(|context| training_backend_family_label(context.manifest.topology.backend_family))
-        .collect::<BTreeSet<_>>()
-    {
-        tags.push(vec![
-            "cap".to_string(),
-            "backend".to_string(),
-            backend_family.to_string(),
-        ]);
-    }
-    for checkpoint_family in contexts
-        .iter()
-        .map(|context| context.manifest.checkpoint.checkpoint_family.clone())
-        .collect::<BTreeSet<_>>()
-    {
-        tags.push(vec![
-            "cap".to_string(),
-            "checkpoint_family".to_string(),
-            checkpoint_family,
-        ]);
-    }
-    for environment_ref in contexts
-        .iter()
-        .map(|context| context.manifest.environment_ref.clone())
-        .collect::<BTreeSet<_>>()
-    {
-        tags.push(vec![
-            "cap".to_string(),
-            "environment".to_string(),
-            environment_ref,
-        ]);
-    }
-    for world_size in contexts
-        .iter()
-        .map(|context| context.manifest.topology.world_size)
-        .collect::<BTreeSet<_>>()
-    {
-        tags.push(vec![
-            "cap".to_string(),
-            "world_size".to_string(),
-            world_size.to_string(),
-        ]);
-    }
-    for relay_url in dedup_training_relay_urls(
-        &contexts
-            .iter()
-            .map(|context| (*context).clone())
-            .collect::<Vec<_>>(),
-    ) {
-        tags.push(vec!["relay".to_string(), relay_url]);
-    }
-    let active_runtime = state
-        .active_runtime
-        .as_ref()
-        .filter(|runtime| {
-            contexts.iter().any(|context| {
-                context.manifest.run_id == runtime.training_run_id
-                    && context.manifest.window_id == runtime.window_id
-            })
-        })
-        .map(|runtime| {
-            json!({
-                "training_run_id": runtime.training_run_id,
-                "window_id": runtime.window_id,
-                "assignment_id": runtime.assignment_id,
-                "lease_id": runtime.lease_id,
-                "membership_revision": runtime.membership_revision,
-                "role": runtime.role.label(),
-                "desired_state": format!("{:?}", runtime.desired_state).to_ascii_lowercase(),
-                "process_state": format!("{:?}", runtime.process_state).to_ascii_lowercase(),
-                "manifest_path": runtime.manifest_path,
-            })
-        });
-    let content = json!({
-        "node_label": config.node_label,
-        "software_version": env!("CARGO_PKG_VERSION"),
-        "checkpoint_serve_url": training_checkpoint_serve_url(config),
-        "manifest_digests": contexts
-            .iter()
-            .map(|context| context.manifest.manifest_digest.clone())
-            .collect::<Vec<_>>(),
-        "active_runtime": active_runtime,
-    });
-    let a_ref = format!("39501:{}:{}", identity.public_key_hex, network_id);
-    Ok((
-        status.to_string(),
-        a_ref,
-        EventTemplate {
-            created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
-            kind: TRN_TRAINING_NODE_RECORD_KIND,
-            tags,
-            content: serde_json::to_string(&content)
-                .context("failed to serialize training node record content")?,
-        },
-    ))
+    let (status, event) = training_trn_mapping::node_record_event(config, state, contexts)?;
+    let a_ref = event
+        .coordinate(identity.public_key_hex.as_str())
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let template = event
+        .to_event_template(nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?)
+        .map_err(|error| anyhow!(error.to_string()))?;
+    Ok((status, a_ref, template))
 }
 
 fn build_training_assignment_ack_template(
@@ -8548,106 +8436,10 @@ fn build_training_assignment_ack_template(
     context: &TrainingManifestInspectionContext,
     relay_hint: &str,
 ) -> Result<EventTemplate> {
-    let mut tags = vec![
-        vec!["network".to_string(), context.manifest.network_id.clone()],
-        vec!["window".to_string(), context.manifest.window_id.clone()],
-        vec!["status".to_string(), "assignment_accepted".to_string()],
-        vec![
-            "assignment".to_string(),
-            context.manifest.assignment_id.clone(),
-        ],
-        vec![
-            "policy".to_string(),
-            context.manifest.training_policy_ref.clone(),
-        ],
-        vec![
-            "role".to_string(),
-            training_manifest_role_label(context.manifest.role).to_string(),
-        ],
-        vec![
-            "class".to_string(),
-            training_expected_artifact_class_for_role(context.manifest.role).to_string(),
-        ],
-        vec![
-            "p".to_string(),
-            identity.public_key_hex.clone(),
-            relay_hint.to_string(),
-            "subject".to_string(),
-        ],
-        vec![
-            "p".to_string(),
-            context.manifest.coordinator_pubkey.clone(),
-            relay_hint.to_string(),
-            "coordinator".to_string(),
-        ],
-        vec![
-            "checkpoint".to_string(),
-            context.manifest.checkpoint.checkpoint_ref.clone(),
-        ],
-        vec![
-            "a".to_string(),
-            training_window_coordinate(&context.manifest),
-            relay_hint.to_string(),
-            "window".to_string(),
-        ],
-    ];
-    if let Some(reason) = training_assignment_reason(context) {
-        tags.push(vec!["reason".to_string(), reason]);
-    }
-    let mut content = serde_json::Map::new();
-    content.insert(
-        "subject_pubkey".to_string(),
-        Value::String(identity.public_key_hex.clone()),
-    );
-    content.insert(
-        "assignment_deadline_unix".to_string(),
-        Value::from(context.manifest.expires_at_ms / 1000),
-    );
-    content.insert(
-        "expected_artifact_class".to_string(),
-        Value::String(training_expected_artifact_class_for_role(context.manifest.role).to_string()),
-    );
-    if let Some(dataset) = context.manifest.dataset.as_ref() {
-        content.insert(
-            "shard_digest".to_string(),
-            Value::String(dataset.slice_digest.clone()),
-        );
-    }
-    if let Some(validator) = context.manifest.validator.as_ref() {
-        content.insert(
-            "sample_pool_digest".to_string(),
-            Value::String(
-                validator
-                    .expected_manifest_digests
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| validator.challenge_id.clone()),
-            ),
-        );
-    }
-    content.insert(
-        "source_checkpoint_id".to_string(),
-        Value::String(context.manifest.checkpoint.checkpoint_ref.clone()),
-    );
-    content.insert(
-        "manifest_digest".to_string(),
-        Value::String(context.manifest.manifest_digest.clone()),
-    );
-    content.insert(
-        "membership_revision".to_string(),
-        Value::String(context.manifest.membership_revision.clone()),
-    );
-    content.insert(
-        "observability".to_string(),
-        serde_json::to_value(training_observability_context(&context.manifest))
-            .context("failed to encode assignment observability context")?,
-    );
-    Ok(EventTemplate {
-        created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
-        kind: TRN_TRAINING_RECEIPT_KIND,
-        tags,
-        content: Value::Object(content).to_string(),
-    })
+    let event = training_trn_mapping::assignment_ack_event(identity, context, relay_hint)?;
+    event
+        .to_event_template(nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?)
+        .map_err(|error| anyhow!(error.to_string()))
 }
 
 fn build_training_artifact_locator_template(
@@ -8657,44 +8449,16 @@ fn build_training_artifact_locator_template(
     artifact_class: &str,
     object: &PylonTrainingArtifactObjectTransferReport,
 ) -> Result<EventTemplate> {
-    let mut tags = vec![
-        vec!["d".to_string(), artifact_id.to_string()],
-        vec!["network".to_string(), context.manifest.network_id.clone()],
-        vec!["status".to_string(), "staged".to_string()],
-        vec!["artifact".to_string(), artifact_id.to_string()],
-        vec![
-            "manifest".to_string(),
-            context.manifest.manifest_digest.clone(),
-        ],
-        vec!["x".to_string(), object.digest.clone()],
-        vec!["url".to_string(), object.object_uri.clone()],
-        vec!["class".to_string(), artifact_class.to_string()],
-        vec!["window".to_string(), context.manifest.window_id.clone()],
-        vec![
-            "policy".to_string(),
-            context.manifest.training_policy_ref.clone(),
-        ],
-    ];
-    if let Some(checkpoint_tag) =
-        training_artifact_checkpoint_tag(&context.manifest, artifact_class)
-    {
-        tags.push(vec!["checkpoint".to_string(), checkpoint_tag]);
-    }
-    let content = json!({
-        "bundle_id": bundle_id,
-        "object_uri": object.object_uri,
-        "local_path": object.local_path,
-        "size_bytes": object.size_bytes,
-        "digest_verified": object.digest_verified,
-        "observability": training_observability_context(&context.manifest),
-    });
-    Ok(EventTemplate {
-        created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
-        kind: TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
-        tags,
-        content: serde_json::to_string(&content)
-            .context("failed to serialize training artifact locator content")?,
-    })
+    let event = training_trn_mapping::artifact_locator_event(
+        context,
+        bundle_id,
+        artifact_id,
+        artifact_class,
+        object,
+    );
+    event
+        .to_event_template(nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?)
+        .map_err(|error| anyhow!(error.to_string()))
 }
 
 fn build_training_artifact_uploaded_receipt_template(
@@ -8707,69 +8471,19 @@ fn build_training_artifact_uploaded_receipt_template(
     relay_hint: &str,
     object: &PylonTrainingArtifactObjectTransferReport,
 ) -> Result<EventTemplate> {
-    let mut tags = vec![
-        vec!["network".to_string(), context.manifest.network_id.clone()],
-        vec!["window".to_string(), context.manifest.window_id.clone()],
-        vec!["status".to_string(), "artifact_uploaded".to_string()],
-        vec![
-            "assignment".to_string(),
-            context.manifest.assignment_id.clone(),
-        ],
-        vec![
-            "policy".to_string(),
-            context.manifest.training_policy_ref.clone(),
-        ],
-        vec![
-            "role".to_string(),
-            training_manifest_role_label(context.manifest.role).to_string(),
-        ],
-        vec!["artifact".to_string(), artifact_id.to_string()],
-        vec!["class".to_string(), artifact_class.to_string()],
-        vec![
-            "p".to_string(),
-            identity.public_key_hex.clone(),
-            relay_hint.to_string(),
-            "subject".to_string(),
-        ],
-        vec![
-            "p".to_string(),
-            context.manifest.coordinator_pubkey.clone(),
-            relay_hint.to_string(),
-            "coordinator".to_string(),
-        ],
-        vec![
-            "a".to_string(),
-            locator_a_ref.to_string(),
-            relay_hint.to_string(),
-            "source".to_string(),
-        ],
-        vec![
-            "a".to_string(),
-            training_window_coordinate(&context.manifest),
-            relay_hint.to_string(),
-            "window".to_string(),
-        ],
-    ];
-    if let Some(checkpoint_tag) =
-        training_artifact_checkpoint_tag(&context.manifest, artifact_class)
-    {
-        tags.push(vec!["checkpoint".to_string(), checkpoint_tag]);
-    }
-    let content = json!({
-        "artifact_digest": object.digest,
-        "bundle_id": bundle_id,
-        "object_uri": object.object_uri,
-        "local_path": object.local_path,
-        "manifest_digest": context.manifest.manifest_digest,
-        "observability": training_observability_context(&context.manifest),
-    });
-    Ok(EventTemplate {
-        created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
-        kind: TRN_TRAINING_RECEIPT_KIND,
-        tags,
-        content: serde_json::to_string(&content)
-            .context("failed to serialize training artifact receipt content")?,
-    })
+    let event = training_trn_mapping::artifact_uploaded_receipt_event(
+        identity,
+        context,
+        bundle_id,
+        artifact_id,
+        artifact_class,
+        locator_a_ref,
+        relay_hint,
+        object,
+    );
+    event
+        .to_event_template(nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?)
+        .map_err(|error| anyhow!(error.to_string()))
 }
 
 fn training_publication_pointer_key(subject_kind: &str, subject_id: &str) -> String {
@@ -14553,7 +14267,7 @@ mod tests {
         training_download_cache_root, training_runtime_state_path, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
-    use nostr::NostrIdentity;
+    use nostr::{NostrIdentity, TrnEvent};
     use openagents_kernel_core::{
         compute::{
             ComputeAcceptedOutcome, ComputeAdapterAggregationEligibility,
@@ -14609,6 +14323,10 @@ mod tests {
                 None
             }
         })
+    }
+
+    fn parse_published_trn_event(event: &Value) -> Result<nostr::Event, Box<dyn std::error::Error>> {
+        Ok(serde_json::from_value(event.clone())?)
     }
 
     struct TestPublishRelay {
@@ -15017,14 +14735,15 @@ mod tests {
             lease_id: "lease.node01.window0001".to_string(),
             lease_sequence: 1,
             membership_revision: "members.rev1".to_string(),
-            node_pubkey: "nodepubkeyalpha".to_string(),
-            coordinator_pubkey: "coordinatorpubkeyalpha".to_string(),
+            node_pubkey: "11".repeat(32),
+            coordinator_pubkey: "22".repeat(32),
             authority_base_url: "https://nexus.openagents.com".to_string(),
             training_policy_ref: "policy.training.alpha".to_string(),
             validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
             environment_ref: PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
             environment_version: "v1".to_string(),
         };
+        let coordinator_pubkey = common.coordinator_pubkey.clone();
         let topology = PylonTrainingTopology {
             backend_family: PylonTrainingTopologyBackendFamily::Cuda,
             world_size: 1,
@@ -15047,8 +14766,8 @@ mod tests {
             credential_source: PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string(),
         };
         let trn = PylonTrainingTrn {
-            network_coordinate: "39500:trainnet.alpha".to_string(),
-            window_coordinate: "39510:window.0001".to_string(),
+            network_coordinate: format!("39500:{coordinator_pubkey}:trainnet.alpha"),
+            window_coordinate: format!("39510:{coordinator_pubkey}:window.0001"),
             relay_urls: vec!["wss://relay.damus.io".to_string()],
         };
         let dataset = PylonTrainingDatasetAssignment {
@@ -16546,6 +16265,15 @@ mod tests {
         )?;
 
         let published = relay.wait_for_event_count(14, Duration::from_secs(2));
+        let parsed_events = published
+            .iter()
+            .map(parse_published_trn_event)
+            .collect::<Result<Vec<_>, _>>()?;
+        let trn_events = parsed_events
+            .iter()
+            .map(TrnEvent::from_event)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
         ensure(
             published
                 .iter()
@@ -16563,6 +16291,40 @@ mod tests {
                     .count()
                     == 6,
             "relay publication should include one node record, seven receipts, and six artifact locators",
+        )?;
+        ensure(
+            trn_events.iter().any(|event| {
+                matches!(
+                    event,
+                    TrnEvent::NodeRecord(record)
+                        if record.network_id == "trainnet.alpha" && record.status == "online"
+                )
+            }),
+            "node-record publications should round-trip through the typed TRN mapper",
+        )?;
+        ensure(
+            trn_events.iter().any(|event| {
+                matches!(
+                    event,
+                    TrnEvent::Receipt(receipt)
+                        if receipt.status == "assignment_accepted"
+                            && receipt.assignment_id.as_deref()
+                                == Some("assign.node01.window0001")
+                )
+            }),
+            "assignment acknowledgements should publish as typed TRN receipts",
+        )?;
+        ensure(
+            trn_events.iter().any(|event| {
+                matches!(
+                    event,
+                    TrnEvent::ArtifactLocator(locator)
+                        if locator.artifact_class.as_deref() == Some("delta")
+                            && locator.manifest_digest.as_deref()
+                                == Some(manifest.manifest_digest.as_str())
+                )
+            }),
+            "artifact locator publications should round-trip through the typed TRN artifact mapping",
         )?;
         let node_record = published
             .iter()
@@ -17194,7 +16956,7 @@ mod tests {
                 label: "revoked".to_string(),
                 scheduler_effect: "hard_gate".to_string(),
                 hard_gate: true,
-                subject_pubkey: Some("nodepubkeyalpha".to_string()),
+                subject_pubkey: Some("11".repeat(32)),
                 event_ref: None,
                 address_ref: None,
                 content: Some("build revoked".to_string()),
