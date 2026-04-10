@@ -20,6 +20,17 @@ use nostr::{
 use nostr_client::{
     ConnectionState, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
 };
+use openagents_kernel_core::{
+    authority::{
+        HttpKernelAuthorityClient, KernelAuthority, RecordComputeAdapterWindowRequest,
+        RecordComputeAdapterWindowResponse,
+    },
+    compute::{
+        ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterContributionDisposition,
+        ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow, ComputeTrainingPolicy,
+        ComputeTrainingRun,
+    },
+};
 use openagents_provider_substrate::{
     ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
     ProviderAdapterTrainingSettlementTrigger, ProviderAdminConfig, ProviderAdminRuntime,
@@ -81,9 +92,12 @@ pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
 pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
 pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
 pub const ENV_PSIONIC_TRAIN_BIN: &str = "OPENAGENTS_PSIONIC_TRAIN_BIN";
+pub const ENV_TRAINING_NEXUS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_NEXUS_BEARER_TOKEN";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
+const DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS: usize = 3;
+const DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS: u64 = 50;
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const PYLON_TRAINING_ADAPTER_FAMILY: &str = "openagents.adapter.reference";
 const PYLON_TRAINING_ADAPTER_FORMAT: &str = "openagents.adapter.delta.v1";
@@ -420,6 +434,214 @@ struct PylonTrainingSupervisorProcess {
     child: tokio::process::Child,
     stdout_task: Option<JoinHandle<Result<()>>>,
     stderr_task: Option<JoinHandle<Result<()>>>,
+}
+
+pub struct PylonTrainingCoordinatorClient {
+    client: reqwest::Client,
+    kernel_authority: HttpKernelAuthorityClient,
+    base_url: String,
+    bearer_auth: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingCoordinatorAck {
+    pub idempotency_key: String,
+    pub recorded_at_ms: i64,
+    pub authority_state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingNodeAdmissionRequest {
+    pub idempotency_key: String,
+    pub requested_at_ms: i64,
+    pub node_pubkey_hex: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    #[serde(default)]
+    pub role_claims: Vec<PylonTrainingRoleClaim>,
+    #[serde(default)]
+    pub allowed_networks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_digest: Option<String>,
+    #[serde(default)]
+    pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingNodeAdmissionResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    pub admission_id: String,
+    pub admitted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingRunLeaseRequest {
+    pub idempotency_key: String,
+    pub requested_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub role: PylonTrainingRoleClaim,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub membership_revision: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingRunLeaseResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    pub lease_id: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub role: PylonTrainingRoleClaim,
+    pub issued_at_ms: i64,
+    pub expires_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ref: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingHeartbeatRequest {
+    pub idempotency_key: String,
+    pub recorded_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub desired_state: PylonTrainingSupervisorDesiredState,
+    pub process_state: PylonTrainingSupervisorProcessState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_exit_code: Option<i32>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingHeartbeatResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_heartbeat_due_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_state: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingAssignmentAckRequest {
+    pub idempotency_key: String,
+    pub acked_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingAssignmentAckResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    pub accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_state: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingDrainNoticeRequest {
+    pub idempotency_key: String,
+    pub reported_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingDrainNoticeResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    pub drain_state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingFailureNoticeRequest {
+    pub idempotency_key: String,
+    pub reported_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub failure_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_receipt_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingFailureNoticeResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    pub failure_state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingWindowProgressRequest {
+    pub idempotency_key: String,
+    pub recorded_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_id: Option<String>,
+    pub window_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_checkpoint_ref: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingWindowProgressResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    pub window_state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingCheckpointPublicationRequest {
+    pub idempotency_key: String,
+    pub published_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub checkpoint_ref: String,
+    pub artifact_locator: String,
+    pub artifact_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingCheckpointPublicationResponse {
+    pub ack: PylonTrainingCoordinatorAck,
+    pub checkpoint_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_locator: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4690,6 +4912,271 @@ fn save_training_runtime_state(
     )
     .with_context(|| format!("failed to write training runtime state {}", path.display()))?;
     Ok(())
+}
+
+impl PylonTrainingCoordinatorClient {
+    pub fn new(config: &PylonConfig) -> Result<Self> {
+        let base_url = config.training.nexus_authority_base_url.trim().to_string();
+        if base_url.is_empty() {
+            bail!("training.nexus_authority_base_url must not be empty");
+        }
+        let bearer_auth = std::env::var(ENV_TRAINING_NEXUS_BEARER_TOKEN)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .context("failed to build pylon training coordinator client")?;
+        let kernel_authority = HttpKernelAuthorityClient::with_client(
+            client.clone(),
+            base_url.clone(),
+            bearer_auth.clone(),
+        );
+        Ok(Self {
+            client,
+            kernel_authority,
+            base_url,
+            bearer_auth,
+        })
+    }
+
+    pub async fn get_training_policy(
+        &self,
+        training_policy_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeTrainingPolicy> {
+        self.kernel_authority
+            .get_compute_training_policy(training_policy_ref, version)
+            .await
+    }
+
+    pub async fn get_training_run(&self, training_run_id: &str) -> Result<ComputeTrainingRun> {
+        self.kernel_authority
+            .get_compute_training_run(training_run_id)
+            .await
+    }
+
+    pub async fn get_adapter_training_window(
+        &self,
+        window_id: &str,
+    ) -> Result<ComputeAdapterTrainingWindow> {
+        self.kernel_authority
+            .get_compute_adapter_training_window(window_id)
+            .await
+    }
+
+    pub async fn list_adapter_contribution_outcomes(
+        &self,
+        training_run_id: Option<&str>,
+        window_id: Option<&str>,
+        disposition: Option<ComputeAdapterContributionDisposition>,
+    ) -> Result<Vec<ComputeAdapterContributionOutcome>> {
+        self.kernel_authority
+            .list_compute_adapter_contribution_outcomes(training_run_id, window_id, disposition)
+            .await
+    }
+
+    pub async fn list_accepted_outcomes(
+        &self,
+        outcome_kind: Option<ComputeAcceptedOutcomeKind>,
+        environment_ref: Option<&str>,
+    ) -> Result<Vec<ComputeAcceptedOutcome>> {
+        self.kernel_authority
+            .list_compute_accepted_outcomes(outcome_kind, environment_ref)
+            .await
+    }
+
+    pub async fn record_adapter_window(
+        &self,
+        request: RecordComputeAdapterWindowRequest,
+    ) -> Result<RecordComputeAdapterWindowResponse> {
+        self.kernel_authority
+            .record_compute_adapter_window(request)
+            .await
+    }
+
+    pub async fn admit_node(
+        &self,
+        request: &PylonTrainingNodeAdmissionRequest,
+    ) -> Result<PylonTrainingNodeAdmissionResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/nodes/admission",
+            request,
+            "node admission",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    pub async fn request_run_lease(
+        &self,
+        request: &PylonTrainingRunLeaseRequest,
+    ) -> Result<PylonTrainingRunLeaseResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/leases/claim",
+            request,
+            "run lease",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    pub async fn report_heartbeat(
+        &self,
+        request: &PylonTrainingHeartbeatRequest,
+    ) -> Result<PylonTrainingHeartbeatResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/heartbeats",
+            request,
+            "heartbeat",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    pub async fn ack_assignment(
+        &self,
+        request: &PylonTrainingAssignmentAckRequest,
+    ) -> Result<PylonTrainingAssignmentAckResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/assignments/ack",
+            request,
+            "assignment ack",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    pub async fn report_drain_notice(
+        &self,
+        request: &PylonTrainingDrainNoticeRequest,
+    ) -> Result<PylonTrainingDrainNoticeResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/drains",
+            request,
+            "drain notice",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    pub async fn report_failure_notice(
+        &self,
+        request: &PylonTrainingFailureNoticeRequest,
+    ) -> Result<PylonTrainingFailureNoticeResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/failures",
+            request,
+            "failure notice",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    pub async fn report_window_progress(
+        &self,
+        request: &PylonTrainingWindowProgressRequest,
+    ) -> Result<PylonTrainingWindowProgressResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/windows/progress",
+            request,
+            "window progress",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    pub async fn publish_checkpoint(
+        &self,
+        request: &PylonTrainingCheckpointPublicationRequest,
+    ) -> Result<PylonTrainingCheckpointPublicationResponse> {
+        self.post_training_coordination_json_with_retry(
+            "/api/training/checkpoints/publish",
+            request,
+            "checkpoint publication",
+            request.idempotency_key.as_str(),
+        )
+        .await
+    }
+
+    fn training_authority_url(&self, path: &str) -> String {
+        format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+
+    async fn post_training_coordination_json_with_retry<T, R>(
+        &self,
+        path: &str,
+        payload: &T,
+        action: &str,
+        idempotency_key: &str,
+    ) -> Result<R>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = self
+                .client
+                .post(url.as_str())
+                .header("x-openagents-idempotency-key", idempotency_key)
+                .json(payload);
+            if let Some(token) = self.bearer_auth.as_deref() {
+                request = request.bearer_auth(token);
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.with_context(|| {
+                            format!("failed to decode training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to post training authority {action} to {url}")
+                    });
+                }
+            }
+        }
+        bail!("training authority {action} exhausted retry budget")
+    }
+}
+
+fn training_authority_status_is_retryable(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status.is_server_error()
+}
+
+fn training_coordination_retry_delay(attempt: usize) -> Duration {
+    let multiplier = 1_u64 << u32::try_from(attempt).unwrap_or(0);
+    Duration::from_millis(
+        DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS.saturating_mul(multiplier),
+    )
 }
 
 #[allow(dead_code)]
@@ -9590,11 +10077,16 @@ mod tests {
         PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_ENVIRONMENT_REF,
         PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
         PsionicTrainRuntimeSurface, PylonConfig, PylonTrainingActiveRuntimeState,
-        PylonTrainingFailureReceipt, PylonTrainingLeaseCacheEntry, PylonTrainingManifestCacheEntry,
-        PylonTrainingPublicationPointer, PylonTrainingRoleClaim, PylonTrainingRuntimeState,
-        PylonTrainingSupervisorCommand, PylonTrainingSupervisorDesiredState,
-        PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
-        PylonTrainingWindowCacheEntry, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+        PylonTrainingAssignmentAckRequest, PylonTrainingCheckpointPublicationRequest,
+        PylonTrainingCoordinatorClient, PylonTrainingDrainNoticeRequest,
+        PylonTrainingFailureNoticeRequest, PylonTrainingFailureReceipt,
+        PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
+        PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
+        PylonTrainingPublicationPointer, PylonTrainingRoleClaim, PylonTrainingRunLeaseRequest,
+        PylonTrainingRuntimeState, PylonTrainingSupervisorCommand,
+        PylonTrainingSupervisorDesiredState, PylonTrainingSupervisorProcessState,
+        PylonTrainingSupervisorStartRequest, PylonTrainingWindowCacheEntry,
+        PylonTrainingWindowProgressRequest, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
         WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
         add_configured_relay, apply_config_set, apply_control_command,
         build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
@@ -9621,6 +10113,14 @@ mod tests {
         training_runtime_state_path, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
+    use nostr::NostrIdentity;
+    use openagents_kernel_core::{
+        compute::{
+            ComputeEnvironmentBinding, ComputeRegistryStatus, ComputeTrainingPolicy,
+            ComputeTrainingRun, ComputeTrainingRunStatus,
+        },
+        compute_contracts,
+    };
     use openagents_provider_substrate::{
         ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
         ProviderAdapterTrainingSettlementTrigger, ProviderAppleAdapterHostingAvailability,
@@ -9747,6 +10247,77 @@ mod tests {
             role: PylonTrainingRoleClaim::Worker,
         };
         Ok((temp_dir, config, state, request))
+    }
+
+    fn training_policy_fixture() -> ComputeTrainingPolicy {
+        ComputeTrainingPolicy {
+            training_policy_ref: "policy.training.alpha".to_string(),
+            version: "v1".to_string(),
+            owner_id: "owner.alpha".to_string(),
+            created_at_ms: 1_762_491_200_000,
+            updated_at_ms: 1_762_491_200_010,
+            status: ComputeRegistryStatus::Active,
+            environment_refs: vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
+            checkpoint_family: PYLON_TRAINING_CHECKPOINT_FAMILY.to_string(),
+            validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
+            benchmark_package_refs: vec!["benchmark.alpha".to_string()],
+            stage_policy_refs: vec!["stage.alpha".to_string()],
+            metadata: json!({
+                "topology": "cuda_homogeneous_windowed_dp"
+            }),
+        }
+    }
+
+    fn training_run_fixture() -> ComputeTrainingRun {
+        ComputeTrainingRun {
+            training_run_id: "run.alpha".to_string(),
+            training_policy_ref: "policy.training.alpha".to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
+                environment_version: Some("v1".to_string()),
+                dataset_ref: Some("dataset://trainnet.alpha/shard-0001".to_string()),
+                rubric_ref: None,
+                evaluator_policy_ref: None,
+            },
+            checkpoint_binding: openagents_kernel_core::compute::ComputeCheckpointBinding {
+                checkpoint_family: PYLON_TRAINING_CHECKPOINT_FAMILY.to_string(),
+                latest_checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                recovery_posture: Some("resume_from_latest".to_string()),
+            },
+            validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
+            benchmark_package_refs: vec!["benchmark.alpha".to_string()],
+            product_id: Some("psionic.training.gradient.elastic".to_string()),
+            capacity_lot_id: Some("lot.training.alpha".to_string()),
+            instrument_id: Some("instrument.training.alpha".to_string()),
+            delivery_proof_id: Some("delivery.training.alpha".to_string()),
+            model_ref: Some("model://gemma/reference".to_string()),
+            source_ref: Some("artifact://training/input".to_string()),
+            rollout_verification_eval_run_ids: Vec::new(),
+            created_at_ms: 1_762_491_200_100,
+            started_at_ms: Some(1_762_491_200_150),
+            finalized_at_ms: None,
+            expected_step_count: Some(1024),
+            completed_step_count: Some(128),
+            status: ComputeTrainingRunStatus::Running,
+            final_checkpoint_ref: None,
+            promotion_checkpoint_ref: None,
+            summary: None,
+            metadata: json!({
+                "network_id": "trainnet.alpha"
+            }),
+        }
+    }
+
+    fn training_coordinator_fixture(
+        base_url: &str,
+    ) -> Result<(tempfile::TempDir, PylonConfig, NostrIdentity), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.nexus_authority_base_url = base_url.to_string();
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        Ok((temp_dir, config, identity))
     }
 
     fn supervisor_shell_command(script_path: &std::path::Path) -> PylonTrainingSupervisorCommand {
@@ -10427,6 +10998,348 @@ mod tests {
         ensure(
             reloaded_state == state,
             "the retained training runtime state should survive restart and preserve manifests, leases, windows, and TRN publication pointers",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_coordinator_client_reuses_kernel_training_lookup_routes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let training_policy = training_policy_fixture();
+        let training_run = training_run_fixture();
+        let training_policy_for_server = training_policy.clone();
+        let training_run_for_server = training_run.clone();
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/v1/kernel/compute/training/policies/policy.training.alpha") => {
+                    let response =
+                        compute_contracts::get_compute_training_policy_response_to_proto(
+                            &training_policy_for_server,
+                        )
+                        .expect("training policy proto response");
+                    (
+                        200,
+                        "application/json",
+                        serde_json::to_string(&response).expect("training policy json"),
+                    )
+                }
+                ("GET", "/v1/kernel/compute/training/runs/run.alpha") => {
+                    let response = compute_contracts::get_compute_training_run_response_to_proto(
+                        &training_run_for_server,
+                    )
+                    .expect("training run proto response");
+                    (
+                        200,
+                        "application/json",
+                        serde_json::to_string(&response).expect("training run json"),
+                    )
+                }
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let (_temp_dir, config, _identity) = training_coordinator_fixture(base_url.as_str())?;
+        let client = PylonTrainingCoordinatorClient::new(&config)?;
+        let loaded_policy = client
+            .get_training_policy("policy.training.alpha", None)
+            .await?;
+        let loaded_run = client.get_training_run("run.alpha").await?;
+
+        ensure(
+            loaded_policy == training_policy,
+            "training coordinator client should reuse the existing kernel training-policy lookup route",
+        )?;
+        ensure(
+            loaded_run == training_run,
+            "training coordinator client should reuse the existing kernel training-run lookup route",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_coordinator_client_retries_and_reuses_idempotent_node_mutations()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+        let idempotent_responses = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, String>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let idempotent_responses_for_server = Arc::clone(&idempotent_responses);
+        let base_url = start_mock_http_server(move |method, path, body| {
+            if method != "POST" {
+                return (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed","reason":method}).to_string(),
+                );
+            }
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            let mut counts = request_counts_for_server
+                .lock()
+                .expect("training coordinator request counts");
+            let count = counts.entry(path.clone()).or_insert(0);
+            *count += 1;
+            if path == "/api/training/heartbeats" && *count == 1 {
+                return (
+                    503,
+                    "application/json",
+                    json!({"error":"retryable","reason":"heartbeat_retry"}).to_string(),
+                );
+            }
+            let idempotency_key = payload
+                .get("idempotency_key")
+                .and_then(Value::as_str)
+                .unwrap_or("missing-idempotency-key")
+                .to_string();
+            let cache_key = format!("{path}::{idempotency_key}");
+            if let Some(existing) = idempotent_responses_for_server
+                .lock()
+                .expect("training coordinator response cache")
+                .get(&cache_key)
+                .cloned()
+            {
+                return (200, "application/json", existing);
+            }
+            let response = match path.as_str() {
+                "/api/training/nodes/admission" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_200_500_i64,
+                        "authority_state": "admitted"
+                    },
+                    "admission_id": "admission.alpha",
+                    "admitted": true,
+                    "reason": null
+                }),
+                "/api/training/leases/claim" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_200_600_i64,
+                        "authority_state": "leased"
+                    },
+                    "lease_id": "lease.node01.window0001",
+                    "training_run_id": "run.alpha",
+                    "window_id": "window.0001",
+                    "assignment_id": "assign.node01.window0001",
+                    "role": "worker",
+                    "issued_at_ms": 1_762_491_200_600_i64,
+                    "expires_at_ms": 1_762_491_260_600_i64,
+                    "manifest_digest": "sha256:manifest-alpha",
+                    "checkpoint_ref": "checkpoint://run.alpha/0001"
+                }),
+                "/api/training/heartbeats" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_200_700_i64,
+                        "authority_state": "heartbeat_recorded"
+                    },
+                    "next_heartbeat_due_at_ms": 1_762_491_205_700_i64,
+                    "lease_state": "active",
+                    "window_state": "active"
+                }),
+                "/api/training/assignments/ack" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_200_800_i64,
+                        "authority_state": "assignment_acked"
+                    },
+                    "accepted": true,
+                    "lease_state": "acked"
+                }),
+                "/api/training/drains" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_200_900_i64,
+                        "authority_state": "drain_recorded"
+                    },
+                    "drain_state": "draining"
+                }),
+                "/api/training/failures" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_201_000_i64,
+                        "authority_state": "failure_recorded"
+                    },
+                    "failure_state": "recorded"
+                }),
+                "/api/training/windows/progress" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_201_100_i64,
+                        "authority_state": "window_progress_recorded"
+                    },
+                    "window_state": payload
+                        .get("window_state")
+                        .cloned()
+                        .unwrap_or_else(|| Value::String("unknown".to_string()))
+                }),
+                "/api/training/checkpoints/publish" => json!({
+                    "ack": {
+                        "idempotency_key": idempotency_key,
+                        "recorded_at_ms": 1_762_491_201_200_i64,
+                        "authority_state": "checkpoint_published"
+                    },
+                    "checkpoint_state": "published",
+                    "artifact_locator": payload
+                        .get("artifact_locator")
+                        .cloned()
+                        .unwrap_or_else(|| Value::String("gs://missing".to_string()))
+                }),
+                _ => json!({"error":"unexpected_path","reason":path}),
+            };
+            let body = response.to_string();
+            idempotent_responses_for_server
+                .lock()
+                .expect("training coordinator response cache")
+                .insert(cache_key, body.clone());
+            (200, "application/json", body)
+        })
+        .await?;
+
+        let (_temp_dir, config, identity) = training_coordinator_fixture(base_url.as_str())?;
+        let client = PylonTrainingCoordinatorClient::new(&config)?;
+        let availability = derive_adapter_training_contributor_availability(
+            &training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true),
+            Some(&psionic_train_runtime_surface_fixture()),
+        );
+
+        let admission_request = PylonTrainingNodeAdmissionRequest {
+            idempotency_key: "idemp.training.admission.alpha".to_string(),
+            requested_at_ms: 1_762_491_200_500,
+            node_pubkey_hex: identity.public_key_hex.clone(),
+            node_label: Some(config.node_label.clone()),
+            role_claims: config.training.role_claims.clone(),
+            allowed_networks: vec!["trainnet.alpha".to_string()],
+            build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            build_digest: Some("sha256:build-alpha".to_string()),
+            contributor_availability: availability.clone(),
+        };
+        let first_admission = client.admit_node(&admission_request).await?;
+        let second_admission = client.admit_node(&admission_request).await?;
+        ensure(
+            first_admission == second_admission && first_admission.admitted,
+            "repeated node-admission calls should remain idempotent for the same request key",
+        )?;
+
+        let lease = client
+            .request_run_lease(&PylonTrainingRunLeaseRequest {
+                idempotency_key: "idemp.training.lease.alpha".to_string(),
+                requested_at_ms: 1_762_491_200_600,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                role: PylonTrainingRoleClaim::Worker,
+                requested_network_id: Some("trainnet.alpha".to_string()),
+                requested_training_run_id: Some("run.alpha".to_string()),
+                membership_revision: Some("members.rev1".to_string()),
+            })
+            .await?;
+        let heartbeat = client
+            .report_heartbeat(&PylonTrainingHeartbeatRequest {
+                idempotency_key: "idemp.training.heartbeat.alpha".to_string(),
+                recorded_at_ms: 1_762_491_200_700,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                training_run_id: lease.training_run_id.clone(),
+                window_id: lease.window_id.clone(),
+                assignment_id: lease.assignment_id.clone(),
+                lease_id: lease.lease_id.clone(),
+                desired_state: PylonTrainingSupervisorDesiredState::Running,
+                process_state: PylonTrainingSupervisorProcessState::Running,
+                last_heartbeat_at_ms: Some(1_762_491_200_700),
+                last_exit_code: None,
+            })
+            .await?;
+        let assignment_ack = client
+            .ack_assignment(&PylonTrainingAssignmentAckRequest {
+                idempotency_key: "idemp.training.assignment.alpha".to_string(),
+                acked_at_ms: 1_762_491_200_800,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                training_run_id: lease.training_run_id.clone(),
+                window_id: lease.window_id.clone(),
+                assignment_id: lease.assignment_id.clone(),
+                lease_id: lease.lease_id.clone(),
+                manifest_digest: lease.manifest_digest.clone(),
+                manifest_path: Some("/tmp/run.alpha/manifest.json".to_string()),
+            })
+            .await?;
+        let drain_notice = client
+            .report_drain_notice(&PylonTrainingDrainNoticeRequest {
+                idempotency_key: "idemp.training.drain.alpha".to_string(),
+                reported_at_ms: 1_762_491_200_900,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                training_run_id: lease.training_run_id.clone(),
+                window_id: lease.window_id.clone(),
+                assignment_id: lease.assignment_id.clone(),
+                lease_id: lease.lease_id.clone(),
+                reason: Some("operator_requested".to_string()),
+            })
+            .await?;
+        let failure_notice = client
+            .report_failure_notice(&PylonTrainingFailureNoticeRequest {
+                idempotency_key: "idemp.training.failure.alpha".to_string(),
+                reported_at_ms: 1_762_491_201_000,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                training_run_id: lease.training_run_id.clone(),
+                window_id: lease.window_id.clone(),
+                assignment_id: lease.assignment_id.clone(),
+                lease_id: lease.lease_id.clone(),
+                failure_reason: "checkpoint_missing".to_string(),
+                exit_code: Some(17),
+                failure_receipt_path: Some(
+                    "/tmp/run.alpha/supervisor/attempt-1/failure_receipt.json".to_string(),
+                ),
+            })
+            .await?;
+        let window_progress = client
+            .report_window_progress(&PylonTrainingWindowProgressRequest {
+                idempotency_key: "idemp.training.window.alpha".to_string(),
+                recorded_at_ms: 1_762_491_201_100,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                training_run_id: lease.training_run_id.clone(),
+                window_id: lease.window_id.clone(),
+                assignment_id: Some(lease.assignment_id.clone()),
+                window_state: "sealing".to_string(),
+                completed_step_count: Some(128),
+                local_checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+            })
+            .await?;
+        let checkpoint_publication = client
+            .publish_checkpoint(&PylonTrainingCheckpointPublicationRequest {
+                idempotency_key: "idemp.training.checkpoint.alpha".to_string(),
+                published_at_ms: 1_762_491_201_200,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                training_run_id: lease.training_run_id.clone(),
+                window_id: lease.window_id.clone(),
+                checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+                artifact_locator:
+                    "gs://bucket/networks/trainnet.alpha/runs/run.alpha/windows/window.0001/checkpoint.manifest.json"
+                        .to_string(),
+                artifact_digest: "sha256:checkpoint-alpha".to_string(),
+                manifest_digest: lease.manifest_digest.clone(),
+            })
+            .await?;
+
+        ensure(
+            lease.assignment_id == "assign.node01.window0001"
+                && heartbeat.next_heartbeat_due_at_ms == Some(1_762_491_205_700)
+                && assignment_ack.accepted
+                && drain_notice.drain_state == "draining"
+                && failure_notice.failure_state == "recorded"
+                && window_progress.window_state == "sealing"
+                && checkpoint_publication.checkpoint_state == "published",
+            "training coordinator client should cover lease, heartbeat, assignment, drain, failure, window, and checkpoint flows end to end",
+        )?;
+
+        let counts = request_counts
+            .lock()
+            .expect("training coordinator request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/heartbeats") == Some(&2)
+                && counts.get("/api/training/nodes/admission") == Some(&2),
+            "heartbeat should retry on a transient server error and repeated node-admission calls should hit the same idempotent route safely",
         )
     }
 
