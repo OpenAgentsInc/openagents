@@ -410,6 +410,10 @@ The manifest digest must also appear in the corresponding `kind:39511`
 assignment-published receipt through the TRN `manifest` tag so `Pylon` can
 cross-check the HTTP-delivered manifest against the signed public receipt.
 
+The frozen machine-readable implementation for this manifest now lives in:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs`
+
 ### 0.4 Artifact Backend Contract
 
 The artifact backend is frozen for the MVP:
@@ -425,19 +429,26 @@ The MVP does not support:
 The object layout is:
 
 ```text
+run root:
+gs://<bucket>/networks/<network_id>/runs/<run_id>/
+
+window root:
 gs://<bucket>/networks/<network_id>/runs/<run_id>/windows/<window_id>/
 ```
 
-Required subpaths under that prefix:
+Required run-scoped objects:
 
 - `manifests/run_manifest.json`
 - `checkpoints/latest_pointer.json`
 - `checkpoints/step-<optimizer_step>/checkpoint_manifest.json`
+
+Required window-scoped objects:
+
 - `contributions/<assignment_id>/adapter_delta_bundle.json`
 - `contributions/<assignment_id>/proof_bundle.json`
 - `validators/<challenge_id>/verdict.json`
-- `windows/<window_id>/sealed_window_bundle.json`
-- `windows/<window_id>/score_snapshot.json`
+- `sealed_window_bundle.json`
+- `score_snapshot.json`
 
 The frozen artifact-digest policy is:
 
@@ -465,6 +476,10 @@ Upload completion is also frozen:
 - `Nexus` may not publish a `kind:39520` locator with `status=stored` or
   `status=accepted` until the manifest and object digests validate against the
   scheduler's expected bundle shape
+
+The normalized GCS path helpers and bundle-completeness checks now also live in:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs`
 
 ### 0.5 Validator Policy V1
 
@@ -520,6 +535,10 @@ The frozen retry policy is:
 This means the MVP does not auto-accept on incomplete validation, and it does
 not need majority voting or stake weighting to be operationally sound.
 
+The frozen sampling and escalation helpers now also live in:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs`
+
 ### 0.6 Failure Ownership
 
 The failure boundary is now frozen as:
@@ -568,6 +587,10 @@ TRN publication failure:
 - TRN publication is retried asynchronously
 - publication failure blocks public visibility, but it does not silently
   mutate accepted kernel truth
+
+The canonical ownership map for these edge cases now also lives in:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs`
 
 ### 0.7 Reputation Policy V1
 
@@ -660,6 +683,11 @@ The frozen decay policy is:
 - `fraud` and `revoked`
   - no automatic decay
   - must be explicitly superseded by later authority action
+
+The first scheduler-facing reputation projection helpers now also live in:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs`
+- `crates/nostr/core/src/nip_trn_reputation.rs`
 
 ### 0.8 Shared Machine Artifact Versioning Policy
 
@@ -798,6 +826,10 @@ The contract is:
   repos
 
 This is the minimum observability floor, not the full metric catalog.
+
+The frozen observability field set now also lives in:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs`
 
 ## Canonical Lifecycle State Tables
 

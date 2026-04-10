@@ -19,6 +19,7 @@ pub mod data_contracts;
 pub mod ids;
 pub mod labor;
 pub mod liquidity;
+pub mod pylon_training;
 pub mod receipts;
 pub mod risk;
 pub mod snapshots;
