@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 const LEDGER_SCHEMA_VERSION: u32 = 1;
+const PROCESSED_PROVIDER_REQUESTS_SCHEMA_VERSION: u32 = 1;
 const MAX_RELAY_ACTIVITY: usize = 256;
 const MAX_ANNOUNCEMENTS: usize = 32;
 const MAX_JOBS: usize = 256;
@@ -11,6 +12,7 @@ const MAX_INVOICES: usize = 128;
 const MAX_PAYMENTS: usize = 256;
 const MAX_PAYOUTS: usize = 128;
 const MAX_SETTLEMENTS: usize = 256;
+const MAX_PROCESSED_PROVIDER_REQUESTS: usize = 16_384;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonLedgerSummary {
@@ -21,6 +23,60 @@ pub struct PylonLedgerSummary {
     pub invoice_count: usize,
     pub payment_count: usize,
     pub settlement_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonProcessedProviderRequestRecord {
+    pub request_event_id: String,
+    pub status: String,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonProcessedProviderRequestStore {
+    pub schema_version: u32,
+    #[serde(default)]
+    pub requests: Vec<PylonProcessedProviderRequestRecord>,
+}
+
+impl Default for PylonProcessedProviderRequestStore {
+    fn default() -> Self {
+        Self {
+            schema_version: PROCESSED_PROVIDER_REQUESTS_SCHEMA_VERSION,
+            requests: Vec::new(),
+        }
+    }
+}
+
+impl PylonProcessedProviderRequestStore {
+    pub fn remember(&mut self, request_event_id: impl Into<String>, status: impl Into<String>) {
+        let request_event_id = request_event_id.into();
+        let status = status.into();
+        let updated_at_ms = now_epoch_ms();
+        if let Some(existing) = self
+            .requests
+            .iter_mut()
+            .find(|existing| existing.request_event_id == request_event_id)
+        {
+            existing.status = status;
+            existing.updated_at_ms = updated_at_ms;
+            return;
+        }
+        self.requests.push(PylonProcessedProviderRequestRecord {
+            request_event_id,
+            status,
+            updated_at_ms,
+        });
+        self.requests
+            .sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
+        trim_tail(&mut self.requests, MAX_PROCESSED_PROVIDER_REQUESTS);
+    }
+
+    pub fn contains(&self, request_event_id: &str) -> bool {
+        self.requests
+            .iter()
+            .any(|existing| existing.request_event_id == request_event_id)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -414,6 +470,13 @@ pub fn default_ledger_path(config_path: &Path) -> PathBuf {
         .join("ledger.json")
 }
 
+pub fn default_processed_provider_requests_path(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("processed-provider-requests.json")
+}
+
 pub fn ensure_local_ledger(config_path: &Path) -> Result<PathBuf> {
     let path = default_ledger_path(config_path);
     if path.exists() {
@@ -439,6 +502,32 @@ pub fn load_ledger(config_path: &Path) -> Result<PylonLedger> {
     Ok(ledger)
 }
 
+pub fn load_processed_provider_request_store(
+    config_path: &Path,
+) -> Result<PylonProcessedProviderRequestStore> {
+    let path = default_processed_provider_requests_path(config_path);
+    if !path.exists() {
+        return Ok(PylonProcessedProviderRequestStore::default());
+    }
+    let payload = std::fs::read_to_string(path.as_path()).with_context(|| {
+        format!(
+            "failed to read processed provider request store {}",
+            path.display()
+        )
+    })?;
+    let mut store: PylonProcessedProviderRequestStore =
+        serde_json::from_str(payload.as_str()).with_context(|| {
+            format!(
+                "failed to parse processed provider request store {}",
+                path.display()
+            )
+        })?;
+    if store.schema_version == 0 {
+        store.schema_version = PROCESSED_PROVIDER_REQUESTS_SCHEMA_VERSION;
+    }
+    Ok(store)
+}
+
 pub fn save_ledger(config_path: &Path, ledger: &PylonLedger) -> Result<()> {
     let path = default_ledger_path(config_path);
     if let Some(parent) = path.parent() {
@@ -450,6 +539,32 @@ pub fn save_ledger(config_path: &Path, ledger: &PylonLedger) -> Result<()> {
         format!("{}\n", serde_json::to_string_pretty(ledger)?),
     )
     .with_context(|| format!("failed to write pylon ledger {}", path.display()))?;
+    Ok(())
+}
+
+pub fn save_processed_provider_request_store(
+    config_path: &Path,
+    store: &PylonProcessedProviderRequestStore,
+) -> Result<()> {
+    let path = default_processed_provider_requests_path(config_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create processed provider request store dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    std::fs::write(
+        path.as_path(),
+        format!("{}\n", serde_json::to_string_pretty(store)?),
+    )
+    .with_context(|| {
+        format!(
+            "failed to write processed provider request store {}",
+            path.display()
+        )
+    })?;
     Ok(())
 }
 
@@ -465,6 +580,16 @@ where
     let mut ledger = load_ledger(config_path)?;
     let value = mutator(&mut ledger)?;
     save_ledger(config_path, &ledger)?;
+    Ok(value)
+}
+
+pub fn mutate_processed_provider_request_store<T, F>(config_path: &Path, mutator: F) -> Result<T>
+where
+    F: FnOnce(&mut PylonProcessedProviderRequestStore) -> Result<T>,
+{
+    let mut store = load_processed_provider_request_store(config_path)?;
+    let value = mutator(&mut store)?;
+    save_processed_provider_request_store(config_path, &store)?;
     Ok(value)
 }
 
@@ -484,9 +609,12 @@ fn now_epoch_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, PylonRelayState,
-        PylonSettlementRecord, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
-        ensure_local_ledger, load_ledger, load_ledger_summary, mutate_ledger,
+        PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity,
+        PylonRelayState, PylonSettlementRecord, PylonWalletInvoiceRecord,
+        PylonWalletPaymentRecord, default_processed_provider_requests_path,
+        ensure_local_ledger, load_ledger, load_ledger_summary,
+        load_processed_provider_request_store, mutate_ledger,
+        mutate_processed_provider_request_store,
     };
     use tempfile::tempdir;
 
@@ -603,5 +731,37 @@ mod tests {
         assert_eq!(summary.invoice_count, 1);
         assert_eq!(summary.payment_count, 1);
         assert_eq!(summary.settlement_count, 1);
+    }
+
+    #[test]
+    fn processed_provider_request_store_persists_and_dedupes() {
+        let dir = tempdir().expect("tempdir");
+        let config_path = dir.path().join("config.json");
+        mutate_processed_provider_request_store(config_path.as_path(), |store| {
+            store.remember("request-001", "completed_local");
+            store.remember("request-002", "failed_local");
+            store.remember("request-001", "settled");
+            Ok(())
+        })
+        .expect("mutate processed provider request store");
+
+        let path = default_processed_provider_requests_path(config_path.as_path());
+        assert!(path.exists());
+
+        let store =
+            load_processed_provider_request_store(config_path.as_path()).expect("load store");
+        assert_eq!(store.schema_version, 1);
+        assert_eq!(store.requests.len(), 2);
+        assert!(store.contains("request-001"));
+        assert!(store.contains("request-002"));
+        assert_eq!(
+            store
+                .requests
+                .iter()
+                .find(|entry| entry.request_event_id == "request-001")
+                .expect("request-001")
+                .status,
+            "settled"
+        );
     }
 }

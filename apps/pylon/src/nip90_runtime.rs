@@ -525,11 +525,13 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
     let identity = ensure_identity(config.identity_path.as_path())?;
     let signer_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
     let mut publish_pool: Option<RelayPool> = None;
+    reconcile_processed_provider_requests(config_path)?;
     let known_jobs = load_ledger(config_path)?
         .jobs
         .into_iter()
         .map(|job| (job.id.clone(), job))
         .collect::<BTreeMap<_, _>>();
+    let processed_request_store = crate::ledger::load_processed_provider_request_store(config_path)?;
     let mut wallet_payments: Option<Vec<PylonWalletPaymentRecord>> = None;
     let mut report_entries = Vec::new();
     let mut accepted_count = 0usize;
@@ -545,6 +547,7 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
         if existing_job
             .as_ref()
             .is_some_and(|job| provider_job_blocks_reintake(job.status.as_str()))
+            || processed_request_store.contains(request_event_id.as_str())
         {
             report_entries.push(ProviderRunEntry {
                 request_event_id: observed.entry.request_event_id.clone(),
@@ -2549,6 +2552,54 @@ fn provider_job_blocks_reintake(status: &str) -> bool {
     )
 }
 
+fn provider_job_is_terminal_for_reintake_store(status: &str) -> bool {
+    matches!(
+        status,
+        "completed_local"
+            | "failed_local"
+            | "settled"
+            | "result_published"
+            | "publish_failed"
+            | "invoice_failed"
+    )
+}
+
+fn reconcile_processed_provider_requests(config_path: &Path) -> Result<()> {
+    let ledger = load_ledger(config_path)?;
+    crate::ledger::mutate_processed_provider_request_store(
+        config_path,
+        |store: &mut crate::ledger::PylonProcessedProviderRequestStore| {
+        for job in &ledger.jobs {
+            if job.direction == "provider"
+                && provider_job_is_terminal_for_reintake_store(job.status.as_str())
+            {
+                store.remember(job.id.clone(), job.status.clone());
+            }
+        }
+        Ok(())
+    },
+    )?;
+    Ok(())
+}
+
+fn remember_processed_provider_request(
+    config_path: &Path,
+    request_event_id: &str,
+    status: &str,
+) -> Result<()> {
+    if !provider_job_is_terminal_for_reintake_store(status) {
+        return Ok(());
+    }
+    crate::ledger::mutate_processed_provider_request_store(
+        config_path,
+        |store: &mut crate::ledger::PylonProcessedProviderRequestStore| {
+            store.remember(request_event_id.to_string(), status.to_string());
+            Ok(())
+        },
+    )?;
+    Ok(())
+}
+
 fn persist_provider_run_state(
     config_path: &Path,
     provider_pubkey: &str,
@@ -2681,6 +2732,7 @@ fn persist_provider_run_state(
         }
         Ok(())
     })?;
+    remember_processed_provider_request(config_path, entry.request_event_id.as_str(), status)?;
     Ok(())
 }
 
@@ -2811,6 +2863,9 @@ fn record_provider_settlement_outcome(
         });
         Ok(())
     })?;
+    if status.eq_ignore_ascii_case("settled") {
+        remember_processed_provider_request(config_path, entry.request_event_id.as_str(), "settled")?;
+    }
     Ok(settlement_id)
 }
 

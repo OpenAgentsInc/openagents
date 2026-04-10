@@ -415,6 +415,15 @@ The current retained execution scope is narrow and honest. Pylon subscribes to r
 
 When that invoice is later marked paid in the local wallet, the next `provider run` picks the same job back up, records the settled payment, executes the work, publishes the retained result, and persists the settlement outcome. The retained `jobs`, `earnings`, `receipts`, and `activity` views now project that local NIP-90 provider settlement state directly from the Pylon ledger instead of forcing the operator to reconstruct it from relay logs.
 
+Repeated `provider run` passes now also keep durable replay protection in
+`processed-provider-requests.json` beside the rolling `ledger.json` window.
+That means old retained request IDs stay blocked even after they roll out of the
+recent `jobs` list, and intake subscriptions no longer fail the whole pass just
+because one configured relay in the pool is disconnected. The retained rule is:
+if at least one relay connects and subscribes, Pylon keeps the pass alive and
+dedupes against the durable processed-request set instead of only the bounded
+recent-job window.
+
 If the local wallet cannot create an invoice, the provider path fails honestly instead of pretending the request is payable.
 
 The retained wallet controls now also exist in both places:
