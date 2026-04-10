@@ -956,7 +956,10 @@ pub fn build_router(config: ServiceConfig) -> Router {
 }
 
 pub fn build_api_router(config: ServiceConfig) -> Router {
-    build_api_router_with_state(build_app_state(config))
+    let state = build_app_state(config);
+    spawn_treasury_dispatch_loop(state.clone());
+    spawn_treasury_wallet_refresh_loop(state.clone());
+    build_api_router_with_state(state)
 }
 
 fn build_app_state(config: ServiceConfig) -> AppState {
@@ -10578,6 +10581,47 @@ mod tests {
             elapsed < std::time::Duration::from_millis(super::TREASURY_PUBLIC_STATS_LATENCY_SLO_MS),
             "cached public stats request exceeded latency SLO: {elapsed:?}"
         );
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_wallet_balance_sats, 500);
+        assert_eq!(
+            stats.nexus_wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn build_api_router_starts_treasury_runtime_for_embedded_hosts() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.wallet_status_refresh_seconds = 1;
+        let app = super::build_api_router(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(|| {
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 500,
+                payments: Vec::new(),
+            })
+        })));
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_wallet_balance_sats, 500);
         assert_eq!(
