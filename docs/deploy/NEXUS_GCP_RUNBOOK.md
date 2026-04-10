@@ -65,6 +65,14 @@ scripts/deploy/nexus/02-provision-baseline.sh
 scripts/deploy/nexus/03-configure-and-start.sh
 ```
 
+`03-configure-and-start.sh` now also installs the treasury continuity watchdog
+by default. If you need to install or refresh only that watchdog without
+redeploying the Nexus container:
+
+```bash
+scripts/deploy/nexus/10-install-treasury-watchdog.sh
+```
+
 4. Verify health and emit a deploy receipt.
 
 ```bash
@@ -128,6 +136,9 @@ Treasury deployment note:
   `NEXUS_CONTROL_TREASURY_*` values from `/etc/nexus-relay/nexus-relay.env`
   unless you explicitly export replacements before redeploying
 - set payout policy via env before running `03-configure-and-start.sh`, for example:
+  also set the runtime wallet refresh and send-concurrency envs explicitly in
+  production so payout cadence does not degrade as the eligible target count
+  grows:
 
 ```bash
 export NEXUS_CONTROL_TREASURY_ENABLED=true
@@ -135,6 +146,33 @@ export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=2
 export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=20
 export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
 export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
+export NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30
+export NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=16
+```
+
+Why the extra two envs matter:
+
+- `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30` prevents the public
+  wallet runtime from flipping into timeout/error when Spark sync takes longer
+  than the old implicit `6000ms` budget
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=16` prevents the live treasury
+  dispatch loop from batching too few sends under one wallet-operation lock,
+  which had stretched per-pylon credits from the configured `20s` interval to
+  roughly `40-60s` once the eligible target set grew into the twenties
+- `scripts/deploy/nexus/10-install-treasury-watchdog.sh` installs a systemd
+  timer on the VM that runs every 5 minutes, checks the local treasury status
+  plus recent completed-send journal entries, and restarts `nexus-relay` only
+  when payouts have actually gone idle or the wallet/runtime has entered a hard
+  error state
+
+Watchdog env overrides:
+
+```bash
+export NEXUS_TREASURY_WATCHDOG_ENABLED=true
+export NEXUS_TREASURY_WATCHDOG_INTERVAL_SECONDS=300
+export NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS=300
+export NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS=300
+export NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR=12
 ```
 
 If treasury status ever collapses to `0 sats` unexpectedly after a backend or
