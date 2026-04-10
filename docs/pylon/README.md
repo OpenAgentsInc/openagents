@@ -176,6 +176,25 @@ That projection is intentionally narrow. `Pylon` does not yet launch or
 supervise `psionic-train`, and it does not advertise broader mixed-backend or
 permissionless training claims.
 
+The retained config now also carries one explicit `training` block for the
+future admitted-node lane. That block freezes:
+
+- allowed training networks
+- role claims
+- local training run root
+- artifact credential-source names
+- checkpoint serve address
+- training authority URL
+- training relay list
+- validator enablement
+- disk quota and retention limits
+
+`Pylon` also now keeps one separate retained runtime-state file under the
+training run root at `state/runtime-state.json`. That store is intentionally
+separate from the inference ledger and is where cached training manifests,
+lease state, window state, active runtime state, and latest published TRN ids
+belong as the training shell grows.
+
 ## Prerequisites
 
 Minimum local requirements:

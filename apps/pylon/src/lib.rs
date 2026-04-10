@@ -103,6 +103,51 @@ struct PsionicTrainRuntimeSurface {
     repo_root: PathBuf,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingRoleClaim {
+    Worker,
+    Validator,
+    RecoverySource,
+}
+
+impl PylonTrainingRoleClaim {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Worker => "worker",
+            Self::Validator => "validator",
+            Self::RecoverySource => "recovery_source",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingConfig {
+    #[serde(default)]
+    pub allowed_networks: Vec<String>,
+    #[serde(default = "default_training_role_claims")]
+    pub role_claims: Vec<PylonTrainingRoleClaim>,
+    pub run_root: PathBuf,
+    #[serde(default = "default_training_artifact_credential_source_names")]
+    pub artifact_credential_source_names: Vec<String>,
+    pub checkpoint_serve_addr: String,
+    pub nexus_authority_base_url: String,
+    #[serde(default = "default_relay_urls")]
+    pub relay_urls: Vec<String>,
+    #[serde(default)]
+    pub validator_enabled: bool,
+    #[serde(default = "default_training_disk_quota_gb")]
+    pub disk_quota_gb: u64,
+    #[serde(default = "default_training_retention_limit_gb")]
+    pub retention_limit_gb: u64,
+}
+
+impl Default for PylonTrainingConfig {
+    fn default() -> Self {
+        default_training_config(default_home_dir().as_path())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
     pub schema_version: u32,
@@ -134,6 +179,8 @@ pub struct PylonConfig {
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
+    #[serde(default)]
+    pub training: PylonTrainingConfig,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -179,6 +226,7 @@ struct PylonPublicConfig {
     local_gemma_preferred_model: Option<String>,
     inventory_controls: PylonPublicInventoryControls,
     declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
+    training: PylonTrainingConfig,
 }
 
 impl From<&PylonConfig> for PylonPublicConfig {
@@ -202,8 +250,90 @@ impl From<&PylonConfig> for PylonPublicConfig {
             local_gemma_preferred_model: value.local_gemma_preferred_model.clone(),
             inventory_controls: PylonPublicInventoryControls::from(&value.inventory_controls),
             declared_sandbox_profiles: value.declared_sandbox_profiles.clone(),
+            training: value.training.clone(),
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingRuntimeState {
+    #[serde(default = "default_training_runtime_state_schema_version")]
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_runtime: Option<PylonTrainingActiveRuntimeState>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub manifest_cache: BTreeMap<String, PylonTrainingManifestCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lease_cache: BTreeMap<String, PylonTrainingLeaseCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub window_cache: BTreeMap<String, PylonTrainingWindowCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub publication_pointers: BTreeMap<String, PylonTrainingPublicationPointer>,
+}
+
+impl Default for PylonTrainingRuntimeState {
+    fn default() -> Self {
+        Self {
+            schema_version: default_training_runtime_state_schema_version(),
+            active_runtime: None,
+            manifest_cache: BTreeMap::new(),
+            lease_cache: BTreeMap::new(),
+            window_cache: BTreeMap::new(),
+            publication_pointers: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingActiveRuntimeState {
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub membership_revision: String,
+    pub role: PylonTrainingRoleClaim,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingManifestCacheEntry {
+    pub manifest_id: String,
+    pub manifest_digest: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub role: PylonTrainingRoleClaim,
+    pub cached_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingLeaseCacheEntry {
+    pub lease_id: String,
+    pub assignment_id: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub membership_revision: String,
+    pub state: String,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingWindowCacheEntry {
+    pub window_id: String,
+    pub training_run_id: String,
+    pub state: String,
+    pub manifest_digest: Option<String>,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingPublicationPointer {
+    pub subject_kind: String,
+    pub subject_id: String,
+    pub event_id: String,
+    pub a_ref: Option<String>,
+    pub published_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4277,15 +4407,18 @@ fn parse_provider_scan_flags(
 }
 
 fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
-    if path.exists() {
-        return load_config(path);
-    }
-    let base_dir = path
-        .parent()
-        .map(PathBuf::from)
-        .unwrap_or_else(default_home_dir);
-    let config = default_config(base_dir.as_path());
-    save_config(path, &config)?;
+    let config = if path.exists() {
+        load_config(path)?
+    } else {
+        let base_dir = path
+            .parent()
+            .map(PathBuf::from)
+            .unwrap_or_else(default_home_dir);
+        let config = default_config(base_dir.as_path());
+        save_config(path, &config)?;
+        config
+    };
+    let _ = load_or_create_training_runtime_state(&config)?;
     Ok(config)
 }
 
@@ -4309,8 +4442,10 @@ fn load_config(path: &Path) -> Result<PylonConfig> {
         .with_context(|| format!("failed to parse pylon config {}", path.display()))?;
     normalize_legacy_config_value(&mut parsed);
     merge_json_value(&mut merged, &parsed);
-    serde_json::from_value(merged)
-        .with_context(|| format!("failed to hydrate pylon config {}", path.display()))
+    let config = serde_json::from_value(merged)
+        .with_context(|| format!("failed to hydrate pylon config {}", path.display()))?;
+    validate_pylon_config(&config)?;
+    Ok(config)
 }
 
 fn load_config_required(path: &Path) -> Result<PylonConfig> {
@@ -4321,6 +4456,7 @@ fn load_config_required(path: &Path) -> Result<PylonConfig> {
 }
 
 fn save_config(path: &Path, config: &PylonConfig) -> Result<()> {
+    validate_pylon_config(config)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create pylon config dir {}", parent.display()))?;
@@ -4334,6 +4470,140 @@ fn render_public_config_json(config: &PylonConfig) -> Result<String> {
     Ok(serde_json::to_string_pretty(&PylonPublicConfig::from(
         config,
     ))?)
+}
+
+fn validate_pylon_config(config: &PylonConfig) -> Result<()> {
+    validate_pylon_training_config(&config.training)
+}
+
+fn validate_pylon_training_config(config: &PylonTrainingConfig) -> Result<()> {
+    validate_nonempty_string_list(
+        config.allowed_networks.as_slice(),
+        "training.allowed_networks",
+        false,
+    )?;
+    validate_nonempty_string_list(
+        config.artifact_credential_source_names.as_slice(),
+        "training.artifact_credential_source_names",
+        true,
+    )?;
+    validate_nonempty_string_list(config.relay_urls.as_slice(), "training.relay_urls", true)?;
+    if config.role_claims.is_empty() {
+        bail!("training.role_claims must contain at least one role");
+    }
+    if config
+        .role_claims
+        .iter()
+        .map(|claim| claim.label())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+        != config.role_claims.len()
+    {
+        bail!("training.role_claims must not contain duplicates");
+    }
+    if config.run_root.as_os_str().is_empty() {
+        bail!("training.run_root must not be empty");
+    }
+    if config.checkpoint_serve_addr.trim().is_empty() {
+        bail!("training.checkpoint_serve_addr must not be empty");
+    }
+    let _ = config
+        .checkpoint_serve_addr
+        .parse::<std::net::SocketAddr>()
+        .with_context(|| {
+            format!(
+                "invalid training.checkpoint_serve_addr: {}",
+                config.checkpoint_serve_addr
+            )
+        })?;
+    if config.nexus_authority_base_url.trim().is_empty() {
+        bail!("training.nexus_authority_base_url must not be empty");
+    }
+    if config.disk_quota_gb == 0 {
+        bail!("training.disk_quota_gb must stay positive");
+    }
+    if config.retention_limit_gb == 0 {
+        bail!("training.retention_limit_gb must stay positive");
+    }
+    if config.retention_limit_gb > config.disk_quota_gb {
+        bail!("training.retention_limit_gb must not exceed training.disk_quota_gb");
+    }
+    Ok(())
+}
+
+fn validate_nonempty_string_list(
+    values: &[String],
+    field: &str,
+    require_nonempty: bool,
+) -> Result<()> {
+    if require_nonempty && values.is_empty() {
+        bail!("{field} must contain at least one entry");
+    }
+    if values.iter().any(|value| value.trim().is_empty()) {
+        bail!("{field} must not contain empty entries");
+    }
+    Ok(())
+}
+
+fn training_runtime_state_path(config: &PylonConfig) -> PathBuf {
+    config
+        .training
+        .run_root
+        .join("state")
+        .join("runtime-state.json")
+}
+
+fn load_or_create_training_runtime_state(
+    config: &PylonConfig,
+) -> Result<PylonTrainingRuntimeState> {
+    let path = training_runtime_state_path(config);
+    if path.exists() {
+        return load_training_runtime_state(path.as_path());
+    }
+    let state = PylonTrainingRuntimeState::default();
+    save_training_runtime_state(config, &state)?;
+    Ok(state)
+}
+
+fn load_training_runtime_state(path: &Path) -> Result<PylonTrainingRuntimeState> {
+    let payload = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read training runtime state {}", path.display()))?;
+    let mut merged = serde_json::to_value(PylonTrainingRuntimeState::default())
+        .context("failed to serialize default training runtime state")?;
+    let parsed = serde_json::from_str::<Value>(payload.as_str())
+        .with_context(|| format!("failed to parse training runtime state {}", path.display()))?;
+    merge_json_value(&mut merged, &parsed);
+    serde_json::from_value(merged).with_context(|| {
+        format!(
+            "failed to hydrate training runtime state {}",
+            path.display()
+        )
+    })
+}
+
+fn save_training_runtime_state(
+    config: &PylonConfig,
+    state: &PylonTrainingRuntimeState,
+) -> Result<()> {
+    let path = training_runtime_state_path(config);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create training runtime state dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    std::fs::write(
+        path.as_path(),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(state)
+                .context("failed to serialize training runtime state")?
+        ),
+    )
+    .with_context(|| format!("failed to write training runtime state {}", path.display()))?;
+    Ok(())
 }
 
 fn merge_json_value(target: &mut Value, source: &Value) {
@@ -4428,6 +4698,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         apple_fm_base_url: None,
         inventory_controls,
         declared_sandbox_profiles: Vec::new(),
+        training: default_training_config(base_dir),
     }
 }
 
@@ -4441,6 +4712,45 @@ fn default_relay_urls() -> Vec<String> {
 
 fn default_nexus_control_base_url() -> String {
     "https://nexus.openagents.com".to_string()
+}
+
+fn default_training_config(base_dir: &Path) -> PylonTrainingConfig {
+    PylonTrainingConfig {
+        allowed_networks: Vec::new(),
+        role_claims: default_training_role_claims(),
+        run_root: base_dir.join("training"),
+        artifact_credential_source_names: default_training_artifact_credential_source_names(),
+        checkpoint_serve_addr: default_training_checkpoint_serve_addr(),
+        nexus_authority_base_url: default_nexus_control_base_url(),
+        relay_urls: default_relay_urls(),
+        validator_enabled: false,
+        disk_quota_gb: default_training_disk_quota_gb(),
+        retention_limit_gb: default_training_retention_limit_gb(),
+    }
+}
+
+fn default_training_role_claims() -> Vec<PylonTrainingRoleClaim> {
+    vec![PylonTrainingRoleClaim::Worker]
+}
+
+fn default_training_artifact_credential_source_names() -> Vec<String> {
+    vec!["google_application_default_credentials".to_string()]
+}
+
+fn default_training_checkpoint_serve_addr() -> String {
+    "127.0.0.1:9570".to_string()
+}
+
+const fn default_training_disk_quota_gb() -> u64 {
+    512
+}
+
+const fn default_training_retention_limit_gb() -> u64 {
+    256
+}
+
+const fn default_training_runtime_state_schema_version() -> u32 {
+    1
 }
 
 const fn default_relay_connect_timeout_seconds() -> u64 {
@@ -8547,48 +8857,49 @@ async fn detect_local_gemma(
 }
 
 fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<()> {
+    let mut next = config.clone();
     match key {
-        "node_label" => config.node_label = value.to_string(),
+        "node_label" => next.node_label = value.to_string(),
         "payout_destination" => {
-            config.payout_destination = if value.trim().is_empty() {
+            next.payout_destination = if value.trim().is_empty() {
                 None
             } else {
                 Some(value.to_string())
             };
         }
-        "admin_listen_addr" => config.admin_listen_addr = value.to_string(),
+        "admin_listen_addr" => next.admin_listen_addr = value.to_string(),
         "nexus_control_base_url" => {
             let trimmed = value.trim();
             if trimmed.is_empty() {
                 bail!("nexus_control_base_url must not be empty");
             }
-            config.nexus_control_base_url = trimmed.to_string();
+            next.nexus_control_base_url = trimmed.to_string();
         }
         "relay_connect_timeout_seconds" => {
-            config.relay_connect_timeout_seconds = value
+            next.relay_connect_timeout_seconds = value
                 .parse::<u64>()
                 .with_context(|| format!("invalid relay_connect_timeout_seconds: {value}"))?;
         }
         "relay_auth_enabled" => {
-            config.relay_auth_enabled = parse_bool(value)?;
+            next.relay_auth_enabled = parse_bool(value)?;
         }
-        "wallet_network" => config.wallet_network = value.trim().to_string(),
+        "wallet_network" => next.wallet_network = value.trim().to_string(),
         "wallet_api_key_env" => {
-            config.wallet_api_key_env = if value.trim().is_empty() {
+            next.wallet_api_key_env = if value.trim().is_empty() {
                 None
             } else {
                 Some(value.trim().to_string())
             };
         }
         "buyer_auto_pay_enabled" => {
-            config.buyer_auto_pay_enabled = parse_bool(value)?;
+            next.buyer_auto_pay_enabled = parse_bool(value)?;
         }
-        "wallet_storage_dir" => config.wallet_storage_dir = PathBuf::from(value.trim()),
+        "wallet_storage_dir" => next.wallet_storage_dir = PathBuf::from(value.trim()),
         "local_gemma_base_url" | "ollama_base_url" => {
-            config.local_gemma_base_url = value.to_string();
+            next.local_gemma_base_url = value.to_string();
         }
         "local_gemma_preferred_model" => {
-            config.local_gemma_preferred_model = if value.trim().is_empty() {
+            next.local_gemma_preferred_model = if value.trim().is_empty() {
                 None
             } else {
                 Some(canonical_local_gemma_model_id(value))
@@ -8597,27 +8908,65 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         "backend.local_gemma_inference_enabled"
         | "backend.gpt_oss_inference_enabled"
         | "backend.ollama_inference_enabled" => {
-            config.inventory_controls.local_gemma_inference_enabled = parse_bool(value)?;
+            next.inventory_controls.local_gemma_inference_enabled = parse_bool(value)?;
         }
         "backend.local_gemma_embeddings_enabled"
         | "backend.gpt_oss_embeddings_enabled"
         | "backend.ollama_embeddings_enabled" => {
-            config.inventory_controls.local_gemma_embeddings_enabled = parse_bool(value)?;
+            next.inventory_controls.local_gemma_embeddings_enabled = parse_bool(value)?;
         }
         "backend.sandbox_container_exec_enabled" => {
-            config.inventory_controls.sandbox_container_exec_enabled = parse_bool(value)?;
+            next.inventory_controls.sandbox_container_exec_enabled = parse_bool(value)?;
         }
         "backend.sandbox_python_exec_enabled" => {
-            config.inventory_controls.sandbox_python_exec_enabled = parse_bool(value)?;
+            next.inventory_controls.sandbox_python_exec_enabled = parse_bool(value)?;
         }
         "backend.sandbox_node_exec_enabled" => {
-            config.inventory_controls.sandbox_node_exec_enabled = parse_bool(value)?;
+            next.inventory_controls.sandbox_node_exec_enabled = parse_bool(value)?;
         }
         "backend.sandbox_posix_exec_enabled" => {
-            config.inventory_controls.sandbox_posix_exec_enabled = parse_bool(value)?;
+            next.inventory_controls.sandbox_posix_exec_enabled = parse_bool(value)?;
+        }
+        "training.allowed_networks" => {
+            next.training.allowed_networks = parse_csv_list(value);
+        }
+        "training.role_claims" => {
+            next.training.role_claims = parse_training_role_claim_list(value)?;
+        }
+        "training.run_root" => {
+            next.training.run_root = PathBuf::from(value.trim());
+        }
+        "training.artifact_credential_source_names" => {
+            next.training.artifact_credential_source_names = parse_csv_list(value);
+        }
+        "training.checkpoint_serve_addr" => {
+            next.training.checkpoint_serve_addr = value.trim().to_string();
+        }
+        "training.nexus_authority_base_url" => {
+            next.training.nexus_authority_base_url = value.trim().to_string();
+        }
+        "training.relay_urls" => {
+            next.training.relay_urls = parse_csv_list(value);
+        }
+        "training.validator_enabled" => {
+            next.training.validator_enabled = parse_bool(value)?;
+        }
+        "training.disk_quota_gb" => {
+            next.training.disk_quota_gb = value
+                .trim()
+                .parse::<u64>()
+                .with_context(|| format!("invalid training.disk_quota_gb: {value}"))?;
+        }
+        "training.retention_limit_gb" => {
+            next.training.retention_limit_gb = value
+                .trim()
+                .parse::<u64>()
+                .with_context(|| format!("invalid training.retention_limit_gb: {value}"))?;
         }
         other => bail!("unsupported config key: {other}"),
     }
+    validate_pylon_config(&next)?;
+    *config = next;
     Ok(())
 }
 
@@ -8627,6 +8976,27 @@ fn parse_bool(value: &str) -> Result<bool> {
         "false" | "0" | "no" | "off" => Ok(false),
         other => bail!("invalid boolean value: {other}"),
     }
+}
+
+fn parse_csv_list(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn parse_training_role_claim_list(value: &str) -> Result<Vec<PylonTrainingRoleClaim>> {
+    parse_csv_list(value)
+        .into_iter()
+        .map(|value| match value.as_str() {
+            "worker" => Ok(PylonTrainingRoleClaim::Worker),
+            "validator" => Ok(PylonTrainingRoleClaim::Validator),
+            "recovery_source" => Ok(PylonTrainingRoleClaim::RecoverySource),
+            other => bail!("unsupported training role claim: {other}"),
+        })
+        .collect()
 }
 
 fn now_epoch_ms() -> i64 {
@@ -8667,9 +9037,12 @@ mod tests {
         LocalGemmaChatMessage, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
         PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_ENVIRONMENT_REF,
         PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
-        PsionicTrainRuntimeSurface, PylonConfig, PylonWalletInvoiceRecord,
-        PylonWalletPaymentRecord, WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface,
-        WalletSubcommand, add_configured_relay, apply_config_set, apply_control_command,
+        PsionicTrainRuntimeSurface, PylonConfig, PylonTrainingActiveRuntimeState,
+        PylonTrainingLeaseCacheEntry, PylonTrainingManifestCacheEntry,
+        PylonTrainingPublicationPointer, PylonTrainingRoleClaim, PylonTrainingRuntimeState,
+        PylonTrainingWindowCacheEntry, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+        WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
+        add_configured_relay, apply_config_set, apply_control_command,
         build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
         derive_adapter_training_contributor_availability, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
@@ -8677,17 +9050,18 @@ mod tests {
         gemma_local_installations, inspect_psionic_train_runtime_surface_at, inventory_rows,
         load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
         load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
-        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
-        load_status_or_detect, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
-        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_public_config_json, render_sandbox_report,
-        report_provider_presence_heartbeat_for_snapshot,
+        load_or_create_training_runtime_state, load_product_report, load_receipts_report,
+        load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
+        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
+        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
+        remove_configured_relay, render_human_status, render_public_config_json,
+        render_sandbox_report, report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config,
-        save_gemma_diagnostic_report, scan_provider_requests, submit_buyer_job,
-        sync_live_announcement, sync_provider_payout_target_with_report, watch_buyer_jobs,
+        save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests,
+        submit_buyer_job, sync_live_announcement, sync_provider_payout_target_with_report,
+        training_runtime_state_path, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
@@ -8960,6 +9334,12 @@ mod tests {
             "public config should expose local Gemma inventory toggles",
         )?;
         ensure(
+            json.contains("\"training\"")
+                && json.contains("\"checkpoint_serve_addr\"")
+                && json.contains("\"artifact_credential_source_names\""),
+            "public config should expose the retained training config block",
+        )?;
+        ensure(
             !json.contains("apple_fm_inference_enabled")
                 && !json.contains("apple_fm_adapter_hosting_enabled")
                 && !json.contains("apple_fm_base_url"),
@@ -9042,6 +9422,192 @@ mod tests {
         ensure(
             config.buyer_auto_pay_enabled,
             "config set should update buyer_auto_pay_enabled",
+        )
+    }
+
+    #[test]
+    fn config_set_updates_training_fields() -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        apply_config_set(
+            &mut config,
+            "training.allowed_networks",
+            "trainnet.alpha,trainnet.beta",
+        )?;
+        apply_config_set(
+            &mut config,
+            "training.role_claims",
+            "worker,validator,recovery_source",
+        )?;
+        apply_config_set(&mut config, "training.run_root", "/tmp/pylon-training")?;
+        apply_config_set(
+            &mut config,
+            "training.artifact_credential_source_names",
+            "google_application_default_credentials,adc-secondary",
+        )?;
+        apply_config_set(
+            &mut config,
+            "training.checkpoint_serve_addr",
+            "127.0.0.1:9770",
+        )?;
+        apply_config_set(
+            &mut config,
+            "training.nexus_authority_base_url",
+            "https://nexus-training.example.com",
+        )?;
+        apply_config_set(
+            &mut config,
+            "training.relay_urls",
+            "wss://relay-one.example.com,wss://relay-two.example.com",
+        )?;
+        apply_config_set(&mut config, "training.validator_enabled", "true")?;
+        apply_config_set(&mut config, "training.disk_quota_gb", "640")?;
+        apply_config_set(&mut config, "training.retention_limit_gb", "320")?;
+
+        ensure(
+            config.training.allowed_networks
+                == vec!["trainnet.alpha".to_string(), "trainnet.beta".to_string()],
+            "config set should update training.allowed_networks",
+        )?;
+        ensure(
+            config.training.role_claims
+                == vec![
+                    PylonTrainingRoleClaim::Worker,
+                    PylonTrainingRoleClaim::Validator,
+                    PylonTrainingRoleClaim::RecoverySource,
+                ],
+            "config set should update training.role_claims",
+        )?;
+        ensure(
+            config.training.run_root == std::path::Path::new("/tmp/pylon-training"),
+            "config set should update training.run_root",
+        )?;
+        ensure(
+            config.training.artifact_credential_source_names
+                == vec![
+                    "google_application_default_credentials".to_string(),
+                    "adc-secondary".to_string(),
+                ],
+            "config set should update training.artifact_credential_source_names",
+        )?;
+        ensure(
+            config.training.checkpoint_serve_addr == "127.0.0.1:9770"
+                && config.training.nexus_authority_base_url == "https://nexus-training.example.com"
+                && config.training.relay_urls
+                    == vec![
+                        "wss://relay-one.example.com".to_string(),
+                        "wss://relay-two.example.com".to_string(),
+                    ],
+            "config set should update the training coordination endpoints",
+        )?;
+        ensure(
+            config.training.validator_enabled
+                && config.training.disk_quota_gb == 640
+                && config.training.retention_limit_gb == 320,
+            "config set should update validator enablement and retention limits",
+        )
+    }
+
+    #[test]
+    fn config_set_rejects_invalid_training_retention_limit()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        ensure(
+            apply_config_set(&mut config, "training.retention_limit_gb", "2048").is_err(),
+            "config set should reject retention limits that exceed the disk quota",
+        )?;
+        ensure(
+            config.training.retention_limit_gb == 256,
+            "invalid training retention edits should leave the prior config intact",
+        )
+    }
+
+    #[test]
+    fn load_or_create_config_creates_training_runtime_state_store()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let state_path = training_runtime_state_path(&config);
+        let state = load_or_create_training_runtime_state(&config)?;
+
+        ensure(
+            state_path.exists(),
+            "loading the config should also create the separate training runtime state store",
+        )?;
+        ensure(
+            state == PylonTrainingRuntimeState::default(),
+            "the initial training runtime state should hydrate from the default schema",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_round_trips_across_restart() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            assignment_id: "assign.node01.window0001".to_string(),
+            lease_id: "lease.node01.window0001".to_string(),
+            membership_revision: "members.rev1".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+            updated_at_ms: 1_762_491_200_000,
+        });
+        state.manifest_cache.insert(
+            "manifest.run.alpha.worker".to_string(),
+            PylonTrainingManifestCacheEntry {
+                manifest_id: "manifest.run.alpha.worker".to_string(),
+                manifest_digest: "sha256:manifest-alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                lease_id: "lease.node01.window0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                cached_at_ms: 1_762_491_200_010,
+            },
+        );
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                state: "acked".to_string(),
+                updated_at_ms: 1_762_491_200_020,
+            },
+        );
+        state.window_cache.insert(
+            "window.0001".to_string(),
+            PylonTrainingWindowCacheEntry {
+                window_id: "window.0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                state: "active".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                updated_at_ms: 1_762_491_200_030,
+            },
+        );
+        state.publication_pointers.insert(
+            "assignment_ack::lease.node01.window0001".to_string(),
+            PylonTrainingPublicationPointer {
+                subject_kind: "assignment_ack".to_string(),
+                subject_id: "lease.node01.window0001".to_string(),
+                event_id: "event-001".to_string(),
+                a_ref: Some("39511:coordinator:lease.node01.window0001".to_string()),
+                published_at_ms: 1_762_491_200_040,
+            },
+        );
+        save_training_runtime_state(&config, &state)?;
+
+        let restarted_config = load_or_create_config(config_path.as_path())?;
+        let reloaded_state = load_or_create_training_runtime_state(&restarted_config)?;
+        ensure(
+            reloaded_state == state,
+            "the retained training runtime state should survive restart and preserve manifests, leases, windows, and TRN publication pointers",
         )
     }
 
