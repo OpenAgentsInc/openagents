@@ -188,8 +188,9 @@ What is still missing:
   `apps/pylon/src/lib.rs`, but it still only projects one admitted CUDA/H100
   contributor envelope from local `Psionic` runtime discovery plus host
   GPU/disk/network posture.
-- `Pylon` does not yet supervise `psionic-train` as a long-running distributed
-  runtime.
+- `Pylon` now has one retained internal child-process supervision core for
+  `psionic-train`, but it is not yet wired into live `Nexus` coordination,
+  operator/admin surfaces, or public training status publication.
 - `Nexus` has the authority object model, but not the full scheduler,
   assignment, reconciliation, and `TRN` publication loops for real training.
 - `crates/nostr` has the TRN spec text, but not the full typed Rust
@@ -1121,6 +1122,10 @@ become the admitted-node supervisor around `Psionic`.
 - Tie child-process state to the assigned run id and window id.
 - Prevent multiple conflicting active training assignments on one node.
 - Preserve logs and failure receipts across restart.
+- Current status: the retained internal runner, attempt-log rotation, heartbeat
+  capture, failure receipts, and conflicting-assignment refusal now exist in
+  `apps/pylon/src/lib.rs`; later issues still need to connect that foundation
+  to real coordinator control flow and operator surfaces.
 
 ### 3.4 Nexus coordinator client
 
