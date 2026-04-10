@@ -2,15 +2,16 @@ mod ledger;
 mod nip90_runtime;
 mod wallet_runtime;
 
-use std::collections::BTreeMap;
-use std::net::{IpAddr, Ipv4Addr};
+use std::collections::{BTreeMap, BTreeSet};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
+use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
     NostrIdentity, derive_keypair, load_identity_from_path,
     nip98::{
@@ -29,6 +30,14 @@ use openagents_kernel_core::{
         ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterContributionDisposition,
         ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow, ComputeTrainingPolicy,
         ComputeTrainingRun,
+    },
+    pylon_training::{
+        PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
+        PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
+        PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
+        PylonTrainingArtifactLayout, artifact_digest_from_bytes, artifact_digest_from_json,
+        can_emit_terminal_artifact_uploaded_receipt, derive_artifact_bundle_state,
+        parse_pylon_training_run_manifest_json, resolve_pylon_training_credentials,
     },
 };
 use openagents_provider_substrate::{
@@ -55,8 +64,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, RefreshKind, System};
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, TcpStream},
     process::Command as TokioCommand,
+    sync::oneshot,
     task::JoinHandle,
 };
 
@@ -93,11 +104,18 @@ pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
 pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
 pub const ENV_PSIONIC_TRAIN_BIN: &str = "OPENAGENTS_PSIONIC_TRAIN_BIN";
 pub const ENV_TRAINING_NEXUS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_NEXUS_BEARER_TOKEN";
+pub const ENV_TRAINING_GCS_ENDPOINT: &str = "OPENAGENTS_PYLON_TRAINING_GCS_ENDPOINT";
+pub const ENV_TRAINING_GCS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN";
+pub const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS: usize = 3;
 const DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS: u64 = 50;
+#[allow(dead_code)]
+const DEFAULT_TRAINING_GCS_ENDPOINT: &str = "https://storage.googleapis.com";
+#[allow(dead_code)]
+const DEFAULT_TRAINING_GCS_SCOPE: &str = "https://www.googleapis.com/auth/devstorage.read_write";
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const PYLON_TRAINING_ADAPTER_FAMILY: &str = "openagents.adapter.reference";
 const PYLON_TRAINING_ADAPTER_FORMAT: &str = "openagents.adapter.delta.v1";
@@ -645,6 +663,160 @@ pub struct PylonTrainingCheckpointPublicationResponse {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TrainingCommand {
+    Artifacts { command: TrainingArtifactsCommand },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TrainingArtifactsCommand {
+    Inspect { json: bool },
+    Gc { json: bool },
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct TrainingArtifactInspectionReport {
+    resolved_credential_source: Option<String>,
+    checkpoint_serve_url: String,
+    active_runtime: Option<TrainingArtifactActiveRuntimeSummary>,
+    manifests: Vec<TrainingManifestInspectionEntry>,
+    bundles: Vec<TrainingArtifactBundleInspectionEntry>,
+    download_cache: TrainingArtifactDownloadCacheSummary,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingArtifactActiveRuntimeSummary {
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    membership_revision: String,
+    role: PylonTrainingRoleClaim,
+    manifest_path: String,
+    run_root: String,
+    process_state: PylonTrainingSupervisorProcessState,
+    desired_state: PylonTrainingSupervisorDesiredState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingManifestInspectionEntry {
+    manifest_id: String,
+    manifest_digest: String,
+    role: String,
+    network_id: String,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    manifest_path: String,
+    local_run_root: String,
+    bucket_uri: String,
+    run_root_uri: String,
+    window_root_uri: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingArtifactBundleInspectionEntry {
+    bundle_id: String,
+    bundle_kind: String,
+    state: String,
+    manifest_digest: Option<String>,
+    local_run_root: String,
+    remote_root: String,
+    last_error: Option<String>,
+    objects: Vec<TrainingArtifactObjectInspectionEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingArtifactObjectInspectionEntry {
+    object_uri: String,
+    local_path: String,
+    present: bool,
+    digest: Option<String>,
+    size_bytes: Option<u64>,
+    uploaded: bool,
+    digest_verified: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct TrainingArtifactDownloadCacheSummary {
+    cache_root: String,
+    file_count: usize,
+    total_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingArtifactGcReport {
+    cache_root: String,
+    retention_limit_bytes: u64,
+    before_bytes: u64,
+    after_bytes: u64,
+    reclaimed_bytes: u64,
+    deleted_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct PylonTrainingArtifactBundleTransferReport {
+    pub bundle_id: String,
+    pub bundle_kind: String,
+    pub state: String,
+    pub manifest_digest: Option<String>,
+    pub local_run_root: String,
+    pub remote_root: String,
+    pub last_error: Option<String>,
+    pub objects: Vec<PylonTrainingArtifactObjectTransferReport>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct PylonTrainingArtifactObjectTransferReport {
+    pub object_uri: String,
+    pub local_path: String,
+    pub digest: String,
+    pub size_bytes: u64,
+    pub uploaded: bool,
+    pub digest_verified: bool,
+}
+
+#[allow(dead_code)]
+struct PylonTrainingArtifactStoreClient {
+    client: reqwest::Client,
+    base_url: String,
+    bearer_auth: Option<String>,
+    resolved_credential_source: String,
+}
+
+#[allow(dead_code)]
+struct PylonTrainingCheckpointServer {
+    local_addr: SocketAddr,
+    shutdown_tx: Option<oneshot::Sender<()>>,
+    task: JoinHandle<Result<()>>,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct GoogleServiceAccountCredential {
+    client_email: String,
+    private_key: String,
+    #[serde(default)]
+    token_uri: Option<String>,
+}
+
+#[derive(Serialize)]
+#[allow(dead_code)]
+struct GoogleServiceAccountClaims<'a> {
+    iss: &'a str,
+    sub: &'a str,
+    aud: &'a str,
+    scope: &'a str,
+    iat: usize,
+    exp: usize,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct GoogleOAuthTokenResponse {
+    access_token: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
     Init,
     Doctor,
@@ -748,6 +920,9 @@ pub enum Command {
     },
     Wallet {
         command: WalletSubcommand,
+    },
+    Training {
+        command: TrainingCommand,
     },
     Gemma {
         command: GemmaCommand,
@@ -3576,6 +3751,26 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         Command::Wallet { command } => Ok(Some(
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
+        Command::Training { command } => match command {
+            TrainingCommand::Artifacts { command } => match command {
+                TrainingArtifactsCommand::Inspect { json } => {
+                    let report =
+                        load_training_artifact_inspection_report(cli.config_path.as_path())?;
+                    if json {
+                        return Ok(Some(serde_json::to_string_pretty(&report)?));
+                    }
+                    Ok(Some(render_training_artifact_inspection_report(&report)))
+                }
+                TrainingArtifactsCommand::Gc { json } => {
+                    let report =
+                        garbage_collect_training_download_cache(cli.config_path.as_path())?;
+                    if json {
+                        return Ok(Some(serde_json::to_string_pretty(&report)?));
+                    }
+                    Ok(Some(render_training_artifact_gc_report(&report)))
+                }
+            },
+        },
         Command::Gemma { command } => match command {
             GemmaCommand::List { json } => {
                 let _ = ensure_local_setup(cli.config_path.as_path())?;
@@ -3705,6 +3900,8 @@ Commands:\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
+  training artifacts inspect [--json]\n\
+  training artifacts gc [--json]\n\
   gemma [list] [--json]\n\
   gemma download <model|all|remaining> [--transport auto|reqwest|curl] [--json]\n\
   gemma diagnose <model|all> [--max-output-tokens <n>] [--repeats <n>] [--download-missing] [--json]\n\
@@ -3965,6 +4162,9 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
         "wallet" => Ok(Command::Wallet {
             command: parse_wallet_command(args, start_index)?,
         }),
+        "training" => Ok(Command::Training {
+            command: parse_training_command(args, start_index + 1)?,
+        }),
         "gemma" => parse_gemma_command(args, start_index + 1),
         "online" => {
             if start_index + 1 != args.len() {
@@ -4031,6 +4231,32 @@ fn parse_account_command(args: &[String], start_index: usize) -> Result<AccountC
         }
         Some(other) => bail!("unknown account command: {other}"),
         None => bail!("missing account subcommand"),
+    }
+}
+
+fn parse_training_command(args: &[String], start_index: usize) -> Result<TrainingCommand> {
+    match args.get(start_index).map(String::as_str) {
+        Some("artifacts") => Ok(TrainingCommand::Artifacts {
+            command: parse_training_artifacts_command(args, start_index + 1)?,
+        }),
+        Some(other) => bail!("unknown training command: {other}"),
+        None => bail!("missing training subcommand"),
+    }
+}
+
+fn parse_training_artifacts_command(
+    args: &[String],
+    start_index: usize,
+) -> Result<TrainingArtifactsCommand> {
+    match args.get(start_index).map(String::as_str) {
+        Some("inspect") => Ok(TrainingArtifactsCommand::Inspect {
+            json: parse_json_only(args, start_index + 1, "training artifacts inspect")?,
+        }),
+        Some("gc") => Ok(TrainingArtifactsCommand::Gc {
+            json: parse_json_only(args, start_index + 1, "training artifacts gc")?,
+        }),
+        Some(other) => bail!("unknown training artifacts command: {other}"),
+        None => bail!("missing training artifacts subcommand"),
     }
 }
 
@@ -5176,6 +5402,1270 @@ fn training_coordination_retry_delay(attempt: usize) -> Duration {
     let multiplier = 1_u64 << u32::try_from(attempt).unwrap_or(0);
     Duration::from_millis(
         DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS.saturating_mul(multiplier),
+    )
+}
+
+#[derive(Clone, Debug)]
+struct TrainingManifestInspectionContext {
+    manifest: openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+    manifest_path: PathBuf,
+    local_run_root: PathBuf,
+    layout: PylonTrainingArtifactLayout,
+}
+
+#[derive(Clone, Debug)]
+struct TrainingArtifactCacheFileEntry {
+    path: PathBuf,
+    size_bytes: u64,
+    modified_at_ms: u128,
+}
+
+#[allow(dead_code)]
+impl PylonTrainingArtifactStoreClient {
+    async fn new(config: &PylonConfig) -> Result<Self> {
+        let base_url = std::env::var(ENV_TRAINING_GCS_ENDPOINT)
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_TRAINING_GCS_ENDPOINT.to_string());
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_millis(PYLON_TRAINING_UPLOAD_TIMEOUT_MS))
+            .build()
+            .context("failed to build training artifact courier client")?;
+        let (resolved_credential_source, google_application_credentials, metadata_token_url) =
+            resolve_training_artifact_credentials(config)?;
+        let bearer_auth = resolve_training_artifact_bearer_auth(
+            &client,
+            google_application_credentials.as_deref(),
+            metadata_token_url.as_deref(),
+        )
+        .await?;
+        Ok(Self {
+            client,
+            base_url,
+            bearer_auth,
+            resolved_credential_source,
+        })
+    }
+
+    async fn upload_bundle(
+        &self,
+        manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+        bundle_kind: PylonTrainingArtifactBundleKind,
+    ) -> Result<PylonTrainingArtifactBundleTransferReport> {
+        let local_run_root = PathBuf::from(manifest.artifacts.local_run_root.clone());
+        let layout = training_artifact_layout_from_manifest(manifest)?;
+        let required_objects = bundle_kind.required_paths(&layout);
+        let bundle_id = training_artifact_bundle_id(&bundle_kind);
+        let bundle_kind_label = training_artifact_bundle_kind_label(&bundle_kind);
+        let mut progress = PylonTrainingArtifactBundleProgress {
+            required_objects: required_objects.clone(),
+            ..PylonTrainingArtifactBundleProgress::default()
+        };
+        let mut objects = Vec::new();
+
+        for object_uri in required_objects {
+            let local_path =
+                training_local_artifact_path(&layout, local_run_root.as_path(), &object_uri)?;
+            if !local_path.is_file() {
+                let last_error = format!(
+                    "{}: {}",
+                    openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                        .label(),
+                    local_path.display()
+                );
+                return Ok(PylonTrainingArtifactBundleTransferReport {
+                    bundle_id,
+                    bundle_kind: bundle_kind_label,
+                    state: artifact_bundle_state_label(PylonTrainingArtifactBundleState::LocalOnly),
+                    manifest_digest: Some(manifest.manifest_digest.clone()),
+                    local_run_root: local_run_root.display().to_string(),
+                    remote_root: layout.run_root(),
+                    last_error: Some(last_error),
+                    objects,
+                });
+            }
+            let payload = std::fs::read(local_path.as_path()).with_context(|| {
+                format!("failed to read training artifact {}", local_path.display())
+            })?;
+            let digest = training_artifact_digest_from_locator_payload(&object_uri, &payload)?;
+            self.put_object(
+                object_uri.as_str(),
+                payload.as_slice(),
+                local_path.as_path(),
+            )
+            .await?;
+            progress.uploaded_objects.insert(object_uri.clone());
+            let downloaded = self.get_object(object_uri.as_str()).await?;
+            let remote_digest =
+                training_artifact_digest_from_locator_payload(&object_uri, downloaded.as_slice())?;
+            if remote_digest != digest {
+                return Ok(PylonTrainingArtifactBundleTransferReport {
+                    bundle_id,
+                    bundle_kind: bundle_kind_label,
+                    state: artifact_bundle_state_label(PylonTrainingArtifactBundleState::Staged),
+                    manifest_digest: Some(manifest.manifest_digest.clone()),
+                    local_run_root: local_run_root.display().to_string(),
+                    remote_root: layout.run_root(),
+                    last_error: Some(format!(
+                        "{}: {object_uri}",
+                        openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactDigestMismatch
+                            .label()
+                    )),
+                    objects,
+                });
+            }
+            progress.digest_matched_objects.insert(object_uri.clone());
+            let size_bytes = u64::try_from(payload.len()).unwrap_or(u64::MAX);
+            objects.push(PylonTrainingArtifactObjectTransferReport {
+                object_uri,
+                local_path: local_path.display().to_string(),
+                digest,
+                size_bytes,
+                uploaded: true,
+                digest_verified: true,
+            });
+        }
+
+        let state = if can_emit_terminal_artifact_uploaded_receipt(&progress) {
+            derive_artifact_bundle_state(&progress)
+        } else {
+            PylonTrainingArtifactBundleState::Staged
+        };
+        Ok(PylonTrainingArtifactBundleTransferReport {
+            bundle_id,
+            bundle_kind: bundle_kind_label,
+            state: artifact_bundle_state_label(state),
+            manifest_digest: Some(manifest.manifest_digest.clone()),
+            local_run_root: local_run_root.display().to_string(),
+            remote_root: layout.run_root(),
+            last_error: None,
+            objects,
+        })
+    }
+
+    async fn download_bundle(
+        &self,
+        manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+        bundle_kind: PylonTrainingArtifactBundleKind,
+        expected_digests: &BTreeMap<String, String>,
+        destination_root: &Path,
+    ) -> Result<PylonTrainingArtifactBundleTransferReport> {
+        let layout = training_artifact_layout_from_manifest(manifest)?;
+        let required_objects = bundle_kind.required_paths(&layout);
+        let bundle_id = training_artifact_bundle_id(&bundle_kind);
+        let bundle_kind_label = training_artifact_bundle_kind_label(&bundle_kind);
+        let mut objects = Vec::new();
+        for object_uri in required_objects {
+            let relative_path = training_artifact_relative_path(&layout, &object_uri)?;
+            let local_path = destination_root.join(relative_path.as_path());
+            if let Some(parent) = local_path.parent() {
+                std::fs::create_dir_all(parent).with_context(|| {
+                    format!(
+                        "failed to create training download dir {}",
+                        parent.display()
+                    )
+                })?;
+            }
+            let payload = self.get_object(object_uri.as_str()).await?;
+            std::fs::write(local_path.as_path(), payload.as_slice()).with_context(|| {
+                format!(
+                    "failed to write downloaded training artifact {}",
+                    local_path.display()
+                )
+            })?;
+            let digest = training_artifact_digest_from_locator_payload(&object_uri, &payload)?;
+            if let Some(expected_digest) = expected_digests.get(object_uri.as_str()) {
+                if expected_digest != &digest {
+                    bail!(
+                        "{}: expected {expected_digest} for {}, got {digest}",
+                        openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactDigestMismatch
+                            .label(),
+                        object_uri
+                    );
+                }
+            }
+            objects.push(PylonTrainingArtifactObjectTransferReport {
+                object_uri,
+                local_path: local_path.display().to_string(),
+                digest,
+                size_bytes: u64::try_from(payload.len()).unwrap_or(u64::MAX),
+                uploaded: false,
+                digest_verified: true,
+            });
+        }
+        Ok(PylonTrainingArtifactBundleTransferReport {
+            bundle_id,
+            bundle_kind: bundle_kind_label,
+            state: artifact_bundle_state_label(PylonTrainingArtifactBundleState::Verified),
+            manifest_digest: Some(manifest.manifest_digest.clone()),
+            local_run_root: destination_root.display().to_string(),
+            remote_root: layout.run_root(),
+            last_error: None,
+            objects,
+        })
+    }
+
+    async fn put_object(&self, object_uri: &str, payload: &[u8], local_path: &Path) -> Result<()> {
+        let url = self.object_url(object_uri)?;
+        self.send_bytes_with_retry(
+            reqwest::Method::PUT,
+            url.as_str(),
+            Some(payload.to_vec()),
+            Some(training_artifact_content_type(local_path)),
+            "training artifact upload",
+        )
+        .await
+        .map(|_| ())
+    }
+
+    async fn get_object(&self, object_uri: &str) -> Result<Vec<u8>> {
+        let url = self.object_url(object_uri)?;
+        self.send_bytes_with_retry(
+            reqwest::Method::GET,
+            url.as_str(),
+            None,
+            None,
+            "training artifact download",
+        )
+        .await
+    }
+
+    fn object_url(&self, object_uri: &str) -> Result<String> {
+        let (bucket, object_path) = parse_training_gcs_object_uri(object_uri)?;
+        Ok(format!(
+            "{}/{}/{}",
+            self.base_url.trim_end_matches('/'),
+            bucket,
+            object_path
+        ))
+    }
+
+    async fn send_bytes_with_retry(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+        payload: Option<Vec<u8>>,
+        content_type: Option<&str>,
+        action: &str,
+    ) -> Result<Vec<u8>> {
+        for (attempt, delay_ms) in PYLON_TRAINING_RETRY_SCHEDULE_MS.iter().enumerate() {
+            let mut request = self.client.request(method.clone(), url);
+            if let Some(token) = self.bearer_auth.as_deref() {
+                request = request.bearer_auth(token);
+            }
+            if let Some(content_type) = content_type {
+                request = request.header("content-type", content_type);
+            }
+            if let Some(body) = payload.clone() {
+                request = request.body(body);
+            }
+            match request.send().await {
+                Ok(response) => {
+                    let status = response.status();
+                    if status.is_success() {
+                        return response
+                            .bytes()
+                            .await
+                            .map(|bytes| bytes.to_vec())
+                            .with_context(|| {
+                                format!("failed to decode {action} response from {url}")
+                            });
+                    }
+                    let detail = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| format!("failed to decode {action} error"));
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < PYLON_TRAINING_RETRY_SCHEDULE_MS.len()
+                    {
+                        tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
+                        continue;
+                    }
+                    bail!("{action} failed with status {}: {detail}", status.as_u16());
+                }
+                Err(error) => {
+                    if attempt + 1 < PYLON_TRAINING_RETRY_SCHEDULE_MS.len() {
+                        tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| format!("failed {action} to {url}"));
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(PYLON_TRAINING_RETRY_CAP_MS)).await;
+        bail!("{action} exhausted retry budget")
+    }
+}
+
+#[allow(dead_code)]
+impl PylonTrainingCheckpointServer {
+    fn base_url(&self) -> String {
+        format!("http://{}", self.local_addr)
+    }
+
+    async fn shutdown(mut self) -> Result<()> {
+        if let Some(shutdown_tx) = self.shutdown_tx.take() {
+            let _ = shutdown_tx.send(());
+        }
+        self.task
+            .await
+            .context("training checkpoint server task join failed")??;
+        Ok(())
+    }
+}
+
+fn resolve_training_artifact_credentials(
+    config: &PylonConfig,
+) -> Result<(String, Option<String>, Option<String>)> {
+    let google_application_credentials = std::env::var(ENV_GOOGLE_APPLICATION_CREDENTIALS)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let metadata_token_url = training_metadata_token_url();
+    let resolution = resolve_pylon_training_credentials(
+        google_application_credentials.as_deref(),
+        metadata_token_url.is_some(),
+    )
+    .map_err(anyhow::Error::msg)?;
+    if !config
+        .training
+        .artifact_credential_source_names
+        .iter()
+        .any(|value| value == &resolution.persistent_credential_source)
+    {
+        bail!(
+            "training artifact credential source `{}` is not admitted by config",
+            resolution.persistent_credential_source
+        );
+    }
+    Ok((
+        resolution.persistent_credential_source,
+        google_application_credentials,
+        metadata_token_url,
+    ))
+}
+
+#[allow(dead_code)]
+async fn resolve_training_artifact_bearer_auth(
+    client: &reqwest::Client,
+    google_application_credentials: Option<&str>,
+    metadata_token_url: Option<&str>,
+) -> Result<Option<String>> {
+    if let Some(token) = std::env::var(ENV_TRAINING_GCS_BEARER_TOKEN)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(Some(token));
+    }
+    if let Some(path) = google_application_credentials {
+        return request_service_account_access_token(client, path)
+            .await
+            .map(Some);
+    }
+    if let Some(token_url) = metadata_token_url {
+        return request_metadata_access_token(client, token_url)
+            .await
+            .map(Some);
+    }
+    Ok(None)
+}
+
+#[allow(dead_code)]
+async fn request_service_account_access_token(
+    client: &reqwest::Client,
+    credential_path: &str,
+) -> Result<String> {
+    let payload = std::fs::read_to_string(credential_path).with_context(|| {
+        format!(
+            "failed to read GOOGLE_APPLICATION_CREDENTIALS file {}",
+            credential_path
+        )
+    })?;
+    let credentials: GoogleServiceAccountCredential = serde_json::from_str(payload.as_str())
+        .with_context(|| {
+            format!(
+                "failed to parse GOOGLE_APPLICATION_CREDENTIALS file {}",
+                credential_path
+            )
+        })?;
+    let token_uri = credentials
+        .token_uri
+        .clone()
+        .unwrap_or_else(|| "https://oauth2.googleapis.com/token".to_string());
+    let now = usize::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("system clock is before unix epoch")?
+            .as_secs(),
+    )
+    .unwrap_or(0);
+    let claims = GoogleServiceAccountClaims {
+        iss: credentials.client_email.as_str(),
+        sub: credentials.client_email.as_str(),
+        aud: token_uri.as_str(),
+        scope: DEFAULT_TRAINING_GCS_SCOPE,
+        iat: now,
+        exp: now.saturating_add(3600),
+    };
+    let assertion = jsonwebtoken::encode(
+        &Header::new(Algorithm::RS256),
+        &claims,
+        &EncodingKey::from_rsa_pem(credentials.private_key.as_bytes())
+            .context("failed to parse service-account private key")?,
+    )
+    .context("failed to sign service-account jwt assertion")?;
+    let response = client
+        .post(token_uri.as_str())
+        .form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", assertion.as_str()),
+        ])
+        .send()
+        .await
+        .context("failed to request GCS access token from oauth endpoint")?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode oauth error".to_string());
+        bail!(
+            "failed to mint GCS access token with status {}: {detail}",
+            status.as_u16()
+        );
+    }
+    let token: GoogleOAuthTokenResponse = response
+        .json()
+        .await
+        .context("failed to decode oauth token response")?;
+    Ok(token.access_token)
+}
+
+#[allow(dead_code)]
+async fn request_metadata_access_token(
+    client: &reqwest::Client,
+    token_url: &str,
+) -> Result<String> {
+    let response = client
+        .get(token_url)
+        .header("Metadata-Flavor", "Google")
+        .send()
+        .await
+        .context("failed to request metadata access token")?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode metadata token error".to_string());
+        bail!(
+            "failed to mint metadata access token with status {}: {detail}",
+            status.as_u16()
+        );
+    }
+    let token: GoogleOAuthTokenResponse = response
+        .json()
+        .await
+        .context("failed to decode metadata token response")?;
+    Ok(token.access_token)
+}
+
+fn training_metadata_token_url() -> Option<String> {
+    let host = std::env::var("GCE_METADATA_HOST")
+        .ok()
+        .or_else(|| std::env::var("GCE_METADATA_IP").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    Some(format!(
+        "http://{host}/computeMetadata/v1/instance/service-accounts/default/token"
+    ))
+}
+
+fn training_artifact_layout_from_manifest(
+    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+) -> Result<PylonTrainingArtifactLayout> {
+    let layout = PylonTrainingArtifactLayout {
+        bucket_uri: manifest.artifacts.bucket_uri.clone(),
+        network_id: manifest.network_id.clone(),
+        run_id: manifest.run_id.clone(),
+        window_id: manifest.window_id.clone(),
+    };
+    layout.validate().map_err(anyhow::Error::msg)?;
+    Ok(layout)
+}
+
+fn training_runs_root(config: &PylonConfig) -> PathBuf {
+    config.training.run_root.join("runs")
+}
+
+fn training_download_cache_root(config: &PylonConfig) -> PathBuf {
+    config.training.run_root.join("download-cache")
+}
+
+fn training_checkpoint_serve_url(config: &PylonConfig) -> String {
+    format!("http://{}", config.training.checkpoint_serve_addr.trim())
+}
+
+fn training_artifact_bundle_id(bundle_kind: &PylonTrainingArtifactBundleKind) -> String {
+    match bundle_kind {
+        PylonTrainingArtifactBundleKind::RunManifest => "run_manifest".to_string(),
+        PylonTrainingArtifactBundleKind::LatestCheckpointPointer => {
+            "latest_checkpoint_pointer".to_string()
+        }
+        PylonTrainingArtifactBundleKind::CheckpointManifest { optimizer_step } => {
+            format!("checkpoint_manifest:{optimizer_step}")
+        }
+        PylonTrainingArtifactBundleKind::Contribution { assignment_id } => {
+            format!("contribution:{assignment_id}")
+        }
+        PylonTrainingArtifactBundleKind::ValidatorVerdict { challenge_id } => {
+            format!("validator_verdict:{challenge_id}")
+        }
+        PylonTrainingArtifactBundleKind::SealedWindow => "sealed_window".to_string(),
+        PylonTrainingArtifactBundleKind::ScoreSnapshot => "score_snapshot".to_string(),
+    }
+}
+
+fn training_artifact_bundle_kind_label(bundle_kind: &PylonTrainingArtifactBundleKind) -> String {
+    match bundle_kind {
+        PylonTrainingArtifactBundleKind::RunManifest => "run_manifest".to_string(),
+        PylonTrainingArtifactBundleKind::LatestCheckpointPointer => {
+            "latest_checkpoint_pointer".to_string()
+        }
+        PylonTrainingArtifactBundleKind::CheckpointManifest { .. } => {
+            "checkpoint_manifest".to_string()
+        }
+        PylonTrainingArtifactBundleKind::Contribution { .. } => "contribution".to_string(),
+        PylonTrainingArtifactBundleKind::ValidatorVerdict { .. } => "validator_verdict".to_string(),
+        PylonTrainingArtifactBundleKind::SealedWindow => "sealed_window".to_string(),
+        PylonTrainingArtifactBundleKind::ScoreSnapshot => "score_snapshot".to_string(),
+    }
+}
+
+fn artifact_bundle_state_label(state: PylonTrainingArtifactBundleState) -> String {
+    match state {
+        PylonTrainingArtifactBundleState::LocalOnly => "local_only".to_string(),
+        PylonTrainingArtifactBundleState::Staged => "staged".to_string(),
+        PylonTrainingArtifactBundleState::Uploaded => "uploaded".to_string(),
+        PylonTrainingArtifactBundleState::Verified => "verified".to_string(),
+        PylonTrainingArtifactBundleState::Published => "published".to_string(),
+        PylonTrainingArtifactBundleState::Accepted => "accepted".to_string(),
+    }
+}
+
+#[allow(dead_code)]
+fn parse_training_gcs_object_uri(uri: &str) -> Result<(String, String)> {
+    let stripped = uri
+        .strip_prefix("gs://")
+        .ok_or_else(|| anyhow!("training artifact uri must start with gs://"))?;
+    let (bucket, object_path) = stripped
+        .split_once('/')
+        .ok_or_else(|| anyhow!("training artifact uri must include bucket and object path"))?;
+    if bucket.trim().is_empty() || object_path.trim().is_empty() {
+        bail!("training artifact uri must include bucket and object path");
+    }
+    Ok((bucket.to_string(), object_path.to_string()))
+}
+
+fn training_artifact_relative_path(
+    layout: &PylonTrainingArtifactLayout,
+    object_uri: &str,
+) -> Result<PathBuf> {
+    let run_root_prefix = format!("{}/", layout.run_root());
+    let relative = object_uri
+        .strip_prefix(run_root_prefix.as_str())
+        .ok_or_else(|| {
+            anyhow!("training artifact does not live under the run root: {object_uri}")
+        })?;
+    let mut path = PathBuf::new();
+    for component in Path::new(relative).components() {
+        match component {
+            std::path::Component::Normal(value) => path.push(value),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                bail!("training artifact path traversal is not allowed: {object_uri}");
+            }
+        }
+    }
+    Ok(path)
+}
+
+fn training_local_artifact_path(
+    layout: &PylonTrainingArtifactLayout,
+    local_run_root: &Path,
+    object_uri: &str,
+) -> Result<PathBuf> {
+    Ok(local_run_root.join(training_artifact_relative_path(layout, object_uri)?))
+}
+
+#[allow(dead_code)]
+fn training_artifact_content_type(path: &Path) -> &'static str {
+    if path.extension().is_some_and(|value| value == "json") {
+        "application/json"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn training_artifact_digest_from_locator_payload(
+    object_uri: &str,
+    payload: &[u8],
+) -> Result<String> {
+    if object_uri.ends_with(".json") {
+        let parsed: Value = serde_json::from_slice(payload).with_context(|| {
+            format!("failed to parse training artifact json payload for {object_uri}")
+        })?;
+        artifact_digest_from_json(&parsed).map_err(anyhow::Error::msg)
+    } else {
+        Ok(artifact_digest_from_bytes(payload))
+    }
+}
+
+fn training_artifact_digest_from_local_path(path: &Path) -> Result<String> {
+    let payload = std::fs::read(path)
+        .with_context(|| format!("failed to read training artifact {}", path.display()))?;
+    training_artifact_digest_from_locator_payload(path.to_string_lossy().as_ref(), &payload)
+}
+
+fn load_training_artifact_inspection_report(
+    config_path: &Path,
+) -> Result<TrainingArtifactInspectionReport> {
+    let config = load_or_create_config(config_path)?;
+    let state = load_or_create_training_runtime_state(&config)?;
+    let contexts = load_training_manifest_inspection_contexts(&config, &state)?;
+    let manifests = contexts
+        .iter()
+        .map(|context| TrainingManifestInspectionEntry {
+            manifest_id: context.manifest.manifest_id.clone(),
+            manifest_digest: context.manifest.manifest_digest.clone(),
+            role: match context.manifest.role {
+                openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker => {
+                    "worker".to_string()
+                }
+                openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator => {
+                    "validator".to_string()
+                }
+                openagents_kernel_core::pylon_training::PylonTrainingManifestRole::RecoverySource => {
+                    "recovery_source".to_string()
+                }
+            },
+            network_id: context.manifest.network_id.clone(),
+            training_run_id: context.manifest.run_id.clone(),
+            window_id: context.manifest.window_id.clone(),
+            assignment_id: context.manifest.assignment_id.clone(),
+            manifest_path: context.manifest_path.display().to_string(),
+            local_run_root: context.local_run_root.display().to_string(),
+            bucket_uri: context.layout.bucket_uri.clone(),
+            run_root_uri: context.layout.run_root(),
+            window_root_uri: context.layout.window_root(),
+        })
+        .collect::<Vec<_>>();
+    let mut bundles = Vec::new();
+    for context in &contexts {
+        bundles.extend(inspect_manifest_local_artifacts(context)?);
+    }
+    bundles.sort_by(|left, right| left.bundle_id.cmp(&right.bundle_id));
+    Ok(TrainingArtifactInspectionReport {
+        resolved_credential_source: resolve_training_artifact_credentials(&config)
+            .ok()
+            .map(|(source, _, _)| source),
+        checkpoint_serve_url: training_checkpoint_serve_url(&config),
+        active_runtime: state.active_runtime.as_ref().map(|runtime| {
+            TrainingArtifactActiveRuntimeSummary {
+                training_run_id: runtime.training_run_id.clone(),
+                window_id: runtime.window_id.clone(),
+                assignment_id: runtime.assignment_id.clone(),
+                lease_id: runtime.lease_id.clone(),
+                membership_revision: runtime.membership_revision.clone(),
+                role: runtime.role,
+                manifest_path: runtime.manifest_path.clone(),
+                run_root: runtime.run_root.clone(),
+                process_state: runtime.process_state,
+                desired_state: runtime.desired_state,
+            }
+        }),
+        manifests,
+        bundles,
+        download_cache: summarize_training_download_cache(&config)?,
+    })
+}
+
+fn load_training_manifest_inspection_contexts(
+    config: &PylonConfig,
+    state: &PylonTrainingRuntimeState,
+) -> Result<Vec<TrainingManifestInspectionContext>> {
+    let mut manifest_paths = BTreeSet::<PathBuf>::new();
+    if let Some(active_runtime) = state.active_runtime.as_ref() {
+        manifest_paths.insert(PathBuf::from(active_runtime.manifest_path.clone()));
+    }
+    let runs_root = training_runs_root(config);
+    if runs_root.is_dir() {
+        for entry in std::fs::read_dir(runs_root.as_path())
+            .with_context(|| format!("failed to read training runs root {}", runs_root.display()))?
+        {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let manifest_path = entry.path().join("manifests").join("run_manifest.json");
+            if manifest_path.is_file() {
+                manifest_paths.insert(manifest_path);
+            }
+        }
+    }
+    let mut contexts = Vec::new();
+    for manifest_path in manifest_paths {
+        if !manifest_path.is_file() {
+            continue;
+        }
+        let payload = std::fs::read(manifest_path.as_path()).with_context(|| {
+            format!(
+                "failed to read training manifest {}",
+                manifest_path.display()
+            )
+        })?;
+        let manifest = parse_pylon_training_run_manifest_json(payload.as_slice())
+            .map_err(anyhow::Error::msg)
+            .with_context(|| {
+                format!(
+                    "failed to parse training manifest {}",
+                    manifest_path.display()
+                )
+            })?;
+        let local_run_root = PathBuf::from(manifest.artifacts.local_run_root.clone());
+        let layout = training_artifact_layout_from_manifest(&manifest)?;
+        contexts.push(TrainingManifestInspectionContext {
+            manifest,
+            manifest_path,
+            local_run_root,
+            layout,
+        });
+    }
+    contexts.sort_by(|left, right| left.manifest.manifest_id.cmp(&right.manifest.manifest_id));
+    Ok(contexts)
+}
+
+fn inspect_manifest_local_artifacts(
+    context: &TrainingManifestInspectionContext,
+) -> Result<Vec<TrainingArtifactBundleInspectionEntry>> {
+    let mut bundles = Vec::new();
+    bundles.push(inspect_training_artifact_bundle(
+        context,
+        PylonTrainingArtifactBundleKind::RunManifest,
+    )?);
+    let latest_pointer_path = context
+        .local_run_root
+        .join("checkpoints")
+        .join("latest_pointer.json");
+    if latest_pointer_path.is_file() {
+        bundles.push(inspect_training_artifact_bundle(
+            context,
+            PylonTrainingArtifactBundleKind::LatestCheckpointPointer,
+        )?);
+    }
+    let checkpoints_root = context.local_run_root.join("checkpoints");
+    if checkpoints_root.is_dir() {
+        for entry in std::fs::read_dir(checkpoints_root.as_path()).with_context(|| {
+            format!(
+                "failed to read checkpoint dir {}",
+                checkpoints_root.display()
+            )
+        })? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let Some(step_label) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            let Some(step) = step_label
+                .strip_prefix("step-")
+                .and_then(|value| value.parse::<u64>().ok())
+            else {
+                continue;
+            };
+            let manifest_path = entry.path().join("checkpoint_manifest.json");
+            if manifest_path.is_file() {
+                bundles.push(inspect_training_artifact_bundle(
+                    context,
+                    PylonTrainingArtifactBundleKind::CheckpointManifest {
+                        optimizer_step: step,
+                    },
+                )?);
+            }
+        }
+    }
+    let contributions_root = context
+        .local_run_root
+        .join("windows")
+        .join(context.manifest.window_id.as_str())
+        .join("contributions");
+    if contributions_root.is_dir() {
+        for entry in std::fs::read_dir(contributions_root.as_path()).with_context(|| {
+            format!(
+                "failed to read contributions dir {}",
+                contributions_root.display()
+            )
+        })? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let assignment_id = entry.file_name().to_string_lossy().to_string();
+            bundles.push(inspect_training_artifact_bundle(
+                context,
+                PylonTrainingArtifactBundleKind::Contribution { assignment_id },
+            )?);
+        }
+    }
+    let validators_root = context
+        .local_run_root
+        .join("windows")
+        .join(context.manifest.window_id.as_str())
+        .join("validators");
+    if validators_root.is_dir() {
+        for entry in std::fs::read_dir(validators_root.as_path()).with_context(|| {
+            format!("failed to read validator dir {}", validators_root.display())
+        })? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let challenge_id = entry.file_name().to_string_lossy().to_string();
+            bundles.push(inspect_training_artifact_bundle(
+                context,
+                PylonTrainingArtifactBundleKind::ValidatorVerdict { challenge_id },
+            )?);
+        }
+    }
+    let window_root = context
+        .local_run_root
+        .join("windows")
+        .join(context.manifest.window_id.as_str());
+    if window_root.join("sealed_window_bundle.json").is_file() {
+        bundles.push(inspect_training_artifact_bundle(
+            context,
+            PylonTrainingArtifactBundleKind::SealedWindow,
+        )?);
+    }
+    if window_root.join("score_snapshot.json").is_file() {
+        bundles.push(inspect_training_artifact_bundle(
+            context,
+            PylonTrainingArtifactBundleKind::ScoreSnapshot,
+        )?);
+    }
+    Ok(bundles)
+}
+
+fn inspect_training_artifact_bundle(
+    context: &TrainingManifestInspectionContext,
+    bundle_kind: PylonTrainingArtifactBundleKind,
+) -> Result<TrainingArtifactBundleInspectionEntry> {
+    let mut objects = Vec::new();
+    let mut present_count = 0usize;
+    for object_uri in bundle_kind.required_paths(&context.layout) {
+        let local_path = training_local_artifact_path(
+            &context.layout,
+            context.local_run_root.as_path(),
+            &object_uri,
+        )?;
+        let present = local_path.is_file();
+        let (digest, size_bytes) = if present {
+            present_count += 1;
+            let metadata = std::fs::metadata(local_path.as_path()).with_context(|| {
+                format!(
+                    "failed to read training artifact metadata {}",
+                    local_path.display()
+                )
+            })?;
+            (
+                Some(training_artifact_digest_from_local_path(
+                    local_path.as_path(),
+                )?),
+                Some(metadata.len()),
+            )
+        } else {
+            (None, None)
+        };
+        objects.push(TrainingArtifactObjectInspectionEntry {
+            object_uri,
+            local_path: local_path.display().to_string(),
+            present,
+            digest,
+            size_bytes,
+            uploaded: false,
+            digest_verified: false,
+        });
+    }
+    let state = if present_count == objects.len() {
+        artifact_bundle_state_label(PylonTrainingArtifactBundleState::LocalOnly)
+    } else {
+        artifact_bundle_state_label(PylonTrainingArtifactBundleState::Staged)
+    };
+    Ok(TrainingArtifactBundleInspectionEntry {
+        bundle_id: training_artifact_bundle_id(&bundle_kind),
+        bundle_kind: training_artifact_bundle_kind_label(&bundle_kind),
+        state,
+        manifest_digest: Some(context.manifest.manifest_digest.clone()),
+        local_run_root: context.local_run_root.display().to_string(),
+        remote_root: context.layout.run_root(),
+        last_error: (present_count != objects.len()).then(|| {
+            openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                .label()
+                .to_string()
+        }),
+        objects,
+    })
+}
+
+fn summarize_training_download_cache(
+    config: &PylonConfig,
+) -> Result<TrainingArtifactDownloadCacheSummary> {
+    let cache_root = training_download_cache_root(config);
+    let files = collect_training_cache_files(cache_root.as_path())?;
+    Ok(TrainingArtifactDownloadCacheSummary {
+        cache_root: cache_root.display().to_string(),
+        file_count: files.len(),
+        total_bytes: files.iter().map(|entry| entry.size_bytes).sum(),
+    })
+}
+
+fn garbage_collect_training_download_cache(config_path: &Path) -> Result<TrainingArtifactGcReport> {
+    let config = load_or_create_config(config_path)?;
+    let cache_root = training_download_cache_root(&config);
+    let retention_limit_bytes = config
+        .training
+        .retention_limit_gb
+        .saturating_mul(BYTES_PER_GIB);
+    let mut files = collect_training_cache_files(cache_root.as_path())?;
+    let before_bytes = files.iter().map(|entry| entry.size_bytes).sum::<u64>();
+    if before_bytes <= retention_limit_bytes {
+        return Ok(TrainingArtifactGcReport {
+            cache_root: cache_root.display().to_string(),
+            retention_limit_bytes,
+            before_bytes,
+            after_bytes: before_bytes,
+            reclaimed_bytes: 0,
+            deleted_paths: Vec::new(),
+        });
+    }
+    files.sort_by(|left, right| {
+        left.modified_at_ms
+            .cmp(&right.modified_at_ms)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let mut deleted_paths = Vec::new();
+    let mut remaining_bytes = before_bytes;
+    for file in files {
+        if remaining_bytes <= retention_limit_bytes {
+            break;
+        }
+        std::fs::remove_file(file.path.as_path())
+            .with_context(|| format!("failed to remove {}", file.path.display()))?;
+        remaining_bytes = remaining_bytes.saturating_sub(file.size_bytes);
+        deleted_paths.push(file.path.display().to_string());
+        remove_empty_training_cache_dirs(cache_root.as_path(), file.path.parent());
+    }
+    Ok(TrainingArtifactGcReport {
+        cache_root: cache_root.display().to_string(),
+        retention_limit_bytes,
+        before_bytes,
+        after_bytes: remaining_bytes,
+        reclaimed_bytes: before_bytes.saturating_sub(remaining_bytes),
+        deleted_paths,
+    })
+}
+
+fn collect_training_cache_files(root: &Path) -> Result<Vec<TrainingArtifactCacheFileEntry>> {
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(path) = stack.pop() {
+        for entry in std::fs::read_dir(path.as_path())
+            .with_context(|| format!("failed to read {}", path.display()))?
+        {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                stack.push(entry.path());
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let metadata = entry.metadata()?;
+            let modified_at_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+                .map(|value| value.as_millis())
+                .unwrap_or(0);
+            files.push(TrainingArtifactCacheFileEntry {
+                path: entry.path(),
+                size_bytes: metadata.len(),
+                modified_at_ms,
+            });
+        }
+    }
+    Ok(files)
+}
+
+fn remove_empty_training_cache_dirs(root: &Path, start: Option<&Path>) {
+    let Some(mut current) = start.map(PathBuf::from) else {
+        return;
+    };
+    while current.starts_with(root) && current != root {
+        let is_empty = std::fs::read_dir(current.as_path())
+            .ok()
+            .and_then(|mut entries| entries.next().transpose().ok())
+            .flatten()
+            .is_none();
+        if !is_empty {
+            break;
+        }
+        if std::fs::remove_dir(current.as_path()).is_err() {
+            break;
+        }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        current = parent.to_path_buf();
+    }
+}
+
+#[allow(dead_code)]
+async fn start_training_checkpoint_server(
+    bind_addr: &str,
+    runs_root: PathBuf,
+) -> Result<PylonTrainingCheckpointServer> {
+    let listener = TcpListener::bind(bind_addr)
+        .await
+        .with_context(|| format!("failed to bind training checkpoint server at {bind_addr}"))?;
+    let local_addr = listener
+        .local_addr()
+        .context("failed to read training checkpoint server local addr")?;
+    let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut shutdown_rx => {
+                    break;
+                }
+                accepted = listener.accept() => {
+                    match accepted {
+                        Ok((stream, _)) => {
+                            let runs_root = runs_root.clone();
+                            tokio::spawn(async move {
+                                let _ = serve_training_checkpoint_connection(stream, runs_root).await;
+                            });
+                        }
+                        Err(error) => return Err(anyhow!(error)),
+                    }
+                }
+            }
+        }
+        Ok(())
+    });
+    Ok(PylonTrainingCheckpointServer {
+        local_addr,
+        shutdown_tx: Some(shutdown_tx),
+        task,
+    })
+}
+
+#[allow(dead_code)]
+async fn serve_training_checkpoint_connection(
+    mut stream: TcpStream,
+    runs_root: PathBuf,
+) -> Result<()> {
+    let (method, path, _) = read_http_request(&mut stream)
+        .await
+        .context("failed to read training checkpoint request")?;
+    if method != "GET" {
+        return write_http_response_bytes(&mut stream, 405, "text/plain", b"method not allowed")
+            .await
+            .map_err(anyhow::Error::from);
+    }
+    let Some(local_path) =
+        resolve_training_checkpoint_request_path(runs_root.as_path(), path.as_str())
+    else {
+        return write_http_response_bytes(&mut stream, 404, "text/plain", b"not found")
+            .await
+            .map_err(anyhow::Error::from);
+    };
+    if !local_path.is_file() {
+        return write_http_response_bytes(&mut stream, 404, "text/plain", b"not found")
+            .await
+            .map_err(anyhow::Error::from);
+    }
+    let payload = std::fs::read(local_path.as_path())
+        .with_context(|| format!("failed to read checkpoint {}", local_path.display()))?;
+    write_http_response_bytes(
+        &mut stream,
+        200,
+        training_artifact_content_type(local_path.as_path()),
+        payload.as_slice(),
+    )
+    .await
+    .map_err(anyhow::Error::from)
+}
+
+#[allow(dead_code)]
+fn resolve_training_checkpoint_request_path(runs_root: &Path, path: &str) -> Option<PathBuf> {
+    let request_path = path.split('?').next()?.trim_start_matches('/');
+    let mut components = Path::new(request_path).components();
+    let first = components.next()?;
+    if first.as_os_str() != "runs" {
+        return None;
+    }
+    let mut relative = PathBuf::new();
+    for component in components {
+        match component {
+            std::path::Component::Normal(value) => relative.push(value),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => return None,
+        }
+    }
+    Some(runs_root.join(relative))
+}
+
+#[allow(dead_code)]
+async fn read_http_request(stream: &mut TcpStream) -> std::io::Result<(String, String, String)> {
+    let mut buffer = Vec::new();
+    let mut header_end = None;
+    while header_end.is_none() {
+        let mut chunk = [0_u8; 1024];
+        let read = stream.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        header_end = find_http_header_end(buffer.as_slice());
+    }
+    let Some(header_end) = header_end else {
+        return Err(std::io::Error::other("missing request headers"));
+    };
+    let head = String::from_utf8(buffer[..header_end].to_vec())
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    let mut lines = head.lines();
+    let request_line = lines
+        .next()
+        .ok_or_else(|| std::io::Error::other("missing request line"))?;
+    let mut request_parts = request_line.split_whitespace();
+    let method = request_parts
+        .next()
+        .ok_or_else(|| std::io::Error::other("missing request method"))?
+        .to_string();
+    let path = request_parts
+        .next()
+        .ok_or_else(|| std::io::Error::other("missing request path"))?
+        .to_string();
+    let content_length = lines
+        .filter_map(|line| line.split_once(':'))
+        .find_map(|(name, value)| {
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>())
+        })
+        .transpose()
+        .map_err(|error| std::io::Error::other(error.to_string()))?
+        .unwrap_or(0);
+    let body_start = match buffer[header_end..].strip_prefix(b"\r\n\r\n") {
+        Some(_) => header_end + 4,
+        None => header_end + 2,
+    };
+    while buffer.len() < body_start + content_length {
+        let mut chunk = vec![0_u8; body_start + content_length - buffer.len()];
+        let read = stream.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+    let body = String::from_utf8(buffer[body_start..body_start + content_length].to_vec())
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    Ok((method, path, body))
+}
+
+#[allow(dead_code)]
+fn find_http_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .or_else(|| buffer.windows(2).position(|window| window == b"\n\n"))
+}
+
+#[allow(dead_code)]
+async fn write_http_response_bytes(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+) -> std::io::Result<()> {
+    let status_text = match status {
+        200 => "OK",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        500 => "Internal Server Error",
+        _ => "OK",
+    };
+    let response = format!(
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(response.as_bytes()).await?;
+    stream.write_all(body).await?;
+    stream.flush().await
+}
+
+fn render_training_artifact_inspection_report(report: &TrainingArtifactInspectionReport) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "checkpoint serve url: {}",
+        report.checkpoint_serve_url
+    ));
+    lines.push(format!(
+        "resolved credential source: {}",
+        report
+            .resolved_credential_source
+            .clone()
+            .unwrap_or_else(|| "unresolved".to_string())
+    ));
+    lines.push(format!("manifests: {}", report.manifests.len()));
+    for manifest in &report.manifests {
+        lines.push(format!(
+            "- {} {} {} {}",
+            manifest.training_run_id, manifest.window_id, manifest.role, manifest.manifest_digest
+        ));
+    }
+    lines.push(format!("bundles: {}", report.bundles.len()));
+    for bundle in &report.bundles {
+        lines.push(format!(
+            "- {} {} {}",
+            bundle.bundle_kind, bundle.bundle_id, bundle.state
+        ));
+    }
+    lines.push(format!(
+        "download cache: {} files, {} bytes",
+        report.download_cache.file_count, report.download_cache.total_bytes
+    ));
+    lines.join("\n")
+}
+
+fn render_training_artifact_gc_report(report: &TrainingArtifactGcReport) -> String {
+    format!(
+        "cache root: {}\nreclaimed bytes: {}\nafter bytes: {}\ndeleted files: {}",
+        report.cache_root,
+        report.reclaimed_bytes,
+        report.after_bytes,
+        report.deleted_paths.len()
     )
 }
 
@@ -10064,41 +11554,45 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::path::Path;
+    use std::sync::{Arc, Mutex, OnceLock};
 
     use super::{
         AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, Command,
-        DEFAULT_GEMMA_BENCH_PROMPT, DEFAULT_GEMMA_DIAGNOSTIC_ID, GemmaBenchExecutionMode,
-        GemmaBenchmarkMode, GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand,
-        GemmaDiagnosticReceipt, GemmaDiagnosticReport, GemmaDiagnosticRequest,
-        GemmaDiagnosticResult, GemmaDiagnosticRunReceipt, GemmaDownloadEvent,
-        GemmaDownloadTransport, GemmaSelector, LocalGemmaChatBackend, LocalGemmaChatEvent,
-        LocalGemmaChatMessage, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
+        DEFAULT_GEMMA_BENCH_PROMPT, DEFAULT_GEMMA_DIAGNOSTIC_ID,
+        ENV_GOOGLE_APPLICATION_CREDENTIALS, ENV_TRAINING_GCS_BEARER_TOKEN,
+        ENV_TRAINING_GCS_ENDPOINT, GemmaBenchExecutionMode, GemmaBenchmarkMode,
+        GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand, GemmaDiagnosticReceipt,
+        GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
+        GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
+        LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage,
+        PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
         PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_ENVIRONMENT_REF,
         PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
         PsionicTrainRuntimeSurface, PylonConfig, PylonTrainingActiveRuntimeState,
-        PylonTrainingAssignmentAckRequest, PylonTrainingCheckpointPublicationRequest,
-        PylonTrainingCoordinatorClient, PylonTrainingDrainNoticeRequest,
-        PylonTrainingFailureNoticeRequest, PylonTrainingFailureReceipt,
-        PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
+        PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
+        PylonTrainingCheckpointPublicationRequest, PylonTrainingCoordinatorClient,
+        PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
+        PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
         PylonTrainingPublicationPointer, PylonTrainingRoleClaim, PylonTrainingRunLeaseRequest,
         PylonTrainingRuntimeState, PylonTrainingSupervisorCommand,
         PylonTrainingSupervisorDesiredState, PylonTrainingSupervisorProcessState,
         PylonTrainingSupervisorStartRequest, PylonTrainingWindowCacheEntry,
         PylonTrainingWindowProgressRequest, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
-        WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
-        add_configured_relay, apply_config_set, apply_control_command,
-        build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
+        TrainingArtifactsCommand, TrainingCommand, WalletAddressReport, WalletInvoiceReport,
+        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
+        apply_control_command, build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
         derive_adapter_training_contributor_availability, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
         drain_training_supervisor, ensure_identity, ensure_no_conflicting_training_assignment,
-        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
-        inspect_psionic_train_runtime_surface_at, inventory_rows, load_backend_report,
-        load_earnings_report, load_inventory_report, load_jobs_report,
-        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
+        garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
+        gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
+        inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
+        load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
+        load_relay_report, load_sandbox_report, load_status_or_detect,
+        load_training_artifact_inspection_report, mutate_ledger, parse_args,
         planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_presence_client, psionic_gemma_benchmark_command_args,
         publish_announcement_report, refresh_relay_report, remove_configured_relay,
@@ -10108,9 +11602,9 @@ mod tests {
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
         save_config, save_gemma_diagnostic_report, save_training_runtime_state,
-        scan_provider_requests, start_training_supervisor, submit_buyer_job,
-        sync_live_announcement, sync_provider_payout_target_with_report,
-        training_runtime_state_path, watch_buyer_jobs,
+        scan_provider_requests, start_training_checkpoint_server, start_training_supervisor,
+        submit_buyer_job, sync_live_announcement, sync_provider_payout_target_with_report,
+        training_download_cache_root, training_runtime_state_path, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::NostrIdentity;
@@ -10120,6 +11614,15 @@ mod tests {
             ComputeTrainingRun, ComputeTrainingRunStatus,
         },
         compute_contracts,
+        pylon_training::{
+            PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PylonTrainingArtifactBundleKind,
+            PylonTrainingArtifactLayout, PylonTrainingArtifacts, PylonTrainingCheckpointBinding,
+            PylonTrainingCollectiveKind, PylonTrainingDatasetAssignment,
+            PylonTrainingElasticBoundary, PylonTrainingManifestRole,
+            PylonTrainingRunManifestCommon, PylonTrainingTopology,
+            PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
+            parse_pylon_training_run_manifest_json,
+        },
     };
     use openagents_provider_substrate::{
         ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
@@ -10318,6 +11821,195 @@ mod tests {
         save_config(config_path.as_path(), &config)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
         Ok((temp_dir, config, identity))
+    }
+
+    static TRAINING_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct TrainingEnvGuard {
+        entries: Vec<(String, Option<String>)>,
+    }
+
+    impl TrainingEnvGuard {
+        fn set(pairs: &[(&str, String)]) -> Self {
+            let entries = pairs
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var(key).ok();
+                    unsafe { std::env::set_var(key, value) };
+                    ((*key).to_string(), previous)
+                })
+                .collect();
+            Self { entries }
+        }
+    }
+
+    impl Drop for TrainingEnvGuard {
+        fn drop(&mut self) {
+            for (key, previous) in self.entries.drain(..).rev() {
+                match previous {
+                    Some(value) => unsafe { std::env::set_var(key, value) },
+                    None => unsafe { std::env::remove_var(key) },
+                }
+            }
+        }
+    }
+
+    fn training_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        TRAINING_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("training env lock")
+    }
+
+    fn training_manifest_fixture(
+        local_run_root: &Path,
+        bucket_uri: &str,
+    ) -> Result<
+        openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+        Box<dyn std::error::Error>,
+    > {
+        let layout = PylonTrainingArtifactLayout {
+            bucket_uri: bucket_uri.to_string(),
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+        };
+        let common = PylonTrainingRunManifestCommon {
+            manifest_id: "manifest.run.alpha.worker".to_string(),
+            issued_at_ms: 1_762_491_200_000,
+            expires_at_ms: 1_762_491_800_000,
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            assignment_id: "assign.node01.window0001".to_string(),
+            lease_id: "lease.node01.window0001".to_string(),
+            lease_sequence: 1,
+            membership_revision: "members.rev1".to_string(),
+            node_pubkey: "nodepubkeyalpha".to_string(),
+            coordinator_pubkey: "coordinatorpubkeyalpha".to_string(),
+            authority_base_url: "https://nexus.openagents.com".to_string(),
+            training_policy_ref: "policy.training.alpha".to_string(),
+            validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
+            environment_ref: PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
+            environment_version: "v1".to_string(),
+        };
+        let topology = PylonTrainingTopology {
+            backend_family: PylonTrainingTopologyBackendFamily::Cuda,
+            world_size: 1,
+            rank: 0,
+            local_device_ids: vec![0],
+            collective_kind: PylonTrainingCollectiveKind::DataParallel,
+            elastic_boundary: PylonTrainingElasticBoundary::Window,
+        };
+        let checkpoint = PylonTrainingCheckpointBinding {
+            checkpoint_family: PYLON_TRAINING_CHECKPOINT_FAMILY.to_string(),
+            checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+            manifest_digest: "sha256:checkpoint-manifest-alpha".to_string(),
+            latest_pointer_ref: layout.latest_pointer_path(),
+        };
+        let artifacts = PylonTrainingArtifacts {
+            bucket_uri: bucket_uri.to_string(),
+            run_prefix: layout.run_prefix(),
+            window_prefix: layout.window_prefix(),
+            local_run_root: local_run_root.display().to_string(),
+            credential_source: PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string(),
+        };
+        let trn = PylonTrainingTrn {
+            network_coordinate: "39500:trainnet.alpha".to_string(),
+            window_coordinate: "39510:window.0001".to_string(),
+            relay_urls: vec!["wss://relay.damus.io".to_string()],
+        };
+        let dataset = PylonTrainingDatasetAssignment {
+            dataset_id: "dataset.alpha".to_string(),
+            slice_id: "slice.0001".to_string(),
+            slice_digest: "sha256:slice-alpha".to_string(),
+            assignment_seed: "seed.alpha".to_string(),
+        };
+        Ok(
+            openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1::builder(
+                PylonTrainingManifestRole::Worker,
+                common,
+                topology,
+                checkpoint,
+                artifacts,
+                trn,
+            )
+            .dataset(dataset)
+            .build()?,
+        )
+    }
+
+    fn write_training_manifest_and_artifacts(
+        local_run_root: &Path,
+        bucket_uri: &str,
+    ) -> Result<
+        openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+        Box<dyn std::error::Error>,
+    > {
+        let manifest = training_manifest_fixture(local_run_root, bucket_uri)?;
+        std::fs::create_dir_all(local_run_root.join("manifests"))?;
+        std::fs::write(
+            local_run_root.join("manifests").join("run_manifest.json"),
+            manifest.canonical_json_bytes()?,
+        )?;
+        std::fs::create_dir_all(local_run_root.join("checkpoints").join("step-42"))?;
+        std::fs::write(
+            local_run_root
+                .join("checkpoints")
+                .join("latest_pointer.json"),
+            json!({
+                "schema_version":"openagents.pylon_training.latest_pointer.v1",
+                "checkpoint_ref":"checkpoint://run.alpha/0001"
+            })
+            .to_string(),
+        )?;
+        std::fs::write(
+            local_run_root
+                .join("checkpoints")
+                .join("step-42")
+                .join("checkpoint_manifest.json"),
+            json!({
+                "schema_version":"openagents.pylon_training.checkpoint_manifest.v1",
+                "checkpoint_ref":"checkpoint://run.alpha/0001",
+                "optimizer_step":42
+            })
+            .to_string(),
+        )?;
+        let contribution_root = local_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("assign.node01.window0001");
+        std::fs::create_dir_all(&contribution_root)?;
+        std::fs::write(
+            contribution_root.join("adapter_delta_bundle.json"),
+            json!({
+                "schema_version":"openagents.pylon_training.adapter_delta_bundle.v1",
+                "assignment_id":"assign.node01.window0001"
+            })
+            .to_string(),
+        )?;
+        std::fs::write(
+            contribution_root.join("proof_bundle.json"),
+            json!({
+                "schema_version":"openagents.pylon_training.proof_bundle.v1",
+                "assignment_id":"assign.node01.window0001"
+            })
+            .to_string(),
+        )?;
+        std::fs::write(
+            local_run_root
+                .join("windows")
+                .join("window.0001")
+                .join("score_snapshot.json"),
+            json!({
+                "schema_version":"openagents.pylon_training.score_snapshot.v1",
+                "window_id":"window.0001",
+                "score":0.99
+            })
+            .to_string(),
+        )?;
+        Ok(manifest)
     }
 
     fn supervisor_shell_command(script_path: &std::path::Path) -> PylonTrainingSupervisorCommand {
@@ -11341,6 +13033,306 @@ mod tests {
                 && counts.get("/api/training/nodes/admission") == Some(&2),
             "heartbeat should retry on a transient server error and repeated node-admission calls should hit the same idempotent route safely",
         )
+    }
+
+    #[test]
+    fn parse_args_supports_training_artifact_commands() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "training".to_string(),
+                "artifacts".to_string(),
+                "inspect".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Training {
+                    command: TrainingCommand::Artifacts {
+                        command: TrainingArtifactsCommand::Inspect { json: true },
+                    },
+                },
+            "training artifacts inspect should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "training".to_string(),
+                "artifacts".to_string(),
+                "gc".to_string(),
+            ])?
+            .command
+                == Command::Training {
+                    command: TrainingCommand::Artifacts {
+                        command: TrainingArtifactsCommand::Gc { json: false },
+                    },
+                },
+            "training artifacts gc should parse without extra flags",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_artifact_courier_uploads_downloads_and_verifies_bundles()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<u8>>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let base_url = start_mock_http_server(move |method, path, body| {
+            let mut counts = request_counts_for_server
+                .lock()
+                .expect("training artifact request counts");
+            let count = counts.entry(format!("{method}:{path}")).or_insert(0);
+            *count += 1;
+            let mut objects = stored_objects_for_server
+                .lock()
+                .expect("training artifact object store");
+            if method == "PUT"
+                && path
+                    == "/bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/step-42/checkpoint_manifest.json"
+                && *count == 1
+            {
+                return (
+                    503,
+                    "application/json",
+                    json!({"error":"retry_me"}).to_string(),
+                );
+            }
+            match method.as_str() {
+                "PUT" => {
+                    objects.insert(path.clone(), body.into_bytes());
+                    (200, "application/json", "{}".to_string())
+                }
+                "GET" => {
+                    let payload = objects
+                        .get(path.as_str())
+                        .cloned()
+                        .unwrap_or_else(|| b"{}".to_vec());
+                    (
+                        200,
+                        "application/json",
+                        String::from_utf8(payload).expect("stored object should stay utf8"),
+                    )
+                }
+                _ => (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed"}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        save_config(config_path.as_path(), &config)?;
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, base_url.clone()),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+        ]);
+
+        let client = PylonTrainingArtifactStoreClient::new(&config).await?;
+        let checkpoint_report = client
+            .upload_bundle(
+                &manifest,
+                PylonTrainingArtifactBundleKind::CheckpointManifest { optimizer_step: 42 },
+            )
+            .await?;
+        let contribution_report = client
+            .upload_bundle(
+                &manifest,
+                PylonTrainingArtifactBundleKind::Contribution {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                },
+            )
+            .await?;
+        let score_report = client
+            .upload_bundle(&manifest, PylonTrainingArtifactBundleKind::ScoreSnapshot)
+            .await?;
+
+        ensure(
+            checkpoint_report.state == "uploaded"
+                && contribution_report.state == "uploaded"
+                && score_report.state == "uploaded",
+            "artifact courier should upload and verify checkpoint, contribution, and score bundles",
+        )?;
+        ensure(
+            checkpoint_report.objects.len() == 1
+                && contribution_report.objects.len() == 2
+                && score_report.objects.len() == 1
+                && contribution_report
+                    .objects
+                    .iter()
+                    .all(|object| object.digest_verified),
+            "uploaded bundle reports should retain per-object digests and verification flags",
+        )?;
+
+        let expected_digests = contribution_report
+            .objects
+            .iter()
+            .map(|object| (object.object_uri.clone(), object.digest.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let restored_root = training_download_cache_root(&config).join("restored-contribution");
+        let restored_report = client
+            .download_bundle(
+                &manifest,
+                PylonTrainingArtifactBundleKind::Contribution {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                },
+                &expected_digests,
+                restored_root.as_path(),
+            )
+            .await?;
+        ensure(
+            restored_report.state == "verified"
+                && restored_root
+                    .join("windows")
+                    .join("window.0001")
+                    .join("contributions")
+                    .join("assign.node01.window0001")
+                    .join("proof_bundle.json")
+                    .is_file(),
+            "downloaded training bundles should be restored locally and verified against expected digests",
+        )?;
+
+        let counts = request_counts
+            .lock()
+            .expect("training artifact request counts")
+            .clone();
+        ensure(
+            counts.get(
+                "PUT:/bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/step-42/checkpoint_manifest.json",
+            ) == Some(&2),
+            "training artifact uploads should retry transient failures on the frozen GCS lane",
+        )
+    }
+
+    #[test]
+    fn training_artifact_inspection_and_gc_report_local_state()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.training.retention_limit_gb = 1;
+        save_config(config_path.as_path(), &config)?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            manifest_path: local_run_root
+                .join("manifests")
+                .join("run_manifest.json")
+                .display()
+                .to_string(),
+            run_root: local_run_root.display().to_string(),
+            ..training_active_runtime_fixture()
+        });
+        save_training_runtime_state(&config, &state)?;
+
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+        ]);
+
+        let report = load_training_artifact_inspection_report(config_path.as_path())?;
+        ensure(
+            report.manifests.len() == 1
+                && report.bundles.iter().any(|bundle| {
+                    bundle.bundle_id == "run_manifest" && bundle.state == "local_only"
+                })
+                && report
+                    .bundles
+                    .iter()
+                    .any(|bundle| bundle.bundle_id == "checkpoint_manifest:42")
+                && report
+                    .bundles
+                    .iter()
+                    .any(|bundle| bundle.bundle_id == "contribution:assign.node01.window0001")
+                && report
+                    .bundles
+                    .iter()
+                    .any(|bundle| bundle.bundle_id == "score_snapshot"),
+            "training artifact inspection should surface the local manifest and discovered bundle state",
+        )?;
+        ensure(
+            parse_pylon_training_run_manifest_json(&std::fs::read(
+                local_run_root.join("manifests").join("run_manifest.json"),
+            )?)? == manifest,
+            "inspection fixtures should keep the canonical local manifest parseable",
+        )?;
+
+        let download_cache_root = training_download_cache_root(&config);
+        std::fs::create_dir_all(download_cache_root.join("stale"))?;
+        let old_file = download_cache_root.join("stale").join("old.bin");
+        let new_file = download_cache_root.join("stale").join("new.bin");
+        let old = std::fs::File::create(old_file.as_path())?;
+        old.set_len(super::BYTES_PER_GIB + 4096)?;
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let new = std::fs::File::create(new_file.as_path())?;
+        new.set_len(super::BYTES_PER_GIB + 8192)?;
+
+        let gc_report = garbage_collect_training_download_cache(config_path.as_path())?;
+        ensure(
+            gc_report.before_bytes > gc_report.after_bytes
+                && gc_report.after_bytes <= super::BYTES_PER_GIB
+                && !gc_report.deleted_paths.is_empty(),
+            "download-cache garbage collection should prune stale files back under the retained quota",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_checkpoint_server_serves_local_checkpoint_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let runs_root = temp_dir.path().join("runs");
+        let checkpoint_path = runs_root
+            .join("run.alpha")
+            .join("checkpoints")
+            .join("latest_pointer.json");
+        std::fs::create_dir_all(checkpoint_path.parent().expect("checkpoint parent"))?;
+        std::fs::write(
+            checkpoint_path.as_path(),
+            json!({
+                "schema_version":"openagents.pylon_training.latest_pointer.v1",
+                "checkpoint_ref":"checkpoint://run.alpha/0001"
+            })
+            .to_string(),
+        )?;
+
+        let server = start_training_checkpoint_server("127.0.0.1:0", runs_root).await?;
+        let response = reqwest::get(format!(
+            "{}/runs/run.alpha/checkpoints/latest_pointer.json",
+            server.base_url()
+        ))
+        .await?;
+        let status = response.status();
+        let body = response.text().await?;
+        ensure(
+            status.is_success() && body.contains("checkpoint://run.alpha/0001"),
+            "the local checkpoint server should expose the run-scoped checkpoint path for recovery clients",
+        )?;
+        server.shutdown().await?;
+        Ok(())
     }
 
     #[test]
