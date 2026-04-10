@@ -29,17 +29,19 @@ use openagents_kernel_core::{
     },
     compute::{
         ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterContributionDisposition,
-        ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow, ComputeTrainingPolicy,
-        ComputeTrainingRun,
+        ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
+        ComputeAdapterWindowStatus, ComputeTrainingPolicy, ComputeTrainingRun,
     },
     pylon_training::{
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
-        PylonTrainingArtifactLayout, PylonTrainingObservabilityContext, artifact_digest_from_bytes,
-        artifact_digest_from_json, can_emit_terminal_artifact_uploaded_receipt,
-        derive_artifact_bundle_state, parse_pylon_training_run_manifest_json,
-        resolve_pylon_training_credentials,
+        PylonTrainingArtifactLayout, PylonTrainingObservabilityContext,
+        PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
+        PylonTrainingSchedulerEffect, artifact_digest_from_bytes, artifact_digest_from_json,
+        can_emit_terminal_artifact_uploaded_receipt, derive_artifact_bundle_state,
+        parse_pylon_training_run_manifest_json, resolve_pylon_training_credentials,
+        scheduler_effect_for_label,
     },
 };
 use openagents_provider_substrate::{
@@ -311,6 +313,14 @@ pub struct PylonTrainingRuntimeState {
     pub window_cache: BTreeMap<String, PylonTrainingWindowCacheEntry>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub publication_pointers: BTreeMap<String, PylonTrainingPublicationPointer>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub contribution_outcomes: BTreeMap<String, PylonTrainingContributionOutcomeCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub closeout_cache: BTreeMap<String, PylonTrainingCloseoutCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reputation_labels: BTreeMap<String, PylonTrainingReputationLabelCacheEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_authority_sync_at_ms: Option<i64>,
 }
 
 impl Default for PylonTrainingRuntimeState {
@@ -322,6 +332,10 @@ impl Default for PylonTrainingRuntimeState {
             lease_cache: BTreeMap::new(),
             window_cache: BTreeMap::new(),
             publication_pointers: BTreeMap::new(),
+            contribution_outcomes: BTreeMap::new(),
+            closeout_cache: BTreeMap::new(),
+            reputation_labels: BTreeMap::new(),
+            last_authority_sync_at_ms: None,
         }
     }
 }
@@ -414,6 +428,64 @@ pub struct PylonTrainingPublicationPointer {
     pub event_id: String,
     pub a_ref: Option<String>,
     pub published_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingContributionOutcomeCacheEntry {
+    pub contribution_id: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub contributor_node_id: String,
+    pub worker_id: String,
+    pub artifact_id: String,
+    pub manifest_digest: String,
+    pub object_digest: String,
+    pub validator_disposition: String,
+    #[serde(default)]
+    pub validation_reason_codes: Vec<String>,
+    pub aggregation_eligibility: String,
+    pub accepted_for_aggregation: bool,
+    pub recorded_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingCloseoutCacheEntry {
+    pub outcome_id: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub outcome_kind: String,
+    pub closeout_status: String,
+    pub payout_eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub processed_token_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_eval_score_bps: Option<u32>,
+    pub accepted_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingReputationLabelCacheEntry {
+    pub cache_key: String,
+    pub event_id: String,
+    pub publisher_pubkey: String,
+    pub namespace: String,
+    pub label: String,
+    pub scheduler_effect: String,
+    pub hard_gate: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_pubkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    pub created_at_unix: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -676,12 +748,25 @@ pub enum TrainingCommand {
         manifest_path: Option<PathBuf>,
         json: bool,
     },
+    Sync {
+        json: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrainingArtifactsCommand {
     Inspect { json: bool },
     Gc { json: bool },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingAuthoritySyncReport {
+    manifest_count: usize,
+    contribution_outcome_count: usize,
+    closeout_count: usize,
+    reputation_label_count: usize,
+    auto_readvertise_blocked: bool,
+    blocked_label_keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -3827,6 +3912,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 }
                 Ok(Some(render_training_trn_publication_report(&report)))
             }
+            TrainingCommand::Sync { json } => {
+                let report = sync_training_authority_state(cli.config_path.as_path()).await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_training_authority_sync_report(&report)))
+            }
         },
         Command::Gemma { command } => match command {
             GemmaCommand::List { json } => {
@@ -4303,6 +4395,9 @@ fn parse_training_command(args: &[String], start_index: usize) -> Result<Trainin
                 json,
             })
         }
+        Some("sync") => Ok(TrainingCommand::Sync {
+            json: parse_json_only(args, start_index + 1, "training sync")?,
+        }),
         Some(other) => bail!("unknown training command: {other}"),
         None => bail!("missing training subcommand"),
     }
@@ -5279,6 +5374,16 @@ impl PylonTrainingCoordinatorClient {
     ) -> Result<ComputeAdapterTrainingWindow> {
         self.kernel_authority
             .get_compute_adapter_training_window(window_id)
+            .await
+    }
+
+    pub async fn list_adapter_training_windows(
+        &self,
+        training_run_id: Option<&str>,
+        status: Option<ComputeAdapterWindowStatus>,
+    ) -> Result<Vec<ComputeAdapterTrainingWindow>> {
+        self.kernel_authority
+            .list_compute_adapter_training_windows(training_run_id, status)
             .await
     }
 
@@ -6830,6 +6935,562 @@ async fn publish_training_trn_state(
     Ok(report)
 }
 
+async fn sync_training_authority_state(config_path: &Path) -> Result<TrainingAuthoritySyncReport> {
+    let config = load_or_create_config(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let mut state = load_or_create_training_runtime_state(&config)?;
+    let contexts = load_training_manifest_inspection_contexts(&config, &state)?;
+    let client = PylonTrainingCoordinatorClient::new(&config)?;
+
+    let run_ids = contexts
+        .iter()
+        .map(|context| context.manifest.run_id.clone())
+        .collect::<BTreeSet<_>>();
+    let environment_refs = contexts
+        .iter()
+        .map(|context| context.manifest.environment_ref.clone())
+        .collect::<BTreeSet<_>>();
+    let run_windows = contexts
+        .iter()
+        .map(|context| {
+            (
+                context.manifest.run_id.clone(),
+                context.manifest.window_id.clone(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+
+    let mut contribution_outcomes = BTreeMap::new();
+    for (training_run_id, window_id) in &run_windows {
+        for outcome in client
+            .list_adapter_contribution_outcomes(
+                Some(training_run_id.as_str()),
+                Some(window_id.as_str()),
+                None,
+            )
+            .await?
+        {
+            contribution_outcomes.insert(
+                outcome.contribution_id.clone(),
+                cache_training_contribution_outcome(&outcome),
+            );
+        }
+    }
+
+    let mut accepted_window_ids = BTreeMap::<String, String>::new();
+    for training_run_id in &run_ids {
+        for window in client
+            .list_adapter_training_windows(Some(training_run_id.as_str()), None)
+            .await?
+        {
+            if let Some(outcome_id) = window.accepted_outcome_id.as_ref() {
+                accepted_window_ids.insert(outcome_id.clone(), window.window_id.clone());
+            }
+        }
+    }
+
+    let mut closeout_cache = BTreeMap::new();
+    for environment_ref in &environment_refs {
+        for outcome in client
+            .list_accepted_outcomes(
+                Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                Some(environment_ref.as_str()),
+            )
+            .await?
+        {
+            if !run_ids.contains(&outcome.source_run_id) {
+                continue;
+            }
+            let window_id = accepted_window_ids
+                .get(&outcome.outcome_id)
+                .cloned()
+                .or_else(|| training_closeout_window_id_from_metadata(&outcome))
+                .unwrap_or_else(|| "window.unbound".to_string());
+            closeout_cache.insert(
+                outcome.outcome_id.clone(),
+                cache_training_closeout(&outcome, window_id.as_str()),
+            );
+        }
+    }
+
+    let reputation_labels = collect_training_reputation_label_cache_entries(
+        &config,
+        &identity,
+        &state,
+        contexts.as_slice(),
+    )
+    .await?;
+
+    state.contribution_outcomes = contribution_outcomes;
+    state.closeout_cache = closeout_cache;
+    state.reputation_labels = reputation_labels;
+    state.last_authority_sync_at_ms = Some(now_epoch_ms());
+    save_training_runtime_state(&config, &state)?;
+
+    let blocked_label_keys = training_runtime_blocked_label_keys(&state);
+    Ok(TrainingAuthoritySyncReport {
+        manifest_count: contexts.len(),
+        contribution_outcome_count: state.contribution_outcomes.len(),
+        closeout_count: state.closeout_cache.len(),
+        reputation_label_count: state.reputation_labels.len(),
+        auto_readvertise_blocked: !blocked_label_keys.is_empty(),
+        blocked_label_keys,
+    })
+}
+
+fn cache_training_contribution_outcome(
+    outcome: &ComputeAdapterContributionOutcome,
+) -> PylonTrainingContributionOutcomeCacheEntry {
+    PylonTrainingContributionOutcomeCacheEntry {
+        contribution_id: outcome.contribution_id.clone(),
+        training_run_id: outcome.training_run_id.clone(),
+        window_id: outcome.window_id.clone(),
+        assignment_id: outcome.assignment_id.clone(),
+        contributor_node_id: outcome.contributor_node_id.clone(),
+        worker_id: outcome.worker_id.clone(),
+        artifact_id: outcome.artifact_id.clone(),
+        manifest_digest: outcome.manifest_digest.clone(),
+        object_digest: outcome.object_digest.clone(),
+        validator_disposition: outcome.validator_disposition.label().to_string(),
+        validation_reason_codes: outcome
+            .validation_reason_codes
+            .iter()
+            .map(training_contribution_validation_reason_code_label)
+            .collect(),
+        aggregation_eligibility: outcome.aggregation_eligibility.label().to_string(),
+        accepted_for_aggregation: outcome.accepted_for_aggregation,
+        recorded_at_ms: outcome.recorded_at_ms,
+    }
+}
+
+fn training_contribution_validation_reason_code_label(
+    code: &openagents_kernel_core::compute::ComputeAdapterContributionValidationReasonCode,
+) -> String {
+    serde_json::to_value(code)
+        .ok()
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| format!("{code:?}").to_ascii_lowercase())
+}
+
+fn training_closeout_window_id_from_metadata(outcome: &ComputeAcceptedOutcome) -> Option<String> {
+    outcome
+        .metadata
+        .get("window_id")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+}
+
+fn training_closeout_status_from_metadata(outcome: &ComputeAcceptedOutcome) -> String {
+    outcome
+        .metadata
+        .get("closeout_status")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| "accepted".to_string())
+}
+
+fn training_closeout_payout_eligible(outcome: &ComputeAcceptedOutcome) -> bool {
+    outcome
+        .metadata
+        .get("payout_eligible")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+}
+
+fn cache_training_closeout(
+    outcome: &ComputeAcceptedOutcome,
+    window_id: &str,
+) -> PylonTrainingCloseoutCacheEntry {
+    PylonTrainingCloseoutCacheEntry {
+        outcome_id: outcome.outcome_id.clone(),
+        training_run_id: outcome.source_run_id.clone(),
+        window_id: window_id.to_string(),
+        outcome_kind: outcome.outcome_kind.label().to_string(),
+        closeout_status: training_closeout_status_from_metadata(outcome),
+        payout_eligible: training_closeout_payout_eligible(outcome),
+        accepted_checkpoint_ref: outcome
+            .training_summary
+            .as_ref()
+            .and_then(|summary| summary.accepted_checkpoint_ref.clone()),
+        completed_step_count: outcome
+            .training_summary
+            .as_ref()
+            .and_then(|summary| summary.completed_step_count),
+        processed_token_count: outcome
+            .training_summary
+            .as_ref()
+            .and_then(|summary| summary.processed_token_count),
+        best_eval_score_bps: outcome
+            .training_summary
+            .as_ref()
+            .and_then(|summary| summary.best_eval_score_bps),
+        accepted_at_ms: outcome.accepted_at_ms,
+    }
+}
+
+async fn collect_training_reputation_label_cache_entries(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &PylonTrainingRuntimeState,
+    contexts: &[TrainingManifestInspectionContext],
+) -> Result<BTreeMap<String, PylonTrainingReputationLabelCacheEntry>> {
+    let relay_urls = training_sync_relay_urls(config, contexts);
+    if relay_urls.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let coordinator_pubkeys = contexts
+        .iter()
+        .map(|context| context.manifest.coordinator_pubkey.clone())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<BTreeSet<_>>();
+    let event_refs = state
+        .publication_pointers
+        .values()
+        .map(|pointer| pointer.event_id.clone())
+        .collect::<BTreeSet<_>>();
+    let address_refs = state
+        .publication_pointers
+        .values()
+        .filter_map(|pointer| pointer.a_ref.clone())
+        .collect::<BTreeSet<_>>();
+
+    let mut filters = Vec::new();
+    filters.push(training_reputation_filter(
+        Some(&coordinator_pubkeys),
+        "p",
+        &[identity.public_key_hex.clone()],
+    ));
+    if !event_refs.is_empty() {
+        filters.push(training_reputation_filter(
+            Some(&coordinator_pubkeys),
+            "e",
+            &event_refs.iter().cloned().collect::<Vec<_>>(),
+        ));
+    }
+    if !address_refs.is_empty() {
+        filters.push(training_reputation_filter(
+            Some(&coordinator_pubkeys),
+            "a",
+            &address_refs.iter().cloned().collect::<Vec<_>>(),
+        ));
+    }
+
+    let pool = build_training_relay_pool(config, identity, relay_urls.as_slice()).await?;
+    let subscription_id = format!("pylon-training-sync-{}", now_epoch_ms());
+    let events = collect_training_relay_events(
+        &pool,
+        subscription_id.as_str(),
+        filters,
+        Duration::from_secs(2),
+    )
+    .await?;
+
+    let mut cache = BTreeMap::new();
+    for event in events {
+        for entry in training_reputation_cache_entries_from_event(
+            &event,
+            identity.public_key_hex.as_str(),
+            &event_refs,
+            &address_refs,
+        ) {
+            cache.insert(entry.cache_key.clone(), entry);
+        }
+    }
+    Ok(cache)
+}
+
+fn training_sync_relay_urls(
+    config: &PylonConfig,
+    contexts: &[TrainingManifestInspectionContext],
+) -> Vec<String> {
+    let mut relay_urls = BTreeSet::new();
+    for relay_url in &config.training.relay_urls {
+        let normalized = relay_url.trim();
+        if !normalized.is_empty() {
+            relay_urls.insert(normalized.to_string());
+        }
+    }
+    for relay_url in &config.relay_urls {
+        let normalized = relay_url.trim();
+        if !normalized.is_empty() {
+            relay_urls.insert(normalized.to_string());
+        }
+    }
+    for relay_url in dedup_training_relay_urls(contexts) {
+        relay_urls.insert(relay_url);
+    }
+    relay_urls.into_iter().collect()
+}
+
+fn training_reputation_filter(
+    authors: Option<&BTreeSet<String>>,
+    tag_name: &str,
+    values: &[String],
+) -> Value {
+    let mut filter = serde_json::Map::new();
+    filter.insert(
+        "kinds".to_string(),
+        Value::Array(vec![Value::from(nostr::nip32::KIND_LABEL)]),
+    );
+    filter.insert(
+        format!("#{tag_name}"),
+        Value::Array(values.iter().cloned().map(Value::String).collect()),
+    );
+    if let Some(authors) = authors.filter(|authors| !authors.is_empty()) {
+        filter.insert(
+            "authors".to_string(),
+            Value::Array(authors.iter().cloned().map(Value::String).collect()),
+        );
+    }
+    Value::Object(filter)
+}
+
+async fn collect_training_relay_events(
+    pool: &RelayPool,
+    subscription_id: &str,
+    filters: Vec<Value>,
+    timeout: Duration,
+) -> Result<Vec<Event>> {
+    pool.subscribe_filters(subscription_id.to_string(), filters)
+        .await
+        .with_context(|| format!("failed to subscribe training sync {}", subscription_id))?;
+    let mut events = BTreeMap::<String, Event>::new();
+    let mut eose_relays = BTreeSet::<String>::new();
+    let deadline = Instant::now() + timeout;
+
+    loop {
+        let relays = pool.relays().await;
+        let relay_count = relays.len();
+        if relay_count == 0 || eose_relays.len() >= relay_count || Instant::now() >= deadline {
+            break;
+        }
+
+        let mut made_progress = false;
+        for relay in relays {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let wait = remaining.min(Duration::from_millis(100));
+            let message = match tokio::time::timeout(wait, relay.recv()).await {
+                Ok(Ok(Some(message))) => message,
+                Ok(Ok(None)) => continue,
+                Ok(Err(error)) => {
+                    return Err(anyhow!("training sync relay receive failed: {error}"));
+                }
+                Err(_) => continue,
+            };
+            match message {
+                RelayMessage::Event(current_subscription, event)
+                    if current_subscription == subscription_id =>
+                {
+                    events.insert(event.id.clone(), event);
+                    made_progress = true;
+                }
+                RelayMessage::Eose(current_subscription)
+                    if current_subscription == subscription_id =>
+                {
+                    eose_relays.insert(relay.url().to_string());
+                    made_progress = true;
+                }
+                _ => {}
+            }
+        }
+
+        if !made_progress {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    let _ = pool.unsubscribe(subscription_id).await;
+    Ok(events.into_values().collect())
+}
+
+fn training_reputation_cache_entries_from_event(
+    event: &Event,
+    subject_pubkey: &str,
+    event_refs: &BTreeSet<String>,
+    address_refs: &BTreeSet<String>,
+) -> Vec<PylonTrainingReputationLabelCacheEntry> {
+    if event.kind != nostr::nip32::KIND_LABEL as u16 {
+        return Vec::new();
+    }
+
+    let subject_pubkey_ref = event.tags.iter().find_map(|tag| {
+        (tag.first().is_some_and(|value| value == "p")
+            && tag.get(1).is_some_and(|value| value == subject_pubkey))
+        .then(|| tag.get(1).cloned())
+        .flatten()
+    });
+    let event_ref = event.tags.iter().find_map(|tag| {
+        (tag.first().is_some_and(|value| value == "e")
+            && tag.get(1).is_some_and(|value| event_refs.contains(value)))
+        .then(|| tag.get(1).cloned())
+        .flatten()
+    });
+    let address_ref = event.tags.iter().find_map(|tag| {
+        (tag.first().is_some_and(|value| value == "a")
+            && tag.get(1).is_some_and(|value| address_refs.contains(value)))
+        .then(|| tag.get(1).cloned())
+        .flatten()
+    });
+    if subject_pubkey_ref.is_none() && event_ref.is_none() && address_ref.is_none() {
+        return Vec::new();
+    }
+
+    let mut entries = Vec::new();
+    for tag in &event.tags {
+        if !tag.first().is_some_and(|value| value == "l") {
+            continue;
+        }
+        let Some(label_value) = tag.get(1).map(String::as_str) else {
+            continue;
+        };
+        let namespace = tag
+            .get(2)
+            .map(|value| value.as_str())
+            .or_else(|| training_single_namespace_from_event(event));
+        let Some(namespace) = namespace else {
+            continue;
+        };
+        let Some((scheduler_effect, hard_gate)) =
+            training_reputation_effect(namespace, label_value, event.created_at)
+        else {
+            continue;
+        };
+        let cache_key = format!("{}::{namespace}::{label_value}", event.id);
+        entries.push(PylonTrainingReputationLabelCacheEntry {
+            cache_key,
+            event_id: event.id.clone(),
+            publisher_pubkey: event.pubkey.clone(),
+            namespace: namespace.to_string(),
+            label: label_value.to_string(),
+            scheduler_effect,
+            hard_gate,
+            subject_pubkey: subject_pubkey_ref.clone(),
+            event_ref: event_ref.clone(),
+            address_ref: address_ref.clone(),
+            content: (!event.content.trim().is_empty()).then(|| event.content.clone()),
+            created_at_unix: event.created_at,
+        });
+    }
+    entries
+}
+
+fn training_single_namespace_from_event(event: &Event) -> Option<&str> {
+    let namespaces = event
+        .tags
+        .iter()
+        .filter_map(|tag| {
+            (tag.first().is_some_and(|value| value == "L"))
+                .then(|| tag.get(1).map(String::as_str))
+                .flatten()
+        })
+        .collect::<BTreeSet<_>>();
+    (namespaces.len() == 1)
+        .then(|| namespaces.iter().next().copied())
+        .flatten()
+}
+
+fn training_reputation_effect(
+    namespace: &str,
+    label: &str,
+    created_at_unix: u64,
+) -> Option<(String, bool)> {
+    let namespace = training_reputation_namespace_from_str(namespace)?;
+    let label = training_reputation_label_from_str(label)?;
+    let age_days = training_reputation_age_days(created_at_unix);
+    let effect = scheduler_effect_for_label(namespace, label, age_days).ok()?;
+    Some((
+        training_scheduler_effect_label(effect).to_string(),
+        effect == PylonTrainingSchedulerEffect::HardGate,
+    ))
+}
+
+fn training_reputation_namespace_from_str(value: &str) -> Option<PylonTrainingReputationNamespace> {
+    match value {
+        "trn/contributor" => Some(PylonTrainingReputationNamespace::Contributor),
+        "trn/validator" => Some(PylonTrainingReputationNamespace::Validator),
+        "trn/build" => Some(PylonTrainingReputationNamespace::Build),
+        "trn/checkpoint" => Some(PylonTrainingReputationNamespace::Checkpoint),
+        _ => None,
+    }
+}
+
+fn training_reputation_label_from_str(value: &str) -> Option<PylonTrainingReputationLabel> {
+    match value {
+        "good" => Some(PylonTrainingReputationLabel::Good),
+        "poor" => Some(PylonTrainingReputationLabel::Poor),
+        "quarantined" => Some(PylonTrainingReputationLabel::Quarantined),
+        "fraud" => Some(PylonTrainingReputationLabel::Fraud),
+        "inconsistent" => Some(PylonTrainingReputationLabel::Inconsistent),
+        "admitted" => Some(PylonTrainingReputationLabel::Admitted),
+        "stale" => Some(PylonTrainingReputationLabel::Stale),
+        "revoked" => Some(PylonTrainingReputationLabel::Revoked),
+        "warning" => Some(PylonTrainingReputationLabel::Warning),
+        _ => None,
+    }
+}
+
+fn training_scheduler_effect_label(effect: PylonTrainingSchedulerEffect) -> &'static str {
+    match effect {
+        PylonTrainingSchedulerEffect::HardGate => "hard_gate",
+        PylonTrainingSchedulerEffect::SoftPositive => "soft_positive",
+        PylonTrainingSchedulerEffect::SoftNegative => "soft_negative",
+        PylonTrainingSchedulerEffect::Ignored => "ignored",
+    }
+}
+
+fn training_reputation_age_days(created_at_unix: u64) -> u32 {
+    let now_secs = u64::try_from(now_epoch_ms().max(0)).unwrap_or(0) / 1000;
+    let age_secs = now_secs.saturating_sub(created_at_unix);
+    u32::try_from(age_secs / 86_400).unwrap_or(u32::MAX)
+}
+
+fn training_runtime_blocked_label_keys(state: &PylonTrainingRuntimeState) -> Vec<String> {
+    let mut blocked = state
+        .reputation_labels
+        .values()
+        .filter(|entry| training_reputation_cache_entry_hard_gates(entry))
+        .map(|entry| entry.cache_key.clone())
+        .collect::<Vec<_>>();
+    blocked.sort();
+    blocked
+}
+
+fn training_reputation_cache_entry_hard_gates(
+    entry: &PylonTrainingReputationLabelCacheEntry,
+) -> bool {
+    training_reputation_effect(
+        entry.namespace.as_str(),
+        entry.label.as_str(),
+        entry.created_at_unix,
+    )
+    .map(|(_, hard_gate)| hard_gate)
+    .unwrap_or(entry.hard_gate)
+}
+
+fn apply_training_reputation_gate_to_availability(
+    config: &PylonConfig,
+    availability: &mut ProviderAdapterTrainingContributorAvailability,
+) -> Vec<String> {
+    let state_path = training_runtime_state_path(config);
+    let Some(state) = state_path
+        .is_file()
+        .then(|| load_training_runtime_state(state_path.as_path()).ok())
+        .flatten()
+    else {
+        return Vec::new();
+    };
+    let blocked = training_runtime_blocked_label_keys(&state);
+    if !blocked.is_empty() {
+        availability.contributor_supported = false;
+    }
+    blocked
+}
+
 fn dedup_training_relay_urls(contexts: &[TrainingManifestInspectionContext]) -> Vec<String> {
     let mut relay_urls = BTreeSet::new();
     for context in contexts {
@@ -7831,6 +8492,29 @@ fn render_training_trn_publication_report(report: &TrainingTrnPublicationReport)
         if let Some(a_ref) = entry.a_ref.as_deref() {
             lines.push(format!("a ref: {a_ref}"));
         }
+    }
+    lines.join("\n")
+}
+
+fn render_training_authority_sync_report(report: &TrainingAuthoritySyncReport) -> String {
+    let mut lines = vec![
+        format!("manifest count: {}", report.manifest_count),
+        format!(
+            "contribution outcomes: {}",
+            report.contribution_outcome_count
+        ),
+        format!("closeouts: {}", report.closeout_count),
+        format!("reputation labels: {}", report.reputation_label_count),
+        format!(
+            "auto readvertise blocked: {}",
+            report.auto_readvertise_blocked
+        ),
+    ];
+    if !report.blocked_label_keys.is_empty() {
+        lines.push(format!(
+            "blocked label keys: {}",
+            report.blocked_label_keys.join(", ")
+        ));
     }
     lines.join("\n")
 }
@@ -12342,7 +13026,10 @@ fn detect_adapter_training_contributor(
 ) -> ProviderAdapterTrainingContributorAvailability {
     let host = load_cached_provider_host_telemetry(config.admin_db_path.as_path());
     let runtime_surface = inspect_psionic_train_runtime_surface().ok();
-    derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref())
+    let mut availability =
+        derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref());
+    let _ = apply_training_reputation_gate_to_availability(config, &mut availability);
+    availability
 }
 
 fn derive_adapter_training_contributor_availability(
@@ -12758,7 +13445,8 @@ mod tests {
         PylonTrainingWindowProgressRequest, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
         TrainingArtifactsCommand, TrainingCommand, WalletAddressReport, WalletInvoiceReport,
         WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
-        apply_control_command, build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
+        apply_control_command, apply_training_reputation_gate_to_availability,
+        build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
         derive_adapter_training_contributor_availability, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
         drain_training_supervisor, ensure_identity, ensure_no_conflicting_training_assignment,
@@ -12780,21 +13468,27 @@ mod tests {
         save_config, save_gemma_diagnostic_report, save_training_runtime_state,
         scan_provider_requests, start_training_checkpoint_server, start_training_supervisor,
         submit_buyer_job, sync_live_announcement, sync_provider_payout_target_with_report,
-        training_download_cache_root, training_runtime_state_path, watch_buyer_jobs,
+        sync_training_authority_state, training_download_cache_root, training_runtime_state_path,
+        watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::NostrIdentity;
     use openagents_kernel_core::{
         compute::{
+            ComputeAcceptedOutcome, ComputeAdapterAggregationEligibility,
+            ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
+            ComputeAdapterContributionOutcome, ComputeAdapterDatasetSlice,
+            ComputeAdapterPolicyRevision, ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus,
             ComputeEnvironmentBinding, ComputeRegistryStatus, ComputeTrainingPolicy,
-            ComputeTrainingRun, ComputeTrainingRunStatus,
+            ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
         },
         compute_contracts,
         pylon_training::{
             PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PylonTrainingArtifactBundleKind,
             PylonTrainingArtifactLayout, PylonTrainingArtifacts, PylonTrainingCheckpointBinding,
             PylonTrainingCollectiveKind, PylonTrainingDatasetAssignment,
-            PylonTrainingElasticBoundary, PylonTrainingManifestRole,
+            PylonTrainingElasticBoundary, PylonTrainingManifestRole, PylonTrainingReputationLabel,
+            PylonTrainingReputationNamespace, PylonTrainingReputationRecord,
             PylonTrainingRunManifestCommon, PylonTrainingTopology,
             PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
             parse_pylon_training_run_manifest_json,
@@ -12833,6 +13527,53 @@ mod tests {
                 None
             }
         })
+    }
+
+    fn relay_event_has_tag_value(event: &Value, tag_name: &str, expected: &str) -> bool {
+        event
+            .get("tags")
+            .and_then(Value::as_array)
+            .is_some_and(|tags| {
+                tags.iter().any(|tag| {
+                    tag.as_array().is_some_and(|tag| {
+                        tag.first().and_then(Value::as_str) == Some(tag_name)
+                            && tag.get(1).and_then(Value::as_str) == Some(expected)
+                    })
+                })
+            })
+    }
+
+    fn relay_event_matches_filter(event: &Value, filter: &Value) -> bool {
+        let Some(filter) = filter.as_object() else {
+            return false;
+        };
+        if let Some(kinds) = filter.get("kinds").and_then(Value::as_array)
+            && !kinds
+                .iter()
+                .filter_map(Value::as_u64)
+                .any(|kind| event.get("kind").and_then(Value::as_u64) == Some(kind))
+        {
+            return false;
+        }
+        if let Some(authors) = filter.get("authors").and_then(Value::as_array)
+            && !authors
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|author| event.get("pubkey").and_then(Value::as_str) == Some(author))
+        {
+            return false;
+        }
+        for tag_name in ["#p", "#e", "#a"] {
+            if let Some(values) = filter.get(tag_name).and_then(Value::as_array)
+                && !values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|value| relay_event_has_tag_value(event, &tag_name[1..], value))
+            {
+                return false;
+            }
+        }
+        true
     }
 
     fn training_host_snapshot(
@@ -14278,6 +15019,22 @@ mod tests {
         )
     }
 
+    #[test]
+    fn parse_args_supports_training_sync_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "training".to_string(),
+                "sync".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Training {
+                    command: TrainingCommand::Sync { json: true },
+                },
+            "training sync should parse json output selection",
+        )
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn training_artifact_courier_uploads_downloads_and_verifies_bundles()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -14618,6 +15375,324 @@ mod tests {
                 && first_tag_value(locator, "manifest").as_deref()
                     == Some(manifest.manifest_digest.as_str()),
             "artifact locators should carry staged status and the run-manifest digest tag",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_sync_ingests_closeouts_and_reputation_and_blocks_readvertisement()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.relay_auth_enabled = false;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+
+        let record = PylonTrainingReputationRecord::new(
+            PylonTrainingReputationNamespace::Build,
+            PylonTrainingReputationLabel::Revoked,
+            Some(identity.public_key_hex.clone()),
+            None,
+            None,
+        )
+        .expect("reputation record");
+        let mut label_event =
+            nostr::pylon_training_reputation_to_label_event(&record).expect("label event");
+        label_event.set_content("build revoked");
+        let label_event = nostr::Event {
+            id: "label.build.revoked.alpha".to_string(),
+            pubkey: manifest.coordinator_pubkey.clone(),
+            created_at: 1_762_491_220,
+            kind: nostr::nip32::KIND_LABEL as u16,
+            tags: label_event.to_tags(),
+            content: label_event.content,
+            sig: "00".repeat(64),
+        };
+
+        let relay_events = Arc::new(vec![serde_json::to_value(&label_event)?]);
+        let relay_events_for_server = Arc::clone(&relay_events);
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let _relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                match message {
+                    Ok(Message::Text(payload)) => {
+                        let frame: Value =
+                            serde_json::from_str(payload.as_str()).expect("parse relay frame");
+                        match frame.get(0).and_then(Value::as_str) {
+                            Some("REQ") => {
+                                let subscription_id =
+                                    frame[1].as_str().expect("subscription id").to_string();
+                                let filters = frame
+                                    .as_array()
+                                    .expect("req array")
+                                    .iter()
+                                    .skip(2)
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                for event in relay_events_for_server.iter() {
+                                    if filters
+                                        .iter()
+                                        .any(|filter| relay_event_matches_filter(event, filter))
+                                    {
+                                        ws.send(Message::Text(
+                                            json!(["EVENT", subscription_id, event]).to_string(),
+                                        ))
+                                        .await
+                                        .expect("send relay event");
+                                    }
+                                }
+                                ws.send(Message::Text(
+                                    json!(["EOSE", subscription_id]).to_string(),
+                                ))
+                                .await
+                                .expect("send relay eose");
+                            }
+                            Some("CLOSE") => break,
+                            _ => {}
+                        }
+                    }
+                    Ok(Message::Close(_)) | Err(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        let mut training_run = training_run_fixture();
+        training_run.summary = Some(ComputeTrainingSummary {
+            completed_step_count: Some(128),
+            processed_token_count: Some(8_192),
+            best_eval_score_bps: Some(9_910),
+            accepted_checkpoint_ref: Some("checkpoint://run.alpha/0002".to_string()),
+            ..ComputeTrainingSummary::default()
+        });
+        let accepted_outcome = ComputeAcceptedOutcome::from_training_run(
+            "accepted.training.alpha",
+            1_762_491_210_000,
+            &training_run,
+            json!({
+                "window_id": "window.0001",
+                "closeout_status": "accepted",
+                "payout_eligible": true
+            }),
+        );
+        let adapter_window = ComputeAdapterTrainingWindow {
+            window_id: "window.0001".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            stage_id: "stage.alpha".to_string(),
+            contributor_set_revision_id: "contributors.rev1".to_string(),
+            validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
+            adapter_target_id: "adapter.target.alpha".to_string(),
+            adapter_family: PYLON_TRAINING_ADAPTER_FAMILY.to_string(),
+            base_model_ref: "model://base.alpha".to_string(),
+            adapter_format: PYLON_TRAINING_ADAPTER_FORMAT.to_string(),
+            source_policy_revision: ComputeAdapterPolicyRevision {
+                policy_family: "policy.family.alpha".to_string(),
+                revision_id: "policy.rev.alpha".to_string(),
+                policy_digest: "sha256:policy-rev-alpha".to_string(),
+                produced_at_ms: 1_762_491_200_000,
+                ..ComputeAdapterPolicyRevision::default()
+            },
+            source_checkpoint_pointer: ComputeAdapterCheckpointPointer {
+                scope_kind: "run".to_string(),
+                scope_id: "run.alpha".to_string(),
+                checkpoint_family: PYLON_TRAINING_CHECKPOINT_FAMILY.to_string(),
+                checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+                manifest_digest: "sha256:manifest-alpha".to_string(),
+                updated_at_ms: 1_762_491_200_000,
+                pointer_digest: "sha256:pointer-alpha".to_string(),
+            },
+            status: ComputeAdapterWindowStatus::Reconciled,
+            total_contributions: 1,
+            admitted_contributions: 1,
+            accepted_contributions: 1,
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 1,
+            held_out_average_score_bps: Some(9_900),
+            benchmark_pass_rate_bps: Some(10_000),
+            runtime_smoke_passed: Some(true),
+            promotion_ready: true,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: "sha256:window-summary-alpha".to_string(),
+            promotion_disposition: None,
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: Some("sha256:aggregated-delta-alpha".to_string()),
+            output_policy_revision: None,
+            output_checkpoint_pointer: None,
+            accepted_outcome_id: Some(accepted_outcome.outcome_id.clone()),
+            recorded_at_ms: 1_762_491_210_050,
+            metadata: json!({}),
+        };
+        let contribution_outcome = ComputeAdapterContributionOutcome {
+            contribution_id: "contrib.node01.window0001".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            stage_id: "stage.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            contributor_set_revision_id: "contributors.rev1".to_string(),
+            assignment_id: "assign.node01.window0001".to_string(),
+            contributor_node_id: "node.alpha".to_string(),
+            worker_id: "worker.alpha".to_string(),
+            validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
+            adapter_target_id: "adapter.target.alpha".to_string(),
+            adapter_family: PYLON_TRAINING_ADAPTER_FAMILY.to_string(),
+            base_model_ref: "model://base.alpha".to_string(),
+            adapter_format: PYLON_TRAINING_ADAPTER_FORMAT.to_string(),
+            dataset_slice: ComputeAdapterDatasetSlice {
+                dataset_id: "dataset.alpha".to_string(),
+                split_name: "train".to_string(),
+                slice_id: "slice.0001".to_string(),
+                slice_digest: "sha256:slice-alpha".to_string(),
+            },
+            source_policy_revision: adapter_window.source_policy_revision.clone(),
+            source_checkpoint_pointer: adapter_window.source_checkpoint_pointer.clone(),
+            submission_receipt_digest: "sha256:submission-alpha".to_string(),
+            artifact_id: "artifact.delta.alpha".to_string(),
+            manifest_digest: "sha256:manifest-alpha".to_string(),
+            object_digest: "sha256:object-alpha".to_string(),
+            artifact_receipt_digest: "sha256:artifact-receipt-alpha".to_string(),
+            provenance_bundle_digest: "sha256:provenance-alpha".to_string(),
+            security_receipt_digest: "sha256:security-alpha".to_string(),
+            replay_receipt_digest: None,
+            validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+            validation_reason_codes: Vec::new(),
+            validator_receipt_digest: "sha256:validator-alpha".to_string(),
+            aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+            accepted_for_aggregation: true,
+            aggregation_weight_bps: Some(10_000),
+            promotion_receipt_digest: Some("sha256:promotion-alpha".to_string()),
+            recorded_at_ms: 1_762_491_210_100,
+            metadata: json!({}),
+        };
+        let contribution_response =
+            compute_contracts::list_compute_adapter_contribution_outcomes_response_to_proto(&[
+                contribution_outcome.clone(),
+            ])?;
+        let windows_response =
+            compute_contracts::list_compute_adapter_training_windows_response_to_proto(&[
+                adapter_window.clone(),
+            ])?;
+        let outcomes_response =
+            compute_contracts::list_compute_accepted_outcomes_response_to_proto(&[
+                accepted_outcome.clone(),
+            ])?;
+        config.training.nexus_authority_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                (
+                    "GET",
+                    "/v1/kernel/compute/training/adapter-contributions?training_run_id=run.alpha&window_id=window.0001",
+                ) => (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&contribution_response)
+                        .expect("contribution response"),
+                ),
+                (
+                    "GET",
+                    "/v1/kernel/compute/training/adapter-windows?training_run_id=run.alpha",
+                ) => (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&windows_response).expect("windows response"),
+                ),
+                (
+                    "GET",
+                    "/v1/kernel/compute/outcomes?outcome_kind=training_run&environment_ref=env.openagents.cuda.train",
+                ) => (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&outcomes_response).expect("outcomes response"),
+                ),
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+        config.training.relay_urls = vec![relay_url.clone()];
+        config.relay_urls = vec![relay_url.clone()];
+        manifest.trn.relay_urls = vec![relay_url.clone()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        std::fs::write(
+            local_run_root.join("manifests").join("run_manifest.json"),
+            manifest.canonical_json_bytes()?,
+        )?;
+        save_config(config_path.as_path(), &config)?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.manifest_path = local_run_root
+            .join("manifests")
+            .join("run_manifest.json")
+            .display()
+            .to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        state.active_runtime = Some(active_runtime);
+        save_training_runtime_state(&config, &state)?;
+
+        let report = sync_training_authority_state(config_path.as_path()).await?;
+        ensure(
+            report.manifest_count == 1
+                && report.contribution_outcome_count == 1
+                && report.closeout_count == 1
+                && report.reputation_label_count == 1
+                && report.auto_readvertise_blocked,
+            "training sync should ingest one retained manifest, contribution outcome, accepted closeout, and hard-gate label",
+        )?;
+
+        let synced_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            synced_state
+                .contribution_outcomes
+                .contains_key("contrib.node01.window0001")
+                && synced_state
+                    .closeout_cache
+                    .contains_key("accepted.training.alpha")
+                && synced_state
+                    .reputation_labels
+                    .contains_key("label.build.revoked.alpha::trn/build::revoked")
+                && synced_state.last_authority_sync_at_ms.is_some(),
+            "training sync should retain contribution, closeout, and reputation caches in runtime state",
+        )?;
+        ensure(
+            synced_state
+                .closeout_cache
+                .get("accepted.training.alpha")
+                .is_some_and(|entry| {
+                    entry.closeout_status == "accepted"
+                        && entry.payout_eligible
+                        && entry.accepted_checkpoint_ref.as_deref()
+                            == Some("checkpoint://run.alpha/0002")
+                }),
+            "accepted closeouts should retain accepted status, payout eligibility, and checkpoint lineage",
+        )?;
+
+        let host = training_host_snapshot(Some("NVIDIA H100 SXM"), Some(80), Some(100), true);
+        let mut availability = derive_adapter_training_contributor_availability(
+            &host,
+            Some(&psionic_train_runtime_surface_fixture()),
+        );
+        ensure(
+            availability.contributor_supported,
+            "the baseline fixture should advertise training capability before applying reputation gates",
+        )?;
+        let blocked = apply_training_reputation_gate_to_availability(&config, &mut availability);
+        ensure(
+            !availability.contributor_supported
+                && blocked == vec!["label.build.revoked.alpha::trn/build::revoked".to_string()],
+            "hard-gate reputation labels should block automatic training readvertisement",
         )
     }
 
