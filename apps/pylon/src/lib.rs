@@ -12447,12 +12447,10 @@ fn merge_ledger_recent_jobs(
     ledger: &PylonLedger,
     limit: Option<usize>,
 ) -> Vec<ProviderRecentJob> {
-    let mut seen = jobs
-        .iter()
-        .map(|job| job.job_id.clone())
-        .collect::<std::collections::BTreeSet<_>>();
     for job in ledger_provider_recent_jobs(ledger) {
-        if seen.insert(job.job_id.clone()) {
+        if let Some(existing) = jobs.iter_mut().find(|existing| existing.job_id == job.job_id) {
+            merge_provider_recent_job(existing, &job);
+        } else {
             jobs.push(job);
         }
     }
@@ -12462,6 +12460,30 @@ fn merge_ledger_recent_jobs(
             .cmp(&left.completed_at_epoch_seconds)
     });
     take_limited_rows(jobs, limit)
+}
+
+fn merge_provider_recent_job(existing: &mut ProviderRecentJob, ledger_job: &ProviderRecentJob) {
+    existing.completed_at_epoch_seconds = existing
+        .completed_at_epoch_seconds
+        .max(ledger_job.completed_at_epoch_seconds);
+    if ledger_job.payout_sats > existing.payout_sats {
+        existing.payout_sats = ledger_job.payout_sats;
+        existing.payment_pointer = ledger_job.payment_pointer.clone();
+    } else if (existing.payment_pointer == "none" || existing.payment_pointer.trim().is_empty())
+        && ledger_job.payment_pointer != "none"
+        && !ledger_job.payment_pointer.trim().is_empty()
+    {
+        existing.payment_pointer = ledger_job.payment_pointer.clone();
+    }
+    if existing.delivery_proof_id.is_none() && ledger_job.delivery_proof_id.is_some() {
+        existing.delivery_proof_id = ledger_job.delivery_proof_id.clone();
+    }
+    if existing.failure_reason.is_none() && ledger_job.failure_reason.is_some() {
+        existing.failure_reason = ledger_job.failure_reason.clone();
+    }
+    if existing.status != "settled" && ledger_job.status == "settled" {
+        existing.status = "settled".to_string();
+    }
 }
 
 fn merge_ledger_earnings(
@@ -12593,33 +12615,70 @@ fn ledger_provider_recent_jobs(ledger: &PylonLedger) -> Vec<ProviderRecentJob> {
         .jobs
         .iter()
         .filter(|job| job.direction == "provider")
-        .map(|job| ProviderRecentJob {
-            job_id: job.id.clone(),
-            request_id: job.request_event_id.clone(),
-            status: job.status.clone(),
-            demand_source: "nostr_nip90".to_string(),
-            product_id: None,
-            compute_family: Some("text_generation".to_string()),
-            backend_family: None,
-            sandbox_execution_class: None,
-            sandbox_profile_id: None,
-            sandbox_profile_digest: None,
-            sandbox_termination_reason: None,
-            completed_at_epoch_seconds: job.updated_at_ms / 1000,
-            payout_sats: if job.status == "settled" {
-                msats_to_sats_rounded_up(job.amount_msats.unwrap_or(0))
-            } else {
-                0
-            },
-            payment_pointer: job
-                .payment_id
-                .clone()
-                .or_else(|| job.bolt11.clone())
-                .unwrap_or_else(|| "none".to_string()),
-            failure_reason: job.error_detail.clone(),
-            delivery_proof_id: job.result_event_id.clone(),
+        .map(|job| {
+            let settlement = latest_provider_settlement_for_job(ledger, job.id.as_str());
+            let payout_sats = settlement
+                .filter(|settlement| provider_settlement_counts_as_paid(settlement.status.as_str()))
+                .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
+                .or_else(|| {
+                    if job.status == "settled" {
+                        Some(msats_to_sats_rounded_up(job.amount_msats.unwrap_or(0)))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            let completed_at_epoch_seconds = settlement
+                .map(|settlement| settlement.updated_at_ms.max(job.updated_at_ms) / 1000)
+                .unwrap_or(job.updated_at_ms / 1000);
+            ProviderRecentJob {
+                job_id: job.id.clone(),
+                request_id: job.request_event_id.clone(),
+                status: if job.status != "settled"
+                    && settlement
+                        .as_ref()
+                        .is_some_and(|settlement| settlement.status == "settled")
+                {
+                    "settled".to_string()
+                } else {
+                    job.status.clone()
+                },
+                demand_source: "nostr_nip90".to_string(),
+                product_id: None,
+                compute_family: Some("text_generation".to_string()),
+                backend_family: None,
+                sandbox_execution_class: None,
+                sandbox_profile_id: None,
+                sandbox_profile_digest: None,
+                sandbox_termination_reason: None,
+                completed_at_epoch_seconds,
+                payout_sats,
+                payment_pointer: job
+                    .payment_id
+                    .clone()
+                    .or_else(|| settlement.and_then(|settlement| settlement.payment_reference.clone()))
+                    .or_else(|| job.bolt11.clone())
+                    .unwrap_or_else(|| "none".to_string()),
+                failure_reason: job.error_detail.clone(),
+                delivery_proof_id: job.result_event_id.clone(),
+            }
         })
         .collect()
+}
+
+fn latest_provider_settlement_for_job<'a>(
+    ledger: &'a PylonLedger,
+    job_id: &str,
+) -> Option<&'a PylonSettlementRecord> {
+    ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider" && settlement.job_id == job_id)
+        .max_by_key(|settlement| settlement.updated_at_ms)
+}
+
+fn provider_settlement_counts_as_paid(status: &str) -> bool {
+    matches!(status, "settled" | "payment_received")
 }
 
 fn ledger_receipt_summaries(ledger: &PylonLedger) -> Vec<ProviderReceiptSummary> {
@@ -14605,7 +14664,7 @@ mod tests {
         load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect, merge_ledger_earnings,
-        now_epoch_ms,
+        merge_ledger_recent_jobs, now_epoch_ms,
         load_training_artifact_inspection_report, load_training_status_report_local,
         local_training_release_id, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
         poll_training_supervisor, provider_admin_config, provider_presence_client, PylonLedger,
@@ -21305,6 +21364,59 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         assert_eq!(earnings.lifetime_sats, 21);
         assert_eq!(earnings.sats_today, 0);
         assert_eq!(earnings.jobs_today, 0);
+    }
+
+    #[test]
+    fn merge_ledger_recent_jobs_overlays_paid_ledger_details_on_live_duplicates() {
+        let mut ledger = PylonLedger::default();
+        let mut job =
+            PylonLedgerJob::new("provider-job-duplicate-001", "provider", 5050, "completed_local");
+        job.payment_id = Some("payment-ledger-001".to_string());
+        job.updated_at_ms = 1_762_700_100_000;
+        ledger.upsert_job(job);
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: "provider-settlement-duplicate-001".to_string(),
+            job_id: "provider-job-duplicate-001".to_string(),
+            direction: "provider".to_string(),
+            status: "payment_received".to_string(),
+            amount_msats: 42_000,
+            payment_reference: Some("payment-ledger-001".to_string()),
+            receipt_detail: Some("wallet credit observed".to_string()),
+            created_at_ms: 1_762_700_101_000,
+            updated_at_ms: 1_762_700_102_000,
+        });
+
+        let jobs = merge_ledger_recent_jobs(
+            vec![ProviderRecentJob {
+                job_id: "provider-job-duplicate-001".to_string(),
+                request_id: Some("request-duplicate-001".to_string()),
+                status: "completed_local".to_string(),
+                demand_source: "nostr_nip90".to_string(),
+                product_id: None,
+                compute_family: Some("text_generation".to_string()),
+                backend_family: None,
+                sandbox_execution_class: None,
+                sandbox_profile_id: None,
+                sandbox_profile_digest: None,
+                sandbox_termination_reason: None,
+                completed_at_epoch_seconds: 1_762_700_099,
+                payout_sats: 0,
+                payment_pointer: "none".to_string(),
+                failure_reason: None,
+                delivery_proof_id: None,
+            }],
+            &ledger,
+            Some(4),
+        );
+
+        let job = jobs
+            .iter()
+            .find(|job| job.job_id == "provider-job-duplicate-001")
+            .expect("merged job");
+        assert_eq!(job.payout_sats, 42);
+        assert_eq!(job.payment_pointer, "payment-ledger-001");
+        assert_eq!(job.status, "completed_local");
+        assert!(job.completed_at_epoch_seconds >= 1_762_700_102);
     }
 
     fn ready_health(

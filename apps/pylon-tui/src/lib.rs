@@ -3076,9 +3076,11 @@ fn compute_operator_panel_stats_at(
         .settlements
         .iter()
         .filter(|settlement| settlement.direction == "provider")
-        .filter(|settlement| settlement.status == "settled")
-        .filter(|settlement| settlement.updated_at_ms >= since_ms)
-        .count() as u64;
+        .filter(|settlement| provider_settlement_counted_as_settled(settlement.status.as_str()))
+        .filter(|settlement| settlement.created_at_ms >= since_ms)
+        .map(|settlement| settlement.job_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len() as u64;
     let last_job_result = snapshot
         .and_then(|value| value.earnings.as_ref())
         .map(|earnings| earnings.last_job_result.as_str())
@@ -3127,6 +3129,10 @@ fn provider_job_is_in_progress(status: &str) -> bool {
         status,
         "accepted_local" | "processing_local" | "payment_settled"
     )
+}
+
+fn provider_settlement_counted_as_settled(status: &str) -> bool {
+    matches!(status, "settled" | "payment_received")
 }
 
 fn latest_provider_job_status(ledger: &pylon::PylonLedger) -> Option<String> {
@@ -3894,6 +3900,52 @@ mod tests {
         assert_eq!(stats.awaiting_payment_jobs, 1);
         assert_eq!(stats.processing_jobs, 0);
         assert_eq!(stats.last_job_result.as_deref(), Some("settled"));
+    }
+
+    #[test]
+    fn compute_operator_panel_stats_counts_paid_settlements_by_created_time() {
+        let now_ms = 1_762_700_500_000_u64;
+        let mut ledger = pylon::PylonLedger::default();
+
+        let mut paid =
+            pylon::PylonLedgerJob::new("job-paid", "provider", 5050, "completed_local");
+        paid.created_at_ms = now_ms - 5_000;
+        paid.updated_at_ms = now_ms - 4_000;
+        ledger.jobs = vec![paid];
+
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "settlement-paid".to_string(),
+            job_id: "job-paid".to_string(),
+            direction: "provider".to_string(),
+            status: "payment_received".to_string(),
+            amount_msats: 42_000,
+            payment_reference: Some("payment-paid".to_string()),
+            receipt_detail: Some("invoice completed in local wallet".to_string()),
+            created_at_ms: now_ms - 1_000,
+            updated_at_ms: now_ms,
+        });
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "settlement-old".to_string(),
+            job_id: "job-old".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 21_000,
+            payment_reference: Some("payment-old".to_string()),
+            receipt_detail: Some("older settlement".to_string()),
+            created_at_ms: now_ms - super::LOOKBACK_WINDOW_24H_MS - 1,
+            updated_at_ms: now_ms,
+        });
+
+        let stats = compute_operator_panel_stats_at(
+            ProviderDesiredMode::Online,
+            true,
+            None,
+            None,
+            &ledger,
+            now_ms,
+        );
+
+        assert_eq!(stats.jobs_settled_24h, 1);
     }
 
     #[test]
