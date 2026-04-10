@@ -430,6 +430,14 @@ The retained wallet controls now also exist in both places:
 - TUI: `/wallet`, `/wallet balance`, `/wallet address`, `/wallet invoice <sats> [--description <text>]`, `/wallet pay <bolt11> [--amount-sats <n>]`, `/wallet history [--limit <n>]`
 - headless: `cargo pylon-headless wallet status|balance|address|invoice|pay|history`
 
+For operator accounting, the bounded retained `ledger.wallet.payments` list is
+no longer treated as the source of truth for credited totals. When `earnings`
+needs a local wallet fallback, Pylon now performs a full Spark payment-history
+sync, caches a compact credit summary under `ledger.wallet.credits`, and uses
+the original payment `created_at_ms` to decide what counts toward "today". That
+avoids both lifetime undercounting from the rolling 256-entry window and false
+"today" credits caused by later status refreshes rewriting `updated_at_ms`.
+
 The retained provider payout controls now also exist in both places:
 - TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11> [--amount-sats <n>]`
 - headless: `cargo pylon-headless payout [--limit <n>]`, `cargo pylon-headless payout withdraw <bolt11> [--amount-sats <n>]`

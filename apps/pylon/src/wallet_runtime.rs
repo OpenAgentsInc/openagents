@@ -8,8 +8,8 @@ use openagents_spark::{
 use serde::Serialize;
 
 use crate::{
-    PylonWalletInvoiceRecord, PylonWalletPaymentRecord, ensure_local_setup, mutate_ledger,
-    now_epoch_ms,
+    PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+    ensure_local_setup, mutate_ledger, now_epoch_ms,
 };
 
 // Release fallback so standalone Pylon boots without requiring shell env injection.
@@ -94,6 +94,12 @@ pub struct WalletPayReport {
 pub struct WalletHistoryReport {
     pub runtime: WalletRuntimeSurface,
     pub payments: Vec<PylonWalletPaymentRecord>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WalletCreditSummaryReport {
+    pub runtime: WalletRuntimeSurface,
+    pub credits: PylonWalletCreditSummary,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -579,6 +585,36 @@ pub async fn load_wallet_history_report(
     result
 }
 
+pub async fn load_wallet_credit_summary_report(
+    config_path: &Path,
+) -> Result<WalletCreditSummaryReport> {
+    let context = prepare_wallet_context(config_path)?;
+    let runtime = context.runtime.clone();
+    let result: Result<WalletCreditSummaryReport> = async {
+        let wallet = open_wallet(&context).await?;
+        let result: Result<_> = async {
+            wallet
+                .list_all_payments()
+                .await
+                .context("failed to list all Spark payments")
+        }
+        .await;
+        let payments = finalize_wallet(wallet, result).await?;
+        let records = payments
+            .iter()
+            .map(payment_record_from_summary)
+            .collect::<Vec<_>>();
+        let credits = compute_wallet_credit_summary(records.as_slice(), now_epoch_ms() as u64);
+        sync_wallet_credit_summary(config_path, &credits)?;
+        Ok(WalletCreditSummaryReport { runtime, credits })
+    }
+    .await;
+    if let Err(error) = result.as_ref() {
+        sync_wallet_error(config_path, &context.runtime, error.to_string())?;
+    }
+    result
+}
+
 pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
     let mut lines = vec![
         format!("runtime_status: {}", report.runtime_status),
@@ -872,6 +908,43 @@ fn payment_record_from_summary(payment: &PaymentSummary) -> PylonWalletPaymentRe
     }
 }
 
+fn compute_wallet_credit_summary(
+    payments: &[PylonWalletPaymentRecord],
+    now_ms: u64,
+) -> PylonWalletCreditSummary {
+    let current_day = now_ms / 86_400_000;
+    let mut credits = PylonWalletCreditSummary::default();
+    for payment in payments {
+        if !wallet_payment_counts_as_credit(payment) {
+            continue;
+        }
+        credits.credited_lifetime_sats =
+            credits.credited_lifetime_sats.saturating_add(payment.amount_sats);
+        if payment.created_at_ms / 86_400_000 == current_day {
+            credits.credited_today_sats = credits
+                .credited_today_sats
+                .saturating_add(payment.amount_sats);
+            credits.credited_today_count = credits.credited_today_count.saturating_add(1);
+        }
+        credits.last_credit_at_ms = Some(
+            credits
+                .last_credit_at_ms
+                .unwrap_or(0)
+                .max(payment.created_at_ms),
+        );
+    }
+    credits.last_full_sync_at_ms = Some(now_ms);
+    credits
+}
+
+fn wallet_payment_counts_as_credit(payment: &PylonWalletPaymentRecord) -> bool {
+    payment.direction.eq_ignore_ascii_case("receive")
+        && matches!(
+            payment.status.to_ascii_lowercase().as_str(),
+            "succeeded" | "success" | "settled" | "completed" | "confirmed"
+        )
+}
+
 fn sync_wallet_status(
     config_path: &Path,
     runtime: &WalletRuntimeSurface,
@@ -903,6 +976,16 @@ fn sync_wallet_status(
     })
 }
 
+fn sync_wallet_credit_summary(
+    config_path: &Path,
+    credits: &PylonWalletCreditSummary,
+) -> Result<()> {
+    mutate_ledger(config_path, |ledger| {
+        ledger.wallet.credits = credits.clone();
+        Ok(())
+    })
+}
+
 fn sync_wallet_error(
     config_path: &Path,
     runtime: &WalletRuntimeSurface,
@@ -920,8 +1003,10 @@ fn sync_wallet_error(
 mod tests {
     use super::{
         DEFAULT_OPENAGENTS_SPARK_API_KEY, WalletApiKeySource, WalletSubcommand,
-        parse_wallet_command, parse_wallet_network, resolve_wallet_api_key,
+        compute_wallet_credit_summary, parse_wallet_command, parse_wallet_network,
+        resolve_wallet_api_key,
     };
+    use crate::PylonWalletPaymentRecord;
 
     #[test]
     fn parse_wallet_command_supports_balance_and_history() {
@@ -1041,5 +1126,60 @@ mod tests {
             source.label(Some("OPENAGENTS_SPARK_API_KEY")),
             "embedded:openagents-default"
         );
+    }
+
+    #[test]
+    fn wallet_credit_summary_uses_created_at_for_today_and_counts_all_history() {
+        let now_ms = 1_762_580_000_000u64;
+        let current_day = now_ms / 86_400_000;
+        let today_created_at_ms = current_day * 86_400_000 + 1_000;
+        let yesterday_created_at_ms = today_created_at_ms.saturating_sub(86_400_000);
+        let credits = compute_wallet_credit_summary(
+            &[
+                PylonWalletPaymentRecord {
+                    payment_id: "credit-today".to_string(),
+                    direction: "receive".to_string(),
+                    status: "settled".to_string(),
+                    amount_sats: 21,
+                    fees_sats: 0,
+                    method: "lightning".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: today_created_at_ms,
+                    updated_at_ms: yesterday_created_at_ms,
+                },
+                PylonWalletPaymentRecord {
+                    payment_id: "credit-old".to_string(),
+                    direction: "receive".to_string(),
+                    status: "settled".to_string(),
+                    amount_sats: 34,
+                    fees_sats: 0,
+                    method: "lightning".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: yesterday_created_at_ms,
+                    updated_at_ms: now_ms,
+                },
+                PylonWalletPaymentRecord {
+                    payment_id: "send".to_string(),
+                    direction: "send".to_string(),
+                    status: "settled".to_string(),
+                    amount_sats: 13,
+                    fees_sats: 1,
+                    method: "lightning".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: today_created_at_ms,
+                    updated_at_ms: today_created_at_ms,
+                },
+            ],
+            now_ms,
+        );
+
+        assert_eq!(credits.credited_lifetime_sats, 55);
+        assert_eq!(credits.credited_today_sats, 21);
+        assert_eq!(credits.credited_today_count, 1);
+        assert_eq!(credits.last_credit_at_ms, Some(today_created_at_ms));
+        assert_eq!(credits.last_full_sync_at_ms, Some(now_ms));
     }
 }
