@@ -1306,6 +1306,29 @@ live coordinator plane.
 - Issue leases and assignments to nodes.
 - Track active membership and expired leases.
 - Handle worker replacement and re-assignment.
+- Current status: `apps/nexus-control/src/lib.rs` now contains the first live
+  training scheduler loop above the retained kernel run objects. The canonical
+  run object remains `ComputeTrainingRun`, and the scheduler now treats kernel
+  runs in `preparing` or `running` state as schedulable when their
+  `metadata.pylon_training_scheduler` block provides the frozen network and
+  artifact-root facts:
+  - `network_id`
+  - `artifact_bucket_uri`
+  - `worker_count`
+  - `validator_count`
+  - `recovery_source_count`
+  - optional `initial_window_id`
+  - optional `checkpoint_ref`
+  The live coordinator route `/api/training/leases/claim` now matches admitted
+  nodes against those kernel runs using role claims, network allowlists,
+  validator-policy refs, checkpoint family, environment ref, and the frozen
+  sealed-window settlement trigger. The retained scheduler state is still
+  intentionally ephemeral in this issue. It tracks one current window id, one
+  canonical membership revision, one planned-versus-leased assignment set per
+  role slot, lease expiry against the frozen timeout policy, and replacement by
+  issuing a new assignment attempt after an expired lease. Persisted scheduler
+  restart and replay safety remain deferred to the later scheduler-persistence
+  issue.
 
 ### 4.3 Window planning and reconciliation
 

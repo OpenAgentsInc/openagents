@@ -45,23 +45,29 @@ use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeAcceptedOutcomeKind,
     ComputeAdapterContributionDisposition, ComputeAdapterWindowStatus,
     ComputeEnvironmentPackageStatus, ComputeEvaluationRunStatus, ComputeProductStatus,
-    ComputeRegistryStatus, ComputeSyntheticDataJobStatus, ComputeTrainingRunStatus,
-    ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
-    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
-    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
-    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
-    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
+    ComputeRegistryStatus, ComputeSyntheticDataJobStatus, ComputeTrainingRun,
+    ComputeTrainingRunStatus, ComputeValidatorChallengeContext,
+    ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
+    ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
+    ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
+    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, DeliveryProofStatus,
+    StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
     AccessGrantStatus, DataAssetStatus, DeliveryBundleStatus, RevocationStatus,
 };
 use openagents_kernel_core::data_contracts;
+use openagents_kernel_core::ids::sha256_prefixed_bytes;
+use openagents_kernel_core::pylon_training::PYLON_TRAINING_LEASE_DURATION_MS;
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use openagents_kernel_proto::openagents::data::v1 as proto_data;
-use openagents_provider_substrate::{ProviderDiagnosticSummary, ProviderHostingTelemetrySnapshot};
+use openagents_provider_substrate::{
+    ProviderAdapterTrainingSettlementTrigger, ProviderDiagnosticSummary,
+    ProviderHostingTelemetrySnapshot,
+};
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -79,7 +85,7 @@ use crate::kernel::{
     RecordTrainingNodeAdmissionRequest, RecordTrainingNodeAdmissionResponse,
     RecordTrainingNodeHeartbeatRequest, RecordTrainingNodeHeartbeatResponse,
     ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, SnapshotProjectionEvent,
-    TrainingNodeQuery,
+    TrainingCoordinatorAck, TrainingNodeQuery, TrainingNodeRoleClaim,
 };
 use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
@@ -582,6 +588,7 @@ struct ControlStore {
     sync_tokens: HashMap<String, SyncTokenRecord>,
     provider_presence: ProviderPresenceState,
     starter_demand: StarterDemandState,
+    training_scheduler: TrainingSchedulerState,
     treasury: TreasuryState,
     economy: ReceiptLedger,
     kernel: KernelState,
@@ -604,6 +611,7 @@ impl ControlStore {
             sync_tokens: HashMap::new(),
             provider_presence: ProviderPresenceState::default(),
             starter_demand: StarterDemandState::default(),
+            training_scheduler: TrainingSchedulerState::default(),
             treasury: TreasuryState::new(config.treasury.state_path.clone()),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
             kernel,
@@ -628,6 +636,709 @@ struct StarterDemandState {
     next_template_index: usize,
     last_dispatch_by_session: HashMap<String, u64>,
     offers_by_session: HashMap<String, Vec<StarterDemandOfferRecord>>,
+}
+
+#[derive(Debug, Default)]
+struct TrainingSchedulerState {
+    runs_by_training_run_id: HashMap<String, ScheduledTrainingRun>,
+    lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
+}
+
+#[derive(Debug, Clone)]
+struct TrainingLeaseIdempotentRecord {
+    request_digest: String,
+    response: RecordTrainingRunLeaseResponse,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingAssignmentState {
+    Planned,
+    Leased,
+    Acked,
+    Active,
+    Completed,
+    Expired,
+    Drained,
+    Failed,
+}
+
+impl TrainingAssignmentState {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Planned => "planned",
+            Self::Leased => "leased",
+            Self::Acked => "acked",
+            Self::Active => "active",
+            Self::Completed => "completed",
+            Self::Expired => "expired",
+            Self::Drained => "drained",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingSchedulerWindowState {
+    Planned,
+    Active,
+    Sealing,
+    Sealed,
+    Validating,
+    Accepted,
+    Held,
+    Refused,
+}
+
+impl TrainingSchedulerWindowState {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Planned => "planned",
+            Self::Active => "active",
+            Self::Sealing => "sealing",
+            Self::Sealed => "sealed",
+            Self::Validating => "validating",
+            Self::Accepted => "accepted",
+            Self::Held => "held",
+            Self::Refused => "refused",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingSchedulerRunMetadata {
+    network_id: String,
+    artifact_bucket_uri: String,
+    #[serde(default)]
+    worker_count: u32,
+    #[serde(default)]
+    validator_count: u32,
+    #[serde(default)]
+    recovery_source_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    initial_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrainingSchedulerRolePlan {
+    worker_count: u32,
+    validator_count: u32,
+    recovery_source_count: u32,
+}
+
+impl TrainingSchedulerRolePlan {
+    const fn target_count(self, role: TrainingNodeRoleClaim) -> u32 {
+        match role {
+            TrainingNodeRoleClaim::Worker => self.worker_count,
+            TrainingNodeRoleClaim::Validator => self.validator_count,
+            TrainingNodeRoleClaim::RecoverySource => self.recovery_source_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ScheduledTrainingAssignment {
+    assignment_id: String,
+    role: TrainingNodeRoleClaim,
+    slot_ordinal: u32,
+    attempt: u32,
+    state: TrainingAssignmentState,
+    node_pubkey_hex: Option<String>,
+    lease_id: Option<String>,
+    issued_at_ms: Option<i64>,
+    expires_at_ms: Option<i64>,
+    manifest_digest: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ScheduledTrainingRun {
+    training_run_id: String,
+    network_id: String,
+    artifact_bucket_uri: String,
+    current_window_id: String,
+    checkpoint_ref: Option<String>,
+    role_plan: TrainingSchedulerRolePlan,
+    membership_revision: u64,
+    lease_issue_count: u64,
+    window_state: TrainingSchedulerWindowState,
+    assignments: Vec<ScheduledTrainingAssignment>,
+    updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingRunLeaseRequest {
+    idempotency_key: String,
+    requested_at_ms: i64,
+    node_pubkey_hex: String,
+    role: TrainingNodeRoleClaim,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    requested_network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    requested_training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    membership_revision: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingRunLeaseResponse {
+    ack: TrainingCoordinatorAck,
+    lease_id: String,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    role: TrainingNodeRoleClaim,
+    issued_at_ms: i64,
+    expires_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    membership_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assignment_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    network_id: Option<String>,
+}
+
+impl TrainingSchedulerState {
+    fn claim_lease(
+        &mut self,
+        node: AdmittedTrainingNodeView,
+        candidate_runs: Vec<ComputeTrainingRun>,
+        request: &RecordTrainingRunLeaseRequest,
+        now_unix_ms: i64,
+    ) -> Result<RecordTrainingRunLeaseResponse, String> {
+        let request_digest = training_scheduler_request_digest(request)?;
+        if let Some(existing) = self.lease_idempotency.get(request.idempotency_key.as_str()) {
+            if existing.request_digest != request_digest {
+                return Err("training_scheduler_idempotency_conflict".to_string());
+            }
+            return Ok(existing.response.clone());
+        }
+
+        self.expire_stale_assignments(now_unix_ms);
+
+        if !node.role_claims.contains(&request.role) {
+            return Err("training_scheduler_role_not_admitted".to_string());
+        }
+        if !node.online {
+            return Err("training_scheduler_node_offline".to_string());
+        }
+        if !node.eligible {
+            return Err("training_scheduler_node_ineligible".to_string());
+        }
+        if let Some(requested_network_id) = request.requested_network_id.as_deref()
+            && !node.allowed_networks.is_empty()
+            && !node
+                .allowed_networks
+                .iter()
+                .any(|value| value == requested_network_id)
+        {
+            return Err("training_scheduler_network_not_allowed".to_string());
+        }
+
+        let run =
+            self.select_matching_run(candidate_runs.as_slice(), &node, request, now_unix_ms)?;
+        let metadata = training_scheduler_metadata_from_run(&run)?;
+        let scheduled_run = self.ensure_run(&run, &metadata, now_unix_ms);
+        let response = scheduled_run.claim_lease(request, &node, now_unix_ms)?;
+        self.lease_idempotency.insert(
+            request.idempotency_key.clone(),
+            TrainingLeaseIdempotentRecord {
+                request_digest,
+                response: response.clone(),
+            },
+        );
+        Ok(response)
+    }
+
+    fn select_matching_run(
+        &self,
+        candidate_runs: &[ComputeTrainingRun],
+        node: &AdmittedTrainingNodeView,
+        request: &RecordTrainingRunLeaseRequest,
+        now_unix_ms: i64,
+    ) -> Result<ComputeTrainingRun, String> {
+        if let Some(training_run_id) = request.requested_training_run_id.as_deref() {
+            let run = candidate_runs
+                .iter()
+                .find(|run| run.training_run_id == training_run_id)
+                .cloned()
+                .ok_or_else(|| "training_scheduler_run_not_found".to_string())?;
+            if !training_run_schedulable(&run) {
+                return Err("training_scheduler_run_not_schedulable".to_string());
+            }
+            let metadata = training_scheduler_metadata_from_run(&run)?;
+            if !training_node_matches_scheduler_run(node, &run, &metadata, request.role) {
+                return Err("training_scheduler_run_not_found".to_string());
+            }
+            if let Some(requested_network_id) = request.requested_network_id.as_deref()
+                && metadata.network_id != requested_network_id
+            {
+                return Err("training_scheduler_run_not_found".to_string());
+            }
+            return Ok(run);
+        }
+
+        for run in candidate_runs {
+            if !training_run_schedulable(&run) {
+                continue;
+            }
+            let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
+                continue;
+            };
+            if request
+                .requested_network_id
+                .as_deref()
+                .is_some_and(|expected| metadata.network_id != expected)
+            {
+                continue;
+            }
+            if training_node_matches_scheduler_run(node, run, &metadata, request.role) {
+                return Ok(run.clone());
+            }
+        }
+
+        let _ = now_unix_ms;
+        Err("training_scheduler_run_not_found".to_string())
+    }
+
+    fn ensure_run(
+        &mut self,
+        run: &ComputeTrainingRun,
+        metadata: &TrainingSchedulerRunMetadata,
+        now_unix_ms: i64,
+    ) -> &mut ScheduledTrainingRun {
+        self.runs_by_training_run_id
+            .entry(run.training_run_id.clone())
+            .or_insert_with(|| ScheduledTrainingRun::from_kernel_run(run, metadata, now_unix_ms))
+    }
+
+    fn expire_stale_assignments(&mut self, now_unix_ms: i64) {
+        for run in self.runs_by_training_run_id.values_mut() {
+            run.expire_stale_assignments(now_unix_ms);
+        }
+    }
+}
+
+impl ScheduledTrainingRun {
+    fn from_kernel_run(
+        run: &ComputeTrainingRun,
+        metadata: &TrainingSchedulerRunMetadata,
+        now_unix_ms: i64,
+    ) -> Self {
+        let role_plan = TrainingSchedulerRolePlan {
+            worker_count: metadata.worker_count.max(1),
+            validator_count: metadata.validator_count,
+            recovery_source_count: metadata.recovery_source_count,
+        };
+        let current_window_id = metadata
+            .initial_window_id
+            .clone()
+            .unwrap_or_else(|| "window.0001".to_string());
+        let mut assignments = Vec::new();
+        for role in [
+            TrainingNodeRoleClaim::Worker,
+            TrainingNodeRoleClaim::Validator,
+            TrainingNodeRoleClaim::RecoverySource,
+        ] {
+            for slot_ordinal in 1..=role_plan.target_count(role) {
+                assignments.push(ScheduledTrainingAssignment {
+                    assignment_id: training_scheduler_assignment_id(
+                        run.training_run_id.as_str(),
+                        current_window_id.as_str(),
+                        role,
+                        slot_ordinal,
+                        1,
+                    ),
+                    role,
+                    slot_ordinal,
+                    attempt: 1,
+                    state: TrainingAssignmentState::Planned,
+                    node_pubkey_hex: None,
+                    lease_id: None,
+                    issued_at_ms: None,
+                    expires_at_ms: None,
+                    manifest_digest: None,
+                });
+            }
+        }
+        Self {
+            training_run_id: run.training_run_id.clone(),
+            network_id: metadata.network_id.clone(),
+            artifact_bucket_uri: metadata.artifact_bucket_uri.clone(),
+            current_window_id,
+            checkpoint_ref: metadata
+                .checkpoint_ref
+                .clone()
+                .or_else(|| run.checkpoint_binding.latest_checkpoint_ref.clone()),
+            role_plan,
+            membership_revision: 1,
+            lease_issue_count: 0,
+            window_state: TrainingSchedulerWindowState::Active,
+            assignments,
+            updated_at_ms: now_unix_ms,
+        }
+    }
+
+    fn claim_lease(
+        &mut self,
+        request: &RecordTrainingRunLeaseRequest,
+        node: &AdmittedTrainingNodeView,
+        now_unix_ms: i64,
+    ) -> Result<RecordTrainingRunLeaseResponse, String> {
+        if let Some(existing) =
+            self.active_assignment_for_node(node.node_pubkey_hex.as_str(), request.role)
+        {
+            return Ok(self.response_for_assignment(
+                existing,
+                request.idempotency_key.as_str(),
+                request.requested_at_ms,
+            ));
+        }
+
+        let assignment_index = self
+            .next_available_assignment_index(request.role)
+            .or_else(|| self.plan_replacement_assignment(request.role))
+            .ok_or_else(|| "training_scheduler_assignment_unavailable".to_string())?;
+
+        if self.lease_issue_count > 0 {
+            self.membership_revision = self.membership_revision.saturating_add(1);
+        }
+        self.lease_issue_count = self.lease_issue_count.saturating_add(1);
+
+        let issued_at_ms = request.requested_at_ms.max(now_unix_ms);
+        let expires_at_ms = issued_at_ms.saturating_add(PYLON_TRAINING_LEASE_DURATION_MS as i64);
+        let manifest_digest = training_scheduler_manifest_digest(
+            self.training_run_id.as_str(),
+            self.current_window_id.as_str(),
+            self.membership_revision,
+            node.node_pubkey_hex.as_str(),
+            self.assignments[assignment_index].assignment_id.as_str(),
+            request.role,
+            self.artifact_bucket_uri.as_str(),
+        );
+        let lease_id = training_scheduler_lease_id(
+            self.training_run_id.as_str(),
+            self.current_window_id.as_str(),
+            request.role,
+            self.assignments[assignment_index].slot_ordinal,
+            self.assignments[assignment_index].attempt,
+            self.membership_revision,
+        );
+        let assignment = &mut self.assignments[assignment_index];
+        assignment.state = TrainingAssignmentState::Leased;
+        assignment.node_pubkey_hex = Some(node.node_pubkey_hex.clone());
+        assignment.lease_id = Some(lease_id.clone());
+        assignment.issued_at_ms = Some(issued_at_ms);
+        assignment.expires_at_ms = Some(expires_at_ms);
+        assignment.manifest_digest = Some(manifest_digest.clone());
+        self.updated_at_ms = issued_at_ms;
+
+        Ok(RecordTrainingRunLeaseResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: request.idempotency_key.clone(),
+                recorded_at_ms: issued_at_ms,
+                authority_state: "leased".to_string(),
+            },
+            lease_id,
+            training_run_id: self.training_run_id.clone(),
+            window_id: self.current_window_id.clone(),
+            assignment_id: assignment.assignment_id.clone(),
+            role: request.role,
+            issued_at_ms,
+            expires_at_ms,
+            manifest_digest: assignment.manifest_digest.clone(),
+            checkpoint_ref: self.checkpoint_ref.clone(),
+            membership_revision: Some(training_scheduler_membership_revision(
+                self.membership_revision,
+            )),
+            assignment_state: Some(assignment.state.label().to_string()),
+            window_state: Some(self.window_state.label().to_string()),
+            network_id: Some(self.network_id.clone()),
+        })
+    }
+
+    fn expire_stale_assignments(&mut self, now_unix_ms: i64) {
+        for assignment in &mut self.assignments {
+            if matches!(
+                assignment.state,
+                TrainingAssignmentState::Leased
+                    | TrainingAssignmentState::Acked
+                    | TrainingAssignmentState::Active
+            ) && assignment
+                .expires_at_ms
+                .is_some_and(|expires_at_ms| expires_at_ms < now_unix_ms)
+            {
+                assignment.state = TrainingAssignmentState::Expired;
+            }
+        }
+    }
+
+    fn active_assignment_for_node(
+        &self,
+        node_pubkey_hex: &str,
+        role: TrainingNodeRoleClaim,
+    ) -> Option<&ScheduledTrainingAssignment> {
+        self.assignments.iter().find(|assignment| {
+            assignment.role == role
+                && matches!(
+                    assignment.state,
+                    TrainingAssignmentState::Leased
+                        | TrainingAssignmentState::Acked
+                        | TrainingAssignmentState::Active
+                )
+                && assignment.node_pubkey_hex.as_deref() == Some(node_pubkey_hex)
+        })
+    }
+
+    fn next_available_assignment_index(&self, role: TrainingNodeRoleClaim) -> Option<usize> {
+        self.assignments
+            .iter()
+            .enumerate()
+            .find_map(|(index, assignment)| {
+                (assignment.role == role && assignment.state == TrainingAssignmentState::Planned)
+                    .then_some(index)
+            })
+    }
+
+    fn plan_replacement_assignment(&mut self, role: TrainingNodeRoleClaim) -> Option<usize> {
+        for slot_ordinal in 1..=self.role_plan.target_count(role) {
+            let latest = self
+                .assignments
+                .iter()
+                .enumerate()
+                .filter(|(_, assignment)| {
+                    assignment.role == role && assignment.slot_ordinal == slot_ordinal
+                })
+                .max_by(|(_, lhs), (_, rhs)| lhs.attempt.cmp(&rhs.attempt))?;
+            if !matches!(
+                latest.1.state,
+                TrainingAssignmentState::Expired
+                    | TrainingAssignmentState::Failed
+                    | TrainingAssignmentState::Drained
+            ) {
+                continue;
+            }
+            let next_attempt = latest.1.attempt.saturating_add(1);
+            self.assignments.push(ScheduledTrainingAssignment {
+                assignment_id: training_scheduler_assignment_id(
+                    self.training_run_id.as_str(),
+                    self.current_window_id.as_str(),
+                    role,
+                    slot_ordinal,
+                    next_attempt,
+                ),
+                role,
+                slot_ordinal,
+                attempt: next_attempt,
+                state: TrainingAssignmentState::Planned,
+                node_pubkey_hex: None,
+                lease_id: None,
+                issued_at_ms: None,
+                expires_at_ms: None,
+                manifest_digest: None,
+            });
+            return Some(self.assignments.len() - 1);
+        }
+        None
+    }
+
+    fn response_for_assignment(
+        &self,
+        assignment: &ScheduledTrainingAssignment,
+        idempotency_key: &str,
+        recorded_at_ms: i64,
+    ) -> RecordTrainingRunLeaseResponse {
+        RecordTrainingRunLeaseResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: idempotency_key.to_string(),
+                recorded_at_ms,
+                authority_state: "leased".to_string(),
+            },
+            lease_id: assignment.lease_id.clone().unwrap_or_default(),
+            training_run_id: self.training_run_id.clone(),
+            window_id: self.current_window_id.clone(),
+            assignment_id: assignment.assignment_id.clone(),
+            role: assignment.role,
+            issued_at_ms: assignment.issued_at_ms.unwrap_or(recorded_at_ms),
+            expires_at_ms: assignment.expires_at_ms.unwrap_or(recorded_at_ms),
+            manifest_digest: assignment.manifest_digest.clone(),
+            checkpoint_ref: self.checkpoint_ref.clone(),
+            membership_revision: Some(training_scheduler_membership_revision(
+                self.membership_revision,
+            )),
+            assignment_state: Some(assignment.state.label().to_string()),
+            window_state: Some(self.window_state.label().to_string()),
+            network_id: Some(self.network_id.clone()),
+        }
+    }
+}
+
+fn training_run_schedulable(run: &ComputeTrainingRun) -> bool {
+    matches!(
+        run.status,
+        ComputeTrainingRunStatus::Preparing | ComputeTrainingRunStatus::Running
+    )
+}
+
+fn training_scheduler_request_digest(
+    request: &RecordTrainingRunLeaseRequest,
+) -> Result<String, String> {
+    let payload = serde_json::to_vec(request)
+        .map_err(|error| format!("training_scheduler_request_encode_failed: {error}"))?;
+    Ok(sha256_prefixed_bytes(payload.as_slice()))
+}
+
+fn training_scheduler_metadata_from_run(
+    run: &ComputeTrainingRun,
+) -> Result<TrainingSchedulerRunMetadata, String> {
+    let metadata = run
+        .metadata
+        .get("pylon_training_scheduler")
+        .cloned()
+        .ok_or_else(|| "training_scheduler_run_metadata_missing".to_string())?;
+    let metadata = serde_json::from_value::<TrainingSchedulerRunMetadata>(metadata)
+        .map_err(|_| "training_scheduler_run_metadata_invalid".to_string())?;
+    let network_id = normalize_required_training_string(
+        metadata.network_id.as_str(),
+        "training_scheduler_run_network_missing",
+    )?;
+    let artifact_bucket_uri = normalize_required_training_string(
+        metadata.artifact_bucket_uri.as_str(),
+        "training_scheduler_artifact_bucket_missing",
+    )?;
+    if metadata.worker_count == 0
+        && metadata.validator_count == 0
+        && metadata.recovery_source_count == 0
+    {
+        return Err("training_scheduler_role_plan_missing".to_string());
+    }
+    Ok(TrainingSchedulerRunMetadata {
+        network_id,
+        artifact_bucket_uri,
+        worker_count: metadata.worker_count,
+        validator_count: metadata.validator_count,
+        recovery_source_count: metadata.recovery_source_count,
+        initial_window_id: metadata
+            .initial_window_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        checkpoint_ref: metadata
+            .checkpoint_ref
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+    })
+}
+
+fn training_node_matches_scheduler_run(
+    node: &AdmittedTrainingNodeView,
+    run: &ComputeTrainingRun,
+    metadata: &TrainingSchedulerRunMetadata,
+    role: TrainingNodeRoleClaim,
+) -> bool {
+    if !node.role_claims.contains(&role) || !node.online || !node.eligible {
+        return false;
+    }
+    if !node.allowed_networks.is_empty()
+        && !node
+            .allowed_networks
+            .iter()
+            .any(|value| value == &metadata.network_id)
+    {
+        return false;
+    }
+    if !node
+        .contributor_availability
+        .validator_policy_refs
+        .iter()
+        .any(|value| value == &run.validator_policy_ref)
+    {
+        return false;
+    }
+    if !node
+        .contributor_availability
+        .checkpoint_families
+        .iter()
+        .any(|value| value == &run.checkpoint_binding.checkpoint_family)
+    {
+        return false;
+    }
+    if !node
+        .contributor_availability
+        .environment_refs
+        .iter()
+        .any(|value| value == &run.environment_binding.environment_ref)
+    {
+        return false;
+    }
+    node.contributor_availability.settlement_trigger
+        == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow)
+}
+
+fn training_scheduler_assignment_id(
+    training_run_id: &str,
+    window_id: &str,
+    role: TrainingNodeRoleClaim,
+    slot_ordinal: u32,
+    attempt: u32,
+) -> String {
+    format!(
+        "assign.{training_run_id}.{window_id}.{}.{}.attempt{attempt}",
+        role.label(),
+        slot_ordinal
+    )
+}
+
+fn training_scheduler_lease_id(
+    training_run_id: &str,
+    window_id: &str,
+    role: TrainingNodeRoleClaim,
+    slot_ordinal: u32,
+    attempt: u32,
+    membership_revision: u64,
+) -> String {
+    format!(
+        "lease.{training_run_id}.{window_id}.{}.{}.attempt{attempt}.rev{membership_revision}",
+        role.label(),
+        slot_ordinal
+    )
+}
+
+fn training_scheduler_manifest_digest(
+    training_run_id: &str,
+    window_id: &str,
+    membership_revision: u64,
+    node_pubkey_hex: &str,
+    assignment_id: &str,
+    role: TrainingNodeRoleClaim,
+    artifact_bucket_uri: &str,
+) -> String {
+    sha256_prefixed_bytes(
+        format!(
+            "{training_run_id}:{window_id}:{membership_revision}:{node_pubkey_hex}:{assignment_id}:{}:{artifact_bucket_uri}",
+            role.label()
+        )
+        .as_bytes(),
+    )
+}
+
+fn training_scheduler_membership_revision(membership_revision: u64) -> String {
+    format!("members.rev{membership_revision}")
+}
+
+fn normalize_required_training_string(value: &str, reason: &str) -> Result<String, String> {
+    let normalized = value.trim();
+    if normalized.is_empty() {
+        return Err(reason.to_string());
+    }
+    Ok(normalized.to_string())
 }
 
 #[derive(Debug, Clone)]
@@ -1031,6 +1742,7 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/api/training/heartbeats",
             post(record_training_node_heartbeat),
         )
+        .route("/api/training/leases/claim", post(claim_training_run_lease))
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
             "/api/training/nodes/{node_pubkey_hex}",
@@ -1587,6 +2299,58 @@ async fn record_training_node_heartbeat(
         result.snapshot_event.clone(),
     );
     Ok(Json(result.response))
+}
+
+async fn claim_training_run_lease(
+    State(state): State<AppState>,
+    Json(mut request): Json<RecordTrainingRunLeaseRequest>,
+) -> Result<Json<RecordTrainingRunLeaseResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_scheduler_idempotency_key_missing",
+    )?;
+    request.node_pubkey_hex = normalize_required_field(
+        request.node_pubkey_hex.as_str(),
+        "training_node_pubkey_missing",
+    )?;
+    request.requested_at_ms = if request.requested_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.requested_at_ms
+    };
+    request.requested_network_id = request
+        .requested_network_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    request.requested_training_run_id = request
+        .requested_training_run_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    request.membership_revision = request
+        .membership_revision
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let node = store
+            .kernel
+            .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.requested_at_ms)
+            .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+        let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
+        store
+            .training_scheduler
+            .claim_lease(node, candidate_runs, &request, request.requested_at_ms)
+            .map_err(kernel_api_error)?
+    };
+    Ok(Json(response))
 }
 
 async fn list_training_nodes(
@@ -5885,6 +6649,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "coverage_offer_not_found"
         | "coverage_binding_not_found"
         | "training_node_not_found"
+        | "training_scheduler_run_not_found"
         | "risk_claim_not_found" => StatusCode::NOT_FOUND,
         "kernel_idempotency_conflict"
         | "kernel_contract_id_mismatch"
@@ -5983,7 +6748,8 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "reserve_partition_asset_mismatch"
         | "reserve_partition_insufficient_available"
         | "risk_outcome_ref_mismatch"
-        | "risk_market_asset_mismatch" => StatusCode::CONFLICT,
+        | "risk_market_asset_mismatch"
+        | "training_scheduler_idempotency_conflict" => StatusCode::CONFLICT,
         "work_unit_id_missing"
         | "contract_id_missing"
         | "receipt_id_missing"
@@ -6162,6 +6928,18 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "training_node_window_id_missing"
         | "training_node_assignment_id_missing"
         | "training_node_lease_id_missing"
+        | "training_scheduler_idempotency_key_missing"
+        | "training_scheduler_run_not_schedulable"
+        | "training_scheduler_run_metadata_missing"
+        | "training_scheduler_run_metadata_invalid"
+        | "training_scheduler_run_network_missing"
+        | "training_scheduler_artifact_bucket_missing"
+        | "training_scheduler_role_plan_missing"
+        | "training_scheduler_role_not_admitted"
+        | "training_scheduler_node_offline"
+        | "training_scheduler_node_ineligible"
+        | "training_scheduler_network_not_allowed"
+        | "training_scheduler_assignment_unavailable"
         | "risk_concentration_invalid" => StatusCode::BAD_REQUEST,
         _ => StatusCode::BAD_REQUEST,
     };
@@ -7469,13 +8247,17 @@ mod tests {
         DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS, DesktopSessionCreateRequest,
         DesktopSessionResponse, FinalizeValidatorChallengeRequest, LeaseValidatorChallengeRequest,
         LeaseValidatorChallengeResponse, PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
-        ProviderPresenceHeartbeatRequest, ProviderPresenceOfflineRequest, ProviderPresenceState,
-        PublicStatsSnapshot, ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse,
-        ServiceConfig, StarterDemandAckRequest, StarterDemandAckResponse,
-        StarterDemandCompleteRequest, StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
+        PYLON_TRAINING_LEASE_DURATION_MS, ProviderPresenceHeartbeatRequest,
+        ProviderPresenceOfflineRequest, ProviderPresenceState, PublicStatsSnapshot,
+        RecordTrainingRunLeaseRequest, RecordTrainingRunLeaseResponse,
+        ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, ServiceConfig,
+        StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
+        StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
-        SyncTokenResponse, TreasuryConfig, build_app_state, build_router, build_router_with_state,
-        random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
+        SyncTokenResponse, TrainingAssignmentState, TreasuryConfig, build_api_router_with_state,
+        build_app_state, build_router, build_router_with_state, random_token,
+        run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
+        training_kernel_mutation_context,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -7808,6 +8590,44 @@ mod tests {
             process_state: TrainingNodeProcessState::Running,
             last_heartbeat_at_ms: Some(now),
             last_exit_code: None,
+        }
+    }
+
+    fn training_scheduler_metadata(
+        network_id: &str,
+        worker_count: u32,
+        validator_count: u32,
+        recovery_source_count: u32,
+        initial_window_id: &str,
+    ) -> serde_json::Value {
+        json!({
+            "pylon_training_scheduler": {
+                "network_id": network_id,
+                "artifact_bucket_uri": "gs://bucket",
+                "worker_count": worker_count,
+                "validator_count": validator_count,
+                "recovery_source_count": recovery_source_count,
+                "initial_window_id": initial_window_id,
+                "checkpoint_ref": "checkpoint://decoder/base"
+            }
+        })
+    }
+
+    fn training_run_lease_request(
+        idempotency_key: &str,
+        requested_at_ms: i64,
+        node_pubkey_hex: &str,
+        requested_training_run_id: &str,
+        requested_network_id: &str,
+    ) -> RecordTrainingRunLeaseRequest {
+        RecordTrainingRunLeaseRequest {
+            idempotency_key: idempotency_key.to_string(),
+            requested_at_ms,
+            node_pubkey_hex: node_pubkey_hex.to_string(),
+            role: TrainingNodeRoleClaim::Worker,
+            requested_network_id: Some(requested_network_id.to_string()),
+            requested_training_run_id: Some(requested_training_run_id.to_string()),
+            membership_revision: None,
         }
     }
 
@@ -13560,6 +14380,446 @@ mod tests {
         assert_eq!(
             error.get("reason").and_then(serde_json::Value::as_str),
             Some("training_node_build_digest_missing")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_claims_leases_for_running_runs_and_replaces_expired_workers()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_300_000u64;
+
+        {
+            let mut store = state.store.write().expect("write store");
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 100),
+                    compute_environment_package_request(
+                        "env.openagents.cuda.train",
+                        "2026.04.09",
+                        "idemp.scheduler.environment",
+                        created_at_ms as i64 + 100,
+                    ),
+                )
+                .expect("register environment");
+            let mut checkpoint_policy_request = compute_checkpoint_family_policy_request(
+                "idemp.scheduler.checkpoint",
+                created_at_ms as i64 + 200,
+            );
+            checkpoint_policy_request
+                .policy_record
+                .allowed_environment_refs = vec!["env.openagents.cuda.train".to_string()];
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 200),
+                    checkpoint_policy_request,
+                )
+                .expect("register checkpoint policy");
+            let mut validator_policy_request = compute_validator_policy_request(
+                "idemp.scheduler.validator",
+                created_at_ms as i64 + 300,
+            );
+            validator_policy_request.policy_record.policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 300),
+                    validator_policy_request,
+                )
+                .expect("register validator policy");
+            let mut benchmark_package_request = compute_benchmark_package_request(
+                "idemp.scheduler.benchmark",
+                created_at_ms as i64 + 400,
+            );
+            benchmark_package_request.benchmark_package.environment_ref =
+                "env.openagents.cuda.train".to_string();
+            store
+                .kernel
+                .register_compute_benchmark_package(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 400),
+                    benchmark_package_request,
+                )
+                .expect("register benchmark package");
+            let mut training_policy_request = compute_training_policy_request(
+                "idemp.scheduler.training_policy",
+                created_at_ms as i64 + 500,
+            );
+            training_policy_request.training_policy.environment_refs =
+                vec!["env.openagents.cuda.train".to_string()];
+            training_policy_request.training_policy.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 500),
+                    training_policy_request,
+                )
+                .expect("register training policy");
+
+            let mut training_run_request =
+                compute_training_run_request("idemp.scheduler.run", created_at_ms as i64 + 600);
+            training_run_request.training_run.training_run_id = "run.scheduler.alpha".to_string();
+            training_run_request
+                .training_run
+                .environment_binding
+                .environment_ref = "env.openagents.cuda.train".to_string();
+            training_run_request.training_run.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+            training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+            training_run_request.training_run.metadata =
+                training_scheduler_metadata("trainnet.alpha", 1, 0, 0, "window.0001");
+            store
+                .kernel
+                .create_compute_training_run(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                    training_run_request,
+                )
+                .expect("create training run");
+
+            let mut node_alpha = training_node_admission_request(
+                "node-alpha",
+                "sha256:build-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_alpha.requested_at_ms = created_at_ms as i64 + 700;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-alpha", created_at_ms + 700),
+                    node_alpha,
+                )
+                .expect("admit node alpha");
+            let mut heartbeat_alpha =
+                training_node_heartbeat_request("node-alpha", "sha256:build-alpha");
+            heartbeat_alpha.recorded_at_ms = created_at_ms as i64 + 750;
+            heartbeat_alpha.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
+            heartbeat_alpha.training_run_id = "run.scheduler.alpha".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-alpha", created_at_ms + 750),
+                    heartbeat_alpha,
+                )
+                .expect("heartbeat node alpha");
+
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = "run.scheduler.alpha".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        let claim_requested_at_ms = created_at_ms as i64 + 1_000;
+        let claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            "run.scheduler.alpha",
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claim_response.status(), StatusCode::OK);
+        let first_lease = response_json::<RecordTrainingRunLeaseResponse>(claim_response).await?;
+        assert_eq!(first_lease.training_run_id, "run.scheduler.alpha");
+        assert_eq!(first_lease.window_id, "window.0001");
+        assert_eq!(first_lease.role, TrainingNodeRoleClaim::Worker);
+        assert_eq!(
+            first_lease.membership_revision.as_deref(),
+            Some("members.rev1")
+        );
+        assert_eq!(first_lease.assignment_state.as_deref(), Some("leased"));
+        assert_eq!(first_lease.window_state.as_deref(), Some("active"));
+        assert_eq!(
+            first_lease.expires_at_ms,
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64
+        );
+        assert!(first_lease.manifest_digest.is_some());
+
+        let replay_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            "run.scheduler.alpha",
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replay_response.status(), StatusCode::OK);
+        let replayed_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replay_response).await?;
+        assert_eq!(replayed_lease, first_lease);
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            let refreshed_at_ms =
+                claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+            heartbeat_beta.idempotency_key = "idemp.scheduler.heartbeat.beta.refresh".to_string();
+            heartbeat_beta.recorded_at_ms = refreshed_at_ms;
+            heartbeat_beta.last_heartbeat_at_ms = Some(refreshed_at_ms);
+            heartbeat_beta.training_run_id = "run.scheduler.alpha".to_string();
+            heartbeat_beta.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", refreshed_at_ms as u64),
+                    heartbeat_beta,
+                )
+                .expect("refresh heartbeat beta");
+        }
+
+        let replacement_requested_at_ms =
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+        let replacement_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.beta",
+                            replacement_requested_at_ms,
+                            "node-beta",
+                            "run.scheduler.alpha",
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replacement_response.status(), StatusCode::OK);
+        let replacement_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replacement_response).await?;
+        assert_eq!(replacement_lease.training_run_id, "run.scheduler.alpha");
+        assert_eq!(
+            replacement_lease.membership_revision.as_deref(),
+            Some("members.rev2")
+        );
+        assert_ne!(replacement_lease.assignment_id, first_lease.assignment_id);
+        assert_ne!(replacement_lease.lease_id, first_lease.lease_id);
+
+        let store = state.store.read().expect("read store");
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get("run.scheduler.alpha")
+            .expect("scheduled run");
+        assert!(
+            scheduled_run.assignments.iter().any(|assignment| {
+                assignment.assignment_id == first_lease.assignment_id
+                    && assignment.state == TrainingAssignmentState::Expired
+            }),
+            "expired lease should remain in scheduler history for replacement accounting",
+        );
+        assert!(
+            scheduled_run.assignments.iter().any(|assignment| {
+                assignment.assignment_id == replacement_lease.assignment_id
+                    && assignment.state == TrainingAssignmentState::Leased
+                    && assignment.node_pubkey_hex.as_deref() == Some("node-beta")
+            }),
+            "replacement lease should allocate a new assignment attempt to the new node",
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_rejects_runs_without_scheduler_metadata() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_400_000u64;
+
+        {
+            let mut store = state.store.write().expect("write store");
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 100),
+                    compute_environment_package_request(
+                        "env.openagents.cuda.train",
+                        "2026.04.09",
+                        "idemp.scheduler.environment",
+                        created_at_ms as i64 + 100,
+                    ),
+                )
+                .expect("register environment");
+            let mut checkpoint_policy_request = compute_checkpoint_family_policy_request(
+                "idemp.scheduler.checkpoint",
+                created_at_ms as i64 + 200,
+            );
+            checkpoint_policy_request
+                .policy_record
+                .allowed_environment_refs = vec!["env.openagents.cuda.train".to_string()];
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 200),
+                    checkpoint_policy_request,
+                )
+                .expect("register checkpoint policy");
+            let mut validator_policy_request = compute_validator_policy_request(
+                "idemp.scheduler.validator",
+                created_at_ms as i64 + 300,
+            );
+            validator_policy_request.policy_record.policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 300),
+                    validator_policy_request,
+                )
+                .expect("register validator policy");
+            let mut benchmark_package_request = compute_benchmark_package_request(
+                "idemp.scheduler.benchmark",
+                created_at_ms as i64 + 400,
+            );
+            benchmark_package_request.benchmark_package.environment_ref =
+                "env.openagents.cuda.train".to_string();
+            store
+                .kernel
+                .register_compute_benchmark_package(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 400),
+                    benchmark_package_request,
+                )
+                .expect("register benchmark package");
+            let mut training_policy_request = compute_training_policy_request(
+                "idemp.scheduler.training_policy",
+                created_at_ms as i64 + 500,
+            );
+            training_policy_request.training_policy.environment_refs =
+                vec!["env.openagents.cuda.train".to_string()];
+            training_policy_request.training_policy.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 500),
+                    training_policy_request,
+                )
+                .expect("register training policy");
+
+            let mut training_run_request =
+                compute_training_run_request("idemp.scheduler.run", created_at_ms as i64 + 600);
+            training_run_request.training_run.training_run_id = "run.scheduler.missing".to_string();
+            training_run_request
+                .training_run
+                .environment_binding
+                .environment_ref = "env.openagents.cuda.train".to_string();
+            training_run_request.training_run.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+            training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+            training_run_request.training_run.metadata = json!({"stability_verdict": "continue"});
+            store
+                .kernel
+                .create_compute_training_run(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                    training_run_request,
+                )
+                .expect("create training run");
+
+            let mut node_alpha = training_node_admission_request(
+                "node-alpha",
+                "sha256:build-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_alpha.requested_at_ms = created_at_ms as i64 + 700;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-alpha", created_at_ms + 700),
+                    node_alpha,
+                )
+                .expect("admit node alpha");
+            let mut heartbeat_alpha =
+                training_node_heartbeat_request("node-alpha", "sha256:build-alpha");
+            heartbeat_alpha.recorded_at_ms = created_at_ms as i64 + 750;
+            heartbeat_alpha.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
+            heartbeat_alpha.training_run_id = "run.scheduler.missing".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-alpha", created_at_ms + 750),
+                    heartbeat_alpha,
+                )
+                .expect("heartbeat node alpha");
+        }
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.missing",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            "run.scheduler.missing",
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_scheduler_run_metadata_missing")
         );
         Ok(())
     }
