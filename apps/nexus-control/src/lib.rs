@@ -76,9 +76,10 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
     PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
-    pylon_training_assignment_id, pylon_training_assignment_seed, pylon_training_lease_id,
-    pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
-    resolve_aggregate_verdicts, validator_sample_assignments,
+    pylon_training_assignment_id, pylon_training_assignment_seed, pylon_training_hard_gate_reason,
+    pylon_training_lease_id, pylon_training_manifest_binding_digest,
+    pylon_training_membership_revision_label, resolve_aggregate_verdicts,
+    validate_redacted_retained_content, validator_sample_assignments,
 };
 use openagents_kernel_core::receipts::{PolicyContext, Receipt, ReceiptHints, TraceContext};
 use openagents_kernel_core::snapshots::EconomySnapshot;
@@ -4105,6 +4106,11 @@ async fn claim_training_run_lease(
             .kernel
             .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.requested_at_ms)
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+        if !node.eligible {
+            let reason = pylon_training_hard_gate_reason(&node.active_reputation_labels)
+                .unwrap_or_else(|| "training_node_not_eligible".to_string());
+            return Err(kernel_api_error(reason));
+        }
         let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
         let response = store
             .training_scheduler
@@ -5775,6 +5781,7 @@ async fn publish_or_queue_training_trn_pointer(
                 .unwrap_or_default(),
         });
     }
+    validate_redacted_retained_content(template.content.as_str()).map_err(kernel_api_error)?;
     let persisted_template = training_trn_publication_template(&template);
     let now_ms = now_unix_ms() as i64;
     let mut record = publication_record_cache
@@ -13093,6 +13100,7 @@ mod tests {
             idempotency_key: format!("idemp.training.admission.{node_pubkey_hex}.{build_digest}"),
             requested_at_ms: now,
             node_pubkey_hex: node_pubkey_hex.to_string(),
+            release_id: "openagents.pylon@0.1.0".to_string(),
             node_label: Some(format!("node-{node_pubkey_hex}")),
             role_claims: vec![TrainingNodeRoleClaim::Worker],
             allowed_networks: allowed_networks.into_iter().map(str::to_string).collect(),
@@ -13121,6 +13129,7 @@ mod tests {
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
+            settlement_destination: Some("lnbc1trainingalpha".to_string()),
         }
     }
 
@@ -19652,6 +19661,81 @@ mod tests {
         assert_eq!(
             body.get("reason").and_then(serde_json::Value::as_str),
             Some("training_scheduler_run_metadata_missing")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_refuses_build_revoked_nodes_after_readmission() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_450_000u64;
+        let training_run_id = "run.scheduler.revoked";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut revoked = training_node_admission_request(
+                "node-alpha",
+                "sha256:build-alpha",
+                vec!["trainnet.alpha"],
+                vec!["label.build.revoked.alpha::trn/build::revoked"],
+                Some(512),
+            );
+            revoked.idempotency_key =
+                "idemp.training.admission.node-alpha.sha256:build-alpha.revoked".to_string();
+            revoked.requested_at_ms = created_at_ms as i64 + 800;
+            let response = store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-alpha", created_at_ms + 800),
+                    revoked,
+                )
+                .expect("record revoked readmission");
+            assert!(!response.response.admitted);
+            assert_eq!(response.response.reason.as_deref(), Some("build_revoked"));
+
+            let node = store
+                .kernel
+                .get_admitted_training_node("node-alpha", created_at_ms as i64 + 800)
+                .expect("retained admitted training node");
+            assert_eq!(node.release_id, "openagents.pylon@0.1.0");
+            assert_eq!(
+                node.settlement_destination.as_deref(),
+                Some("lnbc1trainingalpha")
+            );
+            assert!(!node.eligible);
+        }
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.revoked",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("build_revoked")
         );
         Ok(())
     }

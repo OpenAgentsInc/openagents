@@ -37,6 +37,7 @@ use openagents_kernel_core::{
         ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
         ComputeAdapterWindowStatus, ComputeTrainingPolicy, ComputeTrainingRun,
     },
+    ids::sha256_prefixed_text,
     pylon_training::{
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
@@ -44,7 +45,8 @@ use openagents_kernel_core::{
         PylonTrainingArtifactLayout, PylonTrainingObservabilityContext, artifact_digest_from_bytes,
         artifact_digest_from_json, can_emit_terminal_artifact_uploaded_receipt,
         derive_artifact_bundle_state, parse_pylon_training_run_manifest_json,
-        resolve_pylon_training_credentials,
+        resolve_pylon_training_credentials, validate_redacted_retained_content,
+        validate_redacted_retained_state,
     },
 };
 use openagents_provider_substrate::{
@@ -604,6 +606,7 @@ pub struct PylonTrainingNodeAdmissionRequest {
     pub idempotency_key: String,
     pub requested_at_ms: i64,
     pub node_pubkey_hex: String,
+    pub release_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_label: Option<String>,
     #[serde(default)]
@@ -620,6 +623,8 @@ pub struct PylonTrainingNodeAdmissionRequest {
     pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
     #[serde(default)]
     pub active_reputation_labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_destination: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -5556,6 +5561,9 @@ fn save_training_runtime_state(
             )
         })?;
     }
+    let retained_value =
+        serde_json::to_value(state).context("failed to encode retained training runtime state")?;
+    validate_redacted_retained_state(&retained_value).map_err(anyhow::Error::msg)?;
     std::fs::write(
         path.as_path(),
         format!(
@@ -5892,7 +5900,8 @@ impl PylonTrainingArtifactStoreClient {
         bundle_kind: PylonTrainingArtifactBundleKind,
     ) -> Result<PylonTrainingArtifactBundleTransferReport> {
         let local_run_root = PathBuf::from(manifest.artifacts.local_run_root.clone());
-        let layout = PylonTrainingArtifactLayout::from_manifest(manifest).map_err(anyhow::Error::msg)?;
+        let layout =
+            PylonTrainingArtifactLayout::from_manifest(manifest).map_err(anyhow::Error::msg)?;
         let required_objects = bundle_kind.required_paths(&layout);
         let bundle_id = bundle_kind.bundle_id();
         let bundle_kind_label = bundle_kind.bundle_kind_label().to_string();
@@ -8491,6 +8500,7 @@ async fn publish_or_queue_training_trn(
     dedupe_existing: bool,
 ) -> Result<TrainingPublicationDispatchOutcome> {
     let fingerprint = training_publication_fingerprint(&template)?;
+    validate_redacted_retained_content(template.content.as_str()).map_err(anyhow::Error::msg)?;
     if dedupe_existing
         && training_publication_matches_fingerprint(state, publication_key, fingerprint.as_str())
     {
@@ -10908,6 +10918,34 @@ fn identity_metadata(identity: &NostrIdentity, node_label: &str) -> ProviderIden
         display_name: Some("Pylon".to_string()),
         node_label: Some(node_label.to_string()),
     }
+}
+
+fn local_training_release_id() -> String {
+    static RELEASE_ID: OnceLock<String> = OnceLock::new();
+    RELEASE_ID
+        .get_or_init(|| format!("openagents.pylon@{}", env!("CARGO_PKG_VERSION")))
+        .clone()
+}
+
+fn local_training_build_digest() -> String {
+    static BUILD_DIGEST: OnceLock<String> = OnceLock::new();
+    BUILD_DIGEST
+        .get_or_init(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| std::fs::read(path).ok())
+                .map(|bytes| artifact_digest_from_bytes(bytes.as_slice()))
+                .unwrap_or_else(|| sha256_prefixed_text(local_training_release_id().as_str()))
+        })
+        .clone()
+}
+
+fn training_settlement_destination(config: &PylonConfig) -> Option<String> {
+    config
+        .payout_destination
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn provider_config_metadata_value<'a>(
@@ -14444,7 +14482,8 @@ mod tests {
         PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
         PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
-        PylonTrainingPublicationPointer, PylonTrainingReputationLabelCacheEntry,
+        PylonTrainingPublicationPointer, PylonTrainingPublicationRecord,
+        PylonTrainingPublicationTemplate, PylonTrainingReputationLabelCacheEntry,
         PylonTrainingRoleClaim, PylonTrainingRunLeaseRequest, PylonTrainingRuntimeState,
         PylonTrainingSupervisorCommand, PylonTrainingSupervisorDesiredState,
         PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
@@ -14464,13 +14503,13 @@ mod tests {
         load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect,
-        load_training_artifact_inspection_report, load_training_status_report_local, mutate_ledger,
-        parse_args, planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
-        provider_presence_client, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, publish_training_trn_state, refresh_relay_report,
-        remove_configured_relay, render_human_status, render_public_config_json,
-        render_sandbox_report, render_training_status_report,
-        report_provider_presence_heartbeat_for_snapshot,
+        load_training_artifact_inspection_report, load_training_status_report_local,
+        local_training_release_id, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
+        poll_training_supervisor, provider_admin_config, provider_presence_client,
+        psionic_gemma_benchmark_command_args, publish_announcement_report,
+        publish_training_trn_state, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_public_config_json, render_sandbox_report,
+        render_training_status_report, report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
@@ -14478,7 +14517,8 @@ mod tests {
         scan_provider_requests, snapshot_training_status_report, start_training_checkpoint_server,
         start_training_supervisor, submit_buyer_job, sync_live_announcement,
         sync_provider_payout_target_with_report, sync_training_authority_state,
-        training_download_cache_root, training_runtime_state_path, watch_buyer_jobs,
+        training_download_cache_root, training_runtime_state_path, training_settlement_destination,
+        watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -15764,6 +15804,51 @@ mod tests {
         )
     }
 
+    #[test]
+    fn training_runtime_state_persistence_rejects_secret_publication_templates()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.publication_records.insert(
+            "receipt.alpha".to_string(),
+            PylonTrainingPublicationRecord {
+                publication_key: "receipt.alpha".to_string(),
+                subject_kind: "receipt".to_string(),
+                subject_id: "receipt.alpha".to_string(),
+                event_kind: TRN_TRAINING_RECEIPT_KIND,
+                fingerprint: "sha256:fingerprint-alpha".to_string(),
+                relay_urls: vec!["wss://relay.example.com".to_string()],
+                a_ref: None,
+                event_id: None,
+                published_at_ms: None,
+                last_attempt_at_ms: 1_762_491_200_000,
+                attempt_count: 1,
+                pending_retry: true,
+                last_error: Some("relay offline".to_string()),
+                relay_outcomes: Vec::new(),
+                template: Some(PylonTrainingPublicationTemplate {
+                    event_kind: TRN_TRAINING_RECEIPT_KIND,
+                    tags: Vec::new(),
+                    content: json!({
+                        "authorization": "Bearer secret"
+                    })
+                    .to_string(),
+                }),
+            },
+        );
+
+        let error = save_training_runtime_state(&config, &state)
+            .expect_err("secret-bearing retained publication templates must be rejected");
+        ensure(
+            error
+                .to_string()
+                .contains("pylon_training_retained_state_secret_detected:publication_records.receipt.alpha.template.content.authorization"),
+            "retained training state persistence should fail with a redaction error when publication templates contain secret fields",
+        )
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn training_coordinator_client_reuses_kernel_training_lookup_routes()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -15974,6 +16059,7 @@ mod tests {
             idempotency_key: "idemp.training.admission.alpha".to_string(),
             requested_at_ms: 1_762_491_200_500,
             node_pubkey_hex: identity.public_key_hex.clone(),
+            release_id: local_training_release_id(),
             node_label: Some(config.node_label.clone()),
             role_claims: config.training.role_claims.clone(),
             allowed_networks: vec!["trainnet.alpha".to_string()],
@@ -15987,6 +16073,7 @@ mod tests {
                 true,
             )),
             active_reputation_labels: Vec::new(),
+            settlement_destination: training_settlement_destination(&config),
         };
         let first_admission = client.admit_node(&admission_request).await?;
         let second_admission = client.admit_node(&admission_request).await?;

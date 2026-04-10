@@ -3267,6 +3267,23 @@ not leak raw secrets.
 - Revoked nodes or builds are enforceably blocked.
 - Retained receipts do not contain secrets.
 
+Implementation note:
+
+- Training-node admission now carries an explicit identity binding across node
+  pubkey, `release_id`, `build_version`, `build_digest`, and optional
+  settlement destination, and `Nexus` persists and serves that binding through
+  admitted-node views.
+- `Nexus` now refuses admission for hard-gated build or contributor labels and
+  refuses later lease claims for previously admitted nodes that become
+  build-revoked or otherwise hard-gated, rather than silently treating them as
+  ordinary eligible workers.
+- `Pylon` now publishes local release and build identity in the retained TRN
+  node record, including a local executable digest in the event `build` tag.
+- The retained-state redaction contract from kernel-core is now enforced on
+  actual `Pylon` runtime-state persistence and retained TRN publication
+  templates so secret-bearing receipts or publication payloads fail closed
+  instead of being written to disk.
+
 ### Workstream 7: Defensibility Requirements
 
 #### 50. Enforce admitted-build, signed-identity, digest, validator-evidence,
