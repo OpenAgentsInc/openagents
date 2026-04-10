@@ -82,6 +82,10 @@ fn emphasis_text() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
+fn panel_title_slash() -> Style {
+    Style::default().fg(Color::Rgb(0x9b, 0xd6, 0xff))
+}
+
 fn key_label(label: &str) -> Span<'static> {
     Span::styled(format!("{label}: "), muted_text())
 }
@@ -93,13 +97,20 @@ fn pulse_highlight_text() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
+fn panel_title(title: impl Into<String>) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(" // ", panel_title_slash()),
+        Span::styled(title.into(), shell_border().add_modifier(Modifier::BOLD)),
+    ])
+}
+
 fn panel(title: &str, body: Text<'static>) -> Paragraph<'static> {
     Paragraph::new(body)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .padding(Padding::horizontal(1))
-                .title(format!("─ {title} "))
+                .title(panel_title(title))
                 .style(shell_border()),
         )
         .wrap(Wrap { trim: false })
@@ -159,6 +170,7 @@ struct OperatorPanelStats {
     matching_jobs_24h: u64,
     jobs_processed_24h: u64,
     jobs_settled_24h: u64,
+    session_earnings_sats: u64,
     settled_sats_24h: u64,
     settled_sats_lifetime: u64,
     total_earnings_sats: u64,
@@ -475,6 +487,9 @@ struct AppShell {
     transcript_max_scroll_y: u16,
     animation_started_at: Instant,
     live_activity_pulse_until: Option<Instant>,
+    session_started_at_ms: u64,
+    latest_paid_moment: Option<(u64, Instant)>,
+    latest_rank_up_moment: Option<(String, String, Instant)>,
 }
 
 impl AppShell {
@@ -532,6 +547,9 @@ impl AppShell {
             transcript_max_scroll_y: 0,
             animation_started_at: Instant::now(),
             live_activity_pulse_until: None,
+            session_started_at_ms: current_epoch_ms_u64(),
+            latest_paid_moment: None,
+            latest_rank_up_moment: None,
         }
     }
 
@@ -979,6 +997,27 @@ impl AppShell {
                     stabilize_operator_panel_stats(previous_stats.clone(), operator_stats);
                 let activity_changed =
                     previous_stats.recent_activity != operator_stats.recent_activity;
+                let paid_delta_sats = operator_stats
+                    .session_earnings_sats
+                    .saturating_sub(previous_stats.session_earnings_sats);
+                if paid_delta_sats > 0 && self.last_refresh_at.is_some() {
+                    let until = Instant::now() + Duration::from_millis(3200);
+                    self.latest_paid_moment = Some((paid_delta_sats, until));
+                    self.live_activity_pulse_until = Some(until);
+                }
+                let previous_rank =
+                    stacker_rank_progress(previous_stats.total_earnings_sats).current.name;
+                let current_rank =
+                    stacker_rank_progress(operator_stats.total_earnings_sats).current.name;
+                if previous_rank != current_rank && self.last_refresh_at.is_some() {
+                    let until = Instant::now() + Duration::from_millis(4200);
+                    self.latest_rank_up_moment = Some((
+                        previous_rank.to_string(),
+                        current_rank.to_string(),
+                        until,
+                    ));
+                    self.live_activity_pulse_until = Some(until);
+                }
                 self.loaded = loaded;
                 self.installed_gemma_models = installed_gemma_models;
                 self.operator_stats = operator_stats;
@@ -1004,6 +1043,20 @@ impl AppShell {
                     .is_some_and(|until| Instant::now() >= until)
                 {
                     self.live_activity_pulse_until = None;
+                }
+                if self
+                    .latest_paid_moment
+                    .as_ref()
+                    .is_some_and(|(_, until)| Instant::now() >= *until)
+                {
+                    self.latest_paid_moment = None;
+                }
+                if self
+                    .latest_rank_up_moment
+                    .as_ref()
+                    .is_some_and(|(_, _, until)| Instant::now() >= *until)
+                {
+                    self.latest_rank_up_moment = None;
                 }
             }
             WorkerEvent::StreamStarted(model) => {
@@ -2265,6 +2318,7 @@ impl AppShell {
         let tx = self.worker_tx.clone();
         let session_id = self.provider_presence_session_id.clone();
         let provider_presence_online = self.provider_presence_online;
+        let session_started_at_ms = self.session_started_at_ms;
         let heartbeat_due = Instant::now() >= self.next_provider_presence_heartbeat_at;
         std::thread::spawn(move || {
             let installed_gemma_models = installed_gemma_models(config_path.as_path());
@@ -2340,6 +2394,7 @@ impl AppShell {
                                         wallet_status.as_ref(),
                                         status.snapshot.as_ref(),
                                         &ledger,
+                                        session_started_at_ms,
                                     ),
                                     last_error: None,
                                     last_wallet_error,
@@ -2375,6 +2430,7 @@ impl AppShell {
                                         wallet_status.as_ref(),
                                         None,
                                         &ledger,
+                                        session_started_at_ms,
                                     ),
                                     last_error: Some(error.to_string()),
                                     last_wallet_error,
@@ -2408,6 +2464,7 @@ impl AppShell {
                                 None,
                                 None,
                                 &ledger,
+                                session_started_at_ms,
                             ),
                             last_error: Some(error.to_string()),
                             last_wallet_error: None,
@@ -2503,7 +2560,7 @@ impl AppShell {
         frame.render_widget(shell, area);
 
         let vertical = Layout::vertical([
-            Constraint::Length(3),
+            Constraint::Length(self.header_height()),
             Constraint::Min(10),
             Constraint::Length(self.bottom_pane.height()),
             Constraint::Length(2),
@@ -2517,24 +2574,22 @@ impl AppShell {
         frame.render_widget(self.transcript_panel(), middle[0]);
         match self.sidebar_view {
             SidebarView::Operate => {
-                let operator_height = (self.operator_lines().len() as u16 + 2).clamp(10, 13);
+                let operator_height = (self.operator_lines().len() as u16 + 2).clamp(7, 9);
                 let wallet_card_height = (self.wallet_card_lines().len() as u16 + 2).clamp(7, 9);
-                let rank_height = (self.rank_lines().len() as u16 + 2).clamp(7, 9);
+                let rank_height = (self.rank_lines().len() as u16 + 2).clamp(8, 10);
                 let node_height = (self.summary_lines().len() as u16 + 2).clamp(6, 8);
-                let activity_height = (self.activity_lines().len() as u16 + 2).clamp(7, 10);
                 let right_column = Layout::vertical([
                     Constraint::Length(operator_height),
                     Constraint::Length(wallet_card_height),
                     Constraint::Length(rank_height),
                     Constraint::Length(node_height),
-                    Constraint::Min(activity_height),
+                    Constraint::Min(0),
                 ])
                 .split(middle[1]);
                 frame.render_widget(self.operator_panel(), right_column[0]);
                 frame.render_widget(self.wallet_card_panel(), right_column[1]);
                 frame.render_widget(self.rank_panel(), right_column[2]);
                 frame.render_widget(self.summary_panel(), right_column[3]);
-                frame.render_widget(self.activity_panel(), right_column[4]);
             }
             SidebarView::Wallet => {
                 let wallet_height = (self.wallet_overview_lines().len() as u16 + 2).clamp(7, 9);
@@ -2579,48 +2634,77 @@ impl AppShell {
     }
 
     fn header_panel(&self) -> Paragraph<'static> {
-        let (operator_state, _) = self.operator_state_label_and_detail();
-        let animation_phase = self.animation_phase();
-        let mut spans = vec![Span::styled("Pylon", shell_accent())];
-        spans.push(Span::raw(format!("  {operator_state}")));
-        if self.sidebar_view == SidebarView::Operate {
-            spans.push(Span::raw(format!(
-                "  {} today",
-                format_sats(self.operator_stats.settled_sats_24h)
-            )));
-        }
-        if let Some(refresh_at) = self.last_refresh_at {
-            spans.push(Span::raw(format!(
-                "  refreshed {} ago",
-                format_duration(refresh_at.elapsed())
-            )));
-        } else {
-            spans.push(Span::raw(format!(
-                "  booting{}",
-                animated_boot_suffix(animation_phase)
-            )));
-        }
-        if self.refresh_in_flight {
-            spans.push(Span::raw(format!(
-                "  refreshing{}",
-                animated_boot_suffix(animation_phase)
-            )));
-        }
-        if self.last_error.is_some() {
-            spans.push(Span::styled(
-                "  refresh error",
-                Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
-            ));
-        }
-        Paragraph::new(Line::from(spans))
+        Paragraph::new(Text::from(self.header_lines()))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .padding(Padding::horizontal(1))
-                    .title("─ Status ")
+                    .title(panel_title("Mission Control"))
                     .style(shell_border()),
             )
             .wrap(Wrap { trim: false })
+    }
+
+    fn header_height(&self) -> u16 {
+        4
+    }
+
+    fn header_lines(&self) -> Vec<Line<'static>> {
+        let (operator_state, _) = self.operator_state_label_and_detail();
+        let animation_phase = self.animation_phase();
+        let animation_tick = self.animation_tick();
+
+        let mut top_spans = vec![
+            Span::styled("Pylon", shell_accent()),
+            Span::raw("  "),
+            Span::styled(operator_state.clone(), state_badge_style(&operator_state)),
+            Span::raw("  "),
+            Span::styled(self.hero_status_copy(), muted_text()),
+        ];
+        top_spans.extend(mission_control_signal_spans(
+            operator_state.as_str(),
+            animation_tick,
+        ));
+        let top_line = Line::from(top_spans);
+
+        let mut bottom_spans = Vec::new();
+        if let Some(refresh_at) = self.last_refresh_at {
+            bottom_spans.push(Span::styled(
+                format!("refresh {}", format_duration(refresh_at.elapsed())),
+                muted_text(),
+            ));
+        } else {
+            bottom_spans.push(Span::styled(
+                format!("booting{}", animated_boot_suffix(animation_phase)),
+                muted_text(),
+            ));
+        }
+        if self.refresh_in_flight {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(
+                format!("refreshing{}", animated_boot_suffix(animation_phase)),
+                muted_text(),
+            ));
+        }
+        if let Some((amount_sats, _)) = self.visible_paid_moment() {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(
+                format!("+{} landed", format_sats(amount_sats)),
+                success_accent(),
+            ));
+        } else if let Some((_, to_rank, _)) = self.visible_rank_up_moment() {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(format!("ascended to {to_rank}"), shell_accent()));
+        }
+        if self.last_error.is_some() {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(
+                "refresh error",
+                Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
+            ));
+        }
+
+        vec![top_line, Line::from(bottom_spans)]
     }
 
     fn summary_panel(&self) -> Paragraph<'static> {
@@ -2659,10 +2743,6 @@ impl AppShell {
         panel("Stacker Rank", Text::from(self.rank_lines()))
     }
 
-    fn activity_panel(&self) -> Paragraph<'static> {
-        panel("Live Activity", Text::from(self.activity_lines()))
-    }
-
     fn diagnostics_panel(&self) -> Paragraph<'static> {
         panel("Diagnostics", Text::from(self.diagnostics_lines()))
     }
@@ -2674,7 +2754,7 @@ impl AppShell {
                 Block::default()
                     .borders(Borders::ALL)
                     .padding(Padding::horizontal(1))
-                    .title(format!("─ {} ", self.transcript_panel_title()))
+                    .title(panel_title(self.transcript_panel_title()))
                     .style(shell_border()),
             )
             .wrap(Wrap { trim: false })
@@ -2717,6 +2797,52 @@ impl AppShell {
                 ("/help", "commands"),
             ],
         }
+    }
+
+    fn hero_status_copy(&self) -> String {
+        let (state_label, detail) = self.operator_state_label_and_detail();
+        match state_label.as_str() {
+            "Listening for work" => "Listening across relays for paid work".to_string(),
+            "Earning now" => "Local Gemma is actively working a paid request".to_string(),
+            "Waiting for payout" => "Work is done. Waiting for sats to settle".to_string(),
+            "Ready to earn" => "Standing by for the next paid match".to_string(),
+            "Preparing to earn" => detail.unwrap_or_else(|| "Booting local earnings lane".to_string()),
+            "Needs attention" => detail.unwrap_or_else(|| "A local runtime issue needs attention".to_string()),
+            _ => detail.unwrap_or(state_label),
+        }
+    }
+
+    fn total_earnings_label(&self) -> String {
+        if self.operator_stats.total_earnings_sats > 0 {
+            if self.operator_stats.wallet_balance_live
+                && matches!(
+                    self.operator_stats.wallet_runtime_status.as_deref(),
+                    Some("connected")
+                )
+            {
+                format_sats(self.operator_stats.total_earnings_sats)
+            } else {
+                format!("{} retained", format_sats(self.operator_stats.total_earnings_sats))
+            }
+        } else {
+            "unavailable".to_string()
+        }
+    }
+
+    fn visible_paid_moment(&self) -> Option<(u64, Instant)> {
+        self.latest_paid_moment
+            .filter(|(_, until)| Instant::now() < *until)
+    }
+
+    fn paid_moment_is_visible(&self) -> bool {
+        self.visible_paid_moment().is_some()
+    }
+
+    fn visible_rank_up_moment(&self) -> Option<(String, String, Instant)> {
+        self.latest_rank_up_moment
+            .as_ref()
+            .filter(|(_, _, until)| Instant::now() < *until)
+            .map(|(from, to, until)| (from.clone(), to.clone(), *until))
     }
 
     fn summary_lines(&self) -> Vec<Line<'static>> {
@@ -2945,65 +3071,55 @@ impl AppShell {
     }
 
     fn operator_lines(&self) -> Vec<Line<'static>> {
-        let (state_label, _) = self.operator_state_label_and_detail();
         let animation_phase = self.animation_phase();
-        let total_earnings = if self.operator_stats.total_earnings_sats > 0 {
-            if self.operator_stats.wallet_balance_live
-                && matches!(
-                    self.operator_stats.wallet_runtime_status.as_deref(),
-                    Some("connected")
-                )
-            {
-                format_sats(self.operator_stats.total_earnings_sats)
-            } else {
-                format!("{} retained", format_sats(self.operator_stats.total_earnings_sats))
-            }
-        } else {
-            "unavailable".to_string()
-        };
+        let total_earnings = self.total_earnings_label();
         let mut lines = vec![
             Line::from(vec![
-                key_label("Status"),
-                Span::styled(state_label.clone(), state_badge_style(&state_label)),
-                Span::raw(" "),
+                key_label("Session stack"),
                 Span::styled(
-                    animated_status_spinner(
-                        state_label.as_str(),
-                        self.operator_stats.processing_jobs,
-                        self.operator_stats.awaiting_payment_jobs,
-                        animation_phase,
-                    ),
-                    muted_text(),
+                    format_sats(self.operator_stats.session_earnings_sats),
+                    if self.paid_moment_is_visible() {
+                        pulse_highlight_text()
+                    } else {
+                        emphasis_text()
+                    },
+                ),
+                Span::styled(
+                    animated_stack_gain_suffix(animation_phase, self.paid_moment_is_visible()),
+                    success_accent(),
                 ),
             ]),
             Line::from(vec![
-                key_label("Earnings while open"),
-                Span::styled(
-                    format_sats(self.operator_stats.settled_sats_24h),
-                    emphasis_text(),
-                ),
-            ]),
-            Line::from(vec![
-                key_label("Total earnings"),
+                key_label("Lifetime stack"),
                 Span::styled(total_earnings, emphasis_text()),
             ]),
             Line::from(vec![
                 key_label("Active now"),
+                Span::raw(format!(
+                    "{} processing, {} awaiting payout",
+                    format_u64_with_commas(self.operator_stats.processing_jobs),
+                    format_u64_with_commas(self.operator_stats.awaiting_payment_jobs)
+                )),
                 Span::styled(
                     animated_right_now_suffix(
                         self.operator_stats.processing_jobs,
                         self.operator_stats.awaiting_payment_jobs,
                         animation_phase,
                     ),
-                    muted_text(),
+                    if self.operator_stats.processing_jobs > 0 {
+                        shell_accent()
+                    } else {
+                        muted_text()
+                    },
                 ),
-                Span::raw(format!(
-                    "{} processing, {} awaiting payout",
-                    format_u64_with_commas(self.operator_stats.processing_jobs),
-                    format_u64_with_commas(self.operator_stats.awaiting_payment_jobs)
-                )),
             ]),
         ];
+        if let Some((amount_sats, _)) = self.visible_paid_moment() {
+            lines.push(Line::from(vec![
+                key_label("Fresh payout"),
+                Span::styled(format!("+{} just landed", format_sats(amount_sats)), success_accent()),
+            ]));
+        }
         if let Some(wallet_error) = self.last_wallet_error.as_deref() {
             if self.operator_stats.wallet_balance.is_none() {
                 lines.push(Line::from(vec![
@@ -3227,7 +3343,16 @@ impl AppShell {
 
     fn rank_lines(&self) -> Vec<Line<'static>> {
         let progress = stacker_rank_progress(self.operator_stats.total_earnings_sats);
-        let mut lines = vec![
+        let animation_tick = self.animation_tick();
+        let mut lines = Vec::new();
+        let rank_up_visible = self.visible_rank_up_moment().is_some();
+        if let Some((from_rank, to_rank, _)) = self.visible_rank_up_moment() {
+            lines.push(Line::from(vec![
+                key_label("Ascension"),
+                Span::styled(format!("{from_rank} -> {to_rank}"), pulse_highlight_text()),
+            ]));
+        }
+        lines.extend([
             Line::from(vec![
                 key_label("Stacker Status"),
                 Span::styled(progress.current.name, emphasis_text()),
@@ -3239,7 +3364,7 @@ impl AppShell {
                     emphasis_text(),
                 ),
             ]),
-        ];
+        ]);
 
         if let Some(next) = progress.next {
             let sats_remaining = next
@@ -3249,7 +3374,12 @@ impl AppShell {
                 Span::styled(progress.current.name, muted_text()),
                 Span::raw("  "),
             ];
-            progress_line.extend(render_rank_progress_spans(progress.progress_ratio, 16));
+            progress_line.extend(render_rank_progress_spans(
+                progress.progress_ratio,
+                16,
+                animation_tick,
+                rank_up_visible,
+            ));
             progress_line.extend([
                 Span::raw("  "),
                 Span::styled(next.name, muted_text()),
@@ -3259,14 +3389,6 @@ impl AppShell {
                 Span::raw(format!("{} in {}", next.name, format_sats(sats_remaining))),
             ]));
             lines.push(Line::from(progress_line));
-            lines.push(Line::from(vec![
-                key_label("Track"),
-                Span::raw(format!(
-                    "{} / {}",
-                    format_sats(progress.progress_sats),
-                    format_sats(progress.segment_goal_sats),
-                )),
-            ]));
         } else {
             lines.push(Line::from(vec![
                 key_label("Final rank"),
@@ -3276,62 +3398,86 @@ impl AppShell {
                 Span::styled(progress.current.name, muted_text()),
                 Span::raw("  "),
             ];
-            progress_line.extend(render_rank_progress_spans(1.0, 16));
+            progress_line.extend(render_rank_progress_spans(
+                1.0,
+                16,
+                animation_tick,
+                rank_up_visible,
+            ));
             progress_line.extend([
                 Span::raw("  "),
                 Span::styled(progress.current.name, muted_text()),
             ]);
             lines.push(Line::from(progress_line));
             lines.push(Line::from(vec![
-                key_label("Track"),
-                Span::raw("Maximum reached"),
+                key_label("Crown"),
+                Span::raw("The full stack is online"),
             ]));
         }
 
         lines
     }
 
+    #[allow(dead_code)]
     fn activity_lines(&self) -> Vec<Line<'static>> {
         let animation_phase = self.animation_phase();
+        let mut lines = Vec::new();
+        if let Some((amount_sats, _)) = self.visible_paid_moment() {
+            lines.push(Line::from(Span::styled(
+                format!("[PAID] you just stacked {}", format_sats(amount_sats)),
+                pulse_highlight_text(),
+            )));
+        }
+        if let Some((from_rank, to_rank, _)) = self.visible_rank_up_moment() {
+            lines.push(Line::from(Span::styled(
+                format!("[RANK] ascended from {from_rank} to {to_rank}"),
+                pulse_highlight_text(),
+            )));
+        }
         if !self.operator_stats.recent_activity.is_empty() {
-            return self
-                .operator_stats
-                .recent_activity
-                .iter()
-                .enumerate()
-                .map(|(index, entry)| {
+            lines.extend(self.operator_stats.recent_activity.iter().enumerate().map(
+                |(index, entry)| {
                     let style = if index == 0 && self.activity_pulse_is_visible() {
                         pulse_highlight_text()
                     } else {
                         Style::default()
                     };
                     Line::from(Span::styled(entry.clone(), style))
-                })
-                .collect();
+                },
+            ));
+            return lines;
         }
 
         if let Some(lines) = self.startup_activity_lines() {
             return lines;
         }
 
+        if let Some(command) = self.provider_command_in_flight.as_ref() {
+            return vec![
+                Line::from(format!(
+                    "[LIVE] listening across relays {}",
+                    animated_ready_heartbeat(animation_phase)
+                )),
+                Line::from(format!("[LIVE] {}", command.detail())),
+                Line::from("[TIP] Keep Pylon open so matching jobs can land.".to_string()),
+            ];
+        }
+
         let quiet_detail = match self.operator_stats.last_provider_event_at_ms {
             Some(at_ms) => format!(
-                "Market has been quiet for {}.",
+                "No new paid matches in {}.",
                 format_elapsed_since_ms(at_ms, current_epoch_ms_u64())
             ),
-            None => "No provider events yet.".to_string(),
+            None => "No paid matches yet.".to_string(),
         };
 
         vec![
             Line::from(format!(
-                "[READY] Watching for matching work {}",
+                "[READY] standing by for paid work {}",
                 animated_ready_heartbeat(animation_phase)
             )),
-            Line::from(format!(
-                "[QUIET] {quiet_detail}{}",
-                animated_quiet_suffix(animation_phase)
-            )),
-            Line::from("[TIP] Leave Pylon open to catch the next match."),
+            Line::from(format!("[MARKET] {quiet_detail}{}", animated_quiet_suffix(animation_phase))),
+            Line::from("[TIP] Run /provider run when you want this node actively listening.".to_string()),
         ]
     }
 
@@ -3420,6 +3566,7 @@ impl AppShell {
         None
     }
 
+    #[allow(dead_code)]
     fn startup_activity_lines(&self) -> Option<Vec<Line<'static>>> {
         let spinner = animated_boot_spinner(self.animation_phase());
         if self.last_refresh_at.is_none() && self.operator_stats.runtime_status.is_none() {
@@ -3455,11 +3602,18 @@ impl AppShell {
     fn transcript_body(&self) -> Text<'static> {
         if self.transcript.is_empty() {
             Text::from(vec![
-                Line::from("Submitted prompts stay here."),
-                Line::from("Live assistant output will stream here when chat is running."),
+                Line::from(vec![
+                    Span::styled("[system]", muted_text()),
+                    Span::raw(" "),
+                    Span::styled("Shell Ready", shell_accent()),
+                ]),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("Ask Gemma or type /help.", emphasis_text()),
+                ]),
             ])
         } else {
-            self.transcript.as_text()
+            self.transcript.as_text_with_motion(self.animation_tick())
         }
     }
 
@@ -3528,13 +3682,17 @@ impl AppShell {
     }
 
     fn animation_phase(&self) -> usize {
-        ((Instant::now()
-            .duration_since(self.animation_started_at)
-            .as_millis()
-            / 200) as usize)
-            % 4
+        self.animation_tick() % 4
     }
 
+    fn animation_tick(&self) -> usize {
+        (Instant::now()
+            .duration_since(self.animation_started_at)
+            .as_millis()
+            / 180) as usize
+    }
+
+    #[allow(dead_code)]
     fn activity_pulse_is_visible(&self) -> bool {
         let Some(until) = self.live_activity_pulse_until else {
             return false;
@@ -3594,14 +3752,42 @@ fn stacker_rank_progress(lifetime_sats: u64) -> StackerRankProgress {
     }
 }
 
-fn render_rank_progress_spans(progress_ratio: f64, width: usize) -> Vec<Span<'static>> {
+fn render_rank_progress_spans(
+    progress_ratio: f64,
+    width: usize,
+    tick: usize,
+    celebratory: bool,
+) -> Vec<Span<'static>> {
     let width = width.max(5);
     let ratio = progress_ratio.clamp(0.0, 1.0);
     let marker_index = ((width.saturating_sub(1)) as f64 * ratio).round() as usize;
+    let glint_index = if celebratory {
+        let wave = [marker_index.saturating_sub(2), marker_index.saturating_sub(1), marker_index, (marker_index + 1).min(width - 1), (marker_index + 2).min(width - 1)];
+        wave[tick % wave.len()]
+    } else {
+        tick % width
+    };
     let mut out = Vec::with_capacity(width);
     for index in 0..width {
         let span = if index == marker_index {
-            Span::styled("◉", emphasis_text())
+            let marker = if celebratory && tick % 2 == 0 { "◎" } else { "◉" };
+            Span::styled(
+                marker,
+                if celebratory && tick % 2 == 0 {
+                    pulse_highlight_text()
+                } else {
+                    emphasis_text()
+                },
+            )
+        } else if index == glint_index {
+            Span::styled(
+                if index < marker_index { "─" } else { "╌" },
+                if celebratory {
+                    pulse_highlight_text()
+                } else {
+                    shell_accent()
+                },
+            )
         } else if index < marker_index {
             Span::styled("─", muted_text())
         } else {
@@ -3644,64 +3830,91 @@ fn title_case_status(value: &str) -> String {
         .join(" ")
 }
 
-fn animated_status_spinner(
-    state_label: &str,
-    processing_jobs: u64,
-    awaiting_payment_jobs: u64,
-    phase: usize,
-) -> &'static str {
-    let should_spin = matches!(
-        state_label,
-        "Earning now" | "Waiting for payout" | "Preparing to earn" | "Ready to earn"
-    )
-        || processing_jobs > 0
-        || awaiting_payment_jobs > 0;
-    if should_spin {
-        if state_label == "Ready to earn" && processing_jobs == 0 && awaiting_payment_jobs == 0 {
-            animated_ready_presence_dot(phase)
-        } else {
-            animated_status_glyph(phase)
-        }
-    } else {
-        ""
-    }
-}
-
-fn animated_status_glyph(phase: usize) -> &'static str {
-    match phase % 4 {
-        0 => "◴",
-        1 => "◷",
-        2 => "◶",
-        _ => "◵",
-    }
-}
-
-fn animated_ready_presence_dot(phase: usize) -> &'static str {
-    match phase % 4 {
-        0 => "●",
-        1 => "◉",
-        2 => "●",
-        _ => "○",
-    }
-}
-
 fn animated_right_now_suffix(
     processing_jobs: u64,
     awaiting_payment_jobs: u64,
     phase: usize,
 ) -> &'static str {
-    if processing_jobs > 0 || awaiting_payment_jobs > 0 {
+    if processing_jobs > 0 {
         match phase % 4 {
-            0 => ".  ",
-            1 => ".. ",
-            2 => "...",
-            _ => "   ",
+            0 => "  •",
+            1 => "  ••",
+            2 => "  •••",
+            _ => "  ◉",
+        }
+    } else if awaiting_payment_jobs > 0 {
+        match phase % 4 {
+            0 => "  ·",
+            1 => "  ··",
+            2 => "  ···",
+            _ => "  ◌",
         }
     } else {
         ""
     }
 }
 
+fn animated_stack_gain_suffix(phase: usize, active: bool) -> &'static str {
+    if !active {
+        return "";
+    }
+    match phase % 4 {
+        0 => "  ▁",
+        1 => "  ▃",
+        2 => "  ▆",
+        _ => "  █",
+    }
+}
+
+fn mission_control_signal_spans(state_label: &str, tick: usize) -> Vec<Span<'static>> {
+    let mut spans = vec![Span::raw("  ")];
+    match state_label {
+        "Ready to earn" => {
+            spans.push(Span::styled(animated_ready_heartbeat(tick), muted_text()));
+        }
+        "Listening for work" => {
+            for (index, glyph) in ["·", "·", "·", "·", "·"].into_iter().enumerate() {
+                let style = if index == tick % 5 {
+                    shell_accent()
+                } else {
+                    muted_text()
+                };
+                spans.push(Span::styled(glyph, style));
+            }
+        }
+        "Earning now" => {
+            spans.push(Span::styled(animated_active_work_pulse(tick), success_accent()));
+        }
+        "Waiting for payout" => {
+            spans.push(Span::styled(animated_payout_pulse(tick), warning_accent()));
+        }
+        "Preparing to earn" => {
+            spans.push(Span::styled(animated_boot_spinner(tick), muted_text()));
+        }
+        _ => {}
+    }
+    spans
+}
+
+fn animated_active_work_pulse(tick: usize) -> &'static str {
+    match tick % 4 {
+        0 => "•",
+        1 => "••",
+        2 => "•••",
+        _ => "◉",
+    }
+}
+
+fn animated_payout_pulse(tick: usize) -> &'static str {
+    match tick % 4 {
+        0 => "·",
+        1 => "··",
+        2 => "···",
+        _ => "◌",
+    }
+}
+
+#[allow(dead_code)]
 fn animated_boot_spinner(phase: usize) -> &'static str {
     match phase % 4 {
         0 => "◐",
@@ -3711,6 +3924,7 @@ fn animated_boot_spinner(phase: usize) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn animated_ready_heartbeat(phase: usize) -> &'static str {
     match phase % 4 {
         0 => "•",
@@ -3720,6 +3934,7 @@ fn animated_ready_heartbeat(phase: usize) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn animated_quiet_suffix(phase: usize) -> &'static str {
     match phase % 4 {
         0 => " .",
@@ -4141,6 +4356,7 @@ fn compute_operator_panel_stats(
     wallet_status: Option<&pylon::WalletStatusReport>,
     snapshot: Option<&ProviderPersistedSnapshot>,
     ledger: &pylon::PylonLedger,
+    session_started_at_ms: u64,
 ) -> OperatorPanelStats {
     compute_operator_panel_stats_at(
         desired_mode,
@@ -4148,6 +4364,7 @@ fn compute_operator_panel_stats(
         wallet_status,
         snapshot,
         ledger,
+        session_started_at_ms,
         current_epoch_ms_u64(),
     )
 }
@@ -4198,6 +4415,7 @@ fn compute_operator_panel_stats_at(
     wallet_status: Option<&pylon::WalletStatusReport>,
     snapshot: Option<&ProviderPersistedSnapshot>,
     ledger: &pylon::PylonLedger,
+    session_started_at_ms: u64,
     now_ms: u64,
 ) -> OperatorPanelStats {
     let since_ms = now_ms.saturating_sub(LOOKBACK_WINDOW_24H_MS);
@@ -4250,6 +4468,18 @@ fn compute_operator_panel_stats_at(
         .map(|settlement| settlement.job_id.as_str())
         .collect::<std::collections::BTreeSet<_>>()
         .len() as u64;
+    let session_earnings_sats = ledger
+        .wallet
+        .payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+        .filter(|payment| {
+            payment.status.eq_ignore_ascii_case("completed")
+                || payment.status.eq_ignore_ascii_case("settled")
+        })
+        .filter(|payment| payment.updated_at_ms >= session_started_at_ms)
+        .map(|payment| payment.amount_sats)
+        .sum::<u64>();
     let settled_sats_24h = ledger
         .settlements
         .iter()
@@ -4306,6 +4536,7 @@ fn compute_operator_panel_stats_at(
         matching_jobs_24h,
         jobs_processed_24h,
         jobs_settled_24h,
+        session_earnings_sats,
         settled_sats_24h,
         settled_sats_lifetime,
         total_earnings_sats,
@@ -4510,7 +4741,7 @@ fn reveal_wallet_recovery_phrase(config_path: &Path) -> Result<String> {
 
 fn state_badge_style(label: &str) -> Style {
     match label {
-        "Earning now" | "Ready to earn" | "healthy" => success_accent(),
+        "Earning now" | "Ready to earn" | "Listening for work" | "healthy" => success_accent(),
         "Waiting for payout" | "warming up" | "Connecting" => warning_accent(),
         "Needs attention" => danger_accent(),
         _ => shell_accent(),
@@ -4568,7 +4799,7 @@ fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<Str
         entries.push((
             settlement.updated_at_ms,
             format!(
-                "[PAID] settled {} {} ago",
+                "[PAID] stacked {} {} ago",
                 format_sats(amount_sats),
                 format_elapsed_since_ms(settlement.updated_at_ms, now_ms)
             ),
@@ -4597,12 +4828,12 @@ fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<Str
 
 fn provider_job_activity_label(job: &pylon::PylonLedgerJob) -> Option<String> {
     match job.status.as_str() {
-        "accepted_local" => Some("[LIVE] matched a job".to_string()),
-        "processing_local" => Some("[LIVE] processing a job".to_string()),
-        "payment_required" => Some("[WAIT] finished work and is awaiting payout".to_string()),
-        "completed_local" => Some("[DONE] finished local work".to_string()),
+        "accepted_local" => Some("[LIVE] matched a paid request".to_string()),
+        "processing_local" => Some("[LIVE] local Gemma is processing".to_string()),
+        "payment_required" => Some("[WAIT] result delivered, payout pending".to_string()),
+        "completed_local" => Some("[DONE] delivered a local result".to_string()),
         "settled" => None,
-        "failed_local" => Some("[WARN] hit a local job failure".to_string()),
+        "failed_local" => Some("[WARN] local run hit a failure".to_string()),
         _ => None,
     }
 }
@@ -5184,13 +5415,15 @@ mod tests {
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
         LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, ProviderCommandInFlight,
         WalletSurfaceState, WorkerEvent, active_chat_title, animated_right_now_suffix,
-        animated_status_spinner, compute_operator_panel_stats_at, current_epoch_ms_u64,
+        animated_stack_gain_suffix, compute_operator_panel_stats_at, current_epoch_ms_u64,
         estimate_token_count, local_chat_request_messages, max_transcript_scroll_y,
+        mission_control_signal_spans,
         parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
         parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
         parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
         parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
-        recent_provider_activity, should_publish_provider_presence, stacker_rank_progress,
+        recent_provider_activity, render_rank_progress_spans, should_publish_provider_presence,
+        stacker_rank_progress,
         stabilize_operator_panel_stats, summarize_chat_metrics, transcript_viewport_height,
         transcript_wrap_width, wrapped_row_count,
     };
@@ -5275,6 +5508,7 @@ mod tests {
             matching_jobs_24h: 3,
             jobs_processed_24h: 2,
             jobs_settled_24h: 1,
+            session_earnings_sats: 21,
             settled_sats_24h: 21,
             settled_sats_lifetime: 110,
             total_earnings_sats: 110,
@@ -5293,10 +5527,11 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        assert!(sidebar.contains("Status: Ready to earn"));
-        assert!(sidebar.contains("Earnings while open: 21 sats"));
-        assert!(sidebar.contains("Total earnings: 110 sats"));
+        assert!(sidebar.contains("Session stack: 21 sats"));
+        assert!(sidebar.contains("Lifetime stack: 110 sats"));
         assert!(sidebar.contains("Active now: 0 processing, 0 awaiting payout"));
+        assert!(!sidebar.contains("Status:"));
+        assert!(!sidebar.contains("Mission:"));
         assert!(!sidebar.contains("recent activity"));
         assert!(!sidebar.contains("proof:"));
         assert!(!sidebar.contains("last result:"));
@@ -5307,17 +5542,36 @@ mod tests {
     }
 
     #[test]
-    fn earnings_motion_helpers_only_animate_while_active() {
-        assert_eq!(animated_status_spinner("Ready to earn", 0, 0, 0), "●");
-        assert_eq!(animated_status_spinner("Earning now", 1, 0, 0), "◴");
-        assert_eq!(animated_status_spinner("Waiting for payout", 0, 1, 1), "◷");
-        assert_eq!(animated_status_spinner("Preparing to earn", 0, 0, 2), "◶");
-        assert_eq!(animated_status_spinner("Ready to earn", 0, 0, 1), "◉");
-        assert_eq!(animated_status_spinner("Ready to earn", 0, 0, 3), "○");
-
+    fn right_now_suffix_only_animates_when_work_is_active() {
         assert_eq!(animated_right_now_suffix(0, 0, 0), "");
-        assert_eq!(animated_right_now_suffix(1, 0, 0), ".  ");
-        assert_eq!(animated_right_now_suffix(0, 1, 2), "...");
+        assert_eq!(animated_right_now_suffix(1, 0, 0), "  •");
+        assert_eq!(animated_right_now_suffix(1, 0, 2), "  •••");
+        assert_eq!(animated_right_now_suffix(0, 1, 2), "  ···");
+    }
+
+    #[test]
+    fn motion_helpers_match_shell_states() {
+        let ready = mission_control_signal_spans("Ready to earn", 0)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>();
+        let listening = mission_control_signal_spans("Listening for work", 1)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>();
+        assert!(ready.contains('•'));
+        assert!(listening.contains('·'));
+        assert!(animated_stack_gain_suffix(0, true).contains('▁'));
+        assert_eq!(animated_stack_gain_suffix(0, false), "");
+    }
+
+    #[test]
+    fn rank_progress_rail_glints_and_marks_position() {
+        let spans = render_rank_progress_spans(0.4, 10, 3, true);
+        let rendered = spans.iter().map(ToString::to_string).collect::<String>();
+        assert!(rendered.contains('◉') || rendered.contains('◎'));
+        assert!(rendered.contains('─'));
+        assert!(rendered.contains('╌'));
     }
 
     #[test]
@@ -5337,6 +5591,34 @@ mod tests {
         });
 
         assert!(app.live_activity_pulse_until.is_some());
+    }
+
+    #[test]
+    fn paid_and_rank_moments_activate_after_refresh_growth() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.last_refresh_at = Some(Instant::now());
+        app.operator_stats.session_earnings_sats = 2;
+        app.operator_stats.total_earnings_sats = 900;
+
+        app.handle_worker_event(WorkerEvent::RefreshCompleted {
+            loaded: None,
+            installed_gemma_models: Default::default(),
+            operator_stats: OperatorPanelStats {
+                session_earnings_sats: 6,
+                total_earnings_sats: 1_200,
+                recent_activity: vec![String::from("[PAID] stacked 4 sats just now")],
+                ..OperatorPanelStats::default()
+            },
+            wallet_surface: WalletSurfaceState::default(),
+            last_error: None,
+            last_wallet_error: None,
+            provider_presence_online: true,
+        });
+
+        assert!(app.visible_paid_moment().is_some());
+        let rank_moment = app.visible_rank_up_moment().expect("rank-up moment");
+        assert_eq!(rank_moment.0, "Pleb");
+        assert_eq!(rank_moment.1, "Drifter");
     }
 
     #[test]
@@ -5485,8 +5767,8 @@ mod tests {
     fn activity_panel_shows_recent_events_or_quiet_ready_state() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         app.operator_stats.recent_activity = vec![
-            String::from("[PAID] settled 21 sats 6m ago"),
-            String::from("[LIVE] accepted a job 8m ago"),
+            String::from("[PAID] stacked 21 sats 6m ago"),
+            String::from("[LIVE] matched a paid request 8m ago"),
         ];
         let activity = app
             .activity_lines()
@@ -5494,8 +5776,8 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(activity.contains("[PAID] settled 21 sats 6m ago"));
-        assert!(activity.contains("[LIVE] accepted a job 8m ago"));
+        assert!(activity.contains("[PAID] stacked 21 sats 6m ago"));
+        assert!(activity.contains("[LIVE] matched a paid request 8m ago"));
 
         app.operator_stats.recent_activity.clear();
         app.operator_stats.last_provider_event_at_ms = None;
@@ -5520,9 +5802,9 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(ready.contains("[READY]"));
-        assert!(ready.contains("Watching for matching work"));
-        assert!(ready.contains("[QUIET]"));
-        assert!(ready.contains("No provider events yet"));
+        assert!(ready.contains("standing by for paid work"));
+        assert!(ready.contains("[MARKET]"));
+        assert!(ready.contains("No paid matches yet"));
     }
 
     #[test]
@@ -5557,7 +5839,9 @@ mod tests {
         assert!(panel.contains("Stacker Status: Pleb"));
         assert!(panel.contains("Lifetime earned: 644 sats"));
         assert!(panel.contains("Next unlock: Drifter in 356 sats"));
-        assert!(panel.contains("Track: 644 sats / 1,000 sats"));
+        assert!(!panel.contains("Remaining:"));
+        assert!(!panel.contains("Track:"));
+        assert!(!panel.contains("Signal:"));
         assert!(panel.contains("Pleb"));
         assert!(panel.contains("Drifter"));
         assert!(panel.contains("◉"));
@@ -5730,7 +6014,7 @@ mod tests {
         ledger.jobs.push(settled);
 
         let activity = recent_provider_activity(&ledger, now_ms).join("\n");
-        assert!(activity.contains("[PAID] settled 7 sats"));
+        assert!(activity.contains("[PAID] stacked 7 sats"));
         assert!(!activity.contains("completed a paid job"));
     }
 
@@ -5769,6 +6053,18 @@ mod tests {
             created_at_ms: now_ms - 600,
             updated_at_ms: now_ms - 400,
         });
+        ledger.wallet.payments.push(pylon::PylonWalletPaymentRecord {
+            payment_id: "payment-001".to_string(),
+            direction: "receive".to_string(),
+            status: "completed".to_string(),
+            amount_sats: 4,
+            fees_sats: 0,
+            method: "spark".to_string(),
+            description: None,
+            invoice: None,
+            created_at_ms: now_ms - 800,
+            updated_at_ms: now_ms - 700,
+        });
 
         let stats = compute_operator_panel_stats_at(
             ProviderDesiredMode::Online,
@@ -5776,6 +6072,7 @@ mod tests {
             None,
             None,
             &ledger,
+            now_ms - 1_000,
             now_ms,
         );
 
@@ -5783,6 +6080,7 @@ mod tests {
         assert_eq!(stats.matching_jobs_24h, 2);
         assert_eq!(stats.jobs_processed_24h, 1);
         assert_eq!(stats.jobs_settled_24h, 1);
+        assert_eq!(stats.session_earnings_sats, 4);
         assert_eq!(stats.settled_sats_24h, 21);
         assert_eq!(stats.settled_sats_lifetime, 21);
         assert_eq!(stats.total_earnings_sats, 21);
@@ -5794,7 +6092,7 @@ mod tests {
             stats
                 .recent_activity
                 .iter()
-                .any(|entry| entry.contains("[PAID] settled 21 sats"))
+                .any(|entry| entry.contains("[PAID] stacked 21 sats"))
         );
     }
 
