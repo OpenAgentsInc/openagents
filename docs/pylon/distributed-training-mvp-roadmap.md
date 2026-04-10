@@ -1422,6 +1422,28 @@ live coordinator plane.
   - slashed only if we actually implement that behavior
 - Link closeouts to artifact locators, verdicts, and accepted outcomes.
 - Compute settlement eligibility and payout hooks from those closeouts.
+- Current status: `apps/nexus-control/src/lib.rs` and
+  `apps/nexus-control/src/kernel.rs` now generate the first retained sealed
+  window closeouts directly from reconciliation. Once validator evidence is
+  terminal, reconciliation now maps each window into an explicit closeout
+  class:
+  - `rewarded`
+  - `no_reward`
+  - `held`
+  - `quarantined`
+  - `refused`
+  Each reconciled window now receives a retained
+  `accepted.training_window.<window_id>` outcome id, with the accepted outcome
+  metadata binding `window_id`, `closeout_scope`, `closeout_status`,
+  `payout_eligible`, the validator challenge set, aggregate resolution, and
+  contribution counts. The reconciled window now stores that accepted outcome
+  id, and the coordinator emits both a closeout acceptance event and the final
+  window reconciliation event from the same request path. Rewarded windows are
+  now marked promotion-ready and advance the in-memory scheduler into the
+  accepted state; non-reward terminal windows instead project into held or
+  refused scheduler states while keeping the full closeout record. TRN
+  publication, artifact-locator linkage, and real settlement execution remain
+  deferred to the next scheduler issues.
 
 ### 4.6 TRN publication from Nexus
 
