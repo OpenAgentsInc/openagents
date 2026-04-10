@@ -191,6 +191,24 @@ pub struct PublicStatsSnapshot {
     pub nexus_payouts_failed_24h: u64,
     #[serde(default)]
     pub nexus_payouts_skipped_24h: u64,
+    #[serde(default)]
+    pub training_admitted_nodes_online: u64,
+    #[serde(default)]
+    pub training_runs_active: u64,
+    #[serde(default)]
+    pub training_windows_active: u64,
+    #[serde(default)]
+    pub training_windows_pending_validation: u64,
+    #[serde(default)]
+    pub training_validator_challenges_open: u64,
+    #[serde(default)]
+    pub training_validator_challenges_queued: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_checkpoint_max_age_ms: Option<u64>,
+    #[serde(default)]
+    pub training_artifact_failures_open: u64,
+    #[serde(default)]
+    pub training_payout_eligible_closeouts: u64,
     pub compute_products_active: u64,
     pub compute_capacity_lots_open: u64,
     pub compute_capacity_lots_delivering: u64,
@@ -296,6 +314,15 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_payouts_confirmed_24h: u64,
     pub nexus_payouts_failed_24h: u64,
     pub nexus_payouts_skipped_24h: u64,
+    pub training_admitted_nodes_online: u64,
+    pub training_runs_active: u64,
+    pub training_windows_active: u64,
+    pub training_windows_pending_validation: u64,
+    pub training_validator_challenges_open: u64,
+    pub training_validator_challenges_queued: u64,
+    pub training_checkpoint_max_age_ms: Option<u64>,
+    pub training_artifact_failures_open: u64,
+    pub training_payout_eligible_closeouts: u64,
     pub compute_products_active: u64,
     pub compute_capacity_lots_open: u64,
     pub compute_capacity_lots_delivering: u64,
@@ -532,6 +559,15 @@ impl ReceiptLedger {
             nexus_payouts_confirmed_24h: runtime.nexus_payouts_confirmed_24h,
             nexus_payouts_failed_24h: runtime.nexus_payouts_failed_24h,
             nexus_payouts_skipped_24h: runtime.nexus_payouts_skipped_24h,
+            training_admitted_nodes_online: runtime.training_admitted_nodes_online,
+            training_runs_active: runtime.training_runs_active,
+            training_windows_active: runtime.training_windows_active,
+            training_windows_pending_validation: runtime.training_windows_pending_validation,
+            training_validator_challenges_open: runtime.training_validator_challenges_open,
+            training_validator_challenges_queued: runtime.training_validator_challenges_queued,
+            training_checkpoint_max_age_ms: runtime.training_checkpoint_max_age_ms,
+            training_artifact_failures_open: runtime.training_artifact_failures_open,
+            training_payout_eligible_closeouts: runtime.training_payout_eligible_closeouts,
             compute_products_active: runtime.compute_products_active,
             compute_capacity_lots_open: runtime.compute_capacity_lots_open,
             compute_capacity_lots_delivering: runtime.compute_capacity_lots_delivering,
@@ -811,6 +847,15 @@ mod tests {
                 nexus_payouts_confirmed_24h: 0,
                 nexus_payouts_failed_24h: 0,
                 nexus_payouts_skipped_24h: 0,
+                training_admitted_nodes_online: 0,
+                training_runs_active: 0,
+                training_windows_active: 0,
+                training_windows_pending_validation: 0,
+                training_validator_challenges_open: 0,
+                training_validator_challenges_queued: 0,
+                training_checkpoint_max_age_ms: None,
+                training_artifact_failures_open: 0,
+                training_payout_eligible_closeouts: 0,
                 compute_products_active: 0,
                 compute_capacity_lots_open: 0,
                 compute_capacity_lots_delivering: 0,

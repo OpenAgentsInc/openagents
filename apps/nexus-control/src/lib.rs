@@ -1149,6 +1149,68 @@ struct TrainingTrnPublicationEntry {
     object_ref: Option<String>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorSummaryResponse {
+    generated_at_unix_ms: u64,
+    admitted_nodes_online: u64,
+    active_runs: u64,
+    active_windows: u64,
+    pending_validation_windows: u64,
+    validator_challenges_open: u64,
+    validator_challenges_queued: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint_max_age_ms: Option<u64>,
+    artifact_failures_open: u64,
+    payout_eligible_closeouts: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    runs: Vec<TrainingOperatorRunSummary>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorRunSummary {
+    training_run_id: String,
+    network_id: String,
+    run_status: String,
+    scheduler_window_state: String,
+    current_window_id: String,
+    admitted_nodes_online: u64,
+    worker_nodes_online: u64,
+    validator_nodes_online: u64,
+    recovery_source_nodes_online: u64,
+    worker_target_count: u32,
+    validator_target_count: u32,
+    recovery_source_target_count: u32,
+    active_window_count: u64,
+    pending_validation_window_count: u64,
+    open_validator_challenges: u64,
+    queued_validator_challenges: u64,
+    payout_eligible_closeouts: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_checkpoint_age_ms: Option<u64>,
+    artifact_failures_open: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_closeout_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+struct TrainingOperatorMetrics {
+    admitted_nodes_online: u64,
+    active_runs: u64,
+    active_windows: u64,
+    pending_validation_windows: u64,
+    validator_challenges_open: u64,
+    validator_challenges_queued: u64,
+    checkpoint_max_age_ms: Option<u64>,
+    artifact_failures_open: u64,
+    payout_eligible_closeouts: u64,
+}
+
 impl TrainingSchedulerState {
     fn claim_lease(
         &mut self,
@@ -3277,6 +3339,7 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/api/training/trn/publish",
             post(publish_training_trn_state),
         )
+        .route("/api/training/summary", get(training_operator_summary))
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
             "/api/training/nodes/{node_pubkey_hex}",
@@ -3613,6 +3676,18 @@ async fn public_stats(
     replace_public_stats_cache(&state, stats.clone());
 
     Ok(Json(stats))
+}
+
+async fn training_operator_summary(
+    State(state): State<AppState>,
+) -> Result<Json<TrainingOperatorSummaryResponse>, ApiError> {
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(training_operator_summary_snapshot(&store, now)))
 }
 
 async fn record_provider_presence_heartbeat(
@@ -11508,6 +11583,7 @@ fn runtime_snapshot(
                 | StarterOfferStatus::Expired => (waiting_ack, running),
             },
         );
+    let training_metrics = training_operator_metrics(store, now_unix_ms);
     let compute_metrics = store.kernel.compute_market_metrics(now_unix_ms as i64);
     let liquidity_metrics = store.kernel.liquidity_market_metrics(now_unix_ms as i64);
     let risk_metrics = store.kernel.risk_market_metrics(now_unix_ms as i64);
@@ -11547,6 +11623,15 @@ fn runtime_snapshot(
         nexus_payouts_confirmed_24h: treasury_runtime.payouts_confirmed_24h,
         nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
         nexus_payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
+        training_admitted_nodes_online: training_metrics.admitted_nodes_online,
+        training_runs_active: training_metrics.active_runs,
+        training_windows_active: training_metrics.active_windows,
+        training_windows_pending_validation: training_metrics.pending_validation_windows,
+        training_validator_challenges_open: training_metrics.validator_challenges_open,
+        training_validator_challenges_queued: training_metrics.validator_challenges_queued,
+        training_checkpoint_max_age_ms: training_metrics.checkpoint_max_age_ms,
+        training_artifact_failures_open: training_metrics.artifact_failures_open,
+        training_payout_eligible_closeouts: training_metrics.payout_eligible_closeouts,
         compute_products_active: compute_metrics.compute_products_active,
         compute_capacity_lots_open: compute_metrics.compute_capacity_lots_open,
         compute_capacity_lots_delivering: compute_metrics.compute_capacity_lots_delivering,
@@ -11638,6 +11723,332 @@ fn build_public_stats_snapshot(
         &runtime_snapshot(config, store, &treasury_runtime, now_unix_ms),
         now_unix_ms,
     )
+}
+
+fn training_operator_summary_snapshot(
+    store: &ControlStore,
+    now_unix_ms: u64,
+) -> TrainingOperatorSummaryResponse {
+    let admitted_nodes = store.kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: None,
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+    let training_runs = store.kernel.list_compute_training_runs(None, None, None);
+    let training_windows = store
+        .kernel
+        .list_compute_adapter_training_windows(None, None);
+    let accepted_outcomes = store
+        .kernel
+        .list_compute_accepted_outcomes(Some(ComputeAcceptedOutcomeKind::TrainingRun), None);
+    let validator_challenges = store.kernel.list_validator_challenges(None);
+
+    let mut challenge_bindings = HashMap::<String, (String, String)>::new();
+    for window in &training_windows {
+        let Ok(metadata) = training_window_metadata_from_value(&window.metadata) else {
+            continue;
+        };
+        if let Some(validation) = metadata.validation {
+            for challenge in validation.challenges {
+                challenge_bindings.insert(
+                    challenge.challenge_id,
+                    (window.training_run_id.clone(), window.window_id.clone()),
+                );
+            }
+        }
+    }
+
+    let mut run_summaries = training_runs
+        .iter()
+        .map(|run| {
+            let scheduler_state = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(run.training_run_id.as_str());
+            let metadata = training_scheduler_metadata_from_run(run).ok();
+            let network_id = metadata
+                .as_ref()
+                .map(|value| value.network_id.clone())
+                .or_else(|| scheduler_state.map(|value| value.network_id.clone()))
+                .unwrap_or_else(|| "unknown".to_string());
+            let role_plan = scheduler_state
+                .map(|value| value.role_plan)
+                .or_else(|| {
+                    metadata.as_ref().map(|value| TrainingSchedulerRolePlan {
+                        worker_count: value.worker_count,
+                        validator_count: value.validator_count,
+                        recovery_source_count: value.recovery_source_count,
+                    })
+                })
+                .unwrap_or(TrainingSchedulerRolePlan {
+                    worker_count: 0,
+                    validator_count: 0,
+                    recovery_source_count: 0,
+                });
+            let run_nodes = admitted_nodes
+                .iter()
+                .filter(|node| {
+                    (network_id != "unknown"
+                        && node
+                            .allowed_networks
+                            .iter()
+                            .any(|allowed| allowed == &network_id))
+                        || node.last_training_run_id.as_deref()
+                            == Some(run.training_run_id.as_str())
+                })
+                .collect::<Vec<_>>();
+            let admitted_nodes_online = run_nodes.iter().filter(|node| node.online).count() as u64;
+            let worker_nodes_online = run_nodes
+                .iter()
+                .filter(|node| {
+                    node.online && node.role_claims.contains(&TrainingNodeRoleClaim::Worker)
+                })
+                .count() as u64;
+            let validator_nodes_online = run_nodes
+                .iter()
+                .filter(|node| {
+                    node.online && node.role_claims.contains(&TrainingNodeRoleClaim::Validator)
+                })
+                .count() as u64;
+            let recovery_source_nodes_online = run_nodes
+                .iter()
+                .filter(|node| {
+                    node.online
+                        && node
+                            .role_claims
+                            .contains(&TrainingNodeRoleClaim::RecoverySource)
+                })
+                .count() as u64;
+
+            let run_windows = training_windows
+                .iter()
+                .filter(|window| window.training_run_id == run.training_run_id)
+                .collect::<Vec<_>>();
+            let active_window_count = run_windows
+                .iter()
+                .filter(|window| window.status != ComputeAdapterWindowStatus::Reconciled)
+                .count() as u64;
+            let pending_validation_window_count = run_windows
+                .iter()
+                .filter(|window| {
+                    matches!(
+                        window.status,
+                        ComputeAdapterWindowStatus::Sealed | ComputeAdapterWindowStatus::Scored
+                    )
+                })
+                .count() as u64;
+            let latest_window = run_windows
+                .iter()
+                .max_by(|lhs, rhs| {
+                    lhs.recorded_at_ms
+                        .cmp(&rhs.recorded_at_ms)
+                        .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+                })
+                .copied();
+
+            let run_challenges = validator_challenges
+                .iter()
+                .filter(|snapshot| {
+                    challenge_bindings
+                        .get(snapshot.request.context.challenge_id.as_str())
+                        .is_some_and(|(training_run_id, _)| training_run_id == &run.training_run_id)
+                })
+                .collect::<Vec<_>>();
+            let queued_validator_challenges = run_challenges
+                .iter()
+                .filter(|snapshot| snapshot.status == ServiceValidatorChallengeStatus::Queued)
+                .count() as u64;
+            let open_validator_challenges = run_challenges
+                .iter()
+                .filter(|snapshot| {
+                    matches!(
+                        snapshot.status,
+                        ServiceValidatorChallengeStatus::Queued
+                            | ServiceValidatorChallengeStatus::Leased
+                            | ServiceValidatorChallengeStatus::Retrying
+                    )
+                })
+                .count() as u64;
+
+            let run_outcomes = accepted_outcomes
+                .iter()
+                .filter(|outcome| outcome.source_run_id == run.training_run_id)
+                .collect::<Vec<_>>();
+            let payout_eligible_closeouts = run_outcomes
+                .iter()
+                .filter(|outcome| {
+                    outcome
+                        .metadata
+                        .get("payout_eligible")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                })
+                .count() as u64;
+            let latest_closeout = run_outcomes
+                .iter()
+                .max_by(|lhs, rhs| {
+                    lhs.accepted_at_ms
+                        .cmp(&rhs.accepted_at_ms)
+                        .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
+                })
+                .copied();
+            let latest_checkpoint_ref = latest_closeout
+                .and_then(|outcome| {
+                    outcome
+                        .training_summary
+                        .as_ref()
+                        .and_then(|summary| summary.accepted_checkpoint_ref.clone())
+                        .or_else(|| {
+                            outcome
+                                .checkpoint_binding
+                                .as_ref()
+                                .and_then(|binding| binding.latest_checkpoint_ref.clone())
+                        })
+                })
+                .or_else(|| run.final_checkpoint_ref.clone())
+                .or_else(|| run.promotion_checkpoint_ref.clone())
+                .or_else(|| {
+                    run.summary
+                        .as_ref()
+                        .and_then(|summary| summary.accepted_checkpoint_ref.clone())
+                })
+                .or_else(|| run.checkpoint_binding.latest_checkpoint_ref.clone())
+                .or_else(|| {
+                    metadata
+                        .as_ref()
+                        .and_then(|value| value.checkpoint_ref.clone())
+                })
+                .or_else(|| scheduler_state.and_then(|value| value.checkpoint_ref.clone()));
+            let latest_checkpoint_age_ms = latest_closeout
+                .and_then(|outcome| u64::try_from(outcome.accepted_at_ms).ok())
+                .or_else(|| {
+                    run.finalized_at_ms
+                        .and_then(|value| u64::try_from(value).ok())
+                })
+                .or_else(|| {
+                    run.started_at_ms
+                        .and_then(|value| u64::try_from(value).ok())
+                })
+                .or_else(|| Some(run.created_at_ms).and_then(|value| u64::try_from(value).ok()))
+                .filter(|_| latest_checkpoint_ref.is_some())
+                .map(|updated_at_ms| now_unix_ms.saturating_sub(updated_at_ms));
+            let latest_closeout_status = latest_closeout.and_then(|outcome| {
+                outcome
+                    .metadata
+                    .get("closeout_status")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            });
+
+            TrainingOperatorRunSummary {
+                training_run_id: run.training_run_id.clone(),
+                network_id,
+                run_status: run.status.label().to_string(),
+                scheduler_window_state: scheduler_state
+                    .map(|value| value.window_state.label().to_string())
+                    .or_else(|| latest_window.map(|value| value.status.label().to_string()))
+                    .unwrap_or_else(|| "unknown".to_string()),
+                current_window_id: scheduler_state
+                    .map(|value| value.current_window_id.clone())
+                    .or_else(|| latest_window.map(|value| value.window_id.clone()))
+                    .unwrap_or_else(|| "unknown".to_string()),
+                admitted_nodes_online,
+                worker_nodes_online,
+                validator_nodes_online,
+                recovery_source_nodes_online,
+                worker_target_count: role_plan.worker_count,
+                validator_target_count: role_plan.validator_count,
+                recovery_source_target_count: role_plan.recovery_source_count,
+                active_window_count,
+                pending_validation_window_count,
+                open_validator_challenges,
+                queued_validator_challenges,
+                payout_eligible_closeouts,
+                latest_checkpoint_ref,
+                latest_checkpoint_age_ms,
+                artifact_failures_open: 0,
+                latest_window_id: latest_window.map(|value| value.window_id.clone()),
+                latest_window_status: latest_window.map(|value| value.status.label().to_string()),
+                latest_closeout_status,
+            }
+        })
+        .collect::<Vec<_>>();
+    run_summaries.sort_by(|lhs, rhs| lhs.training_run_id.cmp(&rhs.training_run_id));
+
+    let checkpoint_max_age_ms = run_summaries
+        .iter()
+        .filter_map(|summary| summary.latest_checkpoint_age_ms)
+        .max();
+    let metrics = TrainingOperatorMetrics {
+        admitted_nodes_online: admitted_nodes.iter().filter(|node| node.online).count() as u64,
+        active_runs: training_runs
+            .iter()
+            .filter(|run| {
+                matches!(
+                    run.status,
+                    ComputeTrainingRunStatus::Queued
+                        | ComputeTrainingRunStatus::Preparing
+                        | ComputeTrainingRunStatus::Running
+                        | ComputeTrainingRunStatus::Finalizing
+                )
+            })
+            .count() as u64,
+        active_windows: run_summaries
+            .iter()
+            .map(|summary| summary.active_window_count)
+            .sum(),
+        pending_validation_windows: run_summaries
+            .iter()
+            .map(|summary| summary.pending_validation_window_count)
+            .sum(),
+        validator_challenges_open: run_summaries
+            .iter()
+            .map(|summary| summary.open_validator_challenges)
+            .sum(),
+        validator_challenges_queued: run_summaries
+            .iter()
+            .map(|summary| summary.queued_validator_challenges)
+            .sum(),
+        checkpoint_max_age_ms,
+        artifact_failures_open: 0,
+        payout_eligible_closeouts: run_summaries
+            .iter()
+            .map(|summary| summary.payout_eligible_closeouts)
+            .sum(),
+    };
+
+    TrainingOperatorSummaryResponse {
+        generated_at_unix_ms: now_unix_ms,
+        admitted_nodes_online: metrics.admitted_nodes_online,
+        active_runs: metrics.active_runs,
+        active_windows: metrics.active_windows,
+        pending_validation_windows: metrics.pending_validation_windows,
+        validator_challenges_open: metrics.validator_challenges_open,
+        validator_challenges_queued: metrics.validator_challenges_queued,
+        checkpoint_max_age_ms: metrics.checkpoint_max_age_ms,
+        artifact_failures_open: metrics.artifact_failures_open,
+        payout_eligible_closeouts: metrics.payout_eligible_closeouts,
+        runs: run_summaries,
+    }
+}
+
+fn training_operator_metrics(store: &ControlStore, now_unix_ms: u64) -> TrainingOperatorMetrics {
+    let summary = training_operator_summary_snapshot(store, now_unix_ms);
+    TrainingOperatorMetrics {
+        admitted_nodes_online: summary.admitted_nodes_online,
+        active_runs: summary.active_runs,
+        active_windows: summary.active_windows,
+        pending_validation_windows: summary.pending_validation_windows,
+        validator_challenges_open: summary.validator_challenges_open,
+        validator_challenges_queued: summary.validator_challenges_queued,
+        checkpoint_max_age_ms: summary.checkpoint_max_age_ms,
+        artifact_failures_open: summary.artifact_failures_open,
+        payout_eligible_closeouts: summary.payout_eligible_closeouts,
+    }
 }
 
 fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
@@ -11894,9 +12305,10 @@ mod tests {
         PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
         TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
         TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
-        TrainingSchedulerWindowState, TrainingTrnPublicationReport,
-        TrainingValidatorChallengeCoordinatorResponse, TrainingWindowCloseoutStatus,
-        TrainingWindowValidationSummary, training_window_closeout_status, validator_service,
+        TrainingOperatorSummaryResponse, TrainingSchedulerWindowState,
+        TrainingTrnPublicationReport, TrainingValidatorChallengeCoordinatorResponse,
+        TrainingWindowCloseoutStatus, TrainingWindowValidationSummary,
+        training_window_closeout_status, validator_service,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -12205,6 +12617,20 @@ mod tests {
         )
         .await
         .expect("training TRN publish request timed out")?;
+        assert_eq!(response.status(), StatusCode::OK);
+        response_json(response).await
+    }
+
+    async fn fetch_training_summary(app: &axum::Router) -> Result<TrainingOperatorSummaryResponse> {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/summary")
+                    .body(Body::empty())?,
+            )
+            .await?;
         assert_eq!(response.status(), StatusCode::OK);
         response_json(response).await
     }
@@ -19813,6 +20239,401 @@ mod tests {
         }
 
         relay_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_operator_summary_and_stats_surface_live_run_state() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms().saturating_sub(30_000);
+        let training_run_id = "run.summary.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request(
+                "validator-alpha",
+                "sha256:validator-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-alpha", "sha256:validator-alpha");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.summary.alpha",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.summary.alpha",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://0001",
+                                "sha256:slice-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.summary.alpha",
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.summary.alpha".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.summary.alpha",
+                                lease.assignment_id.as_str(),
+                                "sha256:validator-pending-summary-alpha",
+                                None,
+                            )],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let initial_stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(initial_stats.training_admitted_nodes_online, 2);
+        assert_eq!(initial_stats.training_runs_active, 1);
+        assert_eq!(initial_stats.training_windows_active, 1);
+        assert_eq!(initial_stats.training_windows_pending_validation, 1);
+        assert_eq!(initial_stats.training_validator_challenges_open, 2);
+        assert_eq!(initial_stats.training_validator_challenges_queued, 2);
+        assert_eq!(initial_stats.training_artifact_failures_open, 0);
+        assert_eq!(initial_stats.training_payout_eligible_closeouts, 0);
+        assert!(initial_stats.training_checkpoint_max_age_ms.is_some());
+
+        let initial_summary = fetch_training_summary(&app).await?;
+        assert_eq!(initial_summary.admitted_nodes_online, 2);
+        assert_eq!(initial_summary.active_runs, 1);
+        assert_eq!(initial_summary.active_windows, 1);
+        assert_eq!(initial_summary.pending_validation_windows, 1);
+        assert_eq!(initial_summary.validator_challenges_open, 2);
+        assert_eq!(initial_summary.validator_challenges_queued, 2);
+        assert_eq!(initial_summary.runs.len(), 1);
+        let run_summary = &initial_summary.runs[0];
+        assert_eq!(run_summary.training_run_id, training_run_id);
+        assert_eq!(run_summary.network_id, "trainnet.alpha");
+        assert_eq!(run_summary.run_status, "running");
+        assert_eq!(run_summary.scheduler_window_state, "validating");
+        assert_eq!(run_summary.current_window_id, "window.0001");
+        assert_eq!(run_summary.worker_nodes_online, 1);
+        assert_eq!(run_summary.validator_nodes_online, 1);
+        assert_eq!(run_summary.recovery_source_nodes_online, 0);
+        assert_eq!(run_summary.active_window_count, 1);
+        assert_eq!(run_summary.pending_validation_window_count, 1);
+        assert_eq!(run_summary.open_validator_challenges, 2);
+        assert_eq!(run_summary.queued_validator_challenges, 2);
+        assert_eq!(run_summary.payout_eligible_closeouts, 0);
+        assert_eq!(
+            run_summary.latest_checkpoint_ref.as_deref(),
+            Some("checkpoint://decoder/base")
+        );
+        assert_eq!(run_summary.latest_window_id.as_deref(), Some("window.0001"));
+        assert_eq!(run_summary.latest_window_status.as_deref(), Some("sealed"));
+        assert_eq!(run_summary.latest_closeout_status, None);
+
+        let claimed_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.summary.1",
+                            created_at_ms as i64 + 1_310,
+                            "validator-alpha",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_one.status(), StatusCode::OK);
+        let claimed_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_one).await?;
+        let retried_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/retry",
+                        claimed_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_retry_request(
+                            "idemp.training.validator.retry.summary.1",
+                            created_at_ms as i64 + 1_320,
+                            "validator-alpha",
+                            claimed_one.lease.clone().expect("claim lease"),
+                            "transient validator transport failure",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(retried_one.status(), StatusCode::OK);
+        let retried_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(retried_one).await?;
+        let finalized_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        retried_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.summary.1",
+                            created_at_ms as i64 + 1_330,
+                            "validator-alpha",
+                            retried_one.lease.clone().expect("retry lease"),
+                            retried_one
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            retried_one.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-summary-one",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_one.status(), StatusCode::OK);
+
+        let claimed_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.summary.2",
+                            created_at_ms as i64 + 1_340,
+                            "validator-alpha",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_two.status(), StatusCode::OK);
+        let claimed_two =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_two).await?;
+        let finalized_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_two.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.summary.2",
+                            created_at_ms as i64 + 1_350,
+                            "validator-alpha",
+                            claimed_two.lease.clone().expect("second claim lease"),
+                            claimed_two
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_two.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-summary-two",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_two.status(), StatusCode::OK);
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.summary.alpha"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.summary.alpha",
+                                lease.assignment_id.as_str(),
+                                "sha256:validator-final-summary-alpha",
+                                Some(ComputeAdapterContributionDisposition::Accepted),
+                            )],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-summary-alpha".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let final_stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(final_stats.training_admitted_nodes_online, 2);
+        assert_eq!(final_stats.training_runs_active, 1);
+        assert_eq!(final_stats.training_windows_active, 0);
+        assert_eq!(final_stats.training_windows_pending_validation, 0);
+        assert_eq!(final_stats.training_validator_challenges_open, 0);
+        assert_eq!(final_stats.training_validator_challenges_queued, 0);
+        assert_eq!(final_stats.training_artifact_failures_open, 0);
+        assert_eq!(final_stats.training_payout_eligible_closeouts, 1);
+        assert!(final_stats.training_checkpoint_max_age_ms.is_some());
+
+        let final_summary = fetch_training_summary(&app).await?;
+        assert_eq!(final_summary.active_runs, 1);
+        assert_eq!(final_summary.active_windows, 0);
+        assert_eq!(final_summary.pending_validation_windows, 0);
+        assert_eq!(final_summary.validator_challenges_open, 0);
+        assert_eq!(final_summary.validator_challenges_queued, 0);
+        assert_eq!(final_summary.payout_eligible_closeouts, 1);
+        assert_eq!(final_summary.runs.len(), 1);
+        let run_summary = &final_summary.runs[0];
+        assert_eq!(run_summary.scheduler_window_state, "accepted");
+        assert_eq!(run_summary.current_window_id, "window.0002");
+        assert_eq!(run_summary.active_window_count, 0);
+        assert_eq!(run_summary.pending_validation_window_count, 0);
+        assert_eq!(run_summary.open_validator_challenges, 0);
+        assert_eq!(run_summary.queued_validator_challenges, 0);
+        assert_eq!(run_summary.payout_eligible_closeouts, 1);
+        assert_eq!(
+            run_summary.latest_window_status.as_deref(),
+            Some("reconciled")
+        );
+        assert_eq!(
+            run_summary.latest_closeout_status.as_deref(),
+            Some("rewarded")
+        );
+        assert!(run_summary.latest_checkpoint_age_ms.is_some());
+
         Ok(())
     }
 

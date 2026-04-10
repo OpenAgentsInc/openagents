@@ -1498,6 +1498,15 @@ Current status:
   - payout-eligible closeouts
 - Add one operator endpoint or report for a full run summary.
 
+Current status:
+`nexus-control` now exposes these training counters through `/stats`, and it
+also exposes `GET /api/training/summary` for one run-level operator summary
+surface across admitted nodes, active runs, window state, validator backlog,
+checkpoint lineage, and closeout state. The current checkpoint-age field is
+derived from the latest retained run or accepted-outcome checkpoint lineage.
+`artifact_failures_open` remains reserved at `0` until the artifact courier and
+upload-failure state lands.
+
 ### 4.9 Nexus persistence and replay safety
 
 - Ensure all training scheduler state survives restart.
