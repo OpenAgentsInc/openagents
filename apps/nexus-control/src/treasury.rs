@@ -635,6 +635,15 @@ pub struct TreasuryPublicSnapshot {
     pub degraded_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TreasuryWalletPaymentRollup {
+    payout_sats_paid_total: u64,
+    payout_sats_paid_24h: u64,
+    payouts_confirmed_24h: u64,
+    payouts_failed_24h: u64,
+    last_confirmed_payout_at_unix_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TreasuryCommand {
     Status {
@@ -830,6 +839,14 @@ pub struct TreasuryState {
     pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
     #[serde(default)]
     pub payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub wallet_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub wallet_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub wallet_payouts_confirmed_24h: u64,
+    #[serde(default)]
+    pub wallet_payouts_failed_24h: u64,
     #[serde(default)]
     pub next_challenge_nonce: u64,
     #[serde(default)]
@@ -1380,12 +1397,12 @@ impl TreasuryState {
         let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let policy = self.active_policy(config);
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
-        let mut payout_sats_paid_24h = 0u64;
+        let mut record_payout_sats_paid_24h = 0u64;
         let mut unconfirmed_dispatched_sats_total = 0u64;
         let mut unconfirmed_dispatched_sats_24h = 0u64;
         let mut payouts_dispatched_24h = 0u64;
-        let mut payouts_confirmed_24h = 0u64;
-        let mut payouts_failed_24h = 0u64;
+        let mut record_payouts_confirmed_24h = 0u64;
+        let mut record_payouts_failed_24h = 0u64;
         let mut payouts_skipped_24h = 0u64;
 
         for record in self.payout_records_by_key.values() {
@@ -1405,11 +1422,12 @@ impl TreasuryState {
                     payouts_dispatched_24h = payouts_dispatched_24h.saturating_add(1);
                 }
                 "confirmed" => {
-                    payouts_confirmed_24h = payouts_confirmed_24h.saturating_add(1);
-                    payout_sats_paid_24h = payout_sats_paid_24h.saturating_add(record.amount_sats);
+                    record_payouts_confirmed_24h = record_payouts_confirmed_24h.saturating_add(1);
+                    record_payout_sats_paid_24h =
+                        record_payout_sats_paid_24h.saturating_add(record.amount_sats);
                 }
                 "failed" => {
-                    payouts_failed_24h = payouts_failed_24h.saturating_add(1);
+                    record_payouts_failed_24h = record_payouts_failed_24h.saturating_add(1);
                 }
                 "skipped" => {
                     payouts_skipped_24h = payouts_skipped_24h.saturating_add(1);
@@ -1417,6 +1435,20 @@ impl TreasuryState {
                 _ => {}
             }
         }
+        let payout_sats_paid_total = self
+            .payout_sats_paid_total
+            .max(self.wallet_payout_sats_paid_total)
+            .saturating_add(unconfirmed_dispatched_sats_total);
+        let payout_sats_paid_24h = self
+            .wallet_payout_sats_paid_24h
+            .max(record_payout_sats_paid_24h)
+            .saturating_add(unconfirmed_dispatched_sats_24h);
+        let payouts_confirmed_24h = self
+            .wallet_payouts_confirmed_24h
+            .max(record_payouts_confirmed_24h);
+        let payouts_failed_24h = self
+            .wallet_payouts_failed_24h
+            .max(record_payouts_failed_24h);
 
         TreasuryPublicSnapshot {
             generated_at_unix_ms: now_unix_ms,
@@ -1438,11 +1470,8 @@ impl TreasuryState {
             last_payout_reconciliation_at_unix_ms: self.last_payout_reconciliation_at_unix_ms,
             payout_loop_last_started_at_unix_ms: self.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: self.payout_loop_last_completed_at_unix_ms,
-            payout_sats_paid_total: self
-                .payout_sats_paid_total
-                .saturating_add(unconfirmed_dispatched_sats_total),
-            payout_sats_paid_24h: payout_sats_paid_24h
-                .saturating_add(unconfirmed_dispatched_sats_24h),
+            payout_sats_paid_total,
+            payout_sats_paid_24h,
             payouts_dispatched_24h,
             payouts_confirmed_24h,
             payouts_failed_24h,
@@ -2018,14 +2047,27 @@ impl TreasuryState {
         snapshot: &TreasuryWalletSnapshot,
         now_unix_ms: u64,
     ) -> Vec<TreasuryReceiptEvent> {
+        let wallet_payment_rollup =
+            wallet_payment_rollup(snapshot.payments.as_slice(), now_unix_ms);
         self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
         self.wallet_last_error = snapshot.runtime_detail.clone();
         self.wallet_balance_sats = snapshot.balance_sats;
         self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
         self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        self.wallet_payout_sats_paid_total = self
+            .wallet_payout_sats_paid_total
+            .max(wallet_payment_rollup.payout_sats_paid_total);
+        self.wallet_payout_sats_paid_24h = wallet_payment_rollup.payout_sats_paid_24h;
+        self.wallet_payouts_confirmed_24h = wallet_payment_rollup.payouts_confirmed_24h;
+        self.wallet_payouts_failed_24h = wallet_payment_rollup.payouts_failed_24h;
+        self.payout_sats_paid_total = self
+            .payout_sats_paid_total
+            .max(wallet_payment_rollup.payout_sats_paid_total);
 
         let mut receipt_events = Vec::new();
-        let mut last_confirmed_payout_at_unix_ms = self.last_confirmed_payout_at_unix_ms;
+        let mut last_confirmed_payout_at_unix_ms = wallet_payment_rollup
+            .last_confirmed_payout_at_unix_ms
+            .or(self.last_confirmed_payout_at_unix_ms);
         for payment in &snapshot.payments {
             if payment.direction.eq_ignore_ascii_case("receive") {
                 self.funding_receives_by_payment_id
@@ -2074,9 +2116,6 @@ impl TreasuryState {
                 }
                 if !record.counted_in_paid_total {
                     record.counted_in_paid_total = true;
-                    self.payout_sats_paid_total = self
-                        .payout_sats_paid_total
-                        .saturating_add(record.amount_sats);
                 }
             } else if wallet_payment_is_failed(payment) {
                 record.status = "failed".to_string();
@@ -3732,6 +3771,41 @@ fn wallet_payment_is_failed(payment: &PaymentSummary) -> bool {
             .is_some_and(|detail| detail.to_ascii_lowercase().contains("failed"))
 }
 
+fn wallet_payment_rollup(
+    payments: &[PaymentSummary],
+    now_unix_ms: u64,
+) -> TreasuryWalletPaymentRollup {
+    let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
+    let mut rollup = TreasuryWalletPaymentRollup::default();
+    for payment in payments {
+        if !payment.direction.eq_ignore_ascii_case("send") {
+            continue;
+        }
+        let payment_unix_ms = payment.timestamp.saturating_mul(1_000);
+        if wallet_payment_is_confirmed(payment) {
+            rollup.payout_sats_paid_total = rollup
+                .payout_sats_paid_total
+                .saturating_add(payment.amount_sats);
+            if payment_unix_ms >= window_started_at_unix_ms {
+                rollup.payout_sats_paid_24h = rollup
+                    .payout_sats_paid_24h
+                    .saturating_add(payment.amount_sats);
+                rollup.payouts_confirmed_24h = rollup.payouts_confirmed_24h.saturating_add(1);
+            }
+            rollup.last_confirmed_payout_at_unix_ms = Some(
+                rollup
+                    .last_confirmed_payout_at_unix_ms
+                    .unwrap_or_default()
+                    .max(payment_unix_ms),
+            );
+        } else if wallet_payment_is_failed(payment) && payment_unix_ms >= window_started_at_unix_ms
+        {
+            rollup.payouts_failed_24h = rollup.payouts_failed_24h.saturating_add(1);
+        }
+    }
+    rollup
+}
+
 fn truncate_target(value: &str) -> String {
     if value.len() <= 24 {
         return value.to_string();
@@ -4620,6 +4694,67 @@ mod tests {
         let stats: TreasuryPublicStats = state.public_stats(&config, now_unix_ms);
         assert_eq!(stats.payout_sats_paid_total, 120);
         assert_eq!(stats.payout_sats_paid_24h, 120);
+        assert_eq!(stats.payouts_confirmed_24h, 1);
+    }
+
+    #[test]
+    fn wallet_snapshot_recovers_visible_paid_total_from_send_history() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = super::now_unix_ms();
+
+        state.payout_sats_paid_total = 56;
+
+        state.apply_wallet_snapshot(
+            &TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 1_234,
+                payments: vec![
+                    PaymentSummary {
+                        id: "payment-send-old".to_string(),
+                        direction: "send".to_string(),
+                        status: "completed".to_string(),
+                        amount_sats: 79_474,
+                        fees_sats: 1,
+                        timestamp: now_unix_ms
+                            .saturating_sub(super::TREASURY_PUBLIC_STATS_WINDOW_MS + 60_000)
+                            .saturating_div(1_000),
+                        method: "spark".to_string(),
+                        description: None,
+                        invoice: Some("spark:historical".to_string()),
+                        destination_pubkey: None,
+                        payment_hash: None,
+                        htlc_status: None,
+                        htlc_expiry_epoch_seconds: None,
+                        status_detail: None,
+                    },
+                    PaymentSummary {
+                        id: "payment-send-recent".to_string(),
+                        direction: "send".to_string(),
+                        status: "completed".to_string(),
+                        amount_sats: 56,
+                        fees_sats: 1,
+                        timestamp: now_unix_ms.saturating_div(1_000),
+                        method: "spark".to_string(),
+                        description: None,
+                        invoice: Some("spark:recent".to_string()),
+                        destination_pubkey: None,
+                        payment_hash: None,
+                        htlc_status: None,
+                        htlc_expiry_epoch_seconds: None,
+                        status_detail: None,
+                    },
+                ],
+            },
+            now_unix_ms,
+        );
+
+        let stats: TreasuryPublicStats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(state.payout_sats_paid_total, 79_530);
+        assert_eq!(state.wallet_payout_sats_paid_total, 79_530);
+        assert_eq!(stats.payout_sats_paid_total, 79_530);
+        assert_eq!(stats.payout_sats_paid_24h, 56);
         assert_eq!(stats.payouts_confirmed_24h, 1);
     }
 
