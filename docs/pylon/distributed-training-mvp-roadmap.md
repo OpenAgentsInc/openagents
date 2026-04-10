@@ -661,6 +661,209 @@ The frozen decay policy is:
   - no automatic decay
   - must be explicitly superseded by later authority action
 
+### 0.8 Shared Machine Artifact Versioning Policy
+
+The manifest versioning discipline is also frozen for the rest of the
+machine-readable MVP surfaces.
+
+Every machine-readable JSON artifact in the MVP must:
+
+- be UTF-8 JSON
+- use one top-level object
+- carry an explicit `schema_version` string
+- compute any retained JSON digest over canonical JSON UTF-8 bytes
+- ignore unknown additive fields during parsing
+- require a new schema string for breaking changes
+
+This versioning rule applies to at least:
+
+- run-status packets
+- window-status packets
+- checkpoint manifests
+- latest-pointer manifests
+- sealed-window bundles
+- proof bundles
+- recovery receipts
+- validator verdict receipts
+- score-snapshot manifests
+- closeout bundles
+
+For the MVP, a change is breaking if it changes:
+
+- required fields
+- state-machine semantics
+- digest basis
+- enum meaning
+- actor or artifact binding rules
+
+That means "same field names, different meaning" is not an additive change. It
+requires a schema bump.
+
+### 0.9 Frozen Timing And Timeout Policy
+
+The MVP now also freezes one default timing policy so `Pylon`, `Psionic`, and
+`Nexus` do not implement different liveness assumptions while claiming
+conformance to the same roadmap.
+
+The frozen defaults are:
+
+- `heartbeat_interval_ms = 15000`
+- `heartbeat_expiry_ms = 60000`
+- `lease_duration_ms = 600000`
+- `lease_renewal_threshold_ms = 180000`
+- `window_max_duration_ms = 1800000`
+- `seal_grace_period_ms = 120000`
+- `validator_timeout_ms = 900000`
+- `upload_timeout_ms = 1200000`
+
+The frozen retry backoff policy is:
+
+- exponential backoff from `5000ms`
+- retry schedule `5s -> 15s -> 30s -> 60s -> 120s`
+- cap later retries at `300000ms`
+- treat jitter as optional local transport hygiene, not as protocol-visible
+  randomness
+
+The operational interpretation is:
+
+- four missed heartbeats is enough to make worker liveness stale
+- leases must be renewed before less than three minutes remain
+- windows that exceed the max duration move toward seal or refusal rather than
+  remaining indefinitely active
+- validator work that exceeds the timeout enters retry or held handling under
+  validator policy v1
+- uploads that exceed the timeout remain non-terminal and ineligible for
+  accepted publication
+
+Changing these defaults requires an explicit policy revision and a coordinated
+doc update. They are not implementation-local knobs for the MVP.
+
+### 0.10 Shared Refusal And Error Taxonomy
+
+The MVP uses one cross-repo refusal taxonomy for machine supervision, local
+operator state, and public receipt mapping.
+
+Every refusal surfaced outside a local process must carry:
+
+- stable `code`
+- human-readable `message`
+- `retryable` boolean
+- `owner` naming the subsystem that owns the next authoritative transition
+- the best available artifact, assignment, challenge, or manifest reference
+
+The frozen minimum refusal set is:
+
+| Code | Owner | Retryable | Default receipt mapping |
+| --- | --- | --- | --- |
+| `bad_config` | `Pylon` | no | local refusal receipt only |
+| `stale_assignment` | `Nexus` | no | assignment refused or stale receipt |
+| `lease_expired` | `Nexus` | sometimes | assignment stale or expired receipt |
+| `unsupported_topology` | `Pylon` | no | launch refused receipt |
+| `checkpoint_missing` | `Pylon` | sometimes | recovery or launch refused receipt |
+| `checkpoint_digest_mismatch` | `Pylon` | no | refused checkpoint or warning receipt |
+| `artifact_incomplete` | `Pylon` | sometimes | non-terminal staged upload receipt |
+| `artifact_digest_mismatch` | `Pylon` | no | upload refused receipt |
+| `validator_timeout` | `Nexus` | yes | validator verdict timeout or held receipt |
+| `validator_disagreement` | `Nexus` | no | held-window or escalation receipt |
+| `environment_mismatch` | `Pylon` | no | launch refused receipt |
+| `build_revoked` | `Nexus` | no | build-revoked receipt and label |
+
+`Psionic` may still use finer-grained local exit codes internally, but once the
+failure is reflected into retained operator state or scheduler state it must
+map back to this shared taxonomy.
+
+### 0.11 Minimal Observability Contract
+
+The MVP also freezes a smallest required telemetry envelope so cross-node
+debugging stays possible when runs fail in the middle.
+
+Every machine-emitted log line, metric label set, status packet, and retained
+receipt must carry these identifiers whenever the object exists:
+
+- `network_id`
+- `run_id`
+- `window_id`
+- `assignment_id`
+- `challenge_id`
+- `node_pubkey`
+- `membership_revision`
+- `manifest_digest`
+
+The contract is:
+
+- do not invent placeholder ids
+- omit a field only when that object truly does not exist for the event
+- keep field names stable across repos
+- do not emit one equivalent identifier under different names in different
+  repos
+
+This is the minimum observability floor, not the full metric catalog.
+
+## Canonical Lifecycle State Tables
+
+These lifecycle tables are normative for the MVP. Local implementations may
+keep narrower sub-states, but any externally visible state must map back to one
+of the following canonical states.
+
+### Assignment Lifecycle
+
+| State | Meaning | Transition owner | Next states |
+| --- | --- | --- | --- |
+| `planned` | `Nexus` created the assignment but has not leased it yet. | `Nexus` | `leased` |
+| `leased` | Lease issued and manifest published, waiting for node acceptance. | `Pylon` or `Nexus` | `acked`, `expired`, `drained` |
+| `acked` | `Pylon` accepted the manifest and reserved local execution. | `Pylon` | `active`, `failed`, `expired` |
+| `active` | `Psionic` is running under a live lease. | `Pylon` reports, `Nexus` decides freshness | `completed`, `failed`, `drained`, `expired` |
+| `completed` | Local execution and required upload work finished for the assignment. | `Nexus` | terminal |
+| `expired` | Lease freshness was lost before successful completion. | `Nexus` | terminal |
+| `drained` | Work was ended at a boundary by operator intent or coordinator action. | `Nexus` | terminal |
+| `failed` | Runtime, checkpoint, or artifact contract failed for this assignment. | `Nexus` after local report | terminal |
+
+### Contribution Lifecycle
+
+| State | Meaning | Transition owner | Next states |
+| --- | --- | --- | --- |
+| `received` | `Nexus` ingested the contribution receipt and bundle pointer. | `Nexus` | `eligible`, `rejected` |
+| `eligible` | Bundle shape and timing allow inclusion in the aggregate. | `Nexus` | `sampled`, `accepted`, `quarantined`, `rejected` |
+| `sampled` | Contribution was selected for validator replay. | `Nexus` and validator lane | `accepted`, `quarantined`, `rejected`, `replay_required` |
+| `accepted` | Contribution may remain in the aggregate. This is not final economic acceptance. | `Nexus` | terminal |
+| `quarantined` | Contribution is excluded pending the frozen policy outcome. | `Nexus` | terminal |
+| `rejected` | Contribution is excluded and counts as a hard negative. | `Nexus` | terminal |
+| `replay_required` | Closeout is blocked until replay resolves or times out. | `Nexus` | terminal |
+
+### Window Lifecycle
+
+| State | Meaning | Transition owner | Next states |
+| --- | --- | --- | --- |
+| `planned` | Window id, dataset slice plan, and contributor set are defined. | `Nexus` | `active` |
+| `active` | Assignments are live and contributions are still arriving. | `Nexus` | `sealing`, `refused` |
+| `sealing` | No new contributions should enter; bundle and aggregate work is being finalized. | `Nexus` | `sealed`, `refused` |
+| `sealed` | Candidate aggregate and summary are frozen for validation. | `Nexus` | `validating` |
+| `validating` | Sampled replay and aggregate validation are running. | `Nexus` | `accepted`, `held`, `refused` |
+| `accepted` | Window reached terminal accepted closeout conditions. | `Nexus` | terminal |
+| `held` | Validation disagreement or incomplete challenge handling blocks closeout. | `Nexus` | terminal for MVP automation |
+| `refused` | The window cannot produce an accepted closeout under the frozen rules. | `Nexus` | terminal |
+
+### Artifact Bundle Lifecycle
+
+| State | Meaning | Transition owner | Next states |
+| --- | --- | --- | --- |
+| `local_only` | Material exists only on the node. | `Pylon` | `staged` |
+| `staged` | Bundle is assembled locally but not yet durably complete. | `Pylon` | `uploaded`, `local_only` |
+| `uploaded` | Required objects reached durable storage. | `Pylon` | `verified`, `staged` |
+| `verified` | Local and scheduler-side digest and shape checks passed. | `Nexus` | `published`, `staged` |
+| `published` | Public locator and receipt publication succeeded. | `Nexus` | `accepted` |
+| `accepted` | Bundle is part of accepted scheduler truth. | `Nexus` | terminal |
+
+### Validator Challenge Lifecycle
+
+| State | Meaning | Transition owner | Next states |
+| --- | --- | --- | --- |
+| `leased` | Validator work was assigned and is waiting to start. | `Nexus` or validator node | `running`, `held` |
+| `running` | Validator replay is actively executing. | validator node and `Nexus` | `terminal`, `retrying`, `held` |
+| `retrying` | Prior execution timed out or failed transiently within frozen policy. | `Nexus` | `running`, `held` |
+| `terminal` | Validator reached a terminal verdict or timeout result. | `Nexus` | terminal |
+| `held` | Challenge cannot progress without manual or later policy action. | `Nexus` | terminal for MVP automation |
+
 ## Workstream 1: Freeze The MVP Contract
 
 This work should happen first because every later code path depends on it.
@@ -681,6 +884,12 @@ This work should happen first because every later code path depends on it.
   cases land deterministically.
 - Implement reputation policy v1 and scheduler projection over the frozen
   `NIP-32` namespaces and labels.
+- Freeze the canonical lifecycle state tables so assignment, contribution,
+  window, artifact, and validator transitions do not drift across repos.
+- Freeze the shared timing and timeout policy instead of leaving operational
+  liveness to repo-local defaults.
+- Freeze the shared refusal taxonomy, machine-artifact versioning policy, and
+  minimal observability envelope.
 - Add tests that fail if a later change drifts from these Phase 0 choices
   without an intentional schema or policy version bump.
 
@@ -1179,6 +1388,47 @@ needed so the admitted-node MVP is technically defensible.
 - Require local and authority-visible handling for bad build, bad artifact, or
   bad validator outcomes.
 
+## Admitted-Network Abuse Appendix
+
+The MVP is not a hostile-network trustless system, but it still needs one
+explicit abuse and failure-response matrix for the admitted network.
+
+| Case | Detection surface | Immediate response | Receipt or label outcome | Scheduling effect |
+| --- | --- | --- | --- | --- |
+| admitted node uploads malformed but well-addressed bundle | digest or manifest validation in `Pylon` and `Nexus` | refuse terminal upload, keep bundle staged or refused, do not advance pointers | `artifact_digest_mismatch` or `artifact_incomplete` receipt | no credit for the bundle; repeated cases feed negative scheduler preference |
+| validator intentionally withholds verdict | validator timeout and retry counters in `Nexus` | retry once, reassign once, then move challenge or window to `held` | validator timeout receipt and possible `trn/validator=poor` label | blocks acceptance; repeated cases reduce validator preference and can hard-gate under policy |
+| operator replays stale manifest | manifest digest, lease sequence, and expiry checks in `Pylon` and `Nexus` | refuse launch, keep prior assignment authoritative | `stale_assignment` or `lease_expired` receipt | no execution credit; stale manifest is ignored |
+| node advertises stale build after revocation | build digest and admitted-release check in `Nexus` and `Pylon` | refuse lease or revoke active scheduling immediately | `trn/build=revoked` label and build-revoked receipt | hard gate |
+| repeated drain and join flapping to manipulate membership timing | membership revision churn and repeated drain frequency in `Nexus` | stop assigning new windows until behavior stabilizes | local instability receipts and contributor negative reputation when policy threshold is crossed | soft negative first, then hard gate if the frozen policy says so |
+| checkpoint pointer rollback attempt | checkpoint lineage and digest regression checks in `Nexus` | refuse pointer advance and keep the last accepted durable checkpoint authoritative | checkpoint warning or revoked label plus refusal receipt | rollback lineage is not eligible for scheduling or acceptance |
+
+## First Vertical Slice Milestone
+
+Before the full backlog expands into the whole rehearsal matrix, the program
+needs one named proving slice.
+
+The first proving slice is:
+
+- one worker
+- one validator
+- one window
+- one local checkpoint
+- one durable upload
+- one sealed-window closeout
+- one published TRN trail
+
+This slice is complete only when all of these are true:
+
+- `Pylon` launches `Psionic` from a real run manifest
+- `Nexus` leases work, seals the window, and ingests a validator result
+- the required artifact bundle reaches durable storage and verifies cleanly
+- one `kind:39511` receipt trail and one `kind:39530` closeout are published
+- the operator can inspect the run without reconstructing state from raw files
+
+The purpose of this milestone is to prove the core loop before the team spends
+time on the full matrix of failure injection, larger node sets, or backend
+expansion.
+
 ## Workstream 8: End-To-End Test And Rehearsal Matrix
 
 Do not ship the MVP without this test matrix.
@@ -1267,6 +1517,19 @@ Do not widen to mixed CUDA plus Apple windows until all of these are true:
 - any cross-backend artifact portability claim is backed by tests and retained
   evidence
 
+## Repo Ownership Map
+
+This roadmap is intentionally cross-repo. Ownership still needs to stay
+explicit.
+
+| Surface | Source of truth repo | Main consumers | Direct owner | Blocking dependencies |
+| --- | --- | --- | --- | --- |
+| training runtime, validator replay, checkpoint truth, build attestation | `../psionic` | `apps/pylon`, `apps/nexus-control` | `Psionic` runtime owner | admitted environment family, manifest contract, artifact contract |
+| node supervision, local state, artifact courier, node-side TRN publication | `openagents` | `../psionic`, `apps/nexus-control`, `crates/nostr` | `Pylon` operator owner | machine-launchable `psionic-train`, GCS contract, status packet schemas |
+| admitted-node registry, scheduling, sealing, reconciliation, closeouts, reputation projection | `openagents` | `apps/pylon`, `crates/nostr` | `Nexus` authority owner | kernel objects, validator policy v1, persisted scheduler state |
+| TRN event typing, relay publication, `NIP-32` mapping, local publish indexes | `openagents` | `apps/pylon`, `apps/nexus-control` | `TRN` and `nostr` owner | frozen event shapes, refusal mapping, relay persistence |
+| release gating, rehearsals, and cross-repo policy freeze | `openagents/docs` with linked `../psionic` docs | all runtime and control-plane repos | cross-repo release owner | all rows above |
+
 ## Implementation Order
 
 This is the recommended build order.
@@ -1276,10 +1539,14 @@ This is the recommended build order.
 - freeze the admitted-node MVP shape
 - freeze run manifest and artifact naming
 - freeze role model and acceptance gate
+- freeze state tables, refusal taxonomy, timers, observability, and artifact
+  versioning
 - freeze object-store and relay assumptions
 
 ### Phase 1: Psionic Under Pylon Supervision
 
+- complete the first proving slice with one worker, one validator, one window,
+  one durable upload, one sealed-window closeout, and one published TRN trail
 - make `Pylon` launch and supervise one `Psionic` training process
 - make `Pylon` advertise real training capability
 - add machine-consumable run manifests and status packets
@@ -1324,6 +1591,10 @@ This is the recommended build order.
 
 These can wait until after the first honest admitted-node run:
 
+Features outside the frozen Phase 0 contracts do not enter the MVP by
+opportunistic implementation unless they are required to satisfy an exit
+criterion.
+
 - mixed CUDA plus Apple windows
 - threshold-signed window seals
 - Bitcoin anchoring for windows or randomness
@@ -1356,7 +1627,10 @@ The following backlog translates this roadmap into copy-ready GitHub issue
 drafts. The numbering here is document-local ordering, not future GitHub issue
 numbers. The issue bodies below keep the frozen MVP contracts, the phased build
 order, the Apple follow-on work, and the explicit non-blockers aligned with the
-roadmap above.
+roadmap above. The later lifecycle, timing, refusal, observability, abuse, and
+ownership freezes in this revision should be folded into the relevant Phase 0,
+Workstream 7, and Meta tracking issues rather than implemented as drifting
+repo-local policy.
 
 ### Phase 0: Contract Freeze
 
