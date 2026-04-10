@@ -12968,7 +12968,7 @@ fn validate_and_normalize_relay_url(url: &str) -> Result<String> {
 
 pub fn render_jobs_report(report: &JobsReport) -> String {
     let mut lines = render_report_context(&report.context);
-    for job in &report.jobs {
+    for job in report.jobs.iter().rev() {
         lines.push(String::new());
         lines.push(format!("job_id: {}", job.job_id));
         lines.push(format!("status: {}", job.status));
@@ -14698,8 +14698,9 @@ mod tests {
         PylonLedgerJob, PylonSettlementRecord,
         psionic_gemma_benchmark_command_args, publish_announcement_report,
         publish_training_trn_state, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_public_config_json, render_sandbox_report,
+        render_human_status, render_jobs_report, render_public_config_json, render_sandbox_report,
         render_training_status_report, report_provider_presence_heartbeat_for_snapshot,
+        ReportContext, JobsReport,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
@@ -21621,6 +21622,64 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         assert_eq!(job.payment_pointer, "payment-ledger-001");
         assert_eq!(job.status, "completed_local");
         assert!(job.completed_at_epoch_seconds >= 1_762_700_102);
+    }
+
+    #[test]
+    fn render_jobs_report_places_newest_job_last_in_plain_text() {
+        let report = JobsReport {
+            context: ReportContext {
+                state: "online".to_string(),
+                desired_mode: "online".to_string(),
+                listen_addr: None,
+            },
+            jobs: vec![
+                ProviderRecentJob {
+                    job_id: "job-newest".to_string(),
+                    request_id: Some("req-newest".to_string()),
+                    status: "completed_local".to_string(),
+                    demand_source: "nostr_nip90".to_string(),
+                    product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
+                    compute_family: Some("text_generation".to_string()),
+                    backend_family: Some("local_gemma".to_string()),
+                    sandbox_execution_class: None,
+                    sandbox_profile_id: None,
+                    sandbox_profile_digest: None,
+                    sandbox_termination_reason: None,
+                    completed_at_epoch_seconds: 1_762_700_200,
+                    payout_sats: 21,
+                    payment_pointer: "payment-newest".to_string(),
+                    failure_reason: None,
+                    delivery_proof_id: Some("proof-newest".to_string()),
+                },
+                ProviderRecentJob {
+                    job_id: "job-oldest".to_string(),
+                    request_id: Some("req-oldest".to_string()),
+                    status: "settled".to_string(),
+                    demand_source: "nostr_nip90".to_string(),
+                    product_id: Some("psionic.local.inference.gemma.single_node".to_string()),
+                    compute_family: Some("text_generation".to_string()),
+                    backend_family: Some("local_gemma".to_string()),
+                    sandbox_execution_class: None,
+                    sandbox_profile_id: None,
+                    sandbox_profile_digest: None,
+                    sandbox_termination_reason: None,
+                    completed_at_epoch_seconds: 1_762_700_100,
+                    payout_sats: 34,
+                    payment_pointer: "payment-oldest".to_string(),
+                    failure_reason: None,
+                    delivery_proof_id: Some("proof-oldest".to_string()),
+                },
+            ],
+        };
+
+        let rendered = render_jobs_report(&report);
+        let oldest_index = rendered.find("job_id: job-oldest").expect("oldest job row");
+        let newest_index = rendered.find("job_id: job-newest").expect("newest job row");
+
+        assert!(
+            oldest_index < newest_index,
+            "plain-text jobs output should leave the newest job closest to the shell prompt",
+        );
     }
 
     fn ready_health(

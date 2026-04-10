@@ -614,6 +614,11 @@ announcement current, and runs short automatic provider-intake passes against
 the configured relays. `provider run --seconds <n>` remains a manual one-shot
 pass rather than the normal way to keep an online node serving jobs.
 
+The plain-text `jobs` view is intentionally terminal-oriented: it prints older
+jobs first so the newest completed block lands closest to the shell prompt.
+Use `jobs --json` when you want the structured machine-readable report instead
+of the prompt-oriented text layout.
+
 ### `systemd` example
 
 ```ini
