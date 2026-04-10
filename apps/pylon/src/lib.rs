@@ -21,7 +21,8 @@ use nostr_client::{
     ConnectionState, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
 };
 use openagents_provider_substrate::{
-    ProviderAdapterTrainingContributorAvailability, ProviderAdminConfig, ProviderAdminRuntime,
+    ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
+    ProviderAdapterTrainingSettlementTrigger, ProviderAdminConfig, ProviderAdminRuntime,
     ProviderAdminUpdate, ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
     ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
     ProviderDiagnosticSummary, ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent,
@@ -78,6 +79,14 @@ pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
+const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
+const PYLON_TRAINING_ADAPTER_FAMILY: &str = "openagents.adapter.reference";
+const PYLON_TRAINING_ADAPTER_FORMAT: &str = "openagents.adapter.delta.v1";
+const PYLON_TRAINING_VALIDATOR_POLICY_REF: &str = "policy://validator/mvp/v1";
+const PYLON_TRAINING_CHECKPOINT_FAMILY: &str = "decoder";
+const PYLON_TRAINING_ENVIRONMENT_REF: &str = "env.openagents.cuda.train";
+const PYLON_TRAINING_ADMITTED_CUDA_GPU_MODEL_FAMILY: &str = "h100";
+const PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB: u32 = 80;
 
 #[derive(Clone, Debug)]
 struct ProviderHostTelemetryCacheEntry {
@@ -88,6 +97,11 @@ struct ProviderHostTelemetryCacheEntry {
 
 static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetryCacheEntry>>> =
     OnceLock::new();
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PsionicTrainRuntimeSurface {
+    repo_root: PathBuf,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
@@ -2428,13 +2442,16 @@ fn default_psionic_repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../psionic")
 }
 
-fn resolve_psionic_repo_root() -> Result<PathBuf> {
-    let repo_root = std::env::var(ENV_PSIONIC_REPO)
+fn configured_psionic_repo_root() -> PathBuf {
+    std::env::var(ENV_PSIONIC_REPO)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(default_psionic_repo_root);
+        .unwrap_or_else(default_psionic_repo_root)
+}
+
+fn ensure_psionic_repo_root_exists(repo_root: &Path) -> Result<()> {
     let manifest_path = repo_root.join("Cargo.toml");
     if !manifest_path.exists() {
         bail!(
@@ -2443,6 +2460,40 @@ fn resolve_psionic_repo_root() -> Result<PathBuf> {
             ENV_PSIONIC_REPO
         );
     }
+    Ok(())
+}
+
+fn inspect_psionic_train_runtime_surface() -> Result<PsionicTrainRuntimeSurface> {
+    let repo_root = configured_psionic_repo_root();
+    inspect_psionic_train_runtime_surface_at(repo_root.as_path())
+}
+
+fn inspect_psionic_train_runtime_surface_at(
+    repo_root: &Path,
+) -> Result<PsionicTrainRuntimeSurface> {
+    ensure_psionic_repo_root_exists(repo_root)?;
+    for relative_path in [
+        Path::new("TRAIN"),
+        Path::new("crates/psionic-train/src/main.rs"),
+        Path::new("crates/psionic-train/src/train_runtime.rs"),
+    ] {
+        let entry_path = repo_root.join(relative_path);
+        if !entry_path.exists() {
+            bail!(
+                "Psionic checkout at {} does not contain {}",
+                repo_root.display(),
+                relative_path.display()
+            );
+        }
+    }
+    Ok(PsionicTrainRuntimeSurface {
+        repo_root: repo_root.to_path_buf(),
+    })
+}
+
+fn resolve_psionic_repo_root() -> Result<PathBuf> {
+    let repo_root = configured_psionic_repo_root();
+    ensure_psionic_repo_root_exists(repo_root.as_path())?;
     let example_path = repo_root
         .join("crates")
         .join("psionic-serve")
@@ -8265,10 +8316,120 @@ async fn detect_availability(config: &PylonConfig) -> Result<ProviderAvailabilit
         local_gemma,
         apple_foundation_models: ProviderBackendHealth::default(),
         apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
-        adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
+        adapter_training_contributor: detect_adapter_training_contributor(config),
         pooled_inference: ProviderPooledInferenceAvailability::default(),
         sandbox,
     })
+}
+
+fn detect_adapter_training_contributor(
+    config: &PylonConfig,
+) -> ProviderAdapterTrainingContributorAvailability {
+    let host = load_cached_provider_host_telemetry(config.admin_db_path.as_path());
+    let runtime_surface = inspect_psionic_train_runtime_surface().ok();
+    derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref())
+}
+
+fn derive_adapter_training_contributor_availability(
+    host: &ProviderHostTelemetrySnapshot,
+    runtime_surface: Option<&PsionicTrainRuntimeSurface>,
+) -> ProviderAdapterTrainingContributorAvailability {
+    let Some(_runtime_surface) = runtime_surface else {
+        return ProviderAdapterTrainingContributorAvailability::default();
+    };
+
+    let coordinator_match_supported = host_has_training_network_posture(host);
+    let authority_receipt_supported = host_has_training_checkpoint_posture(host);
+    let has_cuda_backend = host_has_cuda_training_backend(host);
+    let available_memory_gb = host_max_cuda_training_memory_gb(host);
+    let contributor_supported = admitted_cuda_training_gpu(host).is_some()
+        && coordinator_match_supported
+        && authority_receipt_supported;
+
+    ProviderAdapterTrainingContributorAvailability {
+        contributor_supported,
+        coordinator_match_supported,
+        authority_receipt_supported,
+        execution_backends: has_cuda_backend
+            .then_some(ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend)
+            .into_iter()
+            .collect(),
+        adapter_families: vec![PYLON_TRAINING_ADAPTER_FAMILY.to_string()],
+        adapter_formats: vec![PYLON_TRAINING_ADAPTER_FORMAT.to_string()],
+        validator_policy_refs: vec![PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string()],
+        checkpoint_families: vec![PYLON_TRAINING_CHECKPOINT_FAMILY.to_string()],
+        environment_refs: vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
+        minimum_memory_gb: Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB),
+        available_memory_gb,
+        settlement_trigger: Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow),
+    }
+}
+
+fn host_has_training_network_posture(host: &ProviderHostTelemetrySnapshot) -> bool {
+    !host.network_interfaces.is_empty()
+}
+
+fn host_has_training_checkpoint_posture(host: &ProviderHostTelemetrySnapshot) -> bool {
+    primary_training_checkpoint_disk(host).is_some_and(|disk| disk.available_space_bytes > 0)
+}
+
+fn primary_training_checkpoint_disk(
+    host: &ProviderHostTelemetrySnapshot,
+) -> Option<&ProviderHostDiskTelemetry> {
+    host.disks
+        .iter()
+        .find(|disk| disk.pylon_home_disk)
+        .or_else(|| host.disks.first())
+}
+
+fn host_has_cuda_training_backend(host: &ProviderHostTelemetrySnapshot) -> bool {
+    host.gpus.iter().any(provider_gpu_is_cuda_training_backend)
+}
+
+fn host_max_cuda_training_memory_gb(host: &ProviderHostTelemetrySnapshot) -> Option<u32> {
+    host.gpus
+        .iter()
+        .filter(|gpu| provider_gpu_is_cuda_training_backend(gpu))
+        .filter_map(provider_gpu_memory_gb)
+        .max()
+}
+
+fn admitted_cuda_training_gpu(
+    host: &ProviderHostTelemetrySnapshot,
+) -> Option<&ProviderHostGpuTelemetry> {
+    host.gpus.iter().find(|gpu| {
+        provider_gpu_is_cuda_training_backend(gpu)
+            && provider_gpu_model_matches_admitted_cuda_family(gpu)
+            && provider_gpu_memory_gb(gpu)
+                .is_some_and(|memory_gb| memory_gb >= PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
+    })
+}
+
+fn provider_gpu_is_cuda_training_backend(gpu: &ProviderHostGpuTelemetry) -> bool {
+    let vendor = gpu
+        .vendor
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let model = gpu.model.to_ascii_lowercase();
+    vendor.contains("nvidia") || model.contains("nvidia")
+}
+
+fn provider_gpu_model_matches_admitted_cuda_family(gpu: &ProviderHostGpuTelemetry) -> bool {
+    gpu.model
+        .to_ascii_lowercase()
+        .contains(PYLON_TRAINING_ADMITTED_CUDA_GPU_MODEL_FAMILY)
+}
+
+fn provider_gpu_memory_gb(gpu: &ProviderHostGpuTelemetry) -> Option<u32> {
+    gpu.memory_total_bytes
+        .or(gpu.memory_free_bytes)
+        .map(bytes_to_gib_ceil)
+}
+
+fn bytes_to_gib_ceil(value: u64) -> u32 {
+    let gib = value.saturating_add(BYTES_PER_GIB - 1) / BYTES_PER_GIB;
+    u32::try_from(gib).unwrap_or(u32::MAX)
 }
 
 async fn detect_local_gemma(
@@ -8503,20 +8664,25 @@ mod tests {
         GemmaDiagnosticReceipt, GemmaDiagnosticReport, GemmaDiagnosticRequest,
         GemmaDiagnosticResult, GemmaDiagnosticRunReceipt, GemmaDownloadEvent,
         GemmaDownloadTransport, GemmaSelector, LocalGemmaChatBackend, LocalGemmaChatEvent,
-        LocalGemmaChatMessage, PylonConfig, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
-        WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
-        add_configured_relay, apply_config_set, apply_control_command,
-        build_snapshot_from_availability, default_config, detect_availability,
+        LocalGemmaChatMessage, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
+        PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_ENVIRONMENT_REF,
+        PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
+        PsionicTrainRuntimeSurface, PylonConfig, PylonWalletInvoiceRecord,
+        PylonWalletPaymentRecord, WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface,
+        WalletSubcommand, add_configured_relay, apply_config_set, apply_control_command,
+        build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
+        derive_adapter_training_contributor_availability, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
         ensure_identity, gemma_diagnostic_latest_report_path, gemma_download_spec,
-        gemma_local_installations, inventory_rows, load_backend_report, load_earnings_report,
-        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
-        load_or_create_config, load_product_report, load_receipts_report, load_relay_report,
-        load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
-        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
-        remove_configured_relay, render_human_status, render_public_config_json,
-        render_sandbox_report, report_provider_presence_heartbeat_for_snapshot,
+        gemma_local_installations, inspect_psionic_train_runtime_surface_at, inventory_rows,
+        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
+        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
+        load_product_report, load_receipts_report, load_relay_report, load_sandbox_report,
+        load_status_or_detect, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
+        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
+        publish_announcement_report, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_public_config_json, render_sandbox_report,
+        report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
         run_local_gemma_chat_stream, run_provider_requests, save_config,
@@ -8525,13 +8691,15 @@ mod tests {
     };
     use futures_util::{SinkExt, StreamExt};
     use openagents_provider_substrate::{
-        ProviderAdapterTrainingContributorAvailability, ProviderAppleAdapterHostingAvailability,
+        ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
+        ProviderAdapterTrainingSettlementTrigger, ProviderAppleAdapterHostingAvailability,
         ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
-        ProviderEarningsSummary, ProviderInventoryControls, ProviderPersistenceStore,
-        ProviderPooledInferenceAvailability, ProviderReceiptSummary, ProviderRecentJob,
-        ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,
-        ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
-        provider_runtime_state_label,
+        ProviderEarningsSummary, ProviderHostDiskTelemetry, ProviderHostGpuTelemetry,
+        ProviderHostNetworkInterfaceTelemetry, ProviderHostTelemetrySnapshot,
+        ProviderInventoryControls, ProviderPersistenceStore, ProviderPooledInferenceAvailability,
+        ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
+        ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
+        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, provider_runtime_state_label,
     };
     use serde_json::{Value, json};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -8544,6 +8712,167 @@ mod tests {
         } else {
             Err(std::io::Error::other(message.to_string()).into())
         }
+    }
+
+    fn training_host_snapshot(
+        gpu_model: Option<&str>,
+        gpu_memory_gib: Option<u64>,
+        disk_available_gib: Option<u64>,
+        with_network: bool,
+    ) -> ProviderHostTelemetrySnapshot {
+        ProviderHostTelemetrySnapshot {
+            gpus: gpu_model
+                .map(|model| ProviderHostGpuTelemetry {
+                    model: model.to_string(),
+                    vendor: Some("NVIDIA".to_string()),
+                    memory_total_bytes: gpu_memory_gib.map(|value| value * super::BYTES_PER_GIB),
+                    ..ProviderHostGpuTelemetry::default()
+                })
+                .into_iter()
+                .collect(),
+            disks: disk_available_gib
+                .map(|value| ProviderHostDiskTelemetry {
+                    mount_point: "/tmp".to_string(),
+                    available_space_bytes: value * super::BYTES_PER_GIB,
+                    total_space_bytes: value * super::BYTES_PER_GIB,
+                    pylon_home_disk: true,
+                    ..ProviderHostDiskTelemetry::default()
+                })
+                .into_iter()
+                .collect(),
+            network_interfaces: with_network
+                .then_some(ProviderHostNetworkInterfaceTelemetry {
+                    name: "eth0".to_string(),
+                    ..ProviderHostNetworkInterfaceTelemetry::default()
+                })
+                .into_iter()
+                .collect(),
+            ..ProviderHostTelemetrySnapshot::default()
+        }
+    }
+
+    fn psionic_train_runtime_surface_fixture() -> PsionicTrainRuntimeSurface {
+        PsionicTrainRuntimeSurface {
+            repo_root: std::path::PathBuf::from("/tmp/psionic"),
+        }
+    }
+
+    #[test]
+    fn adapter_training_detection_stays_inert_without_psionic_train_surface()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
+        let availability = derive_adapter_training_contributor_availability(&host, None);
+
+        ensure(
+            availability == ProviderAdapterTrainingContributorAvailability::default(),
+            "training capability should stay inert until the local psionic-train surface is present",
+        )
+    }
+
+    #[test]
+    fn adapter_training_detection_reports_cuda_contract_but_refuses_non_admitted_gpu()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = training_host_snapshot(Some("NVIDIA A100-SXM4-80GB"), Some(80), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+
+        ensure(
+            !availability.contributor_supported,
+            "non-H100 CUDA hosts should not advertise admitted training contribution support",
+        )?;
+        ensure(
+            availability.coordinator_match_supported && availability.authority_receipt_supported,
+            "runtime, network, and checkpoint posture should still surface the control-plane contract",
+        )?;
+        ensure(
+            availability.execution_backends
+                == vec![ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend],
+            "CUDA-capable hosts should advertise the open adapter backend family",
+        )?;
+        ensure(
+            availability.adapter_families == vec![PYLON_TRAINING_ADAPTER_FAMILY.to_string()]
+                && availability.adapter_formats == vec![PYLON_TRAINING_ADAPTER_FORMAT.to_string()]
+                && availability.validator_policy_refs
+                    == vec![PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string()]
+                && availability.checkpoint_families
+                    == vec![PYLON_TRAINING_CHECKPOINT_FAMILY.to_string()]
+                && availability.environment_refs
+                    == vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
+            "runtime detection should project the frozen Pylon training contract ids",
+        )?;
+        ensure(
+            availability.minimum_memory_gb == Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
+                && availability.available_memory_gb == Some(80)
+                && availability.settlement_trigger
+                    == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow),
+            "runtime detection should project the admitted CUDA memory floor and sealed-window settlement trigger",
+        )
+    }
+
+    #[test]
+    fn adapter_training_detection_marks_h100_hosts_ready_when_runtime_and_host_posture_match()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+
+        ensure(
+            availability.contributor_supported
+                && availability.coordinator_match_supported
+                && availability.authority_receipt_supported,
+            "admitted H100 hosts should report sellable training contribution support only when runtime, network, and local checkpoint posture are all present",
+        )
+    }
+
+    #[test]
+    fn inspect_psionic_train_runtime_surface_requires_machine_training_entrypoint()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "[workspace]\n")?;
+
+        let error = inspect_psionic_train_runtime_surface_at(temp_dir.path())
+            .expect_err("missing psionic-train surface should be rejected");
+        ensure(
+            error.to_string().contains("does not contain TRAIN"),
+            "training surface probe should require the machine TRAIN entrypoint before advertising capability",
+        )
+    }
+
+    #[test]
+    fn inspect_psionic_train_runtime_surface_accepts_minimal_machine_runtime_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        std::fs::create_dir_all(temp_dir.path().join("crates/psionic-train/src"))?;
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "[workspace]\n")?;
+        std::fs::write(temp_dir.path().join("TRAIN"), "#!/bin/sh\n")?;
+        std::fs::write(
+            temp_dir.path().join("crates/psionic-train/src/main.rs"),
+            "fn main() {}\n",
+        )?;
+        std::fs::write(
+            temp_dir
+                .path()
+                .join("crates/psionic-train/src/train_runtime.rs"),
+            "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n",
+        )?;
+
+        let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
+        ensure(
+            surface.repo_root == temp_dir.path(),
+            "training surface probe should accept the minimal machine runtime layout",
+        )
+    }
+
+    #[test]
+    fn bytes_to_gib_ceil_rounds_h100_mib_capacity_up_to_the_expected_floor()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let h100_capacity_bytes = 81_559_u64 * 1024 * 1024;
+        ensure(
+            bytes_to_gib_ceil(h100_capacity_bytes) == 80,
+            "H100 capacities reported through nvidia-smi MiB units should still satisfy the admitted 80 GiB floor",
+        )
     }
 
     #[test]

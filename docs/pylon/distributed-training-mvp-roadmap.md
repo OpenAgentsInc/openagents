@@ -181,9 +181,10 @@ What already exists:
 
 What is still missing:
 
-- `Pylon` still reports
-  `adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default()`
-  in `apps/pylon/src/lib.rs`.
+- `Pylon` now runs a bounded local training capability probe from
+  `apps/pylon/src/lib.rs`, but it still only projects one admitted CUDA/H100
+  contributor envelope from local `Psionic` runtime discovery plus host
+  GPU/disk/network posture.
 - `Pylon` does not yet supervise `psionic-train` as a long-running distributed
   runtime.
 - `Nexus` has the authority object model, but not the full scheduler,
@@ -1072,6 +1073,10 @@ become the admitted-node supervisor around `Psionic`.
 ### 3.1 Real training capability detection
 
 - Replace the inert training contributor default in `apps/pylon/src/lib.rs`.
+- Use a live local probe rather than config-only claims:
+  - resolve the sibling `Psionic` machine training surface
+  - combine that with host GPU, disk, and network telemetry
+  - project the bounded admitted CUDA/H100 contributor lane honestly
 - Detect actual `Psionic` training runtime availability.
 - Detect available backend, memory, storage, and network posture.
 - Populate:
