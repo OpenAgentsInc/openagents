@@ -185,6 +185,15 @@ internal for now. The later roadmap items still need to wire it into live
 `Nexus` coordination, operator/admin control surfaces, and published training
 status.
 
+`Pylon` now also has the first training-coordination HTTP client in
+`apps/pylon/src/lib.rs`. It wraps the existing kernel training-policy and
+training-run lookup routes and defines one idempotent node-side coordination
+lane for node admission, run lease, heartbeat, assignment ack, drain notice,
+failure notice, window progress, and checkpoint publication. The client keeps
+the `Nexus` bearer token env-only through
+`OPENAGENTS_PYLON_TRAINING_NEXUS_BEARER_TOKEN`; it does not persist that secret
+into `PylonConfig` or the retained runtime-state store.
+
 The retained config now also carries one explicit `training` block for the
 future admitted-node lane. That block freezes:
 

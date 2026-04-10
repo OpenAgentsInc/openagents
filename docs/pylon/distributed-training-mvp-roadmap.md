@@ -191,6 +191,10 @@ What is still missing:
 - `Pylon` now has one retained internal child-process supervision core for
   `psionic-train`, but it is not yet wired into live `Nexus` coordination,
   operator/admin surfaces, or public training status publication.
+- `Pylon` now has one retained training-coordination client for existing kernel
+  training lookups plus new idempotent node-side coordination calls, but
+  `Nexus` still lacks the admitted-node registry and live scheduler state those
+  calls need behind the full production lane.
 - `Nexus` has the authority object model, but not the full scheduler,
   assignment, reconciliation, and `TRN` publication loops for real training.
 - `crates/nostr` has the TRN spec text, but not the full typed Rust
@@ -1147,6 +1151,13 @@ become the admitted-node supervisor around `Psionic`.
   - window progress
   - checkpoint publication
 - Make those flows idempotent.
+- Current status: `apps/pylon/src/lib.rs` now wraps the existing kernel
+  training-policy and training-run lookup routes and defines the retained
+  node-side coordination client for node admission, run lease, heartbeat,
+  assignment ack, drain notice, failure notice, window progress, and checkpoint
+  publication, with retry and env-only bearer-token support. Later issues still
+  need to connect those calls to real `Nexus` authority state and operator
+  workflows.
 
 ### 3.5 Artifact courier and checkpoint serving
 
