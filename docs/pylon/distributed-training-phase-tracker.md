@@ -21,7 +21,10 @@ the current phase status against that spec.
   `docs/pylon/PYLON_DISTRIBUTED_TRAINING_REHEARSAL_MATRIX.md` and
   `scripts/release/check-pylon-distributed-training-mvp.sh` is passing.
 - Apple-capable public claims are blocked until every issue mapped into Phase 6
-  is closed and the Apple rehearsal matrix in `openagents#4251` is passing.
+  is closed and the Apple rehearsal matrix in
+  `docs/pylon/PYLON_DISTRIBUTED_TRAINING_APPLE_REHEARSAL_MATRIX.md` and
+  `scripts/release/check-pylon-distributed-training-apple-matrix.sh` is
+  passing.
 - Features outside the frozen Phase 0 contracts do not enter the MVP by
   opportunistic implementation unless they are required to satisfy an exit
   criterion.
@@ -38,7 +41,7 @@ Status snapshot as of `2026-04-10`:
 | Phase 3 Nexus Windows And Validator Loop | complete | none | satisfied |
 | Phase 4 TRN Publication And Reputation | complete | none | satisfied |
 | Phase 5 Dress Rehearsal And Launch | complete | none | satisfied |
-| Phase 6 Apple Silicon And Metal Support | in progress | `openagents#4248`, `openagents#4249`, `openagents#4250`, `openagents#4251` | blocked |
+| Phase 6 Apple Silicon And Metal Support | complete | none | satisfied |
 
 ## Phase Ownership
 
@@ -203,6 +206,11 @@ Exit gate:
 - scheduler and publication surfaces keep backend families explicit
 - the Apple rehearsal matrix passes before any dual-backend claim is made
 
+Canonical gate:
+
+- `scripts/release/check-pylon-distributed-training-apple-matrix.sh`
+- `docs/pylon/PYLON_DISTRIBUTED_TRAINING_APPLE_REHEARSAL_MATRIX.md`
+
 Mapped issues:
 
 - `psionic#912` closed
@@ -210,19 +218,22 @@ Mapped issues:
 - `openagents#4248` closed
 - `openagents#4249` closed
 - `openagents#4250` closed
-- `openagents#4251` open
+- `openagents#4251` closed
 
 Current assessment:
 
+- complete
 - runtime support is in place in `psionic`
-- `Pylon` now has admitted Apple capability detection, manifest acceptance, and
-  node-record publication coverage
-- `Nexus` now enforces backend-homogeneous worker and validator matching across
+- `Pylon` has admitted Apple capability detection, manifest acceptance,
+  retained checkpoint-serving coverage, and explicit Apple node publication
+- `Nexus` enforces backend-homogeneous worker and validator matching across
   shared Apple and CUDA training networks
-- the publication path now keeps backend-family and environment identity
-  explicit across shared Apple and CUDA TRN network, window, receipt, verdict,
-  and artifact events without introducing new MVP kinds
-- the remaining launch blocker is the Apple rehearsal issue
+- the publication path keeps backend-family and environment identity explicit
+  across shared Apple and CUDA TRN network, window, receipt, verdict, and
+  artifact events without introducing new MVP kinds
+- the retained Phase 6 gate in
+  `scripts/release/check-pylon-distributed-training-apple-matrix.sh` passed on
+  `2026-04-10`
 
 ## Required Tracker Hygiene
 

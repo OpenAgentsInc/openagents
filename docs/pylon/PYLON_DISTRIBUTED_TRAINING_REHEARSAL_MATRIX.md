@@ -176,3 +176,7 @@ covering:
 
 This is the honest MVP bar. It is not the Apple matrix, not a mixed-backend
 matrix, and not a permissionless-network audit program.
+
+For the retained Phase 6 Apple release block, use
+`docs/pylon/PYLON_DISTRIBUTED_TRAINING_APPLE_REHEARSAL_MATRIX.md` and
+`scripts/release/check-pylon-distributed-training-apple-matrix.sh`.

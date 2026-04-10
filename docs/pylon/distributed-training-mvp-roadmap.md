@@ -3584,6 +3584,20 @@ scheduling, and artifact-portability claims are proven.
 
 - Apple support is not claimed until all listed rehearsals pass.
 
+Status note:
+
+- landed in `openagents`: the retained Apple release block now has a canonical
+  Phase 6 matrix in
+  `docs/pylon/PYLON_DISTRIBUTED_TRAINING_APPLE_REHEARSAL_MATRIX.md`
+- landed in `openagents`: the canonical automation entrypoint is now
+  `scripts/release/check-pylon-distributed-training-apple-matrix.sh`, which
+  runs the exact Apple single-node, multi-node, validator, checkpoint and
+  rejoin, and dual-backend coexistence checks across sibling `psionic`,
+  `Pylon`, and `Nexus` surfaces before any dual-backend claim is allowed
+- landed in `openagents`: that retained Phase 6 gate passed on `2026-04-10`,
+  so Apple-capable claim blocking now depends on keeping this exact gate green
+  rather than on manual checklist review
+
 ### Meta and Release Planning
 
 #### 58. Track implementation by roadmap phase and gate launch on phase
