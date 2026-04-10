@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/10-install-treasury-watchdog.sh"
 TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_ENABLED
   NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW
@@ -14,6 +15,8 @@ TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR
   NEXUS_CONTROL_TREASURY_WALLET_NETWORK
   NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV
+  NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS
+  NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS
   NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS
   NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV
   NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE
@@ -77,12 +80,14 @@ preserve_remote_treasury_env() {
 load_remote_treasury_policy() {
   local remote_state_path="${NEXUS_CONTROL_TREASURY_STATE_PATH:-}"
   [[ -n "$remote_state_path" ]] || return 0
+  local remote_state_path_quoted
+  printf -v remote_state_path_quoted '%q' "$remote_state_path"
 
   gcloud compute ssh "$NEXUS_VM" \
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
-    --command "sudo test -f '${remote_state_path}' && sudo jq -c '.active_policy // empty' '${remote_state_path}' || true"
+    --command "sudo bash -lc 'state_path=${remote_state_path_quoted}; if [[ -f \"\$state_path\" ]]; then tmp=\$(mktemp); cp \"\$state_path\" \"\$tmp\"; jq -c \".active_policy // empty\" \"\$tmp\" 2>/dev/null || true; rm -f \"\$tmp\"; fi'"
 }
 
 treasury_policy_change_requested() {
@@ -142,6 +147,112 @@ preserve_or_validate_persisted_treasury_policy() {
   log "Applying explicit treasury policy override against persisted checksum=$(jq -r '.checksum' <<<"$persisted_policy_json")"
 }
 
+current_remote_deploy_image() {
+  gcloud compute ssh "$NEXUS_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command "sudo systemctl cat nexus-relay.service 2>/dev/null | awk '/^ExecStart=\\/usr\\/bin\\/docker run / { print \$NF }' | tail -n 1"
+}
+
+remote_nexus_service_start_unix_s() {
+  gcloud compute ssh "$NEXUS_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command 'timestamp="$(systemctl show -p ActiveEnterTimestamp --value nexus-relay 2>/dev/null || true)"; if [[ -n "$timestamp" && "$timestamp" != "n/a" ]]; then date -d "$timestamp" +%s; else echo 0; fi'
+}
+
+remote_recent_completed_sends_since() {
+  local since_unix_s="$1"
+  gcloud compute ssh "$NEXUS_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command "sudo journalctl -u nexus-relay --since '@${since_unix_s}' --no-pager 2>/dev/null | grep -Ec 'Inserted payment: Payment \\{.*payment_type: Send, status: Completed, amount:' || true"
+}
+
+remote_treasury_status_json() {
+  gcloud compute ssh "$NEXUS_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command "curl -fsS --max-time 15 'http://127.0.0.1:8080/v1/treasury/status' 2>/dev/null || true"
+}
+
+post_restart_smoke_check_enabled() {
+  [[ "${NEXUS_DEPLOY_POST_RESTART_SMOKE_ENABLED}" == "true" ]] \
+    && [[ "${NEXUS_SKIP_POST_DEPLOY_SMOKE_CHECK}" != "true" ]]
+}
+
+perform_post_restart_smoke_check() {
+  local deployed_image="$1"
+  local previous_image="$2"
+
+  post_restart_smoke_check_enabled || return 0
+
+  local timeout_seconds="${NEXUS_DEPLOY_POST_RESTART_SMOKE_TIMEOUT_SECONDS}"
+  local poll_seconds="${NEXUS_DEPLOY_POST_RESTART_SMOKE_POLL_SECONDS}"
+  local deadline_unix_s
+  deadline_unix_s="$(( $(date +%s) + timeout_seconds ))"
+
+  while (( $(date +%s) < deadline_unix_s )); do
+    local service_state service_start_unix_s recent_completed status_json
+    local sellable_targets wallet_runtime_status last_dispatch_at_unix_ms
+
+    service_state="$(
+      gcloud compute ssh "$NEXUS_VM" \
+        --tunnel-through-iap \
+        --project "$GCP_PROJECT" \
+        --zone "$GCP_ZONE" \
+        --command 'systemctl is-active nexus-relay 2>/dev/null || true'
+    )"
+
+    if [[ "$service_state" != "active" ]]; then
+      log "Waiting for post-deploy smoke: nexus-relay state=${service_state:-unknown}"
+      sleep "$poll_seconds"
+      continue
+    fi
+
+    service_start_unix_s="$(remote_nexus_service_start_unix_s)"
+    recent_completed="0"
+    if [[ "$service_start_unix_s" =~ ^[0-9]+$ ]] && (( service_start_unix_s > 0 )); then
+      recent_completed="$(remote_recent_completed_sends_since "$service_start_unix_s" | tr -d '[:space:]')"
+    fi
+
+    if [[ "$recent_completed" =~ ^[0-9]+$ ]] && (( recent_completed > 0 )); then
+      log "Post-deploy smoke passed image=${deployed_image} recent_completed=${recent_completed}"
+      return 0
+    fi
+
+    status_json="$(remote_treasury_status_json)"
+    sellable_targets="unknown"
+    wallet_runtime_status="unknown"
+    last_dispatch_at_unix_ms="0"
+    if [[ -n "$status_json" ]]; then
+      sellable_targets="$(jq -r '.sellable_pylons_online_now // .eligible_online_payout_targets // 0' <<<"$status_json")"
+      wallet_runtime_status="$(jq -r '.wallet_runtime_status // empty' <<<"$status_json")"
+      last_dispatch_at_unix_ms="$(jq -r '.last_dispatch_at_unix_ms // 0' <<<"$status_json")"
+      if [[ "$sellable_targets" =~ ^[0-9]+$ ]] && (( sellable_targets == 0 )) \
+        && [[ "$wallet_runtime_status" == "connected" ]]; then
+        log "Post-deploy smoke passed image=${deployed_image} with zero sellable payout targets"
+        return 0
+      fi
+    fi
+
+    log "Waiting for post-deploy payout smoke image=${deployed_image} service_state=${service_state} recent_completed=${recent_completed} sellable=${sellable_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+    sleep "$poll_seconds"
+  done
+
+  if [[ -n "$previous_image" && "$previous_image" != "$deployed_image" ]]; then
+    log "Post-deploy smoke failed for ${deployed_image}; rolling back to ${previous_image}"
+    NEXUS_SKIP_POST_DEPLOY_SMOKE_CHECK=true DEPLOY_IMAGE="$previous_image" bash "$0"
+    return 0
+  fi
+
+  die "Post-deploy smoke failed for ${deployed_image} and no rollback image was available"
+}
+
 DEPLOY_IMAGE="${DEPLOY_IMAGE:-${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${NEXUS_ARTIFACT_REPO}/${NEXUS_IMAGE_NAME}:latest}"
 UPSTREAM_CONFIG_SOURCE="${ROOT_DIR}/apps/nexus-relay/deploy/upstream-config.toml"
 
@@ -150,13 +261,18 @@ if ! instance_exists "$NEXUS_VM"; then
 fi
 [[ -f "$UPSTREAM_CONFIG_SOURCE" ]] || die "Missing upstream config template: ${UPSTREAM_CONFIG_SOURCE}"
 
+PREVIOUS_DEPLOY_IMAGE="$(current_remote_deploy_image || true)"
+
 preserve_remote_treasury_env
 
 : "${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV:=false}"
 : "${NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE:=false}"
 : "${NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON:=}"
 : "${NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV:=}"
+: "${NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS:=3}"
+: "${NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS:=16}"
 : "${NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS:=300}"
+: "${TOKIO_WORKER_THREADS:=16}"
 
 preserve_or_validate_persisted_treasury_policy
 
@@ -177,6 +293,7 @@ cp "$UPSTREAM_CONFIG_SOURCE" "$TMP_UPSTREAM_CONFIG"
 cat >"$TMP_ENV" <<ENV
 # Managed by scripts/deploy/nexus/03-configure-and-start.sh
 RUST_LOG=info
+TOKIO_WORKER_THREADS=${TOKIO_WORKER_THREADS}
 NEXUS_RELAY_LISTEN_ADDR=${NEXUS_LISTEN_ADDR}
 NEXUS_RELAY_UPSTREAM_LISTEN_ADDR=${NEXUS_UPSTREAM_LISTEN_ADDR}
 NEXUS_RELAY_DATA_DIR=${NEXUS_DATA_DIR}
@@ -195,6 +312,8 @@ NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH=${NEXUS_CONTROL_TREASURY_WALLET_MNEM
 NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR=${NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR}
 NEXUS_CONTROL_TREASURY_WALLET_NETWORK=${NEXUS_CONTROL_TREASURY_WALLET_NETWORK}
 NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV=${NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV}
+NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=${NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS}
+NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=${NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS}
 NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS=${NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS}
 NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV=${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV}
 NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE=${NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE}
@@ -320,5 +439,11 @@ gcloud compute ssh "$NEXUS_VM" \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
   --command "chmod +x /tmp/nexus-bootstrap.sh && /tmp/nexus-bootstrap.sh '$DEPLOY_IMAGE' '/tmp/nexus-relay.env' '/tmp/upstream-config.toml' '$NEXUS_DATA_DIR' '$NEXUS_DATA_DISK_DEVICE_NAME'"
+
+if [[ -x "$WATCHDOG_INSTALL_SCRIPT" ]]; then
+  bash "$WATCHDOG_INSTALL_SCRIPT"
+fi
+
+perform_post_restart_smoke_check "$DEPLOY_IMAGE" "$PREVIOUS_DEPLOY_IMAGE"
 
 log "Nexus deployment refreshed on ${NEXUS_VM} using image ${DEPLOY_IMAGE}"
