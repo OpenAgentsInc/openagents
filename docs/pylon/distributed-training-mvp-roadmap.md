@@ -3542,6 +3542,18 @@ The roadmap defines this implementation order:
 - MVP launch is blocked until Phase 5 criteria and rehearsal requirements are
   met.
 
+**Current Status**
+
+- The live phase tracker now lives in
+  `docs/pylon/distributed-training-phase-tracker.md`.
+- That tracker maps every roadmap phase to the current cross-repo issue set and
+  marks the remaining launch blockers explicitly instead of leaving phase
+  completion implicit in the issue list.
+- As of `2026-04-10`, Phases 0 through 3 are complete, Phase 4 is blocked on
+  `openagents#4235`, Phase 5 is blocked on `openagents#4238` and
+  `openagents#4247`, and Phase 6 remains blocked on the Apple-side
+  `openagents` work.
+
 #### 59. Track explicit non-blockers so they do not derail MVP delivery
 
 **Summary**
