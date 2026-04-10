@@ -85,8 +85,9 @@ use tokio::{
 pub use ledger::{
     PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerPayout, PylonLedgerSummary,
     PylonRelayActivity, PylonRelayConfigSnapshot, PylonRelayState, PylonSettlementRecord,
-    PylonWalletInvoiceRecord, PylonWalletLedger, PylonWalletPaymentRecord, default_ledger_path,
-    ensure_local_ledger, load_ledger, load_ledger_summary, mutate_ledger, save_ledger,
+    PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletLedger,
+    PylonWalletPaymentRecord, default_ledger_path, ensure_local_ledger, load_ledger,
+    load_ledger_summary, mutate_ledger, save_ledger,
 };
 pub use nip90_runtime::{
     AnnouncementAction, AnnouncementReport, BuyerJobHistoryReport, BuyerJobPaymentReport,
@@ -101,13 +102,13 @@ pub use nip90_runtime::{
     run_provider_requests, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
 };
 pub use wallet_runtime::{
-    WalletAddressReport, WalletBalanceSnapshot, WalletHistoryReport, WalletInvoiceReport,
-    WalletPayReport, WalletRuntimeSurface, WalletStatusReport, WalletSubcommand,
-    create_wallet_address_report, create_wallet_invoice_report, load_wallet_history_report,
-    load_wallet_status_report, parse_wallet_command, pay_wallet_invoice_report,
-    render_wallet_address_report, render_wallet_balance_report, render_wallet_history_report,
-    render_wallet_invoice_report, render_wallet_pay_report, render_wallet_status_report,
-    run_wallet_command,
+    WalletAddressReport, WalletBalanceSnapshot, WalletCreditSummaryReport, WalletHistoryReport,
+    WalletInvoiceReport, WalletPayReport, WalletRuntimeSurface, WalletStatusReport,
+    WalletSubcommand, create_wallet_address_report, create_wallet_invoice_report,
+    load_wallet_credit_summary_report, load_wallet_history_report, load_wallet_status_report,
+    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
+    render_wallet_balance_report, render_wallet_history_report, render_wallet_invoice_report,
+    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
@@ -12225,6 +12226,7 @@ pub async fn load_jobs_report(config_path: &Path, limit: Option<usize>) -> Resul
 
 pub async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> {
     let (config, status) = load_config_and_status(config_path).await?;
+    let ledger = load_ledger(config_path).unwrap_or_default();
     let earnings = if config_path.exists() {
         if let Some(earnings) =
             try_live_json::<Option<ProviderEarningsSummary>>(&config, "/v1/earnings").await?
@@ -12245,10 +12247,18 @@ pub async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> 
     } else {
         None
     };
+    let wallet_credit_summary = match load_wallet_credit_summary_report(config_path).await {
+        Ok(report) => Some(report.credits),
+        Err(_) if ledger.wallet.credits.last_full_sync_at_ms.is_some() => {
+            Some(ledger.wallet.credits.clone())
+        }
+        Err(_) => None,
+    };
     let earnings = merge_ledger_earnings(
         earnings,
-        &load_ledger(config_path).unwrap_or_default(),
+        &ledger,
         &status,
+        wallet_credit_summary.as_ref(),
     );
     Ok(EarningsReport {
         context: report_context(&status),
@@ -12458,12 +12468,15 @@ fn merge_ledger_earnings(
     base: Option<ProviderEarningsSummary>,
     ledger: &PylonLedger,
     status: &ProviderStatusResponse,
+    wallet_credit_summary: Option<&PylonWalletCreditSummary>,
 ) -> Option<ProviderEarningsSummary> {
+    let use_wallet_credit_fallback = base.is_none();
     if !ledger.jobs.iter().any(|job| job.direction == "provider")
         && !ledger
             .settlements
             .iter()
             .any(|settlement| settlement.direction == "provider")
+        && !wallet_credit_summary.is_some_and(|credits| credits.last_full_sync_at_ms.is_some())
     {
         return base;
     }
@@ -12486,19 +12499,41 @@ fn merge_ledger_earnings(
         .iter()
         .filter(|settlement| settlement.direction == "provider" && settlement.status == "settled")
         .collect::<Vec<_>>();
-    earnings.lifetime_sats = settled
-        .iter()
-        .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
-        .sum();
-    earnings.sats_today = settled
-        .iter()
-        .filter(|settlement| settlement.updated_at_ms / 86_400_000 == current_day)
-        .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
-        .sum();
-    earnings.jobs_today = settled
-        .iter()
-        .filter(|settlement| settlement.updated_at_ms / 86_400_000 == current_day)
-        .count() as u64;
+    if use_wallet_credit_fallback {
+        if let Some(credits) = wallet_credit_summary {
+            earnings.lifetime_sats = credits.credited_lifetime_sats;
+            earnings.sats_today = credits.credited_today_sats;
+            earnings.jobs_today = credits.credited_today_count;
+        } else {
+            earnings.lifetime_sats = settled
+                .iter()
+                .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
+                .sum();
+            earnings.sats_today = settled
+                .iter()
+                .filter(|settlement| settlement.created_at_ms / 86_400_000 == current_day)
+                .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
+                .sum();
+            earnings.jobs_today = settled
+                .iter()
+                .filter(|settlement| settlement.created_at_ms / 86_400_000 == current_day)
+                .count() as u64;
+        }
+    } else {
+        earnings.lifetime_sats = settled
+            .iter()
+            .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
+            .sum();
+        earnings.sats_today = settled
+            .iter()
+            .filter(|settlement| settlement.created_at_ms / 86_400_000 == current_day)
+            .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
+            .sum();
+        earnings.jobs_today = settled
+            .iter()
+            .filter(|settlement| settlement.created_at_ms / 86_400_000 == current_day)
+            .count() as u64;
+    }
     if let Some(latest_job) = provider_jobs.first() {
         earnings.last_job_result = latest_job.status.clone();
     }
@@ -14554,7 +14589,7 @@ mod tests {
         PylonTrainingRoleClaim, PylonTrainingRunLeaseRequest, PylonTrainingRuntimeState,
         PylonTrainingSupervisorCommand, PylonTrainingSupervisorDesiredState,
         PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
-        PylonTrainingWindowCacheEntry, PylonTrainingWindowProgressRequest,
+        PylonTrainingWindowCacheEntry, PylonTrainingWindowProgressRequest, PylonWalletCreditSummary,
         PylonWalletInvoiceRecord, PylonWalletPaymentRecord, TRN_TRAINING_NODE_RECORD_KIND,
         TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand, TrainingCommand,
         TrainingOperatorStatusReport, TrainingTrnPublicationReport, WalletAddressReport,
@@ -14569,10 +14604,12 @@ mod tests {
         inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
         load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect,
+        load_relay_report, load_sandbox_report, load_status_or_detect, merge_ledger_earnings,
+        now_epoch_ms,
         load_training_artifact_inspection_report, load_training_status_report_local,
         local_training_release_id, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
-        poll_training_supervisor, provider_admin_config, provider_presence_client,
+        poll_training_supervisor, provider_admin_config, provider_presence_client, PylonLedger,
+        PylonLedgerJob, PylonSettlementRecord,
         psionic_gemma_benchmark_command_args, publish_announcement_report,
         publish_training_trn_state, refresh_relay_report, remove_configured_relay,
         render_human_status, render_public_config_json, render_sandbox_report,
@@ -14620,7 +14657,8 @@ mod tests {
         ProviderInventoryControls, ProviderPersistenceStore, ProviderPooledInferenceAvailability,
         ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
         ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
-        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, provider_runtime_state_label,
+        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, ProviderStatusResponse,
+        provider_runtime_state_label,
     };
     use serde_json::{Value, json};
     use tempfile::tempdir;
@@ -21183,6 +21221,90 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         super::nip90_runtime::set_test_wallet_invoice_hook(None);
         super::nip90_runtime::set_test_wallet_payments_hook(None);
         Ok(())
+    }
+
+    #[test]
+    fn merge_ledger_earnings_prefers_wallet_credit_summary_for_local_fallbacks() {
+        let mut ledger = PylonLedger::default();
+        let mut job = PylonLedgerJob::new("provider-job-001", "provider", 5050, "settled");
+        job.updated_at_ms = now_epoch_ms() as u64;
+        ledger.upsert_job(job);
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: "provider-settlement-001".to_string(),
+            job_id: "provider-job-001".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 510_000,
+            payment_reference: Some("payment-001".to_string()),
+            receipt_detail: Some("local settlement".to_string()),
+            created_at_ms: now_epoch_ms() as u64,
+            updated_at_ms: now_epoch_ms() as u64,
+        });
+        ledger.wallet.credits = PylonWalletCreditSummary {
+            credited_lifetime_sats: 4_892,
+            credited_today_sats: 42,
+            credited_today_count: 21,
+            last_credit_at_ms: Some(now_epoch_ms() as u64),
+            last_full_sync_at_ms: Some(now_epoch_ms() as u64),
+        };
+
+        let earnings = merge_ledger_earnings(
+            None,
+            &ledger,
+            &ProviderStatusResponse {
+                listen_addr: None,
+                desired_mode: ProviderDesiredMode::Online,
+                snapshot: None,
+            },
+            Some(&ledger.wallet.credits),
+        )
+        .expect("earnings");
+
+        assert_eq!(earnings.lifetime_sats, 4_892);
+        assert_eq!(earnings.sats_today, 42);
+        assert_eq!(earnings.jobs_today, 21);
+        assert_eq!(earnings.last_job_result, "settled");
+    }
+
+    #[test]
+    fn merge_ledger_earnings_uses_settlement_created_at_for_today_window() {
+        let now_ms = now_epoch_ms() as u64;
+        let current_day = now_ms / 86_400_000;
+        let yesterday_ms = current_day
+            .saturating_sub(1)
+            .saturating_mul(86_400_000)
+            .saturating_add(1_000);
+        let mut ledger = PylonLedger::default();
+        let mut job = PylonLedgerJob::new("provider-job-002", "provider", 5050, "settled");
+        job.updated_at_ms = now_ms;
+        ledger.upsert_job(job);
+        ledger.upsert_settlement(PylonSettlementRecord {
+            settlement_id: "provider-settlement-002".to_string(),
+            job_id: "provider-job-002".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 21_000,
+            payment_reference: Some("payment-002".to_string()),
+            receipt_detail: Some("old settlement".to_string()),
+            created_at_ms: yesterday_ms,
+            updated_at_ms: now_ms,
+        });
+
+        let earnings = merge_ledger_earnings(
+            None,
+            &ledger,
+            &ProviderStatusResponse {
+                listen_addr: None,
+                desired_mode: ProviderDesiredMode::Online,
+                snapshot: None,
+            },
+            None,
+        )
+        .expect("earnings");
+
+        assert_eq!(earnings.lifetime_sats, 21);
+        assert_eq!(earnings.sats_today, 0);
+        assert_eq!(earnings.jobs_today, 0);
     }
 
     fn ready_health(

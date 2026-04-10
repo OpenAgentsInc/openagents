@@ -214,6 +214,15 @@ pub struct PylonWalletPaymentRecord {
     pub updated_at_ms: u64,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonWalletCreditSummary {
+    pub credited_lifetime_sats: u64,
+    pub credited_today_sats: u64,
+    pub credited_today_count: u64,
+    pub last_credit_at_ms: Option<u64>,
+    pub last_full_sync_at_ms: Option<u64>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonLedgerPayout {
     pub payout_id: String,
@@ -237,6 +246,8 @@ pub struct PylonWalletLedger {
     pub last_balance_at_ms: Option<u64>,
     pub spark_address: Option<String>,
     pub bitcoin_address: Option<String>,
+    #[serde(default)]
+    pub credits: PylonWalletCreditSummary,
     pub invoices: Vec<PylonWalletInvoiceRecord>,
     pub payments: Vec<PylonWalletPaymentRecord>,
 }
@@ -251,6 +262,7 @@ impl Default for PylonWalletLedger {
             last_balance_at_ms: None,
             spark_address: None,
             bitcoin_address: None,
+            credits: PylonWalletCreditSummary::default(),
             invoices: Vec::new(),
             payments: Vec::new(),
         }
