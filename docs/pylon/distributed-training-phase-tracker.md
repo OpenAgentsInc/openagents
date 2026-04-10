@@ -208,7 +208,7 @@ Mapped issues:
 - `psionic#912` closed
 - `psionic#913` closed
 - `openagents#4248` closed
-- `openagents#4249` open
+- `openagents#4249` closed
 - `openagents#4250` open
 - `openagents#4251` open
 
@@ -217,8 +217,10 @@ Current assessment:
 - runtime support is in place in `psionic`
 - `Pylon` now has admitted Apple capability detection, manifest acceptance, and
   node-record publication coverage
-- the remaining launch blockers are the `openagents` scheduler, publication,
-  and rehearsal issues
+- `Nexus` now enforces backend-homogeneous worker and validator matching across
+  shared Apple and CUDA training networks
+- the remaining launch blockers are the `openagents` publication and rehearsal
+  issues
 
 ## Required Tracker Hygiene
 
