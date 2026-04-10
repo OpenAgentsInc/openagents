@@ -3512,6 +3512,15 @@ windows until a later version explicitly enables them.
 - CUDA and Apple nodes can coexist in one network while only being scheduled
   into backend-homogeneous windows.
 
+Current status:
+
+- landed in `openagents`: `Nexus` now applies the admitted environment-family
+  contract to both worker lease selection and validator challenge leasing, so a
+  shared network can carry concurrent CUDA and Apple runs without
+  cross-assigning workers or validators across backend families; focused
+  coverage now exercises both worker auto-selection and validator challenge
+  claim behavior across mixed Apple/CUDA network membership.
+
 #### 56. Reuse TRN event shapes for Apple-capable node and window publication
 
 **Summary**

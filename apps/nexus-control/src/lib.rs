@@ -2106,6 +2106,20 @@ fn training_node_matches_scheduler_run(
         == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow)
 }
 
+fn training_validator_node_matches_window(
+    kernel: &KernelState,
+    node: &AdmittedTrainingNodeView,
+    window: &ComputeAdapterTrainingWindow,
+) -> bool {
+    let Some(run) = kernel.get_compute_training_run(window.training_run_id.as_str()) else {
+        return false;
+    };
+    let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
+        return false;
+    };
+    training_node_matches_scheduler_run(node, &run, &metadata, TrainingNodeRoleClaim::Validator)
+}
+
 fn normalize_required_training_string(value: &str, reason: &str) -> Result<String, String> {
     let normalized = value.trim();
     if normalized.is_empty() {
@@ -5395,6 +5409,9 @@ async fn claim_training_validator_challenge(
                 .as_deref()
                 .is_some_and(|expected| metadata.network_id != expected)
             {
+                continue;
+            }
+            if !training_validator_node_matches_window(&store.kernel, &node, &window) {
                 continue;
             }
             if !node.allowed_networks.is_empty()
@@ -13888,6 +13905,7 @@ mod tests {
         RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
     };
     use openagents_kernel_core::pylon_training::{
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
         PylonTrainingAggregateResolution, PylonTrainingContributionVerdict,
         PylonTrainingRefusalCode,
     };
@@ -14394,6 +14412,43 @@ mod tests {
         }
     }
 
+    fn training_node_admission_request_with_environment_refs(
+        node_pubkey_hex: &str,
+        build_digest: &str,
+        allowed_networks: Vec<&str>,
+        active_reputation_labels: Vec<&str>,
+        available_memory_gb: Option<u32>,
+        environment_refs: Vec<&str>,
+    ) -> RecordTrainingNodeAdmissionRequest {
+        let mut request = training_node_admission_request(
+            node_pubkey_hex,
+            build_digest,
+            allowed_networks,
+            active_reputation_labels,
+            available_memory_gb,
+        );
+        request.contributor_availability.environment_refs =
+            environment_refs.into_iter().map(str::to_string).collect();
+        request.contributor_availability.minimum_memory_gb = if request
+            .contributor_availability
+            .environment_refs
+            .iter()
+            .any(|value| value == PYLON_TRAINING_CUDA_ENVIRONMENT_REF)
+        {
+            Some(80)
+        } else if request
+            .contributor_availability
+            .environment_refs
+            .iter()
+            .any(|value| value == PYLON_TRAINING_APPLE_ENVIRONMENT_REF)
+        {
+            Some(32)
+        } else {
+            None
+        };
+        request
+    }
+
     fn training_node_heartbeat_request(
         node_pubkey_hex: &str,
         build_digest: &str,
@@ -14413,6 +14468,18 @@ mod tests {
             last_heartbeat_at_ms: Some(now),
             last_exit_code: None,
         }
+    }
+
+    fn training_node_heartbeat_request_for_scope(
+        node_pubkey_hex: &str,
+        build_digest: &str,
+        training_run_id: &str,
+        window_id: &str,
+    ) -> RecordTrainingNodeHeartbeatRequest {
+        let mut request = training_node_heartbeat_request(node_pubkey_hex, build_digest);
+        request.training_run_id = training_run_id.to_string();
+        request.window_id = window_id.to_string();
+        request
     }
 
     fn training_scheduler_metadata(
@@ -14442,13 +14509,31 @@ mod tests {
         requested_training_run_id: &str,
         requested_network_id: &str,
     ) -> RecordTrainingRunLeaseRequest {
+        training_run_lease_request_for_scope(
+            idempotency_key,
+            requested_at_ms,
+            node_pubkey_hex,
+            TrainingNodeRoleClaim::Worker,
+            Some(requested_network_id),
+            Some(requested_training_run_id),
+        )
+    }
+
+    fn training_run_lease_request_for_scope(
+        idempotency_key: &str,
+        requested_at_ms: i64,
+        node_pubkey_hex: &str,
+        role: TrainingNodeRoleClaim,
+        requested_network_id: Option<&str>,
+        requested_training_run_id: Option<&str>,
+    ) -> RecordTrainingRunLeaseRequest {
         RecordTrainingRunLeaseRequest {
             idempotency_key: idempotency_key.to_string(),
             requested_at_ms,
             node_pubkey_hex: node_pubkey_hex.to_string(),
-            role: TrainingNodeRoleClaim::Worker,
-            requested_network_id: Some(requested_network_id.to_string()),
-            requested_training_run_id: Some(requested_training_run_id.to_string()),
+            role,
+            requested_network_id: requested_network_id.map(str::to_string),
+            requested_training_run_id: requested_training_run_id.map(str::to_string),
             membership_revision: None,
         }
     }
@@ -14840,13 +14925,184 @@ mod tests {
         node_pubkey_hex: &str,
         training_run_id: &str,
     ) -> ClaimTrainingValidatorChallengeRequest {
+        training_validator_claim_request_for_scope(
+            idempotency_key,
+            recorded_at_ms,
+            node_pubkey_hex,
+            Some("trainnet.alpha"),
+            Some(training_run_id),
+        )
+    }
+
+    fn training_validator_claim_request_for_scope(
+        idempotency_key: &str,
+        recorded_at_ms: i64,
+        node_pubkey_hex: &str,
+        requested_network_id: Option<&str>,
+        requested_training_run_id: Option<&str>,
+    ) -> ClaimTrainingValidatorChallengeRequest {
         ClaimTrainingValidatorChallengeRequest {
             idempotency_key: idempotency_key.to_string(),
             requested_at_ms: recorded_at_ms,
             node_pubkey_hex: node_pubkey_hex.to_string(),
-            requested_network_id: Some("trainnet.alpha".to_string()),
-            requested_training_run_id: Some(training_run_id.to_string()),
+            requested_network_id: requested_network_id.map(str::to_string),
+            requested_training_run_id: requested_training_run_id.map(str::to_string),
         }
+    }
+
+    fn seed_training_scheduler_run_with_environment_contract(
+        state: &AppState,
+        created_at_ms: u64,
+        training_run_id: &str,
+        initial_window_id: &str,
+        network_id: &str,
+        node_pubkey_hex: &str,
+        build_digest: &str,
+        environment_ref: &str,
+    ) {
+        let shared_catalog_at_ms = 1_762_491_000_000i64;
+        let mut store = state.store.write().expect("write store");
+        for (ordinal, environment_ref) in [
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context(
+                        "scheduler",
+                        shared_catalog_at_ms as u64 + 100 + ordinal as u64,
+                    ),
+                    compute_environment_package_request(
+                        environment_ref,
+                        "2026.04.09",
+                        format!(
+                            "idemp.scheduler.environment.multi_backend.{}",
+                            crate::sanitize_identifier(environment_ref)
+                        )
+                        .as_str(),
+                        shared_catalog_at_ms + 100 + ordinal as i64,
+                    ),
+                )
+                .expect("register environment");
+        }
+        let mut checkpoint_policy_request = compute_checkpoint_family_policy_request(
+            "idemp.scheduler.checkpoint.multi_backend",
+            shared_catalog_at_ms + 200,
+        );
+        checkpoint_policy_request
+            .policy_record
+            .allowed_environment_refs = vec![
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
+        ];
+        checkpoint_policy_request.policy_record.validator_policy_ref =
+            Some("policy://validator/mvp/v1".to_string());
+        store
+            .kernel
+            .register_compute_checkpoint_family_policy(
+                &training_kernel_mutation_context("scheduler", shared_catalog_at_ms as u64 + 200),
+                checkpoint_policy_request,
+            )
+            .expect("register checkpoint policy");
+        let mut validator_policy_request = compute_validator_policy_request(
+            "idemp.scheduler.validator.multi_backend",
+            shared_catalog_at_ms + 300,
+        );
+        validator_policy_request.policy_record.policy_ref = "policy://validator/mvp/v1".to_string();
+        validator_policy_request
+            .policy_record
+            .benchmark_package_refs = Vec::new();
+        store
+            .kernel
+            .register_compute_validator_policy(
+                &training_kernel_mutation_context("scheduler", shared_catalog_at_ms as u64 + 300),
+                validator_policy_request,
+            )
+            .expect("register validator policy");
+        let mut training_policy_request = compute_training_policy_request(
+            "idemp.scheduler.training_policy.multi_backend",
+            shared_catalog_at_ms + 500,
+        );
+        training_policy_request.training_policy.training_policy_ref =
+            "policy://training/mvp/v1".to_string();
+        training_policy_request.training_policy.environment_refs = vec![
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
+        ];
+        training_policy_request.training_policy.validator_policy_ref =
+            "policy://validator/mvp/v1".to_string();
+        training_policy_request
+            .training_policy
+            .benchmark_package_refs = Vec::new();
+        store
+            .kernel
+            .register_compute_training_policy(
+                &training_kernel_mutation_context("scheduler", shared_catalog_at_ms as u64 + 500),
+                training_policy_request,
+            )
+            .expect("register training policy");
+
+        let mut training_run_request = compute_training_run_request(
+            format!("idemp.scheduler.run.{training_run_id}").as_str(),
+            created_at_ms as i64 + 600,
+        );
+        training_run_request.training_run.training_run_id = training_run_id.to_string();
+        training_run_request.training_run.training_policy_ref =
+            "policy://training/mvp/v1".to_string();
+        training_run_request.training_run.benchmark_package_refs = Vec::new();
+        training_run_request
+            .training_run
+            .environment_binding
+            .environment_ref = environment_ref.to_string();
+        training_run_request.training_run.validator_policy_ref =
+            "policy://validator/mvp/v1".to_string();
+        training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+        training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+        training_run_request.training_run.metadata =
+            training_scheduler_metadata(network_id, 1, 0, 0, initial_window_id);
+        store
+            .kernel
+            .create_compute_training_run(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                training_run_request,
+            )
+            .expect("create training run");
+
+        let mut node = training_node_admission_request_with_environment_refs(
+            node_pubkey_hex,
+            build_digest,
+            vec![network_id],
+            Vec::new(),
+            Some(512),
+            vec![environment_ref],
+        );
+        node.requested_at_ms = created_at_ms as i64 + 700;
+        store
+            .kernel
+            .record_training_node_admission(
+                &training_kernel_mutation_context(node_pubkey_hex, created_at_ms + 700),
+                node,
+            )
+            .expect("admit node");
+        let mut heartbeat = training_node_heartbeat_request_for_scope(
+            node_pubkey_hex,
+            build_digest,
+            training_run_id,
+            initial_window_id,
+        );
+        heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
+        heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
+        store
+            .kernel
+            .record_training_node_heartbeat(
+                &training_kernel_mutation_context(node_pubkey_hex, created_at_ms + 750),
+                heartbeat,
+            )
+            .expect("heartbeat node");
     }
 
     fn training_validator_retry_request(
@@ -21296,6 +21552,366 @@ mod tests {
             body.get("reason").and_then(serde_json::Value::as_str),
             Some("build_revoked")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_matches_worker_leases_to_backend_homogeneous_runs() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_475_000u64;
+        let network_id = "trainnet.shared";
+
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms,
+            "run.scheduler.cuda",
+            "window.cuda.0001",
+            network_id,
+            "node-cuda",
+            "sha256:build-cuda",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+        );
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms + 10_000,
+            "run.scheduler.apple",
+            "window.apple.0001",
+            network_id,
+            "node-apple",
+            "sha256:build-apple",
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+        );
+
+        let apple_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.apple.auto",
+                            created_at_ms as i64 + 20_000,
+                            "node-apple",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(apple_response.status(), StatusCode::OK);
+        let apple_lease = response_json::<RecordTrainingRunLeaseResponse>(apple_response).await?;
+        assert_eq!(apple_lease.training_run_id, "run.scheduler.apple");
+        assert_eq!(apple_lease.window_id, "window.apple.0001");
+
+        let cuda_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cuda.auto",
+                            created_at_ms as i64 + 20_100,
+                            "node-cuda",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(cuda_response.status(), StatusCode::OK);
+        let cuda_lease = response_json::<RecordTrainingRunLeaseResponse>(cuda_response).await?;
+        assert_eq!(cuda_lease.training_run_id, "run.scheduler.cuda");
+        assert_eq!(cuda_lease.window_id, "window.cuda.0001");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_validator_claims_skip_windows_from_mismatched_backend_families() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_485_000u64;
+        let network_id = "trainnet.shared";
+        let cuda_run_id = "run.scheduler.cuda.validators";
+        let apple_run_id = "run.scheduler.apple.validators";
+        let cuda_window_id = "window.cuda.0001";
+        let apple_window_id = "window.apple.0001";
+
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms,
+            cuda_run_id,
+            cuda_window_id,
+            network_id,
+            "node-cuda",
+            "sha256:build-cuda",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+        );
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms + 10_000,
+            apple_run_id,
+            apple_window_id,
+            network_id,
+            "node-apple",
+            "sha256:build-apple",
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+        );
+
+        let cuda_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.cuda.validators",
+                            created_at_ms as i64 + 1_000,
+                            "node-cuda",
+                            cuda_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(cuda_lease_response.status(), StatusCode::OK);
+        let cuda_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(cuda_lease_response).await?;
+
+        let apple_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.apple.validators",
+                            created_at_ms as i64 + 11_000,
+                            "node-apple",
+                            apple_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(apple_lease_response.status(), StatusCode::OK);
+        let apple_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(apple_lease_response).await?;
+
+        for (training_run_id, window_id, lease, slice_id, slice_digest, seal_offset_ms) in [
+            (
+                cuda_run_id,
+                cuda_window_id,
+                &cuda_lease,
+                "slice://cuda/0001",
+                "sha256:slice-cuda-0001",
+                1_300,
+            ),
+            (
+                apple_run_id,
+                apple_window_id,
+                &apple_lease,
+                "slice://apple/0001",
+                "sha256:slice-apple-0001",
+                11_300,
+            ),
+        ] {
+            let planned = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/training/windows/plan")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &plan_training_window_request(
+                                format!("idemp.training.window.plan.{training_run_id}").as_str(),
+                                created_at_ms as i64 + seal_offset_ms - 200,
+                                training_run_id,
+                                vec![training_window_dataset_slice(slice_id, slice_digest)],
+                            ),
+                        )?))?,
+                )
+                .await?;
+            assert_eq!(planned.status(), StatusCode::OK);
+
+            let activated = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/api/training/windows/{window_id}/activate"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &transition_training_window_request(
+                                format!("idemp.training.window.activate.{training_run_id}")
+                                    .as_str(),
+                                created_at_ms as i64 + seal_offset_ms - 100,
+                                window_id,
+                            ),
+                        )?))?,
+                )
+                .await?;
+            assert_eq!(activated.status(), StatusCode::OK);
+
+            let sealed = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/api/training/windows/{window_id}/seal"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &SealTrainingWindowRequest {
+                                idempotency_key: format!(
+                                    "idemp.training.window.seal.{training_run_id}"
+                                ),
+                                recorded_at_ms: created_at_ms as i64 + seal_offset_ms,
+                                window_id: window_id.to_string(),
+                                contribution_outcomes: vec![
+                                    training_window_contribution_input_for_lease(
+                                        format!("contrib.{training_run_id}").as_str(),
+                                        lease,
+                                        format!("sha256:validator-pending:{training_run_id}")
+                                            .as_str(),
+                                        None,
+                                    ),
+                                ],
+                            },
+                        )?))?,
+                )
+                .await?;
+            assert_eq!(sealed.status(), StatusCode::OK);
+        }
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator_cuda = training_node_admission_request_with_environment_refs(
+                "validator-cuda",
+                "sha256:validator-cuda",
+                vec![network_id],
+                Vec::new(),
+                Some(512),
+                vec![PYLON_TRAINING_CUDA_ENVIRONMENT_REF],
+            );
+            validator_cuda.requested_at_ms = created_at_ms as i64 + 15_000;
+            validator_cuda.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-cuda", created_at_ms + 15_000),
+                    validator_cuda,
+                )
+                .expect("admit cuda validator");
+            let mut validator_cuda_heartbeat = training_node_heartbeat_request_for_scope(
+                "validator-cuda",
+                "sha256:validator-cuda",
+                cuda_run_id,
+                cuda_window_id,
+            );
+            validator_cuda_heartbeat.recorded_at_ms = created_at_ms as i64 + 15_010;
+            validator_cuda_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 15_010);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-cuda", created_at_ms + 15_010),
+                    validator_cuda_heartbeat,
+                )
+                .expect("heartbeat cuda validator");
+
+            let mut validator_apple = training_node_admission_request_with_environment_refs(
+                "validator-apple",
+                "sha256:validator-apple",
+                vec![network_id],
+                Vec::new(),
+                Some(512),
+                vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF],
+            );
+            validator_apple.requested_at_ms = created_at_ms as i64 + 15_100;
+            validator_apple.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-apple", created_at_ms + 15_100),
+                    validator_apple,
+                )
+                .expect("admit apple validator");
+            let mut validator_apple_heartbeat = training_node_heartbeat_request_for_scope(
+                "validator-apple",
+                "sha256:validator-apple",
+                apple_run_id,
+                apple_window_id,
+            );
+            validator_apple_heartbeat.recorded_at_ms = created_at_ms as i64 + 15_110;
+            validator_apple_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 15_110);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-apple", created_at_ms + 15_110),
+                    validator_apple_heartbeat,
+                )
+                .expect("heartbeat apple validator");
+        }
+
+        let apple_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request_for_scope(
+                            "idemp.training.validator.claim.apple.auto",
+                            created_at_ms as i64 + 16_000,
+                            "validator-apple",
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(apple_claim.status(), StatusCode::OK);
+        let apple_claim =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(apple_claim).await?;
+        assert_eq!(apple_claim.training_run_id, apple_run_id);
+        assert_eq!(apple_claim.window_id, apple_window_id);
+
+        let cuda_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request_for_scope(
+                            "idemp.training.validator.claim.cuda.auto",
+                            created_at_ms as i64 + 16_100,
+                            "validator-cuda",
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(cuda_claim.status(), StatusCode::OK);
+        let cuda_claim =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(cuda_claim).await?;
+        assert_eq!(cuda_claim.training_run_id, cuda_run_id);
+        assert_eq!(cuda_claim.window_id, cuda_window_id);
         Ok(())
     }
 
