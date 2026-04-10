@@ -7,6 +7,10 @@ Current distributed-training planning lives here too:
 - `docs/pylon/2026-04-09-pylon-distributed-training-reference-audit.md`
 - `docs/pylon/distributed-training-mvp-roadmap.md`
 
+The frozen Phase 0 machine-readable contract for that roadmap now lives in:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs`
+
 The default local repo entrypoint is the small terminal shell:
 
 ```bash
