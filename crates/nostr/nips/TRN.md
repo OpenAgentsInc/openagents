@@ -199,8 +199,11 @@ TRN uses these common tags:
 - `["status", "<value>"]` — machine-readable state
 - `["role", "<role_name>"]` — node or receipt role
 - `["cap", "<capability_name>", "<value>"]` — capability declaration
-- `["class", "<execution_class>"]` — allowed execution class
+- `["class", "<value>"]` — execution class, expected artifact class, or stored
+  artifact class depending on the event
 - `["k", "<kind>"]` — optional supported kind or handler signal where relevant
+- `["p", "<pubkey>", "<relay>", "<marker>"]` — referenced actor such as the
+  affected contributor, validator, or coordinator
 - `["e", "<event_id>", "<relay>", "<marker>"]` — referenced events such as
   source windows, verdicts, or receipts
 - `["a", "<coordinate>", "<relay>", "<marker>"]` — referenced addressable
@@ -215,6 +218,10 @@ tags as invalid by default.
 
 Markers such as `source`, `resume`, `fork`, `bootstrap`, and `weights` are
 RECOMMENDED when they make recovery or fork lineage clearer.
+
+For receipts, verdicts, closeouts, and labels that affect a particular actor,
+implementations SHOULD use `p` tags with explicit markers such as `subject`,
+`validator`, or `coordinator`.
 
 ## 1. Training Network Contract (`kind:39500`)
 
@@ -395,7 +402,12 @@ Recommended tags:
 - `["policy", "<policy_revision_id>"]`
 - `["role", "<role_name>"]`
 - `["artifact", "<artifact_id>"]`
+- `["p", "<subject_pubkey>", "<relay>", "subject"]`
+- `["p", "<coordinator_pubkey>", "<relay>", "coordinator"]`
 - `["reason", "<reason_code>"]`
+- `["class", "<expected_artifact_class>"]`
+- `["checkpoint", "<checkpoint_id>"]`
+- `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "source"]`
 - `["e", "<referenced_event_id>", "<relay>", "window"]`
 - `["a", "39510:<pubkey>:<window_id>", "<relay>", "window"]`
 
@@ -408,6 +420,18 @@ Example statuses:
 - `window_sealed`
 - `window_reconciled`
 - `replay_required`
+
+When `status` is assignment-related, `content` SHOULD be a compact JSON object
+that includes:
+
+- `subject_pubkey`
+- `assignment_deadline_unix`
+- `expected_artifact_class`
+- either `sample_pool_digest` or `shard_digest`
+- either `source_checkpoint_id` or `source_checkpoint_coordinate`
+
+That profile gives validators enough information to replay or challenge
+assignment-scoped work without adding new receipt kinds.
 
 ## 5. Validator Verdict (`kind:39512`)
 
@@ -425,6 +449,8 @@ Recommended tags:
 - `["assignment", "<assignment_id>"]`
 - `["artifact", "<artifact_id>"]`
 - `["policy", "<policy_revision_id>"]`
+- `["p", "<subject_pubkey>", "<relay>", "subject"]`
+- `["p", "<validator_pubkey>", "<relay>", "validator"]`
 - `["reason", "<reason_code>"]`
 - `["validator_policy", "<validator_policy_id>"]`
 - `["x", "<artifact_or_bundle_digest>"]`
@@ -470,6 +496,7 @@ Recommended tags:
 - `["x", "<file_digest>"]`
 - `["url", "<location_hint>"]`
 - `["class", "checkpoint|weights|optimizer|config|delta|eval|proof|score"]`
+- `["window", "<window_id>"]`
 - `["policy", "<policy_revision_id>"]`
 - `["reason", "<reason_code>"]`
 - `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "source"]`
@@ -490,6 +517,26 @@ Artifact locators are also the main reuse, recovery, and fork surface in TRN.
 When a locator is meant to support resume or fork, its manifest SHOULD identify
 the files another operator needs to continue the run, such as checkpoint files,
 model weights, optimizer snapshots, config bundles, or proof files.
+
+When `class=score`, the locator SHOULD reference a signed score snapshot file.
+That file SHOULD identify:
+
+- whether the snapshot scope is the whole network or one window
+- the scoring or scheduling policy revision
+- the snapshot time
+- the columns included in the file
+
+Each score row SHOULD include at least:
+
+- the subject pubkey
+- the validator pubkey when a validator-specific score exists
+- accepted-count or accepted-weight facts
+- replay-required count
+- slashed count
+- current scheduling weight or equivalent assignment priority
+
+The score snapshot file stays off Nostr. The locator and its manifest make the
+snapshot discoverable, signed, and replayable from relay history.
 
 ## 7. Training Contribution Closeout (`kind:39530`)
 
@@ -516,6 +563,9 @@ Recommended tags:
 - `["assignment", "<assignment_id>"]`
 - `["artifact", "<artifact_id>"]`
 - `["policy", "<policy_revision_id>"]`
+- `["p", "<subject_pubkey>", "<relay>", "subject"]`
+- `["p", "<validator_pubkey>", "<relay>", "validator"]`
+- `["p", "<coordinator_pubkey>", "<relay>", "coordinator"]`
 - `["reason", "<reason_code>"]`
 - `["amount", "<millisats>"]`
 - `["e", "<verdict_event_id>", "<relay>", "verdict"]`
@@ -588,6 +638,31 @@ Implementations MAY use NIP-32 labels for:
 - checkpoint-warning markers
 - reputation or trust annotations
 
+Implementations that publish TRN reputation labels SHOULD use one of these
+namespaces:
+
+- `trn/reputation`
+- `trn/fraud`
+- `trn/validator`
+- `trn/build`
+- `trn/artifact`
+
+Recommended label values are:
+
+- `trn/reputation`: `accepted_contribution`, `rewarded`, `held`, `slashed`
+- `trn/fraud`: `replay_required`, `repeated_missing_submission`,
+  `suspicious_similarity`, `duplicate_submission`
+- `trn/validator`: `good`, `poor`, `inconsistent`
+- `trn/build`: `revoked`, `mismatch`
+- `trn/artifact`: `checkpoint_warning`, `digest_mismatch`, `proof_missing`
+
+When a label affects one concrete actor, implementations SHOULD target both:
+
+- the actor pubkey
+- the relevant TRN receipt, verdict, artifact locator, or closeout event
+
+That keeps reputation trails queryable by actor and auditable by source event.
+
 ## Security Considerations
 
 ### Do not move heavy bytes onto Nostr
@@ -634,10 +709,13 @@ One training cycle can look like this:
 4. Assignment receipts are emitted as `kind:39511` events.
 5. Heavy artifacts move outside Nostr.
 6. Validators publish `kind:39512` verdicts.
-7. Checkpoint, model-weight, or proof metadata is published through
-   `kind:39520`.
-8. Final reward, hold, or quarantine status is published through `kind:39530`.
-9. If the run needs to resume or fork, a new network or window points back to
+7. Checkpoint, model-weight, proof, or score-snapshot metadata is published
+   through `kind:39520`.
+8. Final reward, hold, quarantine, or slash status is published through
+   `kind:39530`.
+9. NIP-32 labels attach public reputation, fraud, validator-quality, build, or
+   artifact annotations to the affected actors and source events.
+10. If the run needs to resume or fork, a new network or window points back to
    the accepted artifacts and keeps going.
 
 This preserves one shared public coordination trail without pretending the
@@ -648,3 +726,6 @@ training itself runs on relays.
 - v0: initial umbrella draft for model-training coordination on Nostr with one
   core document and optional discovery, privacy, challenge, and reputation
   profiles
+- v0.1: standardized actor attribution with `p` tags, added assignment receipt
+  profile guidance, standardized score snapshot publication through artifact
+  locators, and defined recommended TRN reputation namespaces and labels
