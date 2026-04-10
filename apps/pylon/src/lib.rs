@@ -121,6 +121,8 @@ pub const ENV_TRAINING_GCS_ENDPOINT: &str = "OPENAGENTS_PYLON_TRAINING_GCS_ENDPO
 pub const ENV_TRAINING_GCS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN";
 pub const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
+const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 2_000;
+const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS: usize = 3;
@@ -10090,6 +10092,10 @@ pub fn provider_presence_heartbeat_interval() -> Duration {
     Duration::from_millis(DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS)
 }
 
+pub fn provider_auto_run_interval() -> Duration {
+    Duration::from_millis(DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS)
+}
+
 pub fn new_provider_presence_session_id() -> String {
     format!("pylon_{}", random_token())
 }
@@ -10164,8 +10170,10 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     let identity = ensure_identity(config.identity_path.as_path())?;
     let provider_presence_session_id = new_provider_presence_session_id();
     let provider_presence_heartbeat_interval = provider_presence_heartbeat_interval();
+    let provider_auto_run_interval = provider_auto_run_interval();
     let provider_payout_target_sync_interval = provider_payout_target_sync_interval();
     let mut next_provider_presence_heartbeat_at = Instant::now();
+    let mut next_provider_auto_run_at = Instant::now();
     let mut next_provider_payout_target_sync_at = Instant::now();
     let mut provider_presence_online = false;
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
@@ -10218,6 +10226,7 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             }
             provider_presence_online = false;
             next_provider_presence_heartbeat_at = Instant::now();
+            next_provider_auto_run_at = Instant::now();
             next_provider_payout_target_sync_at = Instant::now();
         }
 
@@ -10256,10 +10265,21 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             needs_sync = false;
 
             if let Some(snapshot) = previous_snapshot.as_ref() {
-                if let Err(error) =
-                    sync_live_announcement(config_path, desired_mode, snapshot).await
+                if desired_mode == ProviderDesiredMode::Online
+                    && snapshot.runtime.authoritative_status.as_deref() == Some("online")
+                    && Instant::now() >= next_provider_auto_run_at
                 {
-                    eprintln!("warning: failed to publish pylon provider announcement: {error}");
+                    if let Err(error) = run_provider_requests(
+                        config_path,
+                        DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS,
+                    )
+                    .await
+                    {
+                        eprintln!(
+                            "warning: automatic pylon provider intake pass failed: {error}"
+                        );
+                    }
+                    next_provider_auto_run_at = Instant::now() + provider_auto_run_interval;
                 }
 
                 if desired_mode == ProviderDesiredMode::Online
@@ -10303,6 +10323,12 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     }
                     next_provider_payout_target_sync_at =
                         Instant::now() + provider_payout_target_sync_interval;
+                }
+
+                if let Err(error) =
+                    sync_live_announcement(config_path, desired_mode, snapshot).await
+                {
+                    eprintln!("warning: failed to publish pylon provider announcement: {error}");
                 }
             }
         }
@@ -14677,7 +14703,7 @@ mod tests {
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
-        save_config, save_gemma_diagnostic_report, save_training_runtime_state,
+        save_config, save_gemma_diagnostic_report, save_training_runtime_state, serve,
         scan_provider_requests, snapshot_training_status_report, start_training_checkpoint_server,
         start_training_supervisor, submit_buyer_job, sync_live_announcement,
         sync_provider_payout_target_with_report, sync_training_authority_state,
@@ -20709,6 +20735,183 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 .any(|entry| entry.kind == "nip90.result_published"),
             "provider run should persist result publication activity",
         )?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn serve_online_mode_runs_provider_intake_automatically()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
+        let base_url =
+            start_mock_http_server(
+                |method, path, body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {"name": "gemma4:e4b"}
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/api/chat") => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                        assert_eq!(request["model"], json!("gemma4:e4b"));
+                        (
+                            200,
+                            "application/x-ndjson",
+                            concat!(
+                                "{\"message\":{\"content\":\"auto \"},\"done\":false}\n",
+                                "{\"message\":{\"content\":\"reply\"},\"done\":false}\n",
+                                "{\"done\":true}\n"
+                            )
+                            .to_string(),
+                        )
+                    }
+                    _ => (500, "text/plain", "unexpected request".to_string()),
+                },
+            )
+            .await?;
+        let nexus_base_url = start_mock_http_server(|_method, _path, _body| {
+            (200, "application/json", "{\"ok\":true}".to_string())
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let provider_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let mut request_sent = false;
+            let mut published = Vec::new();
+            loop {
+                let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+                let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+                while let Some(message) = ws.next().await {
+                    let Ok(Message::Text(payload)) = message else {
+                        continue;
+                    };
+                    if !request_sent && payload.contains("\"REQ\"") {
+                        let matching = json!(["EVENT", "run", {
+                            "id": "run-job-auto-001",
+                            "pubkey": "buyer-pubkey-auto-001",
+                            "created_at": 1_760_000_210u64,
+                            "kind": 5050,
+                            "tags": [
+                                ["i", "hello from auto buyer", "text"],
+                                ["param", "model", "gemma4:e4b"],
+                                ["p", provider_pubkey]
+                            ],
+                            "content": "",
+                            "sig": "44".repeat(64)
+                        }]);
+                        ws.send(Message::Text(matching.to_string().into()))
+                            .await
+                            .expect("send matching request");
+                        request_sent = true;
+                        break;
+                    }
+                    if !payload.contains("\"EVENT\"") {
+                        continue;
+                    }
+                    let value: serde_json::Value =
+                        serde_json::from_str(payload.as_str()).expect("parse published event");
+                    ws.send(Message::Text(
+                        json!(["OK", value[1]["id"], true, "accepted"])
+                            .to_string()
+                            .into(),
+                    ))
+                    .await
+                    .expect("ack published event");
+                    if value[1]["kind"] == 7000 || value[1]["kind"] == 6050 {
+                        published.push(value[1].clone());
+                    } else {
+                        break;
+                    }
+                    if published.len() == 2 {
+                        return published;
+                    }
+                }
+            }
+        });
+
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.relay_urls = vec![relay_url];
+        config.local_gemma_base_url = base_url;
+        config.nexus_control_base_url = nexus_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
+
+        let serve_config = load_or_create_config(config_path.as_path())?;
+        let serve_path = config_path.clone();
+        tokio::task::LocalSet::new()
+            .run_until(async move {
+                let mut serve_task = tokio::task::spawn_local(async move {
+                    serve(serve_path.as_path(), serve_config).await
+                });
+                let mut relay_server = relay_server;
+
+                let published = tokio::time::timeout(Duration::from_secs(8), async {
+                    tokio::select! {
+                        relay_result = &mut relay_server => {
+                            let published = relay_result
+                                .map_err(|error| std::io::Error::other(format!(
+                                    "automatic provider intake relay task failed: {error}"
+                                )))?;
+                            Ok::<Vec<serde_json::Value>, std::io::Error>(published)
+                        }
+                        serve_result = &mut serve_task => {
+                            match serve_result {
+                                Ok(Ok(())) => Err(std::io::Error::other(
+                                    "serve exited before processing an automatic intake pass",
+                                )),
+                                Ok(Err(error)) => Err(std::io::Error::other(format!(
+                                    "serve exited before automatic intake completed: {error}"
+                                ))),
+                                Err(error) => Err(std::io::Error::other(format!(
+                                    "serve task join failed before automatic intake completed: {error}"
+                                ))),
+                            }
+                        }
+                    }
+                })
+                .await
+                .map_err(|_| {
+                    std::io::Error::other("timed out waiting for automatic provider intake")
+                })??;
+                ensure(
+                    published.len() == 2
+                        && published.iter().any(|event| event["kind"] == 7000)
+                        && published.iter().any(|event| event["kind"] == 6050),
+                    "serve online mode should automatically publish feedback and result events",
+                )?;
+
+                let ledger = load_ledger(config_path.as_path())?;
+                ensure(
+                    ledger.jobs.iter().any(|job| {
+                        job.id == "run-job-auto-001"
+                            && job.status == "completed_local"
+                            && job
+                                .result_preview
+                                .as_deref()
+                                .is_some_and(|value| value.contains("auto reply"))
+                    }),
+                    "automatic serve intake should persist the completed provider job",
+                )?;
+
+                serve_task.abort();
+                let _ = serve_task.await;
+                Ok::<(), Box<dyn std::error::Error>>(())
+            })
+            .await?;
         Ok(())
     }
 
