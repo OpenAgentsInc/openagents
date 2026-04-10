@@ -225,9 +225,7 @@ same `apps/pylon/src/lib.rs` surface can now:
 
 This is still the node-side claim lane, not the final authoritative `Nexus`
 publication lane. The current locator status is intentionally `staged`, and
-later issues still need to project the retained publication pointers into
-training-aware status/admin surfaces and reconcile them against authoritative
-`Nexus` closeout state.
+`Nexus` closeout state still remains the authoritative settlement boundary.
 
 `Pylon` also now has a retained authority-sync lane for training closeout and
 reputation state. `pylon training sync [--json]` will:
@@ -240,6 +238,48 @@ reputation state. `pylon training sync [--json]` will:
 - persist those caches into the retained training runtime-state store
 - fail closed on automatic training readvertisement when a cached hard-gate
   training label such as `trn/build=revoked` still applies
+
+Those retained caches are now projected through the operator surface instead of
+staying buried in `state/runtime-state.json` only:
+
+- `pylon training status [--json]`
+  - renders the retained training operator report directly: current run,
+    active window, current runtime state, last checkpoint pointer, validator
+    queue, retained TRN publication pointers, recent closeouts, and recent
+    refusals or failures
+- `pylon status`
+  - now appends a concise training summary to the top-level provider status,
+    including the training headline (`active`, `blocked`, `ready`, or
+    `inactive`), the active run/window when present, the last checkpoint ref,
+    validator-queue depth, and the most recent retained training issue
+- `pylon doctor`
+  - now includes a dedicated `training` block covering runtime-surface
+    discovery, contributor readiness, checkpoint-serve URL, retained role
+    claims, retention limits, blocked reputation labels, and recent retained
+    issues
+
+The shared admin port now also exposes training-aware HTTP routes alongside the
+existing provider status routes:
+
+- `GET /v1/training/status`
+  - returns the same machine-readable operator report used by
+    `pylon training status --json`
+- `POST /v1/training/sync`
+  - runs the retained closeout and reputation sync lane and returns the sync
+    report
+- `POST /v1/training/node-record/refresh`
+  - republishes the retained `kind:39501` training node record for every
+    retained network and updates the stored publication pointer
+
+The node-side publication lane now has two explicit operator commands:
+
+- `pylon training publish [--manifest <path>]`
+  - publishes any retained node record, assignment receipt, and staged
+    artifact-locator state that does not already have persisted publication
+    pointers
+- `pylon training refresh [--json]`
+  - republishes only the retained node record on demand without replaying the
+    full receipt or artifact-locator publication sweep
 
 The retained config now also carries one explicit `training` block for the
 future admitted-node lane. That block freezes:

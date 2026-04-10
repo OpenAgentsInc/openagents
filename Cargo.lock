@@ -7404,6 +7404,7 @@ name = "pylon"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "axum 0.8.8",
  "bip39",
  "futures-util",
  "hex",

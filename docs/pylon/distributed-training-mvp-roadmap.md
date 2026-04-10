@@ -1219,10 +1219,10 @@ become the admitted-node supervisor around `Psionic`.
   relevant `kind:1985` `NIP-32` labels, persists those caches into the
   training runtime-state store, and fail-closes automatic training
   readvertisement when the retained label set still contains a hard-gate
-  condition such as `trn/build=revoked`. Later issues still need to project
-  those retained caches through `pylon status` and the training-aware admin
-  surfaces rather than keeping them behind the sync command and runtime-state
-  store only.
+  condition such as `trn/build=revoked`. `Pylon` now also projects those
+  retained caches through `pylon status`, `pylon training status`,
+  `pylon doctor`, and the training-aware admin routes
+  `GET /v1/training/status` and `POST /v1/training/sync`.
 
 ### 3.8 Pylon operator surface
 
@@ -1236,6 +1236,14 @@ become the admitted-node supervisor around `Psionic`.
   - recent refusals and failures
 - Add one concise local doctor command for training readiness.
 - Add one local command to publish or refresh the node record on demand.
+- Current status: `apps/pylon/src/lib.rs` now ships the retained training
+  operator surface. `pylon training status` renders the machine-readable
+  operator report, top-level `pylon status` embeds the bounded training
+  summary, `pylon doctor` includes a training readiness block, the shared
+  admin server now exposes `GET /v1/training/status` and
+  `POST /v1/training/node-record/refresh`, and `pylon training refresh`
+  republishes retained node records without replaying the full receipt and
+  artifact-locator publication sweep.
 
 ### 3.9 Pylon test coverage
 

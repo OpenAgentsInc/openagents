@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+axum = "0.8"
 bip39 = "2.2.0"
 hex = { workspace = true }
 jsonwebtoken = "9"
