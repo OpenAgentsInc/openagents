@@ -546,11 +546,11 @@ pub fn save_ledger(config_path: &Path, ledger: &PylonLedger) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create pylon ledger dir {}", parent.display()))?;
     }
-    std::fs::write(
+    write_atomic_json_file(
         path.as_path(),
-        format!("{}\n", serde_json::to_string_pretty(ledger)?),
-    )
-    .with_context(|| format!("failed to write pylon ledger {}", path.display()))?;
+        format!("{}\n", serde_json::to_string_pretty(ledger)?).as_bytes(),
+        "pylon ledger",
+    )?;
     Ok(())
 }
 
@@ -567,16 +567,11 @@ pub fn save_processed_provider_request_store(
             )
         })?;
     }
-    std::fs::write(
+    write_atomic_json_file(
         path.as_path(),
-        format!("{}\n", serde_json::to_string_pretty(store)?),
-    )
-    .with_context(|| {
-        format!(
-            "failed to write processed provider request store {}",
-            path.display()
-        )
-    })?;
+        format!("{}\n", serde_json::to_string_pretty(store)?).as_bytes(),
+        "processed provider request store",
+    )?;
     Ok(())
 }
 
@@ -618,15 +613,47 @@ fn now_epoch_ms() -> u64 {
         .unwrap_or(0)
 }
 
+fn write_atomic_json_file(path: &Path, payload: &[u8], label: &str) -> Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("state.json");
+    let temp_path = parent.join(format!(
+        ".{}.tmp-{}-{}",
+        file_name,
+        std::process::id(),
+        now_epoch_ms()
+    ));
+    std::fs::write(temp_path.as_path(), payload).with_context(|| {
+        format!(
+            "failed to write temporary {} {}",
+            label,
+            temp_path.display()
+        )
+    })?;
+    if let Err(error) = std::fs::rename(temp_path.as_path(), path) {
+        let _ = std::fs::remove_file(temp_path.as_path());
+        return Err(error).with_context(|| {
+            format!(
+                "failed to replace {} {}",
+                label,
+                path.display()
+            )
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity,
         PylonRelayState, PylonSettlementRecord, PylonWalletInvoiceRecord,
-        PylonWalletPaymentRecord, default_processed_provider_requests_path,
-        ensure_local_ledger, load_ledger, load_ledger_summary,
+        PylonWalletPaymentRecord, default_ledger_path,
+        default_processed_provider_requests_path, ensure_local_ledger, load_ledger, load_ledger_summary,
         load_processed_provider_request_store, mutate_ledger,
-        mutate_processed_provider_request_store,
+        mutate_processed_provider_request_store, save_ledger,
     };
     use tempfile::tempdir;
 
@@ -774,6 +801,34 @@ mod tests {
                 .expect("request-001")
                 .status,
             "settled"
+        );
+    }
+
+    #[test]
+    fn save_ledger_replaces_file_without_leaving_temp_artifacts() {
+        let dir = tempdir().expect("tempdir");
+        let config_path = dir.path().join("config.json");
+        let mut ledger = PylonLedger::default();
+        ledger.upsert_job(PylonLedgerJob::new("job-atomic-001", "provider", 5050, "completed_local"));
+
+        save_ledger(config_path.as_path(), &ledger).expect("save ledger");
+
+        let ledger_path = default_ledger_path(config_path.as_path());
+        assert!(ledger_path.exists());
+        let entries = std::fs::read_dir(dir.path())
+            .expect("read dir")
+            .map(|entry| entry.expect("entry").file_name().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            entries.iter().all(|entry| !entry.contains(".ledger.json.tmp-")),
+            "atomic save should not leak temporary files"
+        );
+        assert_eq!(
+            load_ledger(config_path.as_path())
+                .expect("load ledger")
+                .jobs
+                .len(),
+            1
         );
     }
 }

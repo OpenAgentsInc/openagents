@@ -450,6 +450,14 @@ The retained transcript observability commands now also exist in the shell:
 
 Those views stay ledger-backed. They can still replay retained provider jobs, earnings, receipts, and relay activity even when there is no live provider service answering local HTTP routes.
 
+The retained ledger writes are now file-replace atomic, so the TUI and
+headless JSON views no longer transiently fall back to an empty local ledger
+while a concurrent provider pass is rewriting `ledger.json`. The `jobs` view
+also now overlays payment evidence from retained settlement rows onto matching
+job IDs, which means `payout_sats` and `payment_pointer` stay visible even when
+an older live recent-job row still says `completed_local` instead of carrying
+the later wallet credit detail itself.
+
 The first retained buyer controls now also exist in both places:
 - TUI: `/job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--request-json <json>] <prompt>`, `/job watch [<request_event_id>] [--seconds <n>]`, `/job history [--limit <n>]`, `/job replay <request_event_id>`, `/job approve <request_event_id>`, `/job deny <request_event_id>`, `/job policy [show|auto|manual]`
 - headless: `cargo pylon-headless job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt>`, `cargo pylon-headless job watch [<request_event_id>] [--seconds <n>]`, `cargo pylon-headless job history [--limit <n>]`, `cargo pylon-headless job replay <request_event_id>`, `cargo pylon-headless job approve <request_event_id>`, `cargo pylon-headless job deny <request_event_id>`, `cargo pylon-headless job policy [show|auto|manual]`
