@@ -1211,8 +1211,15 @@ pub fn validate_redacted_retained_state(value: &Value) -> ContractResult<()> {
                 visit(value, format!("{path}{index}.").as_str(), disallowed)
             }),
             Value::String(string) => {
+                if let Ok(parsed) = serde_json::from_str::<Value>(string) {
+                    if let Some(nested_path) = visit(&parsed, path, disallowed) {
+                        return Some(nested_path);
+                    }
+                }
                 if string.contains("\"private_key\"")
+                    || string.contains("\"authorization\"")
                     || string.contains("-----BEGIN PRIVATE KEY-----")
+                    || string.contains("Bearer ")
                 {
                     Some(path.trim_end_matches('.').to_string())
                 } else {
@@ -1229,6 +1236,45 @@ pub fn validate_redacted_retained_state(value: &Value) -> ContractResult<()> {
         ));
     }
     Ok(())
+}
+
+pub fn validate_redacted_retained_content(content: &str) -> ContractResult<()> {
+    let parsed = serde_json::from_str::<Value>(content)
+        .map_err(|error| format!("pylon_training_retained_state_content_parse_failed:{error}"))?;
+    validate_redacted_retained_state(&parsed)
+}
+
+pub fn pylon_training_hard_gate_reason(labels: &[String]) -> Option<String> {
+    fn label_parts(label: &str) -> (&str, &str) {
+        let trimmed = label.trim();
+        let mut segments = trimmed.split("::");
+        let _subject = segments.next();
+        let namespace = segments.next().unwrap_or_default().trim();
+        let value = segments.next().map(str::trim).unwrap_or_else(|| {
+            if let Some((_, suffix)) = trimmed.rsplit_once(':') {
+                return suffix.trim();
+            }
+            if let Some((_, suffix)) = trimmed.rsplit_once('/') {
+                return suffix.trim();
+            }
+            trimmed
+        });
+        (namespace, value)
+    }
+
+    let mut default_reason = None;
+    for label in labels {
+        let (namespace, value) = label_parts(label.as_str());
+        if namespace == PylonTrainingReputationNamespace::Build.label()
+            && value == PylonTrainingReputationLabel::Revoked.label()
+        {
+            return Some(PylonTrainingRefusalCode::BuildRevoked.label().to_string());
+        }
+        if matches!(value, "fraud" | "quarantined" | "revoked" | "inconsistent") {
+            default_reason = Some("training_node_hard_gated".to_string());
+        }
+    }
+    default_reason
 }
 
 impl PylonTrainingArtifactBundleKind {
@@ -2078,6 +2124,14 @@ mod tests {
             "credential_source": PYLON_TRAINING_GCS_CREDENTIAL_SOURCE
         }))
         .expect("credential source name may be retained");
+        validate_redacted_retained_content(
+            json!({
+                "credential_source": PYLON_TRAINING_GCS_CREDENTIAL_SOURCE
+            })
+            .to_string()
+            .as_str(),
+        )
+        .expect("JSON content without secret fields may be retained");
 
         let err = validate_redacted_retained_state(&json!({
             "credential_source": PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
@@ -2087,6 +2141,35 @@ mod tests {
         assert_eq!(
             err,
             "pylon_training_retained_state_secret_detected:private_key"
+        );
+        let err = validate_redacted_retained_content(
+            json!({
+                "authorization": "Bearer secret"
+            })
+            .to_string()
+            .as_str(),
+        )
+        .expect_err("secret-bearing JSON content must be rejected");
+        assert_eq!(
+            err,
+            "pylon_training_retained_state_secret_detected:authorization"
+        );
+        let err = validate_redacted_retained_state(&json!({
+            "publication_records": {
+                "receipt.alpha": {
+                    "template": {
+                        "content": json!({
+                            "authorization": "Bearer secret"
+                        })
+                        .to_string()
+                    }
+                }
+            }
+        }))
+        .expect_err("nested stringified retained content must be rejected");
+        assert_eq!(
+            err,
+            "pylon_training_retained_state_secret_detected:publication_records.receipt.alpha.template.content.authorization"
         );
     }
 

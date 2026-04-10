@@ -10,9 +10,10 @@ use serde_json::{Map, Value, json};
 use super::{
     NostrIdentity, PylonConfig, PylonTrainingArtifactObjectTransferReport,
     PylonTrainingRuntimeState, TrainingManifestInspectionContext, dedup_training_relay_urls,
-    training_artifact_checkpoint_tag, training_assignment_reason, training_backend_family_label,
-    training_checkpoint_serve_url, training_expected_artifact_class_for_role,
-    training_manifest_role_label, training_node_record_status, training_observability_context,
+    local_training_build_digest, local_training_release_id, training_artifact_checkpoint_tag,
+    training_assignment_reason, training_backend_family_label, training_checkpoint_serve_url,
+    training_expected_artifact_class_for_role, training_manifest_role_label,
+    training_node_record_status, training_observability_context, training_settlement_destination,
     training_window_coordinate,
 };
 
@@ -97,7 +98,10 @@ pub(super) fn node_record_event(
         });
     let content = json!({
         "node_label": config.node_label,
+        "release_id": local_training_release_id(),
         "software_version": env!("CARGO_PKG_VERSION"),
+        "build_digest": local_training_build_digest(),
+        "settlement_destination": training_settlement_destination(config),
         "checkpoint_serve_url": training_checkpoint_serve_url(config),
         "manifest_digests": contexts
             .iter()
@@ -114,7 +118,7 @@ pub(super) fn node_record_event(
             content,
             roles,
             classes: vec!["psionic_train".to_string()],
-            build_digest: None,
+            build_digest: Some(local_training_build_digest()),
             capabilities,
             relay_urls: dedup_training_relay_urls(
                 &contexts
@@ -442,6 +446,7 @@ mod tests {
         let (temp_dir, context) = worker_manifest_context()?;
         let mut config = super::super::default_config(temp_dir.path());
         config.node_label = "node-alpha".to_string();
+        config.payout_destination = Some("lnbc1trainingalpha".to_string());
         config.training.checkpoint_serve_addr = "127.0.0.1:43000".to_string();
         config.training.role_claims = vec![super::super::PylonTrainingRoleClaim::Worker];
         let identity = identity_fixture(&temp_dir);
@@ -483,9 +488,38 @@ mod tests {
         assert_eq!(status, "online");
         assert_eq!(node_record.status, "online");
         assert_eq!(node_record.roles, vec!["worker".to_string()]);
+        assert!(
+            node_record
+                .build_digest
+                .as_deref()
+                .is_some_and(|value| value.starts_with("sha256:"))
+        );
         assert_eq!(
             node_record.relay_urls,
             vec!["wss://relay.example.com".to_string()]
+        );
+        assert_eq!(
+            node_record
+                .content
+                .get("release_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            super::super::local_training_release_id()
+        );
+        assert_eq!(
+            node_record
+                .content
+                .get("build_digest")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            node_record.build_digest.as_deref().unwrap_or_default()
+        );
+        assert_eq!(
+            node_record
+                .content
+                .get("settlement_destination")
+                .and_then(Value::as_str),
+            Some("lnbc1trainingalpha")
         );
         assert!(
             node_record

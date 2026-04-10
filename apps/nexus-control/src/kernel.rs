@@ -77,6 +77,7 @@ use openagents_kernel_core::liquidity::{
     Envelope, EnvelopeStatus, Quote, QuoteStatus, ReservePartition, ReservePartitionStatus,
     RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
 };
+use openagents_kernel_core::pylon_training::pylon_training_hard_gate_reason;
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, Receipt, ReceiptBuilder, ReceiptHints,
     ReceiptRef, TraceContext,
@@ -619,6 +620,7 @@ pub struct RecordTrainingNodeAdmissionRequest {
     pub idempotency_key: String,
     pub requested_at_ms: i64,
     pub node_pubkey_hex: String,
+    pub release_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_label: Option<String>,
     #[serde(default)]
@@ -635,6 +637,8 @@ pub struct RecordTrainingNodeAdmissionRequest {
     pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
     #[serde(default)]
     pub active_reputation_labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_destination: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -691,6 +695,7 @@ pub struct TrainingNodeQuery {
 pub struct AdmittedTrainingNode {
     pub admission_id: String,
     pub node_pubkey_hex: String,
+    pub release_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_label: Option<String>,
     #[serde(default)]
@@ -705,6 +710,8 @@ pub struct AdmittedTrainingNode {
     pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
     #[serde(default)]
     pub active_reputation_labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_destination: Option<String>,
     pub admitted_at_ms: i64,
     pub updated_at_ms: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -733,6 +740,7 @@ pub struct AdmittedTrainingNode {
 pub struct AdmittedTrainingNodeView {
     pub admission_id: String,
     pub node_pubkey_hex: String,
+    pub release_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_label: Option<String>,
     #[serde(default)]
@@ -749,6 +757,8 @@ pub struct AdmittedTrainingNodeView {
     pub available_disk_gb: Option<u64>,
     #[serde(default)]
     pub active_reputation_labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_destination: Option<String>,
     pub admitted_at_ms: i64,
     pub updated_at_ms: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2994,12 +3004,15 @@ impl KernelState {
     ) -> Result<MutationResult<RecordTrainingNodeAdmissionResponse>, String> {
         let node_pubkey_hex =
             normalize_required(req.node_pubkey_hex.as_str(), "training_node_pubkey_missing")?;
+        let release_id =
+            normalize_required(req.release_id.as_str(), "training_node_release_id_missing")?;
         let build_digest = normalize_required(
             req.build_digest.as_deref().unwrap_or_default(),
             "training_node_build_digest_missing",
         )?;
         req.requested_at_ms = normalize_created_at_ms(req.requested_at_ms, context.now_unix_ms);
         req.node_pubkey_hex.clone_from(&node_pubkey_hex);
+        req.release_id.clone_from(&release_id);
         req.node_label = req
             .node_label
             .take()
@@ -3017,6 +3030,11 @@ impl KernelState {
             .filter(|value| !value.is_empty());
         req.build_digest = Some(build_digest.clone());
         req.active_reputation_labels = normalize_string_vec(req.active_reputation_labels);
+        req.settlement_destination = req
+            .settlement_destination
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
 
         let registry_key =
             training_node_registry_key(node_pubkey_hex.as_str(), build_digest.as_str());
@@ -3024,12 +3042,13 @@ impl KernelState {
             .admitted_training_nodes
             .get(registry_key.as_str())
             .cloned();
-        let admitted = req.contributor_availability.has_authoritative_state();
-        let reason = if admitted {
-            None
-        } else {
-            Some("training_node_capability_missing".to_string())
-        };
+        let refusal_reason = pylon_training_hard_gate_reason(&req.active_reputation_labels);
+        let admitted =
+            req.contributor_availability.has_authoritative_state() && refusal_reason.is_none();
+        let reason = refusal_reason.or_else(|| {
+            (!req.contributor_availability.has_authoritative_state())
+                .then_some("training_node_capability_missing".to_string())
+        });
         let admission_id = existing_record
             .as_ref()
             .map(|record| record.node.admission_id.clone())
@@ -14412,24 +14431,8 @@ fn training_node_matches_network(
     })
 }
 
-fn training_node_label_code(label: &str) -> &str {
-    let trimmed = label.trim();
-    if let Some((_, suffix)) = trimmed.rsplit_once(':') {
-        return suffix.trim();
-    }
-    if let Some((_, suffix)) = trimmed.rsplit_once('/') {
-        return suffix.trim();
-    }
-    trimmed
-}
-
 fn training_node_has_hard_gate_label(labels: &[String]) -> bool {
-    labels.iter().any(|label| {
-        matches!(
-            training_node_label_code(label),
-            "fraud" | "quarantined" | "revoked"
-        )
-    })
+    pylon_training_hard_gate_reason(labels).is_some()
 }
 
 fn training_node_available_disk_gb(node: &AdmittedTrainingNode) -> Option<u64> {
@@ -14476,6 +14479,7 @@ fn admitted_training_node_view(
     AdmittedTrainingNodeView {
         admission_id: node.admission_id.clone(),
         node_pubkey_hex: node.node_pubkey_hex.clone(),
+        release_id: node.release_id.clone(),
         node_label: node.node_label.clone(),
         role_claims: node.role_claims.clone(),
         allowed_networks: node.allowed_networks.clone(),
@@ -14495,6 +14499,7 @@ fn admitted_training_node_view(
             }),
         available_disk_gb: training_node_available_disk_gb(node),
         active_reputation_labels: node.active_reputation_labels.clone(),
+        settlement_destination: node.settlement_destination.clone(),
         admitted_at_ms: node.admitted_at_ms,
         updated_at_ms: node.updated_at_ms,
         last_heartbeat_at_ms: node.last_heartbeat_at_ms,
@@ -14521,6 +14526,7 @@ fn admitted_training_node_from_request(
     AdmittedTrainingNode {
         admission_id,
         node_pubkey_hex: req.node_pubkey_hex.clone(),
+        release_id: req.release_id.clone(),
         node_label: req.node_label.clone(),
         role_claims: req.role_claims.clone(),
         allowed_networks: req.allowed_networks.clone(),
@@ -14529,6 +14535,7 @@ fn admitted_training_node_from_request(
         contributor_availability: req.contributor_availability.clone(),
         host_telemetry: req.host_telemetry.clone(),
         active_reputation_labels: req.active_reputation_labels.clone(),
+        settlement_destination: req.settlement_destination.clone(),
         admitted_at_ms: existing
             .map(|node| node.admitted_at_ms)
             .unwrap_or(req.requested_at_ms),
