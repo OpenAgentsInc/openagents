@@ -3390,6 +3390,19 @@ reputation publication.
 - Every rehearsal in the matrix is runnable and documented.
 - MVP launch is blocked until all required rehearsals pass.
 
+Current status:
+
+- The retained distributed-training release gate now lives in
+  `docs/pylon/PYLON_DISTRIBUTED_TRAINING_REHEARSAL_MATRIX.md` and
+  `scripts/release/check-pylon-distributed-training-mvp.sh`.
+- The gate runs exact rehearsals across `psionic-train`, `Pylon`, and `Nexus`
+  for the first proving slice, multi-node lease replacement, late join
+  checkpoint serving, restart recovery, validator accepted and replay-required
+  and timeout paths, TRN outage catch-up, and closeout plus reputation
+  publication.
+- Phase 5 launch truth is now blocked on that script staying green rather than
+  only on issue text or manual interpretation.
+
 ### Workstream 9: Apple Silicon and Metal Expansion
 
 #### 52. Add admitted Apple Silicon training lane under the same manifest and
