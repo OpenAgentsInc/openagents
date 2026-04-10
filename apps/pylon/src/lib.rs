@@ -14490,6 +14490,7 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 mod tests {
     use std::path::Path;
     use std::sync::{Arc, Mutex, OnceLock};
+    use std::time::{Duration, Instant};
 
     use super::{
         AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, Command,
@@ -14603,6 +14604,128 @@ mod tests {
                 None
             }
         })
+    }
+
+    struct TestPublishRelay {
+        url: String,
+        events: Arc<Mutex<Vec<Value>>>,
+        shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+        join_handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl TestPublishRelay {
+        fn spawn() -> Self {
+            let events = Arc::new(Mutex::new(Vec::<Value>::new()));
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel::<String>();
+            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+            let relay_events = Arc::clone(&events);
+            let join_handle = std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .enable_all()
+                    .build()
+                    .expect("build training publish relay runtime");
+                runtime.block_on(async move {
+                    let listener = TcpListener::bind("127.0.0.1:0")
+                        .await
+                        .expect("bind training publish relay listener");
+                    let local_addr = listener
+                        .local_addr()
+                        .expect("resolve training publish relay addr");
+                    ready_tx
+                        .send(format!("ws://{local_addr}"))
+                        .expect("send training publish relay addr");
+                    let mut shutdown_rx = shutdown_rx;
+                    loop {
+                        tokio::select! {
+                            _ = &mut shutdown_rx => break,
+                            accept = listener.accept() => {
+                                let Ok((stream, _)) = accept else {
+                                    break;
+                                };
+                                let relay_events = Arc::clone(&relay_events);
+                                tokio::spawn(async move {
+                                    let mut ws = accept_async(stream)
+                                        .await
+                                        .expect("upgrade training publish relay websocket");
+                                    while let Some(message) = ws.next().await {
+                                        match message {
+                                            Ok(Message::Text(payload)) => {
+                                                let frame: Value = serde_json::from_str(payload.as_str())
+                                                    .expect("parse training publish relay frame");
+                                                match frame.get(0).and_then(Value::as_str) {
+                                                    Some("EVENT") => {
+                                                        relay_events
+                                                            .lock()
+                                                            .expect("training publish relay events")
+                                                            .push(frame[1].clone());
+                                                        ws.send(Message::Text(
+                                                            json!(["OK", frame[1]["id"], true, "accepted"])
+                                                                .to_string(),
+                                                        ))
+                                                        .await
+                                                        .expect("send training publish relay ok");
+                                                    }
+                                                    Some("REQ") => {
+                                                        let subscription_id = frame[1]
+                                                            .as_str()
+                                                            .expect("training publish relay subscription id");
+                                                        ws.send(Message::Text(
+                                                            json!(["EOSE", subscription_id]).to_string(),
+                                                        ))
+                                                        .await
+                                                        .expect("send training publish relay eose");
+                                                    }
+                                                    Some("CLOSE") => break,
+                                                    _ => {}
+                                                }
+                                            }
+                                            Ok(Message::Close(_)) | Err(_) => break,
+                                            _ => {}
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+            let url = ready_rx
+                .recv()
+                .expect("receive training publish relay addr");
+            Self {
+                url,
+                events,
+                shutdown_tx: Some(shutdown_tx),
+                join_handle: Some(join_handle),
+            }
+        }
+
+        fn wait_for_event_count(&self, expected: usize, timeout: Duration) -> Vec<Value> {
+            let deadline = Instant::now() + timeout;
+            loop {
+                let snapshot = self
+                    .events
+                    .lock()
+                    .expect("training publish relay events")
+                    .clone();
+                if snapshot.len() >= expected || Instant::now() >= deadline {
+                    return snapshot;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+
+    impl Drop for TestPublishRelay {
+        fn drop(&mut self) {
+            if let Some(shutdown_tx) = self.shutdown_tx.take() {
+                let _ = shutdown_tx.send(());
+            }
+            if let Some(handle) = self.join_handle.take() {
+                let _ = handle.join();
+            }
+        }
     }
 
     fn relay_event_has_tag_value(event: &Value, tag_name: &str, expected: &str) -> bool {
@@ -16289,6 +16412,7 @@ mod tests {
     async fn training_publish_emits_trn_events_and_persists_publication_pointers()
     -> Result<(), Box<dyn std::error::Error>> {
         let _env_lock = training_env_lock();
+        let relay = TestPublishRelay::spawn();
         let stored_objects = Arc::new(Mutex::new(
             std::collections::BTreeMap::<String, Vec<u8>>::new(),
         ));
@@ -16323,44 +16447,18 @@ mod tests {
         })
         .await?;
 
-        let relay_events = Arc::new(Mutex::new(Vec::<Value>::new()));
-        let relay_events_for_server = Arc::clone(&relay_events);
-        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
-        let relay_addr = relay_listener.local_addr()?;
-        let relay_url = format!("ws://{relay_addr}");
-        let _relay_server = tokio::spawn(async move {
-            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
-            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
-            while let Some(message) = ws.next().await {
-                match message {
-                    Ok(Message::Text(payload)) => {
-                        let value: Value =
-                            serde_json::from_str(payload.as_str()).expect("parse relay frame");
-                        if value.get(0).and_then(Value::as_str) == Some("EVENT") {
-                            relay_events_for_server
-                                .lock()
-                                .expect("relay events")
-                                .push(value[1].clone());
-                        }
-                    }
-                    Ok(Message::Close(_)) | Err(_) => break,
-                    _ => {}
-                }
-            }
-        });
-
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let mut config = load_or_create_config(config_path.as_path())?;
         config.training.run_root = temp_dir.path().join("training");
-        config.training.relay_urls = vec![relay_url.clone()];
+        config.training.relay_urls = vec![relay.url.clone()];
         config.relay_auth_enabled = false;
         save_config(config_path.as_path(), &config)?;
 
         let local_run_root = config.training.run_root.join("runs").join("run.alpha");
         let mut manifest =
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
-        manifest.trn.relay_urls = vec![relay_url.clone()];
+        manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
         std::fs::write(
             local_run_root.join("manifests").join("run_manifest.json"),
@@ -16434,8 +16532,7 @@ mod tests {
             "training publish should retain per-object artifact locator and upload receipt pointers",
         )?;
 
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-        let published = relay_events.lock().expect("relay events snapshot").clone();
+        let published = relay.wait_for_event_count(14, Duration::from_secs(2));
         ensure(
             published
                 .iter()
@@ -16475,6 +16572,29 @@ mod tests {
                 && first_tag_value(locator, "manifest").as_deref()
                     == Some(manifest.manifest_digest.as_str()),
             "artifact locators should carry staged status and the run-manifest digest tag",
+        )?;
+
+        let second_report = publish_training_trn_state(config_path.as_path(), None).await?;
+        ensure(
+            second_report
+                .node_records
+                .iter()
+                .all(|entry| entry.publication_state == "existing")
+                && second_report
+                    .receipts
+                    .iter()
+                    .all(|entry| entry.publication_state == "existing")
+                && second_report
+                    .artifact_locators
+                    .iter()
+                    .all(|entry| entry.publication_state == "existing"),
+            "training publish should reuse retained publication pointers instead of re-emitting duplicate TRN events",
+        )?;
+
+        let republished = relay.wait_for_event_count(14, Duration::from_secs(2));
+        ensure(
+            republished.len() == published.len(),
+            "a second training publish pass should not append duplicate relay events when retained publication pointers already exist",
         )
     }
 
