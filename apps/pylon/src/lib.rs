@@ -105,10 +105,11 @@ pub use wallet_runtime::{
     WalletAddressReport, WalletBalanceSnapshot, WalletCreditSummaryReport, WalletHistoryReport,
     WalletInvoiceReport, WalletPayReport, WalletRuntimeSurface, WalletStatusReport,
     WalletSubcommand, create_wallet_address_report, create_wallet_invoice_report,
-    load_wallet_credit_summary_report, load_wallet_history_report, load_wallet_status_report,
-    parse_wallet_command, pay_wallet_invoice_report, render_wallet_address_report,
-    render_wallet_balance_report, render_wallet_history_report, render_wallet_invoice_report,
-    render_wallet_pay_report, render_wallet_status_report, run_wallet_command,
+    load_wallet_balance_status_report, load_wallet_credit_summary_report,
+    load_wallet_history_report, load_wallet_status_report, parse_wallet_command,
+    pay_wallet_invoice_report, render_wallet_address_report, render_wallet_balance_report,
+    render_wallet_history_report, render_wallet_invoice_report, render_wallet_pay_report,
+    render_wallet_status_report, run_wallet_command,
 };
 
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";

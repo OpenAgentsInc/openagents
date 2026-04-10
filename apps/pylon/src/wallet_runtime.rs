@@ -341,6 +341,17 @@ pub fn parse_wallet_command(args: &[String], start_index: usize) -> Result<Walle
 }
 
 pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatusReport> {
+    load_wallet_status_report_internal(config_path, true).await
+}
+
+pub async fn load_wallet_balance_status_report(config_path: &Path) -> Result<WalletStatusReport> {
+    load_wallet_status_report_internal(config_path, false).await
+}
+
+async fn load_wallet_status_report_internal(
+    config_path: &Path,
+    include_recent_payments: bool,
+) -> Result<WalletStatusReport> {
     let context = prepare_wallet_context(config_path)?;
     let runtime = context.runtime.clone();
     let result: Result<WalletStatusReport> = async {
@@ -351,10 +362,14 @@ pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatu
                 .get_balance()
                 .await
                 .context("failed to fetch Spark balance")?;
-            let payments = wallet
-                .list_payments(Some(10), None)
-                .await
-                .context("failed to list Spark payments")?;
+            let payments = if include_recent_payments {
+                wallet
+                    .list_payments(Some(10), None)
+                    .await
+                    .context("failed to list Spark payments")?
+            } else {
+                Vec::new()
+            };
             Ok((network_status, balance, payments))
         }
         .await;

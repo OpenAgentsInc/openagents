@@ -438,6 +438,12 @@ the original payment `created_at_ms` to decide what counts toward "today". That
 avoids both lifetime undercounting from the rolling 256-entry window and false
 "today" credits caused by later status refreshes rewriting `updated_at_ms`.
 
+The TUI operator sidebar now also treats wallet balance bring-up more honestly.
+Its refresh path loads network status plus balance first instead of waiting on
+recent payment history, and it renders `pending` when a zero balance is not yet
+authoritative. If a retained balance already exists, the sidebar keeps showing
+that cached total until a connected live balance replaces it.
+
 The retained provider payout controls now also exist in both places:
 - TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11> [--amount-sats <n>]`
 - headless: `cargo pylon-headless payout [--limit <n>]`, `cargo pylon-headless payout withdraw <bolt11> [--amount-sats <n>]`
