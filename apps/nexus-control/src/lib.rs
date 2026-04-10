@@ -23840,6 +23840,450 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn training_window_timeout_publishes_held_closeout_and_validator_poor_label() -> Result<()>
+    {
+        let (relay_url, mut event_rx, relay_handle) = spawn_training_trn_capture_relay().await?;
+        let temp_dir = tempdir()?;
+        let mut config = test_config()?;
+        config.training_trn_identity_path = temp_dir.path().join("training-trn-identity.mnemonic");
+        config.training_trn_relay_urls = vec![relay_url.clone()];
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms().saturating_sub(30_000);
+        let training_run_id = "run.window.timeout.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0004",
+            "node-timeout-alpha",
+            "sha256:build-timeout-alpha",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request(
+                "validator-timeout",
+                "sha256:validator-timeout",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-timeout", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-timeout", "sha256:validator-timeout");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = "window.0004".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-timeout", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.window.timeout",
+                            created_at_ms as i64 + 1_000,
+                            "node-timeout-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.timeout",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://timeout-0001",
+                                "sha256:slice-timeout-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0004/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.timeout",
+                            created_at_ms as i64 + 1_200,
+                            "window.0004",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0004/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.timeout".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0004".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.timeout",
+                                    &lease,
+                                    "sha256:validator-pending-timeout",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let aggregate_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.timeout.1",
+                            created_at_ms as i64 + 1_310,
+                            "validator-timeout",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(aggregate_claim.status(), StatusCode::OK);
+        let aggregate_claim =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(aggregate_claim).await?;
+        assert_eq!(aggregate_claim.challenge_kind, "aggregate");
+        let timed_out_challenge_id = aggregate_claim.challenge_id.clone();
+        let aggregate_finalized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        aggregate_claim.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.timeout.aggregate",
+                            created_at_ms as i64 + 1_320,
+                            "validator-timeout",
+                            aggregate_claim.lease.clone().expect("aggregate lease"),
+                            aggregate_claim
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            aggregate_claim.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::TimedOut,
+                            ComputeValidatorChallengeVerdict::TimedOut,
+                            "sha256:validator-timeout-aggregate",
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(aggregate_finalized.status(), StatusCode::OK);
+
+        let sample_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.timeout.2",
+                            created_at_ms as i64 + 1_330,
+                            "validator-timeout",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sample_claim.status(), StatusCode::OK);
+        let sample_claim =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(sample_claim).await?;
+        assert_eq!(sample_claim.challenge_kind, "contribution_sample");
+        let sample_finalized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        sample_claim.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.timeout.sample",
+                            created_at_ms as i64 + 1_340,
+                            "validator-timeout",
+                            sample_claim.lease.clone().expect("sample lease"),
+                            sample_claim
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            sample_claim.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-timeout-sample",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sample_finalized.status(), StatusCode::OK);
+
+        let reconcile_incomplete = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0004/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.timeout".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_350,
+                            window_id: "window.0004".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.timeout",
+                                    &lease,
+                                    "sha256:validator-final-timeout",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_400),
+                            benchmark_pass_rate_bps: Some(9_600),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-timeout".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconcile_incomplete.status(), StatusCode::CONFLICT);
+
+        let aggregate_claim_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.timeout.3",
+                            created_at_ms as i64 + 1_360,
+                            "validator-timeout",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(aggregate_claim_two.status(), StatusCode::OK);
+        let aggregate_claim_two =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(aggregate_claim_two)
+                .await?;
+        assert_eq!(aggregate_claim_two.challenge_kind, "aggregate");
+        let aggregate_finalized_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        aggregate_claim_two.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.timeout.aggregate.2",
+                            created_at_ms as i64 + 1_370,
+                            "validator-timeout",
+                            aggregate_claim_two
+                                .lease
+                                .clone()
+                                .expect("aggregate lease two"),
+                            aggregate_claim_two
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            aggregate_claim_two.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-timeout-aggregate-2",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(aggregate_finalized_two.status(), StatusCode::OK);
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0004/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.timeout.final"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_380,
+                            window_id: "window.0004".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.timeout",
+                                    &lease,
+                                    "sha256:validator-final-timeout",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_400),
+                            benchmark_pass_rate_bps: Some(9_600),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-timeout".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let timeout_window = response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert_eq!(
+            timeout_window.window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.0004")
+        );
+        assert!(!timeout_window.window.promotion_ready);
+
+        {
+            let store = state.store.read().expect("read store");
+            let closeout = store
+                .kernel
+                .get_compute_accepted_outcome("accepted.training_window.window.0004")
+                .expect("held timeout closeout");
+            assert_eq!(
+                closeout
+                    .metadata
+                    .get("closeout_status")
+                    .and_then(serde_json::Value::as_str),
+                Some("held")
+            );
+            let refusal_codes = closeout
+                .metadata
+                .get("defensibility")
+                .and_then(|value| value.get("refusal_codes"))
+                .and_then(serde_json::Value::as_array)
+                .expect("defensibility refusal codes");
+            assert!(
+                refusal_codes
+                    .iter()
+                    .any(|value| value.as_str() == Some("validator_timeout"))
+            );
+            assert_eq!(
+                store
+                    .training_scheduler
+                    .runs_by_training_run_id
+                    .get(training_run_id)
+                    .expect("scheduled run")
+                    .window_state,
+                TrainingSchedulerWindowState::Held
+            );
+        }
+
+        let report = publish_training_trn(&app, vec![relay_url]).await?;
+        assert_eq!(report.closeouts.len(), 1);
+        assert_eq!(report.score_locators.len(), 3);
+        assert_eq!(report.reputation_labels.len(), 3);
+        assert_eq!(report.closeouts[0].status, "held");
+        assert!(report.reputation_labels.iter().any(|entry| {
+            entry.status == "trn/validator=poor"
+                && entry.challenge_id.as_deref() == Some(timed_out_challenge_id.as_str())
+                && entry.publication_state == "published"
+        }));
+        assert!(
+            report
+                .reputation_labels
+                .iter()
+                .filter(|entry| entry.status.starts_with("trn/build="))
+                .all(|entry| entry.publication_state == "published")
+        );
+
+        let events = collect_training_trn_events(&mut event_rx).await;
+        let kinds = events
+            .iter()
+            .map(|event| event.kind)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(kinds.contains(&TRN_TRAINING_CLOSEOUT_KIND));
+        assert!(kinds.contains(&(nostr::nip32::KIND_LABEL as u16)));
+
+        relay_handle.abort();
+        Ok(())
+    }
+
     #[test]
     fn training_window_closeout_status_maps_non_reward_terminal_cases() {
         let accepted_summary = TrainingWindowValidationSummary {
