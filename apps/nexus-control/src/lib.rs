@@ -118,6 +118,7 @@ const ENV_STARTER_DEMAND_START_CONFIRM_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_START_CONFIRM_SECONDS";
 const ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS";
+const ENV_PROVIDER_PRESENCE_STALE_AFTER_MS: &str = "NEXUS_CONTROL_PROVIDER_PRESENCE_STALE_AFTER_MS";
 
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42020";
 const DEFAULT_SESSION_TTL_SECONDS: u64 = 86_400;
@@ -134,7 +135,7 @@ const DEFAULT_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION: usize = 1;
 const DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS: u64 = 15;
 const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
-const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 30_000;
+const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 120_000;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
 #[cfg(test)]
@@ -174,6 +175,7 @@ pub struct ServiceConfig {
     pub starter_demand_max_active_offers_per_session: usize,
     pub starter_demand_start_confirm_seconds: u64,
     pub starter_demand_heartbeat_timeout_seconds: u64,
+    pub provider_presence_stale_after_ms: u64,
     pub treasury: TreasuryConfig,
 }
 
@@ -281,6 +283,10 @@ impl ServiceConfig {
             ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS,
             DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS,
         )?;
+        let provider_presence_stale_after_ms = parse_u64_env(
+            ENV_PROVIDER_PRESENCE_STALE_AFTER_MS,
+            DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+        )?;
         if starter_demand_dispatch_interval_seconds == 0 {
             return Err(format!(
                 "{ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS} must be greater than zero"
@@ -316,6 +322,11 @@ impl ServiceConfig {
                 "{ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS} must be less than {ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS}"
             ));
         }
+        if provider_presence_stale_after_ms < DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS {
+            return Err(format!(
+                "{ENV_PROVIDER_PRESENCE_STALE_AFTER_MS} must be at least {DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS}"
+            ));
+        }
         let treasury = TreasuryConfig::from_env()?;
 
         Ok(Self {
@@ -339,6 +350,7 @@ impl ServiceConfig {
             starter_demand_max_active_offers_per_session,
             starter_demand_start_confirm_seconds,
             starter_demand_heartbeat_timeout_seconds,
+            provider_presence_stale_after_ms,
             treasury,
         })
     }
@@ -818,8 +830,14 @@ impl ProviderPresenceState {
             .retain(|_, record| record.last_seen_at_unix_ms >= oldest_allowed);
     }
 
-    fn has_live_session(&self, nostr_pubkey_hex: &str, session_id: &str, now_unix_ms: u64) -> bool {
-        let stale_cutoff = now_unix_ms.saturating_sub(DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+    fn has_live_session(
+        &self,
+        nostr_pubkey_hex: &str,
+        session_id: &str,
+        now_unix_ms: u64,
+        stale_after_ms: u64,
+    ) -> bool {
+        let stale_cutoff = now_unix_ms.saturating_sub(stale_after_ms);
         self.rows_by_key.values().any(|record| {
             record.nostr_pubkey_hex == nostr_pubkey_hex
                 && record.session_id == session_id
@@ -828,8 +846,8 @@ impl ProviderPresenceState {
         })
     }
 
-    fn online_identities(&self, now_unix_ms: u64) -> Vec<OnlinePylonIdentity> {
-        let stale_cutoff = now_unix_ms.saturating_sub(DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+    fn online_identities(&self, now_unix_ms: u64, stale_after_ms: u64) -> Vec<OnlinePylonIdentity> {
+        let stale_cutoff = now_unix_ms.saturating_sub(stale_after_ms);
         let mut identities = BTreeMap::<String, bool>::new();
         for record in self.rows_by_key.values() {
             if !(record.online && record.last_seen_at_unix_ms >= stale_cutoff) {
@@ -849,8 +867,8 @@ impl ProviderPresenceState {
             .collect()
     }
 
-    fn metrics(&self, now_unix_ms: u64) -> ProviderPresenceMetrics {
-        let stale_cutoff = now_unix_ms.saturating_sub(DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+    fn metrics(&self, now_unix_ms: u64, stale_after_ms: u64) -> ProviderPresenceMetrics {
+        let stale_cutoff = now_unix_ms.saturating_sub(stale_after_ms);
         let seen_cutoff = now_unix_ms.saturating_sub(PROVIDER_PRESENCE_RETENTION_WINDOW_MS);
         let mut online_identities = HashSet::new();
         let mut seen_identities = HashSet::new();
@@ -1371,7 +1389,7 @@ async fn record_provider_presence_heartbeat(
         status: "online".to_string(),
         recorded_at_unix_ms: now,
         heartbeat_interval_ms: DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
-        stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+        stale_after_ms: state.config.provider_presence_stale_after_ms,
     }))
 }
 
@@ -1400,7 +1418,7 @@ async fn record_provider_presence_offline(
         status: "offline".to_string(),
         recorded_at_unix_ms: now,
         heartbeat_interval_ms: DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
-        stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+        stale_after_ms: state.config.provider_presence_stale_after_ms,
     }))
 }
 
@@ -1423,6 +1441,7 @@ async fn issue_provider_payout_target_challenge(
         nostr_pubkey_hex.as_str(),
         session_id.as_str(),
         now,
+        state.config.provider_presence_stale_after_ms,
     ) {
         return Err(ApiError {
             status: StatusCode::FORBIDDEN,
@@ -1469,6 +1488,7 @@ async fn register_provider_payout_target(
         normalized_request.nostr_pubkey_hex.as_str(),
         normalized_request.session_id.as_str(),
         now,
+        state.config.provider_presence_stale_after_ms,
     ) {
         return Err(ApiError {
             status: StatusCode::FORBIDDEN,
@@ -6591,9 +6611,10 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
             .treasury
             .refresh_public_snapshot(&state.config.treasury, cycle_started_at_unix_ms);
         store.provider_presence.prune(cycle_started_at_unix_ms);
-        let online_identities = store
-            .provider_presence
-            .online_identities(cycle_started_at_unix_ms);
+        let online_identities = store.provider_presence.online_identities(
+            cycle_started_at_unix_ms,
+            state.config.provider_presence_stale_after_ms,
+        );
         store.treasury.observe_payout_eligibility(
             &state.config.treasury,
             online_identities.as_slice(),
@@ -6750,7 +6771,9 @@ fn runtime_snapshot(
     treasury_runtime: &crate::treasury::TreasuryPublicStats,
     now_unix_ms: u64,
 ) -> PublicRuntimeSnapshot {
-    let provider_presence_metrics = store.provider_presence.metrics(now_unix_ms);
+    let provider_presence_metrics = store
+        .provider_presence
+        .metrics(now_unix_ms, config.provider_presence_stale_after_ms);
     let (starter_offers_waiting_ack, starter_offers_running) = store
         .starter_demand
         .offers_by_session
@@ -6775,7 +6798,7 @@ fn runtime_snapshot(
         pylons_seen_24h: provider_presence_metrics.pylons_seen_24h,
         pylon_sessions_online_now: provider_presence_metrics.pylon_sessions_online_now,
         sellable_pylons_online_now: provider_presence_metrics.sellable_pylons_online_now,
-        pylon_presence_stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+        pylon_presence_stale_after_ms: config.provider_presence_stale_after_ms,
         sessions_active: store.sessions_by_access_token.len(),
         sync_tokens_active: store.sync_tokens.len(),
         starter_demand_budget_cap_sats: config.starter_demand_budget_cap_sats,
@@ -7300,6 +7323,7 @@ mod tests {
             starter_demand_max_active_offers_per_session: 1,
             starter_demand_start_confirm_seconds: 5,
             starter_demand_heartbeat_timeout_seconds: 5,
+            provider_presence_stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
             treasury: TreasuryConfig {
                 enabled: false,
                 payout_sats_per_window: 0,
@@ -10066,8 +10090,10 @@ mod tests {
             100_000,
         );
 
-        let fresh =
-            presence.metrics(100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS.saturating_sub(1));
+        let fresh = presence.metrics(
+            100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS.saturating_sub(1),
+            DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+        );
         assert_eq!(fresh.pylons_online_now, 2);
         assert_eq!(fresh.pylons_seen_24h, 2);
         assert_eq!(fresh.pylon_sessions_online_now, 3);
@@ -10078,20 +10104,23 @@ mod tests {
             "session-a-1".to_string(),
             110_000,
         );
-        let after_offline = presence.metrics(110_000);
+        let after_offline = presence.metrics(110_000, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         assert_eq!(after_offline.pylons_online_now, 2);
         assert_eq!(after_offline.pylons_seen_24h, 2);
         assert_eq!(after_offline.pylon_sessions_online_now, 2);
         assert_eq!(after_offline.sellable_pylons_online_now, 1);
 
-        let stale = presence.metrics(100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS + 1);
+        let stale = presence.metrics(
+            100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS + 1,
+            DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+        );
         assert_eq!(stale.pylons_online_now, 0);
         assert_eq!(stale.pylon_sessions_online_now, 0);
         assert_eq!(stale.pylons_seen_24h, 2);
 
         let pruned_at = 110_000 + PROVIDER_PRESENCE_RETENTION_WINDOW_MS + 1;
         presence.prune(pruned_at);
-        let pruned = presence.metrics(pruned_at);
+        let pruned = presence.metrics(pruned_at, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         assert_eq!(pruned.pylons_online_now, 0);
         assert_eq!(pruned.pylons_seen_24h, 0);
         assert!(pruned.recent_pylons.is_empty());
@@ -10133,7 +10162,7 @@ mod tests {
         ];
         presence.record_heartbeat(request, 100_000);
 
-        let fresh = presence.metrics(100_000);
+        let fresh = presence.metrics(100_000, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         assert_eq!(fresh.recent_pylon_diagnostics.len(), 1);
         assert_eq!(
             fresh.recent_pylon_diagnostics[0].diagnostic_id,
@@ -10149,7 +10178,7 @@ mod tests {
 
         let pruned_at = 100_000 + PROVIDER_PRESENCE_RETENTION_WINDOW_MS + 1;
         presence.prune(pruned_at);
-        let pruned = presence.metrics(pruned_at);
+        let pruned = presence.metrics(pruned_at, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         assert!(pruned.recent_pylon_diagnostics.is_empty());
     }
 
@@ -10199,7 +10228,7 @@ mod tests {
             Some(ProviderComputeProduct::GptOssInference)
         );
 
-        let metrics = presence.metrics(100_000);
+        let metrics = presence.metrics(100_000, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         let public_row = serde_json::to_value(&metrics.recent_pylons[0]).expect("public row");
         assert!(public_row.get("hosting_telemetry").is_none());
         assert!(public_row.get("host_name").is_none());
