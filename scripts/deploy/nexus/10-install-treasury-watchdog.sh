@@ -28,6 +28,7 @@ NEXUS_TREASURY_WATCHDOG_INTERVAL_SECONDS=${NEXUS_TREASURY_WATCHDOG_INTERVAL_SECO
 NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS=${NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS}
 NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS=${NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS}
 NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR=${NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR}
+NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS=${NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS}
 NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL=${NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL}
 NEXUS_TREASURY_WATCHDOG_SERVICE_NAME=${NEXUS_TREASURY_WATCHDOG_SERVICE_NAME}
 ENV
@@ -41,6 +42,7 @@ STATUS_URL="${NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL:-http://127.0.0.1:8080/v1
 MAX_IDLE_SECONDS="${NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS:-300}"
 MAX_CONFIRM_LAG_SECONDS="${NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS:-300}"
 MAX_RESTARTS_PER_HOUR="${NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR:-12}"
+STARTUP_GRACE_SECONDS="${NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS:-180}"
 STATE_DIR="/var/lib/nexus-relay/watchdog"
 RESTART_LOG="${STATE_DIR}/restart-timestamps.log"
 MAX_CONFIRM_LAG_MS=$((MAX_CONFIRM_LAG_SECONDS * 1000))
@@ -74,6 +76,16 @@ trim_restart_log() {
   mv "$tmp" "$RESTART_LOG"
 }
 
+service_active_enter_unix_s() {
+  local active_enter_timestamp
+  active_enter_timestamp="$(systemctl show -p ActiveEnterTimestamp --value "$SERVICE_NAME" 2>/dev/null || true)"
+  if [[ -z "$active_enter_timestamp" || "$active_enter_timestamp" == "n/a" ]]; then
+    echo 0
+    return
+  fi
+  date -d "$active_enter_timestamp" +%s 2>/dev/null || echo 0
+}
+
 restart_service() {
   local reason="$1"
   trim_restart_log "$((NOW_UNIX_S - 3600))"
@@ -90,6 +102,13 @@ restart_service() {
 
 if [[ "$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || true)" != "active" ]]; then
   restart_service "service_inactive"
+  exit 0
+fi
+
+SERVICE_ACTIVE_ENTER_UNIX_S="$(service_active_enter_unix_s)"
+SERVICE_UPTIME_SECONDS=$(( SERVICE_ACTIVE_ENTER_UNIX_S > 0 ? NOW_UNIX_S - SERVICE_ACTIVE_ENTER_UNIX_S : STARTUP_GRACE_SECONDS + 1 ))
+if (( SERVICE_UPTIME_SECONDS < STARTUP_GRACE_SECONDS )); then
+  log "healthy startup_grace service_uptime_seconds=${SERVICE_UPTIME_SECONDS} startup_grace_seconds=${STARTUP_GRACE_SECONDS}"
   exit 0
 fi
 
@@ -185,7 +204,7 @@ UNIT
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now nexus-treasury-watchdog.timer
-sudo systemctl start nexus-treasury-watchdog.service
+sudo systemctl reset-failed nexus-treasury-watchdog.service || true
 sudo systemctl --no-pager --full status nexus-treasury-watchdog.service | sed -n '1,40p' || true
 sudo systemctl --no-pager --full status nexus-treasury-watchdog.timer | sed -n '1,40p' || true
 REMOTE

@@ -66,7 +66,10 @@ scripts/deploy/nexus/03-configure-and-start.sh
 ```
 
 `03-configure-and-start.sh` now also installs the treasury continuity watchdog
-by default. If you need to install or refresh only that watchdog without
+by default and runs a post-restart payout smoke check before it leaves a new
+image in production. If the fresh image fails to emit completed payout sends
+inside the configured smoke window, the script automatically rolls back to the
+previous image. If you need to install or refresh only the watchdog without
 redeploying the Nexus container:
 
 ```bash
@@ -164,6 +167,12 @@ Why the extra two envs matter:
   plus recent completed-send journal entries, and restarts `nexus-relay` only
   when payouts have actually gone idle or the wallet/runtime has entered a hard
   error state
+- the watchdog now has a startup grace window so it does not restart
+  `nexus-relay` based on stale pre-restart dispatch timestamps before the first
+  post-restart payout window can complete
+- `03-configure-and-start.sh` now refuses to leave a new image live unless it
+  produces fresh completed payout sends after restart; otherwise it rolls back
+  automatically to the previous image
 
 Watchdog env overrides:
 
@@ -173,6 +182,10 @@ export NEXUS_TREASURY_WATCHDOG_INTERVAL_SECONDS=300
 export NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS=300
 export NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS=300
 export NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR=12
+export NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS=180
+export NEXUS_DEPLOY_POST_RESTART_SMOKE_ENABLED=true
+export NEXUS_DEPLOY_POST_RESTART_SMOKE_TIMEOUT_SECONDS=240
+export NEXUS_DEPLOY_POST_RESTART_SMOKE_POLL_SECONDS=10
 ```
 
 If treasury status ever collapses to `0 sats` unexpectedly after a backend or
