@@ -176,6 +176,9 @@ What already exists:
   recovery, validator scoring, signed node identity, and launch contracts.
 - `psionic/TRAIN` already gives `Psion` one real operator entrypoint for the
   actual lane.
+- `Pylon` now carries one explicit `training` config block plus one separate
+  retained runtime-state store under the training run root for manifests,
+  leases, windows, active runtime state, and latest published TRN pointers.
 - the TRN NIP text now covers the public coordination vocabulary needed for the
   MVP.
 
@@ -1093,6 +1096,8 @@ become the admitted-node supervisor around `Psionic`.
 
 ### 3.2 Pylon training config and local state
 
+- Land the first explicit `training` config block and separate retained
+  runtime-state store before process supervision.
 - Extend `PylonConfig` with training sections for:
   - allowed training networks
   - role claims
