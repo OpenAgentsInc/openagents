@@ -1168,6 +1168,15 @@ become the admitted-node supervisor around `Psionic`.
 - Add one local checkpoint-serving path for recovery-source behavior.
 - Add artifact garbage collection once retention policy permits deletion.
 - Add local manifest inspection commands for operators.
+- Current status: `apps/pylon/src/lib.rs` now contains the first retained GCS
+  courier and checkpoint-serving foundation. It can upload and redownload
+  checkpoint, contribution-proof, and score bundles against the frozen `gs://`
+  layout with digest verification and retry, expose a bounded local checkpoint
+  HTTP path, inspect local manifest and artifact state through
+  `pylon training artifacts inspect`, and prune the retained download cache
+  through `pylon training artifacts gc`. Later issues still need to connect
+  those retained transport/reporting paths to live `Nexus` publication,
+  closeout, and operator-admin workflows.
 
 ### 3.6 TRN publication from live Pylon state
 

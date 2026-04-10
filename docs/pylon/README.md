@@ -194,6 +194,24 @@ the `Nexus` bearer token env-only through
 `OPENAGENTS_PYLON_TRAINING_NEXUS_BEARER_TOKEN`; it does not persist that secret
 into `PylonConfig` or the retained runtime-state store.
 
+`Pylon` now also carries the first retained training artifact courier and
+checkpoint-serving foundation. `apps/pylon/src/lib.rs` can now:
+
+- upload checkpoint, contribution-proof, and score bundles to the frozen
+  `gs://` layout with retry and digest verification
+- download and verify those same bundles into the retained download cache under
+  `training/download-cache/`
+- expose a bounded local checkpoint HTTP path for recovery clients
+- inspect local manifests and artifact state through
+  `pylon training artifacts inspect`
+- garbage-collect stale downloaded artifacts through
+  `pylon training artifacts gc`
+
+The transport credentials still stay env-only at runtime. `Pylon` resolves the
+persisted credential-source name through Application Default Credentials and
+can mint GCS bearer tokens from either `GOOGLE_APPLICATION_CREDENTIALS` or
+instance metadata without writing raw secrets into retained state.
+
 The retained config now also carries one explicit `training` block for the
 future admitted-node lane. That block freezes:
 
