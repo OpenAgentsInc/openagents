@@ -1349,3 +1349,1584 @@ The main gap is:
 The existing codebase already contains much of the vocabulary needed for that
 system. The MVP work is now mostly implementation and hardening, not basic
 concept invention.
+
+## Appendix: GitHub Issue Backlog
+
+The following backlog translates this roadmap into copy-ready GitHub issue
+drafts. The numbering here is document-local ordering, not future GitHub issue
+numbers. The issue bodies below keep the frozen MVP contracts, the phased build
+order, the Apple follow-on work, and the explicit non-blockers aligned with the
+roadmap above.
+
+### Phase 0: Contract Freeze
+
+#### 1. Encode sealed-window acceptance as the MVP acceptance unit
+
+**Summary**
+
+Implement the frozen MVP acceptance rule that the canonical accepted unit is
+one sealed window, not one individual contribution.
+
+**Why**
+
+The roadmap freezes sealed-window acceptance as the MVP contract.
+Contribution-level receipts and dispositions still exist, but economic
+acceptance, accepted outcomes, closeouts, and settlement happen only at the
+sealed-window level.
+
+**Scope**
+
+- Encode sealed-window acceptance in coordinator logic.
+- Keep contribution-level receipts and terminal dispositions.
+- Ensure contribution-level `accepted` means "eligible for aggregation," not
+  final acceptance.
+- Disable contribution-level settlement for the MVP.
+- Preserve the `AcceptedContribution` settlement trigger in code as a future
+  path, but make it inactive for the MVP.
+- Update comments and docs to reflect the frozen policy.
+
+**Acceptance Criteria**
+
+- No MVP flow emits a final accepted outcome or closeout for a single
+  contribution.
+- Sealed-window closeout is the only final acceptance path.
+- Tests fail if contribution-level acceptance is treated as final economic
+  acceptance.
+
+#### 2. Encode the first supported topology as homogeneous CUDA-only windowed
+data parallel training
+
+**Summary**
+
+Implement the frozen first topology for the MVP.
+
+**Why**
+
+The roadmap freezes the first real topology as homogeneous CUDA workers only,
+data parallel only, one process per admitted GPU worker, fixed world size
+inside a window, elastic membership only at window boundaries, one canonical
+checkpoint family, one canonical environment family, and one adapter-delta
+bundle contribution artifact family.
+
+**Scope**
+
+- Enforce homogeneous CUDA worker requirements.
+- Reject unsupported topologies:
+  - tensor parallel
+  - pipeline parallel
+  - mixed CUDA and MLX sets
+  - mid-window world-size changes
+  - heterogeneous worker families inside a window
+- Add explicit refusal states for unsupported topology.
+
+**Acceptance Criteria**
+
+- MVP run manifests and runtime checks reject non-CUDA or mixed-backend
+  windows.
+- World size is fixed within a window.
+- Elastic membership changes only happen across window boundaries.
+
+#### 3. Implement `openagents.pylon_training_run_manifest.v1` builder, parser,
+and validator
+
+**Summary**
+
+Add the canonical machine-consumable run manifest implementation for V1.
+
+**Why**
+
+The roadmap freezes UTF-8 JSON, one top-level object, schema id
+`openagents.pylon_training_run_manifest.v1`, canonical `sha256` digest with
+`manifest_digest` omitted or empty during hashing, additive unknown fields
+ignored by parsers, and breaking changes requiring a new schema id.
+
+**Scope**
+
+- Manifest struct definitions.
+- Builder APIs.
+- Parser APIs.
+- Validation rules for required fields.
+- Role-conditional validation.
+- Canonical digest computation.
+- Stable serialization rules.
+- Version guardrails for future bumps.
+
+**Acceptance Criteria**
+
+- Valid manifests round-trip parse and serialize.
+- Digest matches canonical serialization rules.
+- Invalid manifests fail with explicit validation errors.
+- Unknown additive fields do not break parsing.
+
+#### 4. Enforce role-conditional manifest requirements for worker, validator,
+and recovery_source
+
+**Summary**
+
+Implement role-specific validation and consumption rules for manifest V1.
+
+**Why**
+
+The roadmap freezes these role contracts:
+
+- `worker`: `dataset` required, `validator` omitted
+- `validator`: `validator` required, `dataset` optional only if replay policy
+  needs it
+- `recovery_source`: `resume_from` required
+- `coordinator` is a logical `Nexus` role, not a leased `Pylon` manifest role
+
+**Scope**
+
+- Validation logic for role-specific required and forbidden fields.
+- Clear refusal messages when role-specific contract is violated.
+- Unit tests per role.
+
+**Acceptance Criteria**
+
+- Worker manifests without `dataset` are rejected.
+- Validator manifests without a `validator` section are rejected.
+- Recovery-source manifests without `resume_from` are rejected.
+- Coordinator manifests are not accepted as leased node runtime manifests.
+
+#### 5. Implement manifest digest cross-check against TRN assignment receipts
+
+**Summary**
+
+Cross-check HTTP-delivered run manifests against the signed TRN
+assignment-published receipt.
+
+**Why**
+
+The roadmap requires the manifest digest to appear in the corresponding
+`kind:39511` assignment-published receipt via the TRN `manifest` tag so
+`Pylon` can verify the delivered manifest against the signed receipt.
+
+**Scope**
+
+- Add digest tag generation on the coordinator side.
+- Add cross-check validation on the node side.
+- Refuse mismatches.
+- Persist comparison results in local receipts and logs.
+
+**Acceptance Criteria**
+
+- Matching manifest and receipt succeeds.
+- Digest mismatch causes explicit refusal.
+- Tests cover success and mismatch cases.
+
+#### 6. Implement the frozen GCS artifact backend contract and object layout
+
+**Summary**
+
+Implement the MVP artifact transport contract using Google Cloud Storage only.
+
+**Why**
+
+The roadmap freezes GCS only, no S3 alternative for the MVP, no arbitrary P2P
+artifact fetch, and a fixed object layout under
+`gs://<bucket>/networks/<network_id>/runs/<run_id>/windows/<window_id>/`.
+
+**Scope**
+
+- GCS storage client integration.
+- Object layout helpers.
+- Path builders for:
+  - run manifest
+  - latest pointer
+  - checkpoint manifests
+  - contribution bundles
+  - proof bundles
+  - validator verdicts
+  - sealed-window bundles
+  - score snapshots
+- Validation that uploaded artifacts land in the correct layout.
+
+**Acceptance Criteria**
+
+- All artifact families upload to the frozen path layout.
+- Path helpers are shared, not hand-built ad hoc.
+- Tests cover every required object path.
+
+#### 7. Enforce the frozen artifact digest policy and locator tagging rules
+
+**Summary**
+
+Implement the artifact digest rules and TRN locator tagging contract.
+
+**Why**
+
+The roadmap freezes `sha256` over raw bytes for uploaded objects, `sha256` over
+canonical JSON UTF-8 for JSON manifests and receipts, TRN artifact locators
+carrying file digest in `x`, and manifest-backed locators carrying manifest
+digest in `manifest`.
+
+**Scope**
+
+- Shared digest helpers.
+- JSON canonicalization helpers.
+- Locator tag population.
+- Validation on publish and ingest.
+- Digest mismatch refusal flows.
+
+**Acceptance Criteria**
+
+- Every published artifact locator includes the required digests.
+- Digest mismatches are rejected explicitly.
+- Tests cover byte objects and canonical JSON objects.
+
+#### 8. Implement ADC-only credential resolution and redact raw credentials
+from state
+
+**Summary**
+
+Implement the frozen credential model for artifact access.
+
+**Why**
+
+The roadmap freezes Google Application Default Credentials only, resolution of
+`GOOGLE_APPLICATION_CREDENTIALS` first with fallback to instance metadata,
+persistence of only the credential-source name, and refusal to persist raw
+service-account JSON, tokens, or secrets.
+
+**Scope**
+
+- ADC resolution helpers.
+- Credential-source recording.
+- Redaction rules.
+- Validation that secrets do not leak into ledgers, manifests, TRN events, or
+  receipts.
+
+**Acceptance Criteria**
+
+- ADC resolution works in local and cloud environments.
+- Only the credential-source name is persisted.
+- Tests assert that secrets are never written to retained state.
+
+#### 9. Enforce terminal upload receipt semantics for complete artifact bundles
+only
+
+**Summary**
+
+Prevent terminal upload receipts for partial artifact bundles.
+
+**Why**
+
+The roadmap freezes that `Pylon` may not emit terminal `artifact_uploaded`
+until every required object is uploaded and digests match, and `Nexus` may not
+publish `kind:39520` as stored or accepted until bundle validation succeeds.
+
+**Scope**
+
+- Bundle completeness checks.
+- Upload state machine with staged versus terminal states.
+- Coordinator-side bundle validation.
+- Partial bundle refusal handling.
+
+**Acceptance Criteria**
+
+- Partial uploads do not emit terminal success.
+- Incomplete bundles stay staged.
+- Accepted locators only appear after full validation.
+
+#### 10. Implement validator policy v1 exactly as frozen
+
+**Summary**
+
+Implement the frozen validator policy for the MVP.
+
+**Why**
+
+The roadmap freezes:
+
+- `minimum_validator_count = 1`
+- `escalation_validator_count = 2`
+- one aggregate validator replay per sealed window
+- sampled contribution replay per sealed window
+- deterministic sample sizing and selection
+- escalation and retry rules
+- held windows on unresolved disagreement or failure
+
+**Scope**
+
+- Sample size computation.
+- Deterministic sampling set construction.
+- Aggregate validator scheduling.
+- Escalation validator scheduling.
+- Retry logic.
+- Held challenge and window states.
+- Exact frozen verdict semantics.
+
+**Acceptance Criteria**
+
+- Sampling matches the frozen formula exactly.
+- Escalation triggers only under the frozen conditions.
+- Held states block acceptance.
+- Tests lock the policy against silent drift.
+
+#### 11. Implement failure ownership rules between Pylon and Nexus
+
+**Summary**
+
+Encode the frozen authority boundary for operational failures.
+
+**Why**
+
+The roadmap freezes `Pylon` as authoritative for local process, file, upload,
+and drain-intent state, and `Nexus` as authoritative for leases, assignment
+freshness, window state, accepted outcomes, closeouts, and reputation. It also
+freezes specific edge-case handling for stale upload, partial checkpoint
+publish, drain during seal, crash-before-upload, and TRN publication failure.
+
+**Scope**
+
+- Failure ownership docs in code.
+- Edge-case handlers.
+- State transition enforcement.
+- Tests for each frozen scenario.
+
+**Acceptance Criteria**
+
+- Edge cases resolve per the frozen rules.
+- Nodes cannot self-promote windows or accepted outcomes.
+- Stale uploads are ignored for acceptance purposes.
+
+#### 12. Implement reputation policy v1 and scheduler projection
+
+**Summary**
+
+Implement authoritative `NIP-32` label publication and scheduler-facing
+projection.
+
+**Why**
+
+The roadmap freezes:
+
+- namespaces `trn/contributor`, `trn/validator`, `trn/build`,
+  `trn/checkpoint`
+- `Nexus` as the sole authority publisher
+- exact mapping rules for `good`, `poor`, `quarantined`, `fraud`,
+  `inconsistent`, `admitted`, `stale`, `revoked`, and `warning`
+- hard-gate versus soft-preference treatment
+- frozen decay windows
+
+**Scope**
+
+- Label builders.
+- Label publication logic.
+- Scheduler projection logic.
+- Decay calculations.
+- Hard-gate enforcement.
+- Local caching and display in `Pylon`.
+
+**Acceptance Criteria**
+
+- Labels are published only by `Nexus`.
+- Hard gates and soft preferences match policy.
+- Decay behavior matches the frozen windows.
+- Tests cover every label class and scheduler effect.
+
+#### 13. Add drift tests that guard all frozen Phase 0 choices
+
+**Summary**
+
+Add policy and schema drift tests that fail when Phase 0 contracts change
+without an intentional version bump.
+
+**Why**
+
+The roadmap explicitly calls for tests that fail if later changes drift from
+the frozen Phase 0 choices without an intentional schema or policy bump.
+
+**Scope**
+
+- Snapshot tests.
+- Schema id and version tests.
+- Validator policy lock tests.
+- Topology restriction tests.
+- Artifact layout lock tests.
+- Reputation policy lock tests.
+
+**Acceptance Criteria**
+
+- Any incompatible change fails CI until a version bump and intentional updates
+  are made.
+
+### Workstream 2: Psionic Runtime
+
+#### 14. Add a stable machine-consumable `psionic-train` entrypoint
+
+**Summary**
+
+Add a stable runtime entrypoint that `Pylon` can invoke programmatically.
+
+**Why**
+
+The roadmap requires a machine-consumable entrypoint and explicitly says to
+stop relying on the human-oriented `./TRAIN` shell surface as the only
+launcher.
+
+**Scope**
+
+- CLI or library entrypoint for run-manifest consumption.
+- Stable invocation contract.
+- Role-aware startup behavior.
+
+**Acceptance Criteria**
+
+- `Pylon` can launch `psionic-train` from code using a manifest path or
+  equivalent input.
+- No human-only shell wrapper is required.
+
+#### 15. Define machine-stable Psionic exit codes and refusal classes
+
+**Summary**
+
+Implement stable exit codes and refusal classes for machine supervision.
+
+**Why**
+
+The roadmap calls for stable refusal classes including bad config, missing
+checkpoint, stale assignment, unsupported topology, validator replay refusal,
+and artifact upload failure.
+
+**Scope**
+
+- Exit-code enum.
+- Refusal-class enum.
+- Structured stderr or status-packet output.
+- Supervisor-friendly documentation.
+
+**Acceptance Criteria**
+
+- Each refusal class maps to one stable code.
+- `Pylon` can distinguish retryable versus non-retryable failures.
+
+#### 16. Implement the cluster membership and liveness state machine
+
+**Summary**
+
+Add real cluster session state and liveness handling to `Psionic`.
+
+**Why**
+
+The roadmap calls for heartbeats, lease-renewal semantics, deathrattle or
+drain, membership revision tracking, and join, rejoin, drain, failed, and
+replaced worker states.
+
+**Scope**
+
+- Membership-state model.
+- Heartbeat emission.
+- Liveness expiry.
+- Membership-revision receipts.
+- Build-digest and signed-identity binding.
+
+**Acceptance Criteria**
+
+- Worker membership changes are machine-visible.
+- Stale workers become explicit.
+- Rejoin and replace flows work without manual metadata edits.
+
+#### 17. Implement fast local checkpointing and durable upload plumbing
+
+**Summary**
+
+Build the core checkpoint path for active distributed runs.
+
+**Why**
+
+The roadmap requires a fast local checkpoint path, async durable upload,
+checkpoint manifesting, fetch, verify, and restore logic, retention, pruning,
+and recovery receipts.
+
+**Scope**
+
+- Local checkpoint writer.
+- Checkpoint-manifest schema.
+- Background upload.
+- Retention and pruning.
+- Restore pipeline.
+- Recovery receipts.
+
+**Acceptance Criteria**
+
+- Checkpoints can be created, uploaded, fetched, verified, and restored.
+- Restore failures emit explicit refusal state.
+- Latest-pointer updates behave correctly.
+
+#### 18. Add live checkpoint serving for late joiners and recovery sources
+
+**Summary**
+
+Support late join and recovery-source behavior by serving checkpoint state to
+peers.
+
+**Why**
+
+The roadmap requires late joiner and rejoin recovery plus explicit
+`recovery_source` support.
+
+**Scope**
+
+- Checkpoint-serving endpoint or protocol.
+- Joiner fetch flow.
+- `recovery_source` role support.
+- Peer handoff receipts.
+
+**Acceptance Criteria**
+
+- Joiners can restore from a live or durable checkpoint source.
+- Recovery-source nodes can serve state without being active trainers.
+
+#### 19. Implement runtime window execution and contribution packaging
+
+**Summary**
+
+Add `Psionic` runtime support for windows, receipts, and contribution artifact
+packaging.
+
+**Why**
+
+The roadmap requires runtime windows, deterministic assignment materialization,
+stable contribution receipts, artifact manifests, and sealed-window summaries
+matching kernel models.
+
+**Scope**
+
+- Runtime window object.
+- Assignment materialization.
+- Stable contribution ids and digests.
+- Artifact-manifest generation.
+- Sealed-window summary generation.
+
+**Acceptance Criteria**
+
+- Each contribution emits stable receipts and artifacts.
+- Sealed-window summary includes counts and digests matching the kernel model.
+
+#### 20. Add runnable validator replay mode to `psionic-train`
+
+**Summary**
+
+Implement validator replay execution inside `Psionic`.
+
+**Why**
+
+The roadmap requires a validator mode that replays assigned contributions or
+checkpoint deltas, emits stable verdict receipts, produces score artifacts, and
+refuses stale or mismatched inputs.
+
+**Scope**
+
+- Validator-mode launcher.
+- Replay-input loading.
+- Verdict-receipt emission.
+- Score-artifact generation.
+- Refusal states for missing, stale, or mismatched inputs.
+
+**Acceptance Criteria**
+
+- Validator mode can process both accepted and rejected cases.
+- Verdict states exactly match the frozen semantics.
+
+#### 21. Emit machine-readable run-status and window-status packets
+
+**Summary**
+
+Expose machine-readable runtime status surfaces for `Pylon` and `Nexus`.
+
+**Why**
+
+The roadmap requires one machine-readable run-status packet for `Pylon`, one
+machine-readable window-status packet for `Nexus`, and explicit artifacts for
+launch manifest, membership revision, checkpoint pointer, recovery receipt,
+validator score receipt, sealed-window bundle, and final closeout bundle.
+
+**Scope**
+
+- Status-packet schema.
+- Runtime emitters.
+- Serialization.
+- Integration with supervisor and coordinator surfaces.
+
+**Acceptance Criteria**
+
+- `Pylon` can ingest run-status packets.
+- `Nexus` can ingest window-status packets.
+- Status is sufficient for reconciliation and operator inspection.
+
+#### 22. Enforce release identity and admitted environment matching in Psionic
+
+**Summary**
+
+Bind runtime execution to admitted release and environment identity.
+
+**Why**
+
+The roadmap requires signed node-identity reuse, runnable build stamping, and
+runtime refusal when the admitted release or environment does not match the run
+manifest.
+
+**Scope**
+
+- Build stamping.
+- Runtime attestation checks.
+- Environment-ref enforcement.
+- Publication of software attestation and capability projection.
+
+**Acceptance Criteria**
+
+- Mismatched build or environment is refused before training starts.
+- Runtime surfaces release id, build digest, git commit, and admitted
+  environment ref.
+
+#### 23. Add Psionic unit, integration, and failure-injection coverage
+
+**Summary**
+
+Cover the new runtime contracts and failure paths with tests and rehearsals.
+
+**Why**
+
+The roadmap requires tests for manifest parsing, role transitions, join, fail,
+rejoin, drain, checkpoint upload and restore, validator replay, and multiple
+injected failure scenarios.
+
+**Scope**
+
+- Unit tests.
+- Multi-process integration tests.
+- Failure-injection rehearsals.
+
+**Acceptance Criteria**
+
+- CI covers all listed `Psionic` scenarios.
+- Failure paths produce explicit expected receipts and refusals.
+
+### Workstream 3: Pylon Node Operator
+
+#### 24. Replace inert training contributor defaults with real capability
+detection
+
+**Summary**
+
+Implement real training capability detection in `Pylon`.
+
+**Why**
+
+The roadmap calls out the current inert default and requires actual detection
+of runtime availability, backend, memory, storage, network posture,
+environment refs, checkpoint families, validator policy refs, and settlement
+trigger.
+
+**Scope**
+
+- Detect `Psionic` runtime availability.
+- Detect backend and machine posture.
+- Populate the training capability envelope.
+- Refuse sellable training capability when admission fails.
+
+**Acceptance Criteria**
+
+- Node records reflect real machine capability.
+- Unsupported machines do not advertise sellable training capability.
+
+#### 25. Extend `PylonConfig` and add persisted training runtime state
+
+**Summary**
+
+Add training-specific config and local state storage to `Pylon`.
+
+**Why**
+
+The roadmap requires training config sections for networks, role claims, run
+root, credential-source names, checkpoint-serve address, `Nexus` URL, relays,
+validator enablement, and retention limits, plus persisted runtime state and
+local caches.
+
+**Scope**
+
+- Config-schema changes.
+- Validation.
+- State store for runtime, leases, windows, and publication pointers.
+- Migration strategy if needed.
+
+**Acceptance Criteria**
+
+- Training config is validated and persisted.
+- Runtime state survives restart.
+
+#### 26. Add supervised child-process management for `psionic-train`
+
+**Summary**
+
+Make `Pylon` the real admitted-node supervisor for training processes.
+
+**Why**
+
+The roadmap requires launch, stop, drain, restart, and status support, capture
+of stdout, stderr, exit code, and heartbeat, assignment binding, prevention of
+conflicting assignments, and log and failure-receipt preservation across
+restart.
+
+**Scope**
+
+- Child-process runner.
+- State machine.
+- Log capture.
+- Heartbeat tracking.
+- Assignment-conflict prevention.
+
+**Acceptance Criteria**
+
+- `Pylon` can supervise a training process end to end.
+- Restarts preserve logs and failure receipts.
+
+#### 27. Implement the Pylon to Nexus training coordination client
+
+**Summary**
+
+Add training-aware coordinator-client code in `Pylon`.
+
+**Why**
+
+The roadmap requires reuse of existing routes plus new idempotent coordination
+calls for node admission, run lease, heartbeat, assignment ack, drain notice,
+failure notice, window progress, and checkpoint publication.
+
+**Scope**
+
+- HTTP-client implementation.
+- Idempotency keys or equivalent handling.
+- Request and response types.
+- Retry policy.
+
+**Acceptance Criteria**
+
+- All listed coordination flows work end to end.
+- Repeated calls are safe and idempotent where required.
+
+#### 28. Implement artifact courier and checkpoint serving in Pylon
+
+**Summary**
+
+Add upload, download, verification, retry, garbage collection, and operator
+inspection for the frozen GCS backend.
+
+**Why**
+
+The roadmap requires `Pylon` to own upload and download logic, digest
+verification, retry and backoff, local checkpoint serving, garbage collection,
+and local manifest-inspection commands.
+
+**Scope**
+
+- GCS upload and download logic.
+- Digest verification.
+- Retry and backoff.
+- Local checkpoint server.
+- Garbage collection.
+- Operator inspection commands.
+
+**Acceptance Criteria**
+
+- Checkpoints, proof bundles, and scores can be uploaded, downloaded, and
+  verified.
+- Operators can inspect local manifests and artifact state.
+
+#### 29. Publish live Pylon state to TRN
+
+**Summary**
+
+Implement node-side TRN publication from live `Pylon` state.
+
+**Why**
+
+The roadmap requires publication of:
+
+- `kind:39501` node records
+- `kind:39511` node-originated receipts
+- `kind:39520` artifact locators
+- persisted event ids and `a` references
+
+**Scope**
+
+- Node-record builder.
+- Receipt builders.
+- Artifact-locator publication.
+- Persistence of publication pointers.
+
+**Acceptance Criteria**
+
+- Live node capability state is publishable to TRN.
+- Published event references are locally persisted and queryable.
+
+#### 30. Add training-aware closeout, settlement, and reputation ingestion to
+Pylon
+
+**Summary**
+
+Extend local operator state to ingest training closeouts and reputation.
+
+**Why**
+
+The roadmap requires ingestion of contribution outcomes, accepted sealed-window
+closeouts, relevant `NIP-32` labels, and refusal to auto-readvertise when
+reputation or build status is downgraded.
+
+**Scope**
+
+- Closeout ingestion.
+- Settlement projection.
+- Label ingestion and caching.
+- Advertisement gating.
+
+**Acceptance Criteria**
+
+- Local operator state reflects closeouts and labels.
+- Auto-readvertisement is blocked when the frozen gating rules apply.
+
+#### 31. Add training-aware operator surfaces in Pylon
+
+**Summary**
+
+Add `pylon status`, training admin endpoints, doctor checks, and manual
+node-record refresh support.
+
+**Why**
+
+The roadmap requires operator visibility without reading raw JSON by hand and
+lists specific status and admin surfaces.
+
+**Scope**
+
+- `pylon status`
+- admin HTTP endpoints
+- doctor command
+- manual publish and refresh commands
+
+**Acceptance Criteria**
+
+- Operators can inspect current run, active window, last checkpoint, validator
+  queue, recent TRN events, and recent refusals and failures.
+
+#### 32. Add Pylon test coverage for capability, config, supervision, client
+idempotency, artifacts, and TRN dedupe
+
+**Summary**
+
+Add comprehensive node-operator coverage for the new training functionality.
+
+**Why**
+
+The roadmap explicitly calls for tests for capability detection, config
+validation, supervision, `Nexus` idempotency, artifact handling, and TRN
+publication and deduplication.
+
+**Scope**
+
+- Unit tests.
+- Integration tests.
+- Publication-dedupe tests.
+
+**Acceptance Criteria**
+
+- CI covers the listed areas with deterministic assertions.
+
+### Workstream 4: Nexus Authority and Scheduler
+
+#### 33. Implement admitted-node registry for training nodes
+
+**Summary**
+
+Add an admitted training-node registry keyed by node pubkey and build identity.
+
+**Why**
+
+The roadmap requires tracking role claims, build digest, heartbeat, capability
+envelope, storage and memory posture, last successful run, and active
+reputation labels, while distinguishing raw provider presence from admitted
+training presence.
+
+**Scope**
+
+- Registry schema.
+- CRUD APIs.
+- Online and offline tracking.
+- Distinction between generic provider and admitted training-node presence.
+
+**Acceptance Criteria**
+
+- The registry can answer which admitted training nodes are eligible and
+  online.
+
+#### 34. Add training run creation and scheduler loop
+
+**Summary**
+
+Build the live scheduler service above existing kernel objects.
+
+**Why**
+
+The roadmap requires canonical run creation and binding to checkpoint family,
+validator policy, benchmark package set, environment package, and artifact
+roots, plus node matching, lease issuance, membership tracking, and
+replacement.
+
+**Scope**
+
+- Scheduler service.
+- Run creation.
+- Lease issuance.
+- Matching logic.
+- Replacement logic.
+
+**Acceptance Criteria**
+
+- `Nexus` can create and activate one real training run and assign admitted
+  nodes into it.
+
+#### 35. Implement live window planning, sealing, and reconciliation
+
+**Summary**
+
+Turn `ComputeAdapterTrainingWindow` into a live coordinator loop.
+
+**Why**
+
+The roadmap requires deterministic window ids and assignment seeds, binding
+each window to run, stage, contributor set, policy, checkpoint, and dataset
+slice plan, sealing windows, reconciling dispositions, and recording canonical
+summaries and outcomes.
+
+**Scope**
+
+- Window planner.
+- Assignment-seed generation.
+- Seal conditions.
+- Reconciliation logic.
+- Persistence into kernel routes.
+
+**Acceptance Criteria**
+
+- Windows can move from `planned` to `active` to `sealed` to `reconciled` with
+  deterministic identifiers and state.
+
+#### 36. Automate validator challenge scheduling, leasing, and verdict
+ingestion
+
+**Summary**
+
+Add validator automation consistent with validator policy v1.
+
+**Why**
+
+The roadmap requires automatic scheduling from sealed windows or sampled
+contributions, leasing to admitted validators, ingesting verdicts and scores,
+promoting outcomes, and supporting retry, escalation, timeout, quarantine, and
+held flows.
+
+**Scope**
+
+- Challenge scheduler.
+- Validator-lease flow.
+- Verdict ingestion.
+- Policy-v1 enforcement.
+
+**Acceptance Criteria**
+
+- Validators are scheduled automatically.
+- Window acceptance is blocked on incomplete validation or held challenges.
+
+#### 37. Implement accepted outcomes and closeout generation for sealed windows
+
+**Summary**
+
+Generate accepted outcomes and closeouts from reconciled sealed windows.
+
+**Why**
+
+The roadmap requires accepted outcomes and closeouts for rewarded, no-reward,
+held, quarantined, and refused states, linked to artifacts, verdicts, and
+settlement hooks.
+
+**Scope**
+
+- Accepted-outcome generation.
+- Closeout generation.
+- Linkage to locators and verdicts.
+- Settlement-eligibility computation.
+
+**Acceptance Criteria**
+
+- Accepted sealed windows produce the correct accepted outcomes and closeouts.
+- Non-accepted states produce the correct non-reward or held, quarantined, and
+  refused closeouts.
+
+#### 38. Publish authoritative TRN state from Nexus
+
+**Summary**
+
+Implement coordinator-side TRN publication for network, windows, receipts,
+closeouts, and score locators.
+
+**Why**
+
+The roadmap requires publication of:
+
+- `kind:39500` network contracts
+- `kind:39510` windows
+- coordinator `kind:39511` receipts
+- `kind:39530` closeouts
+- `kind:39520 class=score` locators
+- linkage back to kernel receipt ids and object ids
+
+**Scope**
+
+- Event builders.
+- Publication flows.
+- Kernel-object linkage.
+- Persistence of publication metadata.
+
+**Acceptance Criteria**
+
+- Canonical coordinator state is publishable and traceable back to kernel
+  truth.
+
+#### 39. Implement reputation projection and scheduler feedback
+
+**Summary**
+
+Project verdicts and closeouts into labels and feed them back into scheduler
+preference and admission policy.
+
+**Why**
+
+The roadmap requires label derivation from validator-verdict quality,
+closeout state, build revocation, checkpoint warnings, and scheduler feedback
+based on those labels.
+
+**Scope**
+
+- Projection logic.
+- Publication logic.
+- Scheduler integration.
+
+**Acceptance Criteria**
+
+- Labels affect scheduling exactly per the frozen policy.
+
+#### 40. Add Nexus run-level operator metrics and summary views
+
+**Summary**
+
+Expose operator metrics and run summaries for training.
+
+**Why**
+
+The roadmap requires `/stats` and internal views for admitted nodes online,
+active runs and windows, pending validation, open challenges, checkpoint age,
+artifact failures, and payout-eligible closeouts, plus a full run-summary
+surface.
+
+**Scope**
+
+- Metrics.
+- Summary endpoint or report.
+- Internal operator-view integration.
+
+**Acceptance Criteria**
+
+- Operators can inspect live training state without raw DB or JSON inspection.
+
+#### 41. Persist scheduler state and support replay-safe restart recovery
+
+**Summary**
+
+Make `Nexus` training state survive restart safely.
+
+**Why**
+
+The roadmap requires persistence of leases, window state, accepted
+contributions, active challenges, and rebuild of TRN publication pointers
+without double-publishing logically new receipts.
+
+**Scope**
+
+- Durable persistence.
+- Restart recovery.
+- Publication-pointer rebuild.
+- Runtime-state recomputation from persisted truth.
+
+**Acceptance Criteria**
+
+- `Nexus` can restart during an active run and recover without logical
+  corruption or duplicate publication.
+
+#### 42. Add Nexus scheduler, reconciliation, timeout, closeout, reputation,
+and restart-replay tests
+
+**Summary**
+
+Add comprehensive coordinator-side test coverage for the training scheduler.
+
+**Why**
+
+The roadmap explicitly lists scheduler, window planner, reconciliation,
+validator timeout and retry, closeout and reputation, and restart-replay
+coverage.
+
+**Scope**
+
+- Unit tests.
+- Integration tests.
+- Restart-simulation tests.
+
+**Acceptance Criteria**
+
+- CI covers all listed coordinator scenarios.
+
+### Workstream 5: TRN and Nostr Implementation
+
+#### 43. Add typed Rust support for TRN training event kinds
+
+**Summary**
+
+Implement typed structs, builders, parsers, and validators for all MVP TRN
+event kinds.
+
+**Why**
+
+The roadmap requires typed support for `39500`, `39501`, `39510`, `39511`,
+`39512`, `39520`, and `39530`, plus parse, validate, normalize, actor-tag,
+and score-snapshot helpers.
+
+**Scope**
+
+- Rust structs.
+- Builders.
+- Parsers.
+- Validators.
+- Normalizers.
+
+**Acceptance Criteria**
+
+- Every required TRN kind round-trips correctly and validates required tags and
+  fields.
+
+#### 44. Add mapping layers from Nexus, Pylon, and validator results into TRN
+events
+
+**Summary**
+
+Implement mapping helpers from internal models to public TRN events.
+
+**Why**
+
+The roadmap requires:
+
+- kernel objects to TRN
+- `Pylon` node state to node records and receipts
+- validator results to verdict events and `NIP-32` labels
+
+**Scope**
+
+- Mapper modules.
+- Validation of mapping completeness.
+- Shared tagging conventions.
+
+**Acceptance Criteria**
+
+- Internal state can be converted to canonical TRN events without ad hoc
+  formatting.
+
+#### 45. Implement TRN-specific `NIP-32` namespace helpers and
+scheduler-facing decay and gating projection
+
+**Summary**
+
+Add reusable `NIP-32` helpers for the frozen TRN namespaces and their
+scheduler interpretation.
+
+**Why**
+
+The roadmap requires TRN-specific namespace helpers plus scheduler-facing
+decay and gating projection code matching reputation policy v1.
+
+**Scope**
+
+- Namespace helpers.
+- Canonical label builders.
+- Subject-tagging helpers.
+- Decay and gating projection helpers.
+
+**Acceptance Criteria**
+
+- `NIP-32` label creation and scheduler interpretation are standardized and
+  reusable.
+
+#### 46. Add relay publication retry, dedupe, and local persistence
+
+**Summary**
+
+Make TRN event publication reliable across relay outages and restarts.
+
+**Why**
+
+The roadmap requires retry, dedupe, local persistence, per-relay outcome
+tracking, catch-up after outage, and local indexes that answer "what did we
+publish?" without raw relay-history searches.
+
+**Scope**
+
+- Retry queue.
+- Dedupe rules.
+- Local persistence and indexes.
+- Per-relay status tracking.
+
+**Acceptance Criteria**
+
+- Temporary relay outage does not lose publish intent.
+- Publication status is queryable locally.
+
+#### 47. Add TRN serialization, validation, helper, and cross-process emission
+tests
+
+**Summary**
+
+Add coverage for TRN event correctness and publication behavior.
+
+**Why**
+
+The roadmap explicitly requires round-trip serialization tests, required-tag
+validation, actor-tag and label-helper tests, and cross-process emission tests
+from `Pylon` and `Nexus`.
+
+**Scope**
+
+- Unit tests.
+- Integration tests.
+- Cross-process publish tests.
+
+**Acceptance Criteria**
+
+- All required event kinds and helper layers are tested in CI.
+
+### Workstream 6: Shared Artifact, Identity, and Security Plumbing
+
+#### 48. Freeze and implement shared artifact naming, digest, id-generation,
+and assignment-seed helpers
+
+**Summary**
+
+Build shared utilities for the cross-repo plumbing that the roadmap calls out.
+
+**Why**
+
+The roadmap requires one artifact naming convention, stable digest policy,
+clock and id-generation policy, minimal randomness-source policy for
+deterministic assignment seeds, and dataset-identity binding.
+
+**Scope**
+
+- Shared naming helpers.
+- Digest helpers.
+- ID generators.
+- Assignment-seed generation.
+- Dataset-identity binding helpers.
+
+**Acceptance Criteria**
+
+- All repos use shared policy-conformant helpers instead of ad hoc
+  implementations.
+
+#### 49. Implement node and build identity binding, revocation handling, and
+receipt-redaction policy
+
+**Summary**
+
+Implement shared identity and security controls for admitted training nodes.
+
+**Why**
+
+The roadmap requires binding nodes to pubkey, release, build, and settlement
+identity, handling build or node revocation, and ensuring retained receipts do
+not leak raw secrets.
+
+**Scope**
+
+- Identity-binding model.
+- Revocation handling.
+- Redaction policy and enforcement.
+
+**Acceptance Criteria**
+
+- Revoked nodes or builds are enforceably blocked.
+- Retained receipts do not contain secrets.
+
+### Workstream 7: Defensibility Requirements
+
+#### 50. Enforce admitted-build, signed-identity, digest, validator-evidence,
+and audit-trail requirements end to end
+
+**Summary**
+
+Implement and verify the minimum defensibility safeguards for the admitted-node
+MVP.
+
+**Why**
+
+The roadmap says these are the minimum safeguards required for technical
+defensibility: approved releases only, signed node identity and build
+attestation, artifact digests, validator evidence before closeout, rejection of
+stale or digest-mismatched work, explicit refusal states, sampled replay
+cadence, and persisted audit trails.
+
+**Scope**
+
+- End-to-end policy enforcement.
+- Audit-trail persistence.
+- Refusal-path checks.
+- Compliance-style validation checklist.
+
+**Acceptance Criteria**
+
+- No accepted closeout can occur without satisfying the frozen defensibility
+  requirements.
+
+### Workstream 8: End-to-End Rehearsals
+
+#### 51. Build and automate the full MVP rehearsal matrix
+
+**Summary**
+
+Automate the end-to-end rehearsal matrix and block release until it passes.
+
+**Why**
+
+The roadmap explicitly says not to ship without rehearsals covering
+single-node flow, multi-node flow, late join, crash and recovery, lease expiry,
+upload failure, validator accepted, rejected, and timeout paths,
+reconciliation, TRN outage, `Nexus` restart, `Pylon` restart, and closeout and
+reputation publication.
+
+**Scope**
+
+- Test harnesses.
+- Environment setup.
+- Pass and fail criteria.
+- CI or release-gate integration.
+
+**Acceptance Criteria**
+
+- Every rehearsal in the matrix is runnable and documented.
+- MVP launch is blocked until all required rehearsals pass.
+
+### Workstream 9: Apple Silicon and Metal Expansion
+
+#### 52. Add admitted Apple Silicon training lane under the same manifest and
+policy contracts
+
+**Summary**
+
+Implement the first admitted Apple expansion after the first honest CUDA MVP
+run.
+
+**Why**
+
+The roadmap includes Apple expansion as part of the same distributed-training
+roadmap, with homogeneous Apple workers only, data parallel only,
+backend-homogeneous windows, and no mixed CUDA-plus-Apple execution in the
+same active window.
+
+**Scope**
+
+- Apple training lane in `Psionic`.
+- Apple environment-family binding.
+- Reuse of the same manifest contract.
+- Reuse of the same artifact and digest policy.
+
+**Acceptance Criteria**
+
+- Apple nodes can run admitted homogeneous Apple windows using the same
+  control-plane contracts.
+
+#### 53. Add Apple validator replay and checkpoint and rejoin parity
+
+**Summary**
+
+Support Apple-native validator replay and checkpoint restore and rejoin.
+
+**Why**
+
+The roadmap requires Apple validator replay on Apple, Apple checkpoint,
+artifact, and score emission, and rehearsal of validator accepted cases plus
+checkpoint restore and rejoin.
+
+**Scope**
+
+- Apple validator runtime.
+- Apple checkpoint support.
+- Apple restore and rejoin tests.
+
+**Acceptance Criteria**
+
+- Apple windows can be validated on Apple.
+- Apple nodes can restore and rejoin from checkpoints.
+
+#### 54. Make Pylon advertise and supervise Apple-capable nodes
+
+**Summary**
+
+Extend `Pylon` capability detection and supervision to Apple-capable nodes.
+
+**Why**
+
+The roadmap requires Apple Silicon capability detection, admitted environment
+identity, capability publication, and supervision of Apple training runtime
+through the same lifecycle used by CUDA nodes.
+
+**Scope**
+
+- Apple capability detection.
+- Node-record publication updates.
+- Supervisor support for the Apple runtime.
+
+**Acceptance Criteria**
+
+- Apple-capable nodes advertise and run correctly under the same control plane.
+
+#### 55. Make Nexus schedule backend-homogeneous Apple windows beside CUDA
+windows
+
+**Summary**
+
+Extend the scheduler to support both backend families while refusing
+mixed-backend windows.
+
+**Why**
+
+The roadmap requires backend-specific homogeneous windows, worker and validator
+family matching, identical acceptance, reconciliation, closeout, and
+reputation policy across families, and refusal of accidental mixed-backend
+windows until a later version explicitly enables them.
+
+**Scope**
+
+- Backend-family scheduling constraints.
+- Validator-family matching.
+- Mixed-backend refusal rules.
+
+**Acceptance Criteria**
+
+- CUDA and Apple nodes can coexist in one network while only being scheduled
+  into backend-homogeneous windows.
+
+#### 56. Reuse TRN event shapes for Apple-capable node and window publication
+
+**Summary**
+
+Ensure TRN publication remains shape-compatible while making backend family and
+environment refs explicit for Apple support.
+
+**Why**
+
+The roadmap requires reuse of the same run, node, window, receipt, verdict,
+artifact, and closeout shapes and explicit backend family and environment refs
+so CUDA and Apple windows are distinguishable.
+
+**Scope**
+
+- Node-record updates.
+- Assignment and receipt updates.
+- Event-validation updates.
+
+**Acceptance Criteria**
+
+- Public coordination state clearly distinguishes backend family without
+  needing new MVP event kinds.
+
+#### 57. Automate the Apple rehearsal matrix and block dual-backend claims
+until it passes
+
+**Summary**
+
+Add the Apple-specific rehearsal matrix and prevent public dual-backend claims
+until it passes.
+
+**Why**
+
+The roadmap defines the minimum Apple rehearsal matrix and explicitly says not
+to widen to mixed CUDA-plus-Apple windows until portability, replay,
+scheduling, and artifact-portability claims are proven.
+
+**Scope**
+
+- Apple single-node dry run.
+- Apple multi-node rehearsal.
+- Apple validator accepted case.
+- Apple checkpoint restore and rejoin drill.
+- Scheduler coexistence proof.
+
+**Acceptance Criteria**
+
+- Apple support is not claimed until all listed rehearsals pass.
+
+### Meta and Release Planning
+
+#### 58. Track implementation by roadmap phase and gate launch on phase
+completion
+
+**Summary**
+
+Create a release-tracking issue tying work to the roadmap phases.
+
+**Why**
+
+The roadmap defines this implementation order:
+
+- Phase 0 Contract Freeze
+- Phase 1 Psionic under Pylon supervision
+- Phase 2 admitted multi-node runtime
+- Phase 3 Nexus windows and validator loop
+- Phase 4 TRN publication and reputation
+- Phase 5 dress rehearsal and launch
+- Phase 6 Apple Silicon and Metal support
+
+**Scope**
+
+- Checklist by phase.
+- Dependencies between issues.
+- Launch gates.
+- Post-MVP Apple gate.
+
+**Acceptance Criteria**
+
+- Progress is trackable by phase.
+- MVP launch is blocked until Phase 5 criteria and rehearsal requirements are
+  met.
+
+#### 59. Track explicit non-blockers so they do not derail MVP delivery
+
+**Summary**
+
+Create a non-blockers issue to keep post-MVP scope from leaking into
+delivery-critical work.
+
+**Why**
+
+The roadmap explicitly marks mixed CUDA-plus-Apple windows, threshold-signed
+seals, Bitcoin anchoring, permissionless admission, stake and bond mechanics,
+open validator markets, slashing economics, blockchain consensus or finality,
+and generalized hostile-network verifiability as non-blockers for the first
+honest admitted-node run.
+
+**Scope**
+
+- Track deferred scope.
+- Prevent priority creep.
+- Reference future roadmap buckets.
+
+**Acceptance Criteria**
+
+- Deferred items are visible but not treated as MVP blockers.
