@@ -1389,6 +1389,25 @@ live coordinator plane.
 - Refuse acceptance if validator evidence is incomplete.
 - Support the frozen replay retry, escalation, timeout, quarantine, and held
   flows from validator policy v1.
+- Current status: `apps/nexus-control/src/lib.rs` and
+  `apps/nexus-control/src/kernel.rs` now implement the first retained
+  validator-automation loop for training windows. Sealing a window now derives
+  the frozen aggregate-plus-sampled validation plan, schedules the validator
+  challenges in the retained kernel queue, and stores the plan in window
+  metadata so later retries and reconciliations are driven from one canonical
+  record. The coordinator now exposes:
+  - `/api/training/validator-challenges/claim`
+  - `/api/training/validator-challenges/{challenge_id}/retry`
+  - `/api/training/validator-challenges/{challenge_id}/finalize`
+  Those routes now lease challenges to admitted validator nodes, accept
+  retryable failures without losing challenge lineage, schedule the second
+  aggregate challenge when the first aggregate verdict escalates, and project
+  finalized validator results back into contribution dispositions and window
+  readiness. Reconciliation now refuses incomplete validator evidence with a
+  held/incomplete conflict instead of silently accepting the window, and the
+  in-memory scheduler state now tracks validator-induced `validating` versus
+  `held` outcomes. Score artifact persistence, automatic timeout sweeps, and
+  closeout promotion remain in the following issues.
 
 ### 4.5 Accepted outcomes and closeouts
 
