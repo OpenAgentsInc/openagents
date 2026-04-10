@@ -22,6 +22,17 @@ fn relay_hint_value(relay_url: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
+fn optional_training_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn push_optional_tag(tags: &mut Vec<Vec<String>>, key: &str, value: &str) {
+    if let Some(value) = optional_training_string(value) {
+        tags.push(vec![key.to_string(), value]);
+    }
+}
+
 pub(super) fn node_record_event(
     config: &PylonConfig,
     state: &PylonTrainingRuntimeState,
@@ -109,6 +120,21 @@ pub(super) fn node_record_event(
             .collect::<Vec<_>>(),
         "active_runtime": active_runtime,
     });
+    let mut extra_tags = Vec::new();
+    for backend_family in contexts
+        .iter()
+        .map(|context| training_backend_family_label(context.manifest.topology.backend_family))
+        .collect::<BTreeSet<_>>()
+    {
+        push_optional_tag(&mut extra_tags, "backend", backend_family);
+    }
+    for environment_ref in contexts
+        .iter()
+        .map(|context| context.manifest.environment_ref.as_str())
+        .collect::<BTreeSet<_>>()
+    {
+        push_optional_tag(&mut extra_tags, "environment", environment_ref);
+    }
     Ok((
         status.to_string(),
         TrainingNodeRecordEvent {
@@ -126,7 +152,7 @@ pub(super) fn node_record_event(
                     .map(|context| (*context).clone())
                     .collect::<Vec<_>>(),
             ),
-            extra_tags: Vec::new(),
+            extra_tags,
         }
         .normalize(),
     ))
@@ -181,6 +207,16 @@ pub(super) fn assignment_ack_event(
         Value::String(context.manifest.membership_revision.clone()),
     );
     content.insert(
+        "backend_family".to_string(),
+        Value::String(
+            training_backend_family_label(context.manifest.topology.backend_family).to_string(),
+        ),
+    );
+    content.insert(
+        "environment_ref".to_string(),
+        Value::String(context.manifest.environment_ref.clone()),
+    );
+    content.insert(
         "observability".to_string(),
         serde_json::to_value(training_observability_context(&context.manifest))
             .context("failed to encode assignment observability context")?,
@@ -219,7 +255,14 @@ pub(super) fn assignment_ack_event(
             Some("window".to_string()),
         )],
         event_refs: Vec::new(),
-        extra_tags: Vec::new(),
+        extra_tags: vec![
+            vec![
+                "backend".to_string(),
+                training_backend_family_label(context.manifest.topology.backend_family)
+                    .to_string(),
+            ],
+            vec!["environment".to_string(), context.manifest.environment_ref.clone()],
+        ],
     }
     .normalize())
 }
@@ -241,6 +284,8 @@ pub(super) fn artifact_locator_event(
             "local_path": object.local_path,
             "size_bytes": object.size_bytes,
             "digest_verified": object.digest_verified,
+            "backend_family": training_backend_family_label(context.manifest.topology.backend_family),
+            "environment_ref": context.manifest.environment_ref.clone(),
             "observability": training_observability_context(&context.manifest),
         }),
         artifact_id: Some(artifact_id.to_string()),
@@ -253,7 +298,14 @@ pub(super) fn artifact_locator_event(
         policy_revision: Some(context.manifest.training_policy_ref.clone()),
         reason_codes: Vec::new(),
         address_refs: Vec::new(),
-        extra_tags: Vec::new(),
+        extra_tags: vec![
+            vec![
+                "backend".to_string(),
+                training_backend_family_label(context.manifest.topology.backend_family)
+                    .to_string(),
+            ],
+            vec!["environment".to_string(), context.manifest.environment_ref.clone()],
+        ],
     }
     .normalize()
 }
@@ -278,6 +330,8 @@ pub(super) fn artifact_uploaded_receipt_event(
             "object_uri": object.object_uri,
             "local_path": object.local_path,
             "manifest_digest": context.manifest.manifest_digest,
+            "backend_family": training_backend_family_label(context.manifest.topology.backend_family),
+            "environment_ref": context.manifest.environment_ref.clone(),
             "observability": training_observability_context(&context.manifest),
         }),
         assignment_id: Some(context.manifest.assignment_id.clone()),
@@ -312,7 +366,14 @@ pub(super) fn artifact_uploaded_receipt_event(
             ),
         ],
         event_refs: Vec::new(),
-        extra_tags: Vec::new(),
+        extra_tags: vec![
+            vec![
+                "backend".to_string(),
+                training_backend_family_label(context.manifest.topology.backend_family)
+                    .to_string(),
+            ],
+            vec!["environment".to_string(), context.manifest.environment_ref.clone()],
+        ],
     }
     .normalize()
 }
@@ -479,6 +540,23 @@ mod tests {
                     PYLON_TRAINING_APPLE_ENVIRONMENT_REF
                 ))
         );
+        assert!(
+            node_record
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "metal".to_string()])
+        );
+        assert!(
+            node_record
+                .extra_tags
+                .iter()
+                .any(|tag| {
+                    tag == &vec![
+                        "environment".to_string(),
+                        PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
+                    ]
+                })
+        );
         Ok(())
     }
 
@@ -580,6 +658,18 @@ mod tests {
                 .capabilities
                 .contains(&nostr::TrnCapability::new("environment", "env.cuda.alpha"))
         );
+        assert!(
+            node_record
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            node_record
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
+        );
         assert!(matches!(
             TrnEvent::from_event(&fake_event(node_record.to_event_template(1_774_160_010)?))?,
             TrnEvent::NodeRecord(event) if event == node_record
@@ -601,6 +691,32 @@ mod tests {
         assert_eq!(
             actor_markers,
             BTreeSet::from([Some("coordinator".to_string()), Some("subject".to_string()),])
+        );
+        assert_eq!(
+            assignment_ack
+                .content
+                .get("backend_family")
+                .and_then(Value::as_str),
+            Some("cuda")
+        );
+        assert_eq!(
+            assignment_ack
+                .content
+                .get("environment_ref")
+                .and_then(Value::as_str),
+            Some("env.cuda.alpha")
+        );
+        assert!(
+            assignment_ack
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            assignment_ack
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
         );
         assert!(matches!(
             TrnEvent::from_event(&fake_event(assignment_ack.to_event_template(1_774_160_011)?))?,
@@ -641,6 +757,32 @@ mod tests {
             Some(context.manifest.manifest_digest.as_str())
         );
         assert_eq!(locator.file_digest.as_deref(), Some("sha256:proof-alpha"));
+        assert_eq!(
+            locator
+                .content
+                .get("backend_family")
+                .and_then(Value::as_str),
+            Some("cuda")
+        );
+        assert_eq!(
+            locator
+                .content
+                .get("environment_ref")
+                .and_then(Value::as_str),
+            Some("env.cuda.alpha")
+        );
+        assert!(
+            locator
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            locator
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
+        );
         assert!(matches!(
             TrnEvent::from_event(&fake_event(locator.to_event_template(1_774_160_012)?))?,
             TrnEvent::ArtifactLocator(event) if event == locator
@@ -670,6 +812,32 @@ mod tests {
         );
         assert_eq!(uploaded.classes, vec!["proof".to_string()]);
         assert_eq!(uploaded.address_refs.len(), 2);
+        assert_eq!(
+            uploaded
+                .content
+                .get("backend_family")
+                .and_then(Value::as_str),
+            Some("cuda")
+        );
+        assert_eq!(
+            uploaded
+                .content
+                .get("environment_ref")
+                .and_then(Value::as_str),
+            Some("env.cuda.alpha")
+        );
+        assert!(
+            uploaded
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            uploaded
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
+        );
         assert!(matches!(
             TrnEvent::from_event(&fake_event(uploaded.to_event_template(1_774_160_013)?))?,
             TrnEvent::Receipt(event) if event == uploaded

@@ -209,7 +209,7 @@ Mapped issues:
 - `psionic#913` closed
 - `openagents#4248` closed
 - `openagents#4249` closed
-- `openagents#4250` open
+- `openagents#4250` closed
 - `openagents#4251` open
 
 Current assessment:
@@ -219,8 +219,10 @@ Current assessment:
   node-record publication coverage
 - `Nexus` now enforces backend-homogeneous worker and validator matching across
   shared Apple and CUDA training networks
-- the remaining launch blockers are the `openagents` publication and rehearsal
-  issues
+- the publication path now keeps backend-family and environment identity
+  explicit across shared Apple and CUDA TRN network, window, receipt, verdict,
+  and artifact events without introducing new MVP kinds
+- the remaining launch blocker is the Apple rehearsal issue
 
 ## Required Tracker Hygiene
 
