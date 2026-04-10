@@ -76,6 +76,8 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
     PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
+    pylon_training_assignment_id, pylon_training_assignment_seed, pylon_training_lease_id,
+    pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
     resolve_aggregate_verdicts, validator_sample_assignments,
 };
 use openagents_kernel_core::receipts::{PolicyContext, Receipt, ReceiptHints, TraceContext};
@@ -1507,10 +1509,10 @@ impl ScheduledTrainingRun {
         ] {
             for slot_ordinal in 1..=role_plan.target_count(role) {
                 assignments.push(ScheduledTrainingAssignment {
-                    assignment_id: training_scheduler_assignment_id(
+                    assignment_id: pylon_training_assignment_id(
                         run.training_run_id.as_str(),
                         current_window_id.as_str(),
-                        role,
+                        role.label(),
                         slot_ordinal,
                         1,
                     ),
@@ -1572,19 +1574,19 @@ impl ScheduledTrainingRun {
 
         let issued_at_ms = request.requested_at_ms.max(now_unix_ms);
         let expires_at_ms = issued_at_ms.saturating_add(PYLON_TRAINING_LEASE_DURATION_MS as i64);
-        let manifest_digest = training_scheduler_manifest_digest(
+        let manifest_digest = pylon_training_manifest_binding_digest(
             self.training_run_id.as_str(),
             self.current_window_id.as_str(),
             self.membership_revision,
             node.node_pubkey_hex.as_str(),
             self.assignments[assignment_index].assignment_id.as_str(),
-            request.role,
+            request.role.label(),
             self.artifact_bucket_uri.as_str(),
         );
-        let lease_id = training_scheduler_lease_id(
+        let lease_id = pylon_training_lease_id(
             self.training_run_id.as_str(),
             self.current_window_id.as_str(),
-            request.role,
+            request.role.label(),
             self.assignments[assignment_index].slot_ordinal,
             self.assignments[assignment_index].attempt,
             self.membership_revision,
@@ -1613,7 +1615,7 @@ impl ScheduledTrainingRun {
             expires_at_ms,
             manifest_digest: assignment.manifest_digest.clone(),
             checkpoint_ref: self.checkpoint_ref.clone(),
-            membership_revision: Some(training_scheduler_membership_revision(
+            membership_revision: Some(pylon_training_membership_revision_label(
                 self.membership_revision,
             )),
             assignment_state: Some(assignment.state.label().to_string()),
@@ -1685,10 +1687,10 @@ impl ScheduledTrainingRun {
             }
             let next_attempt = latest.1.attempt.saturating_add(1);
             self.assignments.push(ScheduledTrainingAssignment {
-                assignment_id: training_scheduler_assignment_id(
+                assignment_id: pylon_training_assignment_id(
                     self.training_run_id.as_str(),
                     self.current_window_id.as_str(),
-                    role,
+                    role.label(),
                     slot_ordinal,
                     next_attempt,
                 ),
@@ -1728,7 +1730,7 @@ impl ScheduledTrainingRun {
             expires_at_ms: assignment.expires_at_ms.unwrap_or(recorded_at_ms),
             manifest_digest: assignment.manifest_digest.clone(),
             checkpoint_ref: self.checkpoint_ref.clone(),
-            membership_revision: Some(training_scheduler_membership_revision(
+            membership_revision: Some(pylon_training_membership_revision_label(
                 self.membership_revision,
             )),
             assignment_state: Some(assignment.state.label().to_string()),
@@ -1910,57 +1912,6 @@ fn training_node_matches_scheduler_run(
         == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow)
 }
 
-fn training_scheduler_assignment_id(
-    training_run_id: &str,
-    window_id: &str,
-    role: TrainingNodeRoleClaim,
-    slot_ordinal: u32,
-    attempt: u32,
-) -> String {
-    format!(
-        "assign.{training_run_id}.{window_id}.{}.{}.attempt{attempt}",
-        role.label(),
-        slot_ordinal
-    )
-}
-
-fn training_scheduler_lease_id(
-    training_run_id: &str,
-    window_id: &str,
-    role: TrainingNodeRoleClaim,
-    slot_ordinal: u32,
-    attempt: u32,
-    membership_revision: u64,
-) -> String {
-    format!(
-        "lease.{training_run_id}.{window_id}.{}.{}.attempt{attempt}.rev{membership_revision}",
-        role.label(),
-        slot_ordinal
-    )
-}
-
-fn training_scheduler_manifest_digest(
-    training_run_id: &str,
-    window_id: &str,
-    membership_revision: u64,
-    node_pubkey_hex: &str,
-    assignment_id: &str,
-    role: TrainingNodeRoleClaim,
-    artifact_bucket_uri: &str,
-) -> String {
-    sha256_prefixed_bytes(
-        format!(
-            "{training_run_id}:{window_id}:{membership_revision}:{node_pubkey_hex}:{assignment_id}:{}:{artifact_bucket_uri}",
-            role.label()
-        )
-        .as_bytes(),
-    )
-}
-
-fn training_scheduler_membership_revision(membership_revision: u64) -> String {
-    format!("members.rev{membership_revision}")
-}
-
 fn normalize_required_training_string(value: &str, reason: &str) -> Result<String, String> {
     let normalized = value.trim();
     if normalized.is_empty() {
@@ -2012,28 +1963,6 @@ fn training_window_active_worker_assignments(
     assignments
 }
 
-fn training_window_assignment_seed(
-    training_run_id: &str,
-    window_id: &str,
-    membership_revision: &str,
-    assignment_id: &str,
-    node_pubkey_hex: &str,
-    dataset_slice: &ComputeAdapterDatasetSlice,
-) -> Result<String, String> {
-    let payload = serde_json::to_vec(&serde_json::json!({
-        "training_run_id": training_run_id,
-        "window_id": window_id,
-        "membership_revision": membership_revision,
-        "assignment_id": assignment_id,
-        "node_pubkey_hex": node_pubkey_hex,
-        "dataset_id": dataset_slice.dataset_id,
-        "slice_id": dataset_slice.slice_id,
-        "slice_digest": dataset_slice.slice_digest,
-    }))
-    .map_err(|_| "training_window_assignment_seed_encode_failed".to_string())?;
-    Ok(sha256_prefixed_bytes(payload.as_slice()))
-}
-
 fn training_window_assignment_plans(
     scheduled_run: &ScheduledTrainingRun,
     dataset_slices: &[ComputeAdapterDatasetSlice],
@@ -2058,7 +1987,7 @@ fn training_window_assignment_plans(
                 .node_pubkey_hex
                 .clone()
                 .ok_or_else(|| "training_window_worker_assignments_missing".to_string())?;
-            let assignment_seed = training_window_assignment_seed(
+            let assignment_seed = pylon_training_assignment_seed(
                 scheduled_run.training_run_id.as_str(),
                 scheduled_run.current_window_id.as_str(),
                 contributor_set_revision_id,
@@ -2847,7 +2776,7 @@ fn training_window_base_record(
 ) -> Result<ComputeAdapterTrainingWindow, String> {
     let window_id = scheduled_run.current_window_id.clone();
     let contributor_set_revision_id =
-        training_scheduler_membership_revision(scheduled_run.membership_revision);
+        pylon_training_membership_revision_label(scheduled_run.membership_revision);
     let mut window = ComputeAdapterTrainingWindow {
         window_id,
         training_run_id: training_run.training_run_id.clone(),
@@ -4268,7 +4197,7 @@ async fn plan_training_window(
             ));
         }
         let contributor_set_revision_id =
-            training_scheduler_membership_revision(scheduler_run.membership_revision);
+            pylon_training_membership_revision_label(scheduler_run.membership_revision);
         let assignment_plans = training_window_assignment_plans(
             &scheduler_run,
             request.dataset_slices.as_slice(),

@@ -318,7 +318,7 @@ mod tests {
     use anyhow::Result;
     use nostr::{Event, NostrIdentity, TrnEvent};
     use openagents_kernel_core::pylon_training::{
-        PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PylonTrainingArtifacts,
+        PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PylonTrainingArtifactLayout, PylonTrainingArtifacts,
         PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
         PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary, PylonTrainingManifestRole,
         PylonTrainingRunManifestCommon, PylonTrainingRunManifestV1, PylonTrainingTopology,
@@ -424,7 +424,8 @@ mod tests {
         })
         .build()
         .map_err(anyhow::Error::msg)?;
-        let layout = super::super::training_artifact_layout_from_manifest(&manifest)?;
+        let layout =
+            PylonTrainingArtifactLayout::from_manifest(&manifest).map_err(anyhow::Error::msg)?;
         Ok((
             temp_dir,
             TrainingManifestInspectionContext {

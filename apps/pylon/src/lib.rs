@@ -5892,10 +5892,10 @@ impl PylonTrainingArtifactStoreClient {
         bundle_kind: PylonTrainingArtifactBundleKind,
     ) -> Result<PylonTrainingArtifactBundleTransferReport> {
         let local_run_root = PathBuf::from(manifest.artifacts.local_run_root.clone());
-        let layout = training_artifact_layout_from_manifest(manifest)?;
+        let layout = PylonTrainingArtifactLayout::from_manifest(manifest).map_err(anyhow::Error::msg)?;
         let required_objects = bundle_kind.required_paths(&layout);
-        let bundle_id = training_artifact_bundle_id(&bundle_kind);
-        let bundle_kind_label = training_artifact_bundle_kind_label(&bundle_kind);
+        let bundle_id = bundle_kind.bundle_id();
+        let bundle_kind_label = bundle_kind.bundle_kind_label().to_string();
         let mut progress = PylonTrainingArtifactBundleProgress {
             required_objects: required_objects.clone(),
             ..PylonTrainingArtifactBundleProgress::default()
@@ -5989,10 +5989,11 @@ impl PylonTrainingArtifactStoreClient {
         expected_digests: &BTreeMap<String, String>,
         destination_root: &Path,
     ) -> Result<PylonTrainingArtifactBundleTransferReport> {
-        let layout = training_artifact_layout_from_manifest(manifest)?;
+        let layout =
+            PylonTrainingArtifactLayout::from_manifest(manifest).map_err(anyhow::Error::msg)?;
         let required_objects = bundle_kind.required_paths(&layout);
-        let bundle_id = training_artifact_bundle_id(&bundle_kind);
-        let bundle_kind_label = training_artifact_bundle_kind_label(&bundle_kind);
+        let bundle_id = bundle_kind.bundle_id();
+        let bundle_kind_label = bundle_kind.bundle_kind_label().to_string();
         let mut objects = Vec::new();
         for object_uri in required_objects {
             let relative_path = training_artifact_relative_path(&layout, &object_uri)?;
@@ -6321,19 +6322,6 @@ fn training_metadata_token_url() -> Option<String> {
     ))
 }
 
-fn training_artifact_layout_from_manifest(
-    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
-) -> Result<PylonTrainingArtifactLayout> {
-    let layout = PylonTrainingArtifactLayout {
-        bucket_uri: manifest.artifacts.bucket_uri.clone(),
-        network_id: manifest.network_id.clone(),
-        run_id: manifest.run_id.clone(),
-        window_id: manifest.window_id.clone(),
-    };
-    layout.validate().map_err(anyhow::Error::msg)?;
-    Ok(layout)
-}
-
 fn training_runs_root(config: &PylonConfig) -> PathBuf {
     config.training.run_root.join("runs")
 }
@@ -6344,42 +6332,6 @@ fn training_download_cache_root(config: &PylonConfig) -> PathBuf {
 
 fn training_checkpoint_serve_url(config: &PylonConfig) -> String {
     format!("http://{}", config.training.checkpoint_serve_addr.trim())
-}
-
-fn training_artifact_bundle_id(bundle_kind: &PylonTrainingArtifactBundleKind) -> String {
-    match bundle_kind {
-        PylonTrainingArtifactBundleKind::RunManifest => "run_manifest".to_string(),
-        PylonTrainingArtifactBundleKind::LatestCheckpointPointer => {
-            "latest_checkpoint_pointer".to_string()
-        }
-        PylonTrainingArtifactBundleKind::CheckpointManifest { optimizer_step } => {
-            format!("checkpoint_manifest:{optimizer_step}")
-        }
-        PylonTrainingArtifactBundleKind::Contribution { assignment_id } => {
-            format!("contribution:{assignment_id}")
-        }
-        PylonTrainingArtifactBundleKind::ValidatorVerdict { challenge_id } => {
-            format!("validator_verdict:{challenge_id}")
-        }
-        PylonTrainingArtifactBundleKind::SealedWindow => "sealed_window".to_string(),
-        PylonTrainingArtifactBundleKind::ScoreSnapshot => "score_snapshot".to_string(),
-    }
-}
-
-fn training_artifact_bundle_kind_label(bundle_kind: &PylonTrainingArtifactBundleKind) -> String {
-    match bundle_kind {
-        PylonTrainingArtifactBundleKind::RunManifest => "run_manifest".to_string(),
-        PylonTrainingArtifactBundleKind::LatestCheckpointPointer => {
-            "latest_checkpoint_pointer".to_string()
-        }
-        PylonTrainingArtifactBundleKind::CheckpointManifest { .. } => {
-            "checkpoint_manifest".to_string()
-        }
-        PylonTrainingArtifactBundleKind::Contribution { .. } => "contribution".to_string(),
-        PylonTrainingArtifactBundleKind::ValidatorVerdict { .. } => "validator_verdict".to_string(),
-        PylonTrainingArtifactBundleKind::SealedWindow => "sealed_window".to_string(),
-        PylonTrainingArtifactBundleKind::ScoreSnapshot => "score_snapshot".to_string(),
-    }
 }
 
 fn artifact_bundle_state_label(state: PylonTrainingArtifactBundleState) -> String {
@@ -6575,7 +6527,8 @@ fn load_training_manifest_inspection_contexts(
                 )
             })?;
         let local_run_root = PathBuf::from(manifest.artifacts.local_run_root.clone());
-        let layout = training_artifact_layout_from_manifest(&manifest)?;
+        let layout =
+            PylonTrainingArtifactLayout::from_manifest(&manifest).map_err(anyhow::Error::msg)?;
         contexts.push(TrainingManifestInspectionContext {
             manifest,
             manifest_path,
@@ -6745,8 +6698,8 @@ fn inspect_training_artifact_bundle(
         artifact_bundle_state_label(PylonTrainingArtifactBundleState::Staged)
     };
     Ok(TrainingArtifactBundleInspectionEntry {
-        bundle_id: training_artifact_bundle_id(&bundle_kind),
-        bundle_kind: training_artifact_bundle_kind_label(&bundle_kind),
+        bundle_id: bundle_kind.bundle_id(),
+        bundle_kind: bundle_kind.bundle_kind_label().to_string(),
         state,
         manifest_digest: Some(context.manifest.manifest_digest.clone()),
         local_run_root: context.local_run_root.display().to_string(),

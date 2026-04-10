@@ -3,6 +3,7 @@ use nostr::{
     TrainingNetworkContractEvent, TrainingReceiptEvent, TrainingValidatorVerdictEvent,
     TrainingWindowEvent, TrnEvent, TrnPubkeyReference,
 };
+use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::PylonTrainingReputationRecord;
 use openagents_validator_service::{
     ValidatorChallengeFailureCode, ValidatorChallengeResult as ServiceValidatorChallengeResult,
@@ -14,7 +15,7 @@ use super::{
     ComputeAcceptedOutcomePublicationSource, ComputeAdapterContributionOutcome,
     ComputeTrainingWindowPublicationSource, TrainingTrnChallengeBinding,
     TrainingTrnNetworkContractSource, canonical_challenge_status, canonical_challenge_verdict,
-    sha256_prefixed_bytes, training_trn_closeout_status, training_trn_network_status,
+    training_trn_closeout_status, training_trn_network_status,
 };
 
 pub(super) fn event_template_and_fingerprint(
