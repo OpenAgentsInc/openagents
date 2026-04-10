@@ -7,6 +7,7 @@ Current distributed-training planning lives here too:
 - `docs/pylon/2026-04-09-pylon-distributed-training-reference-audit.md`
 - `docs/pylon/distributed-training-mvp-roadmap.md`
 - `docs/pylon/distributed-training-phase-tracker.md`
+- `docs/pylon/distributed-training-non-blockers.md`
 
 The frozen Phase 0 machine-readable contract for that roadmap now lives in:
 

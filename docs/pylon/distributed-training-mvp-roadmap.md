@@ -3578,3 +3578,14 @@ honest admitted-node run.
 **Acceptance Criteria**
 
 - Deferred items are visible but not treated as MVP blockers.
+
+**Current Status**
+
+- The explicit deferred-scope register now lives in
+  `docs/pylon/distributed-training-non-blockers.md`.
+- That register captures the current non-blocker set in one place, grouped by
+  future roadmap bucket, so deferred scope stays visible without being treated
+  as an implied MVP dependency.
+- The scope-control rule is now written down explicitly: non-blockers do not
+  re-enter the MVP by convenience or opportunistic implementation; they only
+  come back through an intentional roadmap or exit-criteria change.
