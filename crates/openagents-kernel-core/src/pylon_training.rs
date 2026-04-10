@@ -11,6 +11,9 @@ pub const PYLON_TRAINING_EXECUTION_BACKEND_PSIONIC_TRAIN: &str = "psionic_train"
 pub const PYLON_TRAINING_GCS_CREDENTIAL_SOURCE: &str = "google_application_default_credentials";
 pub const PYLON_TRAINING_TRN_ASSIGNMENT_RECEIPT_KIND: u32 = 39_511;
 pub const PYLON_TRAINING_MVP_SETTLEMENT_TRIGGER: &str = "accepted_sealed_window";
+pub const PYLON_TRAINING_CUDA_ENVIRONMENT_REF: &str = "env.openagents.cuda.train";
+pub const PYLON_TRAINING_APPLE_ENVIRONMENT_REF: &str =
+    "psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1";
 
 pub const PYLON_TRAINING_HEARTBEAT_INTERVAL_MS: u64 = 15_000;
 pub const PYLON_TRAINING_HEARTBEAT_EXPIRY_MS: u64 = 60_000;
@@ -726,7 +729,7 @@ impl PylonTrainingTopology {
         {
             return Err("pylon_training_topology_local_device_ids_duplicate".to_string());
         }
-        if self.backend_family != PylonTrainingTopologyBackendFamily::Cuda {
+        if self.backend_family == PylonTrainingTopologyBackendFamily::Mixed {
             return Err(PylonTrainingRefusalCode::UnsupportedTopology
                 .label()
                 .to_string());
@@ -1888,12 +1891,24 @@ mod tests {
     }
 
     #[test]
-    fn topology_validator_rejects_non_cuda_and_non_window_elasticity() {
+    fn topology_validator_allows_homogeneous_backends_and_rejects_mixed_or_non_window_elasticity() {
+        let mut allowed = topology();
+        allowed.backend_family = PylonTrainingTopologyBackendFamily::Mlx;
+        allowed
+            .validate_mvp()
+            .expect("mlx backend should stay admitted for homogeneous Apple windows");
+
+        let mut allowed = topology();
+        allowed.backend_family = PylonTrainingTopologyBackendFamily::Metal;
+        allowed
+            .validate_mvp()
+            .expect("metal backend should stay admitted for homogeneous Apple windows");
+
         let mut invalid = topology();
-        invalid.backend_family = PylonTrainingTopologyBackendFamily::Mlx;
+        invalid.backend_family = PylonTrainingTopologyBackendFamily::Mixed;
         let err = invalid
             .validate_mvp()
-            .expect_err("mlx backend should be rejected");
+            .expect_err("mixed backend should be rejected");
         assert_eq!(err, "unsupported_topology");
 
         let mut invalid = topology();
