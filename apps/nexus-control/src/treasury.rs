@@ -1351,12 +1351,22 @@ impl TreasuryState {
         let policy = self.active_policy(config);
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
         let mut payout_sats_paid_24h = 0u64;
+        let mut unconfirmed_dispatched_sats_total = 0u64;
+        let mut unconfirmed_dispatched_sats_24h = 0u64;
         let mut payouts_dispatched_24h = 0u64;
         let mut payouts_confirmed_24h = 0u64;
         let mut payouts_failed_24h = 0u64;
         let mut payouts_skipped_24h = 0u64;
 
         for record in self.payout_records_by_key.values() {
+            if record.status == "dispatched" && !record.counted_in_paid_total {
+                unconfirmed_dispatched_sats_total = unconfirmed_dispatched_sats_total
+                    .saturating_add(record.amount_sats);
+                if record.updated_at_unix_ms >= window_started_at_unix_ms {
+                    unconfirmed_dispatched_sats_24h = unconfirmed_dispatched_sats_24h
+                        .saturating_add(record.amount_sats);
+                }
+            }
             if record.updated_at_unix_ms < window_started_at_unix_ms {
                 continue;
             }
@@ -1398,8 +1408,11 @@ impl TreasuryState {
             last_payout_reconciliation_at_unix_ms: self.last_payout_reconciliation_at_unix_ms,
             payout_loop_last_started_at_unix_ms: self.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: self.payout_loop_last_completed_at_unix_ms,
-            payout_sats_paid_total: self.payout_sats_paid_total,
-            payout_sats_paid_24h,
+            payout_sats_paid_total: self
+                .payout_sats_paid_total
+                .saturating_add(unconfirmed_dispatched_sats_total),
+            payout_sats_paid_24h: payout_sats_paid_24h
+                .saturating_add(unconfirmed_dispatched_sats_24h),
             payouts_dispatched_24h,
             payouts_confirmed_24h,
             payouts_failed_24h,
@@ -4564,6 +4577,45 @@ mod tests {
         assert_eq!(stats.payout_sats_paid_total, 120);
         assert_eq!(stats.payout_sats_paid_24h, 120);
         assert_eq!(stats.payouts_confirmed_24h, 1);
+    }
+
+    #[test]
+    fn public_stats_include_unconfirmed_dispatched_sats_in_visible_total() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = super::now_unix_ms();
+        let window_started_at_unix_ms =
+            payout_window_started_at(now_unix_ms, config.payout_interval_ms());
+        let payout_key = format!("{window_started_at_unix_ms}:pubkey-b");
+        state.payout_sats_paid_total = 120;
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            super::TreasuryPayoutRecord {
+                payout_key,
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                payout_target: "spark:bob".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("payment-send-002".to_string()),
+                window_started_at_unix_ms,
+                window_ends_at_unix_ms: window_started_at_unix_ms + config.payout_interval_ms(),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+            },
+        );
+
+        let stats: TreasuryPublicStats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(stats.payout_sats_paid_total, 122);
+        assert_eq!(stats.payout_sats_paid_24h, 2);
+        assert_eq!(stats.payouts_dispatched_24h, 1);
+        assert_eq!(stats.payouts_confirmed_24h, 0);
     }
 
     #[test]
