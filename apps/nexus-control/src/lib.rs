@@ -73,10 +73,13 @@ use crate::economy::{
     PublicStatsSnapshot, ReceiptLedger,
 };
 use crate::kernel::{
-    FinalizeValidatorChallengeRequest, FinalizeValidatorChallengeResponse, KernelMutationContext,
-    KernelState, LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
-    ReceiptProjectionEvent, ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse,
-    SnapshotProjectionEvent,
+    AdmittedTrainingNodeView, FinalizeValidatorChallengeRequest,
+    FinalizeValidatorChallengeResponse, KernelMutationContext, KernelState,
+    LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, ReceiptProjectionEvent,
+    RecordTrainingNodeAdmissionRequest, RecordTrainingNodeAdmissionResponse,
+    RecordTrainingNodeHeartbeatRequest, RecordTrainingNodeHeartbeatResponse,
+    ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, SnapshotProjectionEvent,
+    TrainingNodeQuery,
 };
 use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
@@ -1020,6 +1023,19 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/api/provider-payout-target/register",
             post(register_provider_payout_target),
         )
+        .route(
+            "/api/training/nodes/admission",
+            post(record_training_node_admission),
+        )
+        .route(
+            "/api/training/heartbeats",
+            post(record_training_node_heartbeat),
+        )
+        .route("/api/training/nodes", get(list_training_nodes))
+        .route(
+            "/api/training/nodes/{node_pubkey_hex}",
+            get(get_training_node),
+        )
         .route("/api/session/desktop", post(create_desktop_session))
         .route("/api/session/me", get(session_me))
         .route("/api/sync/token", post(create_sync_token))
@@ -1509,6 +1525,98 @@ async fn register_provider_payout_target(
         .refresh_public_snapshot(&state.config.treasury, now);
     record_treasury_receipt_events(&mut store, receipt_events, now);
     Ok(Json(response))
+}
+
+async fn record_training_node_admission(
+    State(state): State<AppState>,
+    Json(request): Json<RecordTrainingNodeAdmissionRequest>,
+) -> Result<Json<RecordTrainingNodeAdmissionResponse>, ApiError> {
+    let now = now_unix_ms();
+    let caller_id = training_node_caller_id(request.node_pubkey_hex.as_str());
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .record_training_node_admission(
+                &training_kernel_mutation_context(&caller_id, now),
+                request,
+            )
+            .map_err(kernel_api_error)?
+    };
+    record_training_coordination_observability(
+        &state,
+        now,
+        caller_id.as_str(),
+        "kernel.training_node.admission.recorded",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn record_training_node_heartbeat(
+    State(state): State<AppState>,
+    Json(request): Json<RecordTrainingNodeHeartbeatRequest>,
+) -> Result<Json<RecordTrainingNodeHeartbeatResponse>, ApiError> {
+    let now = now_unix_ms();
+    let caller_id = training_node_caller_id(request.node_pubkey_hex.as_str());
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .record_training_node_heartbeat(
+                &training_kernel_mutation_context(&caller_id, now),
+                request,
+            )
+            .map_err(kernel_api_error)?
+    };
+    record_training_coordination_observability(
+        &state,
+        now,
+        caller_id.as_str(),
+        "kernel.training_node.heartbeat.recorded",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn list_training_nodes(
+    State(state): State<AppState>,
+    Query(query): Query<TrainingNodeQuery>,
+) -> Result<Json<Vec<AdmittedTrainingNodeView>>, ApiError> {
+    let now = now_unix_ms() as i64;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_admitted_training_nodes(&query, now)))
+}
+
+async fn get_training_node(
+    State(state): State<AppState>,
+    Path(node_pubkey_hex): Path<String>,
+) -> Result<Json<AdmittedTrainingNodeView>, ApiError> {
+    let now = now_unix_ms() as i64;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let node = store
+        .kernel
+        .get_admitted_training_node(node_pubkey_hex.as_str(), now)
+        .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+    Ok(Json(node))
 }
 
 async fn treasury_status(
@@ -5739,6 +5847,18 @@ fn kernel_mutation_context(
     }
 }
 
+fn training_node_caller_id(node_pubkey_hex: &str) -> String {
+    format!("training_node:{}", node_pubkey_hex.trim())
+}
+
+fn training_kernel_mutation_context(caller_id: &str, now_unix_ms: u64) -> KernelMutationContext {
+    KernelMutationContext {
+        caller_id: caller_id.to_string(),
+        session_id: "training-coordination".to_string(),
+        now_unix_ms,
+    }
+}
+
 fn kernel_api_error(reason: String) -> ApiError {
     let status = match reason.as_str() {
         "kernel_contract_not_found"
@@ -5764,6 +5884,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "reserve_partition_not_found"
         | "coverage_offer_not_found"
         | "coverage_binding_not_found"
+        | "training_node_not_found"
         | "risk_claim_not_found" => StatusCode::NOT_FOUND,
         "kernel_idempotency_conflict"
         | "kernel_contract_id_mismatch"
@@ -6034,6 +6155,13 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "risk_outcome_ref_missing"
         | "risk_implied_fail_probability_invalid"
         | "risk_calibration_score_invalid"
+        | "training_node_pubkey_missing"
+        | "training_node_role_claims_missing"
+        | "training_node_build_digest_missing"
+        | "training_node_training_run_id_missing"
+        | "training_node_window_id_missing"
+        | "training_node_assignment_id_missing"
+        | "training_node_lease_id_missing"
         | "risk_concentration_invalid" => StatusCode::BAD_REQUEST,
         _ => StatusCode::BAD_REQUEST,
     };
@@ -6083,6 +6211,53 @@ fn record_kernel_mutation_observability(
                 AuthorityReceiptContext {
                     session_id: Some(session.session_id.clone()),
                     account_id: Some(session.account_id.clone()),
+                    request_id: Some(receipt_event.receipt.receipt_id.clone()),
+                    status: Some(if receipt_event.seq > 0 {
+                        "recorded".to_string()
+                    } else {
+                        "replayed".to_string()
+                    }),
+                    reason: None,
+                    relay_url: None,
+                    amount_sats: None,
+                    payment_pointer: None,
+                    attributes,
+                },
+            );
+        }
+        let _ = state.kernel_receipt_tx.send(receipt_event);
+    }
+    if let Some(snapshot_event) = snapshot_event {
+        let _ = state.kernel_snapshot_tx.send(snapshot_event);
+    }
+}
+
+fn record_training_coordination_observability(
+    state: &AppState,
+    now_unix_ms: u64,
+    caller_id: &str,
+    receipt_type: &str,
+    receipt_event: Option<ReceiptProjectionEvent>,
+    snapshot_event: Option<SnapshotProjectionEvent>,
+) {
+    if let Some(receipt_event) = receipt_event {
+        if let Ok(mut store) = state.store.write() {
+            let mut attributes = BTreeMap::new();
+            attributes.insert("caller_id".to_string(), caller_id.to_string());
+            attributes.insert(
+                "canonical_receipt_id".to_string(),
+                receipt_event.receipt.receipt_id.clone(),
+            );
+            attributes.insert(
+                "canonical_receipt_type".to_string(),
+                receipt_event.receipt.receipt_type.clone(),
+            );
+            store.economy.record(
+                receipt_type,
+                now_unix_ms,
+                AuthorityReceiptContext {
+                    session_id: None,
+                    account_id: Some(caller_id.to_string()),
                     request_id: Some(receipt_event.receipt.receipt_id.clone()),
                     status: Some(if receipt_event.seq > 0 {
                         "recorded".to_string()
@@ -7253,9 +7428,10 @@ mod tests {
     use openagents_kernel_core::time::floor_to_minute_utc;
     use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
     use openagents_provider_substrate::{
-        ProviderAvailability, ProviderBackendHealth, ProviderComputeProduct,
-        ProviderDiagnosticSummary, ProviderHostDiskTelemetry, ProviderHostGpuTelemetry,
-        ProviderHostLoadAverageTelemetry, ProviderHostMemoryTelemetry,
+        ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
+        ProviderAdapterTrainingSettlementTrigger, ProviderAvailability, ProviderBackendHealth,
+        ProviderComputeProduct, ProviderDiagnosticSummary, ProviderHostDiskTelemetry,
+        ProviderHostGpuTelemetry, ProviderHostLoadAverageTelemetry, ProviderHostMemoryTelemetry,
         ProviderHostNetworkInterfaceTelemetry, ProviderHostPowerTelemetry,
         ProviderHostSwapTelemetry, ProviderHostTelemetrySnapshot,
         ProviderHostThermalComponentTelemetry, ProviderHostingTelemetrySnapshot,
@@ -7274,6 +7450,11 @@ mod tests {
     use std::time::Instant;
     use tower::ServiceExt;
 
+    use crate::kernel::{
+        RecordTrainingNodeAdmissionRequest, RecordTrainingNodeAdmissionResponse,
+        RecordTrainingNodeHeartbeatRequest, RecordTrainingNodeHeartbeatResponse,
+        TrainingNodeDesiredState, TrainingNodeProcessState, TrainingNodeRoleClaim,
+    };
     use crate::treasury::{
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
@@ -7284,7 +7465,7 @@ mod tests {
     };
 
     use super::{
-        DEFAULT_COMPUTE_POLICY_BUNDLE_ID, DEFAULT_COMPUTE_POLICY_VERSION,
+        AdmittedTrainingNodeView, DEFAULT_COMPUTE_POLICY_BUNDLE_ID, DEFAULT_COMPUTE_POLICY_VERSION,
         DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS, DesktopSessionCreateRequest,
         DesktopSessionResponse, FinalizeValidatorChallengeRequest, LeaseValidatorChallengeRequest,
         LeaseValidatorChallengeResponse, PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
@@ -7563,6 +7744,70 @@ mod tests {
             mean_ttft_s: Some(0.2),
             mean_decode_tok_s: Some(12.5),
             repeats: 2,
+        }
+    }
+
+    fn training_node_admission_request(
+        node_pubkey_hex: &str,
+        build_digest: &str,
+        allowed_networks: Vec<&str>,
+        active_reputation_labels: Vec<&str>,
+        available_memory_gb: Option<u32>,
+    ) -> RecordTrainingNodeAdmissionRequest {
+        let now = super::now_unix_ms() as i64;
+        RecordTrainingNodeAdmissionRequest {
+            idempotency_key: format!("idemp.training.admission.{node_pubkey_hex}.{build_digest}"),
+            requested_at_ms: now,
+            node_pubkey_hex: node_pubkey_hex.to_string(),
+            node_label: Some(format!("node-{node_pubkey_hex}")),
+            role_claims: vec![TrainingNodeRoleClaim::Worker],
+            allowed_networks: allowed_networks.into_iter().map(str::to_string).collect(),
+            build_version: Some("0.1.0".to_string()),
+            build_digest: Some(build_digest.to_string()),
+            contributor_availability: ProviderAdapterTrainingContributorAvailability {
+                contributor_supported: true,
+                coordinator_match_supported: true,
+                authority_receipt_supported: true,
+                execution_backends: vec![
+                    ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend,
+                ],
+                adapter_families: vec!["openagents.adapter.reference".to_string()],
+                adapter_formats: vec!["openagents.adapter.delta.v1".to_string()],
+                validator_policy_refs: vec!["policy://validator/mvp/v1".to_string()],
+                checkpoint_families: vec!["decoder".to_string()],
+                environment_refs: vec!["env.openagents.cuda.train".to_string()],
+                minimum_memory_gb: Some(80),
+                available_memory_gb,
+                settlement_trigger: Some(
+                    ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
+                ),
+            },
+            host_telemetry: provider_hosting_telemetry_fixture().host,
+            active_reputation_labels: active_reputation_labels
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        }
+    }
+
+    fn training_node_heartbeat_request(
+        node_pubkey_hex: &str,
+        build_digest: &str,
+    ) -> RecordTrainingNodeHeartbeatRequest {
+        let now = super::now_unix_ms() as i64;
+        RecordTrainingNodeHeartbeatRequest {
+            idempotency_key: format!("idemp.training.heartbeat.{node_pubkey_hex}.{build_digest}"),
+            recorded_at_ms: now,
+            node_pubkey_hex: node_pubkey_hex.to_string(),
+            build_digest: build_digest.to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            assignment_id: "assign.node.window.0001".to_string(),
+            lease_id: "lease.node.window.0001".to_string(),
+            desired_state: TrainingNodeDesiredState::Running,
+            process_state: TrainingNodeProcessState::Running,
+            last_heartbeat_at_ms: Some(now),
+            last_exit_code: None,
         }
     }
 
@@ -13140,6 +13385,182 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(kernel_state_path.as_path());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_node_registry_routes_roundtrip_and_persist() -> Result<()> {
+        let kernel_state_path = std::env::temp_dir().join(format!(
+            "nexus-control-training-nodes-{}.json",
+            super::random_token()
+        ));
+        let _ = std::fs::remove_file(kernel_state_path.as_path());
+
+        let mut config = test_config()?;
+        config.kernel_state_path = Some(kernel_state_path.clone());
+        let app = build_router(config.clone());
+
+        let admitted_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_node_admission_request(
+                            "node-alpha",
+                            "sha256:build-alpha",
+                            vec!["trainnet.alpha"],
+                            Vec::new(),
+                            Some(512),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(admitted_response.status(), StatusCode::OK);
+        let admitted =
+            response_json::<RecordTrainingNodeAdmissionResponse>(admitted_response).await?;
+        assert!(admitted.admitted);
+
+        let heartbeat_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/heartbeats")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_node_heartbeat_request("node-alpha", "sha256:build-alpha"),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat_response.status(), StatusCode::OK);
+        let heartbeat =
+            response_json::<RecordTrainingNodeHeartbeatResponse>(heartbeat_response).await?;
+        assert_eq!(heartbeat.lease_state.as_deref(), Some("active"));
+
+        let quarantined_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_node_admission_request(
+                            "node-beta",
+                            "sha256:build-beta",
+                            vec!["trainnet.alpha"],
+                            vec!["trn/contributor:fraud"],
+                            Some(512),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(quarantined_response.status(), StatusCode::OK);
+        let quarantined =
+            response_json::<RecordTrainingNodeAdmissionResponse>(quarantined_response).await?;
+        assert!(quarantined.admitted);
+
+        let eligible_nodes_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes?network_id=trainnet.alpha&eligible_only=true")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(eligible_nodes_response.status(), StatusCode::OK);
+        let eligible_nodes =
+            response_json::<Vec<AdmittedTrainingNodeView>>(eligible_nodes_response).await?;
+        assert_eq!(eligible_nodes.len(), 1);
+        assert_eq!(eligible_nodes[0].node_pubkey_hex, "node-alpha");
+        assert!(eligible_nodes[0].online);
+        assert!(eligible_nodes[0].eligible);
+
+        let all_nodes_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes?role=worker")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(all_nodes_response.status(), StatusCode::OK);
+        let all_nodes = response_json::<Vec<AdmittedTrainingNodeView>>(all_nodes_response).await?;
+        assert_eq!(all_nodes.len(), 2);
+        assert!(
+            all_nodes.iter().any(|node| {
+                node.node_pubkey_hex == "node-beta" && !node.eligible && !node.online
+            })
+        );
+
+        let node_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-alpha")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(node_response.status(), StatusCode::OK);
+        let node = response_json::<AdmittedTrainingNodeView>(node_response).await?;
+        assert_eq!(node.build_digest, "sha256:build-alpha");
+        assert_eq!(node.available_memory_gb, Some(512));
+        assert_eq!(node.available_disk_gb, Some(700));
+        assert_eq!(node.last_training_run_id.as_deref(), Some("run.alpha"));
+
+        let reloaded_app = build_router(config);
+        let reloaded_nodes_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes?eligible_only=true")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(reloaded_nodes_response.status(), StatusCode::OK);
+        let reloaded_nodes =
+            response_json::<Vec<AdmittedTrainingNodeView>>(reloaded_nodes_response).await?;
+        assert_eq!(reloaded_nodes.len(), 1);
+        assert_eq!(reloaded_nodes[0].node_pubkey_hex, "node-alpha");
+
+        let _ = std::fs::remove_file(kernel_state_path.as_path());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_node_admission_rejects_missing_build_digest() -> Result<()> {
+        let app = build_router(test_config()?);
+        let mut request = training_node_admission_request(
+            "node-missing-digest",
+            "sha256:build-missing",
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(512),
+        );
+        request.build_digest = None;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request)?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let error = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            error.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_node_build_digest_missing")
+        );
         Ok(())
     }
 
