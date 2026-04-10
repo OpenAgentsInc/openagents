@@ -1551,6 +1551,17 @@ The NIP text is in decent shape. The missing work is live Rust implementation.
 - Add helpers for the current actor `p`-tag recommendations.
 - Add helpers for score-snapshot locator publication.
 
+Current status:
+- Implemented in `crates/nostr/core/src/nip_trn.rs` with typed builders and
+  parsers for `39500`, `39501`, `39510`, `39511`, `39512`, `39520`, and
+  `39530`.
+- `crates/nostr` now exports TRN kind constants, typed event structs, a generic
+  `TrnEvent` parser, `p` / `e` / `a` tag helper types, and the score-snapshot
+  artifact-locator helper.
+- Unit coverage locks round-trip parsing, required-tag validation, actor-tag
+  helper behavior, and kind/helper dispatch before the Nexus mapping layer is
+  built on top.
+
 ### 5.2 Event mapping helpers
 
 - Add one mapping layer from `Nexus` kernel objects into TRN events.

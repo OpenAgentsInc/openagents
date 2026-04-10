@@ -49,6 +49,7 @@ pub mod nip_ac;
 pub mod nip_ds;
 pub mod nip_sa;
 pub mod nip_skl;
+pub mod nip_trn;
 pub mod nip_trn_reputation;
 mod tag_parsing;
 
@@ -61,6 +62,7 @@ pub use nip_ac::*;
 pub use nip_ds::*;
 pub use nip_sa::*;
 pub use nip_skl::*;
+pub use nip_trn::*;
 pub use nip_trn_reputation::*;
 pub use nip01::{Event, EventTemplate, KindClassification, UnsignedEvent};
 #[cfg(feature = "full")]
