@@ -1948,7 +1948,9 @@ impl AppShell {
                 match pylon::ensure_local_setup(config_path.as_path()) {
                     Ok(_) => {
                         let (wallet_status, last_wallet_error) =
-                            match pylon::load_wallet_status_report(config_path.as_path()).await {
+                            match pylon::load_wallet_balance_status_report(config_path.as_path())
+                                .await
+                            {
                                 Ok(report) => (Some(report), None),
                                 Err(error) => (None, Some(error.to_string())),
                             };
@@ -2416,7 +2418,15 @@ impl AppShell {
                     )
                 }
             })
-            .unwrap_or_else(|| "wallet: unavailable".to_string());
+            .unwrap_or_else(|| {
+                if self.last_wallet_error.is_none()
+                    && (self.refresh_in_flight || self.last_refresh_at.is_none())
+                {
+                    "wallet: pending".to_string()
+                } else {
+                    "wallet: unavailable".to_string()
+                }
+            });
         let wallet_mix = self
             .operator_stats
             .wallet_balance
@@ -2433,7 +2443,15 @@ impl AppShell {
                     "mix: retained total only".to_string()
                 }
             })
-            .unwrap_or_else(|| "mix: unavailable".to_string());
+            .unwrap_or_else(|| {
+                if self.last_wallet_error.is_none()
+                    && (self.refresh_in_flight || self.last_refresh_at.is_none())
+                {
+                    "mix: pending".to_string()
+                } else {
+                    "mix: unavailable".to_string()
+                }
+            });
         let last_job = self
             .operator_stats
             .last_job_result
@@ -3036,8 +3054,9 @@ fn compute_operator_panel_stats_at(
     now_ms: u64,
 ) -> OperatorPanelStats {
     let since_ms = now_ms.saturating_sub(LOOKBACK_WINDOW_24H_MS);
-    let wallet_balance_live = wallet_status.is_some();
+    let wallet_balance_live = wallet_status.is_some_and(wallet_status_balance_is_authoritative);
     let wallet_balance = wallet_status
+        .filter(|report| wallet_status_balance_is_authoritative(report))
         .map(|report| report.balance.clone())
         .or_else(|| {
             ledger
@@ -3129,6 +3148,10 @@ fn provider_job_is_in_progress(status: &str) -> bool {
         status,
         "accepted_local" | "processing_local" | "payment_settled"
     )
+}
+
+fn wallet_status_balance_is_authoritative(report: &pylon::WalletStatusReport) -> bool {
+    report.runtime_status == "connected" || report.balance.total_sats > 0
 }
 
 fn provider_settlement_counted_as_settled(status: &str) -> bool {
@@ -3815,6 +3838,52 @@ mod tests {
         assert!(sidebar.contains("24h processed: 2  settled: 1"));
         assert!(sidebar.contains("last job: settled  uptime: 1m"));
         assert!(sidebar.contains("backend: local_gemma"));
+    }
+
+    #[test]
+    fn operator_panel_shows_pending_wallet_state_while_refreshing_without_balance() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.refresh_in_flight = true;
+
+        let sidebar = app
+            .operator_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(sidebar.contains("wallet: pending"));
+        assert!(sidebar.contains("mix: pending"));
+    }
+
+    #[test]
+    fn compute_operator_panel_stats_uses_retained_balance_until_live_balance_is_authoritative() {
+        let now_ms = 1_762_700_500_000_u64;
+        let mut ledger = pylon::PylonLedger::default();
+        ledger.wallet.last_balance_sats = Some(377);
+
+        let wallet_status = pylon::WalletStatusReport {
+            runtime: pylon::WalletRuntimeSurface::default(),
+            runtime_status: "disconnected".to_string(),
+            runtime_detail: Some("syncing".to_string()),
+            balance: pylon::WalletBalanceSnapshot::default(),
+            recent_payments: Vec::new(),
+        };
+
+        let stats = compute_operator_panel_stats_at(
+            ProviderDesiredMode::Online,
+            true,
+            Some(&wallet_status),
+            None,
+            &ledger,
+            now_ms,
+        );
+
+        assert!(!stats.wallet_balance_live);
+        assert_eq!(
+            stats.wallet_balance.as_ref().map(|balance| balance.total_sats),
+            Some(377)
+        );
     }
 
     #[test]
