@@ -464,6 +464,7 @@ mod tests {
             activated_at_ms: Some(1_762_491_220_000),
             sealed_at_ms: Some(1_762_491_230_000),
             reconciled_at_ms: Some(1_762_491_240_000),
+            defensibility: None,
             seal_deadline_ms: 1_762_491_260_000,
         };
         ComputeTrainingWindowPublicationSource {

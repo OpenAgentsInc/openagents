@@ -3314,6 +3314,22 @@ cadence, and persisted audit trails.
 - No accepted closeout can occur without satisfying the frozen defensibility
   requirements.
 
+**Current Status**
+
+- `Nexus` now computes and persists a defensibility audit whenever a sealed
+  training window is reconciled into a closeout.
+- The persisted audit trail records release/build identity checks, assignment
+  manifest binding, artifact digest validation, validator evidence coverage,
+  and checkpoint pointer regression checks in both window metadata and accepted
+  closeout metadata.
+- Rewarded or no-reward closeouts now fail closed into held or refused outcomes
+  when the reconciled window shows stale manifest replay, artifact digest
+  mismatch, build revocation, lease expiry/stale assignment conditions, or
+  missing required aggregate or sampled validator evidence.
+- Targeted coordinator tests now lock the happy path plus stale replay,
+  malformed artifact digest, build-revoked worker, held validator escalation,
+  and authoritative TRN publication behavior against silent drift.
+
 ### Workstream 8: End-to-End Rehearsals
 
 #### 51. Build and automate the full MVP rehearsal matrix

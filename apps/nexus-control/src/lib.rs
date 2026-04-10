@@ -76,10 +76,10 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
     PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
-    pylon_training_assignment_id, pylon_training_assignment_seed, pylon_training_hard_gate_reason,
-    pylon_training_lease_id, pylon_training_manifest_binding_digest,
-    pylon_training_membership_revision_label, resolve_aggregate_verdicts,
-    validate_redacted_retained_content, validator_sample_assignments,
+    PylonTrainingRefusalCode, pylon_training_assignment_id, pylon_training_assignment_seed,
+    pylon_training_hard_gate_reason, pylon_training_lease_id,
+    pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
+    resolve_aggregate_verdicts, validate_redacted_retained_content, validator_sample_assignments,
 };
 use openagents_kernel_core::receipts::{PolicyContext, Receipt, ReceiptHints, TraceContext};
 use openagents_kernel_core::snapshots::EconomySnapshot;
@@ -952,7 +952,166 @@ struct TrainingWindowMetadata {
     sealed_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reconciled_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    defensibility: Option<serde_json::Value>,
     seal_deadline_ms: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct TrainingWindowDefensibilityNodeIdentity {
+    node_pubkey_hex: String,
+    release_id: String,
+    build_digest: String,
+    eligible: bool,
+    hard_gate_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct TrainingWindowDefensibilityAssignmentAudit {
+    assignment_id: String,
+    node_pubkey_hex: String,
+    state: Option<String>,
+    lease_id: Option<String>,
+    expires_at_ms: Option<i64>,
+    expected_manifest_digest: Option<String>,
+    observed_manifest_digest: Option<String>,
+    refusal_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct TrainingWindowDefensibilityValidatorAudit {
+    challenge_ids: Vec<String>,
+    aggregate_challenge_count: u32,
+    sample_challenge_count: u32,
+    terminal_challenge_count: u32,
+    all_required_terminal: bool,
+    sampled_replay_present: bool,
+    aggregate_resolution: String,
+    held_challenge_present: bool,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct TrainingWindowDefensibilityArtifactAudit {
+    contribution_count: usize,
+    invalid_digest_refs: Vec<String>,
+    aggregated_delta_digest: Option<String>,
+    checkpoint_pointer_regression: bool,
+    output_checkpoint_manifest_digest: Option<String>,
+    output_checkpoint_pointer_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct TrainingWindowDefensibilityAudit {
+    status: String,
+    refusal_codes: Vec<String>,
+    approved_release_ids: Vec<String>,
+    persisted_audit_trails: Vec<String>,
+    node_identities: Vec<TrainingWindowDefensibilityNodeIdentity>,
+    assignment_trail: Vec<TrainingWindowDefensibilityAssignmentAudit>,
+    validator_audit: TrainingWindowDefensibilityValidatorAudit,
+    artifact_audit: TrainingWindowDefensibilityArtifactAudit,
+}
+
+impl TrainingWindowDefensibilityAudit {
+    fn status_label(refusal_codes: &[String]) -> &'static str {
+        if refusal_codes.is_empty() {
+            "satisfied"
+        } else if refusal_codes.iter().any(|code| {
+            matches!(
+                code.as_str(),
+                value if value == PylonTrainingRefusalCode::ValidatorTimeout.label()
+                    || value == PylonTrainingRefusalCode::ValidatorDisagreement.label()
+            )
+        }) {
+            "held"
+        } else {
+            "refused"
+        }
+    }
+
+    fn required_closeout_status(&self) -> Option<TrainingWindowCloseoutStatus> {
+        match self.status.as_str() {
+            "satisfied" => None,
+            "held" => Some(TrainingWindowCloseoutStatus::Held),
+            _ => Some(TrainingWindowCloseoutStatus::Refused),
+        }
+    }
+
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "status": self.status,
+            "refusal_codes": self.refusal_codes,
+            "approved_release_ids": self.approved_release_ids,
+            "persisted_audit_trails": self.persisted_audit_trails,
+            "node_identities": self
+                .node_identities
+                .iter()
+                .map(TrainingWindowDefensibilityNodeIdentity::as_json)
+                .collect::<Vec<_>>(),
+            "assignment_trail": self
+                .assignment_trail
+                .iter()
+                .map(TrainingWindowDefensibilityAssignmentAudit::as_json)
+                .collect::<Vec<_>>(),
+            "validator_audit": self.validator_audit.as_json(),
+            "artifact_audit": self.artifact_audit.as_json(),
+        })
+    }
+}
+
+impl TrainingWindowDefensibilityNodeIdentity {
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "node_pubkey_hex": self.node_pubkey_hex,
+            "release_id": self.release_id,
+            "build_digest": self.build_digest,
+            "eligible": self.eligible,
+            "hard_gate_reason": self.hard_gate_reason,
+        })
+    }
+}
+
+impl TrainingWindowDefensibilityAssignmentAudit {
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "assignment_id": self.assignment_id,
+            "node_pubkey_hex": self.node_pubkey_hex,
+            "state": self.state,
+            "lease_id": self.lease_id,
+            "expires_at_ms": self.expires_at_ms,
+            "expected_manifest_digest": self.expected_manifest_digest,
+            "observed_manifest_digest": self.observed_manifest_digest,
+            "refusal_code": self.refusal_code,
+        })
+    }
+}
+
+impl TrainingWindowDefensibilityValidatorAudit {
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "challenge_ids": self.challenge_ids,
+            "aggregate_challenge_count": self.aggregate_challenge_count,
+            "sample_challenge_count": self.sample_challenge_count,
+            "terminal_challenge_count": self.terminal_challenge_count,
+            "all_required_terminal": self.all_required_terminal,
+            "sampled_replay_present": self.sampled_replay_present,
+            "aggregate_resolution": self.aggregate_resolution,
+            "held_challenge_present": self.held_challenge_present,
+        })
+    }
+}
+
+impl TrainingWindowDefensibilityArtifactAudit {
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "contribution_count": self.contribution_count,
+            "invalid_digest_refs": self.invalid_digest_refs,
+            "aggregated_delta_digest": self.aggregated_delta_digest,
+            "checkpoint_pointer_regression": self.checkpoint_pointer_regression,
+            "output_checkpoint_manifest_digest": self.output_checkpoint_manifest_digest,
+            "output_checkpoint_pointer_digest": self.output_checkpoint_pointer_digest,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -1921,6 +2080,21 @@ fn normalize_required_training_string(value: &str, reason: &str) -> Result<Strin
     Ok(normalized.to_string())
 }
 
+fn is_prefixed_sha256_digest(value: &str) -> bool {
+    let normalized = value.trim();
+    normalized.starts_with("sha256:") && normalized.len() > "sha256:".len()
+}
+
+fn push_training_defensibility_refusal_code(
+    refusal_codes: &mut Vec<String>,
+    refusal_code: PylonTrainingRefusalCode,
+) {
+    let label = refusal_code.label().to_string();
+    if !refusal_codes.iter().any(|existing| existing == &label) {
+        refusal_codes.push(label);
+    }
+}
+
 fn training_window_metadata_from_value(
     value: &serde_json::Value,
 ) -> Result<TrainingWindowMetadata, String> {
@@ -2317,6 +2491,366 @@ fn training_window_validation_summary(
     })
 }
 
+fn training_window_defensibility_audit(
+    kernel: &KernelState,
+    scheduled_run: Option<&ScheduledTrainingRun>,
+    window: &ComputeAdapterTrainingWindow,
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+    contribution_outcomes: &[ComputeAdapterContributionOutcome],
+    validation: &TrainingWindowValidationState,
+    validation_summary: &TrainingWindowValidationSummary,
+    candidate_closeout_status: TrainingWindowCloseoutStatus,
+    recorded_at_ms: i64,
+) -> TrainingWindowDefensibilityAudit {
+    let mut refusal_codes = Vec::new();
+    let mut approved_release_ids = BTreeSet::new();
+    let mut node_identities = Vec::new();
+    let mut assignment_trail = Vec::new();
+    let mut invalid_digest_refs = Vec::new();
+
+    let contribution_by_assignment = contribution_outcomes
+        .iter()
+        .map(|outcome| (outcome.assignment_id.as_str(), outcome))
+        .collect::<HashMap<_, _>>();
+
+    if scheduled_run.is_none() {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::StaleAssignment,
+        );
+    }
+
+    for plan in assignment_plans {
+        let contribution = contribution_by_assignment
+            .get(plan.assignment_id.as_str())
+            .copied();
+        let scheduled_assignment = scheduled_run.and_then(|run| {
+            run.assignments
+                .iter()
+                .find(|assignment| assignment.assignment_id == plan.assignment_id)
+        });
+        let admitted_node =
+            kernel.get_admitted_training_node(plan.node_pubkey_hex.as_str(), recorded_at_ms);
+        let hard_gate_reason = admitted_node.as_ref().and_then(|node| {
+            (!node.eligible).then(|| {
+                pylon_training_hard_gate_reason(&node.active_reputation_labels)
+                    .unwrap_or_else(|| "training_node_not_eligible".to_string())
+            })
+        });
+        match admitted_node.as_ref() {
+            Some(node) => {
+                approved_release_ids.insert(node.release_id.clone());
+                if !node.eligible {
+                    if hard_gate_reason.as_deref()
+                        == Some(PylonTrainingRefusalCode::BuildRevoked.label())
+                    {
+                        push_training_defensibility_refusal_code(
+                            &mut refusal_codes,
+                            PylonTrainingRefusalCode::BuildRevoked,
+                        );
+                    } else {
+                        push_training_defensibility_refusal_code(
+                            &mut refusal_codes,
+                            PylonTrainingRefusalCode::StaleAssignment,
+                        );
+                    }
+                }
+                node_identities.push(TrainingWindowDefensibilityNodeIdentity {
+                    node_pubkey_hex: node.node_pubkey_hex.clone(),
+                    release_id: node.release_id.clone(),
+                    build_digest: node.build_digest.clone(),
+                    eligible: node.eligible,
+                    hard_gate_reason,
+                });
+            }
+            None => {
+                push_training_defensibility_refusal_code(
+                    &mut refusal_codes,
+                    PylonTrainingRefusalCode::StaleAssignment,
+                );
+                node_identities.push(TrainingWindowDefensibilityNodeIdentity {
+                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    release_id: String::new(),
+                    build_digest: String::new(),
+                    eligible: false,
+                    hard_gate_reason: Some("training_node_not_found".to_string()),
+                });
+            }
+        }
+
+        let mut assignment_refusal_code = None;
+        match scheduled_assignment {
+            Some(assignment) => {
+                if matches!(assignment.state, TrainingAssignmentState::Expired)
+                    || assignment
+                        .expires_at_ms
+                        .is_some_and(|expires_at_ms| expires_at_ms < recorded_at_ms)
+                {
+                    push_training_defensibility_refusal_code(
+                        &mut refusal_codes,
+                        PylonTrainingRefusalCode::LeaseExpired,
+                    );
+                    assignment_refusal_code =
+                        Some(PylonTrainingRefusalCode::LeaseExpired.label().to_string());
+                } else if matches!(
+                    assignment.state,
+                    TrainingAssignmentState::Drained | TrainingAssignmentState::Failed
+                ) {
+                    push_training_defensibility_refusal_code(
+                        &mut refusal_codes,
+                        PylonTrainingRefusalCode::StaleAssignment,
+                    );
+                    assignment_refusal_code = Some(
+                        PylonTrainingRefusalCode::StaleAssignment
+                            .label()
+                            .to_string(),
+                    );
+                }
+                let expected_manifest_digest = assignment.manifest_digest.clone();
+                let observed_manifest_digest =
+                    contribution.map(|value| value.manifest_digest.clone());
+                if expected_manifest_digest.as_deref() != observed_manifest_digest.as_deref() {
+                    push_training_defensibility_refusal_code(
+                        &mut refusal_codes,
+                        PylonTrainingRefusalCode::StaleAssignment,
+                    );
+                    assignment_refusal_code = Some(
+                        PylonTrainingRefusalCode::StaleAssignment
+                            .label()
+                            .to_string(),
+                    );
+                }
+                assignment_trail.push(TrainingWindowDefensibilityAssignmentAudit {
+                    assignment_id: assignment.assignment_id.clone(),
+                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    state: Some(assignment.state.label().to_string()),
+                    lease_id: assignment.lease_id.clone(),
+                    expires_at_ms: assignment.expires_at_ms,
+                    expected_manifest_digest,
+                    observed_manifest_digest,
+                    refusal_code: assignment_refusal_code,
+                });
+            }
+            None => {
+                push_training_defensibility_refusal_code(
+                    &mut refusal_codes,
+                    PylonTrainingRefusalCode::StaleAssignment,
+                );
+                assignment_trail.push(TrainingWindowDefensibilityAssignmentAudit {
+                    assignment_id: plan.assignment_id.clone(),
+                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    state: None,
+                    lease_id: None,
+                    expires_at_ms: None,
+                    expected_manifest_digest: None,
+                    observed_manifest_digest: contribution
+                        .map(|value| value.manifest_digest.clone()),
+                    refusal_code: Some(
+                        PylonTrainingRefusalCode::StaleAssignment
+                            .label()
+                            .to_string(),
+                    ),
+                });
+            }
+        }
+    }
+
+    for contribution in contribution_outcomes {
+        let digest_fields = [
+            (
+                "submission_receipt_digest",
+                contribution.submission_receipt_digest.as_str(),
+            ),
+            ("manifest_digest", contribution.manifest_digest.as_str()),
+            ("object_digest", contribution.object_digest.as_str()),
+            (
+                "artifact_receipt_digest",
+                contribution.artifact_receipt_digest.as_str(),
+            ),
+            (
+                "provenance_bundle_digest",
+                contribution.provenance_bundle_digest.as_str(),
+            ),
+            (
+                "security_receipt_digest",
+                contribution.security_receipt_digest.as_str(),
+            ),
+            (
+                "validator_receipt_digest",
+                contribution.validator_receipt_digest.as_str(),
+            ),
+        ];
+        for (field, digest) in digest_fields {
+            if !is_prefixed_sha256_digest(digest) {
+                invalid_digest_refs.push(format!(
+                    "contributions.{}.{}",
+                    contribution.assignment_id, field
+                ));
+            }
+        }
+        if let Some(digest) = contribution.replay_receipt_digest.as_deref() {
+            if !is_prefixed_sha256_digest(digest) {
+                invalid_digest_refs.push(format!(
+                    "contributions.{}.replay_receipt_digest",
+                    contribution.assignment_id
+                ));
+            }
+        }
+        if let Some(digest) = contribution.promotion_receipt_digest.as_deref() {
+            if !is_prefixed_sha256_digest(digest) {
+                invalid_digest_refs.push(format!(
+                    "contributions.{}.promotion_receipt_digest",
+                    contribution.assignment_id
+                ));
+            }
+        }
+    }
+    if !invalid_digest_refs.is_empty() {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::ArtifactDigestMismatch,
+        );
+    }
+
+    if matches!(
+        candidate_closeout_status,
+        TrainingWindowCloseoutStatus::Rewarded
+    ) {
+        match window.aggregated_delta_digest.as_deref() {
+            Some(digest) if is_prefixed_sha256_digest(digest) => {}
+            Some(_) => {
+                invalid_digest_refs.push("window.aggregated_delta_digest".to_string());
+                push_training_defensibility_refusal_code(
+                    &mut refusal_codes,
+                    PylonTrainingRefusalCode::ArtifactDigestMismatch,
+                );
+            }
+            None => {
+                push_training_defensibility_refusal_code(
+                    &mut refusal_codes,
+                    PylonTrainingRefusalCode::ArtifactIncomplete,
+                );
+            }
+        }
+    } else if let Some(digest) = window.aggregated_delta_digest.as_deref() {
+        if !is_prefixed_sha256_digest(digest) {
+            invalid_digest_refs.push("window.aggregated_delta_digest".to_string());
+            push_training_defensibility_refusal_code(
+                &mut refusal_codes,
+                PylonTrainingRefusalCode::ArtifactDigestMismatch,
+            );
+        }
+    }
+
+    let mut checkpoint_pointer_regression = false;
+    if let Some(pointer) = window.output_checkpoint_pointer.as_ref() {
+        if !is_prefixed_sha256_digest(pointer.manifest_digest.as_str()) {
+            invalid_digest_refs
+                .push("window.output_checkpoint_pointer.manifest_digest".to_string());
+        }
+        if !is_prefixed_sha256_digest(pointer.pointer_digest.as_str()) {
+            invalid_digest_refs.push("window.output_checkpoint_pointer.pointer_digest".to_string());
+        }
+        if pointer.updated_at_ms < window.source_checkpoint_pointer.updated_at_ms {
+            checkpoint_pointer_regression = true;
+        }
+        if checkpoint_pointer_regression
+            || !is_prefixed_sha256_digest(pointer.manifest_digest.as_str())
+            || !is_prefixed_sha256_digest(pointer.pointer_digest.as_str())
+        {
+            push_training_defensibility_refusal_code(
+                &mut refusal_codes,
+                PylonTrainingRefusalCode::CheckpointDigestMismatch,
+            );
+        }
+    }
+
+    let mut aggregate_challenge_count = 0u32;
+    let mut sample_challenge_count = 0u32;
+    let mut terminal_challenge_count = 0u32;
+    for challenge in &validation.challenges {
+        match challenge.challenge_kind {
+            TrainingValidationChallengeKind::Aggregate => {
+                aggregate_challenge_count = aggregate_challenge_count.saturating_add(1);
+            }
+            TrainingValidationChallengeKind::ContributionSample => {
+                sample_challenge_count = sample_challenge_count.saturating_add(1);
+            }
+        }
+        if let Some(snapshot) = kernel.get_validator_challenge(challenge.challenge_id.as_str()) {
+            if matches!(
+                canonical_challenge_status(snapshot.status),
+                ComputeValidatorChallengeStatus::Verified
+                    | ComputeValidatorChallengeStatus::Rejected
+                    | ComputeValidatorChallengeStatus::TimedOut
+            ) {
+                terminal_challenge_count = terminal_challenge_count.saturating_add(1);
+            }
+        }
+    }
+    if aggregate_challenge_count == 0 || sample_challenge_count == 0 {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::ValidatorDisagreement,
+        );
+    }
+    if !validation_summary.all_required_terminal || validation_summary.held_challenge_present {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::ValidatorTimeout,
+        );
+    }
+
+    let refusal_codes = refusal_codes;
+    let status = TrainingWindowDefensibilityAudit::status_label(&refusal_codes).to_string();
+    TrainingWindowDefensibilityAudit {
+        status,
+        refusal_codes,
+        approved_release_ids: approved_release_ids.into_iter().collect(),
+        persisted_audit_trails: vec![
+            "assignment".to_string(),
+            "upload".to_string(),
+            "replay".to_string(),
+            "verdict".to_string(),
+            "acceptance".to_string(),
+            "closeout".to_string(),
+        ],
+        node_identities,
+        assignment_trail,
+        validator_audit: TrainingWindowDefensibilityValidatorAudit {
+            challenge_ids: validation
+                .challenges
+                .iter()
+                .map(|challenge| challenge.challenge_id.clone())
+                .collect(),
+            aggregate_challenge_count,
+            sample_challenge_count,
+            terminal_challenge_count,
+            all_required_terminal: validation_summary.all_required_terminal,
+            sampled_replay_present: sample_challenge_count > 0,
+            aggregate_resolution: training_validation_resolution_label(
+                validation_summary.aggregate_resolution,
+            )
+            .to_string(),
+            held_challenge_present: validation_summary.held_challenge_present,
+        },
+        artifact_audit: TrainingWindowDefensibilityArtifactAudit {
+            contribution_count: contribution_outcomes.len(),
+            invalid_digest_refs,
+            aggregated_delta_digest: window.aggregated_delta_digest.clone(),
+            checkpoint_pointer_regression,
+            output_checkpoint_manifest_digest: window
+                .output_checkpoint_pointer
+                .as_ref()
+                .map(|pointer| pointer.manifest_digest.clone()),
+            output_checkpoint_pointer_digest: window
+                .output_checkpoint_pointer
+                .as_ref()
+                .map(|pointer| pointer.pointer_digest.clone()),
+        },
+    }
+}
+
 fn training_window_closeout_status(
     validation_summary: &TrainingWindowValidationSummary,
     gate_reason_codes: &[ComputeAdapterWindowGateReasonCode],
@@ -2481,6 +3015,7 @@ fn training_window_closeout_metadata(
     validation_summary: &TrainingWindowValidationSummary,
     window: &ComputeAdapterTrainingWindow,
     closeout_status: TrainingWindowCloseoutStatus,
+    defensibility: &TrainingWindowDefensibilityAudit,
 ) -> serde_json::Value {
     serde_json::json!({
         "network_id": network_id,
@@ -2516,6 +3051,7 @@ fn training_window_closeout_metadata(
             "rejected": window.rejected_contributions,
             "replay_required": window.replay_required_contributions,
         },
+        "defensibility": defensibility.as_json(),
     })
 }
 
@@ -2527,6 +3063,7 @@ fn training_window_closeout_outcome(
     window: &ComputeAdapterTrainingWindow,
     accepted_at_ms: i64,
     closeout_status: TrainingWindowCloseoutStatus,
+    defensibility: &TrainingWindowDefensibilityAudit,
 ) -> ComputeAcceptedOutcome {
     ComputeAcceptedOutcome {
         outcome_id: training_window_closeout_outcome_id(window.window_id.as_str()),
@@ -2549,6 +3086,7 @@ fn training_window_closeout_outcome(
             validation_summary,
             window,
             closeout_status,
+            defensibility,
         ),
     }
 }
@@ -4220,6 +4758,7 @@ async fn plan_training_window(
             activated_at_ms: None,
             sealed_at_ms: None,
             reconciled_at_ms: None,
+            defensibility: None,
             seal_deadline_ms: request.recorded_at_ms.saturating_add(
                 (PYLON_TRAINING_WINDOW_MAX_DURATION_MS + PYLON_TRAINING_SEAL_GRACE_PERIOD_MS)
                     as i64,
@@ -4587,10 +5126,35 @@ async fn reconcile_training_window(
         updated_window.held_out_average_score_bps = request.held_out_average_score_bps;
         updated_window.benchmark_pass_rate_bps = request.benchmark_pass_rate_bps;
         updated_window.runtime_smoke_passed = request.runtime_smoke_passed;
-        updated_window.promotion_ready = closeout_status == TrainingWindowCloseoutStatus::Rewarded;
         updated_window.gate_reason_codes = gate_reason_codes;
         updated_window.aggregated_delta_digest = request.aggregated_delta_digest.clone();
         updated_window.recorded_at_ms = request.recorded_at_ms;
+        let mut closeout_status = closeout_status;
+        let defensibility = training_window_defensibility_audit(
+            &store.kernel,
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(updated_window.training_run_id.as_str()),
+            &updated_window,
+            assignment_plans.as_slice(),
+            contribution_outcomes.as_slice(),
+            &validation,
+            &validation_summary,
+            closeout_status,
+            request.recorded_at_ms,
+        );
+        if let Some(required_closeout_status) = defensibility.required_closeout_status() {
+            closeout_status = match closeout_status {
+                TrainingWindowCloseoutStatus::Held
+                | TrainingWindowCloseoutStatus::Quarantined
+                | TrainingWindowCloseoutStatus::Refused => closeout_status,
+                TrainingWindowCloseoutStatus::Rewarded | TrainingWindowCloseoutStatus::NoReward => {
+                    required_closeout_status
+                }
+            };
+        }
+        updated_window.promotion_ready = closeout_status == TrainingWindowCloseoutStatus::Rewarded;
         match closeout_status {
             TrainingWindowCloseoutStatus::Rewarded | TrainingWindowCloseoutStatus::NoReward => {
                 updated_window.promotion_disposition = None;
@@ -4605,6 +5169,7 @@ async fn reconcile_training_window(
                     vec![ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady];
             }
         }
+        metadata.defensibility = Some(defensibility.as_json());
         updated_window.metadata = training_window_metadata_value(&metadata);
         updated_window.window_summary_digest = training_window_summary_digest(
             &updated_window,
@@ -4620,6 +5185,7 @@ async fn reconcile_training_window(
             &updated_window,
             request.recorded_at_ms,
             closeout_status,
+            &defensibility,
         );
         updated_window.accepted_outcome_id = Some(closeout_outcome.outcome_id.clone());
         let accepted_outcome_result = store
@@ -12572,6 +13138,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use anyhow::Result;
+    use axum::Router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
@@ -12645,6 +13212,7 @@ mod tests {
     };
     use openagents_kernel_core::pylon_training::{
         PylonTrainingAggregateResolution, PylonTrainingContributionVerdict,
+        PylonTrainingRefusalCode,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
@@ -13273,6 +13841,304 @@ mod tests {
             promotion_receipt_digest: None,
             metadata: json!({"contribution_id": contribution_id}),
         }
+    }
+
+    fn training_window_contribution_input_for_lease(
+        contribution_id: &str,
+        lease: &RecordTrainingRunLeaseResponse,
+        validator_receipt_digest: &str,
+        validator_disposition: Option<ComputeAdapterContributionDisposition>,
+    ) -> TrainingWindowContributionInput {
+        let mut input = training_window_contribution_input(
+            contribution_id,
+            lease.assignment_id.as_str(),
+            validator_receipt_digest,
+            validator_disposition,
+        );
+        if let Some(manifest_digest) = lease.manifest_digest.as_ref() {
+            input.manifest_digest = manifest_digest.clone();
+        }
+        input
+    }
+
+    async fn prepare_reward_candidate_training_window(
+        app: &Router,
+        state: &AppState,
+        created_at_ms: u64,
+        training_run_id: &str,
+        contribution_id: &str,
+    ) -> Result<RecordTrainingRunLeaseResponse> {
+        seed_training_scheduler_run(
+            state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request(
+                "validator-alpha",
+                "sha256:validator-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-alpha", "sha256:validator-alpha");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            format!("idemp.training.lease.prepare.{training_run_id}").as_str(),
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            format!("idemp.training.window.plan.prepare.{training_run_id}")
+                                .as_str(),
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://0001",
+                                "sha256:slice-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            format!("idemp.training.window.activate.prepare.{training_run_id}")
+                                .as_str(),
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: format!(
+                                "idemp.training.window.seal.prepare.{training_run_id}"
+                            ),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    contribution_id,
+                                    &lease,
+                                    format!("sha256:validator-pending:{contribution_id}").as_str(),
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let first_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            format!("idemp.training.validator.claim.prepare.1.{training_run_id}")
+                                .as_str(),
+                            created_at_ms as i64 + 1_310,
+                            "validator-alpha",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_claim.status(), StatusCode::OK);
+        let first_claim =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(first_claim).await?;
+        let first_retry = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/retry",
+                        first_claim.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_retry_request(
+                            format!("idemp.training.validator.retry.prepare.{training_run_id}")
+                                .as_str(),
+                            created_at_ms as i64 + 1_320,
+                            "validator-alpha",
+                            first_claim.lease.clone().expect("first claim lease"),
+                            "transient validator transport failure",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_retry.status(), StatusCode::OK);
+        let first_retry =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(first_retry).await?;
+        let first_finalized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        first_retry.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            format!(
+                                "idemp.training.validator.finalize.prepare.1.{training_run_id}"
+                            )
+                            .as_str(),
+                            created_at_ms as i64 + 1_330,
+                            "validator-alpha",
+                            first_retry.lease.clone().expect("first retry lease"),
+                            first_retry
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            first_retry.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            format!("sha256:validator-result:{contribution_id}:1").as_str(),
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_finalized.status(), StatusCode::OK);
+
+        let second_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            format!("idemp.training.validator.claim.prepare.2.{training_run_id}")
+                                .as_str(),
+                            created_at_ms as i64 + 1_340,
+                            "validator-alpha",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_claim.status(), StatusCode::OK);
+        let second_claim =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(second_claim).await?;
+        let second_finalized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        second_claim.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            format!(
+                                "idemp.training.validator.finalize.prepare.2.{training_run_id}"
+                            )
+                            .as_str(),
+                            created_at_ms as i64 + 1_350,
+                            "validator-alpha",
+                            second_claim.lease.clone().expect("second claim lease"),
+                            second_claim
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            second_claim.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            format!("sha256:validator-result:{contribution_id}:2").as_str(),
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_finalized.status(), StatusCode::OK);
+        Ok(lease)
     }
 
     fn training_validator_claim_request(
@@ -19889,12 +20755,14 @@ mod tests {
                             idempotency_key: "idemp.training.window.seal.alpha".to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_300,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.alpha",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-pending-alpha",
-                                None,
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.alpha",
+                                    &lease,
+                                    "sha256:validator-pending-alpha",
+                                    None,
+                                ),
+                            ],
                         },
                     )?))?,
             )
@@ -20071,12 +20939,14 @@ mod tests {
                             idempotency_key: "idemp.training.window.reconcile.alpha".to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_400,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.alpha",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-final-alpha",
-                                Some(ComputeAdapterContributionDisposition::Accepted),
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.alpha",
+                                    &lease,
+                                    "sha256:validator-final-alpha",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
                             held_out_average_score_bps: Some(9_500),
                             benchmark_pass_rate_bps: Some(9_700),
                             runtime_smoke_passed: Some(true),
@@ -20130,6 +21000,39 @@ mod tests {
                 .and_then(serde_json::Value::as_bool),
             Some(true)
         );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("satisfied")
+        );
+        assert_eq!(
+            defensibility
+                .get("refusal_codes")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::len),
+            Some(0)
+        );
+        assert_eq!(
+            defensibility
+                .get("validator_audit")
+                .and_then(|value| value.get("sampled_replay_present"))
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            recorded_window
+                .metadata
+                .get("pylon_training_window")
+                .and_then(|value| value.get("defensibility"))
+                .and_then(|value| value.get("status"))
+                .and_then(serde_json::Value::as_str),
+            Some("satisfied")
+        );
         assert_eq!(
             store
                 .training_scheduler
@@ -20147,6 +21050,258 @@ mod tests {
                 .expect("scheduled run")
                 .current_window_id,
             "window.0002"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_refuses_stale_manifest_replay_and_bad_artifact_digest()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_560_000u64;
+        let training_run_id = "run.window.defense.replay";
+        let contribution_id = "contrib.window.defense.replay";
+
+        let lease = prepare_reward_candidate_training_window(
+            &app,
+            &state,
+            created_at_ms,
+            training_run_id,
+            contribution_id,
+        )
+        .await?;
+        let mut replayed_input = training_window_contribution_input_for_lease(
+            contribution_id,
+            &lease,
+            "sha256:validator-final-defense-replay",
+            Some(ComputeAdapterContributionDisposition::Accepted),
+        );
+        replayed_input.manifest_digest = "sha256:manifest:stale-defense-replay".to_string();
+        replayed_input.object_digest = "object-without-sha-prefix".to_string();
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.defense.replay"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![replayed_input],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-defense-replay".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert!(!reconciled_window.window.promotion_ready);
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("refused closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("refused")
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("payout_eligible")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("refused")
+        );
+        let refusal_codes = defensibility
+            .get("refusal_codes")
+            .and_then(serde_json::Value::as_array)
+            .expect("refusal code list");
+        assert!(
+            refusal_codes
+                .iter()
+                .any(|value| value.as_str()
+                    == Some(PylonTrainingRefusalCode::StaleAssignment.label()))
+        );
+        assert!(refusal_codes.iter().any(|value| value.as_str()
+            == Some(PylonTrainingRefusalCode::ArtifactDigestMismatch.label())));
+        assert!(
+            defensibility
+                .get("artifact_audit")
+                .and_then(|value| value.get("invalid_digest_refs"))
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|values| values.iter().any(|value| {
+                    value.as_str()
+                        == Some(
+                            format!("contributions.{}.object_digest", lease.assignment_id).as_str(),
+                        )
+                })),
+            "artifact audit should retain the invalid object digest path",
+        );
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Refused
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_refuses_closeout_for_build_revoked_worker() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_620_000u64;
+        let training_run_id = "run.window.defense.build_revoked";
+        let contribution_id = "contrib.window.defense.build_revoked";
+
+        let lease = prepare_reward_candidate_training_window(
+            &app,
+            &state,
+            created_at_ms,
+            training_run_id,
+            contribution_id,
+        )
+        .await?;
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut revoked = training_node_admission_request(
+                "node-alpha",
+                "sha256:build-alpha",
+                vec!["trainnet.alpha"],
+                vec!["label.build.revoked.alpha::trn/build::revoked"],
+                Some(512),
+            );
+            revoked.idempotency_key =
+                "idemp.training.admission.node-alpha.sha256:build-alpha.revoked.closeout"
+                    .to_string();
+            revoked.requested_at_ms = created_at_ms as i64 + 1_360;
+            let response = store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-alpha", created_at_ms + 1_360),
+                    revoked,
+                )
+                .expect("record revoked worker readmission");
+            assert!(!response.response.admitted);
+            assert_eq!(response.response.reason.as_deref(), Some("build_revoked"));
+        }
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key:
+                                "idemp.training.window.reconcile.defense.build_revoked".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    contribution_id,
+                                    &lease,
+                                    "sha256:validator-final-defense-build-revoked",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-defense-build-revoked".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert!(!reconciled_window.window.promotion_ready);
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("refused closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("refused")
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("refused")
+        );
+        assert!(
+            defensibility
+                .get("refusal_codes")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|values| values.iter().any(|value| {
+                    value.as_str() == Some(PylonTrainingRefusalCode::BuildRevoked.label())
+                })),
+            "build-revoked workers must block rewarded closeout",
+        );
+        assert!(
+            defensibility
+                .get("node_identities")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|values| values.iter().any(|value| {
+                    value
+                        .get("hard_gate_reason")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(PylonTrainingRefusalCode::BuildRevoked.label())
+                })),
+            "audit trail should retain the build-revoked node identity",
+        );
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Refused
         );
         Ok(())
     }
@@ -20279,12 +21434,14 @@ mod tests {
                             idempotency_key: "idemp.training.window.seal.trn.alpha".to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_300,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.trn.alpha",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-pending-trn-alpha",
-                                None,
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.trn.alpha",
+                                    &lease,
+                                    "sha256:validator-pending-trn-alpha",
+                                    None,
+                                ),
+                            ],
                         },
                     )?))?,
             )
@@ -20490,12 +21647,14 @@ mod tests {
                                 .to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_400,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.trn.alpha",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-final-trn-alpha",
-                                Some(ComputeAdapterContributionDisposition::Accepted),
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.trn.alpha",
+                                    &lease,
+                                    "sha256:validator-final-trn-alpha",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
                             held_out_average_score_bps: Some(9_500),
                             benchmark_pass_rate_bps: Some(9_700),
                             runtime_smoke_passed: Some(true),
@@ -20748,12 +21907,14 @@ mod tests {
                             idempotency_key: "idemp.training.window.seal.restart.alpha".to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_300,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.restart.alpha",
-                                first_lease.assignment_id.as_str(),
-                                "sha256:validator-pending-restart-alpha",
-                                None,
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.restart.alpha",
+                                    &first_lease,
+                                    "sha256:validator-pending-restart-alpha",
+                                    None,
+                                ),
+                            ],
                         },
                     )?))?,
             )
@@ -20985,12 +22146,14 @@ mod tests {
                             idempotency_key: "idemp.training.window.seal.retry.alpha".to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_300,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.retry.alpha",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-pending-retry-alpha",
-                                None,
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.retry.alpha",
+                                    &lease,
+                                    "sha256:validator-pending-retry-alpha",
+                                    None,
+                                ),
+                            ],
                         },
                     )?))?,
             )
@@ -21214,12 +22377,14 @@ mod tests {
                             idempotency_key: "idemp.training.window.seal.summary.alpha".to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_300,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.summary.alpha",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-pending-summary-alpha",
-                                None,
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.summary.alpha",
+                                    &lease,
+                                    "sha256:validator-pending-summary-alpha",
+                                    None,
+                                ),
+                            ],
                         },
                     )?))?,
             )
@@ -21420,12 +22585,14 @@ mod tests {
                                 .to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_400,
                             window_id: "window.0001".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.summary.alpha",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-final-summary-alpha",
-                                Some(ComputeAdapterContributionDisposition::Accepted),
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.summary.alpha",
+                                    &lease,
+                                    "sha256:validator-final-summary-alpha",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
                             held_out_average_score_bps: Some(9_500),
                             benchmark_pass_rate_bps: Some(9_700),
                             runtime_smoke_passed: Some(true),
@@ -21679,12 +22846,14 @@ mod tests {
                             idempotency_key: "idemp.training.window.seal.held".to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_300,
                             window_id: "window.0003".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.held",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-pending-held",
-                                None,
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.held",
+                                    &lease,
+                                    "sha256:validator-pending-held",
+                                    None,
+                                ),
+                            ],
                         },
                     )?))?,
             )
@@ -21812,12 +22981,14 @@ mod tests {
                                 .to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_350,
                             window_id: "window.0003".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.held",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-final-held",
-                                Some(ComputeAdapterContributionDisposition::Accepted),
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.held",
+                                    &lease,
+                                    "sha256:validator-final-held",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
                             held_out_average_score_bps: Some(9_500),
                             benchmark_pass_rate_bps: Some(9_700),
                             runtime_smoke_passed: Some(true),
@@ -21900,12 +23071,14 @@ mod tests {
                                 .to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_380,
                             window_id: "window.0003".to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input(
-                                "contrib.window.held",
-                                lease.assignment_id.as_str(),
-                                "sha256:validator-final-held",
-                                Some(ComputeAdapterContributionDisposition::Accepted),
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.held",
+                                    &lease,
+                                    "sha256:validator-final-held",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
                             held_out_average_score_bps: Some(9_500),
                             benchmark_pass_rate_bps: Some(9_700),
                             runtime_smoke_passed: Some(true),
