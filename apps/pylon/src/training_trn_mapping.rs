@@ -322,11 +322,11 @@ mod tests {
     use anyhow::Result;
     use nostr::{Event, NostrIdentity, TrnEvent};
     use openagents_kernel_core::pylon_training::{
-        PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PylonTrainingArtifactLayout, PylonTrainingArtifacts,
-        PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
-        PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary, PylonTrainingManifestRole,
-        PylonTrainingRunManifestCommon, PylonTrainingRunManifestV1, PylonTrainingTopology,
-        PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
+        PylonTrainingArtifactLayout, PylonTrainingArtifacts, PylonTrainingCheckpointBinding,
+        PylonTrainingCollectiveKind, PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary,
+        PylonTrainingManifestRole, PylonTrainingRunManifestCommon, PylonTrainingRunManifestV1,
+        PylonTrainingTopology, PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
     };
 
     use super::*;
@@ -356,6 +356,18 @@ mod tests {
     }
 
     fn worker_manifest_context() -> Result<(tempfile::TempDir, TrainingManifestInspectionContext)> {
+        worker_manifest_context_with_topology(
+            PylonTrainingTopologyBackendFamily::Cuda,
+            "env.cuda.alpha",
+            "manifest.run.alpha.worker",
+        )
+    }
+
+    fn worker_manifest_context_with_topology(
+        backend_family: PylonTrainingTopologyBackendFamily,
+        environment_ref: &str,
+        manifest_id: &str,
+    ) -> Result<(tempfile::TempDir, TrainingManifestInspectionContext)> {
         let temp_dir = tempfile::tempdir()?;
         let local_run_root = temp_dir
             .path()
@@ -363,7 +375,7 @@ mod tests {
             .join("runs")
             .join("run.alpha");
         let common = PylonTrainingRunManifestCommon {
-            manifest_id: "manifest.run.alpha.worker".to_string(),
+            manifest_id: manifest_id.to_string(),
             issued_at_ms: 1_762_491_200_000,
             expires_at_ms: 1_762_491_800_000,
             network_id: "trainnet.alpha".to_string(),
@@ -378,11 +390,11 @@ mod tests {
             authority_base_url: "https://nexus.openagents.com".to_string(),
             training_policy_ref: "policy.training.alpha".to_string(),
             validator_policy_ref: "policy.validator.alpha".to_string(),
-            environment_ref: "env.cuda.alpha".to_string(),
+            environment_ref: environment_ref.to_string(),
             environment_version: "v1".to_string(),
         };
         let topology = PylonTrainingTopology {
-            backend_family: PylonTrainingTopologyBackendFamily::Cuda,
+            backend_family,
             world_size: 1,
             rank: 0,
             local_device_ids: vec![0],
@@ -439,6 +451,35 @@ mod tests {
                 layout,
             },
         ))
+    }
+
+    #[test]
+    fn training_trn_mapping_preserves_apple_backend_capabilities_in_node_records() -> Result<()> {
+        let (temp_dir, context) = worker_manifest_context_with_topology(
+            PylonTrainingTopologyBackendFamily::Metal,
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+            "manifest.run.apple.worker",
+        )?;
+        let mut config = super::super::default_config(temp_dir.path());
+        config.training.role_claims = vec![super::super::PylonTrainingRoleClaim::Worker];
+
+        let (status, node_record) =
+            node_record_event(&config, &PylonTrainingRuntimeState::default(), &[&context])?;
+        assert_eq!(status, "degraded");
+        assert!(
+            node_record
+                .capabilities
+                .contains(&nostr::TrnCapability::new("backend", "metal"))
+        );
+        assert!(
+            node_record
+                .capabilities
+                .contains(&nostr::TrnCapability::new(
+                    "environment",
+                    PYLON_TRAINING_APPLE_ENVIRONMENT_REF
+                ))
+        );
+        Ok(())
     }
 
     #[test]

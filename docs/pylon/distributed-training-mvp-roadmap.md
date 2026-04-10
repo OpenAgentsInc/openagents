@@ -3477,6 +3477,15 @@ through the same lifecycle used by CUDA nodes.
 
 - Apple-capable nodes advertise and run correctly under the same control plane.
 
+Current status:
+
+- landed in `openagents`: `Pylon` now detects admitted Apple Silicon training
+  posture from local host telemetry plus the retained `psionic-train` runtime
+  surface, projects the admitted Apple environment ref through contributor
+  availability, accepts homogeneous Metal and MLX manifests through the shared
+  manifest contract, and exercises the Apple node-record publication path
+  through focused coverage.
+
 #### 55. Make Nexus schedule backend-homogeneous Apple windows beside CUDA
 windows
 

@@ -39,6 +39,8 @@ use openagents_kernel_core::{
     },
     ids::sha256_prefixed_text,
     pylon_training::{
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+        PYLON_TRAINING_CUDA_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
@@ -130,9 +132,11 @@ const PYLON_TRAINING_ADAPTER_FAMILY: &str = "openagents.adapter.reference";
 const PYLON_TRAINING_ADAPTER_FORMAT: &str = "openagents.adapter.delta.v1";
 const PYLON_TRAINING_VALIDATOR_POLICY_REF: &str = "policy://validator/mvp/v1";
 const PYLON_TRAINING_CHECKPOINT_FAMILY: &str = "decoder";
-const PYLON_TRAINING_ENVIRONMENT_REF: &str = "env.openagents.cuda.train";
+const PYLON_TRAINING_ENVIRONMENT_REF: &str = SHARED_PYLON_TRAINING_CUDA_ENVIRONMENT_REF;
+const PYLON_TRAINING_APPLE_ENVIRONMENT_REF: &str = SHARED_PYLON_TRAINING_APPLE_ENVIRONMENT_REF;
 const PYLON_TRAINING_ADMITTED_CUDA_GPU_MODEL_FAMILY: &str = "h100";
 const PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB: u32 = 80;
+const PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB: u32 = 32;
 const TRN_TRAINING_NODE_RECORD_KIND: u16 = 39_501;
 const TRN_TRAINING_RECEIPT_KIND: u16 = 39_511;
 const TRN_TRAINING_ARTIFACT_LOCATOR_KIND: u16 = 39_520;
@@ -150,6 +154,7 @@ static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetr
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PsionicTrainRuntimeSurface {
     repo_root: PathBuf,
+    supports_apple_windowed_training: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -3433,6 +3438,7 @@ fn inspect_psionic_train_runtime_surface_at(
     repo_root: &Path,
 ) -> Result<PsionicTrainRuntimeSurface> {
     ensure_psionic_repo_root_exists(repo_root)?;
+    let train_runtime_path = repo_root.join("crates/psionic-train/src/train_runtime.rs");
     for relative_path in [
         Path::new("TRAIN"),
         Path::new("crates/psionic-train/src/main.rs"),
@@ -3447,8 +3453,14 @@ fn inspect_psionic_train_runtime_surface_at(
             );
         }
     }
+    let train_runtime_source = std::fs::read_to_string(train_runtime_path.as_path())
+        .with_context(|| format!("failed to read {}", train_runtime_path.display()))?;
     Ok(PsionicTrainRuntimeSurface {
         repo_root: repo_root.to_path_buf(),
+        supports_apple_windowed_training: train_runtime_source
+            .contains("PSION_APPLE_WINDOWED_TRAINING_LANE_ID")
+            && train_runtime_source
+                .contains("PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF"),
     })
 }
 
@@ -14078,23 +14090,41 @@ fn derive_adapter_training_contributor_availability(
     host: &ProviderHostTelemetrySnapshot,
     runtime_surface: Option<&PsionicTrainRuntimeSurface>,
 ) -> ProviderAdapterTrainingContributorAvailability {
-    let Some(_runtime_surface) = runtime_surface else {
+    let Some(runtime_surface) = runtime_surface else {
         return ProviderAdapterTrainingContributorAvailability::default();
     };
 
     let coordinator_match_supported = host_has_training_network_posture(host);
     let authority_receipt_supported = host_has_training_checkpoint_posture(host);
     let has_cuda_backend = host_has_cuda_training_backend(host);
-    let available_memory_gb = host_max_cuda_training_memory_gb(host);
-    let contributor_supported = admitted_cuda_training_gpu(host).is_some()
+    let has_apple_backend =
+        runtime_surface.supports_apple_windowed_training && host_has_apple_training_backend(host);
+    let available_memory_gb =
+        host_max_cuda_training_memory_gb(host).or_else(|| host_apple_training_memory_gb(host));
+    let contributor_supported = (admitted_cuda_training_gpu(host).is_some()
+        || admitted_apple_training_host(host, runtime_surface))
         && coordinator_match_supported
         && authority_receipt_supported;
+    let mut environment_refs = Vec::new();
+    if has_cuda_backend {
+        environment_refs.push(PYLON_TRAINING_ENVIRONMENT_REF.to_string());
+    }
+    if has_apple_backend {
+        environment_refs.push(PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string());
+    }
+    let minimum_memory_gb = if admitted_cuda_training_gpu(host).is_some() || has_cuda_backend {
+        Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
+    } else if has_apple_backend {
+        Some(PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
+    } else {
+        None
+    };
 
     ProviderAdapterTrainingContributorAvailability {
         contributor_supported,
         coordinator_match_supported,
         authority_receipt_supported,
-        execution_backends: has_cuda_backend
+        execution_backends: (has_cuda_backend || has_apple_backend)
             .then_some(ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend)
             .into_iter()
             .collect(),
@@ -14102,8 +14132,8 @@ fn derive_adapter_training_contributor_availability(
         adapter_formats: vec![PYLON_TRAINING_ADAPTER_FORMAT.to_string()],
         validator_policy_refs: vec![PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string()],
         checkpoint_families: vec![PYLON_TRAINING_CHECKPOINT_FAMILY.to_string()],
-        environment_refs: vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
-        minimum_memory_gb: Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB),
+        environment_refs,
+        minimum_memory_gb,
         available_memory_gb,
         settlement_trigger: Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow),
     }
@@ -14138,6 +14168,32 @@ fn host_max_cuda_training_memory_gb(host: &ProviderHostTelemetrySnapshot) -> Opt
         .max()
 }
 
+fn host_has_apple_training_backend(host: &ProviderHostTelemetrySnapshot) -> bool {
+    host.cpu_arch
+        .as_deref()
+        .map(|arch| arch.eq_ignore_ascii_case("arm64") || arch.eq_ignore_ascii_case("aarch64"))
+        .unwrap_or(false)
+        && host.gpus.iter().any(provider_gpu_is_apple_training_backend)
+}
+
+fn host_apple_training_memory_gb(host: &ProviderHostTelemetrySnapshot) -> Option<u32> {
+    host.memory
+        .as_ref()
+        .map(|memory| memory.total_bytes.max(memory.available_bytes))
+        .filter(|bytes| *bytes > 0)
+        .map(bytes_to_gib_ceil)
+}
+
+fn admitted_apple_training_host(
+    host: &ProviderHostTelemetrySnapshot,
+    runtime_surface: &PsionicTrainRuntimeSurface,
+) -> bool {
+    runtime_surface.supports_apple_windowed_training
+        && host_has_apple_training_backend(host)
+        && host_apple_training_memory_gb(host)
+            .is_some_and(|memory_gb| memory_gb >= PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
+}
+
 fn admitted_cuda_training_gpu(
     host: &ProviderHostTelemetrySnapshot,
 ) -> Option<&ProviderHostGpuTelemetry> {
@@ -14157,6 +14213,16 @@ fn provider_gpu_is_cuda_training_backend(gpu: &ProviderHostGpuTelemetry) -> bool
         .to_ascii_lowercase();
     let model = gpu.model.to_ascii_lowercase();
     vendor.contains("nvidia") || model.contains("nvidia")
+}
+
+fn provider_gpu_is_apple_training_backend(gpu: &ProviderHostGpuTelemetry) -> bool {
+    let vendor = gpu
+        .vendor
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let model = gpu.model.to_ascii_lowercase();
+    vendor.contains("apple") || model.contains("apple")
 }
 
 fn provider_gpu_model_matches_admitted_cuda_family(gpu: &ProviderHostGpuTelemetry) -> bool {
@@ -14473,7 +14539,8 @@ mod tests {
         GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
         LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage,
         PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
-        PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_ENVIRONMENT_REF,
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
+        PYLON_TRAINING_ENVIRONMENT_REF, PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB,
         PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
         PsionicTrainRuntimeSurface, PylonConfig, PylonTrainingActiveRuntimeState,
         PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
@@ -14548,12 +14615,12 @@ mod tests {
         ProviderAdapterTrainingSettlementTrigger, ProviderAdminRuntime,
         ProviderAppleAdapterHostingAvailability, ProviderAvailability, ProviderBackendHealth,
         ProviderControlAction, ProviderDesiredMode, ProviderEarningsSummary,
-        ProviderHostDiskTelemetry, ProviderHostGpuTelemetry, ProviderHostNetworkInterfaceTelemetry,
-        ProviderHostTelemetrySnapshot, ProviderInventoryControls, ProviderPersistenceStore,
-        ProviderPooledInferenceAvailability, ProviderReceiptSummary, ProviderRecentJob,
-        ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,
-        ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
-        provider_runtime_state_label,
+        ProviderHostDiskTelemetry, ProviderHostGpuTelemetry, ProviderHostMemoryTelemetry,
+        ProviderHostNetworkInterfaceTelemetry, ProviderHostTelemetrySnapshot,
+        ProviderInventoryControls, ProviderPersistenceStore, ProviderPooledInferenceAvailability,
+        ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
+        ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
+        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, provider_runtime_state_label,
     };
     use serde_json::{Value, json};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -14791,9 +14858,49 @@ mod tests {
         }
     }
 
+    fn apple_training_host_snapshot(
+        total_memory_gib: Option<u64>,
+        disk_available_gib: Option<u64>,
+        with_network: bool,
+    ) -> ProviderHostTelemetrySnapshot {
+        ProviderHostTelemetrySnapshot {
+            cpu_arch: Some("arm64".to_string()),
+            gpus: vec![ProviderHostGpuTelemetry {
+                model: "Apple M3 Max".to_string(),
+                vendor: Some("Apple".to_string()),
+                memory_total_label: total_memory_gib.map(|value| format!("{value} GB")),
+                ..ProviderHostGpuTelemetry::default()
+            }],
+            memory: total_memory_gib.map(|value| ProviderHostMemoryTelemetry {
+                used_bytes: 0,
+                available_bytes: value * super::BYTES_PER_GIB,
+                total_bytes: value * super::BYTES_PER_GIB,
+            }),
+            disks: disk_available_gib
+                .map(|value| ProviderHostDiskTelemetry {
+                    mount_point: "/tmp".to_string(),
+                    available_space_bytes: value * super::BYTES_PER_GIB,
+                    total_space_bytes: value * super::BYTES_PER_GIB,
+                    pylon_home_disk: true,
+                    ..ProviderHostDiskTelemetry::default()
+                })
+                .into_iter()
+                .collect(),
+            network_interfaces: with_network
+                .then_some(ProviderHostNetworkInterfaceTelemetry {
+                    name: "en0".to_string(),
+                    ..ProviderHostNetworkInterfaceTelemetry::default()
+                })
+                .into_iter()
+                .collect(),
+            ..ProviderHostTelemetrySnapshot::default()
+        }
+    }
+
     fn psionic_train_runtime_surface_fixture() -> PsionicTrainRuntimeSurface {
         PsionicTrainRuntimeSurface {
             repo_root: std::path::PathBuf::from("/tmp/psionic"),
+            supports_apple_windowed_training: true,
         }
     }
 
@@ -15214,6 +15321,53 @@ mod tests {
     }
 
     #[test]
+    fn adapter_training_detection_reports_apple_contract_but_refuses_insufficient_memory()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = apple_training_host_snapshot(Some(16), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+
+        ensure(
+            !availability.contributor_supported,
+            "Apple hosts below the admitted memory floor should not advertise sellable training contribution support",
+        )?;
+        ensure(
+            availability.coordinator_match_supported && availability.authority_receipt_supported,
+            "the Apple lane should still surface control-plane compatibility",
+        )?;
+        ensure(
+            availability.execution_backends
+                == vec![ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend],
+            "Apple-capable hosts should use the same admitted psionic-train execution backend",
+        )?;
+        ensure(
+            availability.environment_refs == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()]
+                && availability.minimum_memory_gb == Some(PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
+                && availability.available_memory_gb == Some(16),
+            "Apple capability detection should publish the admitted Apple environment identity and memory posture",
+        )
+    }
+
+    #[test]
+    fn adapter_training_detection_marks_apple_hosts_ready_when_runtime_and_host_posture_match()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = apple_training_host_snapshot(Some(64), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+
+        ensure(
+            availability.contributor_supported
+                && availability.coordinator_match_supported
+                && availability.authority_receipt_supported
+                && availability.environment_refs
+                    == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()],
+            "admitted Apple Silicon hosts should advertise the Apple training lane under the same control plane",
+        )
+    }
+
+    #[test]
     fn inspect_psionic_train_runtime_surface_requires_machine_training_entrypoint()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
@@ -15242,13 +15396,15 @@ mod tests {
             temp_dir
                 .path()
                 .join("crates/psionic-train/src/train_runtime.rs"),
-            "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n",
+            "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n\
+pub const PSION_APPLE_WINDOWED_TRAINING_LANE_ID: &str = \"psion_apple_windowed_training_v1\";\n\
+pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1\";\n",
         )?;
 
         let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
         ensure(
-            surface.repo_root == temp_dir.path(),
-            "training surface probe should accept the minimal machine runtime layout",
+            surface.repo_root == temp_dir.path() && surface.supports_apple_windowed_training,
+            "training surface probe should accept the minimal machine runtime layout and detect Apple lane support when present",
         )
     }
 
