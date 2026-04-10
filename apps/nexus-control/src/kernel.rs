@@ -386,6 +386,7 @@ pub struct KernelState {
     delivery_proofs: HashMap<String, DeliveryProofRecord>,
     validator_challenges: ValidatorChallengeService,
     training_trn_publications: HashMap<String, TrainingTrnPublicationPointer>,
+    training_trn_publication_records: HashMap<String, TrainingTrnPublicationRecord>,
     training_validator_challenge_receipts: HashMap<String, TrainingValidatorChallengeReceiptRecord>,
     compute_indices: HashMap<String, ComputeIndexRecord>,
     data_assets: HashMap<String, DataAssetRecord>,
@@ -492,6 +493,49 @@ pub struct TrainingTrnPublicationPointer {
     pub a_ref: Option<String>,
     pub published_at_ms: i64,
     pub fingerprint: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingTrnRelayPublicationOutcome {
+    pub relay_url: String,
+    pub accepted: bool,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingTrnPublicationTemplate {
+    pub event_kind: u16,
+    pub tags: Vec<Vec<String>>,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingTrnPublicationRecord {
+    pub publication_key: String,
+    pub subject_kind: String,
+    pub subject_id: String,
+    pub event_kind: u32,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fingerprint: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub a_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published_at_ms: Option<i64>,
+    pub last_attempt_at_ms: i64,
+    #[serde(default)]
+    pub attempt_count: u32,
+    #[serde(default)]
+    pub pending_retry: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_outcomes: Vec<TrainingTrnRelayPublicationOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<TrainingTrnPublicationTemplate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -887,6 +931,8 @@ struct PersistedComputeAuthorityState {
     validator_challenges: ValidatorChallengeService,
     #[serde(default)]
     training_trn_publications: BTreeMap<String, TrainingTrnPublicationPointer>,
+    #[serde(default)]
+    training_trn_publication_records: BTreeMap<String, TrainingTrnPublicationRecord>,
     #[serde(default)]
     training_validator_challenge_receipts:
         BTreeMap<String, TrainingValidatorChallengeReceiptRecord>,
@@ -3598,6 +3644,15 @@ impl KernelState {
         self.training_trn_publications.get(publication_key).cloned()
     }
 
+    pub fn get_training_trn_publication_record(
+        &self,
+        publication_key: &str,
+    ) -> Option<TrainingTrnPublicationRecord> {
+        self.training_trn_publication_records
+            .get(publication_key)
+            .cloned()
+    }
+
     pub fn list_training_trn_publications(&self) -> Vec<TrainingTrnPublicationPointer> {
         let mut items = self
             .training_trn_publications
@@ -3613,12 +3668,42 @@ impl KernelState {
         items
     }
 
+    pub fn list_training_trn_publication_records(&self) -> Vec<TrainingTrnPublicationRecord> {
+        let mut items = self
+            .training_trn_publication_records
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.subject_kind
+                .cmp(&rhs.subject_kind)
+                .then_with(|| lhs.subject_id.cmp(&rhs.subject_id))
+                .then_with(|| lhs.last_attempt_at_ms.cmp(&rhs.last_attempt_at_ms))
+                .then_with(|| lhs.publication_key.cmp(&rhs.publication_key))
+        });
+        items
+    }
+
     pub fn upsert_training_trn_publication(
         &mut self,
         pointer: TrainingTrnPublicationPointer,
     ) -> Result<(), String> {
         self.training_trn_publications
             .insert(pointer.publication_key.clone(), pointer);
+        self.persist_compute_authority_state()
+    }
+
+    pub fn upsert_training_trn_publication_state(
+        &mut self,
+        pointer: Option<TrainingTrnPublicationPointer>,
+        record: TrainingTrnPublicationRecord,
+    ) -> Result<(), String> {
+        if let Some(pointer) = pointer {
+            self.training_trn_publications
+                .insert(pointer.publication_key.clone(), pointer);
+        }
+        self.training_trn_publication_records
+            .insert(record.publication_key.clone(), record);
         self.persist_compute_authority_state()
     }
 
@@ -3718,6 +3803,10 @@ impl KernelState {
         self.delivery_proofs = persisted.delivery_proofs.into_iter().collect();
         self.validator_challenges = persisted.validator_challenges;
         self.training_trn_publications = persisted.training_trn_publications.into_iter().collect();
+        self.training_trn_publication_records = persisted
+            .training_trn_publication_records
+            .into_iter()
+            .collect();
         self.training_validator_challenge_receipts = persisted
             .training_validator_challenge_receipts
             .into_iter()
@@ -3788,6 +3877,11 @@ impl KernelState {
             delivery_proofs: self.delivery_proofs.clone().into_iter().collect(),
             validator_challenges: self.validator_challenges.clone(),
             training_trn_publications: self.training_trn_publications.clone().into_iter().collect(),
+            training_trn_publication_records: self
+                .training_trn_publication_records
+                .clone()
+                .into_iter()
+                .collect(),
             training_validator_challenge_receipts: self
                 .training_validator_challenge_receipts
                 .clone()
