@@ -2418,11 +2418,17 @@ impl AppShell {
         let runtime_label = if loading_current_status {
             "loading".to_string()
         } else {
-            self.operator_stats
-                .runtime_status
-                .as_deref()
-                .unwrap_or_else(|| self.operator_stats.desired_mode.label())
-                .to_string()
+            match self.operator_stats.runtime_status.as_deref() {
+                Some("online")
+                    if self.provider_command_in_flight.is_none()
+                        && self.operator_stats.processing_jobs == 0
+                        && self.operator_stats.awaiting_payment_jobs == 0 =>
+                {
+                    "ready".to_string()
+                }
+                Some(other) => other.to_string(),
+                None => self.operator_stats.desired_mode.label().to_string(),
+            }
         };
         let desired_mode_label = if loading_current_status {
             "loading".to_string()
@@ -2489,7 +2495,6 @@ impl AppShell {
             .unwrap_or_else(|| "0m".to_string());
 
         let mut lines = vec![
-            Line::from(format!("state: {state_label}")),
             Line::from(format!(
                 "mode: {}  runtime: {}",
                 desired_mode_label,
@@ -2513,6 +2518,9 @@ impl AppShell {
             lines.push(Line::from(format!("backend: {backend_label}")));
         }
         if let Some(detail) = state_detail {
+            if state_label != "ready for jobs" {
+                lines.push(Line::from(format!("activity: {state_label}")));
+            }
             lines.push(Line::from(format!("detail: {detail}")));
         } else if let Some(wallet_error) = self.last_wallet_error.as_deref() {
             if self.operator_stats.wallet_balance.is_none() {
@@ -2562,17 +2570,20 @@ impl AppShell {
         }
         match self.operator_stats.runtime_status.as_deref() {
             Some("online") if self.operator_stats.provider_presence_online => (
-                "online heartbeat only".to_string(),
-                Some("presence is live to Nexus, but no scan/run command is active".to_string()),
+                "ready for jobs".to_string(),
+                Some(
+                    "serve is online, Nexus heartbeat is live, and automatic intake passes are active"
+                        .to_string(),
+                ),
             ),
             Some("online") => (
-                "online".to_string(),
+                "bringing online".to_string(),
                 Some(
-                    "desired mode is online, but provider presence has not landed yet".to_string(),
+                    "desired mode is online; waiting for the next provider heartbeat".to_string(),
                 ),
             ),
             Some("ready") => (
-                "ready".to_string(),
+                "local runtime ready".to_string(),
                 Some("local supply is visible, but the node is still offline".to_string()),
             ),
             Some("paused") => ("paused".to_string(), None),
@@ -3886,13 +3897,14 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        assert!(sidebar.contains("state: online heartbeat only"));
+        assert!(sidebar.contains("mode: online  runtime: ready"));
         assert!(sidebar.contains("wallet: 110 sats total"));
         assert!(sidebar.contains("mix: spark 21 sats  lightning 34 sats  onchain 55 sats"));
         assert!(sidebar.contains("24h found: 8  matching: 3"));
         assert!(sidebar.contains("24h processed: 2  settled: 1"));
         assert!(sidebar.contains("last job: settled  uptime: 1m"));
         assert!(sidebar.contains("backend: local_gemma"));
+        assert!(sidebar.contains("automatic intake passes are active"));
     }
 
     #[test]
