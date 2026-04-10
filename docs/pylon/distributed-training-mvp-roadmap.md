@@ -1253,6 +1253,13 @@ become the admitted-node supervisor around `Psionic`.
 - Add tests for `Nexus` client idempotency.
 - Add tests for artifact upload/download and digest mismatch handling.
 - Add tests for TRN publication and deduplication.
+- Current status: `apps/pylon/src/lib.rs` now carries deterministic node-side
+  coverage for the listed categories. The retained test set covers admitted
+  capability detection, training config validation and refusal cases, child
+  supervision and restart handling, coordinator-client idempotency and retry,
+  artifact upload/download verification, training status/admin projection, TRN
+  publication, and retained publication-pointer dedupe on repeated publish
+  passes.
 
 ## Workstream 4: Nexus Authority And Scheduler Work
 
