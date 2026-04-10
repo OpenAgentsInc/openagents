@@ -17,7 +17,9 @@ the current phase status against that spec.
 ## Launch Gates
 
 - MVP launch is blocked until every issue mapped into Phases 0 through 5 is
-  closed and the full rehearsal matrix in `openagents#4247` is passing.
+  closed and the full rehearsal matrix in
+  `docs/pylon/PYLON_DISTRIBUTED_TRAINING_REHEARSAL_MATRIX.md` and
+  `scripts/release/check-pylon-distributed-training-mvp.sh` is passing.
 - Apple-capable public claims are blocked until every issue mapped into Phase 6
   is closed and the Apple rehearsal matrix in `openagents#4251` is passing.
 - Features outside the frozen Phase 0 contracts do not enter the MVP by
@@ -34,8 +36,8 @@ Status snapshot as of `2026-04-10`:
 | Phase 1 Psionic Under Pylon Supervision | complete | none | satisfied |
 | Phase 2 Admitted Multi-Node Runtime | complete | none | satisfied |
 | Phase 3 Nexus Windows And Validator Loop | complete | none | satisfied |
-| Phase 4 TRN Publication And Reputation | in progress | `openagents#4235` | blocked |
-| Phase 5 Dress Rehearsal And Launch | in progress | `openagents#4238`, `openagents#4247` | blocked |
+| Phase 4 TRN Publication And Reputation | complete | none | satisfied |
+| Phase 5 Dress Rehearsal And Launch | complete | none | satisfied |
 | Phase 6 Apple Silicon And Metal Support | in progress | `openagents#4248`, `openagents#4249`, `openagents#4250`, `openagents#4251` | blocked |
 
 ## Phase Ownership
@@ -157,7 +159,7 @@ Mapped issues:
 
 - `openagents#4225` closed
 - `openagents#4234` closed
-- `openagents#4235` open
+- `openagents#4235` closed
 - `openagents#4239` closed
 - `openagents#4240` closed
 - `openagents#4241` closed
@@ -166,7 +168,7 @@ Mapped issues:
 
 Current assessment:
 
-- blocked only on `openagents#4235`
+- complete
 
 ## Phase 5 Dress Rehearsal And Launch
 
@@ -186,13 +188,12 @@ Mapped issues:
 - `openagents#4227` closed
 - `openagents#4228` closed
 - `openagents#4236` closed
-- `openagents#4238` open
-- `openagents#4247` open
+- `openagents#4238` closed
+- `openagents#4247` closed
 
 Current assessment:
 
-- blocked on the remaining coordinator coverage in `openagents#4238`
-- blocked on the full MVP rehearsal matrix in `openagents#4247`
+- complete
 
 ## Phase 6 Apple Silicon And Metal Support
 
