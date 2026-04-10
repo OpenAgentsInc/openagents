@@ -204,12 +204,17 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 
 The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The TUI prepends a plain-terminal system instruction on each local chat request so replies avoid Markdown and LaTeX formatting the transcript cannot render. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. Directly under that catalog, the `Pylon Operator` panel now projects the retained operator truth that matters during bring-up: whether the node is merely heartbeating presence or actively running intake, the current wallet total, 24-hour found and matching demand counts, 24-hour processed and settled counts, the last job result, and online uptime. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. `/model <model>` persists a preferred Gemma target, maps it to the local runtime naming when possible, and warms that model through the configured local runtime endpoint. `/uninstall <model>` removes the matching cached GGUF and, when `local_gemma_base_url` points at a local Ollama instance, also removes the corresponding local runtime model. The current local chat path accepts the preferred model when it is visible through the configured local runtime endpoint. The `System` block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The current provider automation still lives in the explicit headless `cargo pylon-headless ...` flow below. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
-When a node reports provider presence to `Nexus`, that same heartbeat now also
-carries a private hosting telemetry snapshot alongside the public-safe launch
-summary. `Nexus` retains runtime state, backend availability, inventory rows,
-and host facts such as CPU, memory, disk, network, thermal, power, and GPU
-telemetry for online Pylons, while the public website remains limited to coarse
+When a node reports provider presence to `Nexus`, the heartbeat carries a
+private hosting telemetry snapshot alongside the public-safe launch summary.
+`Nexus` retains runtime state, backend availability, inventory rows, and host
+facts such as CPU, memory, disk, network, thermal, power, and GPU telemetry
+for online Pylons, while the public website remains limited to coarse
 aggregate counters and recent public-safe summaries.
+
+Payout-target challenge and registration are now a separate sync lane. They no
+longer run inline with the presence heartbeat itself. That means transient
+payout-target failures do not make an otherwise healthy node disappear from the
+live online count.
 
 Headless Gemma operator commands now exist too:
 

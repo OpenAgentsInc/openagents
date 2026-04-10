@@ -78,6 +78,10 @@ pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
+const DEFAULT_NEXUS_CONTROL_CONNECT_TIMEOUT_MS: u64 = 2_000;
+const DEFAULT_NEXUS_CONTROL_HTTP_TIMEOUT_MS: u64 = 5_000;
+const DEFAULT_NEXUS_CONTROL_HTTP_RETRY_ATTEMPTS: usize = 3;
+const DEFAULT_NEXUS_CONTROL_HTTP_RETRY_BACKOFF_MS: u64 = 500;
 
 #[derive(Clone, Debug)]
 struct ProviderHostTelemetryCacheEntry {
@@ -7446,8 +7450,7 @@ async fn report_provider_presence_heartbeat(
         &request,
         "heartbeat",
     )
-    .await?;
-    sync_provider_payout_target(client, config_path, config, identity, session_id).await
+    .await
 }
 
 async fn report_provider_presence_offline(
@@ -7829,20 +7832,40 @@ async fn post_nexus_provider_presence<T: Serialize>(
     action: &str,
 ) -> Result<()> {
     let url = nexus_control_url(config, path);
-    let response = client
-        .post(url.as_str())
-        .json(payload)
-        .send()
-        .await
-        .with_context(|| format!("failed to post pylon provider presence {action} to {url}"))?;
-    if !response.status().is_success() {
+    for attempt in 0..DEFAULT_NEXUS_CONTROL_HTTP_RETRY_ATTEMPTS {
+        let response = match client.post(url.as_str()).json(payload).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                if attempt + 1 < DEFAULT_NEXUS_CONTROL_HTTP_RETRY_ATTEMPTS
+                    && nexus_control_error_is_retryable(&error)
+                {
+                    tokio::time::sleep(nexus_control_retry_delay(attempt)).await;
+                    continue;
+                }
+                return Err(error).with_context(|| {
+                    format!("failed to post pylon provider presence {action} to {url}")
+                });
+            }
+        };
+
+        if response.status().is_success() {
+            return Ok(());
+        }
+
+        let status = response.status();
         let detail = response
             .text()
             .await
             .unwrap_or_else(|_| "failed to decode nexus provider presence error".to_string());
-        bail!("nexus provider presence {action} failed: {detail}");
+        if attempt + 1 < DEFAULT_NEXUS_CONTROL_HTTP_RETRY_ATTEMPTS
+            && nexus_control_status_is_retryable(status)
+        {
+            tokio::time::sleep(nexus_control_retry_delay(attempt)).await;
+            continue;
+        }
+        bail!("nexus provider presence {action} failed ({status}): {detail}");
     }
-    Ok(())
+    bail!("nexus provider presence {action} exhausted retry budget without a terminal response")
 }
 
 async fn post_nexus_json<T: Serialize, R: DeserializeOwned>(
@@ -7853,23 +7876,42 @@ async fn post_nexus_json<T: Serialize, R: DeserializeOwned>(
     action: &str,
 ) -> Result<R> {
     let url = nexus_control_url(config, path);
-    let response = client
-        .post(url.as_str())
-        .json(payload)
-        .send()
-        .await
-        .with_context(|| format!("failed to post pylon {action} to {url}"))?;
-    if !response.status().is_success() {
+    for attempt in 0..DEFAULT_NEXUS_CONTROL_HTTP_RETRY_ATTEMPTS {
+        let response = match client.post(url.as_str()).json(payload).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                if attempt + 1 < DEFAULT_NEXUS_CONTROL_HTTP_RETRY_ATTEMPTS
+                    && nexus_control_error_is_retryable(&error)
+                {
+                    tokio::time::sleep(nexus_control_retry_delay(attempt)).await;
+                    continue;
+                }
+                return Err(error)
+                    .with_context(|| format!("failed to post pylon {action} to {url}"));
+            }
+        };
+
+        if response.status().is_success() {
+            return response
+                .json::<R>()
+                .await
+                .with_context(|| format!("failed to decode nexus {action} response"));
+        }
+
+        let status = response.status();
         let detail = response
             .text()
             .await
             .unwrap_or_else(|_| format!("failed to decode nexus {action} error"));
-        bail!("nexus {action} failed: {detail}");
+        if attempt + 1 < DEFAULT_NEXUS_CONTROL_HTTP_RETRY_ATTEMPTS
+            && nexus_control_status_is_retryable(status)
+        {
+            tokio::time::sleep(nexus_control_retry_delay(attempt)).await;
+            continue;
+        }
+        bail!("nexus {action} failed ({status}): {detail}");
     }
-    response
-        .json::<R>()
-        .await
-        .with_context(|| format!("failed to decode nexus {action} response"))
+    bail!("nexus {action} exhausted retry budget without a terminal response")
 }
 
 fn provider_payout_target_sync_interval() -> Duration {
@@ -7934,9 +7976,25 @@ async fn sync_provider_payout_target_with_report(
 
 fn provider_presence_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
+        .connect_timeout(Duration::from_millis(
+            DEFAULT_NEXUS_CONTROL_CONNECT_TIMEOUT_MS,
+        ))
+        .timeout(Duration::from_millis(DEFAULT_NEXUS_CONTROL_HTTP_TIMEOUT_MS))
         .build()
         .context("failed to build pylon provider-presence client")
+}
+
+fn nexus_control_retry_delay(attempt_index: usize) -> Duration {
+    let multiplier = u64::try_from(attempt_index).unwrap_or(0).saturating_add(1);
+    Duration::from_millis(DEFAULT_NEXUS_CONTROL_HTTP_RETRY_BACKOFF_MS.saturating_mul(multiplier))
+}
+
+fn nexus_control_error_is_retryable(error: &reqwest::Error) -> bool {
+    error.is_connect() || error.is_timeout() || error.is_request()
+}
+
+fn nexus_control_status_is_retryable(status: reqwest::StatusCode) -> bool {
+    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
 
 fn openagents_account_link_client() -> Result<reqwest::Client> {
@@ -8494,7 +8552,10 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     use super::{
         AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, Command,
@@ -8909,8 +8970,8 @@ mod tests {
             .find(|(route, _)| route == "POST /api/provider-presence/offline")
             .ok_or("missing offline request")?;
         ensure(
-            requests.len() == 4,
-            "provider presence should send heartbeat, payout-target sync, and offline reports",
+            requests.len() == 2,
+            "provider presence should send heartbeat and offline reports without inline payout-target sync",
         )?;
         ensure(
             heartbeat_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex),
@@ -8976,6 +9037,78 @@ mod tests {
             offline_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex)
                 && offline_request.1["session_id"] == "session-test",
             "offline report should include the same identity and session",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_presence_retries_retryable_nexus_failures()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let heartbeat_attempts = Arc::new(AtomicUsize::new(0));
+        let heartbeat_attempts_for_server = Arc::clone(&heartbeat_attempts);
+        let nexus_base_url = start_mock_http_server(move |method, path, body| {
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            if method == "POST" && path == "/api/provider-presence/heartbeat" {
+                let attempt = heartbeat_attempts_for_server.fetch_add(1, Ordering::SeqCst);
+                if attempt < 2 {
+                    return (
+                        530,
+                        "text/plain",
+                        "cloudflare origin unavailable".to_string(),
+                    );
+                }
+                return (
+                    200,
+                    "application/json",
+                    json!({
+                        "authority": "openagents-hosted-nexus",
+                        "session_id": payload["session_id"],
+                        "nostr_pubkey_hex": payload["nostr_pubkey_hex"],
+                        "status": "online",
+                        "recorded_at_unix_ms": 1,
+                        "heartbeat_interval_ms": 5000,
+                        "stale_after_ms": 120000
+                    })
+                    .to_string(),
+                );
+            }
+            (200, "application/json", "{\"ok\":true}".to_string())
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = default_config(temp_dir.path());
+        config.nexus_control_base_url = nexus_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let snapshot = build_snapshot_from_availability(
+            &config,
+            Some(&identity),
+            ProviderDesiredMode::Online,
+            None,
+            ProviderAvailability {
+                local_gemma: ready_health("gemma4:e2b", &["gemma4:e2b"], Some("gemma_ready")),
+                apple_foundation_models: ProviderBackendHealth::default(),
+                apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+                adapter_training_contributor:
+                    ProviderAdapterTrainingContributorAvailability::default(),
+                pooled_inference: ProviderPooledInferenceAvailability::default(),
+                sandbox: ProviderSandboxAvailability::default(),
+            },
+            None,
+        );
+
+        report_provider_presence_heartbeat_for_snapshot(
+            config_path.as_path(),
+            "session-retry",
+            &snapshot,
+        )
+        .await?;
+
+        ensure(
+            heartbeat_attempts.load(Ordering::SeqCst) == 3,
+            "provider presence heartbeat should retry retryable Nexus failures before succeeding",
         )
     }
 

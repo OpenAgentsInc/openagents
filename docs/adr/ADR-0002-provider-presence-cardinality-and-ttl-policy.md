@@ -39,8 +39,14 @@ This preserves operational detail while keeping `providers_online` identity-stab
 
 Policy values (current retained defaults):
 - `heartbeat_interval_ms = 5_000`
-- `stale_after_ms = 30_000`
+- `stale_after_ms = 120_000`
 - `challenge_ttl_ms = 300_000`
+
+The longer stale window is intentional. The hosted Nexus path can experience
+brief edge-origin or request-timeout flaps even while many providers remain
+healthy and locally online. The canonical public `providers_online` count
+should tolerate those short control-plane gaps rather than collapsing
+immediately.
 
 Offline transitions:
 - explicit offline: `offline_reason = explicit_offline`
