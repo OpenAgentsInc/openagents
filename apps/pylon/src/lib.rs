@@ -14623,6 +14623,7 @@ mod tests {
         ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, provider_runtime_state_label,
     };
     use serde_json::{Value, json};
+    use tempfile::tempdir;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio_tungstenite::{accept_async, tungstenite::Message};
@@ -20609,6 +20610,113 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 .iter()
                 .any(|entry| entry.kind == "nip90.result_published"),
             "provider run should persist result publication activity",
+        )?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_run_skips_request_ids_persisted_in_processed_store()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _guard = super::nip90_runtime::lock_test_runtime();
+        let base_url =
+            start_mock_http_server(
+                |method, path, _body| match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "models": [
+                                {
+                                    "name": "gemma4:e4b",
+                                    "size": 1
+                                }
+                            ]
+                        })
+                        .to_string(),
+                    ),
+                    ("POST", "/api/chat") => (
+                        200,
+                        "application/json",
+                        json!({
+                            "done": true,
+                            "message": {
+                                "content": "mesh reply"
+                            }
+                        })
+                        .to_string(),
+                    ),
+                    _ => (404, "application/json", json!({"error": "not found"}).to_string()),
+                },
+            )
+            .await?;
+        let temp_dir = tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let provider_pubkey = identity.public_key_hex.clone();
+        let relay_server = tokio::spawn(async move {
+            let (scan_stream, _) = relay_listener.accept().await.expect("accept scan client");
+            let mut scan_ws = accept_async(scan_stream)
+                .await
+                .expect("upgrade scan websocket");
+            while let Some(message) = scan_ws.next().await {
+                let Ok(Message::Text(payload)) = message else {
+                    continue;
+                };
+                if !payload.contains("\"REQ\"") {
+                    continue;
+                }
+                let matching = json!(["EVENT", "run", {
+                    "id": "replayed-job-001",
+                    "pubkey": "buyer-pubkey-001",
+                    "created_at": 1_760_000_200u64,
+                    "kind": 5050,
+                    "tags": [
+                        ["i", "hello from buyer", "text"],
+                        ["param", "model", "gemma4:e4b"],
+                        ["p", provider_pubkey]
+                    ],
+                    "content": "",
+                    "sig": "33".repeat(64)
+                }]);
+                scan_ws
+                    .send(Message::Text(matching.to_string().into()))
+                    .await
+                    .expect("send matching request");
+                return;
+            }
+            panic!("relay did not receive the scan subscription");
+        });
+
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.relay_urls = vec![relay_url];
+        config.local_gemma_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        let _ = apply_control_command(config_path.as_path(), ProviderControlAction::Online).await?;
+        crate::ledger::mutate_processed_provider_request_store(config_path.as_path(), |store| {
+            store.remember("replayed-job-001", "completed_local");
+            Ok(())
+        })?;
+
+        let report = run_provider_requests(config_path.as_path(), 1).await?;
+        relay_server.await?;
+        ensure(
+            report.accepted_count == 0
+                && report.completed_count == 0
+                && report.entries.iter().any(|entry| {
+                    entry.request_event_id == "replayed-job-001"
+                        && entry.status == "skipped_duplicate"
+                        && entry
+                            .error_detail
+                            .as_deref()
+                            .is_some_and(|detail| detail.contains("already handled locally"))
+                }),
+            "provider run should skip requests that were already persisted in the processed store",
         )?;
         Ok(())
     }
