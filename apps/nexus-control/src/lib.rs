@@ -137,7 +137,6 @@ const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 30_000;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
-const TREASURY_WALLET_REFRESH_TIMEOUT_MS: u64 = 1_500;
 #[cfg(test)]
 const TREASURY_PUBLIC_STATS_LATENCY_SLO_MS: u64 = 250;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
@@ -6683,13 +6682,14 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
     if !try_begin_treasury_wallet_refresh_cycle() {
         return;
     }
+    let wallet_refresh_timeout_ms = state.config.treasury.wallet_refresh_timeout_ms();
     let refresh_result = tokio::time::timeout(
-        Duration::from_millis(TREASURY_WALLET_REFRESH_TIMEOUT_MS),
+        Duration::from_millis(wallet_refresh_timeout_ms),
         refresh_treasury_wallet_state(state, create_if_missing),
     )
     .await;
     if refresh_result.is_err() {
-        let timeout_reason = format!("wallet_refresh_timeout:{TREASURY_WALLET_REFRESH_TIMEOUT_MS}");
+        let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
         tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
         if let Ok(mut store) = state.store.write() {
             store.treasury.record_wallet_error(timeout_reason);
@@ -7319,6 +7319,7 @@ mod tests {
                 wallet_network: "regtest".to_string(),
                 wallet_api_key_env: None,
                 wallet_status_refresh_seconds: 30,
+                max_concurrent_sends: 16,
                 registration_challenge_ttl_seconds: 300,
             },
         })
