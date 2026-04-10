@@ -76,10 +76,12 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
     PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
-    PylonTrainingRefusalCode, pylon_training_assignment_id, pylon_training_assignment_seed,
+    PylonTrainingRefusalCode, PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
+    PylonTrainingSchedulerEffect, pylon_training_assignment_id, pylon_training_assignment_seed,
     pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
-    resolve_aggregate_verdicts, validate_redacted_retained_content, validator_sample_assignments,
+    reputation_projection_for_label, resolve_aggregate_verdicts,
+    validate_redacted_retained_content, validator_sample_assignments,
 };
 use openagents_kernel_core::receipts::{PolicyContext, Receipt, ReceiptHints, TraceContext};
 use openagents_kernel_core::snapshots::EconomySnapshot;
@@ -112,7 +114,7 @@ use crate::kernel::{
     ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, SnapshotProjectionEvent,
     TrainingCoordinatorAck, TrainingNodeQuery, TrainingNodeRoleClaim,
     TrainingTrnPublicationPointer, TrainingTrnPublicationRecord, TrainingTrnPublicationTemplate,
-    TrainingTrnRelayPublicationOutcome,
+    TrainingTrnRelayPublicationOutcome, TrainingValidatorChallengeFinalizationSource,
 };
 use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
@@ -1322,6 +1324,8 @@ struct TrainingTrnPublicationReport {
     closeouts: Vec<TrainingTrnPublicationEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     score_locators: Vec<TrainingTrnPublicationEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    reputation_labels: Vec<TrainingTrnPublicationEntry>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -1357,6 +1361,36 @@ struct TrainingTrnPublicationEntry {
     object_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     object_ref: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TrainingAuthorityReputationObjectRef {
+    Closeout(String),
+    ValidatorChallenge(String),
+    Build(String),
+    Checkpoint(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TrainingAuthorityReputationSource {
+    publication_key: String,
+    network_id: String,
+    namespace: PylonTrainingReputationNamespace,
+    label: PylonTrainingReputationLabel,
+    scheduler_effect: PylonTrainingSchedulerEffect,
+    hard_gate: bool,
+    created_at_ms: i64,
+    subject_pubkey: Option<String>,
+    object_ref: Option<TrainingAuthorityReputationObjectRef>,
+}
+
+#[derive(Clone, Debug)]
+struct TrainingCloseoutReputationContext {
+    network_id: String,
+    status: String,
+    outcome_id: String,
+    accepted_at_ms: i64,
+    metadata: Value,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -4640,10 +4674,17 @@ async fn claim_training_run_lease(
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        let node = store
+        let mut node = store
             .kernel
             .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.requested_at_ms)
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+        node.active_reputation_labels = training_authority_reputation_labels_for_node(
+            &store.kernel,
+            &node,
+            request.requested_at_ms,
+        )
+        .map_err(kernel_api_error)?;
+        node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
         if !node.eligible {
             let reason = pylon_training_hard_gate_reason(&node.active_reputation_labels)
                 .unwrap_or_else(|| "training_node_not_eligible".to_string());
@@ -5297,10 +5338,17 @@ async fn claim_training_validator_challenge(
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        let node = store
+        let mut node = store
             .kernel
             .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.requested_at_ms)
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+        node.active_reputation_labels = training_authority_reputation_labels_for_node(
+            &store.kernel,
+            &node,
+            request.requested_at_ms,
+        )
+        .map_err(kernel_api_error)?;
+        node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
         if !node.role_claims.contains(&TrainingNodeRoleClaim::Validator) {
             return Err(kernel_api_error(
                 "training_validator_role_not_admitted".to_string(),
@@ -6047,6 +6095,33 @@ fn training_trn_template(event: &nostr::TrnEvent) -> Result<(EventTemplate, Stri
     training_trn_mapping::event_template_and_fingerprint(event)
 }
 
+fn training_trn_template_fingerprint(template: &EventTemplate) -> Result<String, String> {
+    let fingerprint_payload = serde_json::to_vec(&serde_json::json!({
+        "kind": template.kind,
+        "tags": template.tags,
+        "content": template.content,
+    }))
+    .map_err(|error| format!("training_trn_fingerprint_encode_failed:{error}"))?;
+    Ok(sha256_prefixed_bytes(fingerprint_payload.as_slice()))
+}
+
+fn training_trn_label_template(
+    event: &nostr::nip32::LabelEvent,
+) -> Result<(EventTemplate, String), String> {
+    event.validate().map_err(|error| error.to_string())?;
+    let template = EventTemplate {
+        created_at: nostr::nip01::unix_now_secs()
+            .map_err(|error| format!("training_trn_timestamp_failed:{error}"))?,
+        kind: nostr::nip32::KIND_LABEL as u16,
+        tags: event.to_tags(),
+        content: event.content.clone(),
+    };
+    Ok((
+        template.clone(),
+        training_trn_template_fingerprint(&template)?,
+    ))
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct TrainingTrnPublicationDispatchOutcome {
     publication_state: String,
@@ -6159,6 +6234,496 @@ async fn attempt_publish_training_trn_signed_event(
 
 fn training_trn_closeout_coordinate(coordinator_pubkey: &str, outcome_id: &str) -> String {
     format!("39530:{coordinator_pubkey}:{outcome_id}")
+}
+
+fn training_trn_validator_verdict_coordinate(
+    coordinator_pubkey: &str,
+    challenge_id: &str,
+) -> String {
+    format!("39512:{coordinator_pubkey}:{challenge_id}")
+}
+
+fn training_label_matches_namespace_value(
+    label: &str,
+    namespace: PylonTrainingReputationNamespace,
+    value: PylonTrainingReputationLabel,
+) -> bool {
+    let trimmed = label.trim();
+    let mut segments = trimmed.split("::");
+    let _subject = segments.next();
+    let candidate_namespace = segments.next().unwrap_or_default().trim();
+    let candidate_value = segments.next().map(str::trim).unwrap_or_else(|| {
+        trimmed
+            .rsplit_once(':')
+            .map(|(_, suffix)| suffix)
+            .unwrap_or(trimmed)
+    });
+    candidate_namespace == namespace.label() && candidate_value == value.label()
+}
+
+fn training_authority_reputation_source(
+    network_id: String,
+    namespace: PylonTrainingReputationNamespace,
+    label: PylonTrainingReputationLabel,
+    created_at_ms: i64,
+    subject_pubkey: Option<String>,
+    object_ref: Option<TrainingAuthorityReputationObjectRef>,
+    publication_key: String,
+    now_unix_ms: i64,
+) -> Result<TrainingAuthorityReputationSource, String> {
+    let created_at_unix = u64::try_from(created_at_ms.max(0)).unwrap_or(0) / 1000;
+    let now_unix = u64::try_from(now_unix_ms.max(0)).unwrap_or(0) / 1000;
+    let projection = reputation_projection_for_label(namespace, label, created_at_unix, now_unix)?;
+    Ok(TrainingAuthorityReputationSource {
+        publication_key,
+        network_id,
+        namespace,
+        label,
+        scheduler_effect: projection.scheduler_effect,
+        hard_gate: projection.hard_gate,
+        created_at_ms,
+        subject_pubkey,
+        object_ref,
+    })
+}
+
+fn training_authority_label_key(source: &TrainingAuthorityReputationSource) -> String {
+    format!(
+        "authority::{}::{}",
+        source.namespace.label(),
+        source.label.label()
+    )
+}
+
+fn training_authority_closeout_contexts(
+    closeout_sources: &[ComputeAcceptedOutcomePublicationSource],
+) -> HashMap<String, TrainingCloseoutReputationContext> {
+    closeout_sources
+        .iter()
+        .filter_map(|source| {
+            source
+                .outcome
+                .metadata
+                .get("window_id")
+                .and_then(Value::as_str)
+                .map(|window_id| {
+                    (
+                        window_id.to_string(),
+                        TrainingCloseoutReputationContext {
+                            network_id: source
+                                .outcome
+                                .metadata
+                                .get("network_id")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string(),
+                            status: training_trn_closeout_status(source),
+                            outcome_id: source.outcome.outcome_id.clone(),
+                            accepted_at_ms: source.outcome.accepted_at_ms,
+                            metadata: source.outcome.metadata.clone(),
+                        },
+                    )
+                })
+        })
+        .collect()
+}
+
+fn training_authority_assignment_nodes_by_window(
+    window_sources: &[ComputeTrainingWindowPublicationSource],
+) -> Result<HashMap<String, HashMap<String, String>>, String> {
+    let mut mapping = HashMap::new();
+    for source in window_sources {
+        let metadata = training_window_metadata_from_value(&source.window.metadata)?;
+        let assignments = metadata
+            .assignment_plans
+            .into_iter()
+            .map(|plan| (plan.assignment_id, plan.node_pubkey_hex))
+            .collect::<HashMap<_, _>>();
+        mapping.insert(source.window.window_id.clone(), assignments);
+    }
+    Ok(mapping)
+}
+
+fn training_closeout_has_checkpoint_warning(context: &TrainingCloseoutReputationContext) -> bool {
+    context
+        .metadata
+        .get("defensibility")
+        .and_then(|value| value.get("refusal_codes"))
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            values.iter().any(|value| {
+                matches!(
+                    value.as_str(),
+                    Some("checkpoint_missing" | "checkpoint_digest_mismatch")
+                )
+            })
+        })
+        || context
+            .metadata
+            .get("defensibility")
+            .and_then(|value| value.get("artifact_audit"))
+            .and_then(|value| value.get("checkpoint_pointer_regression"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+}
+
+fn training_validator_label_for_closeout_status(
+    status: &str,
+    verdict: ComputeValidatorChallengeVerdict,
+) -> Option<PylonTrainingReputationLabel> {
+    match status {
+        "rewarded" | "no_reward" => (verdict == ComputeValidatorChallengeVerdict::Verified)
+            .then_some(PylonTrainingReputationLabel::Good)
+            .or_else(|| Some(PylonTrainingReputationLabel::Inconsistent)),
+        "quarantined" | "refused" => (verdict == ComputeValidatorChallengeVerdict::Rejected)
+            .then_some(PylonTrainingReputationLabel::Good)
+            .or_else(|| Some(PylonTrainingReputationLabel::Inconsistent)),
+        _ => None,
+    }
+}
+
+fn training_authority_reputation_sources(
+    admitted_nodes: &[AdmittedTrainingNodeView],
+    window_sources: &[ComputeTrainingWindowPublicationSource],
+    closeout_sources: &[ComputeAcceptedOutcomePublicationSource],
+    contributions: &[ComputeAdapterContributionOutcome],
+    validator_finalizations: &[TrainingValidatorChallengeFinalizationSource],
+    now_unix_ms: i64,
+) -> Result<Vec<TrainingAuthorityReputationSource>, String> {
+    let closeout_contexts = training_authority_closeout_contexts(closeout_sources);
+    let assignment_nodes_by_window = training_authority_assignment_nodes_by_window(window_sources)?;
+    let challenge_bindings = training_trn_challenge_bindings(window_sources)?;
+    let mut contributions_by_window =
+        HashMap::<String, Vec<ComputeAdapterContributionOutcome>>::new();
+    for contribution in contributions.iter().cloned() {
+        contributions_by_window
+            .entry(contribution.window_id.clone())
+            .or_default()
+            .push(contribution);
+    }
+
+    let mut sources = BTreeMap::<String, TrainingAuthorityReputationSource>::new();
+
+    for node in admitted_nodes {
+        let admitted_key = format!(
+            "reputation_label::build::admitted::{}::{}",
+            node.node_pubkey_hex, node.build_digest
+        );
+        sources.insert(
+            admitted_key.clone(),
+            training_authority_reputation_source(
+                node.allowed_networks
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "training".to_string()),
+                PylonTrainingReputationNamespace::Build,
+                PylonTrainingReputationLabel::Admitted,
+                node.admitted_at_ms,
+                Some(node.node_pubkey_hex.clone()),
+                Some(TrainingAuthorityReputationObjectRef::Build(
+                    node.build_digest.clone(),
+                )),
+                admitted_key,
+                now_unix_ms,
+            )?,
+        );
+
+        if node.active_reputation_labels.iter().any(|label| {
+            training_label_matches_namespace_value(
+                label,
+                PylonTrainingReputationNamespace::Build,
+                PylonTrainingReputationLabel::Revoked,
+            )
+        }) {
+            let revoked_key = format!(
+                "reputation_label::build::revoked::{}::{}",
+                node.node_pubkey_hex, node.build_digest
+            );
+            sources.insert(
+                revoked_key.clone(),
+                training_authority_reputation_source(
+                    node.allowed_networks
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "training".to_string()),
+                    PylonTrainingReputationNamespace::Build,
+                    PylonTrainingReputationLabel::Revoked,
+                    node.updated_at_ms,
+                    Some(node.node_pubkey_hex.clone()),
+                    Some(TrainingAuthorityReputationObjectRef::Build(
+                        node.build_digest.clone(),
+                    )),
+                    revoked_key,
+                    now_unix_ms,
+                )?,
+            );
+        } else if !node.online {
+            let stale_key = format!(
+                "reputation_label::build::stale::{}::{}",
+                node.node_pubkey_hex, node.build_digest
+            );
+            sources.insert(
+                stale_key.clone(),
+                training_authority_reputation_source(
+                    node.allowed_networks
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "training".to_string()),
+                    PylonTrainingReputationNamespace::Build,
+                    PylonTrainingReputationLabel::Stale,
+                    node.updated_at_ms,
+                    Some(node.node_pubkey_hex.clone()),
+                    Some(TrainingAuthorityReputationObjectRef::Build(
+                        node.build_digest.clone(),
+                    )),
+                    stale_key,
+                    now_unix_ms,
+                )?,
+            );
+        }
+    }
+
+    for (window_id, closeout) in &closeout_contexts {
+        let assignment_nodes = assignment_nodes_by_window
+            .get(window_id)
+            .cloned()
+            .unwrap_or_default();
+        let contributions = contributions_by_window
+            .get(window_id)
+            .cloned()
+            .unwrap_or_default();
+        let all_subjects = contributions
+            .iter()
+            .filter_map(|contribution| {
+                assignment_nodes
+                    .get(contribution.assignment_id.as_str())
+                    .cloned()
+                    .or_else(|| {
+                        (!contribution.contributor_node_id.trim().is_empty())
+                            .then(|| contribution.contributor_node_id.clone())
+                    })
+            })
+            .collect::<BTreeSet<_>>();
+
+        match closeout.status.as_str() {
+            "rewarded" => {
+                for contribution in &contributions {
+                    if !(contribution.accepted_for_aggregation
+                        || contribution.validator_disposition
+                            == ComputeAdapterContributionDisposition::Accepted
+                        || contribution.aggregation_eligibility
+                            == ComputeAdapterAggregationEligibility::Eligible)
+                    {
+                        continue;
+                    }
+                    let Some(subject_pubkey) = assignment_nodes
+                        .get(contribution.assignment_id.as_str())
+                        .cloned()
+                        .or_else(|| {
+                            (!contribution.contributor_node_id.trim().is_empty())
+                                .then(|| contribution.contributor_node_id.clone())
+                        })
+                    else {
+                        continue;
+                    };
+                    let publication_key = format!(
+                        "reputation_label::contributor::good::{}::{}",
+                        subject_pubkey, closeout.outcome_id
+                    );
+                    sources.insert(
+                        publication_key.clone(),
+                        training_authority_reputation_source(
+                            closeout.network_id.clone(),
+                            PylonTrainingReputationNamespace::Contributor,
+                            PylonTrainingReputationLabel::Good,
+                            closeout.accepted_at_ms,
+                            Some(subject_pubkey),
+                            Some(TrainingAuthorityReputationObjectRef::Closeout(
+                                closeout.outcome_id.clone(),
+                            )),
+                            publication_key,
+                            now_unix_ms,
+                        )?,
+                    );
+                }
+            }
+            "quarantined" => {
+                for subject_pubkey in &all_subjects {
+                    let publication_key = format!(
+                        "reputation_label::contributor::quarantined::{}::{}",
+                        subject_pubkey, closeout.outcome_id
+                    );
+                    sources.insert(
+                        publication_key.clone(),
+                        training_authority_reputation_source(
+                            closeout.network_id.clone(),
+                            PylonTrainingReputationNamespace::Contributor,
+                            PylonTrainingReputationLabel::Quarantined,
+                            closeout.accepted_at_ms,
+                            Some(subject_pubkey.clone()),
+                            Some(TrainingAuthorityReputationObjectRef::Closeout(
+                                closeout.outcome_id.clone(),
+                            )),
+                            publication_key,
+                            now_unix_ms,
+                        )?,
+                    );
+                }
+            }
+            "refused" => {
+                for subject_pubkey in &all_subjects {
+                    let publication_key = format!(
+                        "reputation_label::contributor::poor::{}::{}",
+                        subject_pubkey, closeout.outcome_id
+                    );
+                    sources.insert(
+                        publication_key.clone(),
+                        training_authority_reputation_source(
+                            closeout.network_id.clone(),
+                            PylonTrainingReputationNamespace::Contributor,
+                            PylonTrainingReputationLabel::Poor,
+                            closeout.accepted_at_ms,
+                            Some(subject_pubkey.clone()),
+                            Some(TrainingAuthorityReputationObjectRef::Closeout(
+                                closeout.outcome_id.clone(),
+                            )),
+                            publication_key,
+                            now_unix_ms,
+                        )?,
+                    );
+                }
+            }
+            _ => {}
+        }
+
+        if training_closeout_has_checkpoint_warning(closeout) {
+            let publication_key = format!(
+                "reputation_label::checkpoint::warning::{}",
+                closeout.outcome_id
+            );
+            sources.insert(
+                publication_key.clone(),
+                training_authority_reputation_source(
+                    closeout.network_id.clone(),
+                    PylonTrainingReputationNamespace::Checkpoint,
+                    PylonTrainingReputationLabel::Warning,
+                    closeout.accepted_at_ms,
+                    None,
+                    Some(TrainingAuthorityReputationObjectRef::Checkpoint(
+                        closeout.outcome_id.clone(),
+                    )),
+                    publication_key,
+                    now_unix_ms,
+                )?,
+            );
+        }
+    }
+
+    for finalization in validator_finalizations {
+        let canonical_status = canonical_challenge_status(finalization.status);
+        let canonical_verdict = canonical_challenge_verdict(finalization.verdict);
+        let label = if canonical_status == ComputeValidatorChallengeStatus::TimedOut
+            || canonical_verdict == ComputeValidatorChallengeVerdict::TimedOut
+        {
+            Some(PylonTrainingReputationLabel::Poor)
+        } else {
+            challenge_bindings
+                .get(finalization.challenge_id.as_str())
+                .and_then(|binding| closeout_contexts.get(binding.window_id.as_str()))
+                .and_then(|closeout| {
+                    training_validator_label_for_closeout_status(
+                        closeout.status.as_str(),
+                        canonical_verdict,
+                    )
+                })
+        };
+        let Some(label) = label else {
+            continue;
+        };
+        let publication_key = format!(
+            "reputation_label::validator::{}::{}::{}",
+            label.label(),
+            finalization.node_pubkey_hex,
+            finalization.challenge_id
+        );
+        sources.insert(
+            publication_key.clone(),
+            training_authority_reputation_source(
+                challenge_bindings
+                    .get(finalization.challenge_id.as_str())
+                    .map(|binding| binding.network_id.clone())
+                    .unwrap_or_else(|| "training".to_string()),
+                PylonTrainingReputationNamespace::Validator,
+                label,
+                finalization.finalized_at_ms,
+                Some(finalization.node_pubkey_hex.clone()),
+                Some(TrainingAuthorityReputationObjectRef::ValidatorChallenge(
+                    finalization.challenge_id.clone(),
+                )),
+                publication_key,
+                now_unix_ms,
+            )?,
+        );
+    }
+
+    Ok(sources.into_values().collect())
+}
+
+fn training_authority_reputation_labels_for_node(
+    kernel: &KernelState,
+    node: &AdmittedTrainingNodeView,
+    now_unix_ms: i64,
+) -> Result<Vec<String>, String> {
+    let admitted_nodes = kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: None,
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms,
+    );
+    let contributions = kernel.list_compute_adapter_contribution_outcomes(None, None, None);
+    let window_sources = kernel.list_compute_training_window_publication_sources(None, None);
+    let closeout_sources = kernel
+        .list_compute_accepted_outcome_publication_sources(
+            Some(ComputeAcceptedOutcomeKind::TrainingRun),
+            None,
+        )
+        .into_iter()
+        .filter(|source| {
+            source
+                .outcome
+                .metadata
+                .get("window_id")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty())
+        })
+        .collect::<Vec<_>>();
+    let validator_finalizations = kernel.list_training_validator_challenge_finalization_sources();
+    let mut labels = node.active_reputation_labels.clone();
+    for source in training_authority_reputation_sources(
+        admitted_nodes.as_slice(),
+        window_sources.as_slice(),
+        closeout_sources.as_slice(),
+        contributions.as_slice(),
+        validator_finalizations.as_slice(),
+        now_unix_ms,
+    )? {
+        if source.scheduler_effect == PylonTrainingSchedulerEffect::Ignored {
+            continue;
+        }
+        if source.subject_pubkey.as_deref() != Some(node.node_pubkey_hex.as_str()) {
+            continue;
+        }
+        let label = training_authority_label_key(&source);
+        if !labels.iter().any(|existing| existing == &label) {
+            labels.push(label);
+        }
+    }
+    labels.sort();
+    labels.dedup();
+    Ok(labels)
 }
 
 fn training_trn_network_status(source: &TrainingTrnNetworkContractSource) -> &'static str {
@@ -6506,7 +7071,10 @@ async fn publish_training_trn_state(
         window_sources,
         closeout_sources,
         replay_required_contributions,
+        all_contributions,
+        admitted_nodes,
         validator_snapshots,
+        validator_finalizations,
         validator_receipt_ids,
         mut publication_cache,
         mut publication_record_cache,
@@ -6554,7 +7122,22 @@ async fn publish_training_trn_state(
                 None,
                 Some(ComputeAdapterContributionDisposition::ReplayRequired),
             ),
+            store
+                .kernel
+                .list_compute_adapter_contribution_outcomes(None, None, None),
+            store.kernel.list_admitted_training_nodes(
+                &TrainingNodeQuery {
+                    network_id: None,
+                    role: None,
+                    online_only: false,
+                    eligible_only: false,
+                },
+                now_unix_ms() as i64,
+            ),
             validator_snapshots,
+            store
+                .kernel
+                .list_training_validator_challenge_finalization_sources(),
             validator_receipt_ids,
             store
                 .kernel
@@ -6603,6 +7186,7 @@ async fn publish_training_trn_state(
         receipts: Vec::new(),
         closeouts: Vec::new(),
         score_locators: Vec::new(),
+        reputation_labels: Vec::new(),
     };
 
     for source in network_sources {
@@ -6801,7 +7385,7 @@ async fn publish_training_trn_state(
         ));
     }
 
-    for source in closeout_sources {
+    for source in &closeout_sources {
         let event = training_trn_mapping::closeout_event(&source).map_err(kernel_api_error)?;
         let network_id = event.network_id.clone();
         let window_id = event.window_id.clone();
@@ -6904,6 +7488,99 @@ async fn publish_training_trn_state(
             Some(result.challenge_result_ref.clone()),
             outcome,
         ));
+    }
+
+    let reputation_sources = training_authority_reputation_sources(
+        admitted_nodes.as_slice(),
+        window_sources.as_slice(),
+        closeout_sources.as_slice(),
+        all_contributions.as_slice(),
+        validator_finalizations.as_slice(),
+        now_unix_ms() as i64,
+    )
+    .map_err(kernel_api_error)?;
+    for source in reputation_sources {
+        let address_ref = match source.object_ref.as_ref() {
+            Some(
+                TrainingAuthorityReputationObjectRef::Closeout(outcome_id)
+                | TrainingAuthorityReputationObjectRef::Checkpoint(outcome_id),
+            ) => Some(training_trn_closeout_coordinate(
+                identity.public_key_hex.as_str(),
+                outcome_id.as_str(),
+            )),
+            Some(TrainingAuthorityReputationObjectRef::ValidatorChallenge(challenge_id)) => {
+                Some(training_trn_validator_verdict_coordinate(
+                    identity.public_key_hex.as_str(),
+                    challenge_id.as_str(),
+                ))
+            }
+            _ => None,
+        };
+        let record = openagents_kernel_core::pylon_training::PylonTrainingReputationRecord::new(
+            source.namespace,
+            source.label,
+            source.subject_pubkey.clone(),
+            None,
+            address_ref.clone(),
+        )
+        .map_err(kernel_api_error)?;
+        let event =
+            training_trn_mapping::reputation_label_event(&record).map_err(kernel_api_error)?;
+        let (template, fingerprint) =
+            training_trn_label_template(&event).map_err(kernel_api_error)?;
+        let subject_id = source
+            .subject_pubkey
+            .clone()
+            .or_else(|| match source.object_ref.as_ref() {
+                Some(TrainingAuthorityReputationObjectRef::Closeout(value))
+                | Some(TrainingAuthorityReputationObjectRef::ValidatorChallenge(value))
+                | Some(TrainingAuthorityReputationObjectRef::Build(value))
+                | Some(TrainingAuthorityReputationObjectRef::Checkpoint(value)) => {
+                    Some(value.clone())
+                }
+                None => None,
+            })
+            .unwrap_or_else(|| source.publication_key.clone());
+        let outcome = publish_or_queue_training_trn_pointer(
+            &state,
+            pool.as_ref(),
+            pool_error.as_deref(),
+            &identity,
+            &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
+            source.publication_key.clone(),
+            "reputation_label",
+            subject_id.as_str(),
+            nostr::nip32::KIND_LABEL as u16,
+            None,
+            template,
+            fingerprint,
+        )
+        .await?;
+        report
+            .reputation_labels
+            .push(build_training_trn_report_entry(
+                "reputation_label",
+                subject_id,
+                nostr::nip32::KIND_LABEL as u16,
+                format!("{}={}", source.namespace.label(), source.label.label()),
+                source.publication_key.clone(),
+                Vec::new(),
+                source.network_id.clone(),
+                None,
+                None,
+                match source.object_ref.as_ref() {
+                    Some(TrainingAuthorityReputationObjectRef::ValidatorChallenge(
+                        challenge_id,
+                    )) => Some(challenge_id.clone()),
+                    _ => None,
+                },
+                None,
+                None,
+                address_ref,
+                outcome,
+            ));
     }
 
     report.publication_pointer_count = publication_cache.len();
@@ -13424,6 +14101,15 @@ mod tests {
         events
     }
 
+    fn parse_training_trn_events(events: &[nostr::Event]) -> Result<Vec<nostr::TrnEvent>> {
+        events
+            .iter()
+            .filter(|event| event.kind != nostr::nip32::KIND_LABEL as u16)
+            .map(nostr::TrnEvent::from_event)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| anyhow::anyhow!(error.to_string()))
+    }
+
     async fn publish_training_trn(
         app: &axum::Router,
         relay_urls: Vec<String>,
@@ -13442,8 +14128,15 @@ mod tests {
         )
         .await
         .expect("training TRN publish request timed out")?;
-        assert_eq!(response.status(), StatusCode::OK);
-        response_json(response).await
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(bytes.as_ref())
+        );
+        Ok(serde_json::from_slice(bytes.as_ref())?)
     }
 
     async fn fetch_training_summary(app: &axum::Router) -> Result<TrainingOperatorSummaryResponse> {
@@ -21453,6 +22146,7 @@ mod tests {
         assert_eq!(first_report.windows.len(), 1);
         assert_eq!(first_report.closeouts.len(), 0);
         assert_eq!(first_report.score_locators.len(), 0);
+        assert_eq!(first_report.reputation_labels.len(), 4);
         assert!(
             first_report
                 .receipts
@@ -21473,15 +22167,12 @@ mod tests {
                 .iter()
                 .chain(first_report.windows.iter())
                 .chain(first_report.receipts.iter())
+                .chain(first_report.reputation_labels.iter())
                 .all(|entry| entry.publication_state == "published")
         );
         assert!(config.training_trn_identity_path.is_file());
         let first_events = collect_training_trn_events(&mut event_rx).await;
-        let first_trn_events = first_events
-            .iter()
-            .map(nostr::TrnEvent::from_event)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let first_trn_events = parse_training_trn_events(first_events.as_slice())?;
         let first_kinds = first_events
             .iter()
             .map(|event| event.kind)
@@ -21489,6 +22180,7 @@ mod tests {
         assert!(first_kinds.contains(&TRN_TRAINING_NETWORK_CONTRACT_KIND));
         assert!(first_kinds.contains(&TRN_TRAINING_WINDOW_KIND));
         assert!(first_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
+        assert!(first_kinds.contains(&(nostr::nip32::KIND_LABEL as u16)));
         assert!(first_trn_events.iter().any(|event| {
             matches!(
                 event,
@@ -21672,6 +22364,7 @@ mod tests {
         assert_eq!(second_report.windows.len(), 1);
         assert_eq!(second_report.closeouts.len(), 1);
         assert_eq!(second_report.score_locators.len(), 2);
+        assert_eq!(second_report.reputation_labels.len(), 7);
         assert!(
             second_report
                 .network_contracts
@@ -21710,12 +22403,22 @@ mod tests {
                     && entry.object_digest.is_some()
                     && entry.object_ref.is_some())
         );
+        assert!(
+            second_report
+                .reputation_labels
+                .iter()
+                .filter(|entry| entry.status.starts_with("trn/build="))
+                .all(|entry| entry.publication_state == "existing")
+        );
+        assert!(
+            second_report
+                .reputation_labels
+                .iter()
+                .filter(|entry| !entry.status.starts_with("trn/build="))
+                .all(|entry| entry.publication_state == "published")
+        );
         let second_events = collect_training_trn_events(&mut event_rx).await;
-        let second_trn_events = second_events
-            .iter()
-            .map(nostr::TrnEvent::from_event)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        let second_trn_events = parse_training_trn_events(second_events.as_slice())?;
         let second_kinds = second_events
             .iter()
             .map(|event| event.kind)
@@ -21724,6 +22427,7 @@ mod tests {
         assert!(second_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
         assert!(second_kinds.contains(&TRN_TRAINING_ARTIFACT_LOCATOR_KIND));
         assert!(second_kinds.contains(&TRN_TRAINING_CLOSEOUT_KIND));
+        assert!(second_kinds.contains(&(nostr::nip32::KIND_LABEL as u16)));
         assert!(second_trn_events.iter().any(|event| {
             matches!(
                 event,
@@ -21749,13 +22453,14 @@ mod tests {
                 .chain(third_report.receipts.iter())
                 .chain(third_report.closeouts.iter())
                 .chain(third_report.score_locators.iter())
+                .chain(third_report.reputation_labels.iter())
                 .all(|entry| entry.publication_state == "existing")
         );
         assert!(collect_training_trn_events(&mut event_rx).await.is_empty());
 
         {
             let store = state.store.read().expect("read store");
-            assert_eq!(store.kernel.list_training_trn_publications().len(), 8);
+            assert_eq!(store.kernel.list_training_trn_publications().len(), 15);
             assert!(
                 store
                     .kernel
@@ -21926,6 +22631,7 @@ mod tests {
         assert_eq!(first_report.windows.len(), 1);
         assert!(first_report.closeouts.is_empty());
         assert!(first_report.score_locators.is_empty());
+        assert_eq!(first_report.reputation_labels.len(), 2);
         assert!(
             first_report
                 .receipts
@@ -21941,6 +22647,7 @@ mod tests {
         assert!(first_kinds.contains(&TRN_TRAINING_NETWORK_CONTRACT_KIND));
         assert!(first_kinds.contains(&TRN_TRAINING_WINDOW_KIND));
         assert!(first_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
+        assert!(first_kinds.contains(&(nostr::nip32::KIND_LABEL as u16)));
 
         drop(app);
         drop(state);
@@ -22008,6 +22715,7 @@ mod tests {
                 .iter()
                 .chain(second_report.windows.iter())
                 .chain(second_report.receipts.iter())
+                .chain(second_report.reputation_labels.iter())
                 .all(|entry| entry.publication_state == "existing")
         );
         assert!(second_report.closeouts.is_empty());
@@ -22163,14 +22871,15 @@ mod tests {
         let failed_report =
             publish_training_trn(&app, vec!["ws://127.0.0.1:9".to_string()]).await?;
         assert_eq!(failed_report.publication_pointer_count, 0);
-        assert_eq!(failed_report.publication_record_count, 4);
-        assert_eq!(failed_report.pending_publication_count, 4);
+        assert_eq!(failed_report.publication_record_count, 6);
+        assert_eq!(failed_report.pending_publication_count, 6);
         assert!(
             failed_report
                 .network_contracts
                 .iter()
                 .chain(failed_report.windows.iter())
                 .chain(failed_report.receipts.iter())
+                .chain(failed_report.reputation_labels.iter())
                 .all(|entry| {
                     entry.publication_state == "queued_retry"
                         && entry.pending_retry
@@ -22183,7 +22892,7 @@ mod tests {
             let store = state.store.read().expect("read store");
             assert!(store.kernel.list_training_trn_publications().is_empty());
             let records = store.kernel.list_training_trn_publication_records();
-            assert_eq!(records.len(), 4);
+            assert_eq!(records.len(), 6);
             assert!(records.iter().all(|record| {
                 record.pending_retry
                     && record.event_id.is_none()
@@ -22199,7 +22908,7 @@ mod tests {
         {
             let store = reloaded_state.store.read().expect("read store");
             let records = store.kernel.list_training_trn_publication_records();
-            assert_eq!(records.len(), 4);
+            assert_eq!(records.len(), 6);
             assert!(records.iter().all(|record| record.pending_retry));
         }
 
@@ -22207,8 +22916,8 @@ mod tests {
         let (relay_url, mut event_rx, relay_handle) = spawn_training_trn_capture_relay().await?;
 
         let recovered_report = publish_training_trn(&reloaded_app, vec![relay_url.clone()]).await?;
-        assert_eq!(recovered_report.publication_pointer_count, 4);
-        assert_eq!(recovered_report.publication_record_count, 4);
+        assert_eq!(recovered_report.publication_pointer_count, 6);
+        assert_eq!(recovered_report.publication_record_count, 6);
         assert_eq!(recovered_report.pending_publication_count, 0);
         assert!(
             recovered_report
@@ -22216,6 +22925,7 @@ mod tests {
                 .iter()
                 .chain(recovered_report.windows.iter())
                 .chain(recovered_report.receipts.iter())
+                .chain(recovered_report.reputation_labels.iter())
                 .all(|entry| {
                     entry.publication_state == "published"
                         && !entry.pending_retry
@@ -22224,13 +22934,13 @@ mod tests {
         );
 
         let recovered_events = collect_training_trn_events(&mut event_rx).await;
-        assert_eq!(recovered_events.len(), 4);
+        assert_eq!(recovered_events.len(), 6);
 
         {
             let store = reloaded_state.store.read().expect("read store");
-            assert_eq!(store.kernel.list_training_trn_publications().len(), 4);
+            assert_eq!(store.kernel.list_training_trn_publications().len(), 6);
             let records = store.kernel.list_training_trn_publication_records();
-            assert_eq!(records.len(), 4);
+            assert_eq!(records.len(), 6);
             assert!(records.iter().all(|record| {
                 !record.pending_retry
                     && record
@@ -22248,6 +22958,7 @@ mod tests {
                 .iter()
                 .chain(deduped_report.windows.iter())
                 .chain(deduped_report.receipts.iter())
+                .chain(deduped_report.reputation_labels.iter())
                 .all(|entry| entry.publication_state == "existing" && !entry.pending_retry)
         );
         assert!(collect_training_trn_events(&mut event_rx).await.is_empty());

@@ -2972,6 +2972,20 @@ based on those labels.
 - Publication logic.
 - Scheduler integration.
 
+Current status:
+
+- `apps/nexus-control/src/lib.rs` and
+  `apps/nexus-control/src/kernel.rs` now derive authoritative training
+  reputation sources from admitted-node build state, sealed-window closeouts,
+  checkpoint warnings, and finalized validator challenges.
+- `/api/training/leases/claim` and
+  `/api/training/validator-challenges/claim` now recompute active reputation
+  labels from that authority-owned projection before each eligibility decision,
+  so hard gates and scheduler feedback apply consistently even after restart.
+- `/api/training/trn/publish` now publishes the same authoritative projection
+  as NIP-32 `kind:1985` label events alongside the coordinator TRN network,
+  window, receipt, closeout, and score-locator trail.
+
 **Acceptance Criteria**
 
 - Labels affect scheduling exactly per the frozen policy.

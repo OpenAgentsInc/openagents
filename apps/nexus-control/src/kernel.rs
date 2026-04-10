@@ -96,7 +96,7 @@ use openagents_provider_substrate::{
 use openagents_validator_service::{
     ValidatorChallengeLease, ValidatorChallengeRequest, ValidatorChallengeResult,
     ValidatorChallengeService, ValidatorChallengeSnapshot, ValidatorChallengeStatus,
-    ValidatorServiceError,
+    ValidatorChallengeVerdict, ValidatorServiceError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -543,6 +543,24 @@ pub struct TrainingTrnPublicationRecord {
 struct TrainingValidatorChallengeReceiptRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     finalization_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    node_pubkey_hex: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    finalized_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    status: Option<ValidatorChallengeStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    verdict: Option<ValidatorChallengeVerdict>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrainingValidatorChallengeFinalizationSource {
+    pub challenge_id: String,
+    pub finalization_receipt_id: String,
+    pub node_pubkey_hex: String,
+    pub finalized_at_ms: i64,
+    pub status: ValidatorChallengeStatus,
+    pub verdict: ValidatorChallengeVerdict,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -3654,6 +3672,31 @@ impl KernelState {
         self.training_validator_challenge_receipts
             .get(challenge_id)
             .and_then(|record| record.finalization_receipt_id.clone())
+    }
+
+    pub fn list_training_validator_challenge_finalization_sources(
+        &self,
+    ) -> Vec<TrainingValidatorChallengeFinalizationSource> {
+        let mut items = self
+            .training_validator_challenge_receipts
+            .iter()
+            .filter_map(|(challenge_id, record)| {
+                Some(TrainingValidatorChallengeFinalizationSource {
+                    challenge_id: challenge_id.clone(),
+                    finalization_receipt_id: record.finalization_receipt_id.clone()?,
+                    node_pubkey_hex: record.node_pubkey_hex.clone()?,
+                    finalized_at_ms: record.finalized_at_ms?,
+                    status: record.status?,
+                    verdict: record.verdict?,
+                })
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.finalized_at_ms
+                .cmp(&rhs.finalized_at_ms)
+                .then_with(|| lhs.challenge_id.cmp(&rhs.challenge_id))
+        });
+        items
     }
 
     pub fn get_training_trn_publication(
@@ -9895,6 +9938,10 @@ impl KernelState {
             challenge_id.clone(),
             TrainingValidatorChallengeReceiptRecord {
                 finalization_receipt_id: Some(put_result.receipt.receipt_id.clone()),
+                node_pubkey_hex: Some(req.lease.validator_id.clone()),
+                finalized_at_ms: Some(req.result.finalized_at_ms as i64),
+                status: Some(req.result.status),
+                verdict: Some(req.result.verdict),
             },
         );
 

@@ -1239,6 +1239,9 @@ pub fn validate_redacted_retained_state(value: &Value) -> ContractResult<()> {
 }
 
 pub fn validate_redacted_retained_content(content: &str) -> ContractResult<()> {
+    if content.trim().is_empty() {
+        return Ok(());
+    }
     let parsed = serde_json::from_str::<Value>(content)
         .map_err(|error| format!("pylon_training_retained_state_content_parse_failed:{error}"))?;
     validate_redacted_retained_state(&parsed)
@@ -2132,6 +2135,8 @@ mod tests {
             .as_str(),
         )
         .expect("JSON content without secret fields may be retained");
+        validate_redacted_retained_content("")
+            .expect("empty retained content remains valid for label events");
 
         let err = validate_redacted_retained_state(&json!({
             "credential_source": PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
