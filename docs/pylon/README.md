@@ -2,6 +2,11 @@
 
 `Pylon` is the standalone provider program for the OpenAgents Compute Market.
 
+Current distributed-training planning lives here too:
+
+- `docs/pylon/2026-04-09-pylon-distributed-training-reference-audit.md`
+- `docs/pylon/distributed-training-mvp-roadmap.md`
+
 The default local repo entrypoint is the small terminal shell:
 
 ```bash
