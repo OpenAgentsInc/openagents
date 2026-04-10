@@ -43,7 +43,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, RefreshKind, System};
-use tokio::process::Command as TokioCommand;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command as TokioCommand,
+    task::JoinHandle,
+};
 
 pub use ledger::{
     PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerPayout, PylonLedgerSummary,
@@ -76,6 +80,7 @@ pub use wallet_runtime::{
 pub const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
 pub const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
 pub const ENV_PSIONIC_REPO: &str = "OPENAGENTS_PSIONIC_REPO";
+pub const ENV_PSIONIC_TRAIN_BIN: &str = "OPENAGENTS_PSIONIC_TRAIN_BIN";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
@@ -292,7 +297,45 @@ pub struct PylonTrainingActiveRuntimeState {
     pub lease_id: String,
     pub membership_revision: String,
     pub role: PylonTrainingRoleClaim,
+    pub manifest_path: String,
+    pub run_root: String,
+    pub desired_state: PylonTrainingSupervisorDesiredState,
+    pub process_state: PylonTrainingSupervisorProcessState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    pub stdout_log_path: String,
+    pub stderr_log_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_receipt_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_failure_reason: Option<String>,
+    #[serde(default)]
+    pub launch_count: u64,
+    #[serde(default)]
+    pub restart_count: u64,
     pub updated_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingSupervisorDesiredState {
+    Running,
+    Draining,
+    Stopped,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingSupervisorProcessState {
+    Launching,
+    Running,
+    Draining,
+    Stopped,
+    Failed,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -334,6 +377,49 @@ pub struct PylonTrainingPublicationPointer {
     pub event_id: String,
     pub a_ref: Option<String>,
     pub published_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingFailureReceipt {
+    pub schema_version: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub manifest_path: String,
+    pub desired_state: PylonTrainingSupervisorDesiredState,
+    pub process_state: PylonTrainingSupervisorProcessState,
+    pub exit_code: Option<i32>,
+    pub failure_reason: String,
+    pub recorded_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
+struct PylonTrainingSupervisorCommand {
+    program: PathBuf,
+    args: Vec<String>,
+    current_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
+struct PylonTrainingSupervisorStartRequest {
+    manifest_path: PathBuf,
+    run_root: PathBuf,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    membership_revision: String,
+    role: PylonTrainingRoleClaim,
+}
+
+#[allow(dead_code)]
+struct PylonTrainingSupervisorProcess {
+    child: tokio::process::Child,
+    stdout_task: Option<JoinHandle<Result<()>>>,
+    stderr_task: Option<JoinHandle<Result<()>>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4604,6 +4690,472 @@ fn save_training_runtime_state(
     )
     .with_context(|| format!("failed to write training runtime state {}", path.display()))?;
     Ok(())
+}
+
+#[allow(dead_code)]
+fn default_psionic_train_supervisor_command(
+    manifest_path: &Path,
+) -> Result<PylonTrainingSupervisorCommand> {
+    if let Some(path) = std::env::var(ENV_PSIONIC_TRAIN_BIN)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(PylonTrainingSupervisorCommand {
+            program: PathBuf::from(path),
+            args: vec![
+                "manifest".to_string(),
+                "--manifest".to_string(),
+                manifest_path.display().to_string(),
+            ],
+            current_dir: default_home_dir(),
+        });
+    }
+
+    let runtime_surface = inspect_psionic_train_runtime_surface()?;
+    Ok(PylonTrainingSupervisorCommand {
+        program: PathBuf::from("cargo"),
+        args: vec![
+            "run".to_string(),
+            "-p".to_string(),
+            "psionic-train".to_string(),
+            "--manifest-path".to_string(),
+            runtime_surface
+                .repo_root
+                .join("Cargo.toml")
+                .display()
+                .to_string(),
+            "--".to_string(),
+            "manifest".to_string(),
+            "--manifest".to_string(),
+            manifest_path.display().to_string(),
+        ],
+        current_dir: runtime_surface.repo_root,
+    })
+}
+
+#[allow(dead_code)]
+fn training_supervisor_attempt_dir(
+    request: &PylonTrainingSupervisorStartRequest,
+    restart_count: u64,
+) -> PathBuf {
+    request
+        .run_root
+        .join("supervisor")
+        .join(&request.training_run_id)
+        .join(&request.assignment_id)
+        .join(format!("attempt-{}", restart_count + 1))
+}
+
+#[allow(dead_code)]
+fn training_supervisor_heartbeat_candidates(run_root: &Path) -> [PathBuf; 2] {
+    [
+        run_root.join("status/membership_revision_receipt.json"),
+        run_root.join("status/psionic_train_run_status_packet.json"),
+    ]
+}
+
+#[allow(dead_code)]
+fn training_supervision_is_active(state: PylonTrainingSupervisorProcessState) -> bool {
+    matches!(
+        state,
+        PylonTrainingSupervisorProcessState::Launching
+            | PylonTrainingSupervisorProcessState::Running
+            | PylonTrainingSupervisorProcessState::Draining
+    )
+}
+
+#[allow(dead_code)]
+fn ensure_no_conflicting_training_assignment(
+    state: &PylonTrainingRuntimeState,
+    request: &PylonTrainingSupervisorStartRequest,
+) -> Result<()> {
+    let Some(active) = state.active_runtime.as_ref() else {
+        return Ok(());
+    };
+    if active.assignment_id == request.assignment_id {
+        return Ok(());
+    }
+    if training_supervision_is_active(active.process_state) {
+        bail!(
+            "training assignment `{}` is already active under run `{}`; refuse conflicting assignment `{}`",
+            active.assignment_id,
+            active.training_run_id,
+            request.assignment_id
+        );
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn training_start_request_from_active_runtime(
+    runtime: &PylonTrainingActiveRuntimeState,
+) -> PylonTrainingSupervisorStartRequest {
+    PylonTrainingSupervisorStartRequest {
+        manifest_path: PathBuf::from(runtime.manifest_path.clone()),
+        run_root: PathBuf::from(runtime.run_root.clone()),
+        training_run_id: runtime.training_run_id.clone(),
+        window_id: runtime.window_id.clone(),
+        assignment_id: runtime.assignment_id.clone(),
+        lease_id: runtime.lease_id.clone(),
+        membership_revision: runtime.membership_revision.clone(),
+        role: runtime.role,
+    }
+}
+
+#[allow(dead_code)]
+async fn start_training_supervisor(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+    request: &PylonTrainingSupervisorStartRequest,
+    command: &PylonTrainingSupervisorCommand,
+) -> Result<PylonTrainingSupervisorProcess> {
+    ensure_no_conflicting_training_assignment(state, request)?;
+    let restart_count = state
+        .active_runtime
+        .as_ref()
+        .filter(|runtime| runtime.assignment_id == request.assignment_id)
+        .map(|runtime| runtime.restart_count + 1)
+        .unwrap_or(0);
+    let launch_count = state
+        .active_runtime
+        .as_ref()
+        .filter(|runtime| runtime.assignment_id == request.assignment_id)
+        .map(|runtime| runtime.launch_count + 1)
+        .unwrap_or(1);
+    let attempt_dir = training_supervisor_attempt_dir(request, restart_count);
+    std::fs::create_dir_all(attempt_dir.as_path()).with_context(|| {
+        format!(
+            "failed to create training supervisor attempt dir {}",
+            attempt_dir.display()
+        )
+    })?;
+    let stdout_log_path = attempt_dir.join("stdout.log");
+    let stderr_log_path = attempt_dir.join("stderr.log");
+    let failure_receipt_path = attempt_dir.join("failure_receipt.json");
+
+    let mut child = TokioCommand::new(&command.program)
+        .args(&command.args)
+        .current_dir(&command.current_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to spawn psionic-train supervisor command `{}`",
+                command.program.display()
+            )
+        })?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("psionic-train child stdout pipe missing"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow!("psionic-train child stderr pipe missing"))?;
+    let stdout_task = tokio::spawn(stream_process_pipe(stdout, stdout_log_path.clone()));
+    let stderr_task = tokio::spawn(stream_process_pipe(stderr, stderr_log_path.clone()));
+
+    state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+        training_run_id: request.training_run_id.clone(),
+        window_id: request.window_id.clone(),
+        assignment_id: request.assignment_id.clone(),
+        lease_id: request.lease_id.clone(),
+        membership_revision: request.membership_revision.clone(),
+        role: request.role,
+        manifest_path: request.manifest_path.display().to_string(),
+        run_root: request.run_root.display().to_string(),
+        desired_state: PylonTrainingSupervisorDesiredState::Running,
+        process_state: PylonTrainingSupervisorProcessState::Running,
+        pid: child.id(),
+        stdout_log_path: stdout_log_path.display().to_string(),
+        stderr_log_path: stderr_log_path.display().to_string(),
+        failure_receipt_path: Some(failure_receipt_path.display().to_string()),
+        last_exit_code: None,
+        last_heartbeat_at_ms: None,
+        last_failure_reason: None,
+        launch_count,
+        restart_count,
+        updated_at_ms: now_epoch_ms(),
+    });
+    save_training_runtime_state(config, state)?;
+
+    Ok(PylonTrainingSupervisorProcess {
+        child,
+        stdout_task: Some(stdout_task),
+        stderr_task: Some(stderr_task),
+    })
+}
+
+#[allow(dead_code)]
+async fn stream_process_pipe<R>(stream: R, log_path: PathBuf) -> Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    if let Some(parent) = log_path.parent() {
+        tokio::fs::create_dir_all(parent).await.with_context(|| {
+            format!(
+                "failed to create training supervisor log dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    let mut log = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path.as_path())
+        .await
+        .with_context(|| {
+            format!(
+                "failed to open training supervisor log {}",
+                log_path.display()
+            )
+        })?;
+    let mut lines = BufReader::new(stream).lines();
+    while let Some(line) = lines.next_line().await? {
+        tokio::io::AsyncWriteExt::write_all(&mut log, line.as_bytes()).await?;
+        tokio::io::AsyncWriteExt::write_all(&mut log, b"\n").await?;
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn refresh_training_supervisor_heartbeat(state: &mut PylonTrainingRuntimeState) {
+    let Some(active) = state.active_runtime.as_mut() else {
+        return;
+    };
+    let run_root = Path::new(active.run_root.as_str());
+    for path in training_supervisor_heartbeat_candidates(run_root) {
+        let Ok(metadata) = std::fs::metadata(path.as_path()) else {
+            continue;
+        };
+        let Ok(modified_at) = metadata.modified() else {
+            continue;
+        };
+        let modified_at_ms = system_time_to_epoch_ms(modified_at);
+        if active
+            .last_heartbeat_at_ms
+            .is_none_or(|current| modified_at_ms > current)
+        {
+            active.last_heartbeat_at_ms = Some(modified_at_ms);
+            active.updated_at_ms = now_epoch_ms();
+        }
+        break;
+    }
+}
+
+#[allow(dead_code)]
+fn system_time_to_epoch_ms(value: std::time::SystemTime) -> i64 {
+    match value.duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
+    }
+}
+
+#[allow(dead_code)]
+async fn drain_training_supervisor(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+    process: &mut PylonTrainingSupervisorProcess,
+) -> Result<()> {
+    let Some(active) = state.active_runtime.as_mut() else {
+        bail!("no active training runtime is available to drain");
+    };
+    active.desired_state = PylonTrainingSupervisorDesiredState::Draining;
+    active.process_state = PylonTrainingSupervisorProcessState::Draining;
+    active.updated_at_ms = now_epoch_ms();
+    if let Some(pid) = process.child.id() {
+        request_process_drain(pid).or_else(|_| {
+            process
+                .child
+                .start_kill()
+                .context("failed to request psionic-train drain")
+        })?;
+    }
+    save_training_runtime_state(config, state)
+}
+
+#[allow(dead_code)]
+fn request_process_drain(pid: u32) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let pid_text = pid.to_string();
+        let status = StdCommand::new("kill")
+            .args(["-TERM", pid_text.as_str()])
+            .status()
+            .context("failed to invoke kill -TERM for psionic-train drain")?;
+        if !status.success() {
+            bail!("kill -TERM exited unsuccessfully for psionic-train drain");
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        bail!("graceful drain is unsupported on this platform");
+    }
+}
+
+#[allow(dead_code)]
+async fn stop_training_supervisor(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+    process: &mut PylonTrainingSupervisorProcess,
+) -> Result<()> {
+    let Some(active) = state.active_runtime.as_mut() else {
+        bail!("no active training runtime is available to stop");
+    };
+    active.desired_state = PylonTrainingSupervisorDesiredState::Stopped;
+    active.updated_at_ms = now_epoch_ms();
+    process
+        .child
+        .start_kill()
+        .context("failed to stop psionic-train child process")?;
+    save_training_runtime_state(config, state)
+}
+
+#[allow(dead_code)]
+async fn poll_training_supervisor(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+    process: &mut PylonTrainingSupervisorProcess,
+) -> Result<bool> {
+    refresh_training_supervisor_heartbeat(state);
+    let Some(status) = process
+        .child
+        .try_wait()
+        .context("failed to poll psionic-train child process")?
+    else {
+        save_training_runtime_state(config, state)?;
+        return Ok(false);
+    };
+
+    if let Some(task) = process.stdout_task.take() {
+        match task.await {
+            Ok(result) => result?,
+            Err(error) => bail!("training supervisor stdout task failed: {error}"),
+        }
+    }
+    if let Some(task) = process.stderr_task.take() {
+        match task.await {
+            Ok(result) => result?,
+            Err(error) => bail!("training supervisor stderr task failed: {error}"),
+        }
+    }
+
+    if let Some(active) = state.active_runtime.as_mut() {
+        active.pid = None;
+        active.last_exit_code = status.code();
+        active.updated_at_ms = now_epoch_ms();
+        if status.success() {
+            active.desired_state = PylonTrainingSupervisorDesiredState::Stopped;
+            active.process_state = PylonTrainingSupervisorProcessState::Stopped;
+            active.last_failure_reason = None;
+        } else if matches!(
+            active.desired_state,
+            PylonTrainingSupervisorDesiredState::Draining
+                | PylonTrainingSupervisorDesiredState::Stopped
+        ) {
+            active.process_state = PylonTrainingSupervisorProcessState::Stopped;
+            active.last_failure_reason = None;
+        } else {
+            let failure_reason = format!(
+                "psionic-train exited with code {}",
+                status.code().unwrap_or(-1)
+            );
+            active.process_state = PylonTrainingSupervisorProcessState::Failed;
+            active.last_failure_reason = Some(failure_reason.clone());
+            write_training_failure_receipt(active, failure_reason.as_str())?;
+        }
+    }
+    save_training_runtime_state(config, state)?;
+    Ok(true)
+}
+
+#[allow(dead_code)]
+fn write_training_failure_receipt(
+    active: &PylonTrainingActiveRuntimeState,
+    failure_reason: &str,
+) -> Result<()> {
+    let Some(path) = active.failure_receipt_path.as_ref() else {
+        return Ok(());
+    };
+    let path = Path::new(path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create training failure receipt dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    let receipt = PylonTrainingFailureReceipt {
+        schema_version: "openagents.pylon_training_failure_receipt.v1".to_string(),
+        training_run_id: active.training_run_id.clone(),
+        window_id: active.window_id.clone(),
+        assignment_id: active.assignment_id.clone(),
+        lease_id: active.lease_id.clone(),
+        manifest_path: active.manifest_path.clone(),
+        desired_state: active.desired_state,
+        process_state: active.process_state,
+        exit_code: active.last_exit_code,
+        failure_reason: failure_reason.to_string(),
+        recorded_at_ms: now_epoch_ms(),
+    };
+    std::fs::write(
+        path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&receipt)
+                .context("failed to serialize training failure receipt")?
+        ),
+    )
+    .with_context(|| {
+        format!(
+            "failed to write training failure receipt {}",
+            path.display()
+        )
+    })?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+async fn restart_training_supervisor(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+    previous_process: Option<&mut PylonTrainingSupervisorProcess>,
+    command_override: Option<&PylonTrainingSupervisorCommand>,
+) -> Result<PylonTrainingSupervisorProcess> {
+    if let Some(process) = previous_process {
+        stop_training_supervisor(config, state, process).await?;
+        let _ = process
+            .child
+            .wait()
+            .await
+            .context("failed waiting for psionic-train child to stop before restart")?;
+        let _ = poll_training_supervisor(config, state, process).await?;
+    }
+    let active = state
+        .active_runtime
+        .as_ref()
+        .ok_or_else(|| anyhow!("no retained training runtime is available to restart"))?
+        .clone();
+    let request = training_start_request_from_active_runtime(&active);
+    let owned_command = if command_override.is_none() {
+        Some(default_psionic_train_supervisor_command(
+            request.manifest_path.as_path(),
+        )?)
+    } else {
+        None
+    };
+    let command = command_override.unwrap_or_else(|| {
+        owned_command
+            .as_ref()
+            .expect("default supervisor command should exist when no override is supplied")
+    });
+    start_training_supervisor(config, state, &request, command).await
 }
 
 fn merge_json_value(target: &mut Value, source: &Value) {
@@ -9038,29 +9590,34 @@ mod tests {
         PYLON_TRAINING_CHECKPOINT_FAMILY, PYLON_TRAINING_ENVIRONMENT_REF,
         PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
         PsionicTrainRuntimeSurface, PylonConfig, PylonTrainingActiveRuntimeState,
-        PylonTrainingLeaseCacheEntry, PylonTrainingManifestCacheEntry,
+        PylonTrainingFailureReceipt, PylonTrainingLeaseCacheEntry, PylonTrainingManifestCacheEntry,
         PylonTrainingPublicationPointer, PylonTrainingRoleClaim, PylonTrainingRuntimeState,
+        PylonTrainingSupervisorCommand, PylonTrainingSupervisorDesiredState,
+        PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
         PylonTrainingWindowCacheEntry, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
         WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
         add_configured_relay, apply_config_set, apply_control_command,
         build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
         derive_adapter_training_contributor_availability, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
-        ensure_identity, gemma_diagnostic_latest_report_path, gemma_download_spec,
-        gemma_local_installations, inspect_psionic_train_runtime_surface_at, inventory_rows,
-        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
+        drain_training_supervisor, ensure_identity, ensure_no_conflicting_training_assignment,
+        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
+        inspect_psionic_train_runtime_surface_at, inventory_rows, load_backend_report,
+        load_earnings_report, load_inventory_report, load_jobs_report,
         load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, provider_admin_config, provider_presence_client,
-        psionic_gemma_benchmark_command_args, publish_announcement_report, refresh_relay_report,
-        remove_configured_relay, render_human_status, render_public_config_json,
-        render_sandbox_report, report_provider_presence_heartbeat_for_snapshot,
+        planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
+        provider_presence_client, psionic_gemma_benchmark_command_args,
+        publish_announcement_report, refresh_relay_report, remove_configured_relay,
+        render_human_status, render_public_config_json, render_sandbox_report,
+        report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
-        run_cli, run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, run_provider_requests, save_config,
-        save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests,
-        submit_buyer_job, sync_live_announcement, sync_provider_payout_target_with_report,
+        restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
+        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
+        save_config, save_gemma_diagnostic_report, save_training_runtime_state,
+        scan_provider_requests, start_training_supervisor, submit_buyer_job,
+        sync_live_announcement, sync_provider_payout_target_with_report,
         training_runtime_state_path, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
@@ -9129,6 +9686,92 @@ mod tests {
         PsionicTrainRuntimeSurface {
             repo_root: std::path::PathBuf::from("/tmp/psionic"),
         }
+    }
+
+    fn training_active_runtime_fixture() -> PylonTrainingActiveRuntimeState {
+        PylonTrainingActiveRuntimeState {
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            assignment_id: "assign.node01.window0001".to_string(),
+            lease_id: "lease.node01.window0001".to_string(),
+            membership_revision: "members.rev1".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+            manifest_path: "/tmp/run.alpha/manifest.json".to_string(),
+            run_root: "/tmp/run.alpha".to_string(),
+            desired_state: PylonTrainingSupervisorDesiredState::Running,
+            process_state: PylonTrainingSupervisorProcessState::Running,
+            pid: Some(4242),
+            stdout_log_path: "/tmp/run.alpha/supervisor/attempt-1/stdout.log".to_string(),
+            stderr_log_path: "/tmp/run.alpha/supervisor/attempt-1/stderr.log".to_string(),
+            failure_receipt_path: Some(
+                "/tmp/run.alpha/supervisor/attempt-1/failure_receipt.json".to_string(),
+            ),
+            last_exit_code: None,
+            last_heartbeat_at_ms: Some(1_762_491_200_050),
+            last_failure_reason: None,
+            launch_count: 1,
+            restart_count: 0,
+            updated_at_ms: 1_762_491_200_000,
+        }
+    }
+
+    fn training_supervisor_fixture() -> Result<
+        (
+            tempfile::TempDir,
+            PylonConfig,
+            PylonTrainingRuntimeState,
+            PylonTrainingSupervisorStartRequest,
+        ),
+        Box<dyn std::error::Error>,
+    > {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let state = load_or_create_training_runtime_state(&config)?;
+        let manifest_path = config
+            .training
+            .run_root
+            .join("manifests/run.alpha.worker.json");
+        if let Some(parent) = manifest_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(manifest_path.as_path(), "{\"schema\":\"manifest.v1\"}\n")?;
+        let request = PylonTrainingSupervisorStartRequest {
+            manifest_path,
+            run_root: config.training.run_root.join("runs/run.alpha"),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            assignment_id: "assign.node01.window0001".to_string(),
+            lease_id: "lease.node01.window0001".to_string(),
+            membership_revision: "members.rev1".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+        };
+        Ok((temp_dir, config, state, request))
+    }
+
+    fn supervisor_shell_command(script_path: &std::path::Path) -> PylonTrainingSupervisorCommand {
+        PylonTrainingSupervisorCommand {
+            program: std::path::PathBuf::from("/bin/sh"),
+            args: vec![script_path.display().to_string()],
+            current_dir: script_path
+                .parent()
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp")),
+        }
+    }
+
+    async fn poll_training_supervisor_until_exit(
+        config: &PylonConfig,
+        state: &mut PylonTrainingRuntimeState,
+        process: &mut super::PylonTrainingSupervisorProcess,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for _ in 0..80 {
+            if poll_training_supervisor(config, state, process).await? {
+                return Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        Err(std::io::Error::other("training supervisor did not exit in time").into())
     }
 
     #[test]
@@ -9541,21 +10184,197 @@ mod tests {
     }
 
     #[test]
+    fn conflicting_training_assignment_is_refused_while_runtime_is_active()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_, _, mut state, request) = training_supervisor_fixture()?;
+        state.active_runtime = Some(training_active_runtime_fixture());
+
+        let same_assignment = ensure_no_conflicting_training_assignment(&state, &request);
+        ensure(
+            same_assignment.is_ok(),
+            "the retained assignment should be restartable without triggering a false conflict",
+        )?;
+
+        let conflicting_request = PylonTrainingSupervisorStartRequest {
+            assignment_id: "assign.node02.window0001".to_string(),
+            lease_id: "lease.node02.window0001".to_string(),
+            ..request
+        };
+        let error = ensure_no_conflicting_training_assignment(&state, &conflicting_request)
+            .expect_err("a second active assignment should be rejected");
+        ensure(
+            error
+                .to_string()
+                .contains("refuse conflicting assignment `assign.node02.window0001`"),
+            "the conflict refusal should name the competing assignment id",
+        )?;
+
+        state
+            .active_runtime
+            .as_mut()
+            .expect("active runtime")
+            .process_state = PylonTrainingSupervisorProcessState::Stopped;
+        ensure(
+            ensure_no_conflicting_training_assignment(&state, &conflicting_request).is_ok(),
+            "terminal retained runtime state should not block a new assignment",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_supervisor_records_logs_heartbeat_and_failure_receipt_on_failed_exit()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp_dir, config, mut state, request) = training_supervisor_fixture()?;
+        let script_path = config.training.run_root.join("supervisor_fail.sh");
+        std::fs::write(
+            script_path.as_path(),
+            format!(
+                "#!/bin/sh\nset -eu\nrun_root='{}'\nmkdir -p \"$run_root/status\"\necho 'stdout: launch'\necho 'stderr: launch' >&2\necho '{{\"membership_revision\":\"members.rev1\"}}' > \"$run_root/status/membership_revision_receipt.json\"\nsleep 0.1\nexit 7\n",
+                request.run_root.display()
+            ),
+        )?;
+        let command = supervisor_shell_command(script_path.as_path());
+        let mut process =
+            start_training_supervisor(&config, &mut state, &request, &command).await?;
+        poll_training_supervisor_until_exit(&config, &mut state, &mut process).await?;
+
+        let active = state
+            .active_runtime
+            .as_ref()
+            .ok_or("missing retained active runtime after failure")?;
+        ensure(
+            active.process_state == PylonTrainingSupervisorProcessState::Failed
+                && active.last_exit_code == Some(7)
+                && active.last_failure_reason.as_deref()
+                    == Some("psionic-train exited with code 7"),
+            "failed training exits should preserve terminal state, exit code, and failure reason",
+        )?;
+        ensure(
+            active.last_heartbeat_at_ms.is_some(),
+            "supervisor polling should pick up the retained heartbeat file mtime",
+        )?;
+        let stdout_log = std::fs::read_to_string(active.stdout_log_path.as_str())?;
+        let stderr_log = std::fs::read_to_string(active.stderr_log_path.as_str())?;
+        ensure(
+            stdout_log.contains("stdout: launch") && stderr_log.contains("stderr: launch"),
+            "supervisor log capture should retain both stdout and stderr output",
+        )?;
+        let failure_receipt_path = active
+            .failure_receipt_path
+            .clone()
+            .ok_or("missing failure receipt path")?;
+        let failure_receipt: PylonTrainingFailureReceipt =
+            serde_json::from_str(std::fs::read_to_string(failure_receipt_path.as_str())?.as_str())?;
+        ensure(
+            failure_receipt.schema_version == "openagents.pylon_training_failure_receipt.v1"
+                && failure_receipt.exit_code == Some(7)
+                && failure_receipt.failure_reason == "psionic-train exited with code 7",
+            "failed exits should persist a machine-readable failure receipt beside the attempt logs",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn draining_and_restarting_training_supervisor_rotates_attempt_logs_without_losing_history()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp_dir, config, mut state, request) = training_supervisor_fixture()?;
+        let run_root = request.run_root.display().to_string();
+
+        let drain_script_path = config.training.run_root.join("supervisor_drain.sh");
+        std::fs::write(
+            drain_script_path.as_path(),
+            format!(
+                "#!/bin/sh\nset -eu\nrun_root='{}'\nmkdir -p \"$run_root/status\"\necho 'stdout: drain-attempt-1'\necho 'stderr: drain-attempt-1' >&2\necho '{{\"membership_revision\":\"members.rev1\"}}' > \"$run_root/status/membership_revision_receipt.json\"\ntrap 'echo drained > \"$run_root/status/drained.txt\"; exit 0' TERM\nwhile true; do\n  sleep 1\n done\n",
+                run_root
+            ),
+        )?;
+        let mut process = start_training_supervisor(
+            &config,
+            &mut state,
+            &request,
+            &supervisor_shell_command(drain_script_path.as_path()),
+        )
+        .await?;
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        drain_training_supervisor(&config, &mut state, &mut process).await?;
+        poll_training_supervisor_until_exit(&config, &mut state, &mut process).await?;
+
+        let first_attempt = state
+            .active_runtime
+            .as_ref()
+            .ok_or("missing retained active runtime after drain")?
+            .clone();
+        ensure(
+            first_attempt.process_state == PylonTrainingSupervisorProcessState::Stopped
+                && first_attempt.last_failure_reason.is_none()
+                && first_attempt.restart_count == 0
+                && first_attempt.launch_count == 1,
+            "operator drain should terminate the child cleanly without recording a failure",
+        )?;
+        let first_stdout_log = std::fs::read_to_string(first_attempt.stdout_log_path.as_str())?;
+        ensure(
+            first_stdout_log.contains("stdout: drain-attempt-1"),
+            "the first attempt stdout log should remain on disk after drain",
+        )?;
+        ensure(
+            first_attempt
+                .failure_receipt_path
+                .as_deref()
+                .is_some_and(|path| !std::path::Path::new(path).exists()),
+            "drained attempts should not emit failure receipts",
+        )?;
+
+        let success_script_path = config
+            .training
+            .run_root
+            .join("supervisor_restart_success.sh");
+        std::fs::write(
+            success_script_path.as_path(),
+            format!(
+                "#!/bin/sh\nset -eu\nrun_root='{}'\nmkdir -p \"$run_root/status\"\necho 'stdout: attempt-2'\necho 'stderr: attempt-2' >&2\necho '{{\"membership_revision\":\"members.rev2\"}}' > \"$run_root/status/psionic_train_run_status_packet.json\"\nsleep 0.05\nexit 0\n",
+                run_root
+            ),
+        )?;
+        let mut restarted = restart_training_supervisor(
+            &config,
+            &mut state,
+            None,
+            Some(&supervisor_shell_command(success_script_path.as_path())),
+        )
+        .await?;
+        poll_training_supervisor_until_exit(&config, &mut state, &mut restarted).await?;
+
+        let second_attempt = state
+            .active_runtime
+            .as_ref()
+            .ok_or("missing retained active runtime after restart")?;
+        ensure(
+            second_attempt.process_state == PylonTrainingSupervisorProcessState::Stopped
+                && second_attempt.restart_count == 1
+                && second_attempt.launch_count == 2
+                && second_attempt.last_exit_code == Some(0)
+                && second_attempt.last_failure_reason.is_none(),
+            "restart should advance the attempt counters and retain a clean terminal state on success",
+        )?;
+        ensure(
+            second_attempt.stdout_log_path != first_attempt.stdout_log_path
+                && second_attempt.stderr_log_path != first_attempt.stderr_log_path,
+            "restarted training runs should rotate stdout and stderr logs into a new attempt directory",
+        )?;
+        let second_stdout_log = std::fs::read_to_string(second_attempt.stdout_log_path.as_str())?;
+        ensure(
+            second_stdout_log.contains("stdout: attempt-2")
+                && std::path::Path::new(first_attempt.stdout_log_path.as_str()).exists(),
+            "restart should preserve the prior attempt logs while writing a fresh retained attempt",
+        )
+    }
+
+    #[test]
     fn training_runtime_state_round_trips_across_restart() -> Result<(), Box<dyn std::error::Error>>
     {
         let temp_dir = tempfile::tempdir()?;
         let config_path = temp_dir.path().join("config.json");
         let config = load_or_create_config(config_path.as_path())?;
         let mut state = load_or_create_training_runtime_state(&config)?;
-        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
-            training_run_id: "run.alpha".to_string(),
-            window_id: "window.0001".to_string(),
-            assignment_id: "assign.node01.window0001".to_string(),
-            lease_id: "lease.node01.window0001".to_string(),
-            membership_revision: "members.rev1".to_string(),
-            role: PylonTrainingRoleClaim::Worker,
-            updated_at_ms: 1_762_491_200_000,
-        });
+        state.active_runtime = Some(training_active_runtime_fixture());
         state.manifest_cache.insert(
             "manifest.run.alpha.worker".to_string(),
             PylonTrainingManifestCacheEntry {

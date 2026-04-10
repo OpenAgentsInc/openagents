@@ -173,8 +173,17 @@ capability envelope when the machine can actually prove the local prerequisites:
   coordinator participation
 
 That projection is intentionally narrow. `Pylon` does not yet launch or
-supervise `psionic-train`, and it does not advertise broader mixed-backend or
-permissionless training claims.
+advertise broader mixed-backend or permissionless training claims.
+
+The retained training shell now also includes the first internal
+`psionic-train` supervision core in `apps/pylon/src/lib.rs`. It can launch one
+manifest-bound child process, retain per-attempt stdout and stderr logs, watch
+heartbeat files under the assigned run root, refuse conflicting assignments,
+persist exit state and machine-readable failure receipts, and rotate preserved
+attempt history across drain and restart. That foundation is intentionally
+internal for now. The later roadmap items still need to wire it into live
+`Nexus` coordination, operator/admin control surfaces, and published training
+status.
 
 The retained config now also carries one explicit `training` block for the
 future admitted-node lane. That block freezes:
