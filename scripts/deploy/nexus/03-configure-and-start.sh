@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/10-install-treasury-watchdog.sh"
 TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_ENABLED
   NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW
@@ -326,5 +327,9 @@ gcloud compute ssh "$NEXUS_VM" \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
   --command "chmod +x /tmp/nexus-bootstrap.sh && /tmp/nexus-bootstrap.sh '$DEPLOY_IMAGE' '/tmp/nexus-relay.env' '/tmp/upstream-config.toml' '$NEXUS_DATA_DIR' '$NEXUS_DATA_DISK_DEVICE_NAME'"
+
+if [[ -x "$WATCHDOG_INSTALL_SCRIPT" ]]; then
+  bash "$WATCHDOG_INSTALL_SCRIPT"
+fi
 
 log "Nexus deployment refreshed on ${NEXUS_VM} using image ${DEPLOY_IMAGE}"
