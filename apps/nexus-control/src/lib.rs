@@ -29,8 +29,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use openagents_kernel_core::authority::{
-    AdjustReservePartitionRequest, AdjustReservePartitionResponse, BindCoverageRequest,
-    BindCoverageResponse, CreateContractRequest, CreateContractResponse,
+    AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
+    BindCoverageRequest, BindCoverageResponse, CreateContractRequest, CreateContractResponse,
     CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
@@ -43,16 +43,17 @@ use openagents_kernel_core::authority::{
     SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
-    CapacityInstrumentStatus, CapacityLotStatus, ComputeAcceptedOutcomeKind,
-    ComputeAdapterAggregationEligibility, ComputeAdapterCheckpointPointer,
-    ComputeAdapterContributionDisposition, ComputeAdapterContributionOutcome,
-    ComputeAdapterContributionValidationReasonCode, ComputeAdapterDatasetSlice,
-    ComputeAdapterPolicyRevision, ComputeAdapterPromotionDisposition,
-    ComputeAdapterPromotionHoldReasonCode, ComputeAdapterTrainingWindow,
-    ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus,
-    ComputeEnvironmentPackageStatus, ComputeEvaluationRunStatus, ComputeProductStatus,
+    CapacityInstrumentStatus, CapacityLotStatus, ComputeAcceptedOutcome,
+    ComputeAcceptedOutcomeKind, ComputeAdapterAggregationEligibility,
+    ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
+    ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
+    ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision,
+    ComputeAdapterPromotionDisposition, ComputeAdapterPromotionHoldReasonCode,
+    ComputeAdapterTrainingWindow, ComputeAdapterWindowGateReasonCode,
+    ComputeAdapterWindowStatus, ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact,
+    ComputeEvaluationMetric, ComputeEvaluationRunStatus, ComputeProductStatus,
     ComputeRegistryStatus, ComputeSyntheticDataJobStatus, ComputeTrainingRun,
-    ComputeTrainingRunStatus, ComputeValidatorChallengeContext,
+    ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeValidatorChallengeContext,
     ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
     ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
     ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
@@ -716,6 +717,32 @@ impl TrainingSchedulerWindowState {
             Self::Held => "held",
             Self::Refused => "refused",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingWindowCloseoutStatus {
+    Rewarded,
+    NoReward,
+    Held,
+    Quarantined,
+    Refused,
+}
+
+impl TrainingWindowCloseoutStatus {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Rewarded => "rewarded",
+            Self::NoReward => "no_reward",
+            Self::Held => "held",
+            Self::Quarantined => "quarantined",
+            Self::Refused => "refused",
+        }
+    }
+
+    const fn payout_eligible(self) -> bool {
+        matches!(self, Self::Rewarded)
     }
 }
 
@@ -1984,6 +2011,239 @@ fn training_window_validation_summary(
         aggregate_terminal_disposition,
         held_challenge_present,
     })
+}
+
+fn training_window_closeout_status(
+    validation_summary: &TrainingWindowValidationSummary,
+    gate_reason_codes: &[ComputeAdapterWindowGateReasonCode],
+    accepted_contributions: u32,
+    quarantined_contributions: u32,
+    rejected_contributions: u32,
+    replay_required_contributions: u32,
+) -> TrainingWindowCloseoutStatus {
+    if validation_summary.held_challenge_present
+        || matches!(
+            validation_summary.aggregate_resolution,
+            PylonTrainingAggregateResolution::Held
+        )
+    {
+        return TrainingWindowCloseoutStatus::Held;
+    }
+
+    match validation_summary.aggregate_terminal_disposition {
+        Some(ComputeAdapterContributionDisposition::Quarantined) => {
+            TrainingWindowCloseoutStatus::Quarantined
+        }
+        Some(
+            ComputeAdapterContributionDisposition::Rejected
+            | ComputeAdapterContributionDisposition::ReplayRequired,
+        ) => TrainingWindowCloseoutStatus::Refused,
+        Some(ComputeAdapterContributionDisposition::Accepted) => {
+            if quarantined_contributions > 0 {
+                TrainingWindowCloseoutStatus::Quarantined
+            } else if rejected_contributions > 0 || replay_required_contributions > 0 {
+                TrainingWindowCloseoutStatus::Refused
+            } else if accepted_contributions == 0 || !gate_reason_codes.is_empty() {
+                TrainingWindowCloseoutStatus::NoReward
+            } else {
+                TrainingWindowCloseoutStatus::Rewarded
+            }
+        }
+        None => TrainingWindowCloseoutStatus::Held,
+    }
+}
+
+fn training_validation_resolution_label(
+    resolution: PylonTrainingAggregateResolution,
+) -> &'static str {
+    match resolution {
+        PylonTrainingAggregateResolution::Accept => "accept",
+        PylonTrainingAggregateResolution::Terminal(PylonTrainingContributionVerdict::Accepted) => {
+            "terminal_accepted"
+        }
+        PylonTrainingAggregateResolution::Terminal(
+            PylonTrainingContributionVerdict::Quarantined,
+        ) => "terminal_quarantined",
+        PylonTrainingAggregateResolution::Terminal(PylonTrainingContributionVerdict::Rejected) => {
+            "terminal_rejected"
+        }
+        PylonTrainingAggregateResolution::Terminal(
+            PylonTrainingContributionVerdict::ReplayRequired,
+        ) => "terminal_replay_required",
+        PylonTrainingAggregateResolution::Escalate => "escalate",
+        PylonTrainingAggregateResolution::Held => "held",
+    }
+}
+
+fn training_window_closeout_outcome_id(window_id: &str) -> String {
+    format!("accepted.training_window.{window_id}")
+}
+
+fn training_window_closeout_artifacts(
+    window: &ComputeAdapterTrainingWindow,
+    closeout_status: TrainingWindowCloseoutStatus,
+) -> Vec<ComputeEvaluationArtifact> {
+    let mut artifacts = Vec::new();
+    if let Some(aggregated_delta_digest) = window.aggregated_delta_digest.as_ref() {
+        artifacts.push(ComputeEvaluationArtifact {
+            artifact_kind: "aggregated_delta".to_string(),
+            artifact_ref: format!("artifact://training/windows/{}/aggregated_delta", window.window_id),
+            digest: Some(aggregated_delta_digest.clone()),
+            metadata: serde_json::json!({
+                "window_id": window.window_id,
+                "closeout_status": closeout_status.label(),
+            }),
+        });
+    }
+    if let Some(pointer) = window.output_checkpoint_pointer.as_ref() {
+        artifacts.push(ComputeEvaluationArtifact {
+            artifact_kind: "output_checkpoint".to_string(),
+            artifact_ref: pointer.checkpoint_ref.clone(),
+            digest: Some(pointer.pointer_digest.clone()),
+            metadata: serde_json::json!({
+                "window_id": window.window_id,
+                "checkpoint_family": pointer.checkpoint_family,
+                "manifest_digest": pointer.manifest_digest,
+            }),
+        });
+    }
+    artifacts
+}
+
+fn training_window_closeout_metrics(
+    window: &ComputeAdapterTrainingWindow,
+) -> Vec<ComputeEvaluationMetric> {
+    let mut metrics = Vec::new();
+    if let Some(score) = window.held_out_average_score_bps {
+        metrics.push(ComputeEvaluationMetric {
+            metric_id: "held_out_average_score_bps".to_string(),
+            metric_value: f64::from(score),
+            unit: Some("bps".to_string()),
+            metadata: serde_json::json!({"window_id": window.window_id}),
+        });
+    }
+    if let Some(score) = window.benchmark_pass_rate_bps {
+        metrics.push(ComputeEvaluationMetric {
+            metric_id: "benchmark_pass_rate_bps".to_string(),
+            metric_value: f64::from(score),
+            unit: Some("bps".to_string()),
+            metadata: serde_json::json!({"window_id": window.window_id}),
+        });
+    }
+    if let Some(smoke_passed) = window.runtime_smoke_passed {
+        metrics.push(ComputeEvaluationMetric {
+            metric_id: "runtime_smoke_passed".to_string(),
+            metric_value: if smoke_passed { 1.0 } else { 0.0 },
+            unit: Some("bool".to_string()),
+            metadata: serde_json::json!({"window_id": window.window_id}),
+        });
+    }
+    metrics
+}
+
+fn training_window_closeout_summary(
+    training_run: &ComputeTrainingRun,
+    window: &ComputeAdapterTrainingWindow,
+    closeout_status: TrainingWindowCloseoutStatus,
+) -> ComputeTrainingSummary {
+    let base_summary = training_run.summary.clone().unwrap_or_default();
+    ComputeTrainingSummary {
+        completed_step_count: base_summary.completed_step_count,
+        processed_token_count: base_summary.processed_token_count,
+        average_loss: base_summary.average_loss,
+        best_eval_score_bps: window
+            .held_out_average_score_bps
+            .or(base_summary.best_eval_score_bps),
+        accepted_checkpoint_ref: if closeout_status.payout_eligible() {
+            window
+                .output_checkpoint_pointer
+                .as_ref()
+                .map(|pointer| pointer.checkpoint_ref.clone())
+                .or(base_summary.accepted_checkpoint_ref)
+        } else {
+            None
+        },
+        aggregate_metrics: training_window_closeout_metrics(window),
+        artifacts: training_window_closeout_artifacts(window, closeout_status),
+    }
+}
+
+fn training_window_closeout_metadata(
+    network_id: &str,
+    validation: &TrainingWindowValidationState,
+    validation_summary: &TrainingWindowValidationSummary,
+    window: &ComputeAdapterTrainingWindow,
+    closeout_status: TrainingWindowCloseoutStatus,
+) -> serde_json::Value {
+    serde_json::json!({
+        "network_id": network_id,
+        "window_id": window.window_id,
+        "closeout_scope": "sealed_window",
+        "closeout_status": closeout_status.label(),
+        "payout_eligible": closeout_status.payout_eligible(),
+        "window_summary_digest": window.window_summary_digest,
+        "aggregated_delta_digest": window.aggregated_delta_digest,
+        "gate_reason_codes": window.gate_reason_codes,
+        "hold_reason_codes": window.hold_reason_codes,
+        "validator_pool_ref": validation.validator_pool_ref,
+        "validator_challenge_ids": validation
+            .challenges
+            .iter()
+            .map(|plan| plan.challenge_id.clone())
+            .collect::<Vec<_>>(),
+        "validator_challenge_kinds": validation
+            .challenges
+            .iter()
+            .map(|plan| plan.challenge_kind.label())
+            .collect::<Vec<_>>(),
+        "aggregate_resolution": training_validation_resolution_label(
+            validation_summary.aggregate_resolution,
+        ),
+        "aggregate_terminal_disposition": validation_summary
+            .aggregate_terminal_disposition
+            .map(ComputeAdapterContributionDisposition::label),
+        "contribution_counts": {
+            "total": window.total_contributions,
+            "accepted": window.accepted_contributions,
+            "quarantined": window.quarantined_contributions,
+            "rejected": window.rejected_contributions,
+            "replay_required": window.replay_required_contributions,
+        },
+    })
+}
+
+fn training_window_closeout_outcome(
+    training_run: &ComputeTrainingRun,
+    metadata: &TrainingWindowMetadata,
+    validation: &TrainingWindowValidationState,
+    validation_summary: &TrainingWindowValidationSummary,
+    window: &ComputeAdapterTrainingWindow,
+    accepted_at_ms: i64,
+    closeout_status: TrainingWindowCloseoutStatus,
+) -> ComputeAcceptedOutcome {
+    ComputeAcceptedOutcome {
+        outcome_id: training_window_closeout_outcome_id(window.window_id.as_str()),
+        outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+        source_run_id: training_run.training_run_id.clone(),
+        environment_binding: training_run.environment_binding.clone(),
+        checkpoint_binding: Some(training_run.checkpoint_binding.clone()),
+        validator_policy_ref: Some(training_run.validator_policy_ref.clone()),
+        benchmark_package_refs: training_run.benchmark_package_refs.clone(),
+        accepted_at_ms,
+        evaluation_summary: None,
+        training_summary: Some(training_window_closeout_summary(
+            training_run,
+            window,
+            closeout_status,
+        )),
+        metadata: training_window_closeout_metadata(
+            metadata.network_id.as_str(),
+            validation,
+            validation_summary,
+            window,
+            closeout_status,
+        ),
+    }
 }
 
 fn training_window_gate_reason_codes(
@@ -3897,7 +4157,13 @@ async fn reconcile_training_window(
     };
 
     let caller_id = training_window_caller_id(request.window_id.as_str());
-    let (response, receipt_event, snapshot_event) = {
+    let (
+        response,
+        outcome_receipt_event,
+        outcome_snapshot_event,
+        window_receipt_event,
+        window_snapshot_event,
+    ) = {
         let mut store = state.store.write().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "internal_error",
@@ -3923,23 +4189,13 @@ async fn reconcile_training_window(
             training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
         let validation = metadata
             .validation
-            .as_ref()
+            .clone()
             .ok_or_else(|| kernel_api_error("training_window_validation_missing".to_string()))?;
-        let validation_summary = training_window_validation_summary(&store.kernel, validation)
+        let validation_summary = training_window_validation_summary(&store.kernel, &validation)
             .map_err(kernel_api_error)?;
         if !validation_summary.all_required_terminal {
             return Err(kernel_api_error(
                 "training_window_validation_incomplete".to_string(),
-            ));
-        }
-        if validation_summary.held_challenge_present
-            || matches!(
-                validation_summary.aggregate_resolution,
-                PylonTrainingAggregateResolution::Held
-            )
-        {
-            return Err(kernel_api_error(
-                "training_window_validation_held".to_string(),
             ));
         }
         let assignment_plans = metadata.assignment_plans.clone();
@@ -3974,6 +4230,14 @@ async fn reconcile_training_window(
             held_out_threshold_bps,
             benchmark_threshold_bps,
         );
+        let closeout_status = training_window_closeout_status(
+            &validation_summary,
+            gate_reason_codes.as_slice(),
+            accepted_contributions,
+            quarantined_contributions,
+            rejected_contributions,
+            replay_required_contributions,
+        );
         metadata.reconciled_at_ms = Some(request.recorded_at_ms);
         let mut updated_window = window.clone();
         updated_window.status = ComputeAdapterWindowStatus::Reconciled;
@@ -3987,24 +4251,22 @@ async fn reconcile_training_window(
         updated_window.held_out_average_score_bps = request.held_out_average_score_bps;
         updated_window.benchmark_pass_rate_bps = request.benchmark_pass_rate_bps;
         updated_window.runtime_smoke_passed = request.runtime_smoke_passed;
-        let aggregate_accepts = validation_summary.aggregate_terminal_disposition
-            == Some(ComputeAdapterContributionDisposition::Accepted);
-        updated_window.promotion_ready = aggregate_accepts
-            && gate_reason_codes.is_empty()
-            && accepted_contributions > 0
-            && quarantined_contributions == 0
-            && rejected_contributions == 0
-            && replay_required_contributions == 0;
+        updated_window.promotion_ready = closeout_status == TrainingWindowCloseoutStatus::Rewarded;
         updated_window.gate_reason_codes = gate_reason_codes;
         updated_window.aggregated_delta_digest = request.aggregated_delta_digest.clone();
         updated_window.recorded_at_ms = request.recorded_at_ms;
-        if aggregate_accepts {
-            updated_window.promotion_disposition = None;
-            updated_window.hold_reason_codes.clear();
-        } else {
-            updated_window.promotion_disposition = Some(ComputeAdapterPromotionDisposition::Held);
-            updated_window.hold_reason_codes =
-                vec![ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady];
+        match closeout_status {
+            TrainingWindowCloseoutStatus::Rewarded | TrainingWindowCloseoutStatus::NoReward => {
+                updated_window.promotion_disposition = None;
+                updated_window.hold_reason_codes.clear();
+            }
+            TrainingWindowCloseoutStatus::Held
+            | TrainingWindowCloseoutStatus::Quarantined
+            | TrainingWindowCloseoutStatus::Refused => {
+                updated_window.promotion_disposition = Some(ComputeAdapterPromotionDisposition::Held);
+                updated_window.hold_reason_codes =
+                    vec![ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady];
+            }
         }
         updated_window.metadata = training_window_metadata_value(&metadata);
         updated_window.window_summary_digest = training_window_summary_digest(
@@ -4013,6 +4275,30 @@ async fn reconcile_training_window(
             &metadata,
         )
         .map_err(kernel_api_error)?;
+        let closeout_outcome = training_window_closeout_outcome(
+            &training_run,
+            &metadata,
+            &validation,
+            &validation_summary,
+            &updated_window,
+            request.recorded_at_ms,
+            closeout_status,
+        );
+        updated_window.accepted_outcome_id = Some(closeout_outcome.outcome_id.clone());
+        let accepted_outcome_result = store
+            .kernel
+            .accept_compute_outcome(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                AcceptComputeOutcomeRequest {
+                    idempotency_key: format!("{}.closeout", request.idempotency_key),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    outcome: closeout_outcome,
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .map_err(kernel_api_error)?;
         let result = store
             .kernel
             .record_compute_adapter_window(
@@ -4029,10 +4315,13 @@ async fn reconcile_training_window(
             .runs_by_training_run_id
             .get_mut(updated_window.training_run_id.as_str())
         {
-            scheduled_run.window_state = if updated_window.promotion_ready {
-                TrainingSchedulerWindowState::Accepted
-            } else {
-                TrainingSchedulerWindowState::Held
+            scheduled_run.window_state = match closeout_status {
+                TrainingWindowCloseoutStatus::Rewarded | TrainingWindowCloseoutStatus::NoReward => {
+                    TrainingSchedulerWindowState::Accepted
+                }
+                TrainingWindowCloseoutStatus::Held => TrainingSchedulerWindowState::Held,
+                TrainingWindowCloseoutStatus::Quarantined
+                | TrainingWindowCloseoutStatus::Refused => TrainingSchedulerWindowState::Refused,
             };
             scheduled_run.updated_at_ms = request.recorded_at_ms;
             if scheduled_run.current_window_id == updated_window.window_id {
@@ -4042,6 +4331,8 @@ async fn reconcile_training_window(
         }
         (
             training_window_response(result.response, assignment_plans),
+            accepted_outcome_result.receipt_event,
+            accepted_outcome_result.snapshot_event,
             result.receipt_event,
             result.snapshot_event,
         )
@@ -4050,9 +4341,17 @@ async fn reconcile_training_window(
         &state,
         request.recorded_at_ms as u64,
         caller_id.as_str(),
+        "kernel.training_window.closeout",
+        outcome_receipt_event,
+        outcome_snapshot_event,
+    );
+    record_training_coordination_observability(
+        &state,
+        request.recorded_at_ms as u64,
+        caller_id.as_str(),
         "kernel.training_window.reconciled",
-        receipt_event,
-        snapshot_event,
+        window_receipt_event,
+        window_snapshot_event,
     );
     Ok(Json(response))
 }
@@ -10601,8 +10900,10 @@ mod tests {
     use super::{
         ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
         RetryTrainingValidatorChallengeRequest, TrainingValidatorChallengeCoordinatorResponse,
-        validator_service,
+        TrainingSchedulerWindowState, TrainingWindowCloseoutStatus,
+        TrainingWindowValidationSummary, training_window_closeout_status, validator_service,
     };
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     use anyhow::Result;
@@ -10644,7 +10945,8 @@ mod tests {
         ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
         ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision,
         ComputeAdapterPromotionDisposition, ComputeAdapterTrainingWindow,
-        ComputeAdapterWindowStatus, ComputeBackendFamily, ComputeBenchmarkPackage,
+        ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus, ComputeBackendFamily,
+        ComputeBenchmarkPackage,
         ComputeCapabilityEnvelope, ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy,
         ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
         ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
@@ -10662,6 +10964,9 @@ mod tests {
         DeliveryProof, DeliveryProofStatus, DeliveryVerificationEvidence, GptOssRuntimeCapability,
         StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+    };
+    use openagents_kernel_core::pylon_training::{
+        PylonTrainingAggregateResolution, PylonTrainingContributionVerdict,
     };
     use openagents_kernel_core::compute_benchmarks::{
         ComputeBenchmarkAdapterKind, ComputeBenchmarkCaseImport, ComputeBenchmarkImportRequest,
@@ -17958,6 +18263,37 @@ mod tests {
             ComputeAdapterWindowStatus::Reconciled
         );
         assert_eq!(
+            recorded_window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.0001")
+        );
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("rewarded closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("rewarded")
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("payout_eligible")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Accepted
+        );
+        assert_eq!(
             store
                 .training_scheduler
                 .runs_by_training_run_id
@@ -18397,13 +18733,95 @@ mod tests {
                     )?))?,
             )
             .await?;
-        assert_eq!(reconcile_held.status(), StatusCode::CONFLICT);
-        let held_error = response_json::<serde_json::Value>(reconcile_held).await?;
+        assert_eq!(reconcile_held.status(), StatusCode::OK);
+        let held_window = response_json::<TrainingWindowCoordinatorResponse>(reconcile_held).await?;
         assert_eq!(
-            held_error.get("reason").and_then(serde_json::Value::as_str),
-            Some("training_window_validation_held")
+            held_window.window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.0003")
+        );
+        assert!(!held_window.window.promotion_ready);
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0003")
+            .expect("held closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("held")
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("payout_eligible")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Held
         );
         Ok(())
+    }
+
+    #[test]
+    fn training_window_closeout_status_maps_non_reward_terminal_cases() {
+        let accepted_summary = TrainingWindowValidationSummary {
+            sample_dispositions: HashMap::new(),
+            all_required_terminal: true,
+            aggregate_resolution: PylonTrainingAggregateResolution::Accept,
+            aggregate_terminal_disposition: Some(ComputeAdapterContributionDisposition::Accepted),
+            held_challenge_present: false,
+        };
+        assert_eq!(
+            training_window_closeout_status(
+                &accepted_summary,
+                &[ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold],
+                1,
+                0,
+                0,
+                0,
+            ),
+            TrainingWindowCloseoutStatus::NoReward
+        );
+
+        let quarantined_summary = TrainingWindowValidationSummary {
+            sample_dispositions: HashMap::new(),
+            all_required_terminal: true,
+            aggregate_resolution: PylonTrainingAggregateResolution::Terminal(
+                PylonTrainingContributionVerdict::Quarantined,
+            ),
+            aggregate_terminal_disposition: Some(
+                ComputeAdapterContributionDisposition::Quarantined,
+            ),
+            held_challenge_present: false,
+        };
+        assert_eq!(
+            training_window_closeout_status(&quarantined_summary, &[], 0, 1, 0, 0),
+            TrainingWindowCloseoutStatus::Quarantined
+        );
+
+        let refused_summary = TrainingWindowValidationSummary {
+            sample_dispositions: HashMap::new(),
+            all_required_terminal: true,
+            aggregate_resolution: PylonTrainingAggregateResolution::Terminal(
+                PylonTrainingContributionVerdict::Rejected,
+            ),
+            aggregate_terminal_disposition: Some(ComputeAdapterContributionDisposition::Rejected),
+            held_challenge_present: false,
+        };
+        assert_eq!(
+            training_window_closeout_status(&refused_summary, &[], 0, 0, 1, 0),
+            TrainingWindowCloseoutStatus::Refused
+        );
     }
 
     #[tokio::test]
