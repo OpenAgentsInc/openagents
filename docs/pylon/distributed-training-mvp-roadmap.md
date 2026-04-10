@@ -3149,6 +3149,19 @@ publish?" without raw relay-history searches.
 - Temporary relay outage does not lose publish intent.
 - Publication status is queryable locally.
 
+Implementation note:
+
+- `Pylon` now persists a retained TRN publication journal in training runtime
+  state, including publication fingerprints, attempt counts, pending-retry
+  state, last error, per-relay outcomes, and replay-ready templates.
+- `Nexus` now persists the same publication-record layer beside successful
+  publication pointers in kernel state so queued intent survives restart and
+  can be flushed when relays recover.
+- The publish reports and operator status surfaces now expose pointer counts,
+  publication-record counts, pending retry counts, per-entry retry state, and
+  per-relay outcomes so operators can answer "what did we publish?" and "what
+  is still queued?" without scraping relay history.
+
 #### 47. Add TRN serialization, validation, helper, and cross-process emission
 tests
 

@@ -17,16 +17,15 @@ use axum::{Json, Router};
 use bip39::{Language, Mnemonic};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
-    Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event,
-    load_identity_from_path, pylon_training_observed_labels_from_event,
-    pylon_training_reputation_projection,
+    Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event, load_identity_from_path,
     nip98::{
         HttpAuth, HttpMethod, create_http_auth_event, encode_authorization_header, hash_payload,
     },
+    pylon_training_observed_labels_from_event, pylon_training_reputation_projection,
 };
 use nostr_client::{
-    ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
-    RelayPool,
+    ConnectionState, PoolConfig, PublishConfirmation, RelayAuthIdentity, RelayConfig,
+    RelayConnection, RelayMessage, RelayPool,
 };
 use openagents_kernel_core::{
     authority::{
@@ -42,10 +41,10 @@ use openagents_kernel_core::{
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
-        PylonTrainingArtifactLayout, PylonTrainingObservabilityContext,
-        artifact_digest_from_bytes, artifact_digest_from_json,
-        can_emit_terminal_artifact_uploaded_receipt, derive_artifact_bundle_state,
-        parse_pylon_training_run_manifest_json, resolve_pylon_training_credentials,
+        PylonTrainingArtifactLayout, PylonTrainingObservabilityContext, artifact_digest_from_bytes,
+        artifact_digest_from_json, can_emit_terminal_artifact_uploaded_receipt,
+        derive_artifact_bundle_state, parse_pylon_training_run_manifest_json,
+        resolve_pylon_training_credentials,
     },
 };
 use openagents_provider_substrate::{
@@ -318,6 +317,8 @@ pub struct PylonTrainingRuntimeState {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub publication_pointers: BTreeMap<String, PylonTrainingPublicationPointer>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub publication_records: BTreeMap<String, PylonTrainingPublicationRecord>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub contribution_outcomes: BTreeMap<String, PylonTrainingContributionOutcomeCacheEntry>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub closeout_cache: BTreeMap<String, PylonTrainingCloseoutCacheEntry>,
@@ -336,6 +337,7 @@ impl Default for PylonTrainingRuntimeState {
             lease_cache: BTreeMap::new(),
             window_cache: BTreeMap::new(),
             publication_pointers: BTreeMap::new(),
+            publication_records: BTreeMap::new(),
             contribution_outcomes: BTreeMap::new(),
             closeout_cache: BTreeMap::new(),
             reputation_labels: BTreeMap::new(),
@@ -429,9 +431,57 @@ pub struct PylonTrainingWindowCacheEntry {
 pub struct PylonTrainingPublicationPointer {
     pub subject_kind: String,
     pub subject_id: String,
+    #[serde(default)]
+    pub event_kind: u16,
     pub event_id: String,
     pub a_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fingerprint: String,
+    #[serde(default)]
+    pub attempt_count: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_outcomes: Vec<PylonTrainingRelayPublicationOutcome>,
     pub published_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingPublicationRecord {
+    pub publication_key: String,
+    pub subject_kind: String,
+    pub subject_id: String,
+    pub event_kind: u16,
+    pub fingerprint: String,
+    pub relay_urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub a_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published_at_ms: Option<i64>,
+    pub last_attempt_at_ms: i64,
+    pub attempt_count: u32,
+    #[serde(default)]
+    pub pending_retry: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_outcomes: Vec<PylonTrainingRelayPublicationOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<PylonTrainingPublicationTemplate>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingPublicationTemplate {
+    pub event_kind: u16,
+    pub tags: Vec<Vec<String>>,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingRelayPublicationOutcome {
+    pub relay_url: String,
+    pub accepted: bool,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -795,6 +845,8 @@ pub struct TrainingOperatorStatusReport {
     contributor_supported: bool,
     manifest_count: usize,
     publication_pointer_count: usize,
+    publication_record_count: usize,
+    pending_publication_count: usize,
     contribution_outcome_count: usize,
     closeout_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -924,6 +976,16 @@ pub struct TrainingTrnPublicationEntry {
     event_id: String,
     a_ref: Option<String>,
     event_kind: u16,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    fingerprint: String,
+    #[serde(default)]
+    attempt_count: u32,
+    #[serde(default)]
+    pending_retry: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    relay_outcomes: Vec<PylonTrainingRelayPublicationOutcome>,
     status: String,
     network_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6784,6 +6846,11 @@ fn load_training_status_report_with_config(
         .map(|identity| identity.public_key_hex);
     let contributor_supported = detect_adapter_training_contributor(config).contributor_supported;
     let blocked_label_keys = training_runtime_blocked_label_keys(&state);
+    let pending_publication_count = state
+        .publication_records
+        .values()
+        .filter(|record| record.pending_retry)
+        .count();
     let active_runtime = state
         .active_runtime
         .as_ref()
@@ -6864,6 +6931,8 @@ fn load_training_status_report_with_config(
         contributor_supported,
         manifest_count: contexts.len(),
         publication_pointer_count: state.publication_pointers.len(),
+        publication_record_count: state.publication_records.len(),
+        pending_publication_count,
         contribution_outcome_count: state.contribution_outcomes.len(),
         closeout_count: state.closeout_cache.len(),
         last_authority_sync_at_ms: state.last_authority_sync_at_ms,
@@ -7109,6 +7178,23 @@ fn resolve_training_recent_issues(
     contexts: &[TrainingManifestInspectionContext],
 ) -> Result<Vec<TrainingOperatorIssueStatus>> {
     let mut issues = Vec::new();
+    for record in state
+        .publication_records
+        .values()
+        .filter(|record| record.pending_retry)
+    {
+        issues.push(TrainingOperatorIssueStatus {
+            kind: "trn_publish_retry".to_string(),
+            subject_id: record.publication_key.clone(),
+            reason: record
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "training TRN publication pending retry".to_string()),
+            observed_at_ms: record.last_attempt_at_ms,
+            owner: "pylon".to_string(),
+            retryable: true,
+        });
+    }
     for entry in state
         .reputation_labels
         .values()
@@ -7370,7 +7456,11 @@ async fn refresh_training_node_records_local(
         bail!("training refresh requires at least one retained run manifest");
     }
     let relay_urls = dedup_training_relay_urls(&contexts);
-    let pool = build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await?;
+    let (pool, pool_error) =
+        match build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await {
+            Ok(pool) => (Some(pool), None),
+            Err(error) => (None, Some(error.to_string())),
+        };
     let mut report = TrainingTrnPublicationReport {
         provider_pubkey: identity.public_key_hex.clone(),
         relay_urls,
@@ -7394,29 +7484,38 @@ async fn refresh_training_node_records_local(
             &state,
             network_contexts.as_slice(),
         )?;
-        let event = publish_training_signed_event(
-            &pool,
-            &identity,
-            template,
-            "training node record refresh",
-        )
-        .await?;
-        record_training_publication_pointer(
+        let publication_key = training_publication_pointer_key("node_record", network_id.as_str());
+        let outcome = publish_or_queue_training_trn(
             &mut state,
+            pool.as_ref(),
+            pool_error.as_deref(),
+            report.relay_urls.as_slice(),
+            &identity,
+            publication_key.as_str(),
             "node_record",
             network_id.as_str(),
-            &event,
+            template,
+            TRN_TRAINING_NODE_RECORD_KIND,
             Some(a_ref.clone()),
-        );
+            "training node record refresh",
+            "refreshed",
+            false,
+        )
+        .await?;
         report
             .node_records
             .push(build_training_trn_publication_entry(
                 "node_record",
                 network_id.as_str(),
-                "refreshed",
-                event.id,
-                Some(a_ref),
+                outcome.publication_state.as_str(),
+                outcome.event_id,
+                outcome.a_ref,
                 TRN_TRAINING_NODE_RECORD_KIND,
+                outcome.fingerprint,
+                outcome.attempt_count,
+                outcome.pending_retry,
+                outcome.last_error,
+                outcome.relay_outcomes,
                 status.as_str(),
                 network_id.as_str(),
                 None,
@@ -7460,7 +7559,11 @@ async fn publish_training_trn_state(
     }
 
     let relay_urls = dedup_training_relay_urls(&contexts);
-    let pool = build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await?;
+    let (pool, pool_error) =
+        match build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await {
+            Ok(pool) => (Some(pool), None),
+            Err(error) => (None, Some(error.to_string())),
+        };
     let artifact_client = PylonTrainingArtifactStoreClient::new(&config).await?;
     let mut report = TrainingTrnPublicationReport {
         provider_pubkey: identity.public_key_hex.clone(),
@@ -7482,16 +7585,48 @@ async fn publish_training_trn_state(
     }
     for (network_id, network_contexts) in contexts_by_network {
         let pointer_key = training_publication_pointer_key("node_record", network_id.as_str());
-        if let Some(pointer) = state.publication_pointers.get(pointer_key.as_str()) {
+        let (status, a_ref, template) = build_training_node_record_template(
+            &config,
+            &identity,
+            &state,
+            network_contexts.as_slice(),
+        )?;
+        let outcome = publish_or_queue_training_trn(
+            &mut state,
+            pool.as_ref(),
+            pool_error.as_deref(),
+            report.relay_urls.as_slice(),
+            &identity,
+            pointer_key.as_str(),
+            "node_record",
+            network_id.as_str(),
+            template,
+            TRN_TRAINING_NODE_RECORD_KIND,
+            Some(a_ref.clone()),
+            "training node record",
+            "published",
+            true,
+        )
+        .await?;
+        if outcome.publication_state == "existing" {
+            let pointer = state
+                .publication_pointers
+                .get(pointer_key.as_str())
+                .expect("existing training node record pointer");
             report
                 .node_records
                 .push(build_training_trn_publication_entry(
                     pointer.subject_kind.as_str(),
                     pointer.subject_id.as_str(),
-                    "existing",
+                    outcome.publication_state.as_str(),
                     pointer.event_id.clone(),
                     pointer.a_ref.clone(),
                     TRN_TRAINING_NODE_RECORD_KIND,
+                    outcome.fingerprint,
+                    outcome.attempt_count,
+                    outcome.pending_retry,
+                    outcome.last_error,
+                    outcome.relay_outcomes,
                     training_node_record_status(&state, network_contexts.as_slice()),
                     network_id.as_str(),
                     None,
@@ -7501,99 +7636,78 @@ async fn publish_training_trn_state(
                     None,
                     None,
                 ));
-            continue;
+        } else {
+            report
+                .node_records
+                .push(build_training_trn_publication_entry(
+                    "node_record",
+                    network_id.as_str(),
+                    outcome.publication_state.as_str(),
+                    outcome.event_id,
+                    outcome.a_ref,
+                    TRN_TRAINING_NODE_RECORD_KIND,
+                    outcome.fingerprint,
+                    outcome.attempt_count,
+                    outcome.pending_retry,
+                    outcome.last_error,
+                    outcome.relay_outcomes,
+                    status.as_str(),
+                    network_id.as_str(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ));
         }
-        let (status, a_ref, template) = build_training_node_record_template(
-            &config,
-            &identity,
-            &state,
-            network_contexts.as_slice(),
-        )?;
-        let event =
-            publish_training_signed_event(&pool, &identity, template, "training node record")
-                .await?;
-        record_training_publication_pointer(
-            &mut state,
-            "node_record",
-            network_id.as_str(),
-            &event,
-            Some(a_ref.clone()),
-        );
-        report
-            .node_records
-            .push(build_training_trn_publication_entry(
-                "node_record",
-                network_id.as_str(),
-                "published",
-                event.id,
-                Some(a_ref),
-                TRN_TRAINING_NODE_RECORD_KIND,
-                status.as_str(),
-                network_id.as_str(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ));
     }
 
     for context in &contexts {
         let pointer_key =
             training_publication_pointer_key("assignment_ack", context.manifest.lease_id.as_str());
-        if let Some(pointer) = state.publication_pointers.get(pointer_key.as_str()) {
-            report.receipts.push(build_training_trn_publication_entry(
-                pointer.subject_kind.as_str(),
-                pointer.subject_id.as_str(),
-                "existing",
-                pointer.event_id.clone(),
-                pointer.a_ref.clone(),
-                TRN_TRAINING_RECEIPT_KIND,
-                "assignment_accepted",
-                context.manifest.network_id.as_str(),
-                Some(context.manifest.window_id.as_str()),
-                Some(context.manifest.assignment_id.as_str()),
-                Some(training_expected_artifact_class_for_role(
-                    context.manifest.role,
-                )),
-                None,
-                None,
-                None,
-            ));
-        } else {
-            let template =
-                build_training_assignment_ack_template(&identity, context, relay_hint.as_str())?;
-            let event =
-                publish_training_signed_event(&pool, &identity, template, "assignment ack receipt")
-                    .await?;
-            let a_ref = training_window_coordinate(&context.manifest);
-            record_training_publication_pointer(
-                &mut state,
-                "assignment_ack",
-                context.manifest.lease_id.as_str(),
-                &event,
-                Some(a_ref.clone()),
-            );
-            report.receipts.push(build_training_trn_publication_entry(
-                "assignment_ack",
-                context.manifest.lease_id.as_str(),
-                "published",
-                event.id,
-                Some(a_ref),
-                TRN_TRAINING_RECEIPT_KIND,
-                "assignment_accepted",
-                context.manifest.network_id.as_str(),
-                Some(context.manifest.window_id.as_str()),
-                Some(context.manifest.assignment_id.as_str()),
-                Some(training_expected_artifact_class_for_role(
-                    context.manifest.role,
-                )),
-                None,
-                None,
-                None,
-            ));
-        }
+        let template =
+            build_training_assignment_ack_template(&identity, context, relay_hint.as_str())?;
+        let outcome = publish_or_queue_training_trn(
+            &mut state,
+            pool.as_ref(),
+            pool_error.as_deref(),
+            report.relay_urls.as_slice(),
+            &identity,
+            pointer_key.as_str(),
+            "assignment_ack",
+            context.manifest.lease_id.as_str(),
+            template,
+            TRN_TRAINING_RECEIPT_KIND,
+            Some(training_window_coordinate(&context.manifest)),
+            "assignment ack receipt",
+            "published",
+            true,
+        )
+        .await?;
+        report.receipts.push(build_training_trn_publication_entry(
+            "assignment_ack",
+            context.manifest.lease_id.as_str(),
+            outcome.publication_state.as_str(),
+            outcome.event_id,
+            outcome.a_ref,
+            TRN_TRAINING_RECEIPT_KIND,
+            outcome.fingerprint,
+            outcome.attempt_count,
+            outcome.pending_retry,
+            outcome.last_error,
+            outcome.relay_outcomes,
+            "assignment_accepted",
+            context.manifest.network_id.as_str(),
+            Some(context.manifest.window_id.as_str()),
+            Some(context.manifest.assignment_id.as_str()),
+            Some(training_expected_artifact_class_for_role(
+                context.manifest.role,
+            )),
+            None,
+            None,
+            None,
+        ));
 
         for bundle in inspect_manifest_local_artifacts(context)? {
             if bundle.state
@@ -7661,128 +7775,104 @@ async fn publish_training_trn_state(
                     format!("39520:{}:{}", identity.public_key_hex, artifact_id.as_str());
                 let locator_key =
                     training_publication_pointer_key("artifact_locator", artifact_id.as_str());
-                if let Some(pointer) = state.publication_pointers.get(locator_key.as_str()) {
-                    report
-                        .artifact_locators
-                        .push(build_training_trn_publication_entry(
-                            pointer.subject_kind.as_str(),
-                            pointer.subject_id.as_str(),
-                            "existing",
-                            pointer.event_id.clone(),
-                            pointer.a_ref.clone(),
-                            TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
-                            "staged",
-                            context.manifest.network_id.as_str(),
-                            Some(context.manifest.window_id.as_str()),
-                            Some(context.manifest.assignment_id.as_str()),
-                            Some(artifact_class.as_str()),
-                            Some(object.digest.as_str()),
-                            Some(object.object_uri.as_str()),
-                            Some(bundle.bundle_id.as_str()),
-                        ));
-                } else {
-                    let template = build_training_artifact_locator_template(
-                        context,
-                        bundle.bundle_id.as_str(),
-                        artifact_id.as_str(),
-                        artifact_class.as_str(),
-                        &object,
-                    )?;
-                    let event = publish_training_signed_event(
-                        &pool,
-                        &identity,
-                        template,
-                        "artifact locator",
-                    )
-                    .await?;
-                    record_training_publication_pointer(
-                        &mut state,
+                let template = build_training_artifact_locator_template(
+                    context,
+                    bundle.bundle_id.as_str(),
+                    artifact_id.as_str(),
+                    artifact_class.as_str(),
+                    &object,
+                )?;
+                let outcome = publish_or_queue_training_trn(
+                    &mut state,
+                    pool.as_ref(),
+                    pool_error.as_deref(),
+                    report.relay_urls.as_slice(),
+                    &identity,
+                    locator_key.as_str(),
+                    "artifact_locator",
+                    artifact_id.as_str(),
+                    template,
+                    TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                    Some(locator_a_ref.clone()),
+                    "artifact locator",
+                    "published",
+                    true,
+                )
+                .await?;
+                report
+                    .artifact_locators
+                    .push(build_training_trn_publication_entry(
                         "artifact_locator",
                         artifact_id.as_str(),
-                        &event,
-                        Some(locator_a_ref.clone()),
-                    );
-                    report
-                        .artifact_locators
-                        .push(build_training_trn_publication_entry(
-                            "artifact_locator",
-                            artifact_id.as_str(),
-                            "published",
-                            event.id,
-                            Some(locator_a_ref.clone()),
-                            TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
-                            "staged",
-                            context.manifest.network_id.as_str(),
-                            Some(context.manifest.window_id.as_str()),
-                            Some(context.manifest.assignment_id.as_str()),
-                            Some(artifact_class.as_str()),
-                            Some(object.digest.as_str()),
-                            Some(object.object_uri.as_str()),
-                            Some(bundle.bundle_id.as_str()),
-                        ));
-                }
+                        outcome.publication_state.as_str(),
+                        outcome.event_id,
+                        outcome.a_ref,
+                        TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                        outcome.fingerprint,
+                        outcome.attempt_count,
+                        outcome.pending_retry,
+                        outcome.last_error,
+                        outcome.relay_outcomes,
+                        "staged",
+                        context.manifest.network_id.as_str(),
+                        Some(context.manifest.window_id.as_str()),
+                        Some(context.manifest.assignment_id.as_str()),
+                        Some(artifact_class.as_str()),
+                        Some(object.digest.as_str()),
+                        Some(object.object_uri.as_str()),
+                        Some(bundle.bundle_id.as_str()),
+                    ));
 
                 let receipt_key =
                     training_publication_pointer_key("artifact_uploaded", artifact_id.as_str());
-                if let Some(pointer) = state.publication_pointers.get(receipt_key.as_str()) {
-                    report.receipts.push(build_training_trn_publication_entry(
-                        pointer.subject_kind.as_str(),
-                        pointer.subject_id.as_str(),
-                        "existing",
-                        pointer.event_id.clone(),
-                        pointer.a_ref.clone(),
-                        TRN_TRAINING_RECEIPT_KIND,
-                        "artifact_uploaded",
-                        context.manifest.network_id.as_str(),
-                        Some(context.manifest.window_id.as_str()),
-                        Some(context.manifest.assignment_id.as_str()),
-                        Some(artifact_class.as_str()),
-                        Some(object.digest.as_str()),
-                        Some(object.object_uri.as_str()),
-                        Some(bundle.bundle_id.as_str()),
-                    ));
-                } else {
-                    let template = build_training_artifact_uploaded_receipt_template(
-                        &identity,
-                        context,
-                        bundle.bundle_id.as_str(),
-                        artifact_id.as_str(),
-                        artifact_class.as_str(),
-                        locator_a_ref.as_str(),
-                        relay_hint.as_str(),
-                        &object,
-                    )?;
-                    let event = publish_training_signed_event(
-                        &pool,
-                        &identity,
-                        template,
-                        "artifact uploaded receipt",
-                    )
-                    .await?;
-                    record_training_publication_pointer(
-                        &mut state,
-                        "artifact_uploaded",
-                        artifact_id.as_str(),
-                        &event,
-                        Some(locator_a_ref.clone()),
-                    );
-                    report.receipts.push(build_training_trn_publication_entry(
-                        "artifact_uploaded",
-                        artifact_id.as_str(),
-                        "published",
-                        event.id,
-                        Some(locator_a_ref),
-                        TRN_TRAINING_RECEIPT_KIND,
-                        "artifact_uploaded",
-                        context.manifest.network_id.as_str(),
-                        Some(context.manifest.window_id.as_str()),
-                        Some(context.manifest.assignment_id.as_str()),
-                        Some(artifact_class.as_str()),
-                        Some(object.digest.as_str()),
-                        Some(object.object_uri.as_str()),
-                        Some(bundle.bundle_id.as_str()),
-                    ));
-                }
+                let template = build_training_artifact_uploaded_receipt_template(
+                    &identity,
+                    context,
+                    bundle.bundle_id.as_str(),
+                    artifact_id.as_str(),
+                    artifact_class.as_str(),
+                    locator_a_ref.as_str(),
+                    relay_hint.as_str(),
+                    &object,
+                )?;
+                let outcome = publish_or_queue_training_trn(
+                    &mut state,
+                    pool.as_ref(),
+                    pool_error.as_deref(),
+                    report.relay_urls.as_slice(),
+                    &identity,
+                    receipt_key.as_str(),
+                    "artifact_uploaded",
+                    artifact_id.as_str(),
+                    template,
+                    TRN_TRAINING_RECEIPT_KIND,
+                    Some(locator_a_ref.clone()),
+                    "artifact uploaded receipt",
+                    "published",
+                    true,
+                )
+                .await?;
+                report.receipts.push(build_training_trn_publication_entry(
+                    "artifact_uploaded",
+                    artifact_id.as_str(),
+                    outcome.publication_state.as_str(),
+                    outcome.event_id,
+                    outcome.a_ref,
+                    TRN_TRAINING_RECEIPT_KIND,
+                    outcome.fingerprint,
+                    outcome.attempt_count,
+                    outcome.pending_retry,
+                    outcome.last_error,
+                    outcome.relay_outcomes,
+                    "artifact_uploaded",
+                    context.manifest.network_id.as_str(),
+                    Some(context.manifest.window_id.as_str()),
+                    Some(context.manifest.assignment_id.as_str()),
+                    Some(artifact_class.as_str()),
+                    Some(object.digest.as_str()),
+                    Some(object.object_uri.as_str()),
+                    Some(bundle.bundle_id.as_str()),
+                ));
             }
         }
     }
@@ -8288,30 +8378,279 @@ async fn build_training_relay_pool(
     Ok(pool)
 }
 
-async fn publish_training_signed_event(
-    pool: &RelayPool,
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TrainingPublicationDispatchOutcome {
+    publication_state: String,
+    event_id: String,
+    a_ref: Option<String>,
+    fingerprint: String,
+    attempt_count: u32,
+    pending_retry: bool,
+    last_error: Option<String>,
+    relay_outcomes: Vec<PylonTrainingRelayPublicationOutcome>,
+}
+
+fn training_publication_template(template: &EventTemplate) -> PylonTrainingPublicationTemplate {
+    PylonTrainingPublicationTemplate {
+        event_kind: template.kind,
+        tags: template.tags.clone(),
+        content: template.content.clone(),
+    }
+}
+
+fn training_publication_template_to_event(
+    template: &PylonTrainingPublicationTemplate,
+) -> Result<EventTemplate> {
+    Ok(EventTemplate {
+        created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
+        kind: template.event_kind,
+        tags: template.tags.clone(),
+        content: template.content.clone(),
+    })
+}
+
+fn training_publication_fingerprint(template: &EventTemplate) -> Result<String> {
+    let content: Value = serde_json::from_str(template.content.as_str())
+        .context("failed to decode training TRN publication content")?;
+    Ok(artifact_digest_from_bytes(
+        serde_json::to_vec(&json!({
+            "kind": template.kind,
+            "tags": template.tags,
+            "content": content,
+        }))
+        .context("failed to encode training TRN publication fingerprint")?
+        .as_slice(),
+    ))
+}
+
+fn training_relay_outcomes(
+    confirmations: Vec<PublishConfirmation>,
+) -> Vec<PylonTrainingRelayPublicationOutcome> {
+    confirmations
+        .into_iter()
+        .map(|confirmation| PylonTrainingRelayPublicationOutcome {
+            relay_url: confirmation.relay_url,
+            accepted: confirmation.accepted,
+            message: confirmation.message,
+        })
+        .collect()
+}
+
+async fn attempt_training_signed_event(
+    pool: Option<&RelayPool>,
     identity: &NostrIdentity,
-    template: EventTemplate,
+    template: &PylonTrainingPublicationTemplate,
     label: &str,
-) -> Result<Event> {
-    let event = finalize_event(
-        &template,
-        &decode_private_key_hex(identity.private_key_hex.as_str())?,
-    )
-    .with_context(|| format!("failed to sign {label}"))?;
-    let confirmations = pool.publish(&event).await?;
-    if !confirmations
-        .iter()
-        .any(|confirmation| confirmation.accepted)
-    {
-        let detail = confirmations
+    unavailable_error: Option<&str>,
+) -> (
+    Option<Event>,
+    Vec<PylonTrainingRelayPublicationOutcome>,
+    Option<String>,
+) {
+    let Some(pool) = pool else {
+        return (
+            None,
+            Vec::new(),
+            Some(
+                unavailable_error
+                    .unwrap_or("training_trn_relays_unavailable")
+                    .to_string(),
+            ),
+        );
+    };
+    let template = match training_publication_template_to_event(template) {
+        Ok(template) => template,
+        Err(error) => return (None, Vec::new(), Some(error.to_string())),
+    };
+    let private_key = match decode_private_key_hex(identity.private_key_hex.as_str()) {
+        Ok(private_key) => private_key,
+        Err(error) => return (None, Vec::new(), Some(error.to_string())),
+    };
+    let event = match finalize_event(&template, &private_key) {
+        Ok(event) => event,
+        Err(error) => {
+            return (
+                None,
+                Vec::new(),
+                Some(format!("failed to sign {label}: {error}")),
+            );
+        }
+    };
+    let confirmations = match pool.publish(&event).await {
+        Ok(confirmations) => confirmations,
+        Err(error) => {
+            return (
+                None,
+                Vec::new(),
+                Some(format!("training_trn_publish_failed:{label}:{error}")),
+            );
+        }
+    };
+    let relay_outcomes = training_relay_outcomes(confirmations);
+    if relay_outcomes.iter().any(|outcome| outcome.accepted) {
+        (Some(event), relay_outcomes, None)
+    } else {
+        let detail = relay_outcomes
             .iter()
-            .map(|confirmation| format!("{}:{}", confirmation.relay_url, confirmation.message))
+            .map(|outcome| format!("{}:{}", outcome.relay_url, outcome.message))
             .collect::<Vec<_>>()
             .join("; ");
-        bail!("no relay accepted the {label}: {detail}");
+        (
+            None,
+            relay_outcomes,
+            Some(format!("no relay accepted the {label}: {detail}")),
+        )
     }
-    Ok(event)
+}
+
+fn training_publication_matches_fingerprint(
+    state: &PylonTrainingRuntimeState,
+    publication_key: &str,
+    fingerprint: &str,
+) -> bool {
+    state
+        .publication_records
+        .get(publication_key)
+        .map(|record| record.fingerprint == fingerprint && !record.pending_retry)
+        .or_else(|| {
+            state
+                .publication_pointers
+                .get(publication_key)
+                .map(|pointer| pointer.fingerprint == fingerprint)
+        })
+        .unwrap_or(false)
+}
+
+async fn publish_or_queue_training_trn(
+    state: &mut PylonTrainingRuntimeState,
+    pool: Option<&RelayPool>,
+    pool_error: Option<&str>,
+    relay_urls: &[String],
+    identity: &NostrIdentity,
+    publication_key: &str,
+    subject_kind: &str,
+    subject_id: &str,
+    template: EventTemplate,
+    event_kind: u16,
+    a_ref: Option<String>,
+    label: &str,
+    success_state: &str,
+    dedupe_existing: bool,
+) -> Result<TrainingPublicationDispatchOutcome> {
+    let fingerprint = training_publication_fingerprint(&template)?;
+    if dedupe_existing
+        && training_publication_matches_fingerprint(state, publication_key, fingerprint.as_str())
+    {
+        let pointer = state
+            .publication_pointers
+            .get(publication_key)
+            .cloned()
+            .ok_or_else(|| anyhow!("missing publication pointer for {publication_key}"))?;
+        let record = state.publication_records.get(publication_key);
+        return Ok(TrainingPublicationDispatchOutcome {
+            publication_state: "existing".to_string(),
+            event_id: pointer.event_id,
+            a_ref: pointer.a_ref,
+            fingerprint,
+            attempt_count: record
+                .map(|record| record.attempt_count)
+                .unwrap_or(pointer.attempt_count),
+            pending_retry: false,
+            last_error: record.and_then(|record| record.last_error.clone()),
+            relay_outcomes: record
+                .map(|record| record.relay_outcomes.clone())
+                .unwrap_or(pointer.relay_outcomes),
+        });
+    }
+
+    let persisted_template = training_publication_template(&template);
+    let record = state
+        .publication_records
+        .entry(publication_key.to_string())
+        .or_insert_with(|| PylonTrainingPublicationRecord {
+            publication_key: publication_key.to_string(),
+            subject_kind: subject_kind.to_string(),
+            subject_id: subject_id.to_string(),
+            event_kind,
+            fingerprint: fingerprint.clone(),
+            relay_urls: relay_urls.to_vec(),
+            a_ref: a_ref.clone(),
+            event_id: None,
+            published_at_ms: None,
+            last_attempt_at_ms: now_epoch_ms() as i64,
+            attempt_count: 0,
+            pending_retry: false,
+            last_error: None,
+            relay_outcomes: Vec::new(),
+            template: None,
+        });
+    if record.fingerprint != fingerprint {
+        record.fingerprint = fingerprint.clone();
+        record.event_id = None;
+        record.published_at_ms = None;
+        record.attempt_count = 0;
+        record.relay_outcomes.clear();
+        record.last_error = None;
+    }
+    record.subject_kind = subject_kind.to_string();
+    record.subject_id = subject_id.to_string();
+    record.event_kind = event_kind;
+    record.a_ref = a_ref.clone();
+    record.relay_urls = relay_urls.to_vec();
+    record.last_attempt_at_ms = now_epoch_ms() as i64;
+    record.attempt_count = record.attempt_count.saturating_add(1);
+    record.pending_retry = true;
+    record.template = Some(persisted_template.clone());
+
+    let attempt_count = record.attempt_count;
+    let (event, relay_outcomes, error) =
+        attempt_training_signed_event(pool, identity, &persisted_template, label, pool_error).await;
+    record.relay_outcomes = relay_outcomes.clone();
+    record.last_error = error.clone();
+
+    if let Some(event) = event {
+        let published_at_ms = now_epoch_ms() as i64;
+        record.event_id = Some(event.id.clone());
+        record.published_at_ms = Some(published_at_ms);
+        record.pending_retry = false;
+        record.last_error = None;
+        record.template = None;
+        state.publication_pointers.insert(
+            publication_key.to_string(),
+            PylonTrainingPublicationPointer {
+                subject_kind: subject_kind.to_string(),
+                subject_id: subject_id.to_string(),
+                event_kind,
+                event_id: event.id.clone(),
+                a_ref: a_ref.clone(),
+                fingerprint: fingerprint.clone(),
+                attempt_count,
+                relay_outcomes: relay_outcomes.clone(),
+                published_at_ms,
+            },
+        );
+        Ok(TrainingPublicationDispatchOutcome {
+            publication_state: success_state.to_string(),
+            event_id: event.id,
+            a_ref,
+            fingerprint,
+            attempt_count,
+            pending_retry: false,
+            last_error: None,
+            relay_outcomes,
+        })
+    } else {
+        Ok(TrainingPublicationDispatchOutcome {
+            publication_state: "queued_retry".to_string(),
+            event_id: String::new(),
+            a_ref,
+            fingerprint,
+            attempt_count,
+            pending_retry: true,
+            last_error: error,
+            relay_outcomes,
+        })
+    }
 }
 
 fn build_training_node_record_template(
@@ -8389,25 +8728,6 @@ fn training_publication_pointer_key(subject_kind: &str, subject_id: &str) -> Str
     format!("{subject_kind}::{subject_id}")
 }
 
-fn record_training_publication_pointer(
-    state: &mut PylonTrainingRuntimeState,
-    subject_kind: &str,
-    subject_id: &str,
-    event: &Event,
-    a_ref: Option<String>,
-) {
-    state.publication_pointers.insert(
-        training_publication_pointer_key(subject_kind, subject_id),
-        PylonTrainingPublicationPointer {
-            subject_kind: subject_kind.to_string(),
-            subject_id: subject_id.to_string(),
-            event_id: event.id.clone(),
-            a_ref,
-            published_at_ms: now_epoch_ms() as i64,
-        },
-    );
-}
-
 fn build_training_trn_publication_entry(
     subject_kind: &str,
     subject_id: &str,
@@ -8415,6 +8735,11 @@ fn build_training_trn_publication_entry(
     event_id: String,
     a_ref: Option<String>,
     event_kind: u16,
+    fingerprint: String,
+    attempt_count: u32,
+    pending_retry: bool,
+    last_error: Option<String>,
+    relay_outcomes: Vec<PylonTrainingRelayPublicationOutcome>,
     status: &str,
     network_id: &str,
     window_id: Option<&str>,
@@ -8431,6 +8756,11 @@ fn build_training_trn_publication_entry(
         event_id,
         a_ref,
         event_kind,
+        fingerprint,
+        attempt_count,
+        pending_retry,
+        last_error,
+        relay_outcomes,
         status: status.to_string(),
         network_id: network_id.to_string(),
         window_id: window_id.map(ToOwned::to_owned),
@@ -8891,6 +9221,8 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
         format!("contributor supported: {}", report.contributor_supported),
         format!("tracked manifests: {}", report.manifest_count),
         format!("tracked TRN events: {}", report.publication_pointer_count),
+        format!("tracked TRN records: {}", report.publication_record_count),
+        format!("pending TRN retries: {}", report.pending_publication_count),
         format!("tracked closeouts: {}", report.closeout_count),
     ];
     if let Some(provider_pubkey) = report.provider_pubkey.as_deref() {
@@ -9053,7 +9385,17 @@ fn render_training_trn_publication_report(report: &TrainingTrnPublicationReport)
         lines.push(format!("subject id: {}", entry.subject_id));
         lines.push(format!("publication state: {}", entry.publication_state));
         lines.push(format!("event kind: {}", entry.event_kind));
-        lines.push(format!("event id: {}", entry.event_id));
+        if !entry.event_id.trim().is_empty() {
+            lines.push(format!("event id: {}", entry.event_id));
+        }
+        if !entry.fingerprint.trim().is_empty() {
+            lines.push(format!("fingerprint: {}", entry.fingerprint));
+        }
+        lines.push(format!("attempt count: {}", entry.attempt_count));
+        lines.push(format!("pending retry: {}", entry.pending_retry));
+        if let Some(last_error) = entry.last_error.as_deref() {
+            lines.push(format!("last error: {last_error}"));
+        }
         lines.push(format!("status: {}", entry.status));
         lines.push(format!("network id: {}", entry.network_id));
         if let Some(window_id) = entry.window_id.as_deref() {
@@ -9076,6 +9418,26 @@ fn render_training_trn_publication_report(report: &TrainingTrnPublicationReport)
         }
         if let Some(a_ref) = entry.a_ref.as_deref() {
             lines.push(format!("a ref: {a_ref}"));
+        }
+        if !entry.relay_outcomes.is_empty() {
+            lines.push(format!(
+                "relay outcomes: {}",
+                entry
+                    .relay_outcomes
+                    .iter()
+                    .map(|outcome| format!(
+                        "{}:{}:{}",
+                        outcome.relay_url,
+                        if outcome.accepted {
+                            "accepted"
+                        } else {
+                            "rejected"
+                        },
+                        outcome.message
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
     }
     lines.join("\n")
@@ -14134,13 +14496,13 @@ mod tests {
         PylonTrainingSupervisorCommand, PylonTrainingSupervisorDesiredState,
         PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
         PylonTrainingWindowCacheEntry, PylonTrainingWindowProgressRequest,
-        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, TrainingArtifactsCommand,
-        TrainingCommand, TrainingOperatorStatusReport, TrainingTrnPublicationReport,
-        WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
-        add_configured_relay, apply_config_set, apply_control_command,
-        apply_training_reputation_gate_to_availability, build_pylon_training_admin_router,
-        build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
-        derive_adapter_training_contributor_availability, detect_availability,
+        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, TRN_TRAINING_NODE_RECORD_KIND,
+        TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand, TrainingCommand,
+        TrainingOperatorStatusReport, TrainingTrnPublicationReport, WalletAddressReport,
+        WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
+        apply_config_set, apply_control_command, apply_training_reputation_gate_to_availability,
+        build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
+        default_config, derive_adapter_training_contributor_availability, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
         drain_training_supervisor, ensure_identity, ensure_no_conflicting_training_assignment,
         garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
@@ -14224,7 +14586,9 @@ mod tests {
         })
     }
 
-    fn parse_published_trn_event(event: &Value) -> Result<nostr::Event, Box<dyn std::error::Error>> {
+    fn parse_published_trn_event(
+        event: &Value,
+    ) -> Result<nostr::Event, Box<dyn std::error::Error>> {
         Ok(serde_json::from_value(event.clone())?)
     }
 
@@ -15428,8 +15792,12 @@ mod tests {
             PylonTrainingPublicationPointer {
                 subject_kind: "assignment_ack".to_string(),
                 subject_id: "lease.node01.window0001".to_string(),
+                event_kind: TRN_TRAINING_RECEIPT_KIND,
                 event_id: "event-001".to_string(),
                 a_ref: Some("39511:coordinator:lease.node01.window0001".to_string()),
+                fingerprint: "sha256:assignment-ack".to_string(),
+                attempt_count: 1,
+                relay_outcomes: Vec::new(),
                 published_at_ms: 1_762_491_200_040,
             },
         );
@@ -16273,6 +16641,164 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn training_publish_queues_retry_state_when_relays_are_unavailable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<u8>>::new(),
+        ));
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let gcs_base_url = start_mock_http_server(move |method, path, body| {
+            let mut objects = stored_objects_for_server
+                .lock()
+                .expect("training publication object store");
+            match method.as_str() {
+                "PUT" => {
+                    objects.insert(path.clone(), body.into_bytes());
+                    (200, "application/json", json!({"ok": true}).to_string())
+                }
+                "GET" => match objects.get(path.as_str()) {
+                    Some(payload) => (
+                        200,
+                        "application/octet-stream",
+                        String::from_utf8(payload.clone()).expect("stored object utf8"),
+                    ),
+                    None => (
+                        404,
+                        "application/json",
+                        json!({"error":"missing"}).to_string(),
+                    ),
+                },
+                _ => (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed"}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.relay_auth_enabled = false;
+        save_config(config_path.as_path(), &config)?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        manifest.trn.relay_urls = vec!["ws://127.0.0.1:9".to_string()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.manifest_path = manifest_path.display().to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        state.active_runtime = Some(active_runtime);
+        save_training_runtime_state(&config, &state)?;
+
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, gcs_base_url),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+        ]);
+
+        let queued_report = publish_training_trn_state(config_path.as_path(), None).await?;
+        ensure(
+            queued_report
+                .node_records
+                .iter()
+                .chain(queued_report.receipts.iter())
+                .chain(queued_report.artifact_locators.iter())
+                .all(|entry| {
+                    entry.publication_state == "queued_retry"
+                        && entry.pending_retry
+                        && entry.event_id.is_empty()
+                }),
+            "relay outages should queue every training TRN publication instead of failing or pretending publish succeeded",
+        )?;
+
+        let queued_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            queued_state.publication_pointers.is_empty()
+                && queued_state.publication_records.len() == 14
+                && queued_state.publication_records.values().all(|record| {
+                    record.pending_retry && record.event_id.is_none() && record.template.is_some()
+                }),
+            "queued relay failures should persist publication intent locally with retry-ready records and no successful pointers",
+        )?;
+
+        let status_after_failure = load_training_status_report_local(config_path.as_path())?;
+        ensure(
+            status_after_failure.pending_publication_count == 14
+                && status_after_failure.publication_record_count == 14
+                && status_after_failure.recent_issues.iter().any(|issue| {
+                    issue.kind == "trn_publish_retry" && issue.owner == "pylon" && issue.retryable
+                }),
+            "operator status should surface pending relay retries from the persisted TRN publication journal",
+        )?;
+
+        let relay = TestPublishRelay::spawn();
+        manifest.trn.relay_urls = vec![relay.url.clone()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+
+        let recovered_report = publish_training_trn_state(config_path.as_path(), None).await?;
+        ensure(
+            recovered_report
+                .node_records
+                .iter()
+                .chain(recovered_report.receipts.iter())
+                .chain(recovered_report.artifact_locators.iter())
+                .all(|entry| {
+                    entry.publication_state == "published"
+                        && !entry.pending_retry
+                        && !entry.event_id.is_empty()
+                }),
+            "a later publish pass should flush queued training TRN records once a relay becomes reachable",
+        )?;
+
+        let recovered_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            recovered_state.publication_pointers.len() == 14
+                && recovered_state.publication_records.len() == 14
+                && recovered_state.publication_records.values().all(|record| {
+                    !record.pending_retry
+                        && record
+                            .event_id
+                            .as_deref()
+                            .is_some_and(|value| !value.is_empty())
+                        && record.template.is_none()
+                }),
+            "successful retry should retain a queryable publication journal while clearing the pending retry state",
+        )?;
+
+        let status_after_recovery = load_training_status_report_local(config_path.as_path())?;
+        ensure(
+            status_after_recovery.pending_publication_count == 0
+                && !status_after_recovery
+                    .recent_issues
+                    .iter()
+                    .any(|issue| issue.kind == "trn_publish_retry"),
+            "operator status should clear the retry issue after queued TRN publications are published successfully",
+        )?;
+
+        let published = relay.wait_for_event_count(14, Duration::from_secs(2));
+        ensure(
+            published.len() == 14,
+            "relay recovery should publish the entire queued training TRN batch once transport returns",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn training_admin_routes_serve_status_and_refresh_node_records()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
@@ -16805,8 +17331,12 @@ mod tests {
             PylonTrainingPublicationPointer {
                 subject_kind: "node_record".to_string(),
                 subject_id: "trainnet.alpha".to_string(),
+                event_kind: TRN_TRAINING_NODE_RECORD_KIND,
                 event_id: "event.node.alpha".to_string(),
                 a_ref: Some("39501:node:trainnet.alpha".to_string()),
+                fingerprint: "sha256:node-record".to_string(),
+                attempt_count: 1,
+                relay_outcomes: Vec::new(),
                 published_at_ms: 1_762_491_299_600,
             },
         );

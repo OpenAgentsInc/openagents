@@ -34,7 +34,7 @@ use bip39::{Language, Mnemonic};
 use nostr::{
     Event as NostrEvent, EventTemplate, NostrIdentity, finalize_event, load_identity_from_path,
 };
-use nostr_client::{PoolConfig, RelayAuthIdentity, RelayConfig, RelayPool};
+use nostr_client::{PoolConfig, PublishConfirmation, RelayAuthIdentity, RelayConfig, RelayPool};
 use openagents_kernel_core::authority::{
     AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
     BindCoverageRequest, BindCoverageResponse, CreateContractRequest, CreateContractResponse,
@@ -108,7 +108,8 @@ use crate::kernel::{
     RecordTrainingNodeHeartbeatResponse, RetryValidatorChallengeRequest,
     ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, SnapshotProjectionEvent,
     TrainingCoordinatorAck, TrainingNodeQuery, TrainingNodeRoleClaim,
-    TrainingTrnPublicationPointer,
+    TrainingTrnPublicationPointer, TrainingTrnPublicationRecord, TrainingTrnPublicationTemplate,
+    TrainingTrnRelayPublicationOutcome,
 };
 use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
@@ -1147,6 +1148,8 @@ struct TrainingTrnPublicationReport {
     coordinator_pubkey: String,
     relay_urls: Vec<String>,
     publication_pointer_count: usize,
+    publication_record_count: usize,
+    pending_publication_count: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     network_contracts: Vec<TrainingTrnPublicationEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1166,6 +1169,13 @@ struct TrainingTrnPublicationEntry {
     publication_state: String,
     event_kind: u16,
     event_id: String,
+    fingerprint: String,
+    attempt_count: u32,
+    pending_retry: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    relay_outcomes: Vec<TrainingTrnRelayPublicationOutcome>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     a_ref: Option<String>,
     status: String,
@@ -5532,35 +5542,118 @@ async fn build_training_trn_relay_pool(relay_urls: &[String]) -> Result<RelayPoo
     Ok(pool)
 }
 
-async fn publish_training_trn_signed_event(
-    pool: &RelayPool,
-    identity: &NostrIdentity,
-    template: EventTemplate,
-    label: &str,
-) -> Result<NostrEvent, String> {
-    let private_key = decode_training_trn_private_key_hex(identity.private_key_hex.as_str())?;
-    let event = finalize_event(&template, &private_key)
-        .map_err(|error| format!("training_trn_sign_failed:{label}:{error}"))?;
-    let confirmations = pool
-        .publish(&event)
-        .await
-        .map_err(|error| format!("training_trn_publish_failed:{label}:{error}"))?;
-    if !confirmations
-        .iter()
-        .any(|confirmation| confirmation.accepted)
-    {
-        let detail = confirmations
-            .iter()
-            .map(|confirmation| format!("{}:{}", confirmation.relay_url, confirmation.message))
-            .collect::<Vec<_>>()
-            .join(";");
-        return Err(format!("training_trn_publish_rejected:{label}:{detail}"));
-    }
-    Ok(event)
-}
-
 fn training_trn_template(event: &nostr::TrnEvent) -> Result<(EventTemplate, String), String> {
     training_trn_mapping::event_template_and_fingerprint(event)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TrainingTrnPublicationDispatchOutcome {
+    publication_state: String,
+    pointer: Option<TrainingTrnPublicationPointer>,
+    fingerprint: String,
+    attempt_count: u32,
+    pending_retry: bool,
+    last_error: Option<String>,
+    relay_outcomes: Vec<TrainingTrnRelayPublicationOutcome>,
+}
+
+fn training_trn_publication_template(template: &EventTemplate) -> TrainingTrnPublicationTemplate {
+    TrainingTrnPublicationTemplate {
+        event_kind: template.kind,
+        tags: template.tags.clone(),
+        content: template.content.clone(),
+    }
+}
+
+fn training_trn_publication_template_to_event(
+    template: &TrainingTrnPublicationTemplate,
+) -> Result<EventTemplate, String> {
+    Ok(EventTemplate {
+        created_at: nostr::nip01::unix_now_secs().map_err(|error| error.to_string())?,
+        kind: template.event_kind,
+        tags: template.tags.clone(),
+        content: template.content.clone(),
+    })
+}
+
+fn training_trn_relay_outcomes(
+    confirmations: Vec<PublishConfirmation>,
+) -> Vec<TrainingTrnRelayPublicationOutcome> {
+    confirmations
+        .into_iter()
+        .map(|confirmation| TrainingTrnRelayPublicationOutcome {
+            relay_url: confirmation.relay_url,
+            accepted: confirmation.accepted,
+            message: confirmation.message,
+        })
+        .collect()
+}
+
+async fn attempt_publish_training_trn_signed_event(
+    pool: Option<&RelayPool>,
+    identity: &NostrIdentity,
+    template: &TrainingTrnPublicationTemplate,
+    label: &str,
+    unavailable_error: Option<&str>,
+) -> (
+    Option<NostrEvent>,
+    Vec<TrainingTrnRelayPublicationOutcome>,
+    Option<String>,
+) {
+    let Some(pool) = pool else {
+        return (
+            None,
+            Vec::new(),
+            Some(
+                unavailable_error
+                    .unwrap_or("training_trn_relays_unavailable")
+                    .to_string(),
+            ),
+        );
+    };
+    let template = match training_trn_publication_template_to_event(template) {
+        Ok(template) => template,
+        Err(error) => return (None, Vec::new(), Some(error)),
+    };
+    let private_key = match decode_training_trn_private_key_hex(identity.private_key_hex.as_str()) {
+        Ok(private_key) => private_key,
+        Err(error) => return (None, Vec::new(), Some(error)),
+    };
+    let event = match finalize_event(&template, &private_key) {
+        Ok(event) => event,
+        Err(error) => {
+            return (
+                None,
+                Vec::new(),
+                Some(format!("training_trn_sign_failed:{label}:{error}")),
+            );
+        }
+    };
+    let confirmations = match pool.publish(&event).await {
+        Ok(confirmations) => confirmations,
+        Err(error) => {
+            return (
+                None,
+                Vec::new(),
+                Some(format!("training_trn_publish_failed:{label}:{error}")),
+            );
+        }
+    };
+    let relay_outcomes = training_trn_relay_outcomes(confirmations);
+    if relay_outcomes.iter().any(|outcome| outcome.accepted) {
+        (Some(event), relay_outcomes, None)
+    } else {
+        let detail = relay_outcomes
+            .iter()
+            .map(|outcome| format!("{}:{}", outcome.relay_url, outcome.message))
+            .collect::<Vec<_>>()
+            .join(";");
+        (
+            None,
+            relay_outcomes,
+            Some(format!("training_trn_publish_rejected:{label}:{detail}")),
+        )
+    }
 }
 
 fn training_trn_closeout_coordinate(coordinator_pubkey: &str, outcome_id: &str) -> String {
@@ -5690,11 +5783,31 @@ fn training_trn_challenge_bindings(
     Ok(bindings)
 }
 
-async fn publish_training_trn_pointer(
+fn training_trn_publication_matches_fingerprint(
+    publication_cache: &HashMap<String, TrainingTrnPublicationPointer>,
+    publication_record_cache: &HashMap<String, TrainingTrnPublicationRecord>,
+    publication_key: &str,
+    fingerprint: &str,
+) -> bool {
+    publication_record_cache
+        .get(publication_key)
+        .map(|record| record.fingerprint == fingerprint && !record.pending_retry)
+        .or_else(|| {
+            publication_cache
+                .get(publication_key)
+                .map(|pointer| pointer.fingerprint == fingerprint)
+        })
+        .unwrap_or(false)
+}
+
+async fn publish_or_queue_training_trn_pointer(
     state: &AppState,
-    pool: &RelayPool,
+    pool: Option<&RelayPool>,
+    pool_error: Option<&str>,
     identity: &NostrIdentity,
     publication_cache: &mut HashMap<String, TrainingTrnPublicationPointer>,
+    publication_record_cache: &mut HashMap<String, TrainingTrnPublicationRecord>,
+    relay_urls: &[String],
     publication_key: String,
     subject_kind: &str,
     subject_id: &str,
@@ -5702,26 +5815,113 @@ async fn publish_training_trn_pointer(
     a_ref: Option<String>,
     template: EventTemplate,
     fingerprint: String,
-) -> Result<(String, TrainingTrnPublicationPointer), ApiError> {
-    if let Some(existing) = publication_cache.get(publication_key.as_str())
-        && existing.fingerprint == fingerprint
-    {
-        return Ok(("existing".to_string(), existing.clone()));
+) -> Result<TrainingTrnPublicationDispatchOutcome, ApiError> {
+    if training_trn_publication_matches_fingerprint(
+        publication_cache,
+        publication_record_cache,
+        publication_key.as_str(),
+        fingerprint.as_str(),
+    ) {
+        let pointer = publication_cache
+            .get(publication_key.as_str())
+            .cloned()
+            .ok_or_else(|| {
+                kernel_api_error(format!(
+                    "training_trn_publication_pointer_missing:{}",
+                    publication_key
+                ))
+            })?;
+        let record = publication_record_cache.get(publication_key.as_str());
+        return Ok(TrainingTrnPublicationDispatchOutcome {
+            publication_state: "existing".to_string(),
+            pointer: Some(pointer.clone()),
+            fingerprint,
+            attempt_count: record
+                .map(|record| record.attempt_count)
+                .unwrap_or_default(),
+            pending_retry: false,
+            last_error: record.and_then(|record| record.last_error.clone()),
+            relay_outcomes: record
+                .map(|record| record.relay_outcomes.clone())
+                .unwrap_or_default(),
+        });
     }
-    let event =
-        publish_training_trn_signed_event(pool, identity, template, publication_key.as_str())
-            .await
-            .map_err(kernel_api_error)?;
-    let pointer = TrainingTrnPublicationPointer {
-        publication_key: publication_key.clone(),
-        subject_kind: subject_kind.to_string(),
-        subject_id: subject_id.to_string(),
-        event_kind: u32::from(event_kind),
-        event_id: event.id,
-        a_ref,
-        published_at_ms: (event.created_at as i64) * 1_000,
-        fingerprint,
+    let persisted_template = training_trn_publication_template(&template);
+    let now_ms = now_unix_ms() as i64;
+    let mut record = publication_record_cache
+        .entry(publication_key.clone())
+        .or_insert_with(|| TrainingTrnPublicationRecord {
+            publication_key: publication_key.clone(),
+            subject_kind: subject_kind.to_string(),
+            subject_id: subject_id.to_string(),
+            event_kind: u32::from(event_kind),
+            fingerprint: fingerprint.clone(),
+            relay_urls: relay_urls.to_vec(),
+            a_ref: a_ref.clone(),
+            event_id: None,
+            published_at_ms: None,
+            last_attempt_at_ms: now_ms,
+            attempt_count: 0,
+            pending_retry: false,
+            last_error: None,
+            relay_outcomes: Vec::new(),
+            template: None,
+        })
+        .clone();
+    if record.fingerprint != fingerprint {
+        record.fingerprint = fingerprint.clone();
+        record.event_id = None;
+        record.published_at_ms = None;
+        record.attempt_count = 0;
+        record.pending_retry = false;
+        record.last_error = None;
+        record.relay_outcomes.clear();
+    }
+    record.subject_kind = subject_kind.to_string();
+    record.subject_id = subject_id.to_string();
+    record.event_kind = u32::from(event_kind);
+    record.relay_urls = relay_urls.to_vec();
+    record.a_ref = a_ref.clone();
+    record.last_attempt_at_ms = now_ms;
+    record.attempt_count = record.attempt_count.saturating_add(1);
+    record.pending_retry = true;
+    record.template = Some(persisted_template.clone());
+
+    let attempt_count = record.attempt_count;
+    let (event, relay_outcomes, error) = attempt_publish_training_trn_signed_event(
+        pool,
+        identity,
+        &persisted_template,
+        publication_key.as_str(),
+        pool_error,
+    )
+    .await;
+    record.relay_outcomes = relay_outcomes.clone();
+    record.last_error = error.clone();
+
+    let pointer = if let Some(event) = event {
+        let published_at_ms = (event.created_at as i64) * 1_000;
+        let pointer = TrainingTrnPublicationPointer {
+            publication_key: publication_key.clone(),
+            subject_kind: subject_kind.to_string(),
+            subject_id: subject_id.to_string(),
+            event_kind: u32::from(event_kind),
+            event_id: event.id,
+            a_ref: a_ref.clone(),
+            published_at_ms,
+            fingerprint: fingerprint.clone(),
+        };
+        record.event_id = Some(pointer.event_id.clone());
+        record.published_at_ms = Some(published_at_ms);
+        record.pending_retry = false;
+        record.last_error = None;
+        record.template = None;
+        publication_cache.insert(publication_key.clone(), pointer.clone());
+        Some(pointer)
+    } else {
+        None
     };
+    publication_record_cache.insert(publication_key.clone(), record.clone());
     let mut store = state.store.write().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -5729,10 +5929,66 @@ async fn publish_training_trn_pointer(
     })?;
     store
         .kernel
-        .upsert_training_trn_publication(pointer.clone())
+        .upsert_training_trn_publication_state(pointer.clone(), record)
         .map_err(kernel_api_error)?;
-    publication_cache.insert(publication_key, pointer.clone());
-    Ok(("published".to_string(), pointer))
+    Ok(TrainingTrnPublicationDispatchOutcome {
+        publication_state: if pointer.is_some() {
+            "published".to_string()
+        } else {
+            "queued_retry".to_string()
+        },
+        pointer,
+        fingerprint,
+        attempt_count,
+        pending_retry: error.is_some(),
+        last_error: error,
+        relay_outcomes,
+    })
+}
+
+fn build_training_trn_report_entry(
+    subject_kind: &str,
+    subject_id: String,
+    event_kind: u16,
+    status: String,
+    kernel_object_id: String,
+    kernel_receipt_ids: Vec<String>,
+    network_id: String,
+    training_run_id: Option<String>,
+    window_id: Option<String>,
+    challenge_id: Option<String>,
+    artifact_class: Option<String>,
+    object_digest: Option<String>,
+    object_ref: Option<String>,
+    outcome: TrainingTrnPublicationDispatchOutcome,
+) -> TrainingTrnPublicationEntry {
+    let (event_id, a_ref) = outcome
+        .pointer
+        .map(|pointer| (pointer.event_id, pointer.a_ref))
+        .unwrap_or_else(|| (String::new(), None));
+    TrainingTrnPublicationEntry {
+        subject_kind: subject_kind.to_string(),
+        subject_id,
+        publication_state: outcome.publication_state,
+        event_kind,
+        event_id,
+        fingerprint: outcome.fingerprint,
+        attempt_count: outcome.attempt_count,
+        pending_retry: outcome.pending_retry,
+        last_error: outcome.last_error,
+        relay_outcomes: outcome.relay_outcomes,
+        a_ref,
+        status,
+        kernel_object_id,
+        kernel_receipt_ids,
+        network_id,
+        training_run_id,
+        window_id,
+        challenge_id,
+        artifact_class,
+        object_digest,
+        object_ref,
+    }
 }
 
 async fn publish_training_trn_state(
@@ -5751,6 +6007,7 @@ async fn publish_training_trn_state(
         validator_snapshots,
         validator_receipt_ids,
         mut publication_cache,
+        mut publication_record_cache,
     ) = {
         let store = state.store.read().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -5803,6 +6060,12 @@ async fn publish_training_trn_state(
                 .into_iter()
                 .map(|pointer| (pointer.publication_key.clone(), pointer))
                 .collect::<HashMap<_, _>>(),
+            store
+                .kernel
+                .list_training_trn_publication_records()
+                .into_iter()
+                .map(|record| (record.publication_key.clone(), record))
+                .collect::<HashMap<_, _>>(),
         )
     };
     let network_sources =
@@ -5822,14 +6085,17 @@ async fn publish_training_trn_state(
         .iter()
         .map(|source| (source.window.window_id.clone(), source.receipt_id.clone()))
         .collect::<HashMap<_, _>>();
-    let pool = build_training_trn_relay_pool(relay_urls.as_slice())
-        .await
-        .map_err(kernel_api_error)?;
+    let (pool, pool_error) = match build_training_trn_relay_pool(relay_urls.as_slice()).await {
+        Ok(pool) => (Some(pool), None),
+        Err(error) => (None, Some(error)),
+    };
 
     let mut report = TrainingTrnPublicationReport {
         coordinator_pubkey: identity.public_key_hex.clone(),
         relay_urls: relay_urls.clone(),
         publication_pointer_count: 0,
+        publication_record_count: 0,
+        pending_publication_count: 0,
         network_contracts: Vec::new(),
         windows: Vec::new(),
         receipts: Vec::new(),
@@ -5838,7 +6104,8 @@ async fn publish_training_trn_state(
     };
 
     for source in network_sources {
-        let event = training_trn_mapping::network_contract_event(&source).map_err(kernel_api_error)?;
+        let event =
+            training_trn_mapping::network_contract_event(&source).map_err(kernel_api_error)?;
         let status = event.status.clone();
         let a_ref = event
             .coordinate(identity.public_key_hex.as_str())
@@ -5846,11 +6113,14 @@ async fn publish_training_trn_state(
         let (template, fingerprint) =
             training_trn_template(&nostr::TrnEvent::NetworkContract(event))
                 .map_err(kernel_api_error)?;
-        let (publication_state, pointer) = publish_training_trn_pointer(
+        let outcome = publish_or_queue_training_trn_pointer(
             &state,
-            &pool,
+            pool.as_ref(),
+            pool_error.as_deref(),
             &identity,
             &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
             format!("network_contract::{}", source.network_id),
             "network_contract",
             source.network_id.as_str(),
@@ -5860,24 +6130,24 @@ async fn publish_training_trn_state(
             fingerprint,
         )
         .await?;
-        report.network_contracts.push(TrainingTrnPublicationEntry {
-            subject_kind: "network_contract".to_string(),
-            subject_id: source.network_id.clone(),
-            publication_state,
-            event_kind: TRN_TRAINING_NETWORK_CONTRACT_KIND,
-            event_id: pointer.event_id,
-            a_ref: Some(a_ref),
-            status,
-            kernel_object_id: source.network_id.clone(),
-            kernel_receipt_ids: source.kernel_receipt_ids,
-            network_id: source.network_id,
-            training_run_id: None,
-            window_id: None,
-            challenge_id: None,
-            artifact_class: None,
-            object_digest: None,
-            object_ref: None,
-        });
+        report
+            .network_contracts
+            .push(build_training_trn_report_entry(
+                "network_contract",
+                source.network_id.clone(),
+                TRN_TRAINING_NETWORK_CONTRACT_KIND,
+                status,
+                source.network_id.clone(),
+                source.kernel_receipt_ids,
+                source.network_id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                outcome,
+            ));
     }
 
     for source in &window_sources {
@@ -5889,13 +6159,16 @@ async fn publish_training_trn_state(
         let a_ref = event
             .coordinate(identity.public_key_hex.as_str())
             .map_err(|error| kernel_api_error(error.to_string()))?;
-        let (template, fingerprint) = training_trn_template(&nostr::TrnEvent::Window(event))
-            .map_err(kernel_api_error)?;
-        let (publication_state, pointer) = publish_training_trn_pointer(
+        let (template, fingerprint) =
+            training_trn_template(&nostr::TrnEvent::Window(event)).map_err(kernel_api_error)?;
+        let outcome = publish_or_queue_training_trn_pointer(
             &state,
-            &pool,
+            pool.as_ref(),
+            pool_error.as_deref(),
             &identity,
             &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
             format!("window::{}", source.window.window_id),
             "window",
             source.window.window_id.as_str(),
@@ -5905,24 +6178,22 @@ async fn publish_training_trn_state(
             fingerprint,
         )
         .await?;
-        report.windows.push(TrainingTrnPublicationEntry {
-            subject_kind: "window".to_string(),
-            subject_id: source.window.window_id.clone(),
-            publication_state,
-            event_kind: TRN_TRAINING_WINDOW_KIND,
-            event_id: pointer.event_id,
-            a_ref: Some(a_ref),
+        report.windows.push(build_training_trn_report_entry(
+            "window",
+            source.window.window_id.clone(),
+            TRN_TRAINING_WINDOW_KIND,
             status,
-            kernel_object_id: source.window.window_id.clone(),
-            kernel_receipt_ids: vec![source.receipt_id.clone()],
-            network_id: metadata.network_id.clone(),
-            training_run_id: Some(source.window.training_run_id.clone()),
-            window_id: Some(source.window.window_id.clone()),
-            challenge_id: None,
-            artifact_class: None,
-            object_digest: None,
-            object_ref: None,
-        });
+            source.window.window_id.clone(),
+            vec![source.receipt_id.clone()],
+            metadata.network_id.clone(),
+            Some(source.window.training_run_id.clone()),
+            Some(source.window.window_id.clone()),
+            None,
+            None,
+            None,
+            None,
+            outcome,
+        ));
 
         let receipt_event =
             training_trn_mapping::window_receipt_event(source).map_err(kernel_api_error)?;
@@ -5930,11 +6201,14 @@ async fn publish_training_trn_state(
         let (receipt_template, receipt_fingerprint) =
             training_trn_template(&nostr::TrnEvent::Receipt(receipt_event))
                 .map_err(kernel_api_error)?;
-        let (publication_state, pointer) = publish_training_trn_pointer(
+        let outcome = publish_or_queue_training_trn_pointer(
             &state,
-            &pool,
+            pool.as_ref(),
+            pool_error.as_deref(),
             &identity,
             &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
             format!(
                 "receipt::window::{}::{}",
                 source.window.window_id, receipt_status
@@ -5947,24 +6221,22 @@ async fn publish_training_trn_state(
             receipt_fingerprint,
         )
         .await?;
-        report.receipts.push(TrainingTrnPublicationEntry {
-            subject_kind: "receipt".to_string(),
-            subject_id: format!("{}:{}", source.window.window_id, receipt_status),
-            publication_state,
-            event_kind: TRN_TRAINING_RECEIPT_KIND,
-            event_id: pointer.event_id,
-            a_ref: None,
-            status: receipt_status,
-            kernel_object_id: source.window.window_id.clone(),
-            kernel_receipt_ids: vec![source.receipt_id.clone()],
-            network_id: metadata.network_id,
-            training_run_id: Some(source.window.training_run_id.clone()),
-            window_id: Some(source.window.window_id.clone()),
-            challenge_id: None,
-            artifact_class: None,
-            object_digest: None,
-            object_ref: None,
-        });
+        report.receipts.push(build_training_trn_report_entry(
+            "receipt",
+            format!("{}:{}", source.window.window_id, receipt_status),
+            TRN_TRAINING_RECEIPT_KIND,
+            receipt_status,
+            source.window.window_id.clone(),
+            vec![source.receipt_id.clone()],
+            metadata.network_id,
+            Some(source.window.training_run_id.clone()),
+            Some(source.window.window_id.clone()),
+            None,
+            None,
+            None,
+            None,
+            outcome,
+        ));
     }
 
     for contribution in replay_required_contributions {
@@ -5988,13 +6260,15 @@ async fn publish_training_trn_state(
             window_receipt_id.as_str(),
         );
         let (template, fingerprint) =
-            training_trn_template(&nostr::TrnEvent::Receipt(event))
-                .map_err(kernel_api_error)?;
-        let (publication_state, pointer) = publish_training_trn_pointer(
+            training_trn_template(&nostr::TrnEvent::Receipt(event)).map_err(kernel_api_error)?;
+        let outcome = publish_or_queue_training_trn_pointer(
             &state,
-            &pool,
+            pool.as_ref(),
+            pool_error.as_deref(),
             &identity,
             &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
             format!(
                 "receipt::replay_requested::{}",
                 contribution.contribution_id
@@ -6007,24 +6281,22 @@ async fn publish_training_trn_state(
             fingerprint,
         )
         .await?;
-        report.receipts.push(TrainingTrnPublicationEntry {
-            subject_kind: "receipt".to_string(),
-            subject_id: contribution.contribution_id.clone(),
-            publication_state,
-            event_kind: TRN_TRAINING_RECEIPT_KIND,
-            event_id: pointer.event_id,
-            a_ref: None,
-            status: "replay_requested".to_string(),
-            kernel_object_id: contribution.contribution_id.clone(),
-            kernel_receipt_ids: vec![window_receipt_id],
-            network_id: metadata.network_id,
-            training_run_id: Some(contribution.training_run_id.clone()),
-            window_id: Some(contribution.window_id.clone()),
-            challenge_id: None,
-            artifact_class: None,
-            object_digest: Some(contribution.object_digest.clone()),
-            object_ref: None,
-        });
+        report.receipts.push(build_training_trn_report_entry(
+            "receipt",
+            contribution.contribution_id.clone(),
+            TRN_TRAINING_RECEIPT_KIND,
+            "replay_requested".to_string(),
+            contribution.contribution_id.clone(),
+            vec![window_receipt_id],
+            metadata.network_id,
+            Some(contribution.training_run_id.clone()),
+            Some(contribution.window_id.clone()),
+            None,
+            None,
+            Some(contribution.object_digest.clone()),
+            None,
+            outcome,
+        ));
     }
 
     for source in closeout_sources {
@@ -6036,13 +6308,16 @@ async fn publish_training_trn_state(
             identity.public_key_hex.as_str(),
             source.outcome.outcome_id.as_str(),
         );
-        let (template, fingerprint) = training_trn_template(&nostr::TrnEvent::Closeout(event))
-            .map_err(kernel_api_error)?;
-        let (publication_state, pointer) = publish_training_trn_pointer(
+        let (template, fingerprint) =
+            training_trn_template(&nostr::TrnEvent::Closeout(event)).map_err(kernel_api_error)?;
+        let outcome = publish_or_queue_training_trn_pointer(
             &state,
-            &pool,
+            pool.as_ref(),
+            pool_error.as_deref(),
             &identity,
             &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
             format!("closeout::{}", source.outcome.outcome_id),
             "closeout",
             source.outcome.outcome_id.as_str(),
@@ -6052,24 +6327,22 @@ async fn publish_training_trn_state(
             fingerprint,
         )
         .await?;
-        report.closeouts.push(TrainingTrnPublicationEntry {
-            subject_kind: "closeout".to_string(),
-            subject_id: source.outcome.outcome_id.clone(),
-            publication_state,
-            event_kind: TRN_TRAINING_CLOSEOUT_KIND,
-            event_id: pointer.event_id,
-            a_ref: Some(a_ref),
-            status: closeout_status,
-            kernel_object_id: source.outcome.outcome_id.clone(),
-            kernel_receipt_ids: vec![source.receipt_id.clone()],
+        report.closeouts.push(build_training_trn_report_entry(
+            "closeout",
+            source.outcome.outcome_id.clone(),
+            TRN_TRAINING_CLOSEOUT_KIND,
+            closeout_status,
+            source.outcome.outcome_id.clone(),
+            vec![source.receipt_id.clone()],
             network_id,
-            training_run_id: Some(source.outcome.source_run_id.clone()),
-            window_id: Some(window_id),
-            challenge_id: None,
-            artifact_class: None,
-            object_digest: None,
-            object_ref: None,
-        });
+            Some(source.outcome.source_run_id.clone()),
+            Some(window_id),
+            None,
+            None,
+            None,
+            None,
+            outcome,
+        ));
     }
 
     for snapshot in validator_snapshots {
@@ -6096,11 +6369,14 @@ async fn publish_training_trn_state(
         let (template, fingerprint) =
             training_trn_template(&nostr::TrnEvent::ArtifactLocator(event))
                 .map_err(kernel_api_error)?;
-        let (publication_state, pointer) = publish_training_trn_pointer(
+        let outcome = publish_or_queue_training_trn_pointer(
             &state,
-            &pool,
+            pool.as_ref(),
+            pool_error.as_deref(),
             &identity,
             &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
             format!("score_locator::{}", challenge_id),
             "score_locator",
             challenge_id.as_str(),
@@ -6110,27 +6386,30 @@ async fn publish_training_trn_state(
             fingerprint,
         )
         .await?;
-        report.score_locators.push(TrainingTrnPublicationEntry {
-            subject_kind: "score_locator".to_string(),
-            subject_id: challenge_id.clone(),
-            publication_state,
-            event_kind: TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
-            event_id: pointer.event_id,
-            a_ref: Some(a_ref),
-            status: challenge_status.label().to_string(),
-            kernel_object_id: challenge_id.clone(),
-            kernel_receipt_ids: vec![receipt_id],
-            network_id: binding.network_id.clone(),
-            training_run_id: Some(binding.training_run_id.clone()),
-            window_id: Some(binding.window_id.clone()),
-            challenge_id: Some(challenge_id),
-            artifact_class: Some("score".to_string()),
-            object_digest: Some(result.result_digest.clone()),
-            object_ref: Some(result.challenge_result_ref.clone()),
-        });
+        report.score_locators.push(build_training_trn_report_entry(
+            "score_locator",
+            challenge_id.clone(),
+            TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+            challenge_status.label().to_string(),
+            challenge_id.clone(),
+            vec![receipt_id],
+            binding.network_id.clone(),
+            Some(binding.training_run_id.clone()),
+            Some(binding.window_id.clone()),
+            Some(challenge_id),
+            Some("score".to_string()),
+            Some(result.result_digest.clone()),
+            Some(result.challenge_result_ref.clone()),
+            outcome,
+        ));
     }
 
     report.publication_pointer_count = publication_cache.len();
+    report.publication_record_count = publication_record_cache.len();
+    report.pending_publication_count = publication_record_cache
+        .values()
+        .filter(|record| record.pending_retry)
+        .count();
     Ok(Json(report))
 }
 
@@ -20559,6 +20838,242 @@ mod tests {
         );
         assert!(second_report.closeouts.is_empty());
         assert!(second_report.score_locators.is_empty());
+        assert!(collect_training_trn_events(&mut event_rx).await.is_empty());
+
+        relay_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn publish_training_trn_state_queues_retry_state_across_restarts_until_relays_recover()
+    -> Result<()> {
+        let temp_dir = tempdir()?;
+        let kernel_state_path = temp_dir.path().join("training-kernel-state.json");
+        let mut config = test_config()?;
+        config.kernel_state_path = Some(kernel_state_path.clone());
+        config.training_trn_identity_path = temp_dir.path().join("training-trn-identity.mnemonic");
+
+        let state = build_app_state(config.clone());
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms().saturating_sub(30_000);
+        let training_run_id = "run.retry.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request(
+                "validator-alpha",
+                "sha256:validator-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-alpha", "sha256:validator-alpha");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_request = training_run_lease_request(
+            "idemp.training.lease.retry.alpha",
+            created_at_ms as i64 + 1_000,
+            "node-alpha",
+            training_run_id,
+            "trainnet.alpha",
+        );
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&lease_request)?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.retry.alpha",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://0001",
+                                "sha256:slice-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.retry.alpha",
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.retry.alpha".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.retry.alpha",
+                                lease.assignment_id.as_str(),
+                                "sha256:validator-pending-retry-alpha",
+                                None,
+                            )],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let failed_report =
+            publish_training_trn(&app, vec!["ws://127.0.0.1:9".to_string()]).await?;
+        assert_eq!(failed_report.publication_pointer_count, 0);
+        assert_eq!(failed_report.publication_record_count, 4);
+        assert_eq!(failed_report.pending_publication_count, 4);
+        assert!(
+            failed_report
+                .network_contracts
+                .iter()
+                .chain(failed_report.windows.iter())
+                .chain(failed_report.receipts.iter())
+                .all(|entry| {
+                    entry.publication_state == "queued_retry"
+                        && entry.pending_retry
+                        && entry.event_id.is_empty()
+                        && entry.last_error.is_some()
+                })
+        );
+
+        {
+            let store = state.store.read().expect("read store");
+            assert!(store.kernel.list_training_trn_publications().is_empty());
+            let records = store.kernel.list_training_trn_publication_records();
+            assert_eq!(records.len(), 4);
+            assert!(records.iter().all(|record| {
+                record.pending_retry
+                    && record.event_id.is_none()
+                    && record.template.is_some()
+                    && !record.last_error.clone().unwrap_or_default().is_empty()
+            }));
+        }
+
+        drop(app);
+        drop(state);
+
+        let reloaded_state = build_app_state(config.clone());
+        {
+            let store = reloaded_state.store.read().expect("read store");
+            let records = store.kernel.list_training_trn_publication_records();
+            assert_eq!(records.len(), 4);
+            assert!(records.iter().all(|record| record.pending_retry));
+        }
+
+        let reloaded_app = build_api_router_with_state(reloaded_state.clone());
+        let (relay_url, mut event_rx, relay_handle) = spawn_training_trn_capture_relay().await?;
+
+        let recovered_report = publish_training_trn(&reloaded_app, vec![relay_url.clone()]).await?;
+        assert_eq!(recovered_report.publication_pointer_count, 4);
+        assert_eq!(recovered_report.publication_record_count, 4);
+        assert_eq!(recovered_report.pending_publication_count, 0);
+        assert!(
+            recovered_report
+                .network_contracts
+                .iter()
+                .chain(recovered_report.windows.iter())
+                .chain(recovered_report.receipts.iter())
+                .all(|entry| {
+                    entry.publication_state == "published"
+                        && !entry.pending_retry
+                        && !entry.event_id.is_empty()
+                })
+        );
+
+        let recovered_events = collect_training_trn_events(&mut event_rx).await;
+        assert_eq!(recovered_events.len(), 4);
+
+        {
+            let store = reloaded_state.store.read().expect("read store");
+            assert_eq!(store.kernel.list_training_trn_publications().len(), 4);
+            let records = store.kernel.list_training_trn_publication_records();
+            assert_eq!(records.len(), 4);
+            assert!(records.iter().all(|record| {
+                !record.pending_retry
+                    && record
+                        .event_id
+                        .as_deref()
+                        .is_some_and(|value| !value.is_empty())
+                    && record.template.is_none()
+            }));
+        }
+
+        let deduped_report = publish_training_trn(&reloaded_app, vec![relay_url]).await?;
+        assert!(
+            deduped_report
+                .network_contracts
+                .iter()
+                .chain(deduped_report.windows.iter())
+                .chain(deduped_report.receipts.iter())
+                .all(|entry| entry.publication_state == "existing" && !entry.pending_retry)
+        );
         assert!(collect_training_trn_events(&mut event_rx).await.is_empty());
 
         relay_handle.abort();
