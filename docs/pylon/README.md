@@ -162,6 +162,20 @@ Current planned-but-not-live surfaces:
 - broad wallet-shell UX
 - sandbox execution as a generally released family
 
+Training remains a planned surface rather than a launched product family, but
+`pylon status --json` now projects a bounded `adapter_training_contributor`
+capability envelope when the machine can actually prove the local prerequisites:
+
+- a sibling `Psionic` checkout with the machine `psionic-train` surface present
+- NVIDIA CUDA telemetry visible to the node
+- one admitted H100-class CUDA worker posture
+- local disk and non-loopback network posture suitable for checkpoint and
+  coordinator participation
+
+That projection is intentionally narrow. `Pylon` does not yet launch or
+supervise `psionic-train`, and it does not advertise broader mixed-backend or
+permissionless training claims.
+
 ## Prerequisites
 
 Minimum local requirements:
