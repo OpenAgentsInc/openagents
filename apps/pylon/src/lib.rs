@@ -13,13 +13,14 @@ use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
-    NostrIdentity, derive_keypair, load_identity_from_path,
+    Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event, load_identity_from_path,
     nip98::{
         HttpAuth, HttpMethod, create_http_auth_event, encode_authorization_header, hash_payload,
     },
 };
 use nostr_client::{
-    ConnectionState, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
+    ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
+    RelayPool,
 };
 use openagents_kernel_core::{
     authority::{
@@ -35,9 +36,10 @@ use openagents_kernel_core::{
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
-        PylonTrainingArtifactLayout, artifact_digest_from_bytes, artifact_digest_from_json,
-        can_emit_terminal_artifact_uploaded_receipt, derive_artifact_bundle_state,
-        parse_pylon_training_run_manifest_json, resolve_pylon_training_credentials,
+        PylonTrainingArtifactLayout, PylonTrainingObservabilityContext, artifact_digest_from_bytes,
+        artifact_digest_from_json, can_emit_terminal_artifact_uploaded_receipt,
+        derive_artifact_bundle_state, parse_pylon_training_run_manifest_json,
+        resolve_pylon_training_credentials,
     },
 };
 use openagents_provider_substrate::{
@@ -124,6 +126,9 @@ const PYLON_TRAINING_CHECKPOINT_FAMILY: &str = "decoder";
 const PYLON_TRAINING_ENVIRONMENT_REF: &str = "env.openagents.cuda.train";
 const PYLON_TRAINING_ADMITTED_CUDA_GPU_MODEL_FAMILY: &str = "h100";
 const PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB: u32 = 80;
+const TRN_TRAINING_NODE_RECORD_KIND: u16 = 39_501;
+const TRN_TRAINING_RECEIPT_KIND: u16 = 39_511;
+const TRN_TRAINING_ARTIFACT_LOCATOR_KIND: u16 = 39_520;
 
 #[derive(Clone, Debug)]
 struct ProviderHostTelemetryCacheEntry {
@@ -664,13 +669,53 @@ pub struct PylonTrainingCheckpointPublicationResponse {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrainingCommand {
-    Artifacts { command: TrainingArtifactsCommand },
+    Artifacts {
+        command: TrainingArtifactsCommand,
+    },
+    Publish {
+        manifest_path: Option<PathBuf>,
+        json: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrainingArtifactsCommand {
     Inspect { json: bool },
     Gc { json: bool },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingTrnPublicationReport {
+    provider_pubkey: String,
+    relay_urls: Vec<String>,
+    manifest_count: usize,
+    node_records: Vec<TrainingTrnPublicationEntry>,
+    receipts: Vec<TrainingTrnPublicationEntry>,
+    artifact_locators: Vec<TrainingTrnPublicationEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TrainingTrnPublicationEntry {
+    subject_kind: String,
+    subject_id: String,
+    publication_state: String,
+    event_id: String,
+    a_ref: Option<String>,
+    event_kind: u16,
+    status: String,
+    network_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifact_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifact_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    object_uri: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bundle_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -3770,6 +3815,18 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                     Ok(Some(render_training_artifact_gc_report(&report)))
                 }
             },
+            TrainingCommand::Publish {
+                manifest_path,
+                json,
+            } => {
+                let report =
+                    publish_training_trn_state(cli.config_path.as_path(), manifest_path.as_deref())
+                        .await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_training_trn_publication_report(&report)))
+            }
         },
         Command::Gemma { command } => match command {
             GemmaCommand::List { json } => {
@@ -4239,6 +4296,13 @@ fn parse_training_command(args: &[String], start_index: usize) -> Result<Trainin
         Some("artifacts") => Ok(TrainingCommand::Artifacts {
             command: parse_training_artifacts_command(args, start_index + 1)?,
         }),
+        Some("publish") => {
+            let (manifest_path, json) = parse_training_publish_command(args, start_index + 1)?;
+            Ok(TrainingCommand::Publish {
+                manifest_path,
+                json,
+            })
+        }
         Some(other) => bail!("unknown training command: {other}"),
         None => bail!("missing training subcommand"),
     }
@@ -4258,6 +4322,32 @@ fn parse_training_artifacts_command(
         Some(other) => bail!("unknown training artifacts command: {other}"),
         None => bail!("missing training artifacts subcommand"),
     }
+}
+
+fn parse_training_publish_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(Option<PathBuf>, bool)> {
+    let mut manifest_path = None::<PathBuf>;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--manifest" => {
+                index += 1;
+                manifest_path = Some(PathBuf::from(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --manifest"))?,
+                ));
+                index += 1;
+            }
+            other => bail!("unexpected argument for training publish: {other}"),
+        }
+    }
+    Ok((manifest_path, json))
 }
 
 fn parse_account_link_command(args: &[String], mut index: usize) -> Result<(String, String, bool)> {
@@ -6380,6 +6470,1041 @@ fn garbage_collect_training_download_cache(config_path: &Path) -> Result<Trainin
     })
 }
 
+async fn publish_training_trn_state(
+    config_path: &Path,
+    manifest_path: Option<&Path>,
+) -> Result<TrainingTrnPublicationReport> {
+    let config = load_or_create_config(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let mut state = load_or_create_training_runtime_state(&config)?;
+    let mut contexts = load_training_manifest_inspection_contexts(&config, &state)?;
+    if let Some(manifest_path) = manifest_path {
+        let selected_manifest_path = if manifest_path.is_absolute() {
+            manifest_path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .context("failed to resolve current directory for --manifest")?
+                .join(manifest_path)
+        };
+        contexts.retain(|context| context.manifest_path == selected_manifest_path);
+        if contexts.is_empty() {
+            bail!(
+                "training publish could not find manifest {}",
+                selected_manifest_path.display()
+            );
+        }
+    }
+    if contexts.is_empty() {
+        bail!("training publish requires at least one retained run manifest");
+    }
+
+    let relay_urls = dedup_training_relay_urls(&contexts);
+    let pool = build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await?;
+    let artifact_client = PylonTrainingArtifactStoreClient::new(&config).await?;
+    let mut report = TrainingTrnPublicationReport {
+        provider_pubkey: identity.public_key_hex.clone(),
+        relay_urls,
+        manifest_count: contexts.len(),
+        node_records: Vec::new(),
+        receipts: Vec::new(),
+        artifact_locators: Vec::new(),
+    };
+    let relay_hint = report.relay_urls.first().cloned().unwrap_or_default();
+
+    let mut contexts_by_network =
+        BTreeMap::<String, Vec<&TrainingManifestInspectionContext>>::new();
+    for context in &contexts {
+        contexts_by_network
+            .entry(context.manifest.network_id.clone())
+            .or_default()
+            .push(context);
+    }
+    for (network_id, network_contexts) in contexts_by_network {
+        let pointer_key = training_publication_pointer_key("node_record", network_id.as_str());
+        if let Some(pointer) = state.publication_pointers.get(pointer_key.as_str()) {
+            report
+                .node_records
+                .push(build_training_trn_publication_entry(
+                    pointer.subject_kind.as_str(),
+                    pointer.subject_id.as_str(),
+                    "existing",
+                    pointer.event_id.clone(),
+                    pointer.a_ref.clone(),
+                    TRN_TRAINING_NODE_RECORD_KIND,
+                    training_node_record_status(&state, network_contexts.as_slice()),
+                    network_id.as_str(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ));
+            continue;
+        }
+        let (status, a_ref, template) = build_training_node_record_template(
+            &config,
+            &identity,
+            &state,
+            network_contexts.as_slice(),
+        )?;
+        let event =
+            publish_training_signed_event(&pool, &identity, template, "training node record")
+                .await?;
+        record_training_publication_pointer(
+            &mut state,
+            "node_record",
+            network_id.as_str(),
+            &event,
+            Some(a_ref.clone()),
+        );
+        report
+            .node_records
+            .push(build_training_trn_publication_entry(
+                "node_record",
+                network_id.as_str(),
+                "published",
+                event.id,
+                Some(a_ref),
+                TRN_TRAINING_NODE_RECORD_KIND,
+                status.as_str(),
+                network_id.as_str(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ));
+    }
+
+    for context in &contexts {
+        let pointer_key =
+            training_publication_pointer_key("assignment_ack", context.manifest.lease_id.as_str());
+        if let Some(pointer) = state.publication_pointers.get(pointer_key.as_str()) {
+            report.receipts.push(build_training_trn_publication_entry(
+                pointer.subject_kind.as_str(),
+                pointer.subject_id.as_str(),
+                "existing",
+                pointer.event_id.clone(),
+                pointer.a_ref.clone(),
+                TRN_TRAINING_RECEIPT_KIND,
+                "assignment_accepted",
+                context.manifest.network_id.as_str(),
+                Some(context.manifest.window_id.as_str()),
+                Some(context.manifest.assignment_id.as_str()),
+                Some(training_expected_artifact_class_for_role(
+                    context.manifest.role,
+                )),
+                None,
+                None,
+                None,
+            ));
+        } else {
+            let template =
+                build_training_assignment_ack_template(&identity, context, relay_hint.as_str())?;
+            let event =
+                publish_training_signed_event(&pool, &identity, template, "assignment ack receipt")
+                    .await?;
+            let a_ref = training_window_coordinate(&context.manifest);
+            record_training_publication_pointer(
+                &mut state,
+                "assignment_ack",
+                context.manifest.lease_id.as_str(),
+                &event,
+                Some(a_ref.clone()),
+            );
+            report.receipts.push(build_training_trn_publication_entry(
+                "assignment_ack",
+                context.manifest.lease_id.as_str(),
+                "published",
+                event.id,
+                Some(a_ref),
+                TRN_TRAINING_RECEIPT_KIND,
+                "assignment_accepted",
+                context.manifest.network_id.as_str(),
+                Some(context.manifest.window_id.as_str()),
+                Some(context.manifest.assignment_id.as_str()),
+                Some(training_expected_artifact_class_for_role(
+                    context.manifest.role,
+                )),
+                None,
+                None,
+                None,
+            ));
+        }
+
+        for bundle in inspect_manifest_local_artifacts(context)? {
+            if bundle.state
+                != artifact_bundle_state_label(PylonTrainingArtifactBundleState::LocalOnly)
+            {
+                continue;
+            }
+            let Some(bundle_kind) = training_bundle_kind_from_entry(&bundle) else {
+                continue;
+            };
+            let publication_needed = bundle.objects.iter().any(|object| {
+                let Ok(artifact_id) =
+                    training_artifact_id(context.layout.clone(), object.object_uri.as_str())
+                else {
+                    return true;
+                };
+                let locator_key =
+                    training_publication_pointer_key("artifact_locator", artifact_id.as_str());
+                let receipt_key =
+                    training_publication_pointer_key("artifact_uploaded", artifact_id.as_str());
+                !state
+                    .publication_pointers
+                    .contains_key(locator_key.as_str())
+                    || !state
+                        .publication_pointers
+                        .contains_key(receipt_key.as_str())
+            });
+            let upload_report = if publication_needed {
+                Some(
+                    artifact_client
+                        .upload_bundle(&context.manifest, bundle_kind.clone())
+                        .await?,
+                )
+            } else {
+                None
+            };
+            let objects = upload_report
+                .as_ref()
+                .map(|report| report.objects.clone())
+                .unwrap_or_else(|| {
+                    bundle
+                        .objects
+                        .iter()
+                        .filter_map(|object| {
+                            Some(PylonTrainingArtifactObjectTransferReport {
+                                object_uri: object.object_uri.clone(),
+                                local_path: object.local_path.clone(),
+                                digest: object.digest.clone()?,
+                                size_bytes: object.size_bytes?,
+                                uploaded: true,
+                                digest_verified: true,
+                            })
+                        })
+                        .collect()
+                });
+
+            for object in objects {
+                let artifact_id =
+                    training_artifact_id(context.layout.clone(), object.object_uri.as_str())?;
+                let artifact_class = training_artifact_class_for_uri(
+                    context.layout.clone(),
+                    object.object_uri.as_str(),
+                )?;
+                let locator_a_ref =
+                    format!("39520:{}:{}", identity.public_key_hex, artifact_id.as_str());
+                let locator_key =
+                    training_publication_pointer_key("artifact_locator", artifact_id.as_str());
+                if let Some(pointer) = state.publication_pointers.get(locator_key.as_str()) {
+                    report
+                        .artifact_locators
+                        .push(build_training_trn_publication_entry(
+                            pointer.subject_kind.as_str(),
+                            pointer.subject_id.as_str(),
+                            "existing",
+                            pointer.event_id.clone(),
+                            pointer.a_ref.clone(),
+                            TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                            "staged",
+                            context.manifest.network_id.as_str(),
+                            Some(context.manifest.window_id.as_str()),
+                            Some(context.manifest.assignment_id.as_str()),
+                            Some(artifact_class.as_str()),
+                            Some(object.digest.as_str()),
+                            Some(object.object_uri.as_str()),
+                            Some(bundle.bundle_id.as_str()),
+                        ));
+                } else {
+                    let template = build_training_artifact_locator_template(
+                        context,
+                        bundle.bundle_id.as_str(),
+                        artifact_id.as_str(),
+                        artifact_class.as_str(),
+                        &object,
+                    )?;
+                    let event = publish_training_signed_event(
+                        &pool,
+                        &identity,
+                        template,
+                        "artifact locator",
+                    )
+                    .await?;
+                    record_training_publication_pointer(
+                        &mut state,
+                        "artifact_locator",
+                        artifact_id.as_str(),
+                        &event,
+                        Some(locator_a_ref.clone()),
+                    );
+                    report
+                        .artifact_locators
+                        .push(build_training_trn_publication_entry(
+                            "artifact_locator",
+                            artifact_id.as_str(),
+                            "published",
+                            event.id,
+                            Some(locator_a_ref.clone()),
+                            TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                            "staged",
+                            context.manifest.network_id.as_str(),
+                            Some(context.manifest.window_id.as_str()),
+                            Some(context.manifest.assignment_id.as_str()),
+                            Some(artifact_class.as_str()),
+                            Some(object.digest.as_str()),
+                            Some(object.object_uri.as_str()),
+                            Some(bundle.bundle_id.as_str()),
+                        ));
+                }
+
+                let receipt_key =
+                    training_publication_pointer_key("artifact_uploaded", artifact_id.as_str());
+                if let Some(pointer) = state.publication_pointers.get(receipt_key.as_str()) {
+                    report.receipts.push(build_training_trn_publication_entry(
+                        pointer.subject_kind.as_str(),
+                        pointer.subject_id.as_str(),
+                        "existing",
+                        pointer.event_id.clone(),
+                        pointer.a_ref.clone(),
+                        TRN_TRAINING_RECEIPT_KIND,
+                        "artifact_uploaded",
+                        context.manifest.network_id.as_str(),
+                        Some(context.manifest.window_id.as_str()),
+                        Some(context.manifest.assignment_id.as_str()),
+                        Some(artifact_class.as_str()),
+                        Some(object.digest.as_str()),
+                        Some(object.object_uri.as_str()),
+                        Some(bundle.bundle_id.as_str()),
+                    ));
+                } else {
+                    let template = build_training_artifact_uploaded_receipt_template(
+                        &identity,
+                        context,
+                        bundle.bundle_id.as_str(),
+                        artifact_id.as_str(),
+                        artifact_class.as_str(),
+                        locator_a_ref.as_str(),
+                        relay_hint.as_str(),
+                        &object,
+                    )?;
+                    let event = publish_training_signed_event(
+                        &pool,
+                        &identity,
+                        template,
+                        "artifact uploaded receipt",
+                    )
+                    .await?;
+                    record_training_publication_pointer(
+                        &mut state,
+                        "artifact_uploaded",
+                        artifact_id.as_str(),
+                        &event,
+                        Some(locator_a_ref.clone()),
+                    );
+                    report.receipts.push(build_training_trn_publication_entry(
+                        "artifact_uploaded",
+                        artifact_id.as_str(),
+                        "published",
+                        event.id,
+                        Some(locator_a_ref),
+                        TRN_TRAINING_RECEIPT_KIND,
+                        "artifact_uploaded",
+                        context.manifest.network_id.as_str(),
+                        Some(context.manifest.window_id.as_str()),
+                        Some(context.manifest.assignment_id.as_str()),
+                        Some(artifact_class.as_str()),
+                        Some(object.digest.as_str()),
+                        Some(object.object_uri.as_str()),
+                        Some(bundle.bundle_id.as_str()),
+                    ));
+                }
+            }
+        }
+    }
+
+    save_training_runtime_state(&config, &state)?;
+    Ok(report)
+}
+
+fn dedup_training_relay_urls(contexts: &[TrainingManifestInspectionContext]) -> Vec<String> {
+    let mut relay_urls = BTreeSet::new();
+    for context in contexts {
+        for relay_url in &context.manifest.trn.relay_urls {
+            let normalized = relay_url.trim();
+            if !normalized.is_empty() {
+                relay_urls.insert(normalized.to_string());
+            }
+        }
+    }
+    relay_urls.into_iter().collect()
+}
+
+async fn build_training_relay_pool(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+) -> Result<RelayPool> {
+    if relay_urls.is_empty() {
+        bail!("training publish requires at least one relay url");
+    }
+    let relay_config = RelayConfig {
+        connect_timeout: Duration::from_secs(config.relay_connect_timeout_seconds.max(1)),
+        nip42_identity: config.relay_auth_enabled.then(|| RelayAuthIdentity {
+            private_key_hex: identity.private_key_hex.clone(),
+        }),
+    };
+    let pool = RelayPool::new(PoolConfig {
+        max_relays: relay_urls.len().max(1),
+        relay_config,
+    });
+    for relay_url in relay_urls {
+        pool.add_relay(relay_url.as_str())
+            .await
+            .with_context(|| format!("failed to add training relay {}", relay_url))?;
+    }
+    pool.connect_all()
+        .await
+        .context("failed to connect training relays")?;
+    Ok(pool)
+}
+
+async fn publish_training_signed_event(
+    pool: &RelayPool,
+    identity: &NostrIdentity,
+    template: EventTemplate,
+    label: &str,
+) -> Result<Event> {
+    let event = finalize_event(
+        &template,
+        &decode_private_key_hex(identity.private_key_hex.as_str())?,
+    )
+    .with_context(|| format!("failed to sign {label}"))?;
+    let confirmations = pool.publish(&event).await?;
+    if !confirmations
+        .iter()
+        .any(|confirmation| confirmation.accepted)
+    {
+        let detail = confirmations
+            .iter()
+            .map(|confirmation| format!("{}:{}", confirmation.relay_url, confirmation.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        bail!("no relay accepted the {label}: {detail}");
+    }
+    Ok(event)
+}
+
+fn build_training_node_record_template(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &PylonTrainingRuntimeState,
+    contexts: &[&TrainingManifestInspectionContext],
+) -> Result<(String, String, EventTemplate)> {
+    let network_id = contexts
+        .first()
+        .map(|context| context.manifest.network_id.clone())
+        .ok_or_else(|| anyhow!("training node record requires at least one manifest"))?;
+    let status = training_node_record_status(state, contexts);
+    let roles = contexts
+        .iter()
+        .map(|context| training_manifest_role_label(context.manifest.role).to_string())
+        .chain(
+            config
+                .training
+                .role_claims
+                .iter()
+                .map(|role| role.label().to_string()),
+        )
+        .collect::<BTreeSet<_>>();
+    let mut tags = vec![
+        vec!["d".to_string(), network_id.clone()],
+        vec!["network".to_string(), network_id.clone()],
+        vec!["status".to_string(), status.to_string()],
+        vec!["class".to_string(), "psionic_train".to_string()],
+    ];
+    for role in roles {
+        tags.push(vec!["role".to_string(), role]);
+    }
+    for backend_family in contexts
+        .iter()
+        .map(|context| training_backend_family_label(context.manifest.topology.backend_family))
+        .collect::<BTreeSet<_>>()
+    {
+        tags.push(vec![
+            "cap".to_string(),
+            "backend".to_string(),
+            backend_family.to_string(),
+        ]);
+    }
+    for checkpoint_family in contexts
+        .iter()
+        .map(|context| context.manifest.checkpoint.checkpoint_family.clone())
+        .collect::<BTreeSet<_>>()
+    {
+        tags.push(vec![
+            "cap".to_string(),
+            "checkpoint_family".to_string(),
+            checkpoint_family,
+        ]);
+    }
+    for environment_ref in contexts
+        .iter()
+        .map(|context| context.manifest.environment_ref.clone())
+        .collect::<BTreeSet<_>>()
+    {
+        tags.push(vec![
+            "cap".to_string(),
+            "environment".to_string(),
+            environment_ref,
+        ]);
+    }
+    for world_size in contexts
+        .iter()
+        .map(|context| context.manifest.topology.world_size)
+        .collect::<BTreeSet<_>>()
+    {
+        tags.push(vec![
+            "cap".to_string(),
+            "world_size".to_string(),
+            world_size.to_string(),
+        ]);
+    }
+    for relay_url in dedup_training_relay_urls(
+        &contexts
+            .iter()
+            .map(|context| (*context).clone())
+            .collect::<Vec<_>>(),
+    ) {
+        tags.push(vec!["relay".to_string(), relay_url]);
+    }
+    let active_runtime = state
+        .active_runtime
+        .as_ref()
+        .filter(|runtime| {
+            contexts.iter().any(|context| {
+                context.manifest.run_id == runtime.training_run_id
+                    && context.manifest.window_id == runtime.window_id
+            })
+        })
+        .map(|runtime| {
+            json!({
+                "training_run_id": runtime.training_run_id,
+                "window_id": runtime.window_id,
+                "assignment_id": runtime.assignment_id,
+                "lease_id": runtime.lease_id,
+                "membership_revision": runtime.membership_revision,
+                "role": runtime.role.label(),
+                "desired_state": format!("{:?}", runtime.desired_state).to_ascii_lowercase(),
+                "process_state": format!("{:?}", runtime.process_state).to_ascii_lowercase(),
+                "manifest_path": runtime.manifest_path,
+            })
+        });
+    let content = json!({
+        "node_label": config.node_label,
+        "software_version": env!("CARGO_PKG_VERSION"),
+        "checkpoint_serve_url": training_checkpoint_serve_url(config),
+        "manifest_digests": contexts
+            .iter()
+            .map(|context| context.manifest.manifest_digest.clone())
+            .collect::<Vec<_>>(),
+        "active_runtime": active_runtime,
+    });
+    let a_ref = format!("39501:{}:{}", identity.public_key_hex, network_id);
+    Ok((
+        status.to_string(),
+        a_ref,
+        EventTemplate {
+            created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
+            kind: TRN_TRAINING_NODE_RECORD_KIND,
+            tags,
+            content: serde_json::to_string(&content)
+                .context("failed to serialize training node record content")?,
+        },
+    ))
+}
+
+fn build_training_assignment_ack_template(
+    identity: &NostrIdentity,
+    context: &TrainingManifestInspectionContext,
+    relay_hint: &str,
+) -> Result<EventTemplate> {
+    let mut tags = vec![
+        vec!["network".to_string(), context.manifest.network_id.clone()],
+        vec!["window".to_string(), context.manifest.window_id.clone()],
+        vec!["status".to_string(), "assignment_accepted".to_string()],
+        vec![
+            "assignment".to_string(),
+            context.manifest.assignment_id.clone(),
+        ],
+        vec![
+            "policy".to_string(),
+            context.manifest.training_policy_ref.clone(),
+        ],
+        vec![
+            "role".to_string(),
+            training_manifest_role_label(context.manifest.role).to_string(),
+        ],
+        vec![
+            "class".to_string(),
+            training_expected_artifact_class_for_role(context.manifest.role).to_string(),
+        ],
+        vec![
+            "p".to_string(),
+            identity.public_key_hex.clone(),
+            relay_hint.to_string(),
+            "subject".to_string(),
+        ],
+        vec![
+            "p".to_string(),
+            context.manifest.coordinator_pubkey.clone(),
+            relay_hint.to_string(),
+            "coordinator".to_string(),
+        ],
+        vec![
+            "checkpoint".to_string(),
+            context.manifest.checkpoint.checkpoint_ref.clone(),
+        ],
+        vec![
+            "a".to_string(),
+            training_window_coordinate(&context.manifest),
+            relay_hint.to_string(),
+            "window".to_string(),
+        ],
+    ];
+    if let Some(reason) = training_assignment_reason(context) {
+        tags.push(vec!["reason".to_string(), reason]);
+    }
+    let mut content = serde_json::Map::new();
+    content.insert(
+        "subject_pubkey".to_string(),
+        Value::String(identity.public_key_hex.clone()),
+    );
+    content.insert(
+        "assignment_deadline_unix".to_string(),
+        Value::from(context.manifest.expires_at_ms / 1000),
+    );
+    content.insert(
+        "expected_artifact_class".to_string(),
+        Value::String(training_expected_artifact_class_for_role(context.manifest.role).to_string()),
+    );
+    if let Some(dataset) = context.manifest.dataset.as_ref() {
+        content.insert(
+            "shard_digest".to_string(),
+            Value::String(dataset.slice_digest.clone()),
+        );
+    }
+    if let Some(validator) = context.manifest.validator.as_ref() {
+        content.insert(
+            "sample_pool_digest".to_string(),
+            Value::String(
+                validator
+                    .expected_manifest_digests
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| validator.challenge_id.clone()),
+            ),
+        );
+    }
+    content.insert(
+        "source_checkpoint_id".to_string(),
+        Value::String(context.manifest.checkpoint.checkpoint_ref.clone()),
+    );
+    content.insert(
+        "manifest_digest".to_string(),
+        Value::String(context.manifest.manifest_digest.clone()),
+    );
+    content.insert(
+        "membership_revision".to_string(),
+        Value::String(context.manifest.membership_revision.clone()),
+    );
+    content.insert(
+        "observability".to_string(),
+        serde_json::to_value(training_observability_context(&context.manifest))
+            .context("failed to encode assignment observability context")?,
+    );
+    Ok(EventTemplate {
+        created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
+        kind: TRN_TRAINING_RECEIPT_KIND,
+        tags,
+        content: Value::Object(content).to_string(),
+    })
+}
+
+fn build_training_artifact_locator_template(
+    context: &TrainingManifestInspectionContext,
+    bundle_id: &str,
+    artifact_id: &str,
+    artifact_class: &str,
+    object: &PylonTrainingArtifactObjectTransferReport,
+) -> Result<EventTemplate> {
+    let mut tags = vec![
+        vec!["d".to_string(), artifact_id.to_string()],
+        vec!["network".to_string(), context.manifest.network_id.clone()],
+        vec!["status".to_string(), "staged".to_string()],
+        vec!["artifact".to_string(), artifact_id.to_string()],
+        vec![
+            "manifest".to_string(),
+            context.manifest.manifest_digest.clone(),
+        ],
+        vec!["x".to_string(), object.digest.clone()],
+        vec!["url".to_string(), object.object_uri.clone()],
+        vec!["class".to_string(), artifact_class.to_string()],
+        vec!["window".to_string(), context.manifest.window_id.clone()],
+        vec![
+            "policy".to_string(),
+            context.manifest.training_policy_ref.clone(),
+        ],
+    ];
+    if let Some(checkpoint_tag) =
+        training_artifact_checkpoint_tag(&context.manifest, artifact_class)
+    {
+        tags.push(vec!["checkpoint".to_string(), checkpoint_tag]);
+    }
+    let content = json!({
+        "bundle_id": bundle_id,
+        "object_uri": object.object_uri,
+        "local_path": object.local_path,
+        "size_bytes": object.size_bytes,
+        "digest_verified": object.digest_verified,
+        "observability": training_observability_context(&context.manifest),
+    });
+    Ok(EventTemplate {
+        created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
+        kind: TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+        tags,
+        content: serde_json::to_string(&content)
+            .context("failed to serialize training artifact locator content")?,
+    })
+}
+
+fn build_training_artifact_uploaded_receipt_template(
+    identity: &NostrIdentity,
+    context: &TrainingManifestInspectionContext,
+    bundle_id: &str,
+    artifact_id: &str,
+    artifact_class: &str,
+    locator_a_ref: &str,
+    relay_hint: &str,
+    object: &PylonTrainingArtifactObjectTransferReport,
+) -> Result<EventTemplate> {
+    let mut tags = vec![
+        vec!["network".to_string(), context.manifest.network_id.clone()],
+        vec!["window".to_string(), context.manifest.window_id.clone()],
+        vec!["status".to_string(), "artifact_uploaded".to_string()],
+        vec![
+            "assignment".to_string(),
+            context.manifest.assignment_id.clone(),
+        ],
+        vec![
+            "policy".to_string(),
+            context.manifest.training_policy_ref.clone(),
+        ],
+        vec![
+            "role".to_string(),
+            training_manifest_role_label(context.manifest.role).to_string(),
+        ],
+        vec!["artifact".to_string(), artifact_id.to_string()],
+        vec!["class".to_string(), artifact_class.to_string()],
+        vec![
+            "p".to_string(),
+            identity.public_key_hex.clone(),
+            relay_hint.to_string(),
+            "subject".to_string(),
+        ],
+        vec![
+            "p".to_string(),
+            context.manifest.coordinator_pubkey.clone(),
+            relay_hint.to_string(),
+            "coordinator".to_string(),
+        ],
+        vec![
+            "a".to_string(),
+            locator_a_ref.to_string(),
+            relay_hint.to_string(),
+            "source".to_string(),
+        ],
+        vec![
+            "a".to_string(),
+            training_window_coordinate(&context.manifest),
+            relay_hint.to_string(),
+            "window".to_string(),
+        ],
+    ];
+    if let Some(checkpoint_tag) =
+        training_artifact_checkpoint_tag(&context.manifest, artifact_class)
+    {
+        tags.push(vec!["checkpoint".to_string(), checkpoint_tag]);
+    }
+    let content = json!({
+        "artifact_digest": object.digest,
+        "bundle_id": bundle_id,
+        "object_uri": object.object_uri,
+        "local_path": object.local_path,
+        "manifest_digest": context.manifest.manifest_digest,
+        "observability": training_observability_context(&context.manifest),
+    });
+    Ok(EventTemplate {
+        created_at: nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?,
+        kind: TRN_TRAINING_RECEIPT_KIND,
+        tags,
+        content: serde_json::to_string(&content)
+            .context("failed to serialize training artifact receipt content")?,
+    })
+}
+
+fn training_publication_pointer_key(subject_kind: &str, subject_id: &str) -> String {
+    format!("{subject_kind}::{subject_id}")
+}
+
+fn record_training_publication_pointer(
+    state: &mut PylonTrainingRuntimeState,
+    subject_kind: &str,
+    subject_id: &str,
+    event: &Event,
+    a_ref: Option<String>,
+) {
+    state.publication_pointers.insert(
+        training_publication_pointer_key(subject_kind, subject_id),
+        PylonTrainingPublicationPointer {
+            subject_kind: subject_kind.to_string(),
+            subject_id: subject_id.to_string(),
+            event_id: event.id.clone(),
+            a_ref,
+            published_at_ms: now_epoch_ms() as i64,
+        },
+    );
+}
+
+fn build_training_trn_publication_entry(
+    subject_kind: &str,
+    subject_id: &str,
+    publication_state: &str,
+    event_id: String,
+    a_ref: Option<String>,
+    event_kind: u16,
+    status: &str,
+    network_id: &str,
+    window_id: Option<&str>,
+    assignment_id: Option<&str>,
+    artifact_class: Option<&str>,
+    artifact_digest: Option<&str>,
+    object_uri: Option<&str>,
+    bundle_id: Option<&str>,
+) -> TrainingTrnPublicationEntry {
+    TrainingTrnPublicationEntry {
+        subject_kind: subject_kind.to_string(),
+        subject_id: subject_id.to_string(),
+        publication_state: publication_state.to_string(),
+        event_id,
+        a_ref,
+        event_kind,
+        status: status.to_string(),
+        network_id: network_id.to_string(),
+        window_id: window_id.map(ToOwned::to_owned),
+        assignment_id: assignment_id.map(ToOwned::to_owned),
+        artifact_class: artifact_class.map(ToOwned::to_owned),
+        artifact_digest: artifact_digest.map(ToOwned::to_owned),
+        object_uri: object_uri.map(ToOwned::to_owned),
+        bundle_id: bundle_id.map(ToOwned::to_owned),
+    }
+}
+
+fn training_manifest_role_label(
+    role: openagents_kernel_core::pylon_training::PylonTrainingManifestRole,
+) -> &'static str {
+    match role {
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker => "worker",
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator => "validator",
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::RecoverySource => {
+            "recovery_source"
+        }
+    }
+}
+
+fn training_expected_artifact_class_for_role(
+    role: openagents_kernel_core::pylon_training::PylonTrainingManifestRole,
+) -> &'static str {
+    match role {
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker => "delta",
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator => "eval",
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::RecoverySource => {
+            "checkpoint"
+        }
+    }
+}
+
+fn training_node_record_status(
+    state: &PylonTrainingRuntimeState,
+    contexts: &[&TrainingManifestInspectionContext],
+) -> &'static str {
+    let Some(active_runtime) = state.active_runtime.as_ref() else {
+        return if contexts.is_empty() {
+            "offline"
+        } else {
+            "degraded"
+        };
+    };
+    if contexts.iter().any(|context| {
+        context.manifest.run_id == active_runtime.training_run_id
+            && context.manifest.window_id == active_runtime.window_id
+    }) {
+        match active_runtime.process_state {
+            PylonTrainingSupervisorProcessState::Running
+            | PylonTrainingSupervisorProcessState::Launching
+            | PylonTrainingSupervisorProcessState::Draining => "online",
+            PylonTrainingSupervisorProcessState::Stopped => "offline",
+            PylonTrainingSupervisorProcessState::Failed => "degraded",
+        }
+    } else {
+        "degraded"
+    }
+}
+
+fn training_backend_family_label(
+    family: openagents_kernel_core::pylon_training::PylonTrainingTopologyBackendFamily,
+) -> &'static str {
+    match family {
+        openagents_kernel_core::pylon_training::PylonTrainingTopologyBackendFamily::Cuda => "cuda",
+        openagents_kernel_core::pylon_training::PylonTrainingTopologyBackendFamily::Mlx => "mlx",
+        openagents_kernel_core::pylon_training::PylonTrainingTopologyBackendFamily::Metal => {
+            "metal"
+        }
+        openagents_kernel_core::pylon_training::PylonTrainingTopologyBackendFamily::Mixed => {
+            "mixed"
+        }
+    }
+}
+
+fn training_assignment_reason(context: &TrainingManifestInspectionContext) -> Option<String> {
+    match context.manifest.role {
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker => {
+            Some("dataset_slice_assigned".to_string())
+        }
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator => context
+            .manifest
+            .validator
+            .as_ref()
+            .map(|validator| validator.challenge_kind.clone()),
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::RecoverySource => {
+            Some("checkpoint_recovery".to_string())
+        }
+    }
+}
+
+fn training_observability_context(
+    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+) -> PylonTrainingObservabilityContext {
+    PylonTrainingObservabilityContext {
+        network_id: Some(manifest.network_id.clone()),
+        run_id: Some(manifest.run_id.clone()),
+        window_id: Some(manifest.window_id.clone()),
+        assignment_id: Some(manifest.assignment_id.clone()),
+        challenge_id: manifest
+            .validator
+            .as_ref()
+            .map(|validator| validator.challenge_id.clone()),
+        node_pubkey: Some(manifest.node_pubkey.clone()),
+        membership_revision: Some(manifest.membership_revision.clone()),
+        manifest_digest: Some(manifest.manifest_digest.clone()),
+    }
+}
+
+fn training_window_coordinate(
+    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+) -> String {
+    if manifest.trn.window_coordinate.trim().is_empty() {
+        format!(
+            "39510:{}:{}",
+            manifest.coordinator_pubkey, manifest.window_id
+        )
+    } else {
+        manifest.trn.window_coordinate.clone()
+    }
+}
+
+fn training_artifact_checkpoint_tag(
+    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+    artifact_class: &str,
+) -> Option<String> {
+    matches!(artifact_class, "checkpoint" | "proof")
+        .then(|| manifest.checkpoint.checkpoint_ref.clone())
+}
+
+fn training_artifact_id(layout: PylonTrainingArtifactLayout, object_uri: &str) -> Result<String> {
+    let relative_path = training_artifact_relative_path(&layout, object_uri)?;
+    let identifier = relative_path
+        .to_string_lossy()
+        .replace(['/', '\\'], ".")
+        .replace(':', "_")
+        .replace(' ', "_");
+    Ok(identifier)
+}
+
+fn training_artifact_class_for_uri(
+    layout: PylonTrainingArtifactLayout,
+    object_uri: &str,
+) -> Result<String> {
+    let relative_path = training_artifact_relative_path(&layout, object_uri)?;
+    let relative = relative_path.to_string_lossy();
+    let class = if relative.ends_with("run_manifest.json") {
+        "config"
+    } else if relative.ends_with("latest_pointer.json")
+        || relative.ends_with("checkpoint_manifest.json")
+    {
+        "checkpoint"
+    } else if relative.ends_with("adapter_delta_bundle.json") {
+        "delta"
+    } else if relative.ends_with("proof_bundle.json")
+        || relative.ends_with("sealed_window_bundle.json")
+    {
+        "proof"
+    } else if relative.ends_with("verdict.json") {
+        "eval"
+    } else if relative.ends_with("score_snapshot.json") {
+        "score"
+    } else {
+        "config"
+    };
+    Ok(class.to_string())
+}
+
+fn training_bundle_kind_from_entry(
+    entry: &TrainingArtifactBundleInspectionEntry,
+) -> Option<PylonTrainingArtifactBundleKind> {
+    match entry.bundle_kind.as_str() {
+        "run_manifest" => Some(PylonTrainingArtifactBundleKind::RunManifest),
+        "latest_checkpoint_pointer" => {
+            Some(PylonTrainingArtifactBundleKind::LatestCheckpointPointer)
+        }
+        "checkpoint_manifest" => entry
+            .bundle_id
+            .split_once(':')
+            .and_then(|(_, value)| value.parse::<u64>().ok())
+            .map(
+                |optimizer_step| PylonTrainingArtifactBundleKind::CheckpointManifest {
+                    optimizer_step,
+                },
+            ),
+        "contribution" => entry.bundle_id.split_once(':').map(|(_, assignment_id)| {
+            PylonTrainingArtifactBundleKind::Contribution {
+                assignment_id: assignment_id.to_string(),
+            }
+        }),
+        "validator_verdict" => entry.bundle_id.split_once(':').map(|(_, challenge_id)| {
+            PylonTrainingArtifactBundleKind::ValidatorVerdict {
+                challenge_id: challenge_id.to_string(),
+            }
+        }),
+        "sealed_window" => Some(PylonTrainingArtifactBundleKind::SealedWindow),
+        "score_snapshot" => Some(PylonTrainingArtifactBundleKind::ScoreSnapshot),
+        _ => None,
+    }
+}
+
 fn collect_training_cache_files(root: &Path) -> Result<Vec<TrainingArtifactCacheFileEntry>> {
     if !root.exists() {
         return Ok(Vec::new());
@@ -6656,6 +7781,57 @@ fn render_training_artifact_inspection_report(report: &TrainingArtifactInspectio
         "download cache: {} files, {} bytes",
         report.download_cache.file_count, report.download_cache.total_bytes
     ));
+    lines.join("\n")
+}
+
+fn render_training_trn_publication_report(report: &TrainingTrnPublicationReport) -> String {
+    let mut lines = vec![
+        format!("provider pubkey: {}", report.provider_pubkey),
+        format!(
+            "relay urls: {}",
+            comma_or_none(report.relay_urls.as_slice())
+        ),
+        format!("manifest count: {}", report.manifest_count),
+        format!("node records: {}", report.node_records.len()),
+        format!("receipts: {}", report.receipts.len()),
+        format!("artifact locators: {}", report.artifact_locators.len()),
+    ];
+    for entry in report
+        .node_records
+        .iter()
+        .chain(report.receipts.iter())
+        .chain(report.artifact_locators.iter())
+    {
+        lines.push(String::new());
+        lines.push(format!("subject kind: {}", entry.subject_kind));
+        lines.push(format!("subject id: {}", entry.subject_id));
+        lines.push(format!("publication state: {}", entry.publication_state));
+        lines.push(format!("event kind: {}", entry.event_kind));
+        lines.push(format!("event id: {}", entry.event_id));
+        lines.push(format!("status: {}", entry.status));
+        lines.push(format!("network id: {}", entry.network_id));
+        if let Some(window_id) = entry.window_id.as_deref() {
+            lines.push(format!("window id: {window_id}"));
+        }
+        if let Some(assignment_id) = entry.assignment_id.as_deref() {
+            lines.push(format!("assignment id: {assignment_id}"));
+        }
+        if let Some(artifact_class) = entry.artifact_class.as_deref() {
+            lines.push(format!("artifact class: {artifact_class}"));
+        }
+        if let Some(artifact_digest) = entry.artifact_digest.as_deref() {
+            lines.push(format!("artifact digest: {artifact_digest}"));
+        }
+        if let Some(object_uri) = entry.object_uri.as_deref() {
+            lines.push(format!("object uri: {object_uri}"));
+        }
+        if let Some(bundle_id) = entry.bundle_id.as_deref() {
+            lines.push(format!("bundle id: {bundle_id}"));
+        }
+        if let Some(a_ref) = entry.a_ref.as_deref() {
+            lines.push(format!("a ref: {a_ref}"));
+        }
+    }
     lines.join("\n")
 }
 
@@ -11595,9 +12771,9 @@ mod tests {
         load_training_artifact_inspection_report, mutate_ledger, parse_args,
         planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_presence_client, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_public_config_json, render_sandbox_report,
-        report_provider_presence_heartbeat_for_snapshot,
+        publish_announcement_report, publish_training_trn_state, refresh_relay_report,
+        remove_configured_relay, render_human_status, render_public_config_json,
+        render_sandbox_report, report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
@@ -11646,6 +12822,17 @@ mod tests {
         } else {
             Err(std::io::Error::other(message.to_string()).into())
         }
+    }
+
+    fn first_tag_value(event: &Value, name: &str) -> Option<String> {
+        event.get("tags")?.as_array()?.iter().find_map(|tag| {
+            let tag = tag.as_array()?;
+            if tag.first()?.as_str()? == name {
+                Some(tag.get(1)?.as_str()?.to_string())
+            } else {
+                None
+            }
+        })
     }
 
     fn training_host_snapshot(
@@ -13068,6 +14255,29 @@ mod tests {
         )
     }
 
+    #[test]
+    fn parse_args_supports_training_publish_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "training".to_string(),
+                "publish".to_string(),
+                "--manifest".to_string(),
+                "/tmp/run.alpha/manifests/run_manifest.json".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Training {
+                    command: TrainingCommand::Publish {
+                        manifest_path: Some(std::path::PathBuf::from(
+                            "/tmp/run.alpha/manifests/run_manifest.json",
+                        )),
+                        json: true,
+                    },
+                },
+            "training publish should parse manifest selection and json output",
+        )
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn training_artifact_courier_uploads_downloads_and_verifies_bundles()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -13215,6 +14425,199 @@ mod tests {
                 "PUT:/bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/step-42/checkpoint_manifest.json",
             ) == Some(&2),
             "training artifact uploads should retry transient failures on the frozen GCS lane",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_publish_emits_trn_events_and_persists_publication_pointers()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<u8>>::new(),
+        ));
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let gcs_base_url = start_mock_http_server(move |method, path, body| {
+            let mut objects = stored_objects_for_server
+                .lock()
+                .expect("training publication object store");
+            match method.as_str() {
+                "PUT" => {
+                    objects.insert(path.clone(), body.into_bytes());
+                    (200, "application/json", json!({"ok": true}).to_string())
+                }
+                "GET" => match objects.get(path.as_str()) {
+                    Some(payload) => (
+                        200,
+                        "application/octet-stream",
+                        String::from_utf8(payload.clone()).expect("stored object utf8"),
+                    ),
+                    None => (
+                        404,
+                        "application/json",
+                        json!({"error":"missing"}).to_string(),
+                    ),
+                },
+                _ => (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed"}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let relay_events = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let relay_events_for_server = Arc::clone(&relay_events);
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let _relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                match message {
+                    Ok(Message::Text(payload)) => {
+                        let value: Value =
+                            serde_json::from_str(payload.as_str()).expect("parse relay frame");
+                        if value.get(0).and_then(Value::as_str) == Some("EVENT") {
+                            relay_events_for_server
+                                .lock()
+                                .expect("relay events")
+                                .push(value[1].clone());
+                        }
+                    }
+                    Ok(Message::Close(_)) | Err(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.training.relay_urls = vec![relay_url.clone()];
+        config.relay_auth_enabled = false;
+        save_config(config_path.as_path(), &config)?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        manifest.trn.relay_urls = vec![relay_url.clone()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        std::fs::write(
+            local_run_root.join("manifests").join("run_manifest.json"),
+            manifest.canonical_json_bytes()?,
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.manifest_path = local_run_root
+            .join("manifests")
+            .join("run_manifest.json")
+            .display()
+            .to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        state.active_runtime = Some(active_runtime);
+        save_training_runtime_state(&config, &state)?;
+
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, gcs_base_url),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+        ]);
+
+        let report = publish_training_trn_state(config_path.as_path(), None).await?;
+        ensure(
+            report.node_records.len() == 1
+                && report.receipts.len() == 7
+                && report.artifact_locators.len() == 6,
+            "training publish should emit one node record, one assignment receipt, six artifact upload receipts, and six staged artifact locators",
+        )?;
+        ensure(
+            report
+                .node_records
+                .iter()
+                .all(|entry| entry.publication_state == "published")
+                && report
+                    .artifact_locators
+                    .iter()
+                    .all(|entry| entry.status == "staged"),
+            "new training publications should report published node state and staged artifact locator status",
+        )?;
+
+        let reloaded_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            reloaded_state
+                .publication_pointers
+                .contains_key("node_record::trainnet.alpha")
+                && reloaded_state
+                    .publication_pointers
+                    .contains_key("assignment_ack::lease.node01.window0001"),
+            "training publish should persist node-record and assignment-ack pointers",
+        )?;
+        ensure(
+            reloaded_state
+                .publication_pointers
+                .keys()
+                .filter(|key| key.starts_with("artifact_locator::"))
+                .count()
+                == 6
+                && reloaded_state
+                    .publication_pointers
+                    .keys()
+                    .filter(|key| key.starts_with("artifact_uploaded::"))
+                    .count()
+                    == 6,
+            "training publish should retain per-object artifact locator and upload receipt pointers",
+        )?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let published = relay_events.lock().expect("relay events snapshot").clone();
+        ensure(
+            published
+                .iter()
+                .filter(|event| event["kind"] == json!(39501))
+                .count()
+                == 1
+                && published
+                    .iter()
+                    .filter(|event| event["kind"] == json!(39511))
+                    .count()
+                    == 7
+                && published
+                    .iter()
+                    .filter(|event| event["kind"] == json!(39520))
+                    .count()
+                    == 6,
+            "relay publication should include one node record, seven receipts, and six artifact locators",
+        )?;
+        let node_record = published
+            .iter()
+            .find(|event| event["kind"] == json!(39501))
+            .expect("node record event");
+        ensure(
+            first_tag_value(node_record, "network").as_deref() == Some("trainnet.alpha")
+                && first_tag_value(node_record, "status").as_deref() == Some("online"),
+            "node record should bind the active run to the training network and report online status",
+        )?;
+        let locator = published
+            .iter()
+            .find(|event| {
+                event["kind"] == json!(39520)
+                    && first_tag_value(event, "class").as_deref() == Some("delta")
+            })
+            .expect("delta locator event");
+        ensure(
+            first_tag_value(locator, "status").as_deref() == Some("staged")
+                && first_tag_value(locator, "manifest").as_deref()
+                    == Some(manifest.manifest_digest.as_str()),
+            "artifact locators should carry staged status and the run-manifest digest tag",
         )
     }
 

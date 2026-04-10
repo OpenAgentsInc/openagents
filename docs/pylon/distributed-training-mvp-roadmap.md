@@ -1191,6 +1191,16 @@ become the admitted-node supervisor around `Psionic`.
 - Publish node-side labels or references needed for later `NIP-32`
   attribution.
 - Persist the event ids and `a` references of everything `Pylon` publishes.
+- Current status: `apps/pylon/src/lib.rs` now contains the first retained
+  node-side TRN publication lane. It can publish `kind:39501` training node
+  records, `kind:39511` assignment-accepted and artifact-uploaded receipts,
+  and `kind:39520` staged artifact locators from retained manifest state
+  through `pylon training publish`, while persisting event ids and address
+  refs into the retained training runtime-state store. This is still the
+  node-claim lane rather than the final authoritative `Nexus` publication
+  lane, so later issues still need status/admin projection, closeout
+  reconciliation, and `NIP-32`-driven reputation ingestion on top of the
+  retained publication pointers.
 
 ### 3.7 Closeout, settlement, and reputation ingestion
 

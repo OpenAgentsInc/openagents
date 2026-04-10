@@ -212,6 +212,23 @@ persisted credential-source name through Application Default Credentials and
 can mint GCS bearer tokens from either `GOOGLE_APPLICATION_CREDENTIALS` or
 instance metadata without writing raw secrets into retained state.
 
+`Pylon` now also has the first retained training TRN publication lane. The
+same `apps/pylon/src/lib.rs` surface can now:
+
+- publish `kind:39501` training node records from retained run-manifest state
+- publish `kind:39511` assignment-accepted and artifact-uploaded receipts
+- publish `kind:39520` staged artifact locators after the retained GCS courier
+  uploads and re-verifies the underlying objects
+- persist event ids and `a` references into the retained training runtime
+  state for later operator/admin projection through
+  `pylon training publish [--manifest <path>]`
+
+This is still the node-side claim lane, not the final authoritative `Nexus`
+publication lane. The current locator status is intentionally `staged`, and
+later issues still need to project the retained publication pointers into
+training-aware status/admin surfaces and reconcile them against authoritative
+`Nexus` closeout state.
+
 The retained config now also carries one explicit `training` block for the
 future admitted-node lane. That block freezes:
 
