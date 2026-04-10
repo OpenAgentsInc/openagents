@@ -17,7 +17,9 @@ use axum::{Json, Router};
 use bip39::{Language, Mnemonic};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
-    Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event, load_identity_from_path,
+    Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event,
+    load_identity_from_path, pylon_training_observed_labels_from_event,
+    pylon_training_reputation_projection,
     nip98::{
         HttpAuth, HttpMethod, create_http_auth_event, encode_authorization_header, hash_payload,
     },
@@ -41,11 +43,9 @@ use openagents_kernel_core::{
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
         PylonTrainingArtifactLayout, PylonTrainingObservabilityContext,
-        PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
-        PylonTrainingSchedulerEffect, artifact_digest_from_bytes, artifact_digest_from_json,
+        artifact_digest_from_bytes, artifact_digest_from_json,
         can_emit_terminal_artifact_uploaded_receipt, derive_artifact_bundle_state,
         parse_pylon_training_run_manifest_json, resolve_pylon_training_credentials,
-        scheduler_effect_for_label,
     },
 };
 use openagents_provider_substrate::{
@@ -8170,139 +8170,37 @@ fn training_reputation_cache_entries_from_event(
     event_refs: &BTreeSet<String>,
     address_refs: &BTreeSet<String>,
 ) -> Vec<PylonTrainingReputationLabelCacheEntry> {
-    if event.kind != nostr::nip32::KIND_LABEL as u16 {
-        return Vec::new();
-    }
-
-    let subject_pubkey_ref = event.tags.iter().find_map(|tag| {
-        (tag.first().is_some_and(|value| value == "p")
-            && tag.get(1).is_some_and(|value| value == subject_pubkey))
-        .then(|| tag.get(1).cloned())
-        .flatten()
-    });
-    let event_ref = event.tags.iter().find_map(|tag| {
-        (tag.first().is_some_and(|value| value == "e")
-            && tag.get(1).is_some_and(|value| event_refs.contains(value)))
-        .then(|| tag.get(1).cloned())
-        .flatten()
-    });
-    let address_ref = event.tags.iter().find_map(|tag| {
-        (tag.first().is_some_and(|value| value == "a")
-            && tag.get(1).is_some_and(|value| address_refs.contains(value)))
-        .then(|| tag.get(1).cloned())
-        .flatten()
-    });
-    if subject_pubkey_ref.is_none() && event_ref.is_none() && address_ref.is_none() {
-        return Vec::new();
-    }
-
-    let mut entries = Vec::new();
-    for tag in &event.tags {
-        if !tag.first().is_some_and(|value| value == "l") {
-            continue;
-        }
-        let Some(label_value) = tag.get(1).map(String::as_str) else {
-            continue;
-        };
-        let namespace = tag
-            .get(2)
-            .map(|value| value.as_str())
-            .or_else(|| training_single_namespace_from_event(event));
-        let Some(namespace) = namespace else {
-            continue;
-        };
-        let Some((scheduler_effect, hard_gate)) =
-            training_reputation_effect(namespace, label_value, event.created_at)
-        else {
-            continue;
-        };
-        let cache_key = format!("{}::{namespace}::{label_value}", event.id);
-        entries.push(PylonTrainingReputationLabelCacheEntry {
-            cache_key,
+    pylon_training_observed_labels_from_event(
+        event,
+        subject_pubkey,
+        event_refs,
+        address_refs,
+        training_current_unix_seconds(),
+    )
+    .into_iter()
+    .map(|observed| {
+        let namespace = observed.projection.namespace.label().to_string();
+        let label = observed.projection.label.label().to_string();
+        PylonTrainingReputationLabelCacheEntry {
+            cache_key: format!("{}::{namespace}::{label}", event.id),
             event_id: event.id.clone(),
             publisher_pubkey: event.pubkey.clone(),
-            namespace: namespace.to_string(),
-            label: label_value.to_string(),
-            scheduler_effect,
-            hard_gate,
-            subject_pubkey: subject_pubkey_ref.clone(),
-            event_ref: event_ref.clone(),
-            address_ref: address_ref.clone(),
+            namespace,
+            label,
+            scheduler_effect: observed.projection.scheduler_effect.label().to_string(),
+            hard_gate: observed.projection.hard_gate,
+            subject_pubkey: observed.subject_pubkey,
+            event_ref: observed.event_ref,
+            address_ref: observed.address_ref,
             content: (!event.content.trim().is_empty()).then(|| event.content.clone()),
             created_at_unix: event.created_at,
-        });
-    }
-    entries
+        }
+    })
+    .collect()
 }
 
-fn training_single_namespace_from_event(event: &Event) -> Option<&str> {
-    let namespaces = event
-        .tags
-        .iter()
-        .filter_map(|tag| {
-            (tag.first().is_some_and(|value| value == "L"))
-                .then(|| tag.get(1).map(String::as_str))
-                .flatten()
-        })
-        .collect::<BTreeSet<_>>();
-    (namespaces.len() == 1)
-        .then(|| namespaces.iter().next().copied())
-        .flatten()
-}
-
-fn training_reputation_effect(
-    namespace: &str,
-    label: &str,
-    created_at_unix: u64,
-) -> Option<(String, bool)> {
-    let namespace = training_reputation_namespace_from_str(namespace)?;
-    let label = training_reputation_label_from_str(label)?;
-    let age_days = training_reputation_age_days(created_at_unix);
-    let effect = scheduler_effect_for_label(namespace, label, age_days).ok()?;
-    Some((
-        training_scheduler_effect_label(effect).to_string(),
-        effect == PylonTrainingSchedulerEffect::HardGate,
-    ))
-}
-
-fn training_reputation_namespace_from_str(value: &str) -> Option<PylonTrainingReputationNamespace> {
-    match value {
-        "trn/contributor" => Some(PylonTrainingReputationNamespace::Contributor),
-        "trn/validator" => Some(PylonTrainingReputationNamespace::Validator),
-        "trn/build" => Some(PylonTrainingReputationNamespace::Build),
-        "trn/checkpoint" => Some(PylonTrainingReputationNamespace::Checkpoint),
-        _ => None,
-    }
-}
-
-fn training_reputation_label_from_str(value: &str) -> Option<PylonTrainingReputationLabel> {
-    match value {
-        "good" => Some(PylonTrainingReputationLabel::Good),
-        "poor" => Some(PylonTrainingReputationLabel::Poor),
-        "quarantined" => Some(PylonTrainingReputationLabel::Quarantined),
-        "fraud" => Some(PylonTrainingReputationLabel::Fraud),
-        "inconsistent" => Some(PylonTrainingReputationLabel::Inconsistent),
-        "admitted" => Some(PylonTrainingReputationLabel::Admitted),
-        "stale" => Some(PylonTrainingReputationLabel::Stale),
-        "revoked" => Some(PylonTrainingReputationLabel::Revoked),
-        "warning" => Some(PylonTrainingReputationLabel::Warning),
-        _ => None,
-    }
-}
-
-fn training_scheduler_effect_label(effect: PylonTrainingSchedulerEffect) -> &'static str {
-    match effect {
-        PylonTrainingSchedulerEffect::HardGate => "hard_gate",
-        PylonTrainingSchedulerEffect::SoftPositive => "soft_positive",
-        PylonTrainingSchedulerEffect::SoftNegative => "soft_negative",
-        PylonTrainingSchedulerEffect::Ignored => "ignored",
-    }
-}
-
-fn training_reputation_age_days(created_at_unix: u64) -> u32 {
-    let now_secs = u64::try_from(now_epoch_ms().max(0)).unwrap_or(0) / 1000;
-    let age_secs = now_secs.saturating_sub(created_at_unix);
-    u32::try_from(age_secs / 86_400).unwrap_or(u32::MAX)
+fn training_current_unix_seconds() -> u64 {
+    u64::try_from(now_epoch_ms().max(0)).unwrap_or(0) / 1000
 }
 
 fn training_runtime_blocked_label_keys(state: &PylonTrainingRuntimeState) -> Vec<String> {
@@ -8319,12 +8217,13 @@ fn training_runtime_blocked_label_keys(state: &PylonTrainingRuntimeState) -> Vec
 fn training_reputation_cache_entry_hard_gates(
     entry: &PylonTrainingReputationLabelCacheEntry,
 ) -> bool {
-    training_reputation_effect(
+    pylon_training_reputation_projection(
         entry.namespace.as_str(),
         entry.label.as_str(),
         entry.created_at_unix,
+        training_current_unix_seconds(),
     )
-    .map(|(_, hard_gate)| hard_gate)
+    .map(|projection| projection.hard_gate)
     .unwrap_or(entry.hard_gate)
 }
 

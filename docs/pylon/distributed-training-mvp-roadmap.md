@@ -1598,6 +1598,20 @@ Current status:
 - Add scheduler-facing decay and gating projection code matching reputation
   policy v1 instead of leaving label interpretation ad hoc.
 
+Current status:
+- `crates/openagents-kernel-core/src/pylon_training.rs` now exposes the frozen
+  TRN reputation namespace, label, and scheduler-effect round trips plus a
+  shared decay-aware projection helper that resolves age, scheduler effect, and
+  hard-gate status from the policy-v1 contract.
+- `crates/nostr/core/src/nip_trn_reputation.rs` now owns the TRN-specific
+  `NIP-32` helper surface: canonical label-target builders, label-event
+  construction, single-namespace fallback, and observed-label projection from
+  relay events.
+- `apps/pylon/src/lib.rs` now consumes that shared helper layer when it ingests
+  retained reputation labels, so namespace parsing, label parsing, decay
+  windows, and hard-gate interpretation no longer drift from the shared TRN
+  contract.
+
 ### 5.4 Relay publication reliability
 
 - Add publish retry, dedupe, and local persistence for TRN event emission.

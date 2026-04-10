@@ -343,6 +343,16 @@ impl PylonTrainingReputationNamespace {
             Self::Checkpoint => "trn/checkpoint",
         }
     }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "trn/contributor" => Some(Self::Contributor),
+            "trn/validator" => Some(Self::Validator),
+            "trn/build" => Some(Self::Build),
+            "trn/checkpoint" => Some(Self::Checkpoint),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -373,6 +383,21 @@ impl PylonTrainingReputationLabel {
             Self::Warning => "warning",
         }
     }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "good" => Some(Self::Good),
+            "poor" => Some(Self::Poor),
+            "quarantined" => Some(Self::Quarantined),
+            "fraud" => Some(Self::Fraud),
+            "inconsistent" => Some(Self::Inconsistent),
+            "admitted" => Some(Self::Admitted),
+            "stale" => Some(Self::Stale),
+            "revoked" => Some(Self::Revoked),
+            "warning" => Some(Self::Warning),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -391,6 +416,30 @@ pub enum PylonTrainingSchedulerEffect {
     SoftPositive,
     SoftNegative,
     Ignored,
+}
+
+impl PylonTrainingSchedulerEffect {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::HardGate => "hard_gate",
+            Self::SoftPositive => "soft_positive",
+            Self::SoftNegative => "soft_negative",
+            Self::Ignored => "ignored",
+        }
+    }
+
+    pub const fn hard_gates(self) -> bool {
+        matches!(self, Self::HardGate)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PylonTrainingReputationProjection {
+    pub namespace: PylonTrainingReputationNamespace,
+    pub label: PylonTrainingReputationLabel,
+    pub scheduler_effect: PylonTrainingSchedulerEffect,
+    pub hard_gate: bool,
+    pub age_days: u32,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1411,6 +1460,24 @@ pub fn scheduler_effect_for_label(
     Ok(effect)
 }
 
+pub fn reputation_projection_for_label(
+    namespace: PylonTrainingReputationNamespace,
+    label: PylonTrainingReputationLabel,
+    created_at_unix: u64,
+    now_unix: u64,
+) -> ContractResult<PylonTrainingReputationProjection> {
+    let age_secs = now_unix.saturating_sub(created_at_unix);
+    let age_days = u32::try_from(age_secs / 86_400).unwrap_or(u32::MAX);
+    let scheduler_effect = scheduler_effect_for_label(namespace, label, age_days)?;
+    Ok(PylonTrainingReputationProjection {
+        namespace,
+        label,
+        hard_gate: scheduler_effect.hard_gates(),
+        scheduler_effect,
+        age_days,
+    })
+}
+
 impl PylonTrainingObservabilityContext {
     pub fn validate(&self) -> ContractResult<()> {
         const PLACEHOLDERS: [&str; 4] = ["unknown", "placeholder", "uninitialized", "n/a"];
@@ -1993,6 +2060,80 @@ mod tests {
                 expected_effect
             );
         }
+    }
+
+    #[test]
+    fn reputation_enums_round_trip_frozen_labels() {
+        for (namespace, label) in [
+            (
+                PylonTrainingReputationNamespace::Contributor,
+                "trn/contributor",
+            ),
+            (PylonTrainingReputationNamespace::Validator, "trn/validator"),
+            (PylonTrainingReputationNamespace::Build, "trn/build"),
+            (
+                PylonTrainingReputationNamespace::Checkpoint,
+                "trn/checkpoint",
+            ),
+        ] {
+            assert_eq!(namespace.label(), label);
+            assert_eq!(PylonTrainingReputationNamespace::parse(label), Some(namespace));
+        }
+
+        for (label, value) in [
+            (PylonTrainingReputationLabel::Good, "good"),
+            (PylonTrainingReputationLabel::Poor, "poor"),
+            (PylonTrainingReputationLabel::Quarantined, "quarantined"),
+            (PylonTrainingReputationLabel::Fraud, "fraud"),
+            (PylonTrainingReputationLabel::Inconsistent, "inconsistent"),
+            (PylonTrainingReputationLabel::Admitted, "admitted"),
+            (PylonTrainingReputationLabel::Stale, "stale"),
+            (PylonTrainingReputationLabel::Revoked, "revoked"),
+            (PylonTrainingReputationLabel::Warning, "warning"),
+        ] {
+            assert_eq!(label.label(), value);
+            assert_eq!(PylonTrainingReputationLabel::parse(value), Some(label));
+        }
+    }
+
+    #[test]
+    fn reputation_projection_tracks_age_and_hard_gate_bits() {
+        let projected = reputation_projection_for_label(
+            PylonTrainingReputationNamespace::Validator,
+            PylonTrainingReputationLabel::Poor,
+            1_700_000_000,
+            1_700_000_000 + (5 * 86_400),
+        )
+        .expect("projection should resolve");
+        assert_eq!(projected.age_days, 5);
+        assert_eq!(
+            projected.scheduler_effect,
+            PylonTrainingSchedulerEffect::SoftNegative
+        );
+        assert!(!projected.hard_gate);
+        assert_eq!(projected.scheduler_effect.label(), "soft_negative");
+
+        let aged_out = reputation_projection_for_label(
+            PylonTrainingReputationNamespace::Checkpoint,
+            PylonTrainingReputationLabel::Warning,
+            1_700_000_000,
+            1_700_000_000 + (31 * 86_400),
+        )
+        .expect("projection should resolve");
+        assert_eq!(aged_out.age_days, 31);
+        assert_eq!(aged_out.scheduler_effect, PylonTrainingSchedulerEffect::Ignored);
+        assert!(!aged_out.hard_gate);
+
+        let hard_gate = reputation_projection_for_label(
+            PylonTrainingReputationNamespace::Build,
+            PylonTrainingReputationLabel::Revoked,
+            1_700_000_000,
+            1_700_000_100,
+        )
+        .expect("projection should resolve");
+        assert!(hard_gate.hard_gate);
+        assert_eq!(hard_gate.scheduler_effect, PylonTrainingSchedulerEffect::HardGate);
+        assert_eq!(hard_gate.scheduler_effect.label(), "hard_gate");
     }
 
     #[test]

@@ -641,20 +641,17 @@ Implementations MAY use NIP-32 labels for:
 Implementations that publish TRN reputation labels SHOULD use one of these
 namespaces:
 
-- `trn/reputation`
-- `trn/fraud`
+- `trn/contributor`
 - `trn/validator`
 - `trn/build`
-- `trn/artifact`
+- `trn/checkpoint`
 
 Recommended label values are:
 
-- `trn/reputation`: `accepted_contribution`, `rewarded`, `held`, `slashed`
-- `trn/fraud`: `replay_required`, `repeated_missing_submission`,
-  `suspicious_similarity`, `duplicate_submission`
+- `trn/contributor`: `good`, `poor`, `quarantined`, `fraud`
 - `trn/validator`: `good`, `poor`, `inconsistent`
-- `trn/build`: `revoked`, `mismatch`
-- `trn/artifact`: `checkpoint_warning`, `digest_mismatch`, `proof_missing`
+- `trn/build`: `admitted`, `stale`, `revoked`
+- `trn/checkpoint`: `warning`, `revoked`
 
 When a label affects one concrete actor, implementations SHOULD target both:
 
