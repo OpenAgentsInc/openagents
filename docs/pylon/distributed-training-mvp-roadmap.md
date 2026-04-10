@@ -3227,6 +3227,22 @@ deterministic assignment seeds, and dataset-identity binding.
 - All repos use shared policy-conformant helpers instead of ad hoc
   implementations.
 
+Implementation note:
+
+- `crates/openagents-kernel-core/src/pylon_training.rs` now carries the frozen
+  shared helpers for membership-revision labels, assignment ids, lease ids,
+  manifest-binding digests, dataset-identity digests, assignment seeds, and
+  manifest-derived artifact layout construction.
+- `apps/nexus-control` now uses those shared kernel-core helpers for scheduler
+  assignment ids, lease ids, manifest binding, membership revisions, and
+  deterministic assignment-seed generation instead of local ad hoc copies.
+- `apps/pylon` now uses the same shared artifact layout and bundle-kind helpers
+  for artifact inspection, publication, and TRN mapping so bundle ids and path
+  layout derive from one frozen contract.
+- `openagents-kernel-core` now has direct contract tests for the frozen shared
+  helper outputs and artifact layout behavior, which gives later drift tests a
+  canonical helper surface to lock against.
+
 #### 49. Implement node and build identity binding, revocation handling, and
 receipt-redaction policy
 

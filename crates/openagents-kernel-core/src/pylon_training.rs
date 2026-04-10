@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bitcoin::hashes::{sha256, Hash};
+use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
-use crate::ids::sha256_prefixed_bytes;
+use crate::{compute::ComputeAdapterDatasetSlice, ids::sha256_prefixed_bytes};
 
 pub const PYLON_TRAINING_RUN_MANIFEST_V1: &str = "openagents.pylon_training_run_manifest.v1";
 pub const PYLON_TRAINING_EXECUTION_BACKEND_PSIONIC_TRAIN: &str = "psionic_train";
@@ -630,6 +630,81 @@ pub fn canonical_json_sha256_digest<T: Serialize>(value: &T) -> ContractResult<S
     ))
 }
 
+pub fn pylon_training_membership_revision_label(membership_revision: u64) -> String {
+    format!("members.rev{membership_revision}")
+}
+
+pub fn pylon_training_assignment_id(
+    training_run_id: &str,
+    window_id: &str,
+    role_label: &str,
+    slot_ordinal: u32,
+    attempt: u32,
+) -> String {
+    format!("assign.{training_run_id}.{window_id}.{role_label}.{slot_ordinal}.attempt{attempt}")
+}
+
+pub fn pylon_training_lease_id(
+    training_run_id: &str,
+    window_id: &str,
+    role_label: &str,
+    slot_ordinal: u32,
+    attempt: u32,
+    membership_revision: u64,
+) -> String {
+    format!(
+        "lease.{training_run_id}.{window_id}.{role_label}.{slot_ordinal}.attempt{attempt}.rev{membership_revision}"
+    )
+}
+
+pub fn pylon_training_manifest_binding_digest(
+    training_run_id: &str,
+    window_id: &str,
+    membership_revision: u64,
+    node_pubkey_hex: &str,
+    assignment_id: &str,
+    role_label: &str,
+    artifact_bucket_uri: &str,
+) -> String {
+    sha256_prefixed_bytes(
+        format!(
+            "{training_run_id}:{window_id}:{membership_revision}:{node_pubkey_hex}:{assignment_id}:{role_label}:{artifact_bucket_uri}"
+        )
+        .as_bytes(),
+    )
+}
+
+pub fn pylon_training_dataset_identity_digest(
+    dataset_slice: &ComputeAdapterDatasetSlice,
+) -> ContractResult<String> {
+    canonical_json_sha256_digest(&json!({
+        "dataset_id": dataset_slice.dataset_id,
+        "slice_id": dataset_slice.slice_id,
+        "slice_digest": dataset_slice.slice_digest,
+    }))
+}
+
+pub fn pylon_training_assignment_seed(
+    training_run_id: &str,
+    window_id: &str,
+    membership_revision: &str,
+    assignment_id: &str,
+    node_pubkey_hex: &str,
+    dataset_slice: &ComputeAdapterDatasetSlice,
+) -> ContractResult<String> {
+    canonical_json_sha256_digest(&json!({
+        "training_run_id": training_run_id,
+        "window_id": window_id,
+        "membership_revision": membership_revision,
+        "assignment_id": assignment_id,
+        "node_pubkey_hex": node_pubkey_hex,
+        "dataset_id": dataset_slice.dataset_id,
+        "slice_id": dataset_slice.slice_id,
+        "slice_digest": dataset_slice.slice_digest,
+    }))
+    .map_err(|_| "training_window_assignment_seed_encode_failed".to_string())
+}
+
 impl PylonTrainingTopology {
     pub fn validate_mvp(&self) -> ContractResult<()> {
         if self.world_size == 0 {
@@ -681,6 +756,17 @@ impl PylonTrainingCheckpointBinding {
 }
 
 impl PylonTrainingArtifactLayout {
+    pub fn from_manifest(manifest: &PylonTrainingRunManifestV1) -> ContractResult<Self> {
+        let layout = Self {
+            bucket_uri: manifest.artifacts.bucket_uri.clone(),
+            network_id: manifest.network_id.clone(),
+            run_id: manifest.run_id.clone(),
+            window_id: manifest.window_id.clone(),
+        };
+        layout.validate()?;
+        Ok(layout)
+    }
+
     pub fn validate(&self) -> ContractResult<()> {
         require_non_empty(self.bucket_uri.as_str(), "bucket_uri")?;
         if !self.bucket_uri.starts_with("gs://") {
@@ -1146,6 +1232,32 @@ pub fn validate_redacted_retained_state(value: &Value) -> ContractResult<()> {
 }
 
 impl PylonTrainingArtifactBundleKind {
+    pub fn bundle_id(&self) -> String {
+        match self {
+            Self::RunManifest => "run_manifest".to_string(),
+            Self::LatestCheckpointPointer => "latest_checkpoint_pointer".to_string(),
+            Self::CheckpointManifest { optimizer_step } => {
+                format!("checkpoint_manifest:{optimizer_step}")
+            }
+            Self::Contribution { assignment_id } => format!("contribution:{assignment_id}"),
+            Self::ValidatorVerdict { challenge_id } => format!("validator_verdict:{challenge_id}"),
+            Self::SealedWindow => "sealed_window".to_string(),
+            Self::ScoreSnapshot => "score_snapshot".to_string(),
+        }
+    }
+
+    pub fn bundle_kind_label(&self) -> &'static str {
+        match self {
+            Self::RunManifest => "run_manifest",
+            Self::LatestCheckpointPointer => "latest_checkpoint_pointer",
+            Self::CheckpointManifest { .. } => "checkpoint_manifest",
+            Self::Contribution { .. } => "contribution",
+            Self::ValidatorVerdict { .. } => "validator_verdict",
+            Self::SealedWindow => "sealed_window",
+            Self::ScoreSnapshot => "score_snapshot",
+        }
+    }
+
     pub fn required_paths(&self, layout: &PylonTrainingArtifactLayout) -> BTreeSet<String> {
         match self {
             Self::RunManifest => BTreeSet::from([layout.run_manifest_path()]),
@@ -1574,7 +1686,17 @@ mod tests {
         }
     }
 
+    fn dataset_slice() -> ComputeAdapterDatasetSlice {
+        ComputeAdapterDatasetSlice {
+            dataset_id: "dataset://train/reference".to_string(),
+            split_name: "train".to_string(),
+            slice_id: "slice://000123".to_string(),
+            slice_digest: "sha256:dataset-slice".to_string(),
+        }
+    }
+
     fn worker_manifest() -> PylonTrainingRunManifestV1 {
+        let dataset_slice = dataset_slice();
         PylonTrainingRunManifestV1::builder(
             PylonTrainingManifestRole::Worker,
             manifest_common(),
@@ -1584,10 +1706,18 @@ mod tests {
             trn(),
         )
         .dataset(PylonTrainingDatasetAssignment {
-            dataset_id: "dataset://train/reference".to_string(),
-            slice_id: "slice://000123".to_string(),
-            slice_digest: "sha256:dataset-slice".to_string(),
-            assignment_seed: "seed://window.000123/node01".to_string(),
+            dataset_id: dataset_slice.dataset_id.clone(),
+            slice_id: dataset_slice.slice_id.clone(),
+            slice_digest: dataset_slice.slice_digest.clone(),
+            assignment_seed: pylon_training_assignment_seed(
+                "run.alpha",
+                "window.000123",
+                "members.rev7",
+                "assign.node01.window000123",
+                "0123abcd",
+                &dataset_slice,
+            )
+            .expect("assignment seed"),
         })
         .build()
         .expect("worker manifest should build")
@@ -1795,6 +1925,109 @@ mod tests {
         assert_eq!(
             layout.score_snapshot_path(),
             "gs://bucket/networks/trainnet.alpha/runs/run.alpha/windows/window.000123/score_snapshot.json"
+        );
+    }
+
+    #[test]
+    fn shared_training_identity_helpers_match_frozen_contracts() {
+        let dataset_slice = dataset_slice();
+        assert_eq!(pylon_training_membership_revision_label(7), "members.rev7");
+        assert_eq!(
+            pylon_training_assignment_id("run.alpha", "window.000123", "worker", 1, 2),
+            "assign.run.alpha.window.000123.worker.1.attempt2"
+        );
+        assert_eq!(
+            pylon_training_lease_id("run.alpha", "window.000123", "worker", 1, 2, 7),
+            "lease.run.alpha.window.000123.worker.1.attempt2.rev7"
+        );
+        assert_eq!(
+            pylon_training_manifest_binding_digest(
+                "run.alpha",
+                "window.000123",
+                7,
+                "0123abcd",
+                "assign.run.alpha.window.000123.worker.1.attempt2",
+                "worker",
+                "gs://bucket",
+            ),
+            sha256_prefixed_bytes(
+                b"run.alpha:window.000123:7:0123abcd:assign.run.alpha.window.000123.worker.1.attempt2:worker:gs://bucket",
+            )
+        );
+        assert_eq!(
+            pylon_training_dataset_identity_digest(&dataset_slice).expect("dataset identity"),
+            canonical_json_sha256_digest(&json!({
+                "dataset_id": "dataset://train/reference",
+                "slice_id": "slice://000123",
+                "slice_digest": "sha256:dataset-slice",
+            }))
+            .expect("dataset identity digest")
+        );
+        assert_eq!(
+            pylon_training_assignment_seed(
+                "run.alpha",
+                "window.000123",
+                "members.rev7",
+                "assign.run.alpha.window.000123.worker.1.attempt2",
+                "0123abcd",
+                &dataset_slice,
+            )
+            .expect("assignment seed"),
+            canonical_json_sha256_digest(&json!({
+                "training_run_id": "run.alpha",
+                "window_id": "window.000123",
+                "membership_revision": "members.rev7",
+                "assignment_id": "assign.run.alpha.window.000123.worker.1.attempt2",
+                "node_pubkey_hex": "0123abcd",
+                "dataset_id": "dataset://train/reference",
+                "slice_id": "slice://000123",
+                "slice_digest": "sha256:dataset-slice",
+            }))
+            .expect("assignment seed digest")
+        );
+    }
+
+    #[test]
+    fn artifact_layout_and_bundle_helpers_match_frozen_contracts() {
+        let manifest = worker_manifest();
+        let layout = PylonTrainingArtifactLayout::from_manifest(&manifest).expect("layout");
+        assert_eq!(
+            layout.run_root(),
+            "gs://bucket/networks/trainnet.alpha/runs/run.alpha"
+        );
+        assert_eq!(
+            PylonTrainingArtifactBundleKind::RunManifest.bundle_id(),
+            "run_manifest"
+        );
+        assert_eq!(
+            PylonTrainingArtifactBundleKind::LatestCheckpointPointer.bundle_id(),
+            "latest_checkpoint_pointer"
+        );
+        assert_eq!(
+            PylonTrainingArtifactBundleKind::CheckpointManifest { optimizer_step: 42 }.bundle_id(),
+            "checkpoint_manifest:42"
+        );
+        assert_eq!(
+            PylonTrainingArtifactBundleKind::Contribution {
+                assignment_id: "assign.node01.window000123".to_string()
+            }
+            .bundle_id(),
+            "contribution:assign.node01.window000123"
+        );
+        assert_eq!(
+            PylonTrainingArtifactBundleKind::ValidatorVerdict {
+                challenge_id: "challenge.alpha".to_string()
+            }
+            .bundle_id(),
+            "validator_verdict:challenge.alpha"
+        );
+        assert_eq!(
+            PylonTrainingArtifactBundleKind::SealedWindow.bundle_kind_label(),
+            "sealed_window"
+        );
+        assert_eq!(
+            PylonTrainingArtifactBundleKind::ScoreSnapshot.bundle_kind_label(),
+            "score_snapshot"
         );
     }
 
@@ -2077,7 +2310,10 @@ mod tests {
             ),
         ] {
             assert_eq!(namespace.label(), label);
-            assert_eq!(PylonTrainingReputationNamespace::parse(label), Some(namespace));
+            assert_eq!(
+                PylonTrainingReputationNamespace::parse(label),
+                Some(namespace)
+            );
         }
 
         for (label, value) in [
@@ -2121,7 +2357,10 @@ mod tests {
         )
         .expect("projection should resolve");
         assert_eq!(aged_out.age_days, 31);
-        assert_eq!(aged_out.scheduler_effect, PylonTrainingSchedulerEffect::Ignored);
+        assert_eq!(
+            aged_out.scheduler_effect,
+            PylonTrainingSchedulerEffect::Ignored
+        );
         assert!(!aged_out.hard_gate);
 
         let hard_gate = reputation_projection_for_label(
@@ -2132,7 +2371,10 @@ mod tests {
         )
         .expect("projection should resolve");
         assert!(hard_gate.hard_gate);
-        assert_eq!(hard_gate.scheduler_effect, PylonTrainingSchedulerEffect::HardGate);
+        assert_eq!(
+            hard_gate.scheduler_effect,
+            PylonTrainingSchedulerEffect::HardGate
+        );
         assert_eq!(hard_gate.scheduler_effect.label(), "hard_gate");
     }
 
