@@ -1047,6 +1047,26 @@ pub struct FinalizeValidatorChallengeResponse {
     pub receipt: Receipt,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryValidatorChallengeRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub lease: ValidatorChallengeLease,
+    pub finalized_at_ms: u64,
+    pub detail: String,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryValidatorChallengeResponse {
+    pub challenge: ValidatorChallengeSnapshot,
+    pub receipt: Receipt,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 struct ComputeRiskLink {
     #[serde(default)]
@@ -9567,6 +9587,131 @@ impl KernelState {
         })
     }
 
+    pub fn retry_validator_challenge(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RetryValidatorChallengeRequest,
+    ) -> Result<MutationResult<RetryValidatorChallengeResponse>, String> {
+        let challenge_id = normalize_required(
+            req.lease.challenge_id.as_str(),
+            "validator_challenge_id_missing",
+        )?;
+        req.lease.challenge_id.clone_from(&challenge_id);
+        req.lease.validator_id =
+            normalize_required(req.lease.validator_id.as_str(), "validator_id_missing")?;
+        req.detail = normalize_required(req.detail.as_str(), "validator_challenge_detail_missing")?;
+        if req.finalized_at_ms == 0 {
+            req.finalized_at_ms = context.now_unix_ms;
+        }
+
+        let Some(existing_snapshot) = self.validator_challenges.snapshot(challenge_id.as_str())
+        else {
+            return Err("validator_challenge_not_found".to_string());
+        };
+        if existing_snapshot.active_lease.as_ref() != Some(&req.lease) {
+            return Err("validator_challenge_lease_invalid".to_string());
+        }
+        let delivery_proof_id = existing_snapshot.request.context.delivery_proof_id.clone();
+
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        if let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+            && let Some(record) = self.delivery_proofs.get(delivery_proof_id.as_str())
+        {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.validator_challenge.retry".to_string(),
+                created_at_ms: req.finalized_at_ms as i64,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: json!({
+                    "challenge_id": challenge_id.clone(),
+                    "lease": req.lease.clone(),
+                    "detail": req.detail.clone(),
+                    "finalized_at_ms": req.finalized_at_ms,
+                }),
+                outputs_payload: json!({
+                    "challenge_id": challenge_id.clone(),
+                    "delivery_proof_id": delivery_proof_id.clone(),
+                    "status": ValidatorChallengeStatus::Retrying,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.validator_challenge.retry",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let receipt = match put_result {
+            Ok(ref result) => result.receipt.clone(),
+            Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            let challenge = self
+                .validator_challenges
+                .snapshot(challenge_id.as_str())
+                .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+            return Ok(MutationResult {
+                response: RetryValidatorChallengeResponse { challenge, receipt },
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        let retry_result = self
+            .validator_challenges
+            .retry_lease(&req.lease, req.finalized_at_ms, req.detail.clone())
+            .map_err(|error| validator_service_reason(&error).to_string())?;
+        if matches!(retry_result.status, ValidatorChallengeStatus::TimedOut)
+            && let Some(delivery_proof_id) = delivery_proof_id.as_ref()
+        {
+            let delivery_proof = self
+                .delivery_proofs
+                .get(delivery_proof_id.as_str())
+                .map(|record| record.delivery_proof.clone());
+            if let Some(delivery_proof) = delivery_proof {
+                self.trigger_compute_coverage_bindings(
+                    &delivery_proof,
+                    compute_challenge_trigger_reason(retry_result.status),
+                    req.finalized_at_ms as i64,
+                    Some(challenge_id.as_str()),
+                    Some(retry_result.challenge_result_ref.as_str()),
+                )?;
+            }
+        }
+
+        let challenge = self
+            .validator_challenges
+            .snapshot(challenge_id.as_str())
+            .ok_or_else(|| "validator_challenge_not_found".to_string())?;
+        let response = RetryValidatorChallengeResponse {
+            challenge,
+            receipt: put_result.receipt.clone(),
+        };
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.finalized_at_ms as i64)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     fn active_compute_index_for_window(
         &self,
         product_id: &str,
@@ -14702,9 +14847,10 @@ mod tests {
     use super::{
         ComputeBondDraw, ComputeProductRecord, ComputeRiskTrigger,
         FinalizeValidatorChallengeRequest, KernelMutationContext, KernelState,
-        LeaseValidatorChallengeRequest, ScheduleValidatorChallengeRequest, compute_index_family_id,
-        compute_index_methodology_id, compute_index_minimum_proof_posture, decode_metadata_struct,
-        floor_to_minute_utc, money_amount_value,
+        LeaseValidatorChallengeRequest, RetryValidatorChallengeRequest,
+        ScheduleValidatorChallengeRequest, compute_index_family_id, compute_index_methodology_id,
+        compute_index_minimum_proof_posture, decode_metadata_struct, floor_to_minute_utc,
+        money_amount_value,
     };
     use openagents_kernel_core::authority::{
         AcceptComputeOutcomeRequest, AppendComputeEvaluationSamplesRequest,
@@ -19445,6 +19591,70 @@ mod tests {
         assert_eq!(
             replayed_finalize.response.challenge.status,
             ValidatorChallengeStatus::Verified
+        );
+    }
+
+    #[test]
+    fn validator_challenge_retry_requeues_and_releases_next_attempt() {
+        let created_at_ms = 1_762_000_347_500u64;
+        let mut kernel = KernelState::default();
+
+        kernel
+            .schedule_validator_challenge(
+                &fixture_context(created_at_ms),
+                validator_challenge_request("challenge.compute.retry", None, created_at_ms),
+            )
+            .expect("schedule");
+
+        let first_lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 1_000),
+                validator_lease_request(
+                    "challenge.compute.retry",
+                    "validator.retry",
+                    created_at_ms + 1_000,
+                    "idemp.compute.validator.lease.retry.1",
+                ),
+            )
+            .expect("first lease");
+        assert_eq!(first_lease.response.lease.attempt, 1);
+
+        let retried = kernel
+            .retry_validator_challenge(
+                &fixture_context(created_at_ms + 1_100),
+                RetryValidatorChallengeRequest {
+                    idempotency_key: "idemp.compute.validator.retry.1".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    lease: first_lease.response.lease.clone(),
+                    finalized_at_ms: created_at_ms + 1_100,
+                    detail: "temporary validator transport failure".to_string(),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("retry");
+        assert_eq!(
+            retried.response.challenge.status,
+            ValidatorChallengeStatus::Retrying
+        );
+        assert!(retried.response.challenge.active_lease.is_none());
+
+        let second_lease = kernel
+            .lease_validator_challenge(
+                &fixture_context(created_at_ms + 1_200),
+                validator_lease_request(
+                    "challenge.compute.retry",
+                    "validator.retry",
+                    created_at_ms + 1_200,
+                    "idemp.compute.validator.lease.retry.2",
+                ),
+            )
+            .expect("second lease");
+        assert_eq!(second_lease.response.lease.attempt, 2);
+        assert_eq!(
+            second_lease.response.challenge.status,
+            ValidatorChallengeStatus::Leased
         );
     }
 
