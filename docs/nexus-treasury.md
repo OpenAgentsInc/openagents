@@ -138,6 +138,10 @@ That split matters operationally:
 
 - a stale public snapshot alone should not trigger restart if fresh completed
   sends are still flowing
+- the watchdog now honors a startup grace window, so a fresh restart is not
+  judged against stale pre-restart dispatch and confirmation timestamps before
+  the service has had time to finish wallet sync and reach the first payout
+  window
 - wallet/runtime hard errors, unreachable local treasury status, or sustained
   payout idleness with sellable Pylons online should trigger an automatic
   `systemctl restart nexus-relay`
@@ -151,8 +155,22 @@ Watchdog knobs:
 - `NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS`
 - `NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS`
 - `NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR`
+- `NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS`
 - `NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL`
 - `NEXUS_TREASURY_WATCHDOG_SERVICE_NAME`
+
+## Deploy Smoke Rollback
+
+`scripts/deploy/nexus/03-configure-and-start.sh` now runs a post-restart payout
+smoke check by default. The rollout only sticks if the freshly started image
+produces completed payout sends after restart. If the smoke check times out, it
+automatically rolls production back to the previous image.
+
+Smoke knobs:
+
+- `NEXUS_DEPLOY_POST_RESTART_SMOKE_ENABLED`
+- `NEXUS_DEPLOY_POST_RESTART_SMOKE_TIMEOUT_SECONDS`
+- `NEXUS_DEPLOY_POST_RESTART_SMOKE_POLL_SECONDS`
 
 ## Upgrade Validation
 
