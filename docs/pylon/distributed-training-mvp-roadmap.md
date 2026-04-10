@@ -3545,6 +3545,19 @@ so CUDA and Apple windows are distinguishable.
 - Public coordination state clearly distinguishes backend family without
   needing new MVP event kinds.
 
+Status note:
+
+- landed in `openagents`: `Nexus` now freezes backend-family and environment
+  identity into window metadata at plan time and republishes that identity
+  through training-network contracts, window events, coordinator window
+  receipts, validator score locators, and validator verdict events without
+  introducing new TRN kinds
+- landed in `openagents`: `Pylon` now reuses the same node record, receipt, and
+  artifact locator shapes while making backend-family and environment identity
+  explicit in node publication tags, assignment acknowledgements, staged
+  artifact locators, and terminal upload receipts so Apple and CUDA surfaces are
+  distinguishable on the wire
+
 #### 57. Automate the Apple rehearsal matrix and block dual-backend claims
 until it passes
 

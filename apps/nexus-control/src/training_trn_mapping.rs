@@ -42,6 +42,17 @@ pub(super) fn event_template_and_fingerprint(
     ))
 }
 
+fn optional_training_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn push_optional_tag(tags: &mut Vec<Vec<String>>, key: &str, value: &str) {
+    if let Some(value) = optional_training_string(value) {
+        tags.push(vec![key.to_string(), value]);
+    }
+}
+
 pub(super) fn network_contract_event(
     source: &TrainingTrnNetworkContractSource,
 ) -> Result<TrainingNetworkContractEvent, String> {
@@ -60,6 +71,7 @@ pub(super) fn network_contract_event(
             "training_policy_refs": source.training_policy_refs.iter().cloned().collect::<Vec<_>>(),
             "validator_policy_refs": source.validator_policy_refs.iter().cloned().collect::<Vec<_>>(),
             "checkpoint_families": source.checkpoint_families.iter().cloned().collect::<Vec<_>>(),
+            "backend_families": source.backend_families.iter().cloned().collect::<Vec<_>>(),
             "environment_refs": source.environment_refs.iter().cloned().collect::<Vec<_>>(),
             "benchmark_package_refs": source.benchmark_package_refs.iter().cloned().collect::<Vec<_>>(),
             "training_run_ids": source.training_run_ids,
@@ -76,6 +88,12 @@ pub(super) fn network_contract_event(
                 "class".to_string(),
                 "training_network_contract".to_string(),
             ]];
+            for backend_family in &source.backend_families {
+                tags.push(vec!["backend".to_string(), backend_family.clone()]);
+            }
+            for environment_ref in &source.environment_refs {
+                tags.push(vec!["environment".to_string(), environment_ref.clone()]);
+            }
             for training_run_id in &source.training_run_ids {
                 tags.push(vec!["run".to_string(), training_run_id.clone()]);
             }
@@ -94,6 +112,8 @@ pub(super) fn window_event(
         vec!["run".to_string(), source.window.training_run_id.clone()],
         vec!["class".to_string(), "training_window".to_string()],
     ];
+    push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
+    push_optional_tag(&mut extra_tags, "environment", metadata.environment_ref.as_str());
     if let Some(accepted_outcome_id) = source.window.accepted_outcome_id.as_ref()
         && let Some(closeout_status) = closeout_status_by_outcome_id.get(accepted_outcome_id)
     {
@@ -106,6 +126,8 @@ pub(super) fn window_event(
         content: json!({
             "network_id": metadata.network_id,
             "artifact_bucket_uri": metadata.artifact_bucket_uri,
+            "environment_ref": optional_training_string(metadata.environment_ref.as_str()),
+            "backend_family": optional_training_string(metadata.backend_family.as_str()),
             "membership_revision": metadata.membership_revision,
             "assignment_plan_count": metadata.assignment_plans.len(),
             "planned_at_ms": metadata.planned_at_ms,
@@ -138,6 +160,12 @@ pub(super) fn window_receipt_event(
 ) -> Result<TrainingReceiptEvent, String> {
     let metadata = super::training_window_metadata_from_value(&source.window.metadata)?;
     let status = source.window.status.label().to_string();
+    let mut extra_tags = vec![vec![
+        "run".to_string(),
+        source.window.training_run_id.clone(),
+    ]];
+    push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
+    push_optional_tag(&mut extra_tags, "environment", metadata.environment_ref.as_str());
     Ok(TrainingReceiptEvent {
         network_id: metadata.network_id.clone(),
         window_id: source.window.window_id.clone(),
@@ -146,6 +174,8 @@ pub(super) fn window_receipt_event(
             "network_id": metadata.network_id,
             "training_run_id": source.window.training_run_id,
             "window_id": source.window.window_id,
+            "environment_ref": optional_training_string(metadata.environment_ref.as_str()),
+            "backend_family": optional_training_string(metadata.backend_family.as_str()),
             "status": status,
             "kernel_object_id": source.window.window_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
@@ -160,10 +190,7 @@ pub(super) fn window_receipt_event(
         classes: vec!["coordinator_window_state".to_string()],
         address_refs: Vec::new(),
         event_refs: Vec::new(),
-        extra_tags: vec![vec![
-            "run".to_string(),
-            source.window.training_run_id.clone(),
-        ]],
+        extra_tags,
     }
     .normalize())
 }
@@ -274,6 +301,8 @@ pub(super) fn validator_score_locator_event(
             "network_id": binding.network_id,
             "training_run_id": binding.training_run_id,
             "window_id": binding.window_id,
+            "environment_ref": optional_training_string(binding.environment_ref.as_str()),
+            "backend_family": optional_training_string(binding.backend_family.as_str()),
             "challenge_id": snapshot.request.context.challenge_id,
             "challenge_kind": binding.challenge_kind,
             "validator_status": canonical_challenge_status(snapshot.status).label(),
@@ -295,13 +324,18 @@ pub(super) fn validator_score_locator_event(
             "challenge".to_string(),
             snapshot.request.context.challenge_id.clone(),
         ],
+        vec!["backend".to_string(), binding.backend_family.clone()],
+        vec!["environment".to_string(), binding.environment_ref.clone()],
         vec![
             "validator_verdict".to_string(),
             canonical_challenge_verdict(result.verdict)
                 .label()
                 .to_string(),
         ],
-    ];
+    ]
+    .into_iter()
+    .filter(|tag| !tag[1].trim().is_empty())
+    .collect();
     event.normalize()
 }
 
@@ -322,6 +356,8 @@ pub(super) fn validator_verdict_event(
             "network_id": binding.network_id,
             "training_run_id": binding.training_run_id,
             "window_id": binding.window_id,
+            "environment_ref": optional_training_string(binding.environment_ref.as_str()),
+            "backend_family": optional_training_string(binding.backend_family.as_str()),
             "challenge_id": snapshot.request.context.challenge_id,
             "challenge_kind": binding.challenge_kind,
             "validator_status": canonical_challenge_status(snapshot.status).label(),
@@ -353,6 +389,8 @@ pub(super) fn validator_verdict_event(
                 "challenge".to_string(),
                 snapshot.request.context.challenge_id.clone(),
             ],
+            vec!["backend".to_string(), binding.backend_family.clone()],
+            vec!["environment".to_string(), binding.environment_ref.clone()],
             vec![
                 "validator_status".to_string(),
                 canonical_challenge_status(snapshot.status)
@@ -360,7 +398,10 @@ pub(super) fn validator_verdict_event(
                     .to_string(),
             ],
             vec!["class".to_string(), "validator_verdict".to_string()],
-        ],
+        ]
+        .into_iter()
+        .filter(|tag| !tag[1].trim().is_empty())
+        .collect(),
     }
     .normalize()
 }
@@ -433,6 +474,7 @@ mod tests {
             training_policy_refs: BTreeSet::from(["policy.training.alpha".to_string()]),
             validator_policy_refs: BTreeSet::from(["policy.validator.alpha".to_string()]),
             checkpoint_families: BTreeSet::from(["checkpoint.family.alpha".to_string()]),
+            backend_families: BTreeSet::from(["cuda".to_string()]),
             environment_refs: BTreeSet::from(["env.cuda.alpha".to_string()]),
             benchmark_package_refs: BTreeSet::from(["benchmark.alpha".to_string()]),
             statuses: BTreeSet::from(["running".to_string()]),
@@ -445,6 +487,8 @@ mod tests {
         let metadata = super::super::TrainingWindowMetadata {
             network_id: "trainnet.alpha".to_string(),
             artifact_bucket_uri: "gs://bucket".to_string(),
+            environment_ref: "env.cuda.alpha".to_string(),
+            backend_family: "cuda".to_string(),
             membership_revision: "members.rev1".to_string(),
             assignment_plans: vec![super::super::TrainingWindowAssignmentPlan {
                 assignment_id: "assign.node01.window0001".to_string(),
@@ -633,6 +677,8 @@ mod tests {
             network_id: "trainnet.alpha".to_string(),
             training_run_id: "run.alpha".to_string(),
             window_id: "window.0001".to_string(),
+            backend_family: "cuda".to_string(),
+            environment_ref: "env.cuda.alpha".to_string(),
             challenge_kind: "aggregate".to_string(),
         };
         let result = snapshot.final_result.as_ref().expect("final result");
@@ -667,6 +713,18 @@ mod tests {
     #[test]
     fn coordinator_training_trn_mapping_roundtrips_network_window_closeout_and_score_events() {
         let network = network_contract_event(&network_contract_source_fixture()).expect("network");
+        assert!(
+            network
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            network
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
+        );
         let (template, fingerprint) =
             event_template_and_fingerprint(&TrnEvent::NetworkContract(network.clone()))
                 .expect("fingerprint");
@@ -687,6 +745,18 @@ mod tests {
             window
                 .extra_tags
                 .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            window
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
+        );
+        assert!(
+            window
+                .extra_tags
+                .iter()
                 .any(|tag| tag == &vec!["closeout".to_string(), "rewarded".to_string()])
         );
         assert!(matches!(
@@ -702,6 +772,18 @@ mod tests {
         assert_eq!(
             receipt.classes,
             vec!["coordinator_window_state".to_string()]
+        );
+        assert!(
+            receipt
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            receipt
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
         );
         assert!(matches!(
             nostr::TrnEvent::from_event(&fake_event(
@@ -837,12 +919,26 @@ mod tests {
             network_id: "trainnet.alpha".to_string(),
             training_run_id: "run.alpha".to_string(),
             window_id: "window.0001".to_string(),
+            backend_family: "cuda".to_string(),
+            environment_ref: "env.cuda.alpha".to_string(),
             challenge_kind: "aggregate".to_string(),
         };
         let result = snapshot.final_result.as_ref().expect("final result");
         let score_locator =
             validator_score_locator_event(&snapshot, result, &binding, "receipt.challenge.alpha");
         assert_eq!(score_locator.artifact_class.as_deref(), Some("score"));
+        assert!(
+            score_locator
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["backend".to_string(), "cuda".to_string()])
+        );
+        assert!(
+            score_locator
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
+        );
         assert!(matches!(
             nostr::TrnEvent::from_event(&fake_event(
                 score_locator

@@ -73,6 +73,7 @@ use openagents_kernel_core::data::{
 use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::{
+    PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
     PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
@@ -942,6 +943,10 @@ struct TrainingWindowAssignmentPlan {
 struct TrainingWindowMetadata {
     network_id: String,
     artifact_bucket_uri: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    environment_ref: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    backend_family: String,
     membership_revision: String,
     #[serde(default)]
     assignment_plans: Vec<TrainingWindowAssignmentPlan>,
@@ -2104,6 +2109,34 @@ fn training_node_matches_scheduler_run(
     }
     node.contributor_availability.settlement_trigger
         == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow)
+}
+
+fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<&'static str> {
+    let normalized = environment_ref.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    if normalized == PYLON_TRAINING_CUDA_ENVIRONMENT_REF
+        || normalized.contains(".cuda.")
+        || normalized.starts_with("env.cuda.")
+        || normalized.ends_with(".cuda.train")
+    {
+        return Some("cuda");
+    }
+    if normalized.contains(".mlx.") || normalized.starts_with("env.mlx.") {
+        return Some("mlx");
+    }
+    if normalized == PYLON_TRAINING_APPLE_ENVIRONMENT_REF
+        || normalized.contains(".apple.")
+        || normalized.contains(".metal.")
+        || normalized.starts_with("env.apple.")
+        || normalized.starts_with("env.metal.")
+        || normalized.ends_with(".apple.train")
+        || normalized.ends_with(".metal.train")
+    {
+        return Some("metal");
+    }
+    None
 }
 
 fn training_validator_node_matches_window(
@@ -4806,6 +4839,12 @@ async fn plan_training_window(
         let metadata = TrainingWindowMetadata {
             network_id: scheduler_metadata.network_id,
             artifact_bucket_uri: scheduler_metadata.artifact_bucket_uri,
+            environment_ref: training_run.environment_binding.environment_ref.clone(),
+            backend_family: training_backend_family_for_environment_ref(
+                training_run.environment_binding.environment_ref.as_str(),
+            )
+            .unwrap_or_default()
+            .to_string(),
             membership_revision: contributor_set_revision_id,
             assignment_plans: assignment_plans.clone(),
             validation: None,
@@ -6011,6 +6050,7 @@ struct TrainingTrnNetworkContractSource {
     training_policy_refs: BTreeSet<String>,
     validator_policy_refs: BTreeSet<String>,
     checkpoint_families: BTreeSet<String>,
+    backend_families: BTreeSet<String>,
     environment_refs: BTreeSet<String>,
     benchmark_package_refs: BTreeSet<String>,
     statuses: BTreeSet<String>,
@@ -6023,6 +6063,8 @@ struct TrainingTrnChallengeBinding {
     network_id: String,
     training_run_id: String,
     window_id: String,
+    backend_family: String,
+    environment_ref: String,
     challenge_kind: String,
 }
 
@@ -6784,6 +6826,7 @@ fn training_trn_network_sources(
                 training_policy_refs: BTreeSet::new(),
                 validator_policy_refs: BTreeSet::new(),
                 checkpoint_families: BTreeSet::new(),
+                backend_families: BTreeSet::new(),
                 environment_refs: BTreeSet::new(),
                 benchmark_package_refs: BTreeSet::new(),
                 statuses: BTreeSet::new(),
@@ -6808,6 +6851,11 @@ fn training_trn_network_sources(
                 .checkpoint_family
                 .clone(),
         );
+        if let Some(backend_family) = training_backend_family_for_environment_ref(
+            source.training_run.environment_binding.environment_ref.as_str(),
+        ) {
+            entry.backend_families.insert(backend_family.to_string());
+        }
         entry.environment_refs.insert(
             source
                 .training_run
@@ -6857,6 +6905,8 @@ fn training_trn_challenge_bindings(
                         network_id: metadata.network_id.clone(),
                         training_run_id: source.window.training_run_id.clone(),
                         window_id: source.window.window_id.clone(),
+                        backend_family: metadata.backend_family.clone(),
+                        environment_ref: metadata.environment_ref.clone(),
                         challenge_kind: challenge.challenge_kind.label().to_string(),
                     },
                 );
