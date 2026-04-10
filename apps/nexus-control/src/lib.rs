@@ -640,6 +640,7 @@ struct ControlStore {
     sync_tokens: HashMap<String, SyncTokenRecord>,
     provider_presence: ProviderPresenceState,
     starter_demand: StarterDemandState,
+    training_scheduler_state_path: Option<PathBuf>,
     training_scheduler: TrainingSchedulerState,
     treasury: TreasuryState,
     economy: ReceiptLedger,
@@ -658,12 +659,27 @@ impl ControlStore {
             policy_bundle_id: config.compute_policy_bundle_id.clone(),
             policy_version: config.compute_policy_version.clone(),
         });
+        let training_scheduler_state_path =
+            training_scheduler_state_path(config.kernel_state_path.as_ref());
+        let mut training_scheduler = match training_scheduler_state_path.as_ref() {
+            Some(path) => match TrainingSchedulerState::load_from_path(path) {
+                Ok(Some(state)) => state,
+                Ok(None) => TrainingSchedulerState::default(),
+                Err(error) => {
+                    tracing::error!("training scheduler state load failed: {error}");
+                    TrainingSchedulerState::default()
+                }
+            },
+            None => TrainingSchedulerState::default(),
+        };
+        training_scheduler.recover_from_kernel(&kernel, now_unix_ms as i64);
         let mut store = Self {
             sessions_by_access_token: HashMap::new(),
             sync_tokens: HashMap::new(),
             provider_presence: ProviderPresenceState::default(),
             starter_demand: StarterDemandState::default(),
-            training_scheduler: TrainingSchedulerState::default(),
+            training_scheduler_state_path,
+            training_scheduler,
             treasury: TreasuryState::new(config.treasury.state_path.clone()),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
             kernel,
@@ -672,7 +688,17 @@ impl ControlStore {
             .treasury
             .initialize_runtime_policy(&config.treasury, now_unix_ms);
         record_treasury_receipt_events(&mut store, treasury_receipts, now_unix_ms);
+        if let Err(error) = store.persist_training_scheduler_state() {
+            tracing::error!("training scheduler state persist failed: {error}");
+        }
         store
+    }
+
+    fn persist_training_scheduler_state(&self) -> Result<(), String> {
+        let Some(path) = self.training_scheduler_state_path.as_ref() else {
+            return Ok(());
+        };
+        self.training_scheduler.persist_to_path(path)
     }
 }
 
@@ -696,10 +722,21 @@ struct TrainingSchedulerState {
     lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
 }
 
-#[derive(Debug, Clone)]
+const TRAINING_SCHEDULER_STATE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingLeaseIdempotentRecord {
     request_digest: String,
     response: RecordTrainingRunLeaseResponse,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedTrainingSchedulerState {
+    schema_version: u32,
+    #[serde(default)]
+    runs_by_training_run_id: HashMap<String, ScheduledTrainingRun>,
+    #[serde(default)]
+    lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -800,7 +837,7 @@ struct TrainingSchedulerRunMetadata {
     checkpoint_ref: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingSchedulerRolePlan {
     worker_count: u32,
     validator_count: u32,
@@ -817,7 +854,7 @@ impl TrainingSchedulerRolePlan {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct ScheduledTrainingAssignment {
     assignment_id: String,
     role: TrainingNodeRoleClaim,
@@ -831,7 +868,7 @@ struct ScheduledTrainingAssignment {
     manifest_digest: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct ScheduledTrainingRun {
     training_run_id: String,
     network_id: String,
@@ -1212,6 +1249,110 @@ struct TrainingOperatorMetrics {
 }
 
 impl TrainingSchedulerState {
+    fn persisted(&self) -> PersistedTrainingSchedulerState {
+        PersistedTrainingSchedulerState {
+            schema_version: TRAINING_SCHEDULER_STATE_SCHEMA_VERSION,
+            runs_by_training_run_id: self.runs_by_training_run_id.clone(),
+            lease_idempotency: self.lease_idempotency.clone(),
+        }
+    }
+
+    fn from_persisted(persisted: PersistedTrainingSchedulerState) -> Self {
+        Self {
+            runs_by_training_run_id: persisted.runs_by_training_run_id,
+            lease_idempotency: persisted.lease_idempotency,
+        }
+    }
+
+    fn load_from_path(path: &PathBuf) -> Result<Option<Self>, String> {
+        let contents = match fs::read_to_string(path.as_path()) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(format!(
+                    "training_scheduler_state_read_failed:{}:{}",
+                    path.display(),
+                    error
+                ));
+            }
+        };
+        let persisted = serde_json::from_str::<PersistedTrainingSchedulerState>(contents.as_str())
+            .map_err(|error| {
+                format!(
+                    "training_scheduler_state_decode_failed:{}:{}",
+                    path.display(),
+                    error
+                )
+            })?;
+        if persisted.schema_version != TRAINING_SCHEDULER_STATE_SCHEMA_VERSION {
+            return Err(format!(
+                "training_scheduler_state_schema_unsupported:{}:{}",
+                path.display(),
+                persisted.schema_version
+            ));
+        }
+        Ok(Some(Self::from_persisted(persisted)))
+    }
+
+    fn persist_to_path(&self, path: &PathBuf) -> Result<(), String> {
+        let payload = serde_json::to_vec_pretty(&self.persisted())
+            .map_err(|error| format!("training_scheduler_state_encode_failed: {error}"))?;
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "training_scheduler_state_parent_create_failed:{}:{}",
+                    parent.display(),
+                    error
+                )
+            })?;
+        }
+        let tmp_path = path.with_extension("tmp");
+        fs::write(tmp_path.as_path(), payload).map_err(|error| {
+            format!(
+                "training_scheduler_state_write_failed:{}:{}",
+                tmp_path.display(),
+                error
+            )
+        })?;
+        fs::rename(tmp_path.as_path(), path.as_path()).map_err(|error| {
+            format!(
+                "training_scheduler_state_rename_failed:{}:{}:{}",
+                tmp_path.display(),
+                path.display(),
+                error
+            )
+        })?;
+        Ok(())
+    }
+
+    fn recover_from_kernel(&mut self, kernel: &KernelState, now_unix_ms: i64) {
+        self.expire_stale_assignments(now_unix_ms);
+        let mut recovered_runs = HashMap::new();
+        for run in kernel.list_compute_training_runs(None, None, None) {
+            if !training_run_schedulable(&run) {
+                continue;
+            }
+            let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
+                continue;
+            };
+            let mut scheduled_run = self
+                .runs_by_training_run_id
+                .remove(run.training_run_id.as_str())
+                .unwrap_or_else(|| {
+                    ScheduledTrainingRun::from_kernel_run(&run, &metadata, now_unix_ms)
+                });
+            scheduled_run.refresh_from_kernel_run(&run, &metadata, kernel, now_unix_ms);
+            recovered_runs.insert(run.training_run_id.clone(), scheduled_run);
+        }
+        self.runs_by_training_run_id = recovered_runs;
+        self.lease_idempotency.retain(|_, record| {
+            self.runs_by_training_run_id
+                .contains_key(record.response.training_run_id.as_str())
+        });
+    }
+
     fn claim_lease(
         &mut self,
         node: AdmittedTrainingNodeView,
@@ -1584,6 +1725,77 @@ impl ScheduledTrainingRun {
             network_id: Some(self.network_id.clone()),
         }
     }
+
+    fn refresh_from_kernel_run(
+        &mut self,
+        run: &ComputeTrainingRun,
+        metadata: &TrainingSchedulerRunMetadata,
+        kernel: &KernelState,
+        now_unix_ms: i64,
+    ) {
+        self.network_id = metadata.network_id.clone();
+        self.artifact_bucket_uri = metadata.artifact_bucket_uri.clone();
+        self.role_plan = TrainingSchedulerRolePlan {
+            worker_count: metadata.worker_count.max(1),
+            validator_count: metadata.validator_count,
+            recovery_source_count: metadata.recovery_source_count,
+        };
+        self.checkpoint_ref = metadata
+            .checkpoint_ref
+            .clone()
+            .or_else(|| run.checkpoint_binding.latest_checkpoint_ref.clone());
+        if self.current_window_id.is_empty() {
+            self.current_window_id = metadata
+                .initial_window_id
+                .clone()
+                .unwrap_or_else(|| "window.0001".to_string());
+        }
+        if let Some(window) = kernel
+            .list_compute_adapter_training_windows(Some(run.training_run_id.as_str()), None)
+            .into_iter()
+            .max_by(|lhs, rhs| {
+                lhs.recorded_at_ms
+                    .cmp(&rhs.recorded_at_ms)
+                    .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+            })
+        {
+            self.window_state = match window.status {
+                ComputeAdapterWindowStatus::Planned => TrainingSchedulerWindowState::Planned,
+                ComputeAdapterWindowStatus::Active => TrainingSchedulerWindowState::Active,
+                ComputeAdapterWindowStatus::Sealed | ComputeAdapterWindowStatus::Scored => {
+                    TrainingSchedulerWindowState::Validating
+                }
+                ComputeAdapterWindowStatus::Reconciled => match window
+                    .accepted_outcome_id
+                    .as_deref()
+                    .and_then(|outcome_id| kernel.get_compute_accepted_outcome(outcome_id))
+                    .and_then(|outcome| {
+                        outcome
+                            .metadata
+                            .get("closeout_status")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .as_deref()
+                {
+                    Some("held") => TrainingSchedulerWindowState::Held,
+                    Some("quarantined") | Some("refused") => TrainingSchedulerWindowState::Refused,
+                    _ => TrainingSchedulerWindowState::Accepted,
+                },
+            };
+            self.updated_at_ms = self.updated_at_ms.max(window.recorded_at_ms);
+        } else {
+            self.window_state = TrainingSchedulerWindowState::Active;
+        }
+        self.updated_at_ms = self
+            .updated_at_ms
+            .max(run.started_at_ms.unwrap_or(run.created_at_ms))
+            .max(now_unix_ms);
+    }
+}
+
+fn training_scheduler_state_path(kernel_state_path: Option<&PathBuf>) -> Option<PathBuf> {
+    kernel_state_path.map(|path| path.with_extension("training-scheduler.json"))
 }
 
 fn training_run_schedulable(run: &ComputeTrainingRun) -> bool {
@@ -3954,10 +4166,14 @@ async fn claim_training_run_lease(
             .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.requested_at_ms)
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
         let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
-        store
+        let response = store
             .training_scheduler
             .claim_lease(node, candidate_runs, &request, request.requested_at_ms)
-            .map_err(kernel_api_error)?
+            .map_err(kernel_api_error)?;
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        response
     };
     Ok(Json(response))
 }
@@ -4159,6 +4375,9 @@ async fn activate_training_window(
             scheduled_run.window_state = TrainingSchedulerWindowState::Validating;
             scheduled_run.updated_at_ms = request.recorded_at_ms;
         }
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
         (
             training_window_response(result.response, assignment_plans),
             result.receipt_event,
@@ -4501,6 +4720,9 @@ async fn reconcile_training_window(
                     training_window_next_id(updated_window.window_id.as_str());
             }
         }
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
         (
             training_window_response(result.response, assignment_plans),
             accepted_outcome_result.receipt_event,
@@ -5143,6 +5365,9 @@ async fn finalize_training_validator_challenge(
             }
             scheduled_run.updated_at_ms = request.recorded_at_ms;
         }
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
 
         let response = TrainingValidatorChallengeCoordinatorResponse {
             ack: TrainingCoordinatorAck {
@@ -20237,6 +20462,248 @@ mod tests {
                     .is_some()
             );
         }
+
+        relay_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_state_reloads_after_restart_and_reuses_trn_publications()
+    -> Result<()> {
+        let (relay_url, mut event_rx, relay_handle) = spawn_training_trn_capture_relay().await?;
+        let temp_dir = tempdir()?;
+        let kernel_state_path = temp_dir.path().join("training-kernel-state.json");
+        let mut config = test_config()?;
+        config.kernel_state_path = Some(kernel_state_path.clone());
+        config.training_trn_identity_path = temp_dir.path().join("training-trn-identity.mnemonic");
+        config.training_trn_relay_urls = vec![relay_url.clone()];
+        let scheduler_state_path =
+            super::training_scheduler_state_path(config.kernel_state_path.as_ref())
+                .expect("scheduler state path");
+
+        let state = build_app_state(config.clone());
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms().saturating_sub(30_000);
+        let training_run_id = "run.restart.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request(
+                "validator-alpha",
+                "sha256:validator-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-alpha", "sha256:validator-alpha");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_request = training_run_lease_request(
+            "idemp.training.lease.restart.alpha",
+            created_at_ms as i64 + 1_000,
+            "node-alpha",
+            training_run_id,
+            "trainnet.alpha",
+        );
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&lease_request)?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let first_lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+        assert!(scheduler_state_path.is_file());
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.restart.alpha",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://0001",
+                                "sha256:slice-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.restart.alpha",
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.restart.alpha".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.restart.alpha",
+                                first_lease.assignment_id.as_str(),
+                                "sha256:validator-pending-restart-alpha",
+                                None,
+                            )],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let first_report = publish_training_trn(&app, vec![relay_url.clone()]).await?;
+        assert_eq!(first_report.network_contracts.len(), 1);
+        assert_eq!(first_report.windows.len(), 1);
+        assert!(first_report.closeouts.is_empty());
+        assert!(first_report.score_locators.is_empty());
+        assert!(
+            first_report
+                .receipts
+                .iter()
+                .any(|entry| entry.status == "sealed"
+                    && entry.window_id.as_deref() == Some("window.0001"))
+        );
+        let first_events = collect_training_trn_events(&mut event_rx).await;
+        let first_kinds = first_events
+            .iter()
+            .map(|event| event.kind)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(first_kinds.contains(&TRN_TRAINING_NETWORK_CONTRACT_KIND));
+        assert!(first_kinds.contains(&TRN_TRAINING_WINDOW_KIND));
+        assert!(first_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
+
+        drop(app);
+        drop(state);
+
+        let reloaded_state = build_app_state(config.clone());
+        let reloaded_app = build_api_router_with_state(reloaded_state.clone());
+        {
+            let store = reloaded_state.store.read().expect("read store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run");
+            assert_eq!(
+                scheduled_run.window_state,
+                TrainingSchedulerWindowState::Validating
+            );
+            assert_eq!(scheduled_run.current_window_id, "window.0001");
+            assert!(
+                scheduled_run.assignments.iter().any(|assignment| {
+                    assignment.assignment_id == first_lease.assignment_id
+                        && assignment.state == TrainingAssignmentState::Leased
+                        && assignment.node_pubkey_hex.as_deref() == Some("node-alpha")
+                }),
+                "leased worker assignment should survive restart",
+            );
+            assert_eq!(store.kernel.list_validator_challenges(None).len(), 2);
+            assert!(
+                store
+                    .kernel
+                    .get_training_trn_publication("network_contract::trainnet.alpha")
+                    .is_some()
+            );
+        }
+
+        let replay_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&lease_request)?))?,
+            )
+            .await?;
+        assert_eq!(replay_response.status(), StatusCode::OK);
+        let replayed_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replay_response).await?;
+        assert_eq!(replayed_lease, first_lease);
+
+        let summary = fetch_training_summary(&reloaded_app).await?;
+        assert_eq!(summary.active_runs, 1);
+        assert_eq!(summary.active_windows, 1);
+        assert_eq!(summary.pending_validation_windows, 1);
+        assert_eq!(summary.validator_challenges_open, 2);
+        assert_eq!(summary.validator_challenges_queued, 2);
+        assert_eq!(summary.runs.len(), 1);
+        assert_eq!(summary.runs[0].scheduler_window_state, "validating");
+        assert_eq!(summary.runs[0].current_window_id, "window.0001");
+
+        let second_report = publish_training_trn(&reloaded_app, vec![relay_url.clone()]).await?;
+        assert!(
+            second_report
+                .network_contracts
+                .iter()
+                .chain(second_report.windows.iter())
+                .chain(second_report.receipts.iter())
+                .all(|entry| entry.publication_state == "existing")
+        );
+        assert!(second_report.closeouts.is_empty());
+        assert!(second_report.score_locators.is_empty());
+        assert!(collect_training_trn_events(&mut event_rx).await.is_empty());
 
         relay_handle.abort();
         Ok(())
