@@ -1347,6 +1347,37 @@ live coordinator plane.
   contributions.
 - Record the canonical window summary and contribution outcomes through the
   existing kernel routes.
+- Current status: `apps/nexus-control/src/lib.rs` now drives the first live
+  coordinator loop directly through the retained
+  `ComputeAdapterTrainingWindow` kernel record path instead of introducing a
+  second window object. The coordinator routes
+  `/api/training/windows/plan`, `/api/training/windows/{window_id}/activate`,
+  `/api/training/windows/{window_id}/seal`, and
+  `/api/training/windows/{window_id}/reconcile` now move a window through the
+  frozen `planned -> active -> sealed -> reconciled` lifecycle.
+  Deterministic window planning now binds one window to:
+  - `training_run_id`
+  - `stage_id`
+  - `contributor_set_revision_id` from the live scheduler membership revision
+  - `validator_policy_ref`
+  - `source_checkpoint_pointer`
+  - one explicit dataset-slice plan per active worker assignment
+  Each planned window now stores one coordinator-owned assignment plan set in
+  window metadata, including:
+  - `assignment_id`
+  - `node_pubkey_hex`
+  - `contributor_node_id`
+  - `worker_id`
+  - `dataset_slice`
+  - deterministic `assignment_seed`
+  Sealing now records provisional replay-required contribution outcomes against
+  those assignment plans, and reconciliation now promotes the same window into
+  canonical contribution counts and a final reconciled summary digest through
+  the retained kernel routes. After reconciliation, the scheduler advances its
+  in-memory `current_window_id` to the next deterministic ordinal so later
+  windows do not overwrite the reconciled one. Validator challenge automation,
+  accepted outcomes, and closeouts remain deferred to the following scheduler
+  issues.
 
 ### 4.4 Validator automation
 

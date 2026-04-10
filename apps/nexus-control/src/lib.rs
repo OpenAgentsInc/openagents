@@ -37,15 +37,19 @@ use openagents_kernel_core::authority::{
     ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
     IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
     PlaceCoverageOfferResponse, PublishRiskSignalRequest, PublishRiskSignalResponse,
+    RecordComputeAdapterWindowRequest, RecordComputeAdapterWindowResponse,
     RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
     ResolveRiskClaimResponse, SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest,
     SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeAcceptedOutcomeKind,
-    ComputeAdapterContributionDisposition, ComputeAdapterWindowStatus,
-    ComputeEnvironmentPackageStatus, ComputeEvaluationRunStatus, ComputeProductStatus,
-    ComputeRegistryStatus, ComputeSyntheticDataJobStatus, ComputeTrainingRun,
+    ComputeAdapterAggregationEligibility, ComputeAdapterCheckpointPointer,
+    ComputeAdapterContributionDisposition, ComputeAdapterContributionOutcome,
+    ComputeAdapterContributionValidationReasonCode, ComputeAdapterDatasetSlice,
+    ComputeAdapterPolicyRevision, ComputeAdapterTrainingWindow, ComputeAdapterWindowGateReasonCode,
+    ComputeAdapterWindowStatus, ComputeEnvironmentPackageStatus, ComputeEvaluationRunStatus,
+    ComputeProductStatus, ComputeRegistryStatus, ComputeSyntheticDataJobStatus, ComputeTrainingRun,
     ComputeTrainingRunStatus, ComputeValidatorChallengeContext,
     ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
     ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
@@ -59,8 +63,11 @@ use openagents_kernel_core::data::{
 };
 use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::ids::sha256_prefixed_bytes;
-use openagents_kernel_core::pylon_training::PYLON_TRAINING_LEASE_DURATION_MS;
-use openagents_kernel_core::receipts::Receipt;
+use openagents_kernel_core::pylon_training::{
+    PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
+    PYLON_TRAINING_WINDOW_MAX_DURATION_MS,
+};
+use openagents_kernel_core::receipts::{PolicyContext, Receipt, ReceiptHints, TraceContext};
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use openagents_kernel_proto::openagents::data::v1 as proto_data;
@@ -806,6 +813,120 @@ struct RecordTrainingRunLeaseResponse {
     network_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct TrainingWindowAssignmentPlan {
+    assignment_id: String,
+    node_pubkey_hex: String,
+    contributor_node_id: String,
+    worker_id: String,
+    dataset_slice: ComputeAdapterDatasetSlice,
+    assignment_seed: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct TrainingWindowMetadata {
+    network_id: String,
+    artifact_bucket_uri: String,
+    membership_revision: String,
+    #[serde(default)]
+    assignment_plans: Vec<TrainingWindowAssignmentPlan>,
+    planned_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    activated_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sealed_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reconciled_at_ms: Option<i64>,
+    seal_deadline_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct PlanTrainingWindowRequest {
+    idempotency_key: String,
+    recorded_at_ms: i64,
+    training_run_id: String,
+    stage_id: String,
+    adapter_target_id: String,
+    adapter_family: String,
+    base_model_ref: String,
+    adapter_format: String,
+    source_policy_revision: ComputeAdapterPolicyRevision,
+    source_checkpoint_pointer: ComputeAdapterCheckpointPointer,
+    #[serde(default)]
+    dataset_slices: Vec<ComputeAdapterDatasetSlice>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TransitionTrainingWindowRequest {
+    idempotency_key: String,
+    recorded_at_ms: i64,
+    window_id: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingWindowContributionInput {
+    contribution_id: String,
+    assignment_id: String,
+    submission_receipt_digest: String,
+    artifact_id: String,
+    manifest_digest: String,
+    object_digest: String,
+    artifact_receipt_digest: String,
+    provenance_bundle_digest: String,
+    security_receipt_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    replay_receipt_digest: Option<String>,
+    validator_receipt_digest: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    validation_reason_codes: Vec<ComputeAdapterContributionValidationReasonCode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    validator_disposition: Option<ComputeAdapterContributionDisposition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_eligibility: Option<ComputeAdapterAggregationEligibility>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promotion_receipt_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct SealTrainingWindowRequest {
+    idempotency_key: String,
+    recorded_at_ms: i64,
+    window_id: String,
+    #[serde(default)]
+    contribution_outcomes: Vec<TrainingWindowContributionInput>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct ReconcileTrainingWindowRequest {
+    idempotency_key: String,
+    recorded_at_ms: i64,
+    window_id: String,
+    #[serde(default)]
+    contribution_outcomes: Vec<TrainingWindowContributionInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    held_out_average_score_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    benchmark_pass_rate_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_smoke_passed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregated_delta_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct TrainingWindowCoordinatorResponse {
+    window: ComputeAdapterTrainingWindow,
+    #[serde(default)]
+    contribution_outcomes: Vec<ComputeAdapterContributionOutcome>,
+    #[serde(default)]
+    assignment_plans: Vec<TrainingWindowAssignmentPlan>,
+    receipt: Receipt,
+}
+
 impl TrainingSchedulerState {
     fn claim_lease(
         &mut self,
@@ -1341,6 +1462,504 @@ fn normalize_required_training_string(value: &str, reason: &str) -> Result<Strin
     Ok(normalized.to_string())
 }
 
+fn training_window_metadata_from_value(
+    value: &serde_json::Value,
+) -> Result<TrainingWindowMetadata, String> {
+    let metadata = value
+        .get("pylon_training_window")
+        .cloned()
+        .ok_or_else(|| "training_window_metadata_missing".to_string())?;
+    serde_json::from_value::<TrainingWindowMetadata>(metadata)
+        .map_err(|_| "training_window_metadata_invalid".to_string())
+}
+
+fn training_window_metadata_value(metadata: &TrainingWindowMetadata) -> serde_json::Value {
+    serde_json::json!({ "pylon_training_window": metadata })
+}
+
+fn training_window_active_worker_assignments(
+    scheduled_run: &ScheduledTrainingRun,
+) -> Vec<ScheduledTrainingAssignment> {
+    let mut assignments = scheduled_run
+        .assignments
+        .iter()
+        .filter(|assignment| {
+            assignment.role == TrainingNodeRoleClaim::Worker
+                && matches!(
+                    assignment.state,
+                    TrainingAssignmentState::Leased
+                        | TrainingAssignmentState::Acked
+                        | TrainingAssignmentState::Active
+                        | TrainingAssignmentState::Completed
+                )
+                && assignment.node_pubkey_hex.is_some()
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    assignments.sort_by(|lhs, rhs| {
+        lhs.slot_ordinal
+            .cmp(&rhs.slot_ordinal)
+            .then_with(|| lhs.attempt.cmp(&rhs.attempt))
+            .then_with(|| lhs.assignment_id.cmp(&rhs.assignment_id))
+    });
+    assignments
+}
+
+fn training_window_assignment_seed(
+    training_run_id: &str,
+    window_id: &str,
+    membership_revision: &str,
+    assignment_id: &str,
+    node_pubkey_hex: &str,
+    dataset_slice: &ComputeAdapterDatasetSlice,
+) -> Result<String, String> {
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "training_run_id": training_run_id,
+        "window_id": window_id,
+        "membership_revision": membership_revision,
+        "assignment_id": assignment_id,
+        "node_pubkey_hex": node_pubkey_hex,
+        "dataset_id": dataset_slice.dataset_id,
+        "slice_id": dataset_slice.slice_id,
+        "slice_digest": dataset_slice.slice_digest,
+    }))
+    .map_err(|_| "training_window_assignment_seed_encode_failed".to_string())?;
+    Ok(sha256_prefixed_bytes(payload.as_slice()))
+}
+
+fn training_window_assignment_plans(
+    scheduled_run: &ScheduledTrainingRun,
+    dataset_slices: &[ComputeAdapterDatasetSlice],
+    contributor_set_revision_id: &str,
+) -> Result<Vec<TrainingWindowAssignmentPlan>, String> {
+    if dataset_slices.is_empty() {
+        return Err("training_window_dataset_slices_missing".to_string());
+    }
+    let assignments = training_window_active_worker_assignments(scheduled_run);
+    if assignments.is_empty() {
+        return Err("training_window_worker_assignments_missing".to_string());
+    }
+    if assignments.len() != dataset_slices.len() {
+        return Err("training_window_dataset_slice_count_mismatch".to_string());
+    }
+
+    assignments
+        .into_iter()
+        .zip(dataset_slices.iter().cloned())
+        .map(|(assignment, dataset_slice)| {
+            let node_pubkey_hex = assignment
+                .node_pubkey_hex
+                .clone()
+                .ok_or_else(|| "training_window_worker_assignments_missing".to_string())?;
+            let assignment_seed = training_window_assignment_seed(
+                scheduled_run.training_run_id.as_str(),
+                scheduled_run.current_window_id.as_str(),
+                contributor_set_revision_id,
+                assignment.assignment_id.as_str(),
+                node_pubkey_hex.as_str(),
+                &dataset_slice,
+            )?;
+            Ok(TrainingWindowAssignmentPlan {
+                assignment_id: assignment.assignment_id,
+                contributor_node_id: node_pubkey_hex.clone(),
+                worker_id: format!("worker.{:04}", assignment.slot_ordinal),
+                node_pubkey_hex,
+                dataset_slice,
+                assignment_seed,
+            })
+        })
+        .collect()
+}
+
+fn training_window_assignment_plan<'a>(
+    assignment_plans: &'a [TrainingWindowAssignmentPlan],
+    assignment_id: &str,
+) -> Result<&'a TrainingWindowAssignmentPlan, String> {
+    assignment_plans
+        .iter()
+        .find(|assignment| assignment.assignment_id == assignment_id)
+        .ok_or_else(|| "training_window_assignment_missing".to_string())
+}
+
+fn training_window_summary_digest(
+    window: &ComputeAdapterTrainingWindow,
+    contribution_outcomes: &[ComputeAdapterContributionOutcome],
+    metadata: &TrainingWindowMetadata,
+) -> Result<String, String> {
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "window_id": window.window_id,
+        "training_run_id": window.training_run_id,
+        "status": window.status,
+        "contributor_set_revision_id": window.contributor_set_revision_id,
+        "counts": {
+            "total": window.total_contributions,
+            "admitted": window.admitted_contributions,
+            "accepted": window.accepted_contributions,
+            "quarantined": window.quarantined_contributions,
+            "rejected": window.rejected_contributions,
+            "replay_required": window.replay_required_contributions,
+            "replay_checked": window.replay_checked_contributions,
+        },
+        "assignment_plans": metadata.assignment_plans,
+        "contribution_outcomes": contribution_outcomes.iter().map(|contribution| {
+            serde_json::json!({
+                "contribution_id": contribution.contribution_id,
+                "assignment_id": contribution.assignment_id,
+                "validator_disposition": contribution.validator_disposition,
+                "manifest_digest": contribution.manifest_digest,
+                "object_digest": contribution.object_digest,
+                "artifact_receipt_digest": contribution.artifact_receipt_digest,
+            })
+        }).collect::<Vec<_>>(),
+    }))
+    .map_err(|_| "training_window_summary_digest_encode_failed".to_string())?;
+    Ok(sha256_prefixed_bytes(payload.as_slice()))
+}
+
+fn training_window_next_id(window_id: &str) -> String {
+    let Some((prefix, ordinal)) = window_id.rsplit_once('.') else {
+        return format!("{window_id}.next");
+    };
+    if let Ok(number) = ordinal.parse::<u64>() {
+        return format!(
+            "{prefix}.{:0width$}",
+            number.saturating_add(1),
+            width = ordinal.len()
+        );
+    }
+    format!("{window_id}.next")
+}
+
+fn training_window_gate_reason_codes(
+    held_out_average_score_bps: Option<u32>,
+    benchmark_pass_rate_bps: Option<u32>,
+    runtime_smoke_passed: Option<bool>,
+    held_out_threshold_bps: Option<u32>,
+    benchmark_threshold_bps: Option<u32>,
+) -> Vec<ComputeAdapterWindowGateReasonCode> {
+    let mut reasons = Vec::new();
+    match (held_out_average_score_bps, held_out_threshold_bps) {
+        (None, _) => reasons.push(ComputeAdapterWindowGateReasonCode::HeldOutEvalMissing),
+        (Some(score), Some(threshold)) if score < threshold => {
+            reasons.push(ComputeAdapterWindowGateReasonCode::HeldOutEvalBelowThreshold);
+        }
+        _ => {}
+    }
+    match (benchmark_pass_rate_bps, benchmark_threshold_bps) {
+        (None, _) => reasons.push(ComputeAdapterWindowGateReasonCode::BenchmarkMissing),
+        (Some(score), Some(threshold)) if score < threshold => {
+            reasons.push(ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold);
+        }
+        _ => {}
+    }
+    match runtime_smoke_passed {
+        None => reasons.push(ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired),
+        Some(false) => reasons.push(ComputeAdapterWindowGateReasonCode::RuntimeSmokeFailed),
+        Some(true) => {}
+    }
+    reasons
+}
+
+fn training_window_thresholds(
+    kernel: &KernelState,
+    training_run: &ComputeTrainingRun,
+) -> (Option<u32>, Option<u32>) {
+    let held_out_threshold_bps = kernel
+        .get_compute_environment_package(
+            training_run.environment_binding.environment_ref.as_str(),
+            training_run
+                .environment_binding
+                .environment_version
+                .as_deref(),
+        )
+        .and_then(|package| {
+            training_run
+                .environment_binding
+                .rubric_ref
+                .as_deref()
+                .and_then(|rubric_ref| {
+                    package
+                        .rubric_bindings
+                        .iter()
+                        .find(|binding| binding.rubric_ref == rubric_ref)
+                        .and_then(|binding| binding.pass_threshold_bps)
+                })
+                .or_else(|| {
+                    package
+                        .rubric_bindings
+                        .iter()
+                        .find_map(|binding| binding.pass_threshold_bps)
+                })
+        });
+    let benchmark_threshold_bps =
+        training_run
+            .benchmark_package_refs
+            .first()
+            .and_then(|benchmark_package_ref| {
+                kernel
+                    .get_compute_benchmark_package(benchmark_package_ref.as_str(), None)
+                    .and_then(|benchmark| benchmark.pass_threshold_bps)
+            });
+    (held_out_threshold_bps, benchmark_threshold_bps)
+}
+
+fn training_window_counts(
+    contribution_outcomes: &[ComputeAdapterContributionOutcome],
+) -> (u32, u32, u32, u32, u32, u32, u32) {
+    let total_contributions = contribution_outcomes.len() as u32;
+    let admitted_contributions = total_contributions;
+    let mut accepted_contributions = 0u32;
+    let mut quarantined_contributions = 0u32;
+    let mut rejected_contributions = 0u32;
+    let mut replay_required_contributions = 0u32;
+    let mut replay_checked_contributions = 0u32;
+
+    for contribution in contribution_outcomes {
+        match contribution.validator_disposition {
+            ComputeAdapterContributionDisposition::Accepted => {
+                accepted_contributions = accepted_contributions.saturating_add(1);
+                replay_checked_contributions = replay_checked_contributions.saturating_add(1);
+            }
+            ComputeAdapterContributionDisposition::Quarantined => {
+                quarantined_contributions = quarantined_contributions.saturating_add(1);
+                replay_checked_contributions = replay_checked_contributions.saturating_add(1);
+            }
+            ComputeAdapterContributionDisposition::Rejected => {
+                rejected_contributions = rejected_contributions.saturating_add(1);
+                replay_checked_contributions = replay_checked_contributions.saturating_add(1);
+            }
+            ComputeAdapterContributionDisposition::ReplayRequired => {
+                replay_required_contributions = replay_required_contributions.saturating_add(1);
+            }
+        }
+    }
+
+    (
+        total_contributions,
+        admitted_contributions,
+        accepted_contributions,
+        quarantined_contributions,
+        rejected_contributions,
+        replay_required_contributions,
+        replay_checked_contributions,
+    )
+}
+
+fn training_window_base_record(
+    training_run: &ComputeTrainingRun,
+    scheduled_run: &ScheduledTrainingRun,
+    planned_request: &PlanTrainingWindowRequest,
+    metadata: TrainingWindowMetadata,
+    status: ComputeAdapterWindowStatus,
+    recorded_at_ms: i64,
+) -> Result<ComputeAdapterTrainingWindow, String> {
+    let window_id = scheduled_run.current_window_id.clone();
+    let contributor_set_revision_id =
+        training_scheduler_membership_revision(scheduled_run.membership_revision);
+    let mut window = ComputeAdapterTrainingWindow {
+        window_id,
+        training_run_id: training_run.training_run_id.clone(),
+        stage_id: planned_request.stage_id.clone(),
+        contributor_set_revision_id,
+        validator_policy_ref: training_run.validator_policy_ref.clone(),
+        adapter_target_id: planned_request.adapter_target_id.clone(),
+        adapter_family: planned_request.adapter_family.clone(),
+        base_model_ref: planned_request.base_model_ref.clone(),
+        adapter_format: planned_request.adapter_format.clone(),
+        source_policy_revision: planned_request.source_policy_revision.clone(),
+        source_checkpoint_pointer: planned_request.source_checkpoint_pointer.clone(),
+        status,
+        total_contributions: 0,
+        admitted_contributions: 0,
+        accepted_contributions: 0,
+        quarantined_contributions: 0,
+        rejected_contributions: 0,
+        replay_required_contributions: 0,
+        replay_checked_contributions: 0,
+        held_out_average_score_bps: None,
+        benchmark_pass_rate_bps: None,
+        runtime_smoke_passed: None,
+        promotion_ready: false,
+        gate_reason_codes: Vec::new(),
+        window_summary_digest: String::new(),
+        promotion_disposition: None,
+        hold_reason_codes: Vec::new(),
+        aggregated_delta_digest: None,
+        output_policy_revision: None,
+        output_checkpoint_pointer: None,
+        accepted_outcome_id: None,
+        recorded_at_ms,
+        metadata: training_window_metadata_value(&metadata),
+    };
+    window.window_summary_digest = training_window_summary_digest(&window, &[], &metadata)?;
+    Ok(window)
+}
+
+fn training_window_contribution_outcomes_from_inputs(
+    window: &ComputeAdapterTrainingWindow,
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+    contribution_inputs: &[TrainingWindowContributionInput],
+    recorded_at_ms: i64,
+    sealed_defaults: bool,
+) -> Result<Vec<ComputeAdapterContributionOutcome>, String> {
+    if contribution_inputs.is_empty() {
+        return Err("training_window_contributions_missing".to_string());
+    }
+    let mut outcomes = Vec::with_capacity(contribution_inputs.len());
+    for input in contribution_inputs {
+        let contribution_id = normalize_required_training_string(
+            input.contribution_id.as_str(),
+            "compute_adapter_contribution_id_missing",
+        )?;
+        let assignment_id = normalize_required_training_string(
+            input.assignment_id.as_str(),
+            "compute_adapter_assignment_id_missing",
+        )?;
+        let plan = training_window_assignment_plan(assignment_plans, assignment_id.as_str())?;
+        let validator_disposition = if sealed_defaults {
+            ComputeAdapterContributionDisposition::ReplayRequired
+        } else {
+            input
+                .validator_disposition
+                .unwrap_or(ComputeAdapterContributionDisposition::ReplayRequired)
+        };
+        let aggregation_eligibility = if sealed_defaults {
+            ComputeAdapterAggregationEligibility::Eligible
+        } else {
+            input.aggregation_eligibility.unwrap_or_else(|| {
+                if validator_disposition == ComputeAdapterContributionDisposition::Accepted {
+                    ComputeAdapterAggregationEligibility::Eligible
+                } else {
+                    ComputeAdapterAggregationEligibility::Ineligible
+                }
+            })
+        };
+        let accepted_for_aggregation = validator_disposition
+            == ComputeAdapterContributionDisposition::Accepted
+            && aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible;
+        let validation_reason_codes = if sealed_defaults {
+            vec![ComputeAdapterContributionValidationReasonCode::ReplayRequired]
+        } else {
+            input.validation_reason_codes.clone()
+        };
+
+        outcomes.push(ComputeAdapterContributionOutcome {
+            contribution_id,
+            training_run_id: window.training_run_id.clone(),
+            stage_id: window.stage_id.clone(),
+            window_id: window.window_id.clone(),
+            contributor_set_revision_id: window.contributor_set_revision_id.clone(),
+            assignment_id,
+            contributor_node_id: plan.contributor_node_id.clone(),
+            worker_id: plan.worker_id.clone(),
+            validator_policy_ref: window.validator_policy_ref.clone(),
+            adapter_target_id: window.adapter_target_id.clone(),
+            adapter_family: window.adapter_family.clone(),
+            base_model_ref: window.base_model_ref.clone(),
+            adapter_format: window.adapter_format.clone(),
+            dataset_slice: plan.dataset_slice.clone(),
+            source_policy_revision: window.source_policy_revision.clone(),
+            source_checkpoint_pointer: window.source_checkpoint_pointer.clone(),
+            submission_receipt_digest: normalize_required_training_string(
+                input.submission_receipt_digest.as_str(),
+                "compute_adapter_submission_receipt_digest_missing",
+            )?,
+            artifact_id: normalize_required_training_string(
+                input.artifact_id.as_str(),
+                "compute_adapter_artifact_id_missing",
+            )?,
+            manifest_digest: normalize_required_training_string(
+                input.manifest_digest.as_str(),
+                "compute_adapter_manifest_digest_missing",
+            )?,
+            object_digest: normalize_required_training_string(
+                input.object_digest.as_str(),
+                "compute_adapter_object_digest_missing",
+            )?,
+            artifact_receipt_digest: normalize_required_training_string(
+                input.artifact_receipt_digest.as_str(),
+                "compute_adapter_artifact_receipt_digest_missing",
+            )?,
+            provenance_bundle_digest: normalize_required_training_string(
+                input.provenance_bundle_digest.as_str(),
+                "compute_adapter_provenance_bundle_digest_missing",
+            )?,
+            security_receipt_digest: normalize_required_training_string(
+                input.security_receipt_digest.as_str(),
+                "compute_adapter_security_receipt_digest_missing",
+            )?,
+            replay_receipt_digest: input
+                .replay_receipt_digest
+                .as_deref()
+                .map(|value| {
+                    normalize_required_training_string(
+                        value,
+                        "compute_adapter_replay_receipt_digest_invalid",
+                    )
+                })
+                .transpose()?,
+            validator_disposition,
+            validation_reason_codes,
+            validator_receipt_digest: normalize_required_training_string(
+                input.validator_receipt_digest.as_str(),
+                "compute_adapter_validator_receipt_digest_missing",
+            )?,
+            aggregation_eligibility,
+            accepted_for_aggregation,
+            aggregation_weight_bps: if accepted_for_aggregation {
+                input.aggregation_weight_bps
+            } else {
+                None
+            },
+            promotion_receipt_digest: input
+                .promotion_receipt_digest
+                .as_deref()
+                .map(|value| {
+                    normalize_required_training_string(
+                        value,
+                        "compute_adapter_promotion_receipt_digest_invalid",
+                    )
+                })
+                .transpose()?,
+            recorded_at_ms,
+            metadata: input.metadata.clone(),
+        });
+    }
+    Ok(outcomes)
+}
+
+fn training_window_response(
+    response: RecordComputeAdapterWindowResponse,
+    assignment_plans: Vec<TrainingWindowAssignmentPlan>,
+) -> TrainingWindowCoordinatorResponse {
+    TrainingWindowCoordinatorResponse {
+        window: response.window,
+        contribution_outcomes: response.contribution_outcomes,
+        assignment_plans,
+        receipt: response.receipt,
+    }
+}
+
+fn training_window_record_request(
+    idempotency_key: String,
+    window: ComputeAdapterTrainingWindow,
+    contribution_outcomes: Vec<ComputeAdapterContributionOutcome>,
+) -> RecordComputeAdapterWindowRequest {
+    RecordComputeAdapterWindowRequest {
+        idempotency_key,
+        trace: TraceContext::default(),
+        policy: PolicyContext::default(),
+        window,
+        contribution_outcomes,
+        evidence: Vec::new(),
+        hints: ReceiptHints::default(),
+    }
+}
+
+fn training_window_caller_id(window_or_run_id: &str) -> String {
+    format!("training-window:{window_or_run_id}")
+}
+
 #[derive(Debug, Clone)]
 struct ProviderPresenceRecord {
     nostr_pubkey_hex: String,
@@ -1743,6 +2362,19 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(record_training_node_heartbeat),
         )
         .route("/api/training/leases/claim", post(claim_training_run_lease))
+        .route("/api/training/windows/plan", post(plan_training_window))
+        .route(
+            "/api/training/windows/{window_id}/activate",
+            post(activate_training_window),
+        )
+        .route(
+            "/api/training/windows/{window_id}/seal",
+            post(seal_training_window),
+        )
+        .route(
+            "/api/training/windows/{window_id}/reconcile",
+            post(reconcile_training_window),
+        )
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
             "/api/training/nodes/{node_pubkey_hex}",
@@ -2350,6 +2982,453 @@ async fn claim_training_run_lease(
             .claim_lease(node, candidate_runs, &request, request.requested_at_ms)
             .map_err(kernel_api_error)?
     };
+    Ok(Json(response))
+}
+
+async fn plan_training_window(
+    State(state): State<AppState>,
+    Json(mut request): Json<PlanTrainingWindowRequest>,
+) -> Result<Json<TrainingWindowCoordinatorResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_window_idempotency_key_missing",
+    )?;
+    request.training_run_id = normalize_required_field(
+        request.training_run_id.as_str(),
+        "compute_training_run_id_missing",
+    )?;
+    request.stage_id = normalize_required_field(
+        request.stage_id.as_str(),
+        "compute_adapter_stage_id_missing",
+    )?;
+    request.adapter_target_id = normalize_required_field(
+        request.adapter_target_id.as_str(),
+        "compute_adapter_target_id_missing",
+    )?;
+    request.adapter_family = normalize_required_field(
+        request.adapter_family.as_str(),
+        "compute_adapter_family_missing",
+    )?;
+    request.base_model_ref = normalize_required_field(
+        request.base_model_ref.as_str(),
+        "compute_adapter_base_model_ref_missing",
+    )?;
+    request.adapter_format = normalize_required_field(
+        request.adapter_format.as_str(),
+        "compute_adapter_format_missing",
+    )?;
+    request.recorded_at_ms = if request.recorded_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.recorded_at_ms
+    };
+
+    let caller_id = training_window_caller_id(request.training_run_id.as_str());
+    let (response, receipt_event, snapshot_event) = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let training_run = store
+            .kernel
+            .get_compute_training_run(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("compute_training_run_not_found".to_string()))?;
+        let scheduler_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get(request.training_run_id.as_str())
+            .cloned()
+            .ok_or_else(|| {
+                kernel_api_error("training_window_scheduler_run_not_found".to_string())
+            })?;
+        let scheduler_metadata =
+            training_scheduler_metadata_from_run(&training_run).map_err(kernel_api_error)?;
+        if request.source_checkpoint_pointer.checkpoint_family
+            != training_run.checkpoint_binding.checkpoint_family
+        {
+            return Err(kernel_api_error(
+                "training_window_checkpoint_mismatch".to_string(),
+            ));
+        }
+        if training_run
+            .checkpoint_binding
+            .latest_checkpoint_ref
+            .as_deref()
+            .is_some_and(|checkpoint_ref| {
+                checkpoint_ref != request.source_checkpoint_pointer.checkpoint_ref
+            })
+        {
+            return Err(kernel_api_error(
+                "training_window_checkpoint_mismatch".to_string(),
+            ));
+        }
+        let contributor_set_revision_id =
+            training_scheduler_membership_revision(scheduler_run.membership_revision);
+        let assignment_plans = training_window_assignment_plans(
+            &scheduler_run,
+            request.dataset_slices.as_slice(),
+            contributor_set_revision_id.as_str(),
+        )
+        .map_err(kernel_api_error)?;
+        let metadata = TrainingWindowMetadata {
+            network_id: scheduler_metadata.network_id,
+            artifact_bucket_uri: scheduler_metadata.artifact_bucket_uri,
+            membership_revision: contributor_set_revision_id,
+            assignment_plans: assignment_plans.clone(),
+            planned_at_ms: request.recorded_at_ms,
+            activated_at_ms: None,
+            sealed_at_ms: None,
+            reconciled_at_ms: None,
+            seal_deadline_ms: request.recorded_at_ms.saturating_add(
+                (PYLON_TRAINING_WINDOW_MAX_DURATION_MS + PYLON_TRAINING_SEAL_GRACE_PERIOD_MS)
+                    as i64,
+            ),
+        };
+        let window = training_window_base_record(
+            &training_run,
+            &scheduler_run,
+            &request,
+            metadata,
+            ComputeAdapterWindowStatus::Planned,
+            request.recorded_at_ms,
+        )
+        .map_err(kernel_api_error)?;
+        let result = store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                training_window_record_request(request.idempotency_key.clone(), window, Vec::new()),
+            )
+            .map_err(kernel_api_error)?;
+        (
+            training_window_response(result.response, assignment_plans),
+            result.receipt_event,
+            result.snapshot_event,
+        )
+    };
+    record_training_coordination_observability(
+        &state,
+        request.recorded_at_ms as u64,
+        caller_id.as_str(),
+        "kernel.training_window.planned",
+        receipt_event,
+        snapshot_event,
+    );
+    Ok(Json(response))
+}
+
+async fn activate_training_window(
+    State(state): State<AppState>,
+    Path(window_id): Path<String>,
+    Json(mut request): Json<TransitionTrainingWindowRequest>,
+) -> Result<Json<TrainingWindowCoordinatorResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_window_idempotency_key_missing",
+    )?;
+    request.window_id =
+        normalize_required_field(window_id.as_str(), "compute_adapter_window_id_missing")?;
+    request.recorded_at_ms = if request.recorded_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.recorded_at_ms
+    };
+
+    let caller_id = training_window_caller_id(request.window_id.as_str());
+    let (response, receipt_event, snapshot_event) = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let window = store
+            .kernel
+            .get_compute_adapter_training_window(request.window_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_window_not_found".to_string()))?;
+        if window.status != ComputeAdapterWindowStatus::Planned {
+            return Err(kernel_api_error(
+                "training_window_status_invalid".to_string(),
+            ));
+        }
+        let mut metadata =
+            training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
+        metadata.activated_at_ms = Some(request.recorded_at_ms);
+        let assignment_plans = metadata.assignment_plans.clone();
+        let mut updated_window = window.clone();
+        updated_window.status = ComputeAdapterWindowStatus::Active;
+        updated_window.recorded_at_ms = request.recorded_at_ms;
+        updated_window.metadata = training_window_metadata_value(&metadata);
+        updated_window.window_summary_digest =
+            training_window_summary_digest(&updated_window, &[], &metadata)
+                .map_err(kernel_api_error)?;
+        let result = store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                training_window_record_request(
+                    request.idempotency_key.clone(),
+                    updated_window,
+                    Vec::new(),
+                ),
+            )
+            .map_err(kernel_api_error)?;
+        (
+            training_window_response(result.response, assignment_plans),
+            result.receipt_event,
+            result.snapshot_event,
+        )
+    };
+    record_training_coordination_observability(
+        &state,
+        request.recorded_at_ms as u64,
+        caller_id.as_str(),
+        "kernel.training_window.activated",
+        receipt_event,
+        snapshot_event,
+    );
+    Ok(Json(response))
+}
+
+async fn seal_training_window(
+    State(state): State<AppState>,
+    Path(window_id): Path<String>,
+    Json(mut request): Json<SealTrainingWindowRequest>,
+) -> Result<Json<TrainingWindowCoordinatorResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_window_idempotency_key_missing",
+    )?;
+    request.window_id =
+        normalize_required_field(window_id.as_str(), "compute_adapter_window_id_missing")?;
+    request.recorded_at_ms = if request.recorded_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.recorded_at_ms
+    };
+
+    let caller_id = training_window_caller_id(request.window_id.as_str());
+    let (response, receipt_event, snapshot_event) = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let window = store
+            .kernel
+            .get_compute_adapter_training_window(request.window_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_window_not_found".to_string()))?;
+        if window.status != ComputeAdapterWindowStatus::Active {
+            return Err(kernel_api_error(
+                "training_window_status_invalid".to_string(),
+            ));
+        }
+        let mut metadata =
+            training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
+        let assignment_plans = metadata.assignment_plans.clone();
+        let contribution_outcomes = training_window_contribution_outcomes_from_inputs(
+            &window,
+            assignment_plans.as_slice(),
+            request.contribution_outcomes.as_slice(),
+            request.recorded_at_ms,
+            true,
+        )
+        .map_err(kernel_api_error)?;
+        let (
+            total_contributions,
+            admitted_contributions,
+            accepted_contributions,
+            quarantined_contributions,
+            rejected_contributions,
+            replay_required_contributions,
+            replay_checked_contributions,
+        ) = training_window_counts(contribution_outcomes.as_slice());
+        metadata.sealed_at_ms = Some(request.recorded_at_ms);
+        let mut updated_window = window.clone();
+        updated_window.status = ComputeAdapterWindowStatus::Sealed;
+        updated_window.total_contributions = total_contributions;
+        updated_window.admitted_contributions = admitted_contributions;
+        updated_window.accepted_contributions = accepted_contributions;
+        updated_window.quarantined_contributions = quarantined_contributions;
+        updated_window.rejected_contributions = rejected_contributions;
+        updated_window.replay_required_contributions = replay_required_contributions;
+        updated_window.replay_checked_contributions = replay_checked_contributions;
+        updated_window.held_out_average_score_bps = None;
+        updated_window.benchmark_pass_rate_bps = None;
+        updated_window.runtime_smoke_passed = None;
+        updated_window.gate_reason_codes = vec![
+            ComputeAdapterWindowGateReasonCode::HeldOutEvalMissing,
+            ComputeAdapterWindowGateReasonCode::BenchmarkMissing,
+            ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired,
+        ];
+        updated_window.promotion_ready = false;
+        updated_window.aggregated_delta_digest = None;
+        updated_window.recorded_at_ms = request.recorded_at_ms;
+        updated_window.metadata = training_window_metadata_value(&metadata);
+        updated_window.window_summary_digest = training_window_summary_digest(
+            &updated_window,
+            contribution_outcomes.as_slice(),
+            &metadata,
+        )
+        .map_err(kernel_api_error)?;
+        let result = store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                training_window_record_request(
+                    request.idempotency_key.clone(),
+                    updated_window,
+                    contribution_outcomes,
+                ),
+            )
+            .map_err(kernel_api_error)?;
+        (
+            training_window_response(result.response, assignment_plans),
+            result.receipt_event,
+            result.snapshot_event,
+        )
+    };
+    record_training_coordination_observability(
+        &state,
+        request.recorded_at_ms as u64,
+        caller_id.as_str(),
+        "kernel.training_window.sealed",
+        receipt_event,
+        snapshot_event,
+    );
+    Ok(Json(response))
+}
+
+async fn reconcile_training_window(
+    State(state): State<AppState>,
+    Path(window_id): Path<String>,
+    Json(mut request): Json<ReconcileTrainingWindowRequest>,
+) -> Result<Json<TrainingWindowCoordinatorResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_window_idempotency_key_missing",
+    )?;
+    request.window_id =
+        normalize_required_field(window_id.as_str(), "compute_adapter_window_id_missing")?;
+    request.recorded_at_ms = if request.recorded_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.recorded_at_ms
+    };
+
+    let caller_id = training_window_caller_id(request.window_id.as_str());
+    let (response, receipt_event, snapshot_event) = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let window = store
+            .kernel
+            .get_compute_adapter_training_window(request.window_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_window_not_found".to_string()))?;
+        if window.status != ComputeAdapterWindowStatus::Sealed {
+            return Err(kernel_api_error(
+                "training_window_status_invalid".to_string(),
+            ));
+        }
+        let training_run = store
+            .kernel
+            .get_compute_training_run(window.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("compute_training_run_not_found".to_string()))?;
+        let mut metadata =
+            training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
+        let assignment_plans = metadata.assignment_plans.clone();
+        let contribution_outcomes = training_window_contribution_outcomes_from_inputs(
+            &window,
+            assignment_plans.as_slice(),
+            request.contribution_outcomes.as_slice(),
+            request.recorded_at_ms,
+            false,
+        )
+        .map_err(kernel_api_error)?;
+        let (
+            total_contributions,
+            admitted_contributions,
+            accepted_contributions,
+            quarantined_contributions,
+            rejected_contributions,
+            replay_required_contributions,
+            replay_checked_contributions,
+        ) = training_window_counts(contribution_outcomes.as_slice());
+        let (held_out_threshold_bps, benchmark_threshold_bps) =
+            training_window_thresholds(&store.kernel, &training_run);
+        let gate_reason_codes = training_window_gate_reason_codes(
+            request.held_out_average_score_bps,
+            request.benchmark_pass_rate_bps,
+            request.runtime_smoke_passed,
+            held_out_threshold_bps,
+            benchmark_threshold_bps,
+        );
+        metadata.reconciled_at_ms = Some(request.recorded_at_ms);
+        let mut updated_window = window.clone();
+        updated_window.status = ComputeAdapterWindowStatus::Reconciled;
+        updated_window.total_contributions = total_contributions;
+        updated_window.admitted_contributions = admitted_contributions;
+        updated_window.accepted_contributions = accepted_contributions;
+        updated_window.quarantined_contributions = quarantined_contributions;
+        updated_window.rejected_contributions = rejected_contributions;
+        updated_window.replay_required_contributions = replay_required_contributions;
+        updated_window.replay_checked_contributions = replay_checked_contributions;
+        updated_window.held_out_average_score_bps = request.held_out_average_score_bps;
+        updated_window.benchmark_pass_rate_bps = request.benchmark_pass_rate_bps;
+        updated_window.runtime_smoke_passed = request.runtime_smoke_passed;
+        updated_window.promotion_ready = gate_reason_codes.is_empty()
+            && accepted_contributions > 0
+            && quarantined_contributions == 0
+            && rejected_contributions == 0
+            && replay_required_contributions == 0;
+        updated_window.gate_reason_codes = gate_reason_codes;
+        updated_window.aggregated_delta_digest = request.aggregated_delta_digest.clone();
+        updated_window.recorded_at_ms = request.recorded_at_ms;
+        updated_window.metadata = training_window_metadata_value(&metadata);
+        updated_window.window_summary_digest = training_window_summary_digest(
+            &updated_window,
+            contribution_outcomes.as_slice(),
+            &metadata,
+        )
+        .map_err(kernel_api_error)?;
+        let result = store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                training_window_record_request(
+                    request.idempotency_key.clone(),
+                    updated_window.clone(),
+                    contribution_outcomes,
+                ),
+            )
+            .map_err(kernel_api_error)?;
+        if let Some(scheduled_run) = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(updated_window.training_run_id.as_str())
+        {
+            if scheduled_run.current_window_id == updated_window.window_id {
+                scheduled_run.current_window_id =
+                    training_window_next_id(updated_window.window_id.as_str());
+            }
+            scheduled_run.updated_at_ms = request.recorded_at_ms;
+        }
+        (
+            training_window_response(result.response, assignment_plans),
+            result.receipt_event,
+            result.snapshot_event,
+        )
+    };
+    record_training_coordination_observability(
+        &state,
+        request.recorded_at_ms as u64,
+        caller_id.as_str(),
+        "kernel.training_window.reconciled",
+        receipt_event,
+        snapshot_event,
+    );
     Ok(Json(response))
 }
 
@@ -6650,6 +7729,8 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "coverage_binding_not_found"
         | "training_node_not_found"
         | "training_scheduler_run_not_found"
+        | "training_window_scheduler_run_not_found"
+        | "training_window_not_found"
         | "risk_claim_not_found" => StatusCode::NOT_FOUND,
         "kernel_idempotency_conflict"
         | "kernel_contract_id_mismatch"
@@ -6940,6 +8021,18 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "training_scheduler_node_ineligible"
         | "training_scheduler_network_not_allowed"
         | "training_scheduler_assignment_unavailable"
+        | "training_window_idempotency_key_missing"
+        | "training_window_dataset_slices_missing"
+        | "training_window_dataset_slice_count_mismatch"
+        | "training_window_worker_assignments_missing"
+        | "training_window_metadata_missing"
+        | "training_window_metadata_invalid"
+        | "training_window_assignment_missing"
+        | "training_window_contributions_missing"
+        | "training_window_status_invalid"
+        | "training_window_checkpoint_mismatch"
+        | "training_window_assignment_seed_encode_failed"
+        | "training_window_summary_digest_encode_failed"
         | "risk_concentration_invalid" => StatusCode::BAD_REQUEST,
         _ => StatusCode::BAD_REQUEST,
     };
@@ -8243,20 +9336,23 @@ mod tests {
     };
 
     use super::{
-        AdmittedTrainingNodeView, DEFAULT_COMPUTE_POLICY_BUNDLE_ID, DEFAULT_COMPUTE_POLICY_VERSION,
-        DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS, DesktopSessionCreateRequest,
-        DesktopSessionResponse, FinalizeValidatorChallengeRequest, LeaseValidatorChallengeRequest,
-        LeaseValidatorChallengeResponse, PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
-        PYLON_TRAINING_LEASE_DURATION_MS, ProviderPresenceHeartbeatRequest,
+        AdmittedTrainingNodeView, AppState, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
+        DEFAULT_COMPUTE_POLICY_VERSION, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+        DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
+        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
+        PROVIDER_PRESENCE_RETENTION_WINDOW_MS, PYLON_TRAINING_LEASE_DURATION_MS,
+        PlanTrainingWindowRequest, ProviderPresenceHeartbeatRequest,
         ProviderPresenceOfflineRequest, ProviderPresenceState, PublicStatsSnapshot,
-        RecordTrainingRunLeaseRequest, RecordTrainingRunLeaseResponse,
-        ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, ServiceConfig,
+        ReconcileTrainingWindowRequest, RecordTrainingRunLeaseRequest,
+        RecordTrainingRunLeaseResponse, ScheduleValidatorChallengeRequest,
+        ScheduleValidatorChallengeResponse, SealTrainingWindowRequest, ServiceConfig,
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
-        SyncTokenResponse, TrainingAssignmentState, TreasuryConfig, build_api_router_with_state,
-        build_app_state, build_router, build_router_with_state, random_token,
-        run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
+        SyncTokenResponse, TrainingAssignmentState, TrainingWindowContributionInput,
+        TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
+        build_api_router_with_state, build_app_state, build_router, build_router_with_state,
+        random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
         training_kernel_mutation_context,
     };
 
@@ -8629,6 +9725,215 @@ mod tests {
             requested_training_run_id: Some(requested_training_run_id.to_string()),
             membership_revision: None,
         }
+    }
+
+    fn plan_training_window_request(
+        idempotency_key: &str,
+        recorded_at_ms: i64,
+        training_run_id: &str,
+        dataset_slices: Vec<ComputeAdapterDatasetSlice>,
+    ) -> PlanTrainingWindowRequest {
+        PlanTrainingWindowRequest {
+            idempotency_key: idempotency_key.to_string(),
+            recorded_at_ms,
+            training_run_id: training_run_id.to_string(),
+            stage_id: "sft".to_string(),
+            adapter_target_id: "adapter.target.trainnet.alpha".to_string(),
+            adapter_family: "openagents.adapter.reference".to_string(),
+            base_model_ref: "model://gpt-oss-20b".to_string(),
+            adapter_format: "openagents.adapter.delta.v1".to_string(),
+            source_policy_revision: compute_adapter_policy_revision(
+                "policy-rev-window-7",
+                recorded_at_ms - 50,
+            ),
+            source_checkpoint_pointer: ComputeAdapterCheckpointPointer {
+                scope_kind: "training_run".to_string(),
+                scope_id: training_run_id.to_string(),
+                checkpoint_family: "decoder".to_string(),
+                checkpoint_ref: "checkpoint://decoder/base".to_string(),
+                manifest_digest: "sha256:checkpoint-manifest".to_string(),
+                updated_at_ms: recorded_at_ms - 25,
+                pointer_digest: "sha256:pointer-window-7".to_string(),
+            },
+            dataset_slices,
+        }
+    }
+
+    fn transition_training_window_request(
+        idempotency_key: &str,
+        recorded_at_ms: i64,
+        window_id: &str,
+    ) -> TransitionTrainingWindowRequest {
+        TransitionTrainingWindowRequest {
+            idempotency_key: idempotency_key.to_string(),
+            recorded_at_ms,
+            window_id: window_id.to_string(),
+        }
+    }
+
+    fn training_window_dataset_slice(
+        slice_id: &str,
+        slice_digest: &str,
+    ) -> ComputeAdapterDatasetSlice {
+        ComputeAdapterDatasetSlice {
+            dataset_id: "dataset://train/reference".to_string(),
+            split_name: "train".to_string(),
+            slice_id: slice_id.to_string(),
+            slice_digest: slice_digest.to_string(),
+        }
+    }
+
+    fn training_window_contribution_input(
+        contribution_id: &str,
+        assignment_id: &str,
+        validator_receipt_digest: &str,
+        validator_disposition: Option<ComputeAdapterContributionDisposition>,
+    ) -> TrainingWindowContributionInput {
+        TrainingWindowContributionInput {
+            contribution_id: contribution_id.to_string(),
+            assignment_id: assignment_id.to_string(),
+            submission_receipt_digest: format!("sha256:submission:{contribution_id}"),
+            artifact_id: format!("artifact.{contribution_id}"),
+            manifest_digest: format!("sha256:manifest:{contribution_id}"),
+            object_digest: format!("sha256:object:{contribution_id}"),
+            artifact_receipt_digest: format!("sha256:artifact-receipt:{contribution_id}"),
+            provenance_bundle_digest: format!("sha256:provenance:{contribution_id}"),
+            security_receipt_digest: format!("sha256:security:{contribution_id}"),
+            replay_receipt_digest: Some(format!("sha256:replay:{contribution_id}")),
+            validator_receipt_digest: validator_receipt_digest.to_string(),
+            validation_reason_codes: Vec::new(),
+            validator_disposition,
+            aggregation_eligibility: None,
+            aggregation_weight_bps: Some(10_000),
+            promotion_receipt_digest: None,
+            metadata: json!({"contribution_id": contribution_id}),
+        }
+    }
+
+    fn seed_training_scheduler_run(
+        state: &AppState,
+        created_at_ms: u64,
+        training_run_id: &str,
+        initial_window_id: &str,
+        node_pubkey_hex: &str,
+        build_digest: &str,
+    ) {
+        let mut store = state.store.write().expect("write store");
+        store
+            .kernel
+            .register_compute_environment_package(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 100),
+                compute_environment_package_request(
+                    "env.openagents.cuda.train",
+                    "2026.04.09",
+                    "idemp.scheduler.environment",
+                    created_at_ms as i64 + 100,
+                ),
+            )
+            .expect("register environment");
+        let mut checkpoint_policy_request = compute_checkpoint_family_policy_request(
+            "idemp.scheduler.checkpoint",
+            created_at_ms as i64 + 200,
+        );
+        checkpoint_policy_request
+            .policy_record
+            .allowed_environment_refs = vec!["env.openagents.cuda.train".to_string()];
+        store
+            .kernel
+            .register_compute_checkpoint_family_policy(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 200),
+                checkpoint_policy_request,
+            )
+            .expect("register checkpoint policy");
+        let mut validator_policy_request = compute_validator_policy_request(
+            "idemp.scheduler.validator",
+            created_at_ms as i64 + 300,
+        );
+        validator_policy_request.policy_record.policy_ref = "policy://validator/mvp/v1".to_string();
+        store
+            .kernel
+            .register_compute_validator_policy(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 300),
+                validator_policy_request,
+            )
+            .expect("register validator policy");
+        let mut benchmark_package_request = compute_benchmark_package_request(
+            "idemp.scheduler.benchmark",
+            created_at_ms as i64 + 400,
+        );
+        benchmark_package_request.benchmark_package.environment_ref =
+            "env.openagents.cuda.train".to_string();
+        store
+            .kernel
+            .register_compute_benchmark_package(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 400),
+                benchmark_package_request,
+            )
+            .expect("register benchmark package");
+        let mut training_policy_request = compute_training_policy_request(
+            "idemp.scheduler.training_policy",
+            created_at_ms as i64 + 500,
+        );
+        training_policy_request.training_policy.environment_refs =
+            vec!["env.openagents.cuda.train".to_string()];
+        training_policy_request.training_policy.validator_policy_ref =
+            "policy://validator/mvp/v1".to_string();
+        store
+            .kernel
+            .register_compute_training_policy(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 500),
+                training_policy_request,
+            )
+            .expect("register training policy");
+
+        let mut training_run_request =
+            compute_training_run_request("idemp.scheduler.run", created_at_ms as i64 + 600);
+        training_run_request.training_run.training_run_id = training_run_id.to_string();
+        training_run_request
+            .training_run
+            .environment_binding
+            .environment_ref = "env.openagents.cuda.train".to_string();
+        training_run_request.training_run.validator_policy_ref =
+            "policy://validator/mvp/v1".to_string();
+        training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+        training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+        training_run_request.training_run.metadata =
+            training_scheduler_metadata("trainnet.alpha", 1, 0, 0, initial_window_id);
+        store
+            .kernel
+            .create_compute_training_run(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                training_run_request,
+            )
+            .expect("create training run");
+
+        let mut node = training_node_admission_request(
+            node_pubkey_hex,
+            build_digest,
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(512),
+        );
+        node.requested_at_ms = created_at_ms as i64 + 700;
+        store
+            .kernel
+            .record_training_node_admission(
+                &training_kernel_mutation_context(node_pubkey_hex, created_at_ms + 700),
+                node,
+            )
+            .expect("admit node");
+        let mut heartbeat = training_node_heartbeat_request(node_pubkey_hex, build_digest);
+        heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
+        heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
+        heartbeat.training_run_id = training_run_id.to_string();
+        heartbeat.window_id = initial_window_id.to_string();
+        store
+            .kernel
+            .record_training_node_heartbeat(
+                &training_kernel_mutation_context(node_pubkey_hex, created_at_ms + 750),
+                heartbeat,
+            )
+            .expect("heartbeat node");
     }
 
     fn kernel_policy() -> PolicyContext {
@@ -14820,6 +16125,278 @@ mod tests {
         assert_eq!(
             body.get("reason").and_then(serde_json::Value::as_str),
             Some("training_scheduler_run_metadata_missing")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_routes_plan_activate_seal_and_reconcile() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_500_000u64;
+        let training_run_id = "run.window.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.window.alpha",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+        assert_eq!(
+            lease.assignment_id,
+            "assign.run.window.alpha.window.0001.worker.1.attempt1"
+        );
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.alpha",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://0001",
+                                "sha256:slice-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+        let planned_window = response_json::<TrainingWindowCoordinatorResponse>(planned).await?;
+        assert_eq!(
+            planned_window.window.status,
+            ComputeAdapterWindowStatus::Planned
+        );
+        assert_eq!(planned_window.window.window_id, "window.0001");
+        assert_eq!(
+            planned_window.window.contributor_set_revision_id,
+            "members.rev1"
+        );
+        assert_eq!(planned_window.assignment_plans.len(), 1);
+        assert_eq!(
+            planned_window.assignment_plans[0].assignment_id,
+            lease.assignment_id
+        );
+        assert_eq!(
+            planned_window.assignment_plans[0].dataset_slice.slice_id,
+            "slice://0001"
+        );
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.alpha",
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+        let active_window = response_json::<TrainingWindowCoordinatorResponse>(activated).await?;
+        assert_eq!(
+            active_window.window.status,
+            ComputeAdapterWindowStatus::Active
+        );
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.alpha".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.alpha",
+                                lease.assignment_id.as_str(),
+                                "sha256:validator-pending-alpha",
+                                None,
+                            )],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+        let sealed_window = response_json::<TrainingWindowCoordinatorResponse>(sealed).await?;
+        assert_eq!(
+            sealed_window.window.status,
+            ComputeAdapterWindowStatus::Sealed
+        );
+        assert_eq!(sealed_window.window.total_contributions, 1);
+        assert_eq!(sealed_window.window.replay_required_contributions, 1);
+        assert_eq!(sealed_window.contribution_outcomes.len(), 1);
+        assert_eq!(
+            sealed_window.contribution_outcomes[0].validator_disposition,
+            ComputeAdapterContributionDisposition::ReplayRequired
+        );
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.alpha".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.alpha",
+                                lease.assignment_id.as_str(),
+                                "sha256:validator-final-alpha",
+                                Some(ComputeAdapterContributionDisposition::Accepted),
+                            )],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-alpha".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert_eq!(
+            reconciled_window.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(reconciled_window.window.accepted_contributions, 1);
+        assert_eq!(reconciled_window.window.replay_required_contributions, 0);
+        assert!(reconciled_window.window.gate_reason_codes.is_empty());
+        assert!(reconciled_window.window.promotion_ready);
+
+        let store = state.store.read().expect("read store");
+        let recorded_window = store
+            .kernel
+            .get_compute_adapter_training_window("window.0001")
+            .expect("window");
+        assert_eq!(
+            recorded_window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .current_window_id,
+            "window.0002"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_plan_rejects_dataset_slice_count_mismatch() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_600_000u64;
+        let training_run_id = "run.window.mismatch";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0007",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.window.mismatch",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.mismatch",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![
+                                training_window_dataset_slice(
+                                    "slice://0007a",
+                                    "sha256:slice-0007a",
+                                ),
+                                training_window_dataset_slice(
+                                    "slice://0007b",
+                                    "sha256:slice-0007b",
+                                ),
+                            ],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let error = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            error.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_window_dataset_slice_count_mismatch")
         );
         Ok(())
     }
