@@ -14,8 +14,9 @@ mod economy;
 mod kernel;
 mod treasury;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::Infallible;
+use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
@@ -28,6 +29,11 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use bip39::{Language, Mnemonic};
+use nostr::{
+    Event as NostrEvent, EventTemplate, NostrIdentity, finalize_event, load_identity_from_path,
+};
+use nostr_client::{PoolConfig, RelayAuthIdentity, RelayConfig, RelayPool};
 use openagents_kernel_core::authority::{
     AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
     BindCoverageRequest, BindCoverageResponse, CreateContractRequest, CreateContractResponse,
@@ -47,18 +53,17 @@ use openagents_kernel_core::compute::{
     ComputeAcceptedOutcomeKind, ComputeAdapterAggregationEligibility,
     ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
     ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
-    ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision,
-    ComputeAdapterPromotionDisposition, ComputeAdapterPromotionHoldReasonCode,
-    ComputeAdapterTrainingWindow, ComputeAdapterWindowGateReasonCode,
-    ComputeAdapterWindowStatus, ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact,
-    ComputeEvaluationMetric, ComputeEvaluationRunStatus, ComputeProductStatus,
-    ComputeRegistryStatus, ComputeSyntheticDataJobStatus, ComputeTrainingRun,
-    ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeValidatorChallengeContext,
-    ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
-    ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
-    ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
-    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, DeliveryProofStatus,
-    StructuredCapacityInstrumentStatus,
+    ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision, ComputeAdapterPromotionDisposition,
+    ComputeAdapterPromotionHoldReasonCode, ComputeAdapterTrainingWindow,
+    ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus,
+    ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
+    ComputeEvaluationRunStatus, ComputeProductStatus, ComputeRegistryStatus,
+    ComputeSyntheticDataJobStatus, ComputeTrainingRun, ComputeTrainingRunStatus,
+    ComputeTrainingSummary, ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
+    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
+    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
+    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
+    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
@@ -83,6 +88,7 @@ use openagents_provider_substrate::{
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
@@ -92,14 +98,16 @@ use crate::economy::{
     PublicStatsSnapshot, ReceiptLedger,
 };
 use crate::kernel::{
-    AdmittedTrainingNodeView, FinalizeValidatorChallengeRequest,
-    FinalizeValidatorChallengeResponse, KernelMutationContext, KernelState,
-    LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, ReceiptProjectionEvent,
-    RecordTrainingNodeAdmissionRequest, RecordTrainingNodeAdmissionResponse,
-    RecordTrainingNodeHeartbeatRequest, RecordTrainingNodeHeartbeatResponse,
-    RetryValidatorChallengeRequest, ScheduleValidatorChallengeRequest,
-    ScheduleValidatorChallengeResponse, SnapshotProjectionEvent, TrainingCoordinatorAck,
-    TrainingNodeQuery, TrainingNodeRoleClaim,
+    AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
+    ComputeTrainingRunPublicationSource, ComputeTrainingWindowPublicationSource,
+    FinalizeValidatorChallengeRequest, FinalizeValidatorChallengeResponse, KernelMutationContext,
+    KernelState, LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
+    ReceiptProjectionEvent, RecordTrainingNodeAdmissionRequest,
+    RecordTrainingNodeAdmissionResponse, RecordTrainingNodeHeartbeatRequest,
+    RecordTrainingNodeHeartbeatResponse, RetryValidatorChallengeRequest,
+    ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, SnapshotProjectionEvent,
+    TrainingCoordinatorAck, TrainingNodeQuery, TrainingNodeRoleClaim,
+    TrainingTrnPublicationPointer,
 };
 use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
@@ -120,6 +128,8 @@ const ENV_SYNC_TOKEN_TTL_SECONDS: &str = "NEXUS_CONTROL_SYNC_TOKEN_TTL_SECONDS";
 const ENV_SYNC_TOKEN_REFRESH_AFTER_SECONDS: &str = "NEXUS_CONTROL_SYNC_TOKEN_REFRESH_AFTER_SECONDS";
 const ENV_SYNC_STREAM_GRANTS: &str = "NEXUS_CONTROL_SYNC_STREAM_GRANTS";
 const ENV_HOSTED_NEXUS_RELAY_URL: &str = "NEXUS_CONTROL_HOSTED_NEXUS_RELAY_URL";
+const ENV_TRAINING_TRN_IDENTITY_PATH: &str = "NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH";
+const ENV_TRAINING_TRN_RELAY_URLS: &str = "NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS";
 const ENV_RECEIPT_LOG_PATH: &str = "NEXUS_CONTROL_RECEIPT_LOG_PATH";
 const ENV_KERNEL_STATE_PATH: &str = "NEXUS_CONTROL_KERNEL_STATE_PATH";
 const ENV_COMPUTE_ENABLE_FORWARD_PHYSICAL: &str = "NEXUS_CONTROL_COMPUTE_ENABLE_FORWARD_PHYSICAL";
@@ -148,6 +158,7 @@ const DEFAULT_SESSION_TTL_SECONDS: u64 = 86_400;
 const DEFAULT_SYNC_TOKEN_TTL_SECONDS: u64 = 900;
 const DEFAULT_SYNC_TOKEN_REFRESH_AFTER_SECONDS: u64 = 300;
 const DEFAULT_HOSTED_NEXUS_RELAY_URL: &str = "wss://nexus.openagents.com/";
+const DEFAULT_TRAINING_TRN_IDENTITY_PATH: &str = "var/nexus-control/training-trn-identity.mnemonic";
 const DEFAULT_KERNEL_STATE_PATH: &str = "var/nexus-control/kernel-state.json";
 const DEFAULT_COMPUTE_POLICY_BUNDLE_ID: &str = "policy.compute.market.default";
 const DEFAULT_COMPUTE_POLICY_VERSION: &str = "1";
@@ -175,6 +186,11 @@ const DEFAULT_SYNC_SCOPES: [&str; 3] = ["sync.subscribe", "sync.checkpoint.write
 const STARTER_DEMAND_REQUESTER: &str = "openagents-hosted-nexus";
 const STARTER_DEMAND_REQUEST_KIND: u16 = 5050;
 const AUTOPILOT_DESKTOP_CLIENT_ID_PREFIX: &str = "autopilot-desktop";
+const TRN_TRAINING_NETWORK_CONTRACT_KIND: u16 = 39_500;
+const TRN_TRAINING_WINDOW_KIND: u16 = 39_510;
+const TRN_TRAINING_RECEIPT_KIND: u16 = 39_511;
+const TRN_TRAINING_ARTIFACT_LOCATOR_KIND: u16 = 39_520;
+const TRN_TRAINING_CLOSEOUT_KIND: u16 = 39_530;
 
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
@@ -184,6 +200,8 @@ pub struct ServiceConfig {
     pub sync_token_refresh_after_seconds: u64,
     pub sync_stream_grants: Vec<String>,
     pub hosted_nexus_relay_url: String,
+    pub training_trn_identity_path: PathBuf,
+    pub training_trn_relay_urls: Vec<String>,
     pub receipt_log_path: Option<PathBuf>,
     pub kernel_state_path: Option<PathBuf>,
     pub compute_enable_forward_physical: bool,
@@ -253,6 +271,24 @@ impl ServiceConfig {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_HOSTED_NEXUS_RELAY_URL.to_string());
+        let training_trn_identity_path = std::env::var(ENV_TRAINING_TRN_IDENTITY_PATH)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_TRAINING_TRN_IDENTITY_PATH));
+        let training_trn_relay_urls = std::env::var(ENV_TRAINING_TRN_RELAY_URLS)
+            .ok()
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|item| !item.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| vec![hosted_nexus_relay_url.clone()]);
         let receipt_log_path = std::env::var(ENV_RECEIPT_LOG_PATH)
             .ok()
             .map(|value| value.trim().to_string())
@@ -359,6 +395,8 @@ impl ServiceConfig {
             sync_token_refresh_after_seconds,
             sync_stream_grants,
             hosted_nexus_relay_url,
+            training_trn_identity_path,
+            training_trn_relay_urls,
             receipt_log_path,
             kernel_state_path,
             compute_enable_forward_physical,
@@ -1058,6 +1096,57 @@ struct TrainingWindowCoordinatorResponse {
     #[serde(default)]
     assignment_plans: Vec<TrainingWindowAssignmentPlan>,
     receipt: Receipt,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct PublishTrainingTrnStateRequest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    relay_urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingTrnPublicationReport {
+    coordinator_pubkey: String,
+    relay_urls: Vec<String>,
+    publication_pointer_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    network_contracts: Vec<TrainingTrnPublicationEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    windows: Vec<TrainingTrnPublicationEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    receipts: Vec<TrainingTrnPublicationEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    closeouts: Vec<TrainingTrnPublicationEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    score_locators: Vec<TrainingTrnPublicationEntry>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingTrnPublicationEntry {
+    subject_kind: String,
+    subject_id: String,
+    publication_state: String,
+    event_kind: u16,
+    event_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a_ref: Option<String>,
+    status: String,
+    kernel_object_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    kernel_receipt_ids: Vec<String>,
+    network_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    challenge_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifact_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    object_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    object_ref: Option<String>,
 }
 
 impl TrainingSchedulerState {
@@ -2087,7 +2176,10 @@ fn training_window_closeout_artifacts(
     if let Some(aggregated_delta_digest) = window.aggregated_delta_digest.as_ref() {
         artifacts.push(ComputeEvaluationArtifact {
             artifact_kind: "aggregated_delta".to_string(),
-            artifact_ref: format!("artifact://training/windows/{}/aggregated_delta", window.window_id),
+            artifact_ref: format!(
+                "artifact://training/windows/{}/aggregated_delta",
+                window.window_id
+            ),
             digest: Some(aggregated_delta_digest.clone()),
             metadata: serde_json::json!({
                 "window_id": window.window_id,
@@ -3181,6 +3273,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/api/training/validator-challenges/{challenge_id}/finalize",
             post(finalize_training_validator_challenge),
         )
+        .route(
+            "/api/training/trn/publish",
+            post(publish_training_trn_state),
+        )
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
             "/api/training/nodes/{node_pubkey_hex}",
@@ -4263,7 +4359,8 @@ async fn reconcile_training_window(
             TrainingWindowCloseoutStatus::Held
             | TrainingWindowCloseoutStatus::Quarantined
             | TrainingWindowCloseoutStatus::Refused => {
-                updated_window.promotion_disposition = Some(ComputeAdapterPromotionDisposition::Held);
+                updated_window.promotion_disposition =
+                    Some(ComputeAdapterPromotionDisposition::Held);
                 updated_window.hold_reason_codes =
                     vec![ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady];
             }
@@ -5023,6 +5120,901 @@ async fn finalize_training_validator_challenge(
         window_snapshot_event,
     );
     Ok(Json(response))
+}
+
+#[derive(Debug, Clone)]
+struct TrainingTrnNetworkContractSource {
+    network_id: String,
+    artifact_bucket_uri: String,
+    worker_count: u32,
+    validator_count: u32,
+    recovery_source_count: u32,
+    checkpoint_refs: BTreeSet<String>,
+    initial_window_ids: BTreeSet<String>,
+    training_policy_refs: BTreeSet<String>,
+    validator_policy_refs: BTreeSet<String>,
+    checkpoint_families: BTreeSet<String>,
+    environment_refs: BTreeSet<String>,
+    benchmark_package_refs: BTreeSet<String>,
+    statuses: BTreeSet<String>,
+    training_run_ids: Vec<String>,
+    kernel_receipt_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct TrainingTrnChallengeBinding {
+    network_id: String,
+    training_run_id: String,
+    window_id: String,
+    challenge_kind: String,
+}
+
+fn normalize_training_trn_relay_urls(
+    requested: &[String],
+    config: &ServiceConfig,
+) -> Result<Vec<String>, String> {
+    let mut relay_urls = BTreeSet::new();
+    let source = if requested.is_empty() {
+        &config.training_trn_relay_urls
+    } else {
+        requested
+    };
+    for relay_url in source {
+        let normalized = relay_url.trim();
+        if !normalized.is_empty() {
+            relay_urls.insert(normalized.to_string());
+        }
+    }
+    if relay_urls.is_empty() {
+        return Err("training_trn_relay_urls_missing".to_string());
+    }
+    Ok(relay_urls.into_iter().collect())
+}
+
+fn decode_training_trn_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
+    let key_bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| format!("training_trn_identity_private_key_invalid:{error}"))?;
+    let key_length = key_bytes.len();
+    key_bytes
+        .try_into()
+        .map_err(|_| format!("training_trn_identity_private_key_length_invalid:{key_length}"))
+}
+
+fn load_or_create_training_trn_identity(identity_path: &PathBuf) -> Result<NostrIdentity, String> {
+    if identity_path.is_file() {
+        return load_identity_from_path(identity_path)
+            .map_err(|error| format!("training_trn_identity_load_failed:{error}"));
+    }
+    if let Some(parent) = identity_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("training_trn_identity_parent_create_failed:{error}"))?;
+    }
+    let entropy: [u8; 16] = rand::random();
+    let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
+        .map_err(|error| format!("training_trn_identity_mnemonic_failed:{error}"))?
+        .to_string();
+    fs::write(identity_path, format!("{mnemonic}\n"))
+        .map_err(|error| format!("training_trn_identity_write_failed:{error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(identity_path, fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("training_trn_identity_permissions_failed:{error}"))?;
+    }
+    load_identity_from_path(identity_path)
+        .map_err(|error| format!("training_trn_identity_load_failed:{error}"))
+}
+
+async fn build_training_trn_relay_pool(relay_urls: &[String]) -> Result<RelayPool, String> {
+    if relay_urls.is_empty() {
+        return Err("training_trn_relay_urls_missing".to_string());
+    }
+    let relay_config = RelayConfig {
+        connect_timeout: Duration::from_secs(10),
+        nip42_identity: None::<RelayAuthIdentity>,
+    };
+    let pool = RelayPool::new(PoolConfig {
+        max_relays: relay_urls.len().max(1),
+        relay_config,
+    });
+    for relay_url in relay_urls {
+        pool.add_relay(relay_url.as_str())
+            .await
+            .map_err(|error| format!("training_trn_relay_add_failed:{relay_url}:{error}"))?;
+    }
+    pool.connect_all()
+        .await
+        .map_err(|error| format!("training_trn_relay_connect_failed:{error}"))?;
+    Ok(pool)
+}
+
+async fn publish_training_trn_signed_event(
+    pool: &RelayPool,
+    identity: &NostrIdentity,
+    template: EventTemplate,
+    label: &str,
+) -> Result<NostrEvent, String> {
+    let private_key = decode_training_trn_private_key_hex(identity.private_key_hex.as_str())?;
+    let event = finalize_event(&template, &private_key)
+        .map_err(|error| format!("training_trn_sign_failed:{label}:{error}"))?;
+    let confirmations = pool
+        .publish(&event)
+        .await
+        .map_err(|error| format!("training_trn_publish_failed:{label}:{error}"))?;
+    if !confirmations
+        .iter()
+        .any(|confirmation| confirmation.accepted)
+    {
+        let detail = confirmations
+            .iter()
+            .map(|confirmation| format!("{}:{}", confirmation.relay_url, confirmation.message))
+            .collect::<Vec<_>>()
+            .join(";");
+        return Err(format!("training_trn_publish_rejected:{label}:{detail}"));
+    }
+    Ok(event)
+}
+
+fn training_trn_template(
+    event_kind: u16,
+    tags: Vec<Vec<String>>,
+    content: serde_json::Value,
+) -> Result<(EventTemplate, String), String> {
+    let fingerprint_payload = serde_json::to_vec(&json!({
+        "kind": event_kind,
+        "tags": tags,
+        "content": content,
+    }))
+    .map_err(|error| format!("training_trn_fingerprint_encode_failed:{error}"))?;
+    let fingerprint = sha256_prefixed_bytes(fingerprint_payload.as_slice());
+    let template = EventTemplate {
+        created_at: nostr::nip01::unix_now_secs()
+            .map_err(|error| format!("training_trn_timestamp_failed:{error}"))?,
+        kind: event_kind,
+        tags,
+        content: serde_json::to_string(&content)
+            .map_err(|error| format!("training_trn_content_encode_failed:{error}"))?,
+    };
+    Ok((template, fingerprint))
+}
+
+fn training_trn_network_coordinate(coordinator_pubkey: &str, network_id: &str) -> String {
+    format!("39500:{coordinator_pubkey}:{network_id}")
+}
+
+fn training_trn_window_coordinate(coordinator_pubkey: &str, window_id: &str) -> String {
+    format!("39510:{coordinator_pubkey}:{window_id}")
+}
+
+fn training_trn_closeout_coordinate(coordinator_pubkey: &str, outcome_id: &str) -> String {
+    format!("39530:{coordinator_pubkey}:{outcome_id}")
+}
+
+fn training_trn_artifact_coordinate(coordinator_pubkey: &str, artifact_id: &str) -> String {
+    format!("39520:{coordinator_pubkey}:{artifact_id}")
+}
+
+fn training_trn_network_status(source: &TrainingTrnNetworkContractSource) -> &'static str {
+    if source
+        .statuses
+        .iter()
+        .any(|status| matches!(status.as_str(), "queued" | "preparing" | "running"))
+    {
+        "active"
+    } else {
+        "closed"
+    }
+}
+
+fn training_trn_closeout_status(outcome: &ComputeAcceptedOutcomePublicationSource) -> String {
+    outcome
+        .outcome
+        .metadata
+        .get("closeout_status")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| "accepted".to_string())
+}
+
+fn training_trn_network_sources(
+    run_sources: &[ComputeTrainingRunPublicationSource],
+) -> Result<Vec<TrainingTrnNetworkContractSource>, String> {
+    let mut grouped = BTreeMap::<String, TrainingTrnNetworkContractSource>::new();
+    for source in run_sources {
+        let metadata = training_scheduler_metadata_from_run(&source.training_run)?;
+        let entry = grouped
+            .entry(metadata.network_id.clone())
+            .or_insert_with(|| TrainingTrnNetworkContractSource {
+                network_id: metadata.network_id.clone(),
+                artifact_bucket_uri: metadata.artifact_bucket_uri.clone(),
+                worker_count: metadata.worker_count,
+                validator_count: metadata.validator_count,
+                recovery_source_count: metadata.recovery_source_count,
+                checkpoint_refs: BTreeSet::new(),
+                initial_window_ids: BTreeSet::new(),
+                training_policy_refs: BTreeSet::new(),
+                validator_policy_refs: BTreeSet::new(),
+                checkpoint_families: BTreeSet::new(),
+                environment_refs: BTreeSet::new(),
+                benchmark_package_refs: BTreeSet::new(),
+                statuses: BTreeSet::new(),
+                training_run_ids: Vec::new(),
+                kernel_receipt_ids: Vec::new(),
+            });
+        entry.worker_count = entry.worker_count.max(metadata.worker_count);
+        entry.validator_count = entry.validator_count.max(metadata.validator_count);
+        entry.recovery_source_count = entry
+            .recovery_source_count
+            .max(metadata.recovery_source_count);
+        entry
+            .training_policy_refs
+            .insert(source.training_run.training_policy_ref.clone());
+        entry
+            .validator_policy_refs
+            .insert(source.training_run.validator_policy_ref.clone());
+        entry.checkpoint_families.insert(
+            source
+                .training_run
+                .checkpoint_binding
+                .checkpoint_family
+                .clone(),
+        );
+        entry.environment_refs.insert(
+            source
+                .training_run
+                .environment_binding
+                .environment_ref
+                .clone(),
+        );
+        for benchmark_package_ref in &source.training_run.benchmark_package_refs {
+            entry
+                .benchmark_package_refs
+                .insert(benchmark_package_ref.clone());
+        }
+        if let Some(initial_window_id) = metadata.initial_window_id {
+            entry.initial_window_ids.insert(initial_window_id);
+        }
+        if let Some(checkpoint_ref) = metadata.checkpoint_ref.or_else(|| {
+            source
+                .training_run
+                .checkpoint_binding
+                .latest_checkpoint_ref
+                .clone()
+        }) {
+            entry.checkpoint_refs.insert(checkpoint_ref);
+        }
+        entry
+            .statuses
+            .insert(format!("{:?}", source.training_run.status).to_ascii_lowercase());
+        entry
+            .training_run_ids
+            .push(source.training_run.training_run_id.clone());
+        entry.kernel_receipt_ids.push(source.receipt_id.clone());
+    }
+    Ok(grouped.into_values().collect())
+}
+
+fn training_trn_challenge_bindings(
+    window_sources: &[ComputeTrainingWindowPublicationSource],
+) -> Result<BTreeMap<String, TrainingTrnChallengeBinding>, String> {
+    let mut bindings = BTreeMap::new();
+    for source in window_sources {
+        let metadata = training_window_metadata_from_value(&source.window.metadata)?;
+        if let Some(validation) = metadata.validation {
+            for challenge in validation.challenges {
+                bindings.insert(
+                    challenge.challenge_id.clone(),
+                    TrainingTrnChallengeBinding {
+                        network_id: metadata.network_id.clone(),
+                        training_run_id: source.window.training_run_id.clone(),
+                        window_id: source.window.window_id.clone(),
+                        challenge_kind: challenge.challenge_kind.label().to_string(),
+                    },
+                );
+            }
+        }
+    }
+    Ok(bindings)
+}
+
+async fn publish_training_trn_pointer(
+    state: &AppState,
+    pool: &RelayPool,
+    identity: &NostrIdentity,
+    publication_cache: &mut HashMap<String, TrainingTrnPublicationPointer>,
+    publication_key: String,
+    subject_kind: &str,
+    subject_id: &str,
+    event_kind: u16,
+    a_ref: Option<String>,
+    template: EventTemplate,
+    fingerprint: String,
+) -> Result<(String, TrainingTrnPublicationPointer), ApiError> {
+    if let Some(existing) = publication_cache.get(publication_key.as_str())
+        && existing.fingerprint == fingerprint
+    {
+        return Ok(("existing".to_string(), existing.clone()));
+    }
+    let event =
+        publish_training_trn_signed_event(pool, identity, template, publication_key.as_str())
+            .await
+            .map_err(kernel_api_error)?;
+    let pointer = TrainingTrnPublicationPointer {
+        publication_key: publication_key.clone(),
+        subject_kind: subject_kind.to_string(),
+        subject_id: subject_id.to_string(),
+        event_kind: u32::from(event_kind),
+        event_id: event.id,
+        a_ref,
+        published_at_ms: (event.created_at as i64) * 1_000,
+        fingerprint,
+    };
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    store
+        .kernel
+        .upsert_training_trn_publication(pointer.clone())
+        .map_err(kernel_api_error)?;
+    publication_cache.insert(publication_key, pointer.clone());
+    Ok(("published".to_string(), pointer))
+}
+
+async fn publish_training_trn_state(
+    State(state): State<AppState>,
+    Json(request): Json<PublishTrainingTrnStateRequest>,
+) -> Result<Json<TrainingTrnPublicationReport>, ApiError> {
+    let relay_urls = normalize_training_trn_relay_urls(&request.relay_urls, &state.config)
+        .map_err(kernel_api_error)?;
+    let identity = load_or_create_training_trn_identity(&state.config.training_trn_identity_path)
+        .map_err(kernel_api_error)?;
+    let (
+        run_sources,
+        window_sources,
+        closeout_sources,
+        replay_required_contributions,
+        validator_snapshots,
+        validator_receipt_ids,
+        mut publication_cache,
+    ) = {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let validator_snapshots = store.kernel.list_validator_challenges(None);
+        let validator_receipt_ids = validator_snapshots
+            .iter()
+            .filter_map(|snapshot| {
+                store
+                    .kernel
+                    .get_training_validator_challenge_finalization_receipt_id(
+                        snapshot.request.context.challenge_id.as_str(),
+                    )
+                    .map(|receipt_id| (snapshot.request.context.challenge_id.clone(), receipt_id))
+            })
+            .collect::<HashMap<_, _>>();
+        (
+            store.kernel.list_compute_training_run_publication_sources(),
+            store
+                .kernel
+                .list_compute_training_window_publication_sources(None, None),
+            store
+                .kernel
+                .list_compute_accepted_outcome_publication_sources(
+                    Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                    None,
+                )
+                .into_iter()
+                .filter(|source| {
+                    source
+                        .outcome
+                        .metadata
+                        .get("window_id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| !value.trim().is_empty())
+                })
+                .collect::<Vec<_>>(),
+            store.kernel.list_compute_adapter_contribution_outcomes(
+                None,
+                None,
+                Some(ComputeAdapterContributionDisposition::ReplayRequired),
+            ),
+            validator_snapshots,
+            validator_receipt_ids,
+            store
+                .kernel
+                .list_training_trn_publications()
+                .into_iter()
+                .map(|pointer| (pointer.publication_key.clone(), pointer))
+                .collect::<HashMap<_, _>>(),
+        )
+    };
+    let network_sources =
+        training_trn_network_sources(run_sources.as_slice()).map_err(kernel_api_error)?;
+    let challenge_bindings =
+        training_trn_challenge_bindings(window_sources.as_slice()).map_err(kernel_api_error)?;
+    let closeout_status_by_outcome_id = closeout_sources
+        .iter()
+        .map(|source| {
+            (
+                source.outcome.outcome_id.clone(),
+                training_trn_closeout_status(source),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let window_receipt_by_window_id = window_sources
+        .iter()
+        .map(|source| (source.window.window_id.clone(), source.receipt_id.clone()))
+        .collect::<HashMap<_, _>>();
+    let pool = build_training_trn_relay_pool(relay_urls.as_slice())
+        .await
+        .map_err(kernel_api_error)?;
+
+    let mut report = TrainingTrnPublicationReport {
+        coordinator_pubkey: identity.public_key_hex.clone(),
+        relay_urls: relay_urls.clone(),
+        publication_pointer_count: 0,
+        network_contracts: Vec::new(),
+        windows: Vec::new(),
+        receipts: Vec::new(),
+        closeouts: Vec::new(),
+        score_locators: Vec::new(),
+    };
+
+    for source in network_sources {
+        let status = training_trn_network_status(&source).to_string();
+        let a_ref = training_trn_network_coordinate(
+            identity.public_key_hex.as_str(),
+            source.network_id.as_str(),
+        );
+        let mut tags = vec![
+            vec!["d".to_string(), source.network_id.clone()],
+            vec!["network".to_string(), source.network_id.clone()],
+            vec!["status".to_string(), status.clone()],
+            vec!["class".to_string(), "training_network_contract".to_string()],
+        ];
+        for training_run_id in &source.training_run_ids {
+            tags.push(vec!["run".to_string(), training_run_id.clone()]);
+        }
+        let content = json!({
+            "network_id": source.network_id,
+            "artifact_bucket_uri": source.artifact_bucket_uri,
+            "worker_count": source.worker_count,
+            "validator_count": source.validator_count,
+            "recovery_source_count": source.recovery_source_count,
+            "checkpoint_refs": source.checkpoint_refs.into_iter().collect::<Vec<_>>(),
+            "initial_window_ids": source.initial_window_ids.into_iter().collect::<Vec<_>>(),
+            "training_policy_refs": source.training_policy_refs.into_iter().collect::<Vec<_>>(),
+            "validator_policy_refs": source.validator_policy_refs.into_iter().collect::<Vec<_>>(),
+            "checkpoint_families": source.checkpoint_families.into_iter().collect::<Vec<_>>(),
+            "environment_refs": source.environment_refs.into_iter().collect::<Vec<_>>(),
+            "benchmark_package_refs": source.benchmark_package_refs.into_iter().collect::<Vec<_>>(),
+            "training_run_ids": source.training_run_ids,
+            "kernel_object_ids": source.training_run_ids,
+            "kernel_receipt_ids": source.kernel_receipt_ids,
+        });
+        let (template, fingerprint) =
+            training_trn_template(TRN_TRAINING_NETWORK_CONTRACT_KIND, tags, content)
+                .map_err(kernel_api_error)?;
+        let (publication_state, pointer) = publish_training_trn_pointer(
+            &state,
+            &pool,
+            &identity,
+            &mut publication_cache,
+            format!("network_contract::{}", source.network_id),
+            "network_contract",
+            source.network_id.as_str(),
+            TRN_TRAINING_NETWORK_CONTRACT_KIND,
+            Some(a_ref.clone()),
+            template,
+            fingerprint,
+        )
+        .await?;
+        report.network_contracts.push(TrainingTrnPublicationEntry {
+            subject_kind: "network_contract".to_string(),
+            subject_id: source.network_id.clone(),
+            publication_state,
+            event_kind: TRN_TRAINING_NETWORK_CONTRACT_KIND,
+            event_id: pointer.event_id,
+            a_ref: Some(a_ref),
+            status,
+            kernel_object_id: source.network_id.clone(),
+            kernel_receipt_ids: source.kernel_receipt_ids,
+            network_id: source.network_id,
+            training_run_id: None,
+            window_id: None,
+            challenge_id: None,
+            artifact_class: None,
+            object_digest: None,
+            object_ref: None,
+        });
+    }
+
+    for source in &window_sources {
+        let metadata = training_window_metadata_from_value(&source.window.metadata)
+            .map_err(kernel_api_error)?;
+        let network_id = metadata.network_id.clone();
+        let training_run_id = source.window.training_run_id.clone();
+        let window_id = source.window.window_id.clone();
+        let status = source.window.status.label().to_string();
+        let a_ref = training_trn_window_coordinate(
+            identity.public_key_hex.as_str(),
+            source.window.window_id.as_str(),
+        );
+        let mut tags = vec![
+            vec!["d".to_string(), window_id.clone()],
+            vec!["network".to_string(), network_id.clone()],
+            vec!["run".to_string(), training_run_id.clone()],
+            vec!["window".to_string(), window_id.clone()],
+            vec!["status".to_string(), status.clone()],
+            vec!["class".to_string(), "training_window".to_string()],
+            vec![
+                "policy".to_string(),
+                source.window.validator_policy_ref.clone(),
+            ],
+        ];
+        if let Some(accepted_outcome_id) = source.window.accepted_outcome_id.as_ref()
+            && let Some(closeout_status) =
+                closeout_status_by_outcome_id.get(accepted_outcome_id.as_str())
+        {
+            tags.push(vec!["closeout".to_string(), closeout_status.clone()]);
+        }
+        let content = json!({
+            "network_id": network_id,
+            "artifact_bucket_uri": metadata.artifact_bucket_uri,
+            "membership_revision": metadata.membership_revision,
+            "assignment_plan_count": metadata.assignment_plans.len(),
+            "planned_at_ms": metadata.planned_at_ms,
+            "activated_at_ms": metadata.activated_at_ms,
+            "sealed_at_ms": metadata.sealed_at_ms,
+            "reconciled_at_ms": metadata.reconciled_at_ms,
+            "seal_deadline_ms": metadata.seal_deadline_ms,
+            "training_run_id": training_run_id,
+            "window_id": window_id,
+            "status": status,
+            "stage_id": source.window.stage_id,
+            "contributor_set_revision_id": source.window.contributor_set_revision_id,
+            "window_summary_digest": source.window.window_summary_digest,
+            "aggregated_delta_digest": source.window.aggregated_delta_digest,
+            "accepted_outcome_id": source.window.accepted_outcome_id,
+            "kernel_object_id": source.window.window_id,
+            "kernel_receipt_ids": vec![source.receipt_id.clone()],
+        });
+        let (template, fingerprint) =
+            training_trn_template(TRN_TRAINING_WINDOW_KIND, tags, content)
+                .map_err(kernel_api_error)?;
+        let (publication_state, pointer) = publish_training_trn_pointer(
+            &state,
+            &pool,
+            &identity,
+            &mut publication_cache,
+            format!("window::{}", source.window.window_id),
+            "window",
+            source.window.window_id.as_str(),
+            TRN_TRAINING_WINDOW_KIND,
+            Some(a_ref.clone()),
+            template,
+            fingerprint,
+        )
+        .await?;
+        report.windows.push(TrainingTrnPublicationEntry {
+            subject_kind: "window".to_string(),
+            subject_id: source.window.window_id.clone(),
+            publication_state,
+            event_kind: TRN_TRAINING_WINDOW_KIND,
+            event_id: pointer.event_id,
+            a_ref: Some(a_ref),
+            status,
+            kernel_object_id: source.window.window_id.clone(),
+            kernel_receipt_ids: vec![source.receipt_id.clone()],
+            network_id: metadata.network_id.clone(),
+            training_run_id: Some(source.window.training_run_id.clone()),
+            window_id: Some(source.window.window_id.clone()),
+            challenge_id: None,
+            artifact_class: None,
+            object_digest: None,
+            object_ref: None,
+        });
+
+        let receipt_status = source.window.status.label().to_string();
+        let receipt_tags = vec![
+            vec!["network".to_string(), metadata.network_id.clone()],
+            vec!["run".to_string(), source.window.training_run_id.clone()],
+            vec!["window".to_string(), source.window.window_id.clone()],
+            vec!["status".to_string(), receipt_status.clone()],
+            vec!["class".to_string(), "coordinator_window_state".to_string()],
+        ];
+        let receipt_content = json!({
+            "network_id": metadata.network_id,
+            "training_run_id": source.window.training_run_id,
+            "window_id": source.window.window_id,
+            "status": receipt_status,
+            "kernel_object_id": source.window.window_id,
+            "kernel_receipt_ids": vec![source.receipt_id.clone()],
+        });
+        let (receipt_template, receipt_fingerprint) =
+            training_trn_template(TRN_TRAINING_RECEIPT_KIND, receipt_tags, receipt_content)
+                .map_err(kernel_api_error)?;
+        let (publication_state, pointer) = publish_training_trn_pointer(
+            &state,
+            &pool,
+            &identity,
+            &mut publication_cache,
+            format!(
+                "receipt::window::{}::{}",
+                source.window.window_id, receipt_status
+            ),
+            "receipt",
+            source.window.window_id.as_str(),
+            TRN_TRAINING_RECEIPT_KIND,
+            None,
+            receipt_template,
+            receipt_fingerprint,
+        )
+        .await?;
+        report.receipts.push(TrainingTrnPublicationEntry {
+            subject_kind: "receipt".to_string(),
+            subject_id: format!("{}:{}", source.window.window_id, receipt_status),
+            publication_state,
+            event_kind: TRN_TRAINING_RECEIPT_KIND,
+            event_id: pointer.event_id,
+            a_ref: None,
+            status: receipt_status,
+            kernel_object_id: source.window.window_id.clone(),
+            kernel_receipt_ids: vec![source.receipt_id.clone()],
+            network_id: metadata.network_id,
+            training_run_id: Some(source.window.training_run_id.clone()),
+            window_id: Some(source.window.window_id.clone()),
+            challenge_id: None,
+            artifact_class: None,
+            object_digest: None,
+            object_ref: None,
+        });
+    }
+
+    for contribution in replay_required_contributions {
+        let Some(window_receipt_id) = window_receipt_by_window_id
+            .get(contribution.window_id.as_str())
+            .cloned()
+        else {
+            continue;
+        };
+        let Some(window_source) = window_sources
+            .iter()
+            .find(|source| source.window.window_id == contribution.window_id)
+        else {
+            continue;
+        };
+        let metadata = training_window_metadata_from_value(&window_source.window.metadata)
+            .map_err(kernel_api_error)?;
+        let tags = vec![
+            vec!["network".to_string(), metadata.network_id.clone()],
+            vec!["run".to_string(), contribution.training_run_id.clone()],
+            vec!["window".to_string(), contribution.window_id.clone()],
+            vec!["status".to_string(), "replay_requested".to_string()],
+            vec!["assignment".to_string(), contribution.assignment_id.clone()],
+            vec![
+                "contribution".to_string(),
+                contribution.contribution_id.clone(),
+            ],
+            vec![
+                "class".to_string(),
+                "contribution_replay_request".to_string(),
+            ],
+        ];
+        let content = json!({
+            "network_id": metadata.network_id,
+            "training_run_id": contribution.training_run_id,
+            "window_id": contribution.window_id,
+            "assignment_id": contribution.assignment_id,
+            "contribution_id": contribution.contribution_id,
+            "manifest_digest": contribution.manifest_digest,
+            "object_digest": contribution.object_digest,
+            "kernel_object_id": contribution.contribution_id,
+            "kernel_receipt_ids": vec![window_receipt_id.clone()],
+        });
+        let (template, fingerprint) =
+            training_trn_template(TRN_TRAINING_RECEIPT_KIND, tags, content)
+                .map_err(kernel_api_error)?;
+        let (publication_state, pointer) = publish_training_trn_pointer(
+            &state,
+            &pool,
+            &identity,
+            &mut publication_cache,
+            format!(
+                "receipt::replay_requested::{}",
+                contribution.contribution_id
+            ),
+            "receipt",
+            contribution.contribution_id.as_str(),
+            TRN_TRAINING_RECEIPT_KIND,
+            None,
+            template,
+            fingerprint,
+        )
+        .await?;
+        report.receipts.push(TrainingTrnPublicationEntry {
+            subject_kind: "receipt".to_string(),
+            subject_id: contribution.contribution_id.clone(),
+            publication_state,
+            event_kind: TRN_TRAINING_RECEIPT_KIND,
+            event_id: pointer.event_id,
+            a_ref: None,
+            status: "replay_requested".to_string(),
+            kernel_object_id: contribution.contribution_id.clone(),
+            kernel_receipt_ids: vec![window_receipt_id],
+            network_id: metadata.network_id,
+            training_run_id: Some(contribution.training_run_id.clone()),
+            window_id: Some(contribution.window_id.clone()),
+            challenge_id: None,
+            artifact_class: None,
+            object_digest: Some(contribution.object_digest.clone()),
+            object_ref: None,
+        });
+    }
+
+    for source in closeout_sources {
+        let network_id = source
+            .outcome
+            .metadata
+            .get("network_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| kernel_api_error("training_closeout_network_missing".to_string()))?
+            .to_string();
+        let window_id = source
+            .outcome
+            .metadata
+            .get("window_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| kernel_api_error("training_closeout_window_missing".to_string()))?
+            .to_string();
+        let closeout_status = training_trn_closeout_status(&source);
+        let a_ref = training_trn_closeout_coordinate(
+            identity.public_key_hex.as_str(),
+            source.outcome.outcome_id.as_str(),
+        );
+        let tags = vec![
+            vec!["d".to_string(), source.outcome.outcome_id.clone()],
+            vec!["network".to_string(), network_id.clone()],
+            vec!["run".to_string(), source.outcome.source_run_id.clone()],
+            vec!["window".to_string(), window_id.clone()],
+            vec!["status".to_string(), closeout_status.clone()],
+            vec!["class".to_string(), "training_closeout".to_string()],
+        ];
+        let content = json!({
+            "network_id": network_id,
+            "training_run_id": source.outcome.source_run_id,
+            "window_id": window_id,
+            "closeout_status": closeout_status,
+            "payout_eligible": source.outcome.metadata.get("payout_eligible").cloned(),
+            "training_summary": source.outcome.training_summary,
+            "kernel_object_id": source.outcome.outcome_id,
+            "kernel_receipt_ids": vec![source.receipt_id.clone()],
+        });
+        let (template, fingerprint) =
+            training_trn_template(TRN_TRAINING_CLOSEOUT_KIND, tags, content)
+                .map_err(kernel_api_error)?;
+        let (publication_state, pointer) = publish_training_trn_pointer(
+            &state,
+            &pool,
+            &identity,
+            &mut publication_cache,
+            format!("closeout::{}", source.outcome.outcome_id),
+            "closeout",
+            source.outcome.outcome_id.as_str(),
+            TRN_TRAINING_CLOSEOUT_KIND,
+            Some(a_ref.clone()),
+            template,
+            fingerprint,
+        )
+        .await?;
+        report.closeouts.push(TrainingTrnPublicationEntry {
+            subject_kind: "closeout".to_string(),
+            subject_id: source.outcome.outcome_id.clone(),
+            publication_state,
+            event_kind: TRN_TRAINING_CLOSEOUT_KIND,
+            event_id: pointer.event_id,
+            a_ref: Some(a_ref),
+            status: closeout_status,
+            kernel_object_id: source.outcome.outcome_id.clone(),
+            kernel_receipt_ids: vec![source.receipt_id.clone()],
+            network_id,
+            training_run_id: Some(source.outcome.source_run_id.clone()),
+            window_id: Some(window_id),
+            challenge_id: None,
+            artifact_class: None,
+            object_digest: None,
+            object_ref: None,
+        });
+    }
+
+    for snapshot in validator_snapshots {
+        let Some(result) = snapshot.final_result.as_ref() else {
+            continue;
+        };
+        let challenge_id = snapshot.request.context.challenge_id.clone();
+        let challenge_status = canonical_challenge_status(snapshot.status);
+        let challenge_verdict = canonical_challenge_verdict(result.verdict);
+        let Some(binding) = challenge_bindings.get(challenge_id.as_str()) else {
+            continue;
+        };
+        let Some(receipt_id) = validator_receipt_ids.get(challenge_id.as_str()).cloned() else {
+            continue;
+        };
+        let a_ref = training_trn_artifact_coordinate(
+            identity.public_key_hex.as_str(),
+            challenge_id.as_str(),
+        );
+        let tags = vec![
+            vec!["d".to_string(), challenge_id.clone()],
+            vec!["network".to_string(), binding.network_id.clone()],
+            vec!["run".to_string(), binding.training_run_id.clone()],
+            vec!["window".to_string(), binding.window_id.clone()],
+            vec!["challenge".to_string(), challenge_id.clone()],
+            vec!["status".to_string(), challenge_status.label().to_string()],
+            vec!["class".to_string(), "score".to_string()],
+            vec!["x".to_string(), result.result_digest.clone()],
+            vec!["url".to_string(), result.challenge_result_ref.clone()],
+        ];
+        let content = json!({
+            "network_id": binding.network_id,
+            "training_run_id": binding.training_run_id,
+            "window_id": binding.window_id,
+            "challenge_id": challenge_id,
+            "challenge_kind": binding.challenge_kind,
+            "validator_status": challenge_status.label(),
+            "validator_verdict": challenge_verdict.label(),
+            "verified_row_count": result.verified_row_count,
+            "challenge_result_ref": result.challenge_result_ref,
+            "result_digest": result.result_digest,
+            "kernel_object_id": challenge_id,
+            "kernel_receipt_ids": vec![receipt_id.clone()],
+        });
+        let (template, fingerprint) =
+            training_trn_template(TRN_TRAINING_ARTIFACT_LOCATOR_KIND, tags, content)
+                .map_err(kernel_api_error)?;
+        let (publication_state, pointer) = publish_training_trn_pointer(
+            &state,
+            &pool,
+            &identity,
+            &mut publication_cache,
+            format!("score_locator::{}", challenge_id),
+            "score_locator",
+            challenge_id.as_str(),
+            TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+            Some(a_ref.clone()),
+            template,
+            fingerprint,
+        )
+        .await?;
+        report.score_locators.push(TrainingTrnPublicationEntry {
+            subject_kind: "score_locator".to_string(),
+            subject_id: challenge_id.clone(),
+            publication_state,
+            event_kind: TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+            event_id: pointer.event_id,
+            a_ref: Some(a_ref),
+            status: challenge_status.label().to_string(),
+            kernel_object_id: challenge_id.clone(),
+            kernel_receipt_ids: vec![receipt_id],
+            network_id: binding.network_id.clone(),
+            training_run_id: Some(binding.training_run_id.clone()),
+            window_id: Some(binding.window_id.clone()),
+            challenge_id: Some(challenge_id),
+            artifact_class: Some("score".to_string()),
+            object_digest: Some(result.result_digest.clone()),
+            object_ref: Some(result.challenge_result_ref.clone()),
+        });
+    }
+
+    report.publication_pointer_count = publication_cache.len();
+    Ok(Json(report))
 }
 
 async fn list_training_nodes(
@@ -10899,12 +11891,16 @@ fn now_unix_ms() -> u64 {
 mod tests {
     use super::{
         ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
-        RetryTrainingValidatorChallengeRequest, TrainingValidatorChallengeCoordinatorResponse,
-        TrainingSchedulerWindowState, TrainingWindowCloseoutStatus,
+        PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
+        TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
+        TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
+        TrainingSchedulerWindowState, TrainingTrnPublicationReport,
+        TrainingValidatorChallengeCoordinatorResponse, TrainingWindowCloseoutStatus,
         TrainingWindowValidationSummary, training_window_closeout_status, validator_service,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::time::{Duration, Instant};
 
     use anyhow::Result;
     use axum::body::{Body, to_bytes};
@@ -10946,27 +11942,24 @@ mod tests {
         ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision,
         ComputeAdapterPromotionDisposition, ComputeAdapterTrainingWindow,
         ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus, ComputeBackendFamily,
-        ComputeBenchmarkPackage,
-        ComputeCapabilityEnvelope, ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy,
-        ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
-        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
-        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
-        ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
-        ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeEvaluationSampleStatus,
-        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeIndex,
-        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeProofPosture, ComputeRegistryStatus, ComputeSettlementFailureReason,
-        ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
-        ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTrainingPolicy,
-        ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
-        ComputeValidatorChallengeLease, ComputeValidatorChallengeResult,
-        ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, ComputeValidatorPolicy,
-        DeliveryProof, DeliveryProofStatus, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        ComputeBenchmarkPackage, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
+        ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
+        ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+        ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
+        ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
+        ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
+        ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
+        ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
+        ComputeProductStatus, ComputeProofPosture, ComputeRegistryStatus,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeSyntheticDataJob,
+        ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
+        ComputeSyntheticDataSampleStatus, ComputeTrainingPolicy, ComputeTrainingRun,
+        ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeValidatorChallengeLease,
+        ComputeValidatorChallengeResult, ComputeValidatorChallengeStatus,
+        ComputeValidatorChallengeVerdict, ComputeValidatorPolicy, DeliveryProof,
+        DeliveryProofStatus, DeliveryVerificationEvidence, GptOssRuntimeCapability,
         StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
-    };
-    use openagents_kernel_core::pylon_training::{
-        PylonTrainingAggregateResolution, PylonTrainingContributionVerdict,
     };
     use openagents_kernel_core::compute_benchmarks::{
         ComputeBenchmarkAdapterKind, ComputeBenchmarkCaseImport, ComputeBenchmarkImportRequest,
@@ -10980,6 +11973,9 @@ mod tests {
     use openagents_kernel_core::liquidity::{
         Envelope, EnvelopeStatus, Quote, QuoteStatus, ReservePartition, ReservePartitionStatus,
         RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
+    };
+    use openagents_kernel_core::pylon_training::{
+        PylonTrainingAggregateResolution, PylonTrainingContributionVerdict,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
@@ -11007,12 +12003,16 @@ mod tests {
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
         ValidatorChallengeResult, ValidatorChallengeStatus, ValidatorChallengeVerdict,
     };
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
-    use std::time::Instant;
+    use tempfile::tempdir;
+    use tokio::sync::mpsc::{self, UnboundedReceiver};
+    use tokio_stream::StreamExt;
+    use tokio_tungstenite::accept_async;
+    use tokio_tungstenite::tungstenite::Message;
     use tower::ServiceExt;
 
     use crate::kernel::{
@@ -11062,6 +12062,10 @@ mod tests {
                 "stream.earn_job_lifecycle_projection.v1".to_string(),
             ],
             hosted_nexus_relay_url: "wss://nexus.openagents.com/".to_string(),
+            training_trn_identity_path: PathBuf::from(format!(
+                "/tmp/test-nexus-control-training-trn-{unique}.mnemonic"
+            )),
+            training_trn_relay_urls: vec!["ws://127.0.0.1:65534".to_string()],
             receipt_log_path: None,
             kernel_state_path: None,
             compute_enable_forward_physical: true,
@@ -11121,6 +12125,88 @@ mod tests {
     async fn response_json<T: serde::de::DeserializeOwned>(response: Response) -> Result<T> {
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
         Ok(serde_json::from_slice(bytes.as_ref())?)
+    }
+
+    async fn spawn_training_trn_capture_relay() -> Result<(
+        String,
+        UnboundedReceiver<nostr::Event>,
+        tokio::task::JoinHandle<()>,
+    )> {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    break;
+                };
+                let event_tx = event_tx.clone();
+                tokio::spawn(async move {
+                    let Ok(mut websocket) = accept_async(stream).await else {
+                        return;
+                    };
+                    while let Some(message) = websocket.next().await {
+                        let Ok(message) = message else {
+                            break;
+                        };
+                        let Message::Text(text) = message else {
+                            continue;
+                        };
+                        let Ok(frame) = serde_json::from_str::<Value>(text.as_ref()) else {
+                            continue;
+                        };
+                        let Some(payload) = frame.as_array() else {
+                            continue;
+                        };
+                        if payload.first().and_then(Value::as_str) != Some("EVENT") {
+                            continue;
+                        }
+                        let Some(event_value) = payload.get(1) else {
+                            continue;
+                        };
+                        let Ok(event) = serde_json::from_value::<nostr::Event>(event_value.clone())
+                        else {
+                            continue;
+                        };
+                        let _ = event_tx.send(event);
+                    }
+                });
+            }
+        });
+        Ok((format!("ws://{}", addr), event_rx, handle))
+    }
+
+    async fn collect_training_trn_events(
+        event_rx: &mut UnboundedReceiver<nostr::Event>,
+    ) -> Vec<nostr::Event> {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let mut events = Vec::new();
+        while let Ok(event) = event_rx.try_recv() {
+            events.push(event);
+        }
+        events
+    }
+
+    async fn publish_training_trn(
+        app: &axum::Router,
+        relay_urls: Vec<String>,
+    ) -> Result<TrainingTrnPublicationReport> {
+        let response = tokio::time::timeout(
+            Duration::from_secs(10),
+            app.clone().oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/trn/publish")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &PublishTrainingTrnStateRequest { relay_urls },
+                    )?))?,
+            ),
+        )
+        .await
+        .expect("training TRN publish request timed out")?;
+        assert_eq!(response.status(), StatusCode::OK);
+        response_json(response).await
     }
 
     async fn create_session_token(app: &axum::Router) -> Result<DesktopSessionResponse> {
@@ -18306,6 +19392,431 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn publish_training_trn_state_publishes_and_reuses_authoritative_coordinator_events()
+    -> Result<()> {
+        let (relay_url, mut event_rx, relay_handle) = spawn_training_trn_capture_relay().await?;
+        let temp_dir = tempdir()?;
+        let mut config = test_config()?;
+        config.training_trn_identity_path = temp_dir.path().join("training-trn-identity.mnemonic");
+        config.training_trn_relay_urls = vec![relay_url.clone()];
+
+        let state = build_app_state(config.clone());
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_550_000u64;
+        let training_run_id = "run.trn.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request(
+                "validator-alpha",
+                "sha256:validator-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-alpha", "sha256:validator-alpha");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.trn.alpha",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.trn.alpha",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://0001",
+                                "sha256:slice-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.trn.alpha",
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.trn.alpha".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.trn.alpha",
+                                lease.assignment_id.as_str(),
+                                "sha256:validator-pending-trn-alpha",
+                                None,
+                            )],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let first_report = publish_training_trn(&app, vec![relay_url.clone()]).await?;
+        assert_eq!(first_report.network_contracts.len(), 1);
+        assert_eq!(first_report.windows.len(), 1);
+        assert_eq!(first_report.closeouts.len(), 0);
+        assert_eq!(first_report.score_locators.len(), 0);
+        assert!(
+            first_report
+                .receipts
+                .iter()
+                .any(|entry| entry.status == "sealed"
+                    && entry.window_id.as_deref() == Some("window.0001"))
+        );
+        assert!(
+            first_report
+                .receipts
+                .iter()
+                .any(|entry| entry.status == "replay_requested"
+                    && entry.subject_id == "contrib.window.trn.alpha")
+        );
+        assert!(
+            first_report
+                .network_contracts
+                .iter()
+                .chain(first_report.windows.iter())
+                .chain(first_report.receipts.iter())
+                .all(|entry| entry.publication_state == "published")
+        );
+        assert!(config.training_trn_identity_path.is_file());
+        let first_events = collect_training_trn_events(&mut event_rx).await;
+        let first_kinds = first_events
+            .iter()
+            .map(|event| event.kind)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(first_kinds.contains(&TRN_TRAINING_NETWORK_CONTRACT_KIND));
+        assert!(first_kinds.contains(&TRN_TRAINING_WINDOW_KIND));
+        assert!(first_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
+
+        let claimed_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.trn.1",
+                            created_at_ms as i64 + 1_310,
+                            "validator-alpha",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_one.status(), StatusCode::OK);
+        let claimed_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_one).await?;
+        let retried_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/retry",
+                        claimed_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_retry_request(
+                            "idemp.training.validator.retry.trn.1",
+                            created_at_ms as i64 + 1_320,
+                            "validator-alpha",
+                            claimed_one.lease.clone().expect("claim lease"),
+                            "transient validator transport failure",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(retried_one.status(), StatusCode::OK);
+        let retried_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(retried_one).await?;
+        let finalized_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        retried_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.trn.1",
+                            created_at_ms as i64 + 1_330,
+                            "validator-alpha",
+                            retried_one.lease.clone().expect("retry lease"),
+                            retried_one
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            retried_one.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-trn-one",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_one.status(), StatusCode::OK);
+
+        let claimed_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.trn.2",
+                            created_at_ms as i64 + 1_340,
+                            "validator-alpha",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_two.status(), StatusCode::OK);
+        let claimed_two =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_two).await?;
+        let finalized_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_two.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.trn.2",
+                            created_at_ms as i64 + 1_350,
+                            "validator-alpha",
+                            claimed_two.lease.clone().expect("second claim lease"),
+                            claimed_two
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_two.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-trn-two",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_two.status(), StatusCode::OK);
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.trn.alpha"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![training_window_contribution_input(
+                                "contrib.window.trn.alpha",
+                                lease.assignment_id.as_str(),
+                                "sha256:validator-final-trn-alpha",
+                                Some(ComputeAdapterContributionDisposition::Accepted),
+                            )],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-trn-alpha".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+
+        let second_report = publish_training_trn(&app, vec![relay_url.clone()]).await?;
+        assert_eq!(second_report.network_contracts.len(), 1);
+        assert_eq!(second_report.windows.len(), 1);
+        assert_eq!(second_report.closeouts.len(), 1);
+        assert_eq!(second_report.score_locators.len(), 2);
+        assert!(
+            second_report
+                .network_contracts
+                .iter()
+                .all(|entry| entry.publication_state == "existing")
+        );
+        assert!(
+            second_report
+                .windows
+                .iter()
+                .all(|entry| entry.status == "reconciled"
+                    && entry.publication_state == "published")
+        );
+        assert!(
+            second_report
+                .receipts
+                .iter()
+                .any(|entry| entry.status == "reconciled"
+                    && entry.publication_state == "published")
+        );
+        assert!(
+            second_report
+                .closeouts
+                .iter()
+                .all(|entry| entry.publication_state == "published"
+                    && entry.status == "rewarded"
+                    && !entry.kernel_receipt_ids.is_empty())
+        );
+        assert!(
+            second_report
+                .score_locators
+                .iter()
+                .all(|entry| entry.publication_state == "published"
+                    && entry.artifact_class.as_deref() == Some("score")
+                    && entry.challenge_id.is_some()
+                    && entry.object_digest.is_some()
+                    && entry.object_ref.is_some())
+        );
+        let second_events = collect_training_trn_events(&mut event_rx).await;
+        let second_kinds = second_events
+            .iter()
+            .map(|event| event.kind)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(second_kinds.contains(&TRN_TRAINING_WINDOW_KIND));
+        assert!(second_kinds.contains(&TRN_TRAINING_RECEIPT_KIND));
+        assert!(second_kinds.contains(&TRN_TRAINING_ARTIFACT_LOCATOR_KIND));
+        assert!(second_kinds.contains(&TRN_TRAINING_CLOSEOUT_KIND));
+
+        let third_report = publish_training_trn(&app, vec![relay_url.clone()]).await?;
+        assert!(
+            third_report
+                .network_contracts
+                .iter()
+                .chain(third_report.windows.iter())
+                .chain(third_report.receipts.iter())
+                .chain(third_report.closeouts.iter())
+                .chain(third_report.score_locators.iter())
+                .all(|entry| entry.publication_state == "existing")
+        );
+        assert!(collect_training_trn_events(&mut event_rx).await.is_empty());
+
+        {
+            let store = state.store.read().expect("read store");
+            assert_eq!(store.kernel.list_training_trn_publications().len(), 8);
+            assert!(
+                store
+                    .kernel
+                    .get_training_trn_publication("network_contract::trainnet.alpha")
+                    .is_some()
+            );
+            assert!(
+                store
+                    .kernel
+                    .get_training_trn_publication("closeout::accepted.training_window.window.0001")
+                    .is_some()
+            );
+        }
+
+        relay_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_window_plan_rejects_dataset_slice_count_mismatch() -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_api_router_with_state(state.clone());
@@ -18734,7 +20245,8 @@ mod tests {
             )
             .await?;
         assert_eq!(reconcile_held.status(), StatusCode::OK);
-        let held_window = response_json::<TrainingWindowCoordinatorResponse>(reconcile_held).await?;
+        let held_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconcile_held).await?;
         assert_eq!(
             held_window.window.accepted_outcome_id.as_deref(),
             Some("accepted.training_window.window.0003")

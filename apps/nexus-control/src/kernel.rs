@@ -385,6 +385,8 @@ pub struct KernelState {
     structured_capacity_instruments: HashMap<String, StructuredCapacityInstrumentRecord>,
     delivery_proofs: HashMap<String, DeliveryProofRecord>,
     validator_challenges: ValidatorChallengeService,
+    training_trn_publications: HashMap<String, TrainingTrnPublicationPointer>,
+    training_validator_challenge_receipts: HashMap<String, TrainingValidatorChallengeReceiptRecord>,
     compute_indices: HashMap<String, ComputeIndexRecord>,
     data_assets: HashMap<String, DataAssetRecord>,
     access_grants: HashMap<String, AccessGrantRecord>,
@@ -477,6 +479,43 @@ struct ComputeEvaluationSampleRecord {
 struct ComputeTrainingRunRecord {
     training_run: ComputeTrainingRun,
     receipt_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingTrnPublicationPointer {
+    pub publication_key: String,
+    pub subject_kind: String,
+    pub subject_id: String,
+    pub event_kind: u32,
+    pub event_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub a_ref: Option<String>,
+    pub published_at_ms: i64,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TrainingValidatorChallengeReceiptRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    finalization_receipt_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ComputeTrainingRunPublicationSource {
+    pub training_run: ComputeTrainingRun,
+    pub receipt_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ComputeTrainingWindowPublicationSource {
+    pub window: ComputeAdapterTrainingWindow,
+    pub receipt_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ComputeAcceptedOutcomePublicationSource {
+    pub outcome: ComputeAcceptedOutcome,
+    pub receipt_id: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -846,6 +885,11 @@ struct PersistedComputeAuthorityState {
     delivery_proofs: BTreeMap<String, DeliveryProofRecord>,
     #[serde(default)]
     validator_challenges: ValidatorChallengeService,
+    #[serde(default)]
+    training_trn_publications: BTreeMap<String, TrainingTrnPublicationPointer>,
+    #[serde(default)]
+    training_validator_challenge_receipts:
+        BTreeMap<String, TrainingValidatorChallengeReceiptRecord>,
     compute_indices: BTreeMap<String, ComputeIndexRecord>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
@@ -2827,6 +2871,30 @@ impl KernelState {
             .map(|record| record.training_run.clone())
     }
 
+    pub fn list_compute_training_run_publication_sources(
+        &self,
+    ) -> Vec<ComputeTrainingRunPublicationSource> {
+        let mut items = self
+            .compute_training_runs
+            .values()
+            .map(|record| ComputeTrainingRunPublicationSource {
+                training_run: record.training_run.clone(),
+                receipt_id: record.receipt_id.clone(),
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.training_run
+                .created_at_ms
+                .cmp(&rhs.training_run.created_at_ms)
+                .then_with(|| {
+                    lhs.training_run
+                        .training_run_id
+                        .cmp(&rhs.training_run.training_run_id)
+                })
+        });
+        items
+    }
+
     pub fn list_admitted_training_nodes(
         &self,
         query: &TrainingNodeQuery,
@@ -3148,6 +3216,32 @@ impl KernelState {
             .map(|record| record.window.clone())
     }
 
+    pub fn list_compute_training_window_publication_sources(
+        &self,
+        training_run_id: Option<&str>,
+        status: Option<ComputeAdapterWindowStatus>,
+    ) -> Vec<ComputeTrainingWindowPublicationSource> {
+        let mut items = self
+            .compute_adapter_training_windows
+            .values()
+            .filter(|record| {
+                training_run_id.is_none_or(|expected| record.window.training_run_id == expected)
+                    && status.is_none_or(|expected| record.window.status == expected)
+            })
+            .map(|record| ComputeTrainingWindowPublicationSource {
+                window: record.window.clone(),
+                receipt_id: record.receipt_id.clone(),
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.window
+                .recorded_at_ms
+                .cmp(&rhs.window.recorded_at_ms)
+                .then_with(|| lhs.window.window_id.cmp(&rhs.window.window_id))
+        });
+        items
+    }
+
     pub fn list_compute_adapter_contribution_outcomes(
         &self,
         training_run_id: Option<&str>,
@@ -3210,6 +3304,34 @@ impl KernelState {
         self.compute_accepted_outcomes
             .get(outcome_id)
             .map(|record| record.outcome.clone())
+    }
+
+    pub fn list_compute_accepted_outcome_publication_sources(
+        &self,
+        outcome_kind: Option<ComputeAcceptedOutcomeKind>,
+        environment_ref: Option<&str>,
+    ) -> Vec<ComputeAcceptedOutcomePublicationSource> {
+        let mut items = self
+            .compute_accepted_outcomes
+            .values()
+            .filter(|record| {
+                outcome_kind.is_none_or(|expected| record.outcome.outcome_kind == expected)
+                    && environment_ref.is_none_or(|expected| {
+                        record.outcome.environment_binding.environment_ref == expected
+                    })
+            })
+            .map(|record| ComputeAcceptedOutcomePublicationSource {
+                outcome: record.outcome.clone(),
+                receipt_id: record.receipt_id.clone(),
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.outcome
+                .accepted_at_ms
+                .cmp(&rhs.outcome.accepted_at_ms)
+                .then_with(|| lhs.outcome.outcome_id.cmp(&rhs.outcome.outcome_id))
+        });
+        items
     }
 
     pub fn list_compute_synthetic_data_jobs(
@@ -3460,6 +3582,46 @@ impl KernelState {
         self.validator_challenges.snapshot(challenge_id)
     }
 
+    pub fn get_training_validator_challenge_finalization_receipt_id(
+        &self,
+        challenge_id: &str,
+    ) -> Option<String> {
+        self.training_validator_challenge_receipts
+            .get(challenge_id)
+            .and_then(|record| record.finalization_receipt_id.clone())
+    }
+
+    pub fn get_training_trn_publication(
+        &self,
+        publication_key: &str,
+    ) -> Option<TrainingTrnPublicationPointer> {
+        self.training_trn_publications.get(publication_key).cloned()
+    }
+
+    pub fn list_training_trn_publications(&self) -> Vec<TrainingTrnPublicationPointer> {
+        let mut items = self
+            .training_trn_publications
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.subject_kind
+                .cmp(&rhs.subject_kind)
+                .then_with(|| lhs.subject_id.cmp(&rhs.subject_id))
+                .then_with(|| lhs.published_at_ms.cmp(&rhs.published_at_ms))
+        });
+        items
+    }
+
+    pub fn upsert_training_trn_publication(
+        &mut self,
+        pointer: TrainingTrnPublicationPointer,
+    ) -> Result<(), String> {
+        self.training_trn_publications
+            .insert(pointer.publication_key.clone(), pointer);
+        self.persist_compute_authority_state()
+    }
+
     pub fn list_compute_indices(&self, product_id: Option<&str>) -> Vec<ComputeIndex> {
         let mut items = self
             .compute_indices
@@ -3555,6 +3717,11 @@ impl KernelState {
             .collect();
         self.delivery_proofs = persisted.delivery_proofs.into_iter().collect();
         self.validator_challenges = persisted.validator_challenges;
+        self.training_trn_publications = persisted.training_trn_publications.into_iter().collect();
+        self.training_validator_challenge_receipts = persisted
+            .training_validator_challenge_receipts
+            .into_iter()
+            .collect();
         self.compute_indices = persisted.compute_indices.into_iter().collect();
         self.snapshots = persisted.snapshots;
         self.next_projection_seq = persisted.next_projection_seq.max(1);
@@ -3620,6 +3787,12 @@ impl KernelState {
                 .collect(),
             delivery_proofs: self.delivery_proofs.clone().into_iter().collect(),
             validator_challenges: self.validator_challenges.clone(),
+            training_trn_publications: self.training_trn_publications.clone().into_iter().collect(),
+            training_validator_challenge_receipts: self
+                .training_validator_challenge_receipts
+                .clone()
+                .into_iter()
+                .collect(),
             compute_indices: self.compute_indices.clone().into_iter().collect(),
             snapshots: self.snapshots.clone(),
             next_projection_seq: self.next_projection_seq.max(1),
@@ -5736,7 +5909,9 @@ impl KernelState {
                             | ComputeAdapterWindowStatus::Scored
                             | ComputeAdapterWindowStatus::Reconciled
                     ) {
-                        return Err("compute_training_closeout_window_not_closeout_ready".to_string());
+                        return Err(
+                            "compute_training_closeout_window_not_closeout_ready".to_string()
+                        );
                     }
                 } else if training_run.status != ComputeTrainingRunStatus::Accepted {
                     return Err("compute_accepted_outcome_training_not_accepted".to_string());
@@ -9603,6 +9778,12 @@ impl KernelState {
                 }
             }
         }
+        self.training_validator_challenge_receipts.insert(
+            challenge_id.clone(),
+            TrainingValidatorChallengeReceiptRecord {
+                finalization_receipt_id: Some(put_result.receipt.receipt_id.clone()),
+            },
+        );
 
         let challenge = self
             .validator_challenges
@@ -15614,8 +15795,9 @@ mod tests {
                     }],
                     artifacts: vec![ComputeEvaluationArtifact {
                         artifact_kind: "aggregated_delta".to_string(),
-                        artifact_ref: "artifact://training/windows/adapter.window.alpha/aggregated_delta"
-                            .to_string(),
+                        artifact_ref:
+                            "artifact://training/windows/adapter.window.alpha/aggregated_delta"
+                                .to_string(),
                         digest: Some("sha256:adapter-aggregate-alpha".to_string()),
                         metadata: json!({"window_id": "adapter.window.alpha"}),
                     }],

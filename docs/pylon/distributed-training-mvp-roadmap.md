@@ -1456,6 +1456,24 @@ live coordinator plane.
 - Publish authoritative `kind:39520 class=score` locators for score snapshots.
 - Link `TRN` events back to kernel receipt ids and object ids.
 
+Current status:
+
+- `apps/nexus-control` now exposes `POST /api/training/trn/publish` as the
+  first coordinator-side publication path for the MVP training lane.
+- The route currently emits retained authoritative coordinator events for
+  `kind:39500`, `kind:39510`, `kind:39511`, `kind:39520 class=score`, and
+  `kind:39530` directly from kernel training-run, window, validator, and
+  accepted-outcome state.
+- Publication pointers are now persisted in `KernelState`, keyed by subject and
+  fingerprint, so repeated publication passes reuse unchanged objects instead
+  of minting fresh events on every run.
+- The published report also carries kernel object ids and kernel receipt ids
+  for every emitted entry so operators can trace the public `TRN` surface back
+  to retained coordinator truth.
+- This is still a current-state publication lane, not a full historical replay
+  ledger. `Nexus` republish support for legacy states, label projection, and
+  broader relay policy remain separate follow-on workstreams.
+
 ### 4.7 Reputation projection
 
 - Derive `NIP-32` labels from:
