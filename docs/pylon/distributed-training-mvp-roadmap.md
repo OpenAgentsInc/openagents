@@ -1212,6 +1212,17 @@ become the admitted-node supervisor around `Psionic`.
 - Ingest `NIP-32` labels relevant to the node and surface them locally.
 - Refuse automatic re-advertisement as sellable when local node reputation or
   build status has been downgraded.
+- Current status: `apps/pylon/src/lib.rs` now has a retained authority-sync
+  lane behind `pylon training sync`. That path reuses the existing kernel
+  authority client to ingest contribution outcomes and accepted training
+  outcomes for retained manifests, queries the configured training relays for
+  relevant `kind:1985` `NIP-32` labels, persists those caches into the
+  training runtime-state store, and fail-closes automatic training
+  readvertisement when the retained label set still contains a hard-gate
+  condition such as `trn/build=revoked`. Later issues still need to project
+  those retained caches through `pylon status` and the training-aware admin
+  surfaces rather than keeping them behind the sync command and runtime-state
+  store only.
 
 ### 3.8 Pylon operator surface
 

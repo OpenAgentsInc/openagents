@@ -229,6 +229,18 @@ later issues still need to project the retained publication pointers into
 training-aware status/admin surfaces and reconcile them against authoritative
 `Nexus` closeout state.
 
+`Pylon` also now has a retained authority-sync lane for training closeout and
+reputation state. `pylon training sync [--json]` will:
+
+- fetch adapter contribution outcomes from `Nexus` for retained manifests
+- fetch accepted training outcomes and cache them as accepted sealed-window
+  closeout state
+- query retained training relays for relevant `kind:1985` `NIP-32` labels that
+  target the local node or previously published training events
+- persist those caches into the retained training runtime-state store
+- fail closed on automatic training readvertisement when a cached hard-gate
+  training label such as `trn/build=revoked` still applies
+
 The retained config now also carries one explicit `training` block for the
 future admitted-node lane. That block freezes:
 
@@ -245,7 +257,8 @@ future admitted-node lane. That block freezes:
 `Pylon` also now keeps one separate retained runtime-state file under the
 training run root at `state/runtime-state.json`. That store is intentionally
 separate from the inference ledger and is where cached training manifests,
-lease state, window state, active runtime state, and latest published TRN ids
+lease state, window state, active runtime state, latest published TRN ids,
+contribution outcomes, accepted closeouts, and retained reputation labels
 belong as the training shell grows.
 
 ## Prerequisites
