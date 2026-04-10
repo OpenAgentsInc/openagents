@@ -544,14 +544,41 @@ pub fn init_state(
     window.set_blur(true);
 
     pollster::block_on(async move {
+        // WSL2's Mesa `dzn` driver (Vulkan-on-D3D12) is the only way to reach a
+        // real GPU from inside a Linux WSL guest, but it advertises
+        // `conformanceVersion = 0.0.0.0` because it's a translation layer and
+        // can't pass the Vulkan CTS. wgpu-hal hides such adapters unless
+        // `ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER` is set, which on native
+        // Linux/macOS/Windows with conformant drivers is a no-op.
+        let instance_flags = (wgpu::InstanceFlags::from_build_config()
+            | wgpu::InstanceFlags::ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER)
+            .with_env();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
+            flags: instance_flags,
             ..Default::default()
         });
 
         let surface = instance
             .create_surface(window.clone())
             .context("failed to create surface")?;
+
+        for (index, probe) in instance.enumerate_adapters(wgpu::Backends::all()).into_iter().enumerate() {
+            let info = probe.get_info();
+            let surface_supported = probe.is_surface_supported(&surface);
+            tracing::info!(
+                index,
+                name = info.name,
+                vendor = info.vendor,
+                device = info.device,
+                device_type = ?info.device_type,
+                driver = info.driver,
+                driver_info = info.driver_info,
+                backend = ?info.backend,
+                surface_supported,
+                "enumerated wgpu adapter",
+            );
+        }
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
