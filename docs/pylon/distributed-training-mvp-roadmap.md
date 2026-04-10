@@ -1515,6 +1515,14 @@ upload-failure state lands.
   logically new receipts.
 - Recompute runtime state from persisted kernel truth when possible.
 
+Current status:
+`nexus-control` now persists scheduler lease and window runtime state in a
+sidecar file derived from the configured kernel-state path, reloads that state
+at startup, and merges it with persisted kernel truth for schedulable runs
+before serving requests again. `TRN` publication pointers continue to live in
+kernel state, so restart-time republish passes reuse existing pointers instead
+of emitting duplicate coordinator events.
+
 ### 4.10 Nexus test coverage
 
 - Add scheduler tests for node matching and lease expiry.
