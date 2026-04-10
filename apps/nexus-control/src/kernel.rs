@@ -89,6 +89,9 @@ use openagents_kernel_core::snapshots::{
     ComputeBreakerStatusRow, ComputeRolloutGateRow, ComputeTruthLabelRow, EconomySnapshot,
 };
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
+use openagents_provider_substrate::{
+    ProviderAdapterTrainingContributorAvailability, ProviderHostTelemetrySnapshot,
+};
 use openagents_validator_service::{
     ValidatorChallengeLease, ValidatorChallengeRequest, ValidatorChallengeResult,
     ValidatorChallengeService, ValidatorChallengeSnapshot, ValidatorChallengeStatus,
@@ -111,6 +114,8 @@ const COMPUTE_PROVIDER_CONCENTRATION_GUARDED_HHI: f64 = 0.35;
 const COMPUTE_PROVIDER_CONCENTRATION_TRIPPED_HHI: f64 = 0.60;
 const COMPUTE_DELIVERY_REJECTION_GUARDED_RATE: f64 = 0.10;
 const COMPUTE_DELIVERY_REJECTION_TRIPPED_RATE: f64 = 0.25;
+const TRAINING_NODE_HEARTBEAT_INTERVAL_MS: i64 = 5_000;
+const TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS: i64 = 120_000;
 
 #[derive(Debug, Clone)]
 pub struct ComputeRuntimePolicy {
@@ -369,6 +374,7 @@ pub struct KernelState {
     compute_evaluation_runs: HashMap<String, ComputeEvaluationRunRecord>,
     compute_evaluation_samples: HashMap<String, ComputeEvaluationSampleRecord>,
     compute_training_runs: HashMap<String, ComputeTrainingRunRecord>,
+    admitted_training_nodes: HashMap<String, AdmittedTrainingNodeRecord>,
     compute_adapter_training_windows: HashMap<String, ComputeAdapterTrainingWindowRecord>,
     compute_adapter_contribution_outcomes: HashMap<String, ComputeAdapterContributionOutcomeRecord>,
     compute_accepted_outcomes: HashMap<String, ComputeAcceptedOutcomeRecord>,
@@ -470,6 +476,225 @@ struct ComputeEvaluationSampleRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeTrainingRunRecord {
     training_run: ComputeTrainingRun,
+    receipt_id: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingNodeRoleClaim {
+    Worker,
+    Validator,
+    RecoverySource,
+}
+
+impl TrainingNodeRoleClaim {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Worker => "worker",
+            Self::Validator => "validator",
+            Self::RecoverySource => "recovery_source",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "worker" => Some(Self::Worker),
+            "validator" => Some(Self::Validator),
+            "recovery_source" => Some(Self::RecoverySource),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingNodeDesiredState {
+    Running,
+    Draining,
+    Stopped,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingNodeProcessState {
+    Launching,
+    Running,
+    Draining,
+    Stopped,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingCoordinatorAck {
+    pub idempotency_key: String,
+    pub recorded_at_ms: i64,
+    pub authority_state: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RecordTrainingNodeAdmissionRequest {
+    pub idempotency_key: String,
+    pub requested_at_ms: i64,
+    pub node_pubkey_hex: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    #[serde(default)]
+    pub role_claims: Vec<TrainingNodeRoleClaim>,
+    #[serde(default)]
+    pub allowed_networks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_digest: Option<String>,
+    #[serde(default)]
+    pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
+    #[serde(default)]
+    pub active_reputation_labels: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RecordTrainingNodeAdmissionResponse {
+    pub ack: TrainingCoordinatorAck,
+    pub admission_id: String,
+    pub admitted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RecordTrainingNodeHeartbeatRequest {
+    pub idempotency_key: String,
+    pub recorded_at_ms: i64,
+    pub node_pubkey_hex: String,
+    pub build_digest: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub desired_state: TrainingNodeDesiredState,
+    pub process_state: TrainingNodeProcessState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_exit_code: Option<i32>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RecordTrainingNodeHeartbeatResponse {
+    pub ack: TrainingCoordinatorAck,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_heartbeat_due_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_state: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingNodeQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<TrainingNodeRoleClaim>,
+    #[serde(default)]
+    pub online_only: bool,
+    #[serde(default)]
+    pub eligible_only: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AdmittedTrainingNode {
+    pub admission_id: String,
+    pub node_pubkey_hex: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    #[serde(default)]
+    pub role_claims: Vec<TrainingNodeRoleClaim>,
+    #[serde(default)]
+    pub allowed_networks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_version: Option<String>,
+    pub build_digest: String,
+    pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
+    #[serde(default)]
+    pub active_reputation_labels: Vec<String>,
+    pub admitted_at_ms: i64,
+    pub updated_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_lease_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_desired_state: Option<TrainingNodeDesiredState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_process_state: Option<TrainingNodeProcessState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_successful_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_successful_window_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AdmittedTrainingNodeView {
+    pub admission_id: String,
+    pub node_pubkey_hex: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    #[serde(default)]
+    pub role_claims: Vec<TrainingNodeRoleClaim>,
+    #[serde(default)]
+    pub allowed_networks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_version: Option<String>,
+    pub build_digest: String,
+    pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_memory_gb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_disk_gb: Option<u64>,
+    #[serde(default)]
+    pub active_reputation_labels: Vec<String>,
+    pub admitted_at_ms: i64,
+    pub updated_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_lease_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_desired_state: Option<TrainingNodeDesiredState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_process_state: Option<TrainingNodeProcessState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_successful_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_successful_window_id: Option<String>,
+    pub online: bool,
+    pub eligible: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AdmittedTrainingNodeRecord {
+    node: AdmittedTrainingNode,
     receipt_id: String,
 }
 
@@ -601,6 +826,8 @@ struct PersistedComputeAuthorityState {
     compute_evaluation_samples: BTreeMap<String, ComputeEvaluationSampleRecord>,
     #[serde(default)]
     compute_training_runs: BTreeMap<String, ComputeTrainingRunRecord>,
+    #[serde(default)]
+    admitted_training_nodes: BTreeMap<String, AdmittedTrainingNodeRecord>,
     #[serde(default)]
     compute_adapter_training_windows: BTreeMap<String, ComputeAdapterTrainingWindowRecord>,
     #[serde(default)]
@@ -2580,6 +2807,296 @@ impl KernelState {
             .map(|record| record.training_run.clone())
     }
 
+    pub fn list_admitted_training_nodes(
+        &self,
+        query: &TrainingNodeQuery,
+        now_unix_ms: i64,
+    ) -> Vec<AdmittedTrainingNodeView> {
+        let mut items = self
+            .admitted_training_nodes
+            .values()
+            .map(|record| admitted_training_node_view(&record.node, now_unix_ms))
+            .filter(|node| {
+                training_node_matches_network(node, query.network_id.as_deref())
+                    && query
+                        .role
+                        .is_none_or(|expected| node.role_claims.contains(&expected))
+                    && (!query.online_only || node.online)
+                    && (!query.eligible_only || node.eligible)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            rhs.updated_at_ms
+                .cmp(&lhs.updated_at_ms)
+                .then_with(|| lhs.node_pubkey_hex.cmp(&rhs.node_pubkey_hex))
+                .then_with(|| lhs.build_digest.cmp(&rhs.build_digest))
+        });
+        items
+    }
+
+    pub fn get_admitted_training_node(
+        &self,
+        node_pubkey_hex: &str,
+        now_unix_ms: i64,
+    ) -> Option<AdmittedTrainingNodeView> {
+        let node_pubkey_hex =
+            normalize_required(node_pubkey_hex, "training_node_pubkey_missing").ok()?;
+        self.admitted_training_nodes
+            .values()
+            .filter(|record| record.node.node_pubkey_hex == node_pubkey_hex)
+            .max_by(|lhs, rhs| {
+                lhs.node
+                    .updated_at_ms
+                    .cmp(&rhs.node.updated_at_ms)
+                    .then_with(|| lhs.node.build_digest.cmp(&rhs.node.build_digest))
+            })
+            .map(|record| admitted_training_node_view(&record.node, now_unix_ms))
+    }
+
+    pub fn record_training_node_admission(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RecordTrainingNodeAdmissionRequest,
+    ) -> Result<MutationResult<RecordTrainingNodeAdmissionResponse>, String> {
+        let node_pubkey_hex =
+            normalize_required(req.node_pubkey_hex.as_str(), "training_node_pubkey_missing")?;
+        let build_digest = normalize_required(
+            req.build_digest.as_deref().unwrap_or_default(),
+            "training_node_build_digest_missing",
+        )?;
+        req.requested_at_ms = normalize_created_at_ms(req.requested_at_ms, context.now_unix_ms);
+        req.node_pubkey_hex.clone_from(&node_pubkey_hex);
+        req.node_label = req
+            .node_label
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.role_claims = normalize_training_node_role_claims(req.role_claims);
+        if req.role_claims.is_empty() {
+            return Err("training_node_role_claims_missing".to_string());
+        }
+        req.allowed_networks = normalize_string_vec(req.allowed_networks);
+        req.build_version = req
+            .build_version
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        req.build_digest = Some(build_digest.clone());
+        req.active_reputation_labels = normalize_string_vec(req.active_reputation_labels);
+
+        let registry_key =
+            training_node_registry_key(node_pubkey_hex.as_str(), build_digest.as_str());
+        let existing_record = self
+            .admitted_training_nodes
+            .get(registry_key.as_str())
+            .cloned();
+        let admitted = req.contributor_availability.has_authoritative_state();
+        let reason = if admitted {
+            None
+        } else {
+            Some("training_node_capability_missing".to_string())
+        };
+        let admission_id = existing_record
+            .as_ref()
+            .map(|record| record.node.admission_id.clone())
+            .unwrap_or_else(|| {
+                training_node_admission_id(node_pubkey_hex.as_str(), build_digest.as_str())
+            });
+        let request_hash = request_hash(&req)?;
+        let receipt = build_receipt(
+            context,
+            req.idempotency_key.as_str(),
+            KernelReceiptSpec {
+                action: "kernel.compute.training_node.admission.record".to_string(),
+                created_at_ms: req.requested_at_ms,
+                trace: normalized_trace(TraceContext::default(), context, None, None),
+                policy: normalized_policy(PolicyContext::default(), context),
+                inputs_payload: serde_json::to_value(&req).map_err(|error| {
+                    format!("kernel_training_node_admission_encode_failed: {error}")
+                })?,
+                outputs_payload: json!({
+                    "admission_id": admission_id.clone(),
+                    "node_pubkey_hex": node_pubkey_hex.clone(),
+                    "build_digest": build_digest.clone(),
+                    "admitted": admitted,
+                    "reason": reason.clone(),
+                }),
+                evidence: Vec::new(),
+                hints: ReceiptHints::default(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.training_node.admission.record",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RecordTrainingNodeAdmissionResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: req.idempotency_key.clone(),
+                recorded_at_ms: req.requested_at_ms,
+                authority_state: if admitted {
+                    "admitted".to_string()
+                } else {
+                    "refused".to_string()
+                },
+            },
+            admission_id: admission_id.clone(),
+            admitted,
+            reason: reason.clone(),
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if admitted || existing_record.is_some() {
+            let node = admitted_training_node_from_request(
+                existing_record.as_ref().map(|record| &record.node),
+                &req,
+                admission_id,
+                build_digest,
+            );
+            self.admitted_training_nodes.insert(
+                registry_key,
+                AdmittedTrainingNodeRecord {
+                    node,
+                    receipt_id: put_result.receipt.receipt_id.clone(),
+                },
+            );
+        }
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.requested_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn record_training_node_heartbeat(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RecordTrainingNodeHeartbeatRequest,
+    ) -> Result<MutationResult<RecordTrainingNodeHeartbeatResponse>, String> {
+        let node_pubkey_hex =
+            normalize_required(req.node_pubkey_hex.as_str(), "training_node_pubkey_missing")?;
+        let build_digest = normalize_required(
+            req.build_digest.as_str(),
+            "training_node_build_digest_missing",
+        )?;
+        req.recorded_at_ms = normalize_created_at_ms(req.recorded_at_ms, context.now_unix_ms);
+        req.node_pubkey_hex.clone_from(&node_pubkey_hex);
+        req.build_digest.clone_from(&build_digest);
+        req.training_run_id = normalize_required(
+            req.training_run_id.as_str(),
+            "training_node_training_run_id_missing",
+        )?;
+        req.window_id =
+            normalize_required(req.window_id.as_str(), "training_node_window_id_missing")?;
+        req.assignment_id = normalize_required(
+            req.assignment_id.as_str(),
+            "training_node_assignment_id_missing",
+        )?;
+        req.lease_id = normalize_required(req.lease_id.as_str(), "training_node_lease_id_missing")?;
+        let heartbeat_at_ms = req.last_heartbeat_at_ms.unwrap_or(req.recorded_at_ms);
+        req.last_heartbeat_at_ms = Some(heartbeat_at_ms);
+
+        let registry_key =
+            training_node_registry_key(node_pubkey_hex.as_str(), build_digest.as_str());
+        if !self
+            .admitted_training_nodes
+            .contains_key(registry_key.as_str())
+        {
+            return Err("training_node_not_found".to_string());
+        }
+        let request_hash = request_hash(&req)?;
+        let lease_state = training_node_lease_state_for(req.desired_state, req.process_state);
+        let window_state = training_node_window_state_for(req.process_state, req.last_exit_code);
+        let receipt = build_receipt(
+            context,
+            req.idempotency_key.as_str(),
+            KernelReceiptSpec {
+                action: "kernel.compute.training_node.heartbeat.record".to_string(),
+                created_at_ms: req.recorded_at_ms,
+                trace: normalized_trace(TraceContext::default(), context, None, None),
+                policy: normalized_policy(PolicyContext::default(), context),
+                inputs_payload: serde_json::to_value(&req).map_err(|error| {
+                    format!("kernel_training_node_heartbeat_encode_failed: {error}")
+                })?,
+                outputs_payload: json!({
+                    "node_pubkey_hex": node_pubkey_hex.clone(),
+                    "build_digest": build_digest.clone(),
+                    "lease_state": lease_state.clone(),
+                    "window_state": window_state.clone(),
+                    "next_heartbeat_due_at_ms": heartbeat_at_ms.saturating_add(TRAINING_NODE_HEARTBEAT_INTERVAL_MS),
+                }),
+                evidence: Vec::new(),
+                hints: ReceiptHints::default(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.training_node.heartbeat.record",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RecordTrainingNodeHeartbeatResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: req.idempotency_key.clone(),
+                recorded_at_ms: req.recorded_at_ms,
+                authority_state: lease_state.clone(),
+            },
+            next_heartbeat_due_at_ms: Some(
+                heartbeat_at_ms.saturating_add(TRAINING_NODE_HEARTBEAT_INTERVAL_MS),
+            ),
+            lease_state: Some(lease_state.clone()),
+            window_state: Some(window_state.clone()),
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        let record = self
+            .admitted_training_nodes
+            .get_mut(registry_key.as_str())
+            .ok_or_else(|| "training_node_not_found".to_string())?;
+        record.node.updated_at_ms = req.recorded_at_ms;
+        record.node.last_heartbeat_at_ms = Some(heartbeat_at_ms);
+        record.node.last_training_run_id = Some(req.training_run_id.clone());
+        record.node.last_window_id = Some(req.window_id.clone());
+        record.node.last_assignment_id = Some(req.assignment_id.clone());
+        record.node.last_lease_id = Some(req.lease_id.clone());
+        record.node.last_desired_state = Some(req.desired_state);
+        record.node.last_process_state = Some(req.process_state);
+        record.node.last_exit_code = req.last_exit_code;
+        if matches!(req.process_state, TrainingNodeProcessState::Stopped)
+            && req.last_exit_code == Some(0)
+        {
+            record.node.last_successful_run_id = Some(req.training_run_id);
+            record.node.last_successful_window_id = Some(req.window_id);
+        }
+        record.receipt_id = put_result.receipt.receipt_id.clone();
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.recorded_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     pub fn list_compute_adapter_training_windows(
         &self,
         training_run_id: Option<&str>,
@@ -2998,6 +3515,7 @@ impl KernelState {
         self.compute_evaluation_samples =
             persisted.compute_evaluation_samples.into_iter().collect();
         self.compute_training_runs = persisted.compute_training_runs.into_iter().collect();
+        self.admitted_training_nodes = persisted.admitted_training_nodes.into_iter().collect();
         self.compute_adapter_training_windows = persisted
             .compute_adapter_training_windows
             .into_iter()
@@ -3059,6 +3577,7 @@ impl KernelState {
                 .into_iter()
                 .collect(),
             compute_training_runs: self.compute_training_runs.clone().into_iter().collect(),
+            admitted_training_nodes: self.admitted_training_nodes.clone().into_iter().collect(),
             compute_adapter_training_windows: self
                 .compute_adapter_training_windows
                 .clone()
@@ -13389,11 +13908,222 @@ fn normalize_required(value: &str, reason: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+fn normalize_string_vec(values: Vec<String>) -> Vec<String> {
+    let mut normalized = values
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+fn normalize_training_node_role_claims(
+    values: Vec<TrainingNodeRoleClaim>,
+) -> Vec<TrainingNodeRoleClaim> {
+    let mut seen = BTreeSet::new();
+    values
+        .into_iter()
+        .filter(|value| seen.insert(value.label().to_string()))
+        .collect()
+}
+
 fn normalize_created_at_ms(value: i64, now_unix_ms: u64) -> i64 {
     if value <= 0 {
         now_unix_ms as i64
     } else {
         value
+    }
+}
+
+fn training_node_registry_key(node_pubkey_hex: &str, build_digest: &str) -> String {
+    format!("{node_pubkey_hex}:{build_digest}")
+}
+
+fn training_node_admission_id(node_pubkey_hex: &str, build_digest: &str) -> String {
+    format!(
+        "trainnode.{}",
+        sha256_prefixed_text(format!("{node_pubkey_hex}:{build_digest}").as_str())
+    )
+}
+
+fn training_node_matches_network(
+    node: &AdmittedTrainingNodeView,
+    network_id: Option<&str>,
+) -> bool {
+    network_id.is_none_or(|expected| {
+        node.allowed_networks.is_empty()
+            || node.allowed_networks.iter().any(|value| value == expected)
+    })
+}
+
+fn training_node_label_code(label: &str) -> &str {
+    let trimmed = label.trim();
+    if let Some((_, suffix)) = trimmed.rsplit_once(':') {
+        return suffix.trim();
+    }
+    if let Some((_, suffix)) = trimmed.rsplit_once('/') {
+        return suffix.trim();
+    }
+    trimmed
+}
+
+fn training_node_has_hard_gate_label(labels: &[String]) -> bool {
+    labels.iter().any(|label| {
+        matches!(
+            training_node_label_code(label),
+            "fraud" | "quarantined" | "revoked"
+        )
+    })
+}
+
+fn training_node_available_disk_gb(node: &AdmittedTrainingNode) -> Option<u64> {
+    let telemetry = node.host_telemetry.as_ref()?;
+    let disk = telemetry
+        .disks
+        .iter()
+        .filter(|disk| disk.pylon_home_disk)
+        .max_by_key(|disk| disk.available_space_bytes)
+        .or_else(|| {
+            telemetry
+                .disks
+                .iter()
+                .max_by_key(|disk| disk.available_space_bytes)
+        })?;
+    Some(disk.available_space_bytes / (1024 * 1024 * 1024))
+}
+
+fn training_node_is_online(node: &AdmittedTrainingNode, now_unix_ms: i64) -> bool {
+    let Some(last_heartbeat_at_ms) = node.last_heartbeat_at_ms else {
+        return false;
+    };
+    if now_unix_ms.saturating_sub(last_heartbeat_at_ms) > TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS {
+        return false;
+    }
+    !matches!(
+        node.last_process_state,
+        Some(TrainingNodeProcessState::Stopped | TrainingNodeProcessState::Failed)
+    ) && !matches!(
+        node.last_desired_state,
+        Some(TrainingNodeDesiredState::Stopped)
+    )
+}
+
+fn training_node_is_eligible(node: &AdmittedTrainingNode) -> bool {
+    node.contributor_availability.product_backend_ready()
+        && !training_node_has_hard_gate_label(&node.active_reputation_labels)
+}
+
+fn admitted_training_node_view(
+    node: &AdmittedTrainingNode,
+    now_unix_ms: i64,
+) -> AdmittedTrainingNodeView {
+    AdmittedTrainingNodeView {
+        admission_id: node.admission_id.clone(),
+        node_pubkey_hex: node.node_pubkey_hex.clone(),
+        node_label: node.node_label.clone(),
+        role_claims: node.role_claims.clone(),
+        allowed_networks: node.allowed_networks.clone(),
+        build_version: node.build_version.clone(),
+        build_digest: node.build_digest.clone(),
+        contributor_availability: node.contributor_availability.clone(),
+        available_memory_gb: node
+            .contributor_availability
+            .available_memory_gb
+            .or_else(|| {
+                node.host_telemetry.as_ref().and_then(|telemetry| {
+                    telemetry
+                        .memory
+                        .as_ref()
+                        .map(|memory| (memory.available_bytes / (1024 * 1024 * 1024)) as u32)
+                })
+            }),
+        available_disk_gb: training_node_available_disk_gb(node),
+        active_reputation_labels: node.active_reputation_labels.clone(),
+        admitted_at_ms: node.admitted_at_ms,
+        updated_at_ms: node.updated_at_ms,
+        last_heartbeat_at_ms: node.last_heartbeat_at_ms,
+        last_training_run_id: node.last_training_run_id.clone(),
+        last_window_id: node.last_window_id.clone(),
+        last_assignment_id: node.last_assignment_id.clone(),
+        last_lease_id: node.last_lease_id.clone(),
+        last_desired_state: node.last_desired_state,
+        last_process_state: node.last_process_state,
+        last_exit_code: node.last_exit_code,
+        last_successful_run_id: node.last_successful_run_id.clone(),
+        last_successful_window_id: node.last_successful_window_id.clone(),
+        online: training_node_is_online(node, now_unix_ms),
+        eligible: training_node_is_eligible(node),
+    }
+}
+
+fn admitted_training_node_from_request(
+    existing: Option<&AdmittedTrainingNode>,
+    req: &RecordTrainingNodeAdmissionRequest,
+    admission_id: String,
+    build_digest: String,
+) -> AdmittedTrainingNode {
+    AdmittedTrainingNode {
+        admission_id,
+        node_pubkey_hex: req.node_pubkey_hex.clone(),
+        node_label: req.node_label.clone(),
+        role_claims: req.role_claims.clone(),
+        allowed_networks: req.allowed_networks.clone(),
+        build_version: req.build_version.clone(),
+        build_digest,
+        contributor_availability: req.contributor_availability.clone(),
+        host_telemetry: req.host_telemetry.clone(),
+        active_reputation_labels: req.active_reputation_labels.clone(),
+        admitted_at_ms: existing
+            .map(|node| node.admitted_at_ms)
+            .unwrap_or(req.requested_at_ms),
+        updated_at_ms: req.requested_at_ms,
+        last_heartbeat_at_ms: existing.and_then(|node| node.last_heartbeat_at_ms),
+        last_training_run_id: existing.and_then(|node| node.last_training_run_id.clone()),
+        last_window_id: existing.and_then(|node| node.last_window_id.clone()),
+        last_assignment_id: existing.and_then(|node| node.last_assignment_id.clone()),
+        last_lease_id: existing.and_then(|node| node.last_lease_id.clone()),
+        last_desired_state: existing.and_then(|node| node.last_desired_state),
+        last_process_state: existing.and_then(|node| node.last_process_state),
+        last_exit_code: existing.and_then(|node| node.last_exit_code),
+        last_successful_run_id: existing.and_then(|node| node.last_successful_run_id.clone()),
+        last_successful_window_id: existing.and_then(|node| node.last_successful_window_id.clone()),
+    }
+}
+
+fn training_node_lease_state_for(
+    desired_state: TrainingNodeDesiredState,
+    process_state: TrainingNodeProcessState,
+) -> String {
+    if matches!(desired_state, TrainingNodeDesiredState::Draining)
+        || matches!(process_state, TrainingNodeProcessState::Draining)
+    {
+        "draining".to_string()
+    } else if matches!(desired_state, TrainingNodeDesiredState::Stopped)
+        || matches!(
+            process_state,
+            TrainingNodeProcessState::Stopped | TrainingNodeProcessState::Failed
+        )
+    {
+        "stopped".to_string()
+    } else {
+        "active".to_string()
+    }
+}
+
+fn training_node_window_state_for(
+    process_state: TrainingNodeProcessState,
+    last_exit_code: Option<i32>,
+) -> String {
+    match process_state {
+        TrainingNodeProcessState::Launching | TrainingNodeProcessState::Running => {
+            "active".to_string()
+        }
+        TrainingNodeProcessState::Draining => "sealing".to_string(),
+        TrainingNodeProcessState::Stopped if last_exit_code == Some(0) => "completed".to_string(),
+        TrainingNodeProcessState::Stopped => "stopped".to_string(),
+        TrainingNodeProcessState::Failed => "failed".to_string(),
     }
 }
 

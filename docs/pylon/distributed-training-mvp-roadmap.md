@@ -1279,6 +1279,19 @@ live coordinator plane.
   - last successful run
   - active reputation labels
 - Distinguish raw provider presence from admitted training presence.
+- Current status: `apps/nexus-control/src/kernel.rs` and
+  `apps/nexus-control/src/lib.rs` now persist a first admitted training-node
+  registry keyed by node pubkey plus build digest and expose it through
+  unauthenticated coordinator routes:
+  `/api/training/nodes/admission`, `/api/training/heartbeats`,
+  `/api/training/nodes`, and `/api/training/nodes/{node_pubkey_hex}`. The
+  retained record now carries role claims, allowed networks, build identity,
+  contributor capability envelope, optional host telemetry, active reputation
+  labels, heartbeat/process state, and last successful run/window pointers.
+  Query responses now project explicit `online` and `eligible` booleans so
+  later scheduler work can distinguish admitted-but-hard-gated nodes from
+  truly schedulable ones, and the registry survives restart through the
+  existing persisted kernel state.
 
 ### 4.2 Run creation and scheduler loop
 

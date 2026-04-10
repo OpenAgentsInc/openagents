@@ -548,7 +548,7 @@ pub struct PylonTrainingCoordinatorAck {
     pub authority_state: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PylonTrainingNodeAdmissionRequest {
     pub idempotency_key: String,
     pub requested_at_ms: i64,
@@ -565,6 +565,10 @@ pub struct PylonTrainingNodeAdmissionRequest {
     pub build_digest: Option<String>,
     #[serde(default)]
     pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
+    #[serde(default)]
+    pub active_reputation_labels: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -611,6 +615,7 @@ pub struct PylonTrainingHeartbeatRequest {
     pub idempotency_key: String,
     pub recorded_at_ms: i64,
     pub node_pubkey_hex: String,
+    pub build_digest: String,
     pub training_run_id: String,
     pub window_id: String,
     pub assignment_id: String,
@@ -16036,6 +16041,13 @@ mod tests {
             build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             build_digest: Some("sha256:build-alpha".to_string()),
             contributor_availability: availability.clone(),
+            host_telemetry: Some(training_host_snapshot(
+                Some("NVIDIA H100 SXM5 80GB"),
+                Some(80),
+                Some(512),
+                true,
+            )),
+            active_reputation_labels: Vec::new(),
         };
         let first_admission = client.admit_node(&admission_request).await?;
         let second_admission = client.admit_node(&admission_request).await?;
@@ -16060,6 +16072,7 @@ mod tests {
                 idempotency_key: "idemp.training.heartbeat.alpha".to_string(),
                 recorded_at_ms: 1_762_491_200_700,
                 node_pubkey_hex: identity.public_key_hex.clone(),
+                build_digest: "sha256:build-alpha".to_string(),
                 training_run_id: lease.training_run_id.clone(),
                 window_id: lease.window_id.clone(),
                 assignment_id: lease.assignment_id.clone(),
