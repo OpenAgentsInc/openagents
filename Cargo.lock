@@ -5112,6 +5112,7 @@ dependencies = [
  "anyhow",
  "axum 0.8.8",
  "bip39",
+ "futures",
  "hex",
  "http 1.4.0",
  "http-body-util",

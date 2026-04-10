@@ -58,6 +58,7 @@ Wallet/runtime envs:
 - `NEXUS_CONTROL_TREASURY_WALLET_NETWORK`
 - `NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV`
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS`
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS`
 - `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
 
@@ -85,6 +86,13 @@ time, reconciles any missed per-identity windows after restarts, and clamps
 recovery to `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS` so a stale
 node does not try to replay an unbounded backlog blindly.
 
+`NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` controls how many live wallet
+sends can be dispatched concurrently inside one payout cycle. The default is
+`16`, clamped to `64`. This matters in production because too-low concurrency
+can hold the wallet-operation lock long enough that a nominal `20s` payout
+interval stretches into `40-60s` effective receive spacing once many Pylons are
+eligible at the same time.
+
 For the production VM, `scripts/deploy/nexus/03-configure-and-start.sh` now
 loads the persisted policy from `${NEXUS_CONTROL_TREASURY_STATE_PATH}` by
 default and writes those values back into the container env file. That keeps
@@ -108,6 +116,61 @@ default. A dedicated background wallet refresh loop wakes every 1 second,
 refreshes only when the cached wallet snapshot is missing or stale, and gives
 each wallet refresh a 1.5 second timeout budget. `/api/stats` and
 `GET /v1/treasury/status` no longer trigger wallet refresh inline.
+
+## Production Watchdog
+
+Production payout continuity now also has a host-side watchdog installer:
+
+```bash
+scripts/deploy/nexus/10-install-treasury-watchdog.sh
+```
+
+`03-configure-and-start.sh` runs that installer by default when
+`NEXUS_TREASURY_WATCHDOG_ENABLED=true`.
+
+The watchdog runs on the VM every 5 minutes and uses two signals:
+
+- the local `http://127.0.0.1:8080/v1/treasury/status` endpoint
+- recent `Inserted payment ... status: Completed` journal lines from
+  `nexus-relay`
+
+That split matters operationally:
+
+- a stale public snapshot alone should not trigger restart if fresh completed
+  sends are still flowing
+- the watchdog now honors a startup grace window, so a fresh restart is not
+  judged against stale pre-restart dispatch and confirmation timestamps before
+  the service has had time to finish wallet sync and reach the first payout
+  window
+- wallet/runtime hard errors, unreachable local treasury status, or sustained
+  payout idleness with sellable Pylons online should trigger an automatic
+  `systemctl restart nexus-relay`
+- the default restart ceiling is `12/hour`, which matches the worst-case upper
+  bound for a 5-minute timer and avoids suppressing legitimate recovery during
+  a bad hour
+
+Watchdog knobs:
+
+- `NEXUS_TREASURY_WATCHDOG_INTERVAL_SECONDS`
+- `NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS`
+- `NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS`
+- `NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR`
+- `NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS`
+- `NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL`
+- `NEXUS_TREASURY_WATCHDOG_SERVICE_NAME`
+
+## Deploy Smoke Rollback
+
+`scripts/deploy/nexus/03-configure-and-start.sh` now runs a post-restart payout
+smoke check by default. The rollout only sticks if the freshly started image
+produces completed payout sends after restart. If the smoke check times out, it
+automatically rolls production back to the previous image.
+
+Smoke knobs:
+
+- `NEXUS_DEPLOY_POST_RESTART_SMOKE_ENABLED`
+- `NEXUS_DEPLOY_POST_RESTART_SMOKE_TIMEOUT_SECONDS`
+- `NEXUS_DEPLOY_POST_RESTART_SMOKE_POLL_SECONDS`
 
 ## Upgrade Validation
 

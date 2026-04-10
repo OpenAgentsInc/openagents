@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
+use futures::stream::{self, StreamExt};
 use openagents_provider_substrate::verify_provider_payout_target_registration_signature;
 use openagents_spark::{
     DepositClaimFeePolicy, Network as SparkNetwork, NetworkStatus, PaymentSummary, SparkSigner,
@@ -34,6 +35,7 @@ const ENV_TREASURY_WALLET_NETWORK: &str = "NEXUS_CONTROL_TREASURY_WALLET_NETWORK
 const ENV_TREASURY_WALLET_API_KEY_ENV: &str = "NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV";
 const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
+const ENV_TREASURY_MAX_CONCURRENT_SENDS: &str = "NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS";
 const ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS";
 const ENV_TREASURY_POLICY_APPLY_ENV: &str = "NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV";
@@ -53,6 +55,7 @@ const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
+const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
 const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
 const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
 const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
@@ -70,6 +73,8 @@ const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
+const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
+const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
 
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
@@ -88,6 +93,7 @@ pub struct TreasuryConfig {
     pub wallet_network: String,
     pub wallet_api_key_env: Option<String>,
     pub wallet_status_refresh_seconds: u64,
+    pub max_concurrent_sends: usize,
     pub registration_challenge_ttl_seconds: u64,
 }
 
@@ -120,6 +126,12 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
         )?
         .max(1);
+        let max_concurrent_sends = parse_u64_env(
+            ENV_TREASURY_MAX_CONCURRENT_SENDS,
+            DEFAULT_TREASURY_MAX_CONCURRENT_SENDS as u64,
+        )?
+        .clamp(1, TREASURY_MAX_CONCURRENT_SENDS_LIMIT as u64)
+            as usize;
         let reconciliation_horizon_seconds = parse_u64_env(
             ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS,
             DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS,
@@ -171,12 +183,18 @@ impl TreasuryConfig {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
             wallet_status_refresh_seconds,
+            max_concurrent_sends,
             registration_challenge_ttl_seconds,
         })
     }
 
     pub fn wallet_status_refresh_interval_ms(&self) -> u64 {
         self.wallet_status_refresh_seconds.saturating_mul(1_000)
+    }
+
+    pub fn wallet_refresh_timeout_ms(&self) -> u64 {
+        TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS
+            .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
     }
 
     pub fn reconciliation_horizon_ms(&self) -> u64 {
@@ -196,6 +214,10 @@ impl TreasuryConfig {
         TREASURY_DISPATCH_RESULT_TIMEOUT_MS
             .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
             .max(payout_interval_ms.saturating_mul(2))
+    }
+
+    pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
+        plan_count.min(self.max_concurrent_sends).max(1)
     }
 }
 
@@ -1115,6 +1137,15 @@ impl TreasuryState {
         )
     }
 
+    fn has_recent_skip_reason_since(&self, reason: &str, cutoff_unix_ms: u64) -> bool {
+        self.payout_records_by_key.values().any(|record| {
+            record.status == "skipped"
+                && record.reason.as_deref() == Some(reason)
+                && (record.window_started_at_unix_ms >= cutoff_unix_ms
+                    || record.updated_at_unix_ms >= cutoff_unix_ms)
+        })
+    }
+
     fn continuity_signal_snapshot(
         &self,
         config: &TreasuryConfig,
@@ -1125,8 +1156,9 @@ impl TreasuryState {
         let mut active_alerts = Vec::new();
         let latest_eligible_window_started_at_unix_ms =
             self.latest_eligible_window_started_at_unix_ms;
+        let policy = self.active_policy(config);
 
-        if self.treasury_enabled(config) {
+        if policy.treasury_enabled {
             if latest_eligible_window_started_at_unix_ms.is_some_and(|window_started_at| {
                 self.eligible_online_payout_targets > 0
                     && window_started_at > self.last_dispatch_at_unix_ms.unwrap_or(0)
@@ -1160,14 +1192,12 @@ impl TreasuryState {
             }
 
             if self.eligible_online_payout_targets > 0
-                && skip_reason_metrics_24h.iter().any(|metric| {
-                    metric.reason == "daily_budget_cap_reached"
-                        && metric.count > 0
-                        && latest_eligible_window_started_at_unix_ms.is_some_and(
-                            |window_started_at| {
-                                now_unix_ms.saturating_sub(window_started_at)
-                                    <= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
-                            },
+                && latest_eligible_window_started_at_unix_ms.is_some_and(|window_started_at| {
+                    now_unix_ms.saturating_sub(window_started_at)
+                        <= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+                        && self.has_recent_skip_reason_since(
+                            "daily_budget_cap_reached",
+                            window_started_at.saturating_sub(policy.payout_interval_ms()),
                         )
                 })
             {
@@ -1360,11 +1390,11 @@ impl TreasuryState {
 
         for record in self.payout_records_by_key.values() {
             if record.status == "dispatched" && !record.counted_in_paid_total {
-                unconfirmed_dispatched_sats_total = unconfirmed_dispatched_sats_total
-                    .saturating_add(record.amount_sats);
+                unconfirmed_dispatched_sats_total =
+                    unconfirmed_dispatched_sats_total.saturating_add(record.amount_sats);
                 if record.updated_at_unix_ms >= window_started_at_unix_ms {
-                    unconfirmed_dispatched_sats_24h = unconfirmed_dispatched_sats_24h
-                        .saturating_add(record.amount_sats);
+                    unconfirmed_dispatched_sats_24h =
+                        unconfirmed_dispatched_sats_24h.saturating_add(record.amount_sats);
                 }
             }
             if record.updated_at_unix_ms < window_started_at_unix_ms {
@@ -2383,32 +2413,45 @@ pub async fn dispatch_live_payouts(
         }
     };
 
-    let mut outcomes = Vec::with_capacity(plans.len());
-    for plan in plans {
-        match wallet
-            .send_payment_simple(plan.payment_request.as_str(), Some(plan.amount_sats))
-            .await
-        {
-            Ok(payment_id) => outcomes.push(TreasuryDispatchOutcome::Dispatched {
-                payout_key: plan.payout_key.clone(),
-                payment_id,
-            }),
-            Err(error) => outcomes.push(TreasuryDispatchOutcome::Failed {
-                payout_key: plan.payout_key.clone(),
-                reason: error.to_string(),
-            }),
-        }
-    }
-
-    let (wallet_snapshot, wallet_error) = match wallet_snapshot_from_wallet(wallet.as_ref()).await {
-        Ok(snapshot) => (Some(snapshot), None),
-        Err(error) => (None, Some(error.to_string())),
-    };
+    // Keep the wallet lock held for less than one payout interval even when a
+    // large provider set becomes due in the same cycle.
+    let max_concurrent_sends = config.max_concurrent_send_operations(plans.len());
+    let mut indexed_outcomes = stream::iter(plans.iter().cloned().enumerate())
+        .map(|(index, plan)| {
+            let wallet = wallet.clone();
+            async move {
+                let outcome = match wallet
+                    .send_payment_simple(plan.payment_request.as_str(), Some(plan.amount_sats))
+                    .await
+                {
+                    Ok(payment_id) => TreasuryDispatchOutcome::Dispatched {
+                        payout_key: plan.payout_key,
+                        payment_id,
+                    },
+                    Err(error) => TreasuryDispatchOutcome::Failed {
+                        payout_key: plan.payout_key,
+                        reason: error.to_string(),
+                    },
+                };
+                (index, outcome)
+            }
+        })
+        .buffer_unordered(max_concurrent_sends)
+        .collect::<Vec<_>>()
+        .await;
+    indexed_outcomes.sort_by_key(|(index, _)| *index);
+    let outcomes = indexed_outcomes
+        .into_iter()
+        .map(|(_, outcome)| outcome)
+        .collect();
 
     TreasuryDispatchBatchResult {
         outcomes,
-        wallet_snapshot,
-        wallet_error,
+        // The dedicated wallet refresh loop reconciles confirms and balance.
+        // Keeping the full wallet scan out of the dispatch path preserves the
+        // intended payout cadence even when many Pylons are online.
+        wallet_snapshot: None,
+        wallet_error: None,
     }
 }
 
@@ -4070,6 +4113,7 @@ mod tests {
             wallet_network: "regtest".to_string(),
             wallet_api_key_env: None,
             wallet_status_refresh_seconds: 30,
+            max_concurrent_sends: 16,
             registration_challenge_ttl_seconds: 300,
         }
     }
@@ -4780,6 +4824,76 @@ mod tests {
     }
 
     #[test]
+    fn budget_cap_alert_ignores_stale_historical_skips() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+        state.payout_records_by_key.insert(
+            "stale-budget-skip".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "stale-budget-skip".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "skipped".to_string(),
+                reason: Some("daily_budget_cap_reached".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 21_000,
+                created_at_unix_ms: 21_000,
+                updated_at_unix_ms: 21_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: true,
+                counted_in_paid_total: false,
+            },
+        );
+
+        let eligible_at_unix_ms = 1_800_000;
+        state.observe_payout_eligibility(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            }],
+            eligible_at_unix_ms,
+        );
+
+        let stats = state.public_stats(&config, eligible_at_unix_ms + 1);
+        assert!(
+            !stats
+                .active_continuity_alerts
+                .iter()
+                .any(|alert| alert.alert_id == "budget_cap_exhausted")
+        );
+    }
+
+    #[test]
+    fn payout_loop_start_sets_reconciliation_anchor_immediately() {
+        let mut state = TreasuryState::default();
+        state.note_payout_loop_started(1_234_567);
+        assert_eq!(state.payout_loop_runtime_status.as_deref(), Some("running"));
+        assert_eq!(state.payout_loop_last_started_at_unix_ms, Some(1_234_567));
+        assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_234_567));
+
+        state.note_payout_loop_completed(1_345_678, None);
+        assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_234_567));
+        assert_eq!(state.payout_loop_last_completed_at_unix_ms, Some(1_345_678));
+    }
+
+    #[test]
     fn recovery_cutover_swaps_storage_and_updates_state() {
         let work_dir = unique_temp_dir("cutover");
         let current_storage_dir = work_dir.join("current-wallet");
@@ -5044,5 +5158,17 @@ mod tests {
 
         set_test_wallet_send_hook(None);
         set_test_wallet_snapshot_hook(None);
+    }
+
+    #[test]
+    fn max_concurrent_send_operations_clamps_to_configured_limit() {
+        let mut config = test_treasury_config();
+        config.max_concurrent_sends = 16;
+
+        assert_eq!(config.max_concurrent_send_operations(0), 1);
+        assert_eq!(config.max_concurrent_send_operations(1), 1);
+        assert_eq!(config.max_concurrent_send_operations(4), 4);
+        assert_eq!(config.max_concurrent_send_operations(16), 16);
+        assert_eq!(config.max_concurrent_send_operations(128), 16);
     }
 }
