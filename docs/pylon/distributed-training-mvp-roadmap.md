@@ -3056,6 +3056,24 @@ coverage.
 - Integration tests.
 - Restart-simulation tests.
 
+Current status:
+
+- `apps/nexus-control/src/lib.rs` now carries retained coordinator-side tests
+  for:
+  - lease claims, expired-worker replacement, and scheduler metadata refusal
+  - window planning, activation, sealing, reconciliation, and dataset-slice
+    mismatch refusal
+  - stale-manifest and bad-artifact rejection on reconcile
+  - held-window escalation when validator outcomes disagree
+  - held closeout plus poor validator reputation publication when validator
+    timeout forces an escalated aggregate challenge
+  - restart-safe scheduler and TRN publication replay
+  - queued-retry TRN publication recovery after relay failure
+- The retained tests now exercise scheduler state, closeout metadata,
+  defensibility refusal codes, TRN publication counts, NIP-32 reputation label
+  publication, and replay-safe restart behavior together instead of only
+  isolated helpers.
+
 **Acceptance Criteria**
 
 - CI covers all listed coordinator scenarios.
