@@ -6,10 +6,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow, bail};
+use axum::http::StatusCode;
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use bip39::{Language, Mnemonic};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
@@ -741,6 +744,9 @@ pub struct PylonTrainingCheckpointPublicationResponse {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrainingCommand {
+    Status {
+        json: bool,
+    },
     Artifacts {
         command: TrainingArtifactsCommand,
     },
@@ -751,6 +757,9 @@ pub enum TrainingCommand {
     Sync {
         json: bool,
     },
+    Refresh {
+        json: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -759,7 +768,7 @@ pub enum TrainingArtifactsCommand {
     Gc { json: bool },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TrainingAuthoritySyncReport {
     manifest_count: usize,
     contribution_outcome_count: usize,
@@ -769,7 +778,129 @@ pub struct TrainingAuthoritySyncReport {
     blocked_label_keys: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorStatusReport {
+    generated_at_ms: i64,
+    node_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider_pubkey: Option<String>,
+    checkpoint_serve_url: String,
+    runtime_surface_detected: bool,
+    contributor_supported: bool,
+    manifest_count: usize,
+    publication_pointer_count: usize,
+    contribution_outcome_count: usize,
+    closeout_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_authority_sync_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    active_window_id: Option<String>,
+    blocked_label_keys: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    active_runtime: Option<TrainingOperatorActiveRuntimeStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_window: Option<TrainingOperatorWindowStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_checkpoint: Option<TrainingOperatorCheckpointStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    validator_queue: Vec<TrainingOperatorValidatorQueueEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_trn_events: Vec<TrainingOperatorTrnEventStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_issues: Vec<TrainingOperatorIssueStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_closeouts: Vec<TrainingOperatorCloseoutStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorActiveRuntimeStatus {
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    membership_revision: String,
+    role: String,
+    desired_state: String,
+    process_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_heartbeat_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_failure_reason: Option<String>,
+    manifest_path: String,
+    run_root: String,
+    launch_count: u64,
+    restart_count: u64,
+    updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorWindowStatus {
+    training_run_id: String,
+    window_id: String,
+    state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+    updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorCheckpointStatus {
+    training_run_id: String,
+    checkpoint_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    optimizer_step: Option<u64>,
+    source_path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorValidatorQueueEntry {
+    training_run_id: String,
+    window_id: String,
+    challenge_id: String,
+    state: String,
+    manifest_digest: Option<String>,
+    local_path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorTrnEventStatus {
+    subject_kind: String,
+    subject_id: String,
+    event_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a_ref: Option<String>,
+    published_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorIssueStatus {
+    kind: String,
+    subject_id: String,
+    reason: String,
+    observed_at_ms: i64,
+    owner: String,
+    retryable: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorCloseoutStatus {
+    outcome_id: String,
+    training_run_id: String,
+    window_id: String,
+    closeout_status: String,
+    payout_eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_checkpoint_ref: Option<String>,
+    accepted_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TrainingTrnPublicationReport {
     provider_pubkey: String,
     relay_urls: Vec<String>,
@@ -779,7 +910,7 @@ pub struct TrainingTrnPublicationReport {
     artifact_locators: Vec<TrainingTrnPublicationEntry>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TrainingTrnPublicationEntry {
     subject_kind: String,
     subject_id: String,
@@ -1224,6 +1355,20 @@ struct DoctorReport {
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
+    training: TrainingDoctorStatus,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct TrainingDoctorStatus {
+    runtime_surface_detected: bool,
+    contributor_supported: bool,
+    checkpoint_serve_url: String,
+    role_claims: Vec<String>,
+    retention_limit_gb: u64,
+    blocked_label_keys: Vec<String>,
+    last_authority_sync_at_ms: Option<i64>,
+    active_runtime: Option<TrainingOperatorActiveRuntimeStatus>,
+    recent_issues: Vec<TrainingOperatorIssueStatus>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -3639,6 +3784,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             let availability = detect_availability(&config).await?;
             let products =
                 public_product_entries(products_from_availability(&config, &availability));
+            let training = build_training_doctor_status(cli.config_path.as_path(), &config)?;
             Ok(Some(serde_json::to_string_pretty(&DoctorReport {
                 config_path: cli.config_path.display().to_string(),
                 node_label: config.node_label.clone(),
@@ -3646,6 +3792,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 identity: identity_metadata(&identity, config.node_label.as_str()),
                 availability,
                 products,
+                training,
             })?))
         }
         Command::Serve => {
@@ -3882,6 +4029,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             run_wallet_command(cli.config_path.as_path(), &command).await?,
         )),
         Command::Training { command } => match command {
+            TrainingCommand::Status { json } => {
+                let report = load_training_status_report(cli.config_path.as_path()).await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_training_status_report(&report)))
+            }
             TrainingCommand::Artifacts { command } => match command {
                 TrainingArtifactsCommand::Inspect { json } => {
                     let report =
@@ -3913,11 +4067,22 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 Ok(Some(render_training_trn_publication_report(&report)))
             }
             TrainingCommand::Sync { json } => {
-                let report = sync_training_authority_state(cli.config_path.as_path()).await?;
+                let report =
+                    sync_training_authority_state_via_live_or_local(cli.config_path.as_path())
+                        .await?;
                 if json {
                     return Ok(Some(serde_json::to_string_pretty(&report)?));
                 }
                 Ok(Some(render_training_authority_sync_report(&report)))
+            }
+            TrainingCommand::Refresh { json } => {
+                let report =
+                    refresh_training_node_records_via_live_or_local(cli.config_path.as_path())
+                        .await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_training_trn_publication_report(&report)))
             }
         },
         Command::Gemma { command } => match command {
@@ -4049,8 +4214,12 @@ Commands:\n\
   wallet invoice <amount_sats> [--description <text>] [--expiry-seconds <n>] [--json]\n\
   wallet pay <payment_request> [--amount-sats <n>] [--json]\n\
   wallet history [--limit <n>] [--json]\n\
+  training status [--json]\n\
   training artifacts inspect [--json]\n\
   training artifacts gc [--json]\n\
+  training publish [--manifest <path>] [--json]\n\
+  training sync [--json]\n\
+  training refresh [--json]\n\
   gemma [list] [--json]\n\
   gemma download <model|all|remaining> [--transport auto|reqwest|curl] [--json]\n\
   gemma diagnose <model|all> [--max-output-tokens <n>] [--repeats <n>] [--download-missing] [--json]\n\
@@ -4385,6 +4554,9 @@ fn parse_account_command(args: &[String], start_index: usize) -> Result<AccountC
 
 fn parse_training_command(args: &[String], start_index: usize) -> Result<TrainingCommand> {
     match args.get(start_index).map(String::as_str) {
+        Some("status") => Ok(TrainingCommand::Status {
+            json: parse_json_only(args, start_index + 1, "training status")?,
+        }),
         Some("artifacts") => Ok(TrainingCommand::Artifacts {
             command: parse_training_artifacts_command(args, start_index + 1)?,
         }),
@@ -4397,6 +4569,9 @@ fn parse_training_command(args: &[String], start_index: usize) -> Result<Trainin
         }
         Some("sync") => Ok(TrainingCommand::Sync {
             json: parse_json_only(args, start_index + 1, "training sync")?,
+        }),
+        Some("refresh") => Ok(TrainingCommand::Refresh {
+            json: parse_json_only(args, start_index + 1, "training refresh")?,
         }),
         Some(other) => bail!("unknown training command: {other}"),
         None => bail!("missing training subcommand"),
@@ -6575,6 +6750,681 @@ fn garbage_collect_training_download_cache(config_path: &Path) -> Result<Trainin
     })
 }
 
+async fn load_training_status_report(config_path: &Path) -> Result<TrainingOperatorStatusReport> {
+    let config = load_or_create_config(config_path)?;
+    if let Some(report) =
+        try_live_json::<TrainingOperatorStatusReport>(&config, "/v1/training/status").await?
+    {
+        return Ok(report);
+    }
+    load_training_status_report_local(config_path)
+}
+
+fn load_training_status_report_local(config_path: &Path) -> Result<TrainingOperatorStatusReport> {
+    let config = load_or_create_config(config_path)?;
+    load_training_status_report_with_config(&config)
+}
+
+fn load_training_status_report_with_config(
+    config: &PylonConfig,
+) -> Result<TrainingOperatorStatusReport> {
+    let state = load_or_create_training_runtime_state(config)?;
+    let contexts = load_training_manifest_inspection_contexts(config, &state)?;
+    let provider_pubkey = config
+        .identity_path
+        .exists()
+        .then(|| load_identity_from_path(config.identity_path.as_path()).ok())
+        .flatten()
+        .map(|identity| identity.public_key_hex);
+    let contributor_supported = detect_adapter_training_contributor(config).contributor_supported;
+    let blocked_label_keys = training_runtime_blocked_label_keys(&state);
+    let active_runtime = state
+        .active_runtime
+        .as_ref()
+        .map(training_operator_active_runtime_status);
+    let current_run_id = active_runtime
+        .as_ref()
+        .map(|runtime| runtime.training_run_id.clone())
+        .or_else(|| {
+            newest_training_manifest_cache_entry(&state).map(|entry| entry.training_run_id)
+        });
+    let active_window_id = active_runtime
+        .as_ref()
+        .map(|runtime| runtime.window_id.clone())
+        .or_else(|| newest_training_manifest_cache_entry(&state).map(|entry| entry.window_id));
+    let current_window = resolve_training_current_window_status(&state, contexts.as_slice());
+    let last_checkpoint = resolve_training_last_checkpoint_status(
+        contexts.as_slice(),
+        state.active_runtime.as_ref(),
+    )?;
+    let validator_queue = resolve_training_validator_queue(contexts.as_slice())?;
+    let recent_trn_events = state
+        .publication_pointers
+        .values()
+        .map(|pointer| TrainingOperatorTrnEventStatus {
+            subject_kind: pointer.subject_kind.clone(),
+            subject_id: pointer.subject_id.clone(),
+            event_id: pointer.event_id.clone(),
+            a_ref: pointer.a_ref.clone(),
+            published_at_ms: pointer.published_at_ms,
+        })
+        .collect::<Vec<_>>();
+    let mut recent_trn_events = recent_trn_events;
+    recent_trn_events.sort_by(|left, right| {
+        right
+            .published_at_ms
+            .cmp(&left.published_at_ms)
+            .then_with(|| left.event_id.cmp(&right.event_id))
+    });
+    recent_trn_events.truncate(8);
+
+    let mut recent_closeouts = state
+        .closeout_cache
+        .values()
+        .map(|entry| TrainingOperatorCloseoutStatus {
+            outcome_id: entry.outcome_id.clone(),
+            training_run_id: entry.training_run_id.clone(),
+            window_id: entry.window_id.clone(),
+            closeout_status: entry.closeout_status.clone(),
+            payout_eligible: entry.payout_eligible,
+            accepted_checkpoint_ref: entry.accepted_checkpoint_ref.clone(),
+            accepted_at_ms: entry.accepted_at_ms,
+        })
+        .collect::<Vec<_>>();
+    recent_closeouts.sort_by(|left, right| {
+        right
+            .accepted_at_ms
+            .cmp(&left.accepted_at_ms)
+            .then_with(|| left.outcome_id.cmp(&right.outcome_id))
+    });
+    recent_closeouts.truncate(8);
+
+    let mut recent_issues = resolve_training_recent_issues(config, &state, contexts.as_slice())?;
+    recent_issues.sort_by(|left, right| {
+        right
+            .observed_at_ms
+            .cmp(&left.observed_at_ms)
+            .then_with(|| left.subject_id.cmp(&right.subject_id))
+            .then_with(|| left.kind.cmp(&right.kind))
+    });
+    recent_issues.truncate(12);
+
+    Ok(TrainingOperatorStatusReport {
+        generated_at_ms: now_epoch_ms(),
+        node_label: config.node_label.clone(),
+        provider_pubkey,
+        checkpoint_serve_url: training_checkpoint_serve_url(config),
+        runtime_surface_detected: inspect_psionic_train_runtime_surface().is_ok(),
+        contributor_supported,
+        manifest_count: contexts.len(),
+        publication_pointer_count: state.publication_pointers.len(),
+        contribution_outcome_count: state.contribution_outcomes.len(),
+        closeout_count: state.closeout_cache.len(),
+        last_authority_sync_at_ms: state.last_authority_sync_at_ms,
+        current_run_id,
+        active_window_id,
+        blocked_label_keys,
+        active_runtime,
+        current_window,
+        last_checkpoint,
+        validator_queue,
+        recent_trn_events,
+        recent_issues,
+        recent_closeouts,
+    })
+}
+
+fn newest_training_manifest_cache_entry(
+    state: &PylonTrainingRuntimeState,
+) -> Option<PylonTrainingManifestCacheEntry> {
+    state
+        .manifest_cache
+        .values()
+        .max_by(|left, right| {
+            left.cached_at_ms
+                .cmp(&right.cached_at_ms)
+                .then_with(|| left.manifest_id.cmp(&right.manifest_id))
+        })
+        .cloned()
+}
+
+fn training_operator_active_runtime_status(
+    runtime: &PylonTrainingActiveRuntimeState,
+) -> TrainingOperatorActiveRuntimeStatus {
+    TrainingOperatorActiveRuntimeStatus {
+        training_run_id: runtime.training_run_id.clone(),
+        window_id: runtime.window_id.clone(),
+        assignment_id: runtime.assignment_id.clone(),
+        lease_id: runtime.lease_id.clone(),
+        membership_revision: runtime.membership_revision.clone(),
+        role: runtime.role.label().to_string(),
+        desired_state: training_desired_state_label(runtime.desired_state).to_string(),
+        process_state: training_process_state_label(runtime.process_state).to_string(),
+        pid: runtime.pid,
+        last_heartbeat_at_ms: runtime.last_heartbeat_at_ms,
+        last_exit_code: runtime.last_exit_code,
+        last_failure_reason: runtime.last_failure_reason.clone(),
+        manifest_path: runtime.manifest_path.clone(),
+        run_root: runtime.run_root.clone(),
+        launch_count: runtime.launch_count,
+        restart_count: runtime.restart_count,
+        updated_at_ms: runtime.updated_at_ms,
+    }
+}
+
+fn resolve_training_current_window_status(
+    state: &PylonTrainingRuntimeState,
+    contexts: &[TrainingManifestInspectionContext],
+) -> Option<TrainingOperatorWindowStatus> {
+    let target_window_id = state
+        .active_runtime
+        .as_ref()
+        .map(|runtime| runtime.window_id.clone())
+        .or_else(|| newest_training_manifest_cache_entry(state).map(|entry| entry.window_id))?;
+    let target_run_id = state
+        .active_runtime
+        .as_ref()
+        .map(|runtime| runtime.training_run_id.clone())
+        .or_else(|| {
+            newest_training_manifest_cache_entry(state).map(|entry| entry.training_run_id)
+        })?;
+    if let Some(window) = state.window_cache.get(target_window_id.as_str()) {
+        return Some(TrainingOperatorWindowStatus {
+            training_run_id: window.training_run_id.clone(),
+            window_id: window.window_id.clone(),
+            state: window.state.clone(),
+            manifest_digest: window.manifest_digest.clone(),
+            updated_at_ms: window.updated_at_ms,
+        });
+    }
+    contexts
+        .iter()
+        .find(|context| {
+            context.manifest.run_id == target_run_id
+                && context.manifest.window_id == target_window_id
+        })
+        .map(|context| TrainingOperatorWindowStatus {
+            training_run_id: context.manifest.run_id.clone(),
+            window_id: context.manifest.window_id.clone(),
+            state: "manifest_loaded".to_string(),
+            manifest_digest: Some(context.manifest.manifest_digest.clone()),
+            updated_at_ms: i64::try_from(context.manifest.issued_at_ms).unwrap_or(i64::MAX),
+        })
+}
+
+fn resolve_training_last_checkpoint_status(
+    contexts: &[TrainingManifestInspectionContext],
+    active_runtime: Option<&PylonTrainingActiveRuntimeState>,
+) -> Result<Option<TrainingOperatorCheckpointStatus>> {
+    let active_run_root = active_runtime.map(|runtime| runtime.run_root.clone());
+    let mut prioritized_contexts = contexts.iter().collect::<Vec<_>>();
+    prioritized_contexts.sort_by(|left, right| {
+        let left_priority = active_run_root
+            .as_ref()
+            .is_some_and(|run_root| left.local_run_root.display().to_string() == *run_root);
+        let right_priority = active_run_root
+            .as_ref()
+            .is_some_and(|run_root| right.local_run_root.display().to_string() == *run_root);
+        right_priority
+            .cmp(&left_priority)
+            .then_with(|| right.manifest.issued_at_ms.cmp(&left.manifest.issued_at_ms))
+    });
+    for context in prioritized_contexts {
+        let latest_pointer_path = context
+            .local_run_root
+            .join("checkpoints")
+            .join("latest_pointer.json");
+        if !latest_pointer_path.is_file() {
+            continue;
+        }
+        let payload = std::fs::read(latest_pointer_path.as_path()).with_context(|| {
+            format!(
+                "failed to read training latest pointer {}",
+                latest_pointer_path.display()
+            )
+        })?;
+        let decoded: Value = serde_json::from_slice(payload.as_slice()).with_context(|| {
+            format!(
+                "failed to decode training latest pointer {}",
+                latest_pointer_path.display()
+            )
+        })?;
+        let Some(checkpoint_ref) = decoded
+            .get("checkpoint_ref")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+        else {
+            continue;
+        };
+        return Ok(Some(TrainingOperatorCheckpointStatus {
+            training_run_id: context.manifest.run_id.clone(),
+            checkpoint_ref,
+            optimizer_step: resolve_training_checkpoint_optimizer_step(
+                context.local_run_root.as_path(),
+            )?,
+            source_path: latest_pointer_path.display().to_string(),
+        }));
+    }
+    Ok(None)
+}
+
+fn resolve_training_checkpoint_optimizer_step(local_run_root: &Path) -> Result<Option<u64>> {
+    let checkpoints_root = local_run_root.join("checkpoints");
+    if !checkpoints_root.is_dir() {
+        return Ok(None);
+    }
+    let mut max_step = None::<u64>;
+    for entry in std::fs::read_dir(checkpoints_root.as_path()).with_context(|| {
+        format!(
+            "failed to read training checkpoint dir {}",
+            checkpoints_root.display()
+        )
+    })? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let Some(step_label) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        let Some(step) = step_label
+            .strip_prefix("step-")
+            .and_then(|value| value.parse::<u64>().ok())
+        else {
+            continue;
+        };
+        max_step = Some(max_step.map_or(step, |current| current.max(step)));
+    }
+    Ok(max_step)
+}
+
+fn resolve_training_validator_queue(
+    contexts: &[TrainingManifestInspectionContext],
+) -> Result<Vec<TrainingOperatorValidatorQueueEntry>> {
+    let mut entries = BTreeMap::<String, TrainingOperatorValidatorQueueEntry>::new();
+    for context in contexts {
+        for bundle in inspect_manifest_local_artifacts(context)? {
+            let Some(challenge_id) = bundle
+                .bundle_id
+                .strip_prefix("validator_verdict:")
+                .map(ToOwned::to_owned)
+            else {
+                continue;
+            };
+            entries.insert(
+                challenge_id.clone(),
+                TrainingOperatorValidatorQueueEntry {
+                    training_run_id: context.manifest.run_id.clone(),
+                    window_id: context.manifest.window_id.clone(),
+                    challenge_id,
+                    state: bundle.state.clone(),
+                    manifest_digest: bundle.manifest_digest.clone(),
+                    local_path: context
+                        .local_run_root
+                        .join("windows")
+                        .join(context.manifest.window_id.as_str())
+                        .join("validators")
+                        .join(bundle.bundle_id.trim_start_matches("validator_verdict:"))
+                        .display()
+                        .to_string(),
+                },
+            );
+        }
+        if context.manifest.role
+            == openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator
+        {
+            if let Some(validator) = context.manifest.validator.as_ref() {
+                entries
+                    .entry(validator.challenge_id.clone())
+                    .or_insert_with(|| TrainingOperatorValidatorQueueEntry {
+                        training_run_id: context.manifest.run_id.clone(),
+                        window_id: context.manifest.window_id.clone(),
+                        challenge_id: validator.challenge_id.clone(),
+                        state: "queued".to_string(),
+                        manifest_digest: Some(context.manifest.manifest_digest.clone()),
+                        local_path: context
+                            .local_run_root
+                            .join("windows")
+                            .join(context.manifest.window_id.as_str())
+                            .join("validators")
+                            .join(validator.challenge_id.as_str())
+                            .display()
+                            .to_string(),
+                    });
+            }
+        }
+    }
+    Ok(entries.into_values().collect())
+}
+
+fn resolve_training_recent_issues(
+    config: &PylonConfig,
+    state: &PylonTrainingRuntimeState,
+    contexts: &[TrainingManifestInspectionContext],
+) -> Result<Vec<TrainingOperatorIssueStatus>> {
+    let mut issues = Vec::new();
+    for entry in state
+        .reputation_labels
+        .values()
+        .filter(|entry| training_reputation_cache_entry_hard_gates(entry))
+    {
+        issues.push(TrainingOperatorIssueStatus {
+            kind: "reputation_hard_gate".to_string(),
+            subject_id: entry.cache_key.clone(),
+            reason: format!("{} {}", entry.namespace, entry.label),
+            observed_at_ms: i64::try_from(entry.created_at_unix)
+                .unwrap_or(0)
+                .saturating_mul(1000),
+            owner: "nexus".to_string(),
+            retryable: false,
+        });
+    }
+    for entry in state.contribution_outcomes.values() {
+        if entry.accepted_for_aggregation
+            && entry.validator_disposition == "accepted"
+            && entry.aggregation_eligibility == "eligible"
+        {
+            continue;
+        }
+        issues.push(TrainingOperatorIssueStatus {
+            kind: "contribution_disposition".to_string(),
+            subject_id: entry.contribution_id.clone(),
+            reason: format!(
+                "{} / {}",
+                entry.validator_disposition, entry.aggregation_eligibility
+            ),
+            observed_at_ms: entry.recorded_at_ms,
+            owner: "nexus".to_string(),
+            retryable: entry.validator_disposition == "replay_required",
+        });
+    }
+    if let Some(active_runtime) = state.active_runtime.as_ref() {
+        if let Some(reason) = active_runtime.last_failure_reason.as_ref() {
+            issues.push(TrainingOperatorIssueStatus {
+                kind: "runtime_failure".to_string(),
+                subject_id: active_runtime.assignment_id.clone(),
+                reason: reason.clone(),
+                observed_at_ms: active_runtime.updated_at_ms,
+                owner: "pylon".to_string(),
+                retryable: false,
+            });
+        }
+        if let Some(failure_receipt_path) = active_runtime.failure_receipt_path.as_ref() {
+            let path = PathBuf::from(failure_receipt_path);
+            if path.is_file() {
+                let receipt = load_training_failure_receipt(path.as_path())?;
+                issues.push(TrainingOperatorIssueStatus {
+                    kind: "failure_receipt".to_string(),
+                    subject_id: receipt.assignment_id,
+                    reason: receipt.failure_reason,
+                    observed_at_ms: receipt.recorded_at_ms,
+                    owner: "pylon".to_string(),
+                    retryable: false,
+                });
+            }
+        }
+    }
+    for context in contexts {
+        for bundle in inspect_manifest_local_artifacts(context)? {
+            let Some(reason) = bundle.last_error.as_ref() else {
+                continue;
+            };
+            issues.push(TrainingOperatorIssueStatus {
+                kind: "artifact_bundle".to_string(),
+                subject_id: bundle.bundle_id,
+                reason: reason.clone(),
+                observed_at_ms: training_issue_path_timestamp_ms(
+                    config,
+                    context.local_run_root.as_path(),
+                    context.manifest.window_id.as_str(),
+                ),
+                owner: "pylon".to_string(),
+                retryable: true,
+            });
+        }
+    }
+    Ok(issues)
+}
+
+fn training_issue_path_timestamp_ms(
+    _config: &PylonConfig,
+    local_run_root: &Path,
+    window_id: &str,
+) -> i64 {
+    let window_root = local_run_root.join("windows").join(window_id);
+    std::fs::metadata(window_root.as_path())
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .map(system_time_to_epoch_ms)
+        .unwrap_or_else(now_epoch_ms)
+}
+
+fn load_training_failure_receipt(path: &Path) -> Result<PylonTrainingFailureReceipt> {
+    let payload = std::fs::read(path)
+        .with_context(|| format!("failed to read training failure receipt {}", path.display()))?;
+    serde_json::from_slice(payload.as_slice()).with_context(|| {
+        format!(
+            "failed to decode training failure receipt {}",
+            path.display()
+        )
+    })
+}
+
+fn training_desired_state_label(state: PylonTrainingSupervisorDesiredState) -> &'static str {
+    match state {
+        PylonTrainingSupervisorDesiredState::Running => "running",
+        PylonTrainingSupervisorDesiredState::Draining => "draining",
+        PylonTrainingSupervisorDesiredState::Stopped => "stopped",
+    }
+}
+
+fn training_process_state_label(state: PylonTrainingSupervisorProcessState) -> &'static str {
+    match state {
+        PylonTrainingSupervisorProcessState::Launching => "launching",
+        PylonTrainingSupervisorProcessState::Running => "running",
+        PylonTrainingSupervisorProcessState::Draining => "draining",
+        PylonTrainingSupervisorProcessState::Stopped => "stopped",
+        PylonTrainingSupervisorProcessState::Failed => "failed",
+    }
+}
+
+fn build_training_doctor_status(
+    config_path: &Path,
+    config: &PylonConfig,
+) -> Result<TrainingDoctorStatus> {
+    let report = load_training_status_report_local(config_path)?;
+    Ok(TrainingDoctorStatus {
+        runtime_surface_detected: report.runtime_surface_detected,
+        contributor_supported: report.contributor_supported,
+        checkpoint_serve_url: report.checkpoint_serve_url.clone(),
+        role_claims: config
+            .training
+            .role_claims
+            .iter()
+            .map(|role| role.label().to_string())
+            .collect(),
+        retention_limit_gb: config.training.retention_limit_gb,
+        blocked_label_keys: report.blocked_label_keys,
+        last_authority_sync_at_ms: report.last_authority_sync_at_ms,
+        active_runtime: report.active_runtime,
+        recent_issues: report.recent_issues,
+    })
+}
+
+#[derive(Clone, Debug)]
+struct PylonTrainingAdminRouteState {
+    config_path: PathBuf,
+}
+
+fn build_pylon_training_admin_router(config_path: PathBuf) -> Router {
+    let state = Arc::new(PylonTrainingAdminRouteState { config_path });
+    Router::new()
+        .route(
+            "/v1/training/status",
+            get({
+                let state = Arc::clone(&state);
+                move || {
+                    let state = Arc::clone(&state);
+                    async move { training_admin_status_handler(state).await }
+                }
+            }),
+        )
+        .route(
+            "/v1/training/sync",
+            post({
+                let state = Arc::clone(&state);
+                move || {
+                    let state = Arc::clone(&state);
+                    async move { training_admin_sync_handler(state).await }
+                }
+            }),
+        )
+        .route(
+            "/v1/training/node-record/refresh",
+            post({
+                let state = Arc::clone(&state);
+                move || {
+                    let state = Arc::clone(&state);
+                    async move { training_admin_refresh_handler(state).await }
+                }
+            }),
+        )
+}
+
+async fn training_admin_status_handler(
+    state: Arc<PylonTrainingAdminRouteState>,
+) -> Result<Json<TrainingOperatorStatusReport>, (StatusCode, Json<Value>)> {
+    load_training_status_report_local(state.config_path.as_path())
+        .map(Json)
+        .map_err(training_admin_api_error)
+}
+
+async fn training_admin_sync_handler(
+    state: Arc<PylonTrainingAdminRouteState>,
+) -> Result<Json<TrainingAuthoritySyncReport>, (StatusCode, Json<Value>)> {
+    sync_training_authority_state(state.config_path.as_path())
+        .await
+        .map(Json)
+        .map_err(training_admin_api_error)
+}
+
+async fn training_admin_refresh_handler(
+    state: Arc<PylonTrainingAdminRouteState>,
+) -> Result<Json<TrainingTrnPublicationReport>, (StatusCode, Json<Value>)> {
+    refresh_training_node_records_local(state.config_path.as_path())
+        .await
+        .map(Json)
+        .map_err(training_admin_api_error)
+}
+
+fn training_admin_api_error(error: anyhow::Error) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "error": error.to_string()
+        })),
+    )
+}
+
+async fn sync_training_authority_state_via_live_or_local(
+    config_path: &Path,
+) -> Result<TrainingAuthoritySyncReport> {
+    let config = load_or_create_config(config_path)?;
+    if let Some(report) =
+        try_live_training_post::<TrainingAuthoritySyncReport>(&config, "/v1/training/sync").await?
+    {
+        return Ok(report);
+    }
+    sync_training_authority_state(config_path).await
+}
+
+async fn refresh_training_node_records_via_live_or_local(
+    config_path: &Path,
+) -> Result<TrainingTrnPublicationReport> {
+    let config = load_or_create_config(config_path)?;
+    if let Some(report) = try_live_training_post::<TrainingTrnPublicationReport>(
+        &config,
+        "/v1/training/node-record/refresh",
+    )
+    .await?
+    {
+        return Ok(report);
+    }
+    refresh_training_node_records_local(config_path).await
+}
+
+async fn refresh_training_node_records_local(
+    config_path: &Path,
+) -> Result<TrainingTrnPublicationReport> {
+    let config = load_or_create_config(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let mut state = load_or_create_training_runtime_state(&config)?;
+    let contexts = load_training_manifest_inspection_contexts(&config, &state)?;
+    if contexts.is_empty() {
+        bail!("training refresh requires at least one retained run manifest");
+    }
+    let relay_urls = dedup_training_relay_urls(&contexts);
+    let pool = build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await?;
+    let mut report = TrainingTrnPublicationReport {
+        provider_pubkey: identity.public_key_hex.clone(),
+        relay_urls,
+        manifest_count: contexts.len(),
+        node_records: Vec::new(),
+        receipts: Vec::new(),
+        artifact_locators: Vec::new(),
+    };
+    let mut contexts_by_network =
+        BTreeMap::<String, Vec<&TrainingManifestInspectionContext>>::new();
+    for context in &contexts {
+        contexts_by_network
+            .entry(context.manifest.network_id.clone())
+            .or_default()
+            .push(context);
+    }
+    for (network_id, network_contexts) in contexts_by_network {
+        let (status, a_ref, template) = build_training_node_record_template(
+            &config,
+            &identity,
+            &state,
+            network_contexts.as_slice(),
+        )?;
+        let event = publish_training_signed_event(
+            &pool,
+            &identity,
+            template,
+            "training node record refresh",
+        )
+        .await?;
+        record_training_publication_pointer(
+            &mut state,
+            "node_record",
+            network_id.as_str(),
+            &event,
+            Some(a_ref.clone()),
+        );
+        report
+            .node_records
+            .push(build_training_trn_publication_entry(
+                "node_record",
+                network_id.as_str(),
+                "refreshed",
+                event.id,
+                Some(a_ref),
+                TRN_TRAINING_NODE_RECORD_KIND,
+                status.as_str(),
+                network_id.as_str(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ));
+    }
+    save_training_runtime_state(&config, &state)?;
+    Ok(report)
+}
+
 async fn publish_training_trn_state(
     config_path: &Path,
     manifest_path: Option<&Path>,
@@ -8411,6 +9261,123 @@ async fn write_http_response_bytes(
     stream.flush().await
 }
 
+fn render_training_status_report(report: &TrainingOperatorStatusReport) -> String {
+    let mut lines = vec![
+        format!("training state: {}", training_status_headline(report)),
+        format!("node label: {}", report.node_label),
+        format!("checkpoint serve url: {}", report.checkpoint_serve_url),
+        format!(
+            "runtime surface detected: {}",
+            report.runtime_surface_detected
+        ),
+        format!("contributor supported: {}", report.contributor_supported),
+        format!("tracked manifests: {}", report.manifest_count),
+        format!("tracked TRN events: {}", report.publication_pointer_count),
+        format!("tracked closeouts: {}", report.closeout_count),
+    ];
+    if let Some(provider_pubkey) = report.provider_pubkey.as_deref() {
+        lines.push(format!("provider pubkey: {provider_pubkey}"));
+    }
+    if let Some(last_sync) = report.last_authority_sync_at_ms {
+        lines.push(format!("last authority sync at ms: {last_sync}"));
+    }
+    if let Some(current_run_id) = report.current_run_id.as_deref() {
+        lines.push(format!("current run id: {current_run_id}"));
+    }
+    if let Some(active_window_id) = report.active_window_id.as_deref() {
+        lines.push(format!("active window id: {active_window_id}"));
+    }
+    if !report.blocked_label_keys.is_empty() {
+        lines.push(format!(
+            "blocked label keys: {}",
+            report.blocked_label_keys.join(", ")
+        ));
+    }
+    if let Some(active_runtime) = report.active_runtime.as_ref() {
+        lines.push(String::new());
+        lines.push("active runtime:".to_string());
+        lines.push(format!(
+            "- {} {} {} {}",
+            active_runtime.training_run_id,
+            active_runtime.window_id,
+            active_runtime.role,
+            active_runtime.process_state
+        ));
+        lines.push(format!("- assignment: {}", active_runtime.assignment_id));
+        lines.push(format!("- lease: {}", active_runtime.lease_id));
+        lines.push(format!(
+            "- desired/process: {}/{}",
+            active_runtime.desired_state, active_runtime.process_state
+        ));
+        if let Some(last_heartbeat_at_ms) = active_runtime.last_heartbeat_at_ms {
+            lines.push(format!("- last heartbeat at ms: {last_heartbeat_at_ms}"));
+        }
+        if let Some(last_failure_reason) = active_runtime.last_failure_reason.as_deref() {
+            lines.push(format!("- last failure: {last_failure_reason}"));
+        }
+    }
+    if let Some(current_window) = report.current_window.as_ref() {
+        lines.push(String::new());
+        lines.push(format!(
+            "window: {} {} {}",
+            current_window.training_run_id, current_window.window_id, current_window.state
+        ));
+    }
+    if let Some(last_checkpoint) = report.last_checkpoint.as_ref() {
+        lines.push(String::new());
+        lines.push(format!(
+            "last checkpoint: {}{}",
+            last_checkpoint.checkpoint_ref,
+            last_checkpoint
+                .optimizer_step
+                .map(|step| format!(" step={step}"))
+                .unwrap_or_default()
+        ));
+    }
+    lines.push(String::new());
+    lines.push(format!("validator queue: {}", report.validator_queue.len()));
+    for entry in &report.validator_queue {
+        lines.push(format!(
+            "- {} {} {} {}",
+            entry.training_run_id, entry.window_id, entry.challenge_id, entry.state
+        ));
+    }
+    lines.push(String::new());
+    lines.push(format!(
+        "recent TRN events: {}",
+        report.recent_trn_events.len()
+    ));
+    for entry in &report.recent_trn_events {
+        lines.push(format!(
+            "- {} {} {} {}",
+            entry.subject_kind, entry.subject_id, entry.event_id, entry.published_at_ms
+        ));
+    }
+    lines.push(String::new());
+    lines.push(format!("recent issues: {}", report.recent_issues.len()));
+    for issue in &report.recent_issues {
+        lines.push(format!(
+            "- {} {} owner={} retryable={} {}",
+            issue.kind, issue.subject_id, issue.owner, issue.retryable, issue.reason
+        ));
+    }
+    lines.join("\n")
+}
+
+fn training_status_headline(report: &TrainingOperatorStatusReport) -> &'static str {
+    if !report.blocked_label_keys.is_empty() {
+        "blocked"
+    } else if report.active_runtime.is_some() {
+        "active"
+    } else if report.contributor_supported {
+        "ready"
+    } else if report.runtime_surface_detected || report.manifest_count > 0 {
+        "degraded"
+    } else {
+        "inactive"
+    }
+}
+
 fn render_training_artifact_inspection_report(report: &TrainingArtifactInspectionReport) -> String {
     let mut lines = Vec::new();
     lines.push(format!(
@@ -9231,7 +10198,11 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
         .map_err(anyhow::Error::msg)?
         .desired_mode()
         .map_err(anyhow::Error::msg)?;
-    let mut runtime = ProviderAdminRuntime::spawn(admin_config).map_err(anyhow::Error::msg)?;
+    let mut runtime = ProviderAdminRuntime::spawn_with_routes(
+        admin_config,
+        Some(build_pylon_training_admin_router(config_path.to_path_buf())),
+    )
+    .map_err(anyhow::Error::msg)?;
     let presence_client = provider_presence_client()?;
     let identity = ensure_identity(config.identity_path.as_path())?;
     let provider_presence_session_id = new_provider_presence_session_id();
@@ -9656,24 +10627,33 @@ fn build_snapshot_from_availability(
 
     assemble_provider_persisted_snapshot(ProviderSnapshotParts {
         captured_at_ms,
-        config_metadata: vec![
-            ProviderJsonEntry {
-                key: "node_label".to_string(),
-                value: Value::String(config.node_label.clone()),
-            },
-            ProviderJsonEntry {
-                key: "payout_destination".to_string(),
-                value: json!(config.payout_destination),
-            },
-            ProviderJsonEntry {
-                key: "local_gemma_base_url".to_string(),
-                value: Value::String(config.local_gemma_base_url.clone()),
-            },
-            ProviderJsonEntry {
-                key: "local_gemma_preferred_model".to_string(),
-                value: json!(config.local_gemma_preferred_model),
-            },
-        ],
+        config_metadata: {
+            let mut entries = vec![
+                ProviderJsonEntry {
+                    key: "node_label".to_string(),
+                    value: Value::String(config.node_label.clone()),
+                },
+                ProviderJsonEntry {
+                    key: "payout_destination".to_string(),
+                    value: json!(config.payout_destination),
+                },
+                ProviderJsonEntry {
+                    key: "local_gemma_base_url".to_string(),
+                    value: Value::String(config.local_gemma_base_url.clone()),
+                },
+                ProviderJsonEntry {
+                    key: "local_gemma_preferred_model".to_string(),
+                    value: json!(config.local_gemma_preferred_model),
+                },
+            ];
+            if let Ok(training_status) = load_training_status_report_with_config(config) {
+                entries.push(ProviderJsonEntry {
+                    key: "training_operator_status".to_string(),
+                    value: serde_json::to_value(training_status).unwrap_or(Value::Null),
+                });
+            }
+            entries
+        },
         identity: identity.map(|identity| identity_metadata(identity, config.node_label.as_str())),
         runtime,
         availability,
@@ -9997,6 +10977,25 @@ fn identity_metadata(identity: &NostrIdentity, node_label: &str) -> ProviderIden
     }
 }
 
+fn provider_config_metadata_value<'a>(
+    snapshot: &'a ProviderPersistedSnapshot,
+    key: &str,
+) -> Option<&'a Value> {
+    snapshot
+        .config_metadata
+        .iter()
+        .find(|entry| entry.key == key)
+        .map(|entry| &entry.value)
+}
+
+fn snapshot_training_status_report(
+    snapshot: &ProviderPersistedSnapshot,
+) -> Option<TrainingOperatorStatusReport> {
+    provider_config_metadata_value(snapshot, "training_operator_status")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+}
+
 fn render_human_status(status: &ProviderStatusResponse) -> String {
     let mut lines = vec![
         format!("state: {}", provider_runtime_state_label(status)),
@@ -10033,6 +11032,42 @@ fn render_human_status(status: &ProviderStatusResponse) -> String {
             ));
         }
         lines.extend(render_sandbox_status_lines(&snapshot.availability));
+        if let Some(training) = snapshot_training_status_report(snapshot) {
+            lines.push(format!("training: {}", training_status_headline(&training)));
+            if let Some(active_runtime) = training.active_runtime.as_ref() {
+                lines.push(format!(
+                    "training_active: {} {} {} {}",
+                    active_runtime.training_run_id,
+                    active_runtime.window_id,
+                    active_runtime.role,
+                    active_runtime.process_state
+                ));
+            }
+            if let Some(last_checkpoint) = training.last_checkpoint.as_ref() {
+                lines.push(format!(
+                    "training_checkpoint: {}",
+                    last_checkpoint.checkpoint_ref
+                ));
+            }
+            if !training.validator_queue.is_empty() {
+                lines.push(format!(
+                    "training_validator_queue: {}",
+                    training.validator_queue.len()
+                ));
+            }
+            if !training.blocked_label_keys.is_empty() {
+                lines.push(format!(
+                    "training_blocked: {}",
+                    training.blocked_label_keys.join(", ")
+                ));
+            }
+            if let Some(issue) = training.recent_issues.first() {
+                lines.push(format!(
+                    "training_last_issue: {} {}",
+                    issue.kind, issue.reason
+                ));
+            }
+        }
     }
     lines.join("\n")
 }
@@ -12937,6 +13972,42 @@ async fn try_live_json<T: DeserializeOwned>(
     Ok(Some(value))
 }
 
+async fn try_live_training_post<T: DeserializeOwned>(
+    config: &PylonConfig,
+    endpoint: &str,
+) -> Result<Option<T>> {
+    let client = admin_client()?;
+    let url = format!("http://{}{}", config.admin_listen_addr, endpoint);
+    let response = match client.post(url.as_str()).send().await {
+        Ok(response) => response,
+        Err(error) if is_local_control_unavailable(&error) => return Ok(None),
+        Err(error) => {
+            return Err(anyhow!(
+                "failed to call pylon training admin endpoint {}: {error}",
+                endpoint
+            ));
+        }
+    };
+    if !response.status().is_success() {
+        let payload = response
+            .json::<Value>()
+            .await
+            .unwrap_or_else(|_| json!({"error": "failed to decode pylon training admin error"}));
+        bail!(
+            "pylon training admin endpoint {} failed: {}",
+            endpoint,
+            api_error_detail(&payload)
+        );
+    }
+    let value = response.json::<T>().await.with_context(|| {
+        format!(
+            "failed to decode pylon training admin endpoint {}",
+            endpoint
+        )
+    })?;
+    Ok(Some(value))
+}
+
 async fn try_live_control(config: &PylonConfig, action: ProviderControlAction) -> Result<bool> {
     let client = admin_client()?;
     let endpoint = match action {
@@ -13434,18 +14505,21 @@ mod tests {
         PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
         PsionicTrainRuntimeSurface, PylonConfig, PylonTrainingActiveRuntimeState,
         PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
-        PylonTrainingCheckpointPublicationRequest, PylonTrainingCoordinatorClient,
+        PylonTrainingCheckpointPublicationRequest, PylonTrainingCloseoutCacheEntry,
+        PylonTrainingContributionOutcomeCacheEntry, PylonTrainingCoordinatorClient,
         PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
         PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
-        PylonTrainingPublicationPointer, PylonTrainingRoleClaim, PylonTrainingRunLeaseRequest,
-        PylonTrainingRuntimeState, PylonTrainingSupervisorCommand,
-        PylonTrainingSupervisorDesiredState, PylonTrainingSupervisorProcessState,
-        PylonTrainingSupervisorStartRequest, PylonTrainingWindowCacheEntry,
-        PylonTrainingWindowProgressRequest, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
-        TrainingArtifactsCommand, TrainingCommand, WalletAddressReport, WalletInvoiceReport,
-        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
-        apply_control_command, apply_training_reputation_gate_to_availability,
+        PylonTrainingPublicationPointer, PylonTrainingReputationLabelCacheEntry,
+        PylonTrainingRoleClaim, PylonTrainingRunLeaseRequest, PylonTrainingRuntimeState,
+        PylonTrainingSupervisorCommand, PylonTrainingSupervisorDesiredState,
+        PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
+        PylonTrainingWindowCacheEntry, PylonTrainingWindowProgressRequest,
+        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, TrainingArtifactsCommand,
+        TrainingCommand, TrainingOperatorStatusReport, TrainingTrnPublicationReport,
+        WalletAddressReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
+        add_configured_relay, apply_config_set, apply_control_command,
+        apply_training_reputation_gate_to_availability, build_pylon_training_admin_router,
         build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
         derive_adapter_training_contributor_availability, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
@@ -13456,20 +14530,21 @@ mod tests {
         load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect,
-        load_training_artifact_inspection_report, mutate_ledger, parse_args,
-        planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
+        load_training_artifact_inspection_report, load_training_status_report_local, mutate_ledger,
+        parse_args, planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_presence_client, psionic_gemma_benchmark_command_args,
         publish_announcement_report, publish_training_trn_state, refresh_relay_report,
         remove_configured_relay, render_human_status, render_public_config_json,
-        render_sandbox_report, report_provider_presence_heartbeat_for_snapshot,
+        render_sandbox_report, render_training_status_report,
+        report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
         save_config, save_gemma_diagnostic_report, save_training_runtime_state,
-        scan_provider_requests, start_training_checkpoint_server, start_training_supervisor,
-        submit_buyer_job, sync_live_announcement, sync_provider_payout_target_with_report,
-        sync_training_authority_state, training_download_cache_root, training_runtime_state_path,
-        watch_buyer_jobs,
+        scan_provider_requests, snapshot_training_status_report, start_training_checkpoint_server,
+        start_training_supervisor, submit_buyer_job, sync_live_announcement,
+        sync_provider_payout_target_with_report, sync_training_authority_state,
+        training_download_cache_root, training_runtime_state_path, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::NostrIdentity;
@@ -13496,14 +14571,15 @@ mod tests {
     };
     use openagents_provider_substrate::{
         ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
-        ProviderAdapterTrainingSettlementTrigger, ProviderAppleAdapterHostingAvailability,
-        ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
-        ProviderEarningsSummary, ProviderHostDiskTelemetry, ProviderHostGpuTelemetry,
-        ProviderHostNetworkInterfaceTelemetry, ProviderHostTelemetrySnapshot,
-        ProviderInventoryControls, ProviderPersistenceStore, ProviderPooledInferenceAvailability,
-        ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
-        ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
-        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, provider_runtime_state_label,
+        ProviderAdapterTrainingSettlementTrigger, ProviderAdminRuntime,
+        ProviderAppleAdapterHostingAvailability, ProviderAvailability, ProviderBackendHealth,
+        ProviderControlAction, ProviderDesiredMode, ProviderEarningsSummary,
+        ProviderHostDiskTelemetry, ProviderHostGpuTelemetry, ProviderHostNetworkInterfaceTelemetry,
+        ProviderHostTelemetrySnapshot, ProviderInventoryControls, ProviderPersistenceStore,
+        ProviderPooledInferenceAvailability, ProviderReceiptSummary, ProviderRecentJob,
+        ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,
+        ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
+        provider_runtime_state_label,
     };
     use serde_json::{Value, json};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -15035,6 +16111,30 @@ mod tests {
         )
     }
 
+    #[test]
+    fn parse_args_supports_training_status_and_refresh_commands()
+    -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "training".to_string(),
+                "status".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Training {
+                    command: TrainingCommand::Status { json: true },
+                },
+            "training status should parse json output selection",
+        )?;
+        ensure(
+            parse_args(vec!["training".to_string(), "refresh".to_string()])?.command
+                == Command::Training {
+                    command: TrainingCommand::Refresh { json: false },
+                },
+            "training refresh should parse without extra flags",
+        )
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn training_artifact_courier_uploads_downloads_and_verifies_bundles()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -15379,6 +16479,136 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn training_admin_routes_serve_status_and_refresh_node_records()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.relay_auth_enabled = false;
+        config.training.run_root = temp_dir.path().join("training");
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let relay_events = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let relay_events_for_server = Arc::clone(&relay_events);
+        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let relay_addr = relay_listener.local_addr()?;
+        let relay_url = format!("ws://{relay_addr}");
+        let _relay_server = tokio::spawn(async move {
+            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
+            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
+            while let Some(message) = ws.next().await {
+                match message {
+                    Ok(Message::Text(payload)) => {
+                        let frame: Value =
+                            serde_json::from_str(payload.as_str()).expect("parse relay frame");
+                        match frame.get(0).and_then(Value::as_str) {
+                            Some("EVENT") => {
+                                relay_events_for_server
+                                    .lock()
+                                    .expect("relay event log")
+                                    .push(frame[1].clone());
+                                ws.send(Message::Text(
+                                    json!(["OK", frame[1]["id"], true, "accepted"]).to_string(),
+                                ))
+                                .await
+                                .expect("send ok");
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(Message::Close(_)) | Err(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        manifest.trn.relay_urls = vec![relay_url.clone()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        std::fs::write(
+            local_run_root.join("manifests").join("run_manifest.json"),
+            manifest.canonical_json_bytes()?,
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            manifest_path: local_run_root
+                .join("manifests")
+                .join("run_manifest.json")
+                .display()
+                .to_string(),
+            run_root: local_run_root.display().to_string(),
+            ..training_active_runtime_fixture()
+        });
+        save_training_runtime_state(&config, &state)?;
+
+        let admin_config = provider_admin_config(&config)?;
+        let mut runtime = ProviderAdminRuntime::spawn_with_routes(
+            admin_config,
+            Some(build_pylon_training_admin_router(config_path.clone())),
+        )?;
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()?;
+        let status_url = format!("http://{}/v1/training/status", runtime.listen_addr());
+        let refresh_url = format!(
+            "http://{}/v1/training/node-record/refresh",
+            runtime.listen_addr()
+        );
+
+        let status = client
+            .get(status_url.as_str())
+            .send()
+            .await?
+            .json::<TrainingOperatorStatusReport>()
+            .await?;
+        ensure(
+            status.current_run_id.as_deref() == Some("run.alpha")
+                && status.manifest_count == 1
+                && status.provider_pubkey.as_deref() == Some(identity.public_key_hex.as_str()),
+            "training admin status should expose the retained operator report over the shared admin port",
+        )?;
+
+        let refresh_report = client
+            .post(refresh_url.as_str())
+            .send()
+            .await?
+            .json::<TrainingTrnPublicationReport>()
+            .await?;
+        ensure(
+            refresh_report.node_records.len() == 1
+                && refresh_report.node_records[0].publication_state == "refreshed",
+            "training admin refresh should republish the node record and return the refresh report",
+        )?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let published = relay_events.lock().expect("relay events snapshot").clone();
+        ensure(
+            published.iter().any(|event| {
+                event["kind"] == json!(39501)
+                    && first_tag_value(event, "status").as_deref() == Some("online")
+            }),
+            "training admin refresh should publish a fresh training node record to the retained relay set",
+        )?;
+
+        let refreshed_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            refreshed_state
+                .publication_pointers
+                .contains_key("node_record::trainnet.alpha"),
+            "training admin refresh should persist the updated node-record publication pointer",
+        )?;
+
+        runtime.shutdown_async();
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn training_sync_ingests_closeouts_and_reputation_and_blocks_readvertisement()
     -> Result<(), Box<dyn std::error::Error>> {
         let _env_lock = training_env_lock();
@@ -15693,6 +16923,232 @@ mod tests {
             !availability.contributor_supported
                 && blocked == vec!["label.build.revoked.alpha::trn/build::revoked".to_string()],
             "hard-gate reputation labels should block automatic training readvertisement",
+        )
+    }
+
+    #[test]
+    fn training_status_report_surfaces_operator_state() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        save_config(config_path.as_path(), &config)?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        let validator_root = local_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("validators")
+            .join("challenge.alpha");
+        std::fs::create_dir_all(validator_root.as_path())?;
+        std::fs::write(
+            validator_root.join("verdict.json"),
+            json!({
+                "schema_version":"openagents.pylon_training.validator_verdict.v1",
+                "challenge_id":"challenge.alpha"
+            })
+            .to_string(),
+        )?;
+
+        let failure_receipt_path = local_run_root
+            .join("supervisor")
+            .join("attempt-1")
+            .join("failure_receipt.json");
+        std::fs::create_dir_all(
+            failure_receipt_path
+                .parent()
+                .expect("failure receipt parent")
+                .to_path_buf(),
+        )?;
+        std::fs::write(
+            failure_receipt_path.as_path(),
+            serde_json::to_vec(&PylonTrainingFailureReceipt {
+                schema_version: "openagents.pylon_training_failure_receipt.v1".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                lease_id: "lease.node01.window0001".to_string(),
+                manifest_path: local_run_root
+                    .join("manifests")
+                    .join("run_manifest.json")
+                    .display()
+                    .to_string(),
+                desired_state: PylonTrainingSupervisorDesiredState::Running,
+                process_state: PylonTrainingSupervisorProcessState::Failed,
+                exit_code: Some(17),
+                failure_reason: "checkpoint_missing".to_string(),
+                recorded_at_ms: 1_762_491_299_000,
+            })?,
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            manifest_path: local_run_root
+                .join("manifests")
+                .join("run_manifest.json")
+                .display()
+                .to_string(),
+            run_root: local_run_root.display().to_string(),
+            process_state: PylonTrainingSupervisorProcessState::Failed,
+            last_failure_reason: Some("checkpoint_missing".to_string()),
+            failure_receipt_path: Some(failure_receipt_path.display().to_string()),
+            ..training_active_runtime_fixture()
+        });
+        state.window_cache.insert(
+            "window.0001".to_string(),
+            PylonTrainingWindowCacheEntry {
+                window_id: "window.0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                state: "validating".to_string(),
+                manifest_digest: Some(manifest.manifest_digest.clone()),
+                updated_at_ms: 1_762_491_299_500,
+            },
+        );
+        state.publication_pointers.insert(
+            "node_record::trainnet.alpha".to_string(),
+            PylonTrainingPublicationPointer {
+                subject_kind: "node_record".to_string(),
+                subject_id: "trainnet.alpha".to_string(),
+                event_id: "event.node.alpha".to_string(),
+                a_ref: Some("39501:node:trainnet.alpha".to_string()),
+                published_at_ms: 1_762_491_299_600,
+            },
+        );
+        state.contribution_outcomes.insert(
+            "contrib.node01.window0001".to_string(),
+            PylonTrainingContributionOutcomeCacheEntry {
+                contribution_id: "contrib.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                contributor_node_id: "node.alpha".to_string(),
+                worker_id: "worker.alpha".to_string(),
+                artifact_id: "artifact.delta.alpha".to_string(),
+                manifest_digest: manifest.manifest_digest.clone(),
+                object_digest: "sha256:delta-alpha".to_string(),
+                validator_disposition: "replay_required".to_string(),
+                validation_reason_codes: vec!["digest_mismatch".to_string()],
+                aggregation_eligibility: "held".to_string(),
+                accepted_for_aggregation: false,
+                recorded_at_ms: 1_762_491_299_700,
+            },
+        );
+        state.closeout_cache.insert(
+            "accepted.training.alpha".to_string(),
+            PylonTrainingCloseoutCacheEntry {
+                outcome_id: "accepted.training.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                outcome_kind: "training_run".to_string(),
+                closeout_status: "accepted".to_string(),
+                payout_eligible: true,
+                accepted_checkpoint_ref: Some("checkpoint://run.alpha/0002".to_string()),
+                completed_step_count: Some(128),
+                processed_token_count: Some(8_192),
+                best_eval_score_bps: Some(9_910),
+                accepted_at_ms: 1_762_491_299_800,
+            },
+        );
+        state.reputation_labels.insert(
+            "label.build.revoked.alpha::trn/build::revoked".to_string(),
+            PylonTrainingReputationLabelCacheEntry {
+                cache_key: "label.build.revoked.alpha::trn/build::revoked".to_string(),
+                event_id: "label.build.revoked.alpha".to_string(),
+                publisher_pubkey: "coordinator.alpha".to_string(),
+                namespace: "trn/build".to_string(),
+                label: "revoked".to_string(),
+                scheduler_effect: "hard_gate".to_string(),
+                hard_gate: true,
+                subject_pubkey: Some("nodepubkeyalpha".to_string()),
+                event_ref: None,
+                address_ref: None,
+                content: Some("build revoked".to_string()),
+                created_at_unix: 1_762_491_299,
+            },
+        );
+        state.last_authority_sync_at_ms = Some(1_762_491_299_900);
+        save_training_runtime_state(&config, &state)?;
+
+        let report = load_training_status_report_local(config_path.as_path())?;
+        ensure(
+            report.current_run_id.as_deref() == Some("run.alpha")
+                && report.active_window_id.as_deref() == Some("window.0001")
+                && report.last_checkpoint.as_ref().is_some_and(|checkpoint| {
+                    checkpoint.checkpoint_ref == "checkpoint://run.alpha/0001"
+                        && checkpoint.optimizer_step == Some(42)
+                })
+                && report.validator_queue.iter().any(|entry| {
+                    entry.challenge_id == "challenge.alpha" && entry.state == "local_only"
+                })
+                && report.recent_trn_events.iter().any(|entry| {
+                    entry.subject_kind == "node_record" && entry.event_id == "event.node.alpha"
+                }),
+            "training status should surface the current run, last checkpoint, validator queue, and recent TRN publications",
+        )?;
+        ensure(
+            report.recent_issues.iter().any(|issue| {
+                issue.kind == "runtime_failure"
+                    && issue.reason == "checkpoint_missing"
+                    && issue.owner == "pylon"
+            }) && report.recent_issues.iter().any(|issue| {
+                issue.kind == "reputation_hard_gate"
+                    && issue.subject_id == "label.build.revoked.alpha::trn/build::revoked"
+            }) && report.recent_issues.iter().any(|issue| {
+                issue.kind == "contribution_disposition"
+                    && issue.subject_id == "contrib.node01.window0001"
+            }),
+            "training status should retain recent runtime failures, hard-gate labels, and contribution refusals",
+        )?;
+
+        let human = render_training_status_report(&report);
+        ensure(
+            human.contains("training state: blocked")
+                && human.contains("last checkpoint: checkpoint://run.alpha/0001 step=42")
+                && human.contains("validator queue: 1"),
+            "the human training status renderer should summarize the blocked runtime, checkpoint, and validator queue",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn top_level_status_embeds_training_operator_summary()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.admin_listen_addr = "127.0.0.1:0".to_string();
+        config.local_gemma_base_url = "http://127.0.0.1:9".to_string();
+        config.training.run_root = temp_dir.path().join("training");
+        save_config(config_path.as_path(), &config)?;
+        ensure_identity(config.identity_path.as_path())?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let _manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            manifest_path: local_run_root
+                .join("manifests")
+                .join("run_manifest.json")
+                .display()
+                .to_string(),
+            run_root: local_run_root.display().to_string(),
+            ..training_active_runtime_fixture()
+        });
+        save_training_runtime_state(&config, &state)?;
+
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        let snapshot = status
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("missing top-level status snapshot"))?;
+        let training = snapshot_training_status_report(snapshot)
+            .ok_or_else(|| std::io::Error::other("missing embedded training status"))?;
+        ensure(
+            training.current_run_id.as_deref() == Some("run.alpha")
+                && render_human_status(&status).contains("training: active"),
+            "top-level pylon status should embed and render the training operator summary",
         )
     }
 

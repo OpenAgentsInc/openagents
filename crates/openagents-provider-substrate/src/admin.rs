@@ -390,12 +390,19 @@ pub struct ProviderAdminRuntime {
 
 impl ProviderAdminRuntime {
     pub fn spawn(config: ProviderAdminConfig) -> Result<Self, String> {
+        Self::spawn_with_routes(config, None)
+    }
+
+    pub fn spawn_with_routes(
+        config: ProviderAdminConfig,
+        extra_routes: Option<Router>,
+    ) -> Result<Self, String> {
         let (command_tx, command_rx) = mpsc::channel::<ProviderAdminCommand>();
         let (update_tx, update_rx) = mpsc::channel::<ProviderAdminUpdate>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<SocketAddr, String>>();
         let db_path = config.store.db_path.clone();
         let join_handle = std::thread::spawn(move || {
-            run_provider_admin_loop(command_rx, update_tx, ready_tx, config);
+            run_provider_admin_loop(command_rx, update_tx, ready_tx, config, extra_routes);
         });
         let listen_addr = ready_rx.recv().map_err(|error| {
             format!("Provider admin runtime failed to report readiness: {error}")
@@ -788,6 +795,7 @@ fn run_provider_admin_loop(
     update_tx: Sender<ProviderAdminUpdate>,
     ready_tx: Sender<Result<SocketAddr, String>>,
     config: ProviderAdminConfig,
+    extra_routes: Option<Router>,
 ) {
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -822,6 +830,7 @@ fn run_provider_admin_loop(
         Arc::clone(&shared),
         config.runtime.listen_addr,
         shutdown_rx,
+        extra_routes,
     ));
     let listen_addr = match listen_addr_result {
         Ok(listen_addr) => listen_addr,
@@ -874,6 +883,7 @@ async fn start_provider_admin_server(
     shared: Arc<ProviderAdminSharedState>,
     listen_addr: SocketAddr,
     shutdown_rx: watch::Receiver<bool>,
+    extra_routes: Option<Router>,
 ) -> Result<SocketAddr, String> {
     let listener = tokio::net::TcpListener::bind(listen_addr)
         .await
@@ -881,7 +891,7 @@ async fn start_provider_admin_server(
     let actual_addr = listener
         .local_addr()
         .map_err(|error| format!("Failed to read provider admin listener address: {error}"))?;
-    let router = build_provider_admin_router(shared);
+    let router = build_provider_admin_router(shared, extra_routes);
     tokio::spawn(async move {
         let _ = axum::serve(listener, router)
             .with_graceful_shutdown(wait_for_shutdown(shutdown_rx))
@@ -898,8 +908,11 @@ async fn wait_for_shutdown(mut shutdown_rx: watch::Receiver<bool>) {
     }
 }
 
-fn build_provider_admin_router(shared: Arc<ProviderAdminSharedState>) -> Router {
-    Router::new()
+fn build_provider_admin_router(
+    shared: Arc<ProviderAdminSharedState>,
+    extra_routes: Option<Router>,
+) -> Router {
+    let mut router = Router::new()
         .route("/v1/status", get(get_status))
         .route("/v1/backend-health", get(get_backend_health))
         .route("/v1/sandbox/runtimes", get(get_sandbox_runtimes))
@@ -914,7 +927,11 @@ fn build_provider_admin_router(shared: Arc<ProviderAdminSharedState>) -> Router 
         .route("/v1/offline", post(post_offline))
         .route("/v1/pause", post(post_pause))
         .route("/v1/resume", post(post_resume))
-        .with_state(shared)
+        .with_state(Arc::clone(&shared));
+    if let Some(extra_routes) = extra_routes {
+        router = router.merge(extra_routes);
+    }
+    router
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
