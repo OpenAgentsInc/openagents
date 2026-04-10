@@ -3185,6 +3185,20 @@ from `Pylon` and `Nexus`.
 
 - All required event kinds and helper layers are tested in CI.
 
+Implementation note:
+
+- `crates/nostr/core` now carries a public TRN API integration test that
+  round-trips every retained training event kind, validates missing-tag refusal,
+  and exercises the public actor-tag and reputation-label helpers through the
+  exported API surface rather than only private module tests.
+- `apps/pylon` now has focused TRN mapping tests that round-trip the pure node
+  record, assignment acknowledgement, artifact locator, and artifact-uploaded
+  receipt helpers directly, separate from the broader publish-path tests.
+- `apps/nexus-control` now has focused TRN mapping tests that round-trip the
+  retained network contract, window, coordinator receipt, replay-required
+  receipt, closeout, and validator score-locator helpers, including template
+  fingerprint generation.
+
 ### Workstream 6: Shared Artifact, Identity, and Security Plumbing
 
 #### 48. Freeze and implement shared artifact naming, digest, id-generation,
