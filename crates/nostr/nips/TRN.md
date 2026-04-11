@@ -42,11 +42,15 @@ TRN core covers:
 - receipts
 - verdicts
 - artifact pointers
+- local-update artifact metadata
+- round-level aggregation metadata
+- canonical post-aggregation checkpoint linkage
 - closeouts
 
 Optional profiles cover:
 
 - discovery
+- DiLoCo-style local-update rounds
 - private coordination
 - challenge
 - reputation
@@ -109,8 +113,8 @@ public or partly public checking, and a permanent record of receipts.
 - `verdict`: one validator result about a submission, assignment, or claimed
   result
 - `artifact locator`: a signed pointer to a checkpoint, model-weight file,
-  update bundle, proof file, or other large object without embedding that large
-  object in the event
+  local-update bundle, aggregate bundle, proof file, or other large object
+  without embedding that large object in the event
 - `fork`: one new training run or window that continues from earlier published
   state
 - `closeout`: one final published outcome for a contribution or window, such as
@@ -139,6 +143,7 @@ one challenge mechanism.
 Optional profiles are:
 
 - TRN-Discovery via NIP-89 and NIP-66
+- TRN-DiLoCo for local-update / infrequent-sync training rounds
 - TRN-Private via NIP-44 and NIP-59
 - TRN-Challenge via NIP-90
 - TRN-Reputation via NIP-32
@@ -151,11 +156,15 @@ This NIP does not standardize:
 - optimizer state shared between machines
 - how machines talk to each other during training
 - how often machines exchange live training data
+- how local updates are numerically aggregated
+- optimizer internals during local training
 - moving checkpoint pieces between machines
 - moving model weights between machines
+- transport of update tensors or optimizer tensors
 - dataset transfer
 - rollout data transfer
 - sandbox runtime behavior
+- exact all-reduce, RPC, or parameter-server behavior
 - exact reward math
 
 Those belong in runtime and artifact systems outside Nostr.
@@ -193,11 +202,32 @@ TRN uses these common tags:
 - `["window", "<window_id>"]` — shared training window id
 - `["assignment", "<assignment_id>"]` — shared assignment id
 - `["artifact", "<artifact_id>"]` — shared artifact id
+- `["aggregate", "<aggregate_id>"]` — aggregate artifact or aggregate outcome id
 - `["checkpoint", "<checkpoint_id>"]` — shared checkpoint id
+- `["sync_profile", "<profile_name>"]` — training synchronization profile such
+  as `diloco`
+- `["round", "<round_index_or_round_id>"]` — round number or equivalent local
+  synchronization index
+- `["base_checkpoint", "<checkpoint_id>"]` — checkpoint from which local work
+  in this round begins
 - `["policy", "<policy_revision_id>"]` — policy revision bound to the event
 - `["manifest", "<manifest_digest>"]` — artifact or checkpoint manifest digest
 - `["status", "<value>"]` — machine-readable state
+- `["planned_local_steps", "<count>"]` — intended local optimizer steps for one
+  round
+- `["local_steps", "<count>"]` — realized local optimizer steps in one
+  contribution
+- `["tokens", "<count>"]` — token count attributed to one contribution or round
+- `["examples", "<count>"]` — example count attributed to one contribution or
+  round
+- `["weight", "<value>"]` — aggregation weight value claimed for one submitted
+  contribution
+- `["aggregation_rule", "<rule_name>"]` — machine-readable aggregation rule
+- `["aggregation_weight", "<weight_basis>"]` — declared weighting basis
 - `["role", "<role_name>"]` — node or receipt role
+- `["group", "<group_id>"]` — optional island, shard group, or cohort id
+- `["promotion", "candidate|accepted|superseded"]` — aggregate or checkpoint
+  promotion state
 - `["cap", "<capability_name>", "<value>"]` — capability declaration
 - `["class", "<value>"]` — execution class, expected artifact class, or stored
   artifact class depending on the event
@@ -223,6 +253,9 @@ For receipts, verdicts, closeouts, and labels that affect a particular actor,
 implementations SHOULD use `p` tags with explicit markers such as `subject`,
 `validator`, or `coordinator`.
 
+Implementations SHOULD use the same `base_checkpoint` value across receipts,
+verdicts, and artifact locators that belong to one DiLoCo-style round.
+
 ## 1. Training Network Contract (`kind:39500`)
 
 The training network contract is the main shared record for one training
@@ -240,6 +273,8 @@ It SHOULD define:
 - current governance revision
 - model family or workload family
 - window timing
+- synchronization profile and round semantics when one profile governs the
+  entire run
 - allowed roles
 - software or manifest compatibility rules
 - source network or source artifacts when the run resumes or forks earlier work
@@ -252,6 +287,9 @@ Recommended tags:
 - `["status", "active|paused|retired"]`
 - `["model_family", "<family>"]`
 - `["window_cadence", "<seconds>"]`
+- `["sync_profile", "diloco"]`
+- `["aggregation_rule", "weighted_avg|uniform_avg|custom"]`
+- `["aggregation_weight", "tokens|examples|steps|uniform|custom"]`
 - `["role", "trainer"]`
 - `["role", "validator"]`
 - `["role", "checkpoint_authority"]`
@@ -349,6 +387,12 @@ It SHOULD name:
 - active policy revision
 - workload family
 - assignment seed used to choose work
+- base checkpoint id for the round
+- round index
+- expected local-work target for participants
+- aggregation deadline
+- minimum participation or minimum admitted weight needed to reconcile
+- accepted aggregate or promoted checkpoint once the round closes
 - source window or recovery point, if the window resumes earlier work
 - current state
 
@@ -367,10 +411,51 @@ Recommended tags:
 - `["network", "<network_id>"]`
 - `["policy", "<policy_revision_id>"]`
 - `["status", "planned|active|sealed|scored|reconciled|canceled"]`
+- `["sync_profile", "diloco"]`
+- `["round", "<round_index>"]`
 - `["assignment_seed", "<seed_digest>"]`
 - `["workload", "<workload_family>"]`
+- `["base_checkpoint", "<checkpoint_id>"]`
+- `["planned_local_steps", "<count>"]`
+- `["aggregation_deadline", "<unix_seconds>"]`
+- `["min_participants", "<count>"]`
+- `["min_weight_fraction", "<decimal_string>"]`
+- `["aggregation_rule", "weighted_avg|uniform_avg|custom"]`
+- `["aggregation_weight", "tokens|examples|steps|uniform|custom"]`
+- `["aggregate", "<aggregate_id>"]`
+- `["checkpoint", "<promoted_checkpoint_id>"]`
 - `["a", "39510:<pubkey>:<window_id>", "<relay>", "resume"]`
 - `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "bootstrap"]`
+
+For TRN-DiLoCo, one window normally represents one local-training round that
+starts from one `base_checkpoint` and may end with one accepted aggregate or
+one promoted checkpoint for the next round. The window SHOULD make the
+intended local-work target and aggregation rule explicit so another operator
+can resume or replay the coordination state without private coordinator data.
+
+Example window for one DiLoCo round:
+
+```jsonc
+{
+  "kind": 39510,
+  "content": "{\"schema\":1,\"round\":172,\"aggregation_deadline_unix\":1786352400}",
+  "tags": [
+    ["d", "psion-r172"],
+    ["network", "psion-trainnet-a"],
+    ["status", "active"],
+    ["sync_profile", "diloco"],
+    ["round", "172"],
+    ["policy", "g-4"],
+    ["workload", "psion.pretrain.v1"],
+    ["base_checkpoint", "ckpt-171"],
+    ["planned_local_steps", "500"],
+    ["aggregation_rule", "weighted_avg"],
+    ["aggregation_weight", "tokens"],
+    ["min_participants", "8"],
+    ["min_weight_fraction", "0.80"]
+  ]
+}
+```
 
 ## 4. Training Receipt (`kind:39511`)
 
@@ -386,6 +471,11 @@ Its job is to publish lightweight coordination updates such as:
 - assignment accepted
 - assignment expired
 - upload acknowledged
+- local update submitted
+- local update admitted
+- aggregate candidate published
+- aggregate accepted
+- checkpoint promoted
 - window sealed
 - window reconciled
 - replay requested
@@ -407,6 +497,13 @@ Recommended tags:
 - `["reason", "<reason_code>"]`
 - `["class", "<expected_artifact_class>"]`
 - `["checkpoint", "<checkpoint_id>"]`
+- `["base_checkpoint", "<checkpoint_id>"]`
+- `["round", "<round_index>"]`
+- `["local_steps", "<count>"]`
+- `["tokens", "<count>"]`
+- `["examples", "<count>"]`
+- `["weight", "<value>"]`
+- `["group", "<group_id>"]`
 - `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "source"]`
 - `["e", "<referenced_event_id>", "<relay>", "window"]`
 - `["a", "39510:<pubkey>:<window_id>", "<relay>", "window"]`
@@ -417,21 +514,62 @@ Example statuses:
 - `assignment_accepted`
 - `assignment_expired`
 - `artifact_uploaded`
+- `update_submitted`
+- `update_admitted`
+- `update_rejected`
+- `aggregate_candidate_published`
+- `aggregate_accepted`
+- `checkpoint_promoted`
 - `window_sealed`
 - `window_reconciled`
 - `replay_required`
 
-When `status` is assignment-related, `content` SHOULD be a compact JSON object
-that includes:
+When `status` is assignment-related or local-update-related, `content` SHOULD
+be a compact JSON object that includes:
 
 - `subject_pubkey`
-- `assignment_deadline_unix`
+- `assignment_deadline_unix` when an assignment deadline exists
 - `expected_artifact_class`
-- either `sample_pool_digest` or `shard_digest`
+- either `sample_pool_digest` or `shard_digest` when data selection is part of
+  the policy
 - either `source_checkpoint_id` or `source_checkpoint_coordinate`
+- `base_checkpoint_id` when the work belongs to one DiLoCo-style round
+- `local_step_count` when local work is step-bounded
+- `consumed_token_count` when token-weighted aggregation is used
+- `consumed_example_count` when example-weighted aggregation is used
+- `aggregation_weight_value` when the contribution publishes a concrete
+  weighting value
+- `group_id` when the run uses islands, cohorts, or subgroup coordination
 
-That profile gives validators enough information to replay or challenge
-assignment-scoped work without adding new receipt kinds.
+That profile gives validators and replacement coordinators enough information
+to reason about local-update submissions and round closure without adding new
+receipt kinds or standardizing runtime execution.
+
+Example receipt for a submitted local update:
+
+```jsonc
+{
+  "kind": 39511,
+  "content": "{\"schema\":1,\"subject_pubkey\":\"<trainer>\",\"base_checkpoint_id\":\"ckpt-171\",\"local_step_count\":500,\"consumed_token_count\":182340992,\"aggregation_weight_value\":\"182340992\"}",
+  "tags": [
+    ["network", "psion-trainnet-a"],
+    ["window", "psion-r172"],
+    ["status", "update_submitted"],
+    ["assignment", "asg-172-044"],
+    ["role", "trainer"],
+    ["artifact", "upd-r172-n44"],
+    ["class", "local_update"],
+    ["base_checkpoint", "ckpt-171"],
+    ["round", "172"],
+    ["local_steps", "500"],
+    ["tokens", "182340992"],
+    ["weight", "182340992"],
+    ["p", "<trainer>", "", "subject"],
+    ["a", "39520:<pubkey>:upd-r172-n44", "", "source"],
+    ["a", "39510:<pubkey>:psion-r172", "", "window"]
+  ]
+}
+```
 
 ## 5. Validator Verdict (`kind:39512`)
 
@@ -448,9 +586,13 @@ Recommended tags:
 
 - `["assignment", "<assignment_id>"]`
 - `["artifact", "<artifact_id>"]`
+- `["base_checkpoint", "<checkpoint_id>"]`
+- `["round", "<round_index>"]`
+- `["aggregate", "<aggregate_id>"]`
 - `["policy", "<policy_revision_id>"]`
 - `["p", "<subject_pubkey>", "<relay>", "subject"]`
 - `["p", "<validator_pubkey>", "<relay>", "validator"]`
+- `["promotion", "candidate|accepted|superseded"]`
 - `["reason", "<reason_code>"]`
 - `["validator_policy", "<validator_policy_id>"]`
 - `["x", "<artifact_or_bundle_digest>"]`
@@ -459,6 +601,26 @@ Recommended tags:
 `content` SHOULD contain a compact JSON verdict summary. Large proof files
 SHOULD be stored off-Nostr and referenced through `kind:39520` artifact
 pointers or optional NIP-90 result flows.
+
+For TRN-DiLoCo, verdict summaries SHOULD make clear whether the verdict applies
+to one local update, one aggregate candidate, or one promoted checkpoint. When
+a verdict covers one aggregate candidate, implementations SHOULD reference both
+the candidate aggregate artifact and the base checkpoint from which the round
+started.
+
+Recommended compact JSON fields for TRN-DiLoCo verdicts are:
+
+- `subject_type` with values such as `local_update`, `aggregate_candidate`, or
+  `promoted_checkpoint`
+- `base_checkpoint_id`
+- `round_index`
+- `loss_delta` when available
+- `eval_metric` when available
+- `drift_metric` when available
+- `nan_detected`
+- `divergence_flag`
+
+This keeps acceptance logic inspectable without forcing one proof system.
 
 ## 6. Training Artifact Locator (`kind:39520`)
 
@@ -477,7 +639,8 @@ Valid artifact classes include:
 - model weight files
 - optimizer snapshots
 - config bundles
-- update bundles
+- local-update bundles
+- aggregate bundles
 - eval result bundles
 - proof files
 - score files
@@ -495,10 +658,16 @@ Recommended tags:
 - `["manifest", "<manifest_digest>"]`
 - `["x", "<file_digest>"]`
 - `["url", "<location_hint>"]`
-- `["class", "checkpoint|weights|optimizer|config|delta|eval|proof|score"]`
+- `["class", "checkpoint|weights|optimizer|config|local_update|aggregate|eval|proof|score"]`
 - `["window", "<window_id>"]`
 - `["policy", "<policy_revision_id>"]`
 - `["reason", "<reason_code>"]`
+- `["base_checkpoint", "<checkpoint_id>"]`
+- `["round", "<round_index>"]`
+- `["local_steps", "<count>"]`
+- `["weight", "<value>"]`
+- `["aggregate", "<aggregate_id>"]`
+- `["promotion", "candidate|accepted|superseded"]`
 - `["a", "39520:<pubkey>:<artifact_id>", "<relay>", "source"]`
 
 Location hints MAY reference:
@@ -517,6 +686,103 @@ Artifact locators are also the main reuse, recovery, and fork surface in TRN.
 When a locator is meant to support resume or fork, its manifest SHOULD identify
 the files another operator needs to continue the run, such as checkpoint files,
 model weights, optimizer snapshots, config bundles, or proof files.
+
+When TRN-DiLoCo is used, implementations SHOULD distinguish clearly between:
+
+- one `local_update` artifact published by a participant for one round
+- one `aggregate` artifact published as the candidate or accepted merged result
+- one `checkpoint` artifact published as the promoted starting point for the
+  next round
+
+A `local_update` locator SHOULD identify:
+
+- the `base_checkpoint` from which the local work started
+- the round or window it belongs to
+- the claimed local step count when relevant
+- the claimed aggregation weight basis and value when relevant
+
+An `aggregate` locator SHOULD identify:
+
+- the `base_checkpoint` for the round it aggregates
+- the set or manifest of admitted local updates
+- whether it is a candidate or accepted aggregate
+- the promoted checkpoint id when it directly materializes the next round's
+  starting state
+
+For `class=local_update`, `content` SHOULD be a compact JSON object containing:
+
+- `schema`
+- `artifact_role` with value `local_update`
+- `base_checkpoint_id`
+- `round_index`
+- `local_step_count` when relevant
+- `aggregation_weight_basis`
+- `aggregation_weight_value`
+- `format` or bundle format id
+- `manifest_digest`
+
+For `class=aggregate`, `content` SHOULD be a compact JSON object containing:
+
+- `schema`
+- `artifact_role` with value `aggregate`
+- `base_checkpoint_id`
+- `round_index`
+- `aggregation_rule`
+- `aggregation_weight_basis`
+- `admitted_update_count`
+- `admitted_weight_total`
+- `promotion_state` with value `candidate` or `accepted`
+- `promoted_checkpoint_id` when applicable
+- `manifest_digest`
+
+Example local update locator:
+
+```jsonc
+{
+  "kind": 39520,
+  "content": "{\"schema\":1,\"artifact_role\":\"local_update\",\"base_checkpoint_id\":\"ckpt-171\",\"round_index\":172,\"local_step_count\":500,\"aggregation_weight_basis\":\"tokens\",\"aggregation_weight_value\":\"182340992\",\"format\":\"upd.bundle.v1\",\"manifest_digest\":\"abc123\"}",
+  "tags": [
+    ["d", "upd-r172-n44"],
+    ["network", "psion-trainnet-a"],
+    ["window", "psion-r172"],
+    ["status", "stored"],
+    ["class", "local_update"],
+    ["artifact", "upd-r172-n44"],
+    ["base_checkpoint", "ckpt-171"],
+    ["round", "172"],
+    ["local_steps", "500"],
+    ["weight", "182340992"],
+    ["manifest", "abc123"],
+    ["x", "<bundle_digest>"],
+    ["url", "https://store.example/upd-r172-n44"]
+  ]
+}
+```
+
+Example accepted aggregate locator:
+
+```jsonc
+{
+  "kind": 39520,
+  "content": "{\"schema\":1,\"artifact_role\":\"aggregate\",\"base_checkpoint_id\":\"ckpt-171\",\"round_index\":172,\"aggregation_rule\":\"weighted_avg\",\"aggregation_weight_basis\":\"tokens\",\"admitted_update_count\":9,\"admitted_weight_total\":\"1468123456\",\"promotion_state\":\"accepted\",\"promoted_checkpoint_id\":\"ckpt-172\",\"manifest_digest\":\"def456\"}",
+  "tags": [
+    ["d", "agg-r172"],
+    ["network", "psion-trainnet-a"],
+    ["window", "psion-r172"],
+    ["status", "accepted"],
+    ["class", "aggregate"],
+    ["artifact", "agg-r172"],
+    ["aggregate", "agg-r172"],
+    ["base_checkpoint", "ckpt-171"],
+    ["checkpoint", "ckpt-172"],
+    ["promotion", "accepted"],
+    ["round", "172"],
+    ["manifest", "def456"],
+    ["x", "<aggregate_digest>"],
+    ["url", "https://store.example/agg-r172"]
+  ]
+}
+```
 
 When `class=score`, the locator SHOULD reference a signed score snapshot file.
 That file SHOULD identify:
@@ -593,6 +859,14 @@ and the accepted checkpoint or weight locators it builds on. That makes it
 possible for other participants to see exactly what was reused, what changed,
 and where the new run started.
 
+For TRN-DiLoCo, a replacement coordinator or forking operator SHOULD determine
+the canonical starting point for the next round by locating the latest window
+whose round state is closed and whose accepted aggregate or promoted checkpoint
+is linked through signed receipts, validator verdicts, and artifact locators.
+When both an accepted aggregate and a promoted checkpoint are published, the
+promoted checkpoint SHOULD be treated as the canonical bootstrap artifact for
+the next round.
+
 ## Optional Profiles
 
 ### TRN-Discovery
@@ -627,6 +901,48 @@ Implementations MAY use NIP-90 for:
 
 TRN does not require NIP-90, but it composes well with it for narrow challenge
 flows.
+
+### TRN-DiLoCo
+
+TRN-DiLoCo is an optional profile for training systems that perform multiple
+local optimizer steps before a less frequent synchronization or aggregation
+step.
+
+This profile is useful for DiLoCo-style, local-SGD-style, or other
+periodically synchronized training runs where the coordination layer needs to
+publish:
+
+- the base checkpoint for one round
+- the expected number of local steps or equivalent local-work target
+- one or more signed local-update artifact pointers
+- the accepted aggregate or promoted checkpoint for the next round
+- replay or rejection reasons when a submitted local update is not admitted
+
+TRN-DiLoCo does not define runtime transport, tensor formats, or optimizer
+math.
+
+It defines only the metadata needed to make these rounds discoverable,
+auditable, recoverable, and forkable from relay history.
+
+Recommended tags for TRN-DiLoCo-enabled networks or windows are:
+
+- `["sync_profile", "diloco"]`
+- `["aggregation_rule", "weighted_avg|uniform_avg|custom"]`
+- `["aggregation_weight", "tokens|examples|steps|uniform|custom"]`
+- `["base_checkpoint", "<checkpoint_id>"]`
+- `["round", "<round_index>"]`
+- `["planned_local_steps", "<count>"]`
+- `["min_participants", "<count>"]`
+- `["min_weight_fraction", "<decimal_string>"]`
+- `["max_staleness_windows", "<count>"]`
+
+Implementations MAY add additional profile-specific tags, but they SHOULD make
+the base checkpoint, round identity, and aggregation weighting rule explicit.
+
+Implementations MAY also publish `inner_optimizer` and `outer_optimizer` in
+tags or compact JSON content when those fields are needed to interpret one
+round or one network policy, but TRN-DiLoCo does not require one optimizer
+pair.
 
 ### TRN-Reputation
 
@@ -704,6 +1020,17 @@ One training cycle can look like this:
    capabilities.
 3. A coordinator publishes a `kind:39510` window.
 4. Assignment receipts are emitted as `kind:39511` events.
+4a. Trainers perform local work outside Nostr starting from one shared base
+checkpoint for the round.
+4b. Each trainer publishes a `kind:39511` receipt with
+`status=update_submitted` and references one `kind:39520` locator with
+`class=local_update`.
+4c. Validators or aggregators publish verdicts over submitted local updates.
+4d. An aggregator publishes one `kind:39520` locator with `class=aggregate`
+for the candidate or accepted merged result.
+4e. A coordinator, checkpoint authority, or equivalent publisher emits
+`aggregate_accepted` or `checkpoint_promoted` receipts and links the promoted
+checkpoint for the next round.
 5. Heavy artifacts move outside Nostr.
 6. Validators publish `kind:39512` verdicts.
 7. Checkpoint, model-weight, proof, or score-snapshot metadata is published
@@ -726,3 +1053,5 @@ training itself runs on relays.
 - v0.1: standardized actor attribution with `p` tags, added assignment receipt
   profile guidance, standardized score snapshot publication through artifact
   locators, and defined recommended TRN reputation namespaces and labels
+- v0.2: added TRN-DiLoCo profile guidance for local-update rounds, aggregation
+  metadata, aggregate finalization, and checkpoint-promotion recovery
