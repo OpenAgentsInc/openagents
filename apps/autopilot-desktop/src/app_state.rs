@@ -13,6 +13,7 @@ use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
 };
+use openagents_provider_substrate::ProviderStatusResponse;
 use probe_protocol::session::{
     SessionExecutionHostKind as ProbeSessionExecutionHostKind, SessionHostedReceipts,
     SessionMountKind as ProbeSessionMountKind, SessionMountProvenance, SessionMountRef,
@@ -27199,6 +27200,7 @@ pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub source_tag: String,
     pub sats_today: u64,
     pub sats_this_month: u64,
     pub lifetime_sats: u64,
@@ -27222,6 +27224,7 @@ impl Default for EarningsScoreboardState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for wallet + job receipts".to_string()),
+            source_tag: "pylon.provider-admin.pending".to_string(),
             sats_today: 0,
             sats_this_month: 0,
             lifetime_sats: 0,
@@ -27250,6 +27253,7 @@ impl EarningsScoreboardState {
         spark_wallet: &SparkPaneState,
     ) {
         self.last_refreshed_at = Some(now);
+        self.source_tag = "autopilot.legacy.runtime+wallet+receipts".to_string();
         self.online_uptime_seconds = provider_runtime.uptime_seconds(now);
         self.last_error = None;
 
@@ -27354,6 +27358,98 @@ impl EarningsScoreboardState {
                 }
             })
             .unwrap_or_else(|| "none".to_string());
+    }
+
+    pub fn refresh_from_pylon_status(
+        &mut self,
+        now: Instant,
+        status: &ProviderStatusResponse,
+        source_tag: &str,
+        sats_this_month: u64,
+    ) {
+        self.last_refreshed_at = Some(now);
+        self.source_tag = source_tag.to_string();
+        self.tracked_online_since = None;
+        self.first_completed_since_online = None;
+        self.first_job_latency_seconds = None;
+
+        let Some(snapshot) = status.snapshot.as_ref() else {
+            self.mark_pylon_authority_unavailable(
+                now,
+                source_tag,
+                "Pylon provider admin has no persisted snapshot yet.",
+            );
+            return;
+        };
+        let Some(earnings) = snapshot.earnings.as_ref() else {
+            self.mark_pylon_authority_unavailable(
+                now,
+                source_tag,
+                "Pylon provider admin has no earnings summary yet.",
+            );
+            return;
+        };
+
+        self.load_state = if snapshot.runtime.authoritative_status.as_deref()
+            == Some("unconfigured")
+            || snapshot.runtime.last_error.is_some()
+        {
+            PaneLoadState::Error
+        } else {
+            PaneLoadState::Ready
+        };
+        self.last_error = snapshot
+            .runtime
+            .last_error
+            .as_ref()
+            .map(|error| format!("Pylon provider status: {error}"));
+        self.last_action = Some(match status.listen_addr.as_deref() {
+            Some(listen_addr) => {
+                format!("Authoritative provider earnings sourced from Pylon at {listen_addr}")
+            }
+            None => {
+                "Authoritative provider earnings sourced from cached Pylon admin state".to_string()
+            }
+        });
+        self.sats_today = earnings.sats_today;
+        self.sats_this_month = sats_this_month;
+        self.lifetime_sats = earnings.lifetime_sats;
+        self.jobs_today = earnings.jobs_today;
+        self.last_job_result = earnings.last_job_result.clone();
+        self.online_uptime_seconds = snapshot.runtime.online_uptime_seconds;
+        self.first_job_latency_seconds = earnings.first_job_latency_seconds;
+        self.completion_ratio_bps = earnings.completion_ratio_bps;
+        self.payout_success_ratio_bps = earnings.payout_success_ratio_bps;
+        self.avg_wallet_confirmation_latency_seconds =
+            earnings.avg_wallet_confirmation_latency_seconds;
+    }
+
+    pub fn mark_pylon_authority_unavailable(
+        &mut self,
+        now: Instant,
+        source_tag: &str,
+        detail: impl Into<String>,
+    ) {
+        self.last_refreshed_at = Some(now);
+        self.source_tag = source_tag.to_string();
+        self.load_state = PaneLoadState::Error;
+        self.last_action = Some(
+            "Autopilot now delegates provider earnings to Pylon. Start Pylon or point Autopilot at the Pylon admin store to see live provider truth."
+                .to_string(),
+        );
+        self.last_error = Some(detail.into());
+        self.sats_today = 0;
+        self.sats_this_month = 0;
+        self.lifetime_sats = 0;
+        self.jobs_today = 0;
+        self.last_job_result = "pylon unavailable".to_string();
+        self.online_uptime_seconds = 0;
+        self.first_job_latency_seconds = None;
+        self.completion_ratio_bps = None;
+        self.payout_success_ratio_bps = None;
+        self.avg_wallet_confirmation_latency_seconds = None;
+        self.tracked_online_since = None;
+        self.first_completed_since_online = None;
     }
 
     pub fn is_stale(&self, now: Instant) -> bool {

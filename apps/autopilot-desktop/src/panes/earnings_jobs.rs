@@ -233,7 +233,11 @@ pub fn paint_earnings_jobs_pane(
         return;
     }
 
-    paint_source_badge(content_bounds, "runtime+wallet+receipts", paint);
+    paint_source_badge(
+        content_bounds,
+        earnings_scoreboard.source_tag.as_str(),
+        paint,
+    );
 
     paint_tertiary_button(
         earnings_scoreboard_refresh_button_bounds(content_bounds),
@@ -371,7 +375,7 @@ fn paint_inactive_preview(
     spark_wallet: &SparkPaneState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(bounds, "runtime+wallet+receipts", paint);
+    paint_source_badge(bounds, earnings_scoreboard.source_tag.as_str(), paint);
 
     let summary_bottom = paint_state_summary(
         paint,
