@@ -173,10 +173,17 @@ smoke check by default. The rollout only sticks if the freshly started image
 produces completed payout sends after restart. If the smoke check times out, it
 automatically rolls production back to the previous image.
 
+The smoke gate now treats the first `NEXUS_DEPLOY_POST_RESTART_WARMUP_GRACE_SECONDS`
+after restart as explicit treasury warmup time and logs that phase as
+`warming_up` instead of a generic stall. The default smoke timeout is now
+`360s`, which gives production wallet sync and the first payout window room to
+settle before rollback is considered.
+
 Smoke knobs:
 
 - `NEXUS_DEPLOY_POST_RESTART_SMOKE_ENABLED`
 - `NEXUS_DEPLOY_POST_RESTART_SMOKE_TIMEOUT_SECONDS`
+- `NEXUS_DEPLOY_POST_RESTART_WARMUP_GRACE_SECONDS`
 - `NEXUS_DEPLOY_POST_RESTART_SMOKE_POLL_SECONDS`
 
 ## Upgrade Validation

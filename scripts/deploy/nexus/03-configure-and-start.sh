@@ -192,13 +192,14 @@ perform_post_restart_smoke_check() {
   post_restart_smoke_check_enabled || return 0
 
   local timeout_seconds="${NEXUS_DEPLOY_POST_RESTART_SMOKE_TIMEOUT_SECONDS}"
+  local warmup_grace_seconds="${NEXUS_DEPLOY_POST_RESTART_WARMUP_GRACE_SECONDS:-${NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS:-180}}"
   local poll_seconds="${NEXUS_DEPLOY_POST_RESTART_SMOKE_POLL_SECONDS}"
   local deadline_unix_s
   deadline_unix_s="$(( $(date +%s) + timeout_seconds ))"
 
   while (( $(date +%s) < deadline_unix_s )); do
     local service_state service_start_unix_s recent_completed status_json
-    local sellable_targets wallet_runtime_status last_dispatch_at_unix_ms
+    local sellable_targets wallet_runtime_status last_dispatch_at_unix_ms service_uptime_seconds
 
     service_state="$(
       gcloud compute ssh "$NEXUS_VM" \
@@ -215,6 +216,10 @@ perform_post_restart_smoke_check() {
     fi
 
     service_start_unix_s="$(remote_nexus_service_start_unix_s)"
+    service_uptime_seconds="unknown"
+    if [[ "$service_start_unix_s" =~ ^[0-9]+$ ]] && (( service_start_unix_s > 0 )); then
+      service_uptime_seconds="$(( $(date +%s) - service_start_unix_s ))"
+    fi
     recent_completed="0"
     if [[ "$service_start_unix_s" =~ ^[0-9]+$ ]] && (( service_start_unix_s > 0 )); then
       recent_completed="$(remote_recent_completed_sends_since "$service_start_unix_s" | tr -d '[:space:]')"
@@ -240,7 +245,13 @@ perform_post_restart_smoke_check() {
       fi
     fi
 
-    log "Waiting for post-deploy payout smoke image=${deployed_image} service_state=${service_state} recent_completed=${recent_completed} sellable=${sellable_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+    if [[ "$service_uptime_seconds" =~ ^[0-9]+$ ]] && (( service_uptime_seconds < warmup_grace_seconds )); then
+      log "Warming up post-deploy smoke image=${deployed_image} service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} sellable=${sellable_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+      sleep "$poll_seconds"
+      continue
+    fi
+
+    log "Waiting for post-deploy payout smoke image=${deployed_image} phase=stalled_candidate service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} sellable=${sellable_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
     sleep "$poll_seconds"
   done
 
