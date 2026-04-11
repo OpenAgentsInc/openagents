@@ -15359,6 +15359,7 @@ pub(super) fn run_mission_control_action(
                 &state.gpt_oss_execution,
                 provider_blockers.as_slice(),
                 &state.spark_wallet,
+                &state.earnings_scoreboard,
             );
             state.mission_control.dismiss_alert(signature);
             true
