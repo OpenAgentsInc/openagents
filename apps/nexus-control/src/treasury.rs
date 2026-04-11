@@ -75,6 +75,15 @@ const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
+const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
+    &["public_snapshot"],
+    &["public_snapshot", "active_continuity_alerts"],
+    &[
+        "public_snapshot",
+        "active_continuity_alerts",
+        "last_wallet_recovery_report",
+    ],
+];
 
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
@@ -195,6 +204,11 @@ impl TreasuryConfig {
     pub fn wallet_refresh_timeout_ms(&self) -> u64 {
         TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS
             .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
+    }
+
+    pub fn wallet_snapshot_stale_after_ms(&self) -> u64 {
+        TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS
+            .max(self.wallet_status_refresh_interval_ms().saturating_mul(2))
     }
 
     pub fn reconciliation_horizon_ms(&self) -> u64 {
@@ -895,12 +909,96 @@ pub struct TreasuryFundingMaterial {
     pub wallet_snapshot: TreasuryWalletSnapshot,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct TreasuryStateSalvagedTotals {
+    payout_sats_paid_total: Option<u64>,
+    visible_payout_sats_paid_total: Option<u64>,
+}
+
+fn json_value_to_u64(value: Option<&serde_json::Value>) -> Option<u64> {
+    let value = value?;
+    value
+        .as_u64()
+        .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
+        .or_else(|| value.as_str().and_then(|value| value.parse::<u64>().ok()))
+}
+
+fn treasury_state_salvaged_totals_from_payload(payload: &str) -> TreasuryStateSalvagedTotals {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return TreasuryStateSalvagedTotals::default();
+    };
+    let payout_sats_paid_total = json_value_to_u64(value.get("payout_sats_paid_total"));
+    let visible_payout_sats_paid_total = value
+        .get("public_snapshot")
+        .and_then(|snapshot| json_value_to_u64(snapshot.get("payout_sats_paid_total")));
+    TreasuryStateSalvagedTotals {
+        payout_sats_paid_total,
+        visible_payout_sats_paid_total,
+    }
+}
+
+fn recover_treasury_state_from_value(
+    value: serde_json::Value,
+) -> Option<(TreasuryState, &'static [&'static str])> {
+    let serde_json::Value::Object(object) = value else {
+        return None;
+    };
+    for dropped_fields in TREASURY_STATE_RECOVERY_DROP_FIELD_SETS {
+        let mut candidate = object.clone();
+        for field in *dropped_fields {
+            candidate.remove(*field);
+        }
+        if let Ok(state) =
+            serde_json::from_value::<TreasuryState>(serde_json::Value::Object(candidate))
+        {
+            return Some((state, dropped_fields));
+        }
+    }
+    None
+}
+
+fn recovered_treasury_state_from_payload(
+    payload: &str,
+    error: &serde_json::Error,
+) -> TreasuryState {
+    let salvaged_totals = treasury_state_salvaged_totals_from_payload(payload);
+    let recovered = serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(recover_treasury_state_from_value);
+    let (mut state, recovery_detail) = if let Some((mut state, dropped_fields)) = recovered {
+        if let Some(payout_sats_paid_total) = salvaged_totals.payout_sats_paid_total {
+            state.payout_sats_paid_total = state.payout_sats_paid_total.max(payout_sats_paid_total);
+        }
+        (
+            state,
+            format!("recovered_without={}", dropped_fields.join(",")),
+        )
+    } else {
+        let mut state = TreasuryState::default();
+        state.payout_sats_paid_total = salvaged_totals
+            .visible_payout_sats_paid_total
+            .or(salvaged_totals.payout_sats_paid_total)
+            .unwrap_or_default();
+        (state, "recovered_from=salvaged_totals_only".to_string())
+    };
+    let detail = format!("treasury_state_deserialize_failed:{error}:{recovery_detail}");
+    state.public_snapshot = None;
+    state.wallet_runtime_status = Some("error".to_string());
+    state.wallet_last_error = Some(detail.clone());
+    state.payout_loop_runtime_status = Some("error".to_string());
+    state.payout_loop_last_error = Some(detail);
+    state
+}
+
 impl TreasuryState {
     pub fn new(state_path: PathBuf) -> Self {
-        let mut loaded = fs::read_to_string(state_path.as_path())
-            .ok()
-            .and_then(|payload| serde_json::from_str::<Self>(payload.as_str()).ok())
-            .unwrap_or_default();
+        let mut loaded = match fs::read_to_string(state_path.as_path()) {
+            Ok(payload) => match serde_json::from_str::<Self>(payload.as_str()) {
+                Ok(state) => state,
+                Err(error) => recovered_treasury_state_from_payload(payload.as_str(), &error),
+            },
+            Err(_) => Self::default(),
+        };
         loaded.state_path = Some(state_path);
         if loaded.next_challenge_nonce == 0 {
             loaded.next_challenge_nonce = 1;
@@ -1235,9 +1333,9 @@ impl TreasuryState {
             .last_wallet_sync_at_unix_ms
             .map(|last_sync| now_unix_ms.saturating_sub(last_sync));
 
-        if snapshot_age_ms.is_some_and(|lag| lag >= TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS)
-            || wallet_sync_lag_ms
-                .is_some_and(|lag| lag >= TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS)
+        let stale_after_ms = config.wallet_snapshot_stale_after_ms();
+        if snapshot_age_ms.is_some_and(|lag| lag >= stale_after_ms)
+            || wallet_sync_lag_ms.is_some_and(|lag| lag >= stale_after_ms)
         {
             active_alerts.push(TreasuryContinuityAlert {
                 alert_id: "snapshot_stale".to_string(),
@@ -1364,8 +1462,8 @@ impl TreasuryState {
             let Some(last_wallet_sync_at_unix_ms) = self.last_wallet_sync_at_unix_ms else {
                 return Some("wallet_unsynced".to_string());
             };
-            if self.wallet_refresh_due(config, now_unix_ms) {
-                let lag_ms = now_unix_ms.saturating_sub(last_wallet_sync_at_unix_ms);
+            let lag_ms = now_unix_ms.saturating_sub(last_wallet_sync_at_unix_ms);
+            if lag_ms >= config.wallet_snapshot_stale_after_ms() {
                 return Some(format!("wallet_snapshot_stale:{lag_ms}"));
             }
         }
@@ -3837,9 +3935,8 @@ async fn open_wallet_uncached(
 }
 
 async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
-    let network_status = wallet.network_status().await;
     let balance = wallet
-        .get_balance()
+        .get_balance_cached()
         .await
         .context("failed to fetch treasury Spark balance")?;
     let payments = wallet
@@ -3847,11 +3944,18 @@ async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWal
         .await
         .context("failed to list treasury Spark payments")?;
     Ok(TreasuryWalletSnapshot {
-        runtime_status: wallet_network_status_label(&network_status).to_string(),
-        runtime_detail: network_status.detail,
+        runtime_status: "connected".to_string(),
+        runtime_detail: None,
         balance_sats: balance.total_sats(),
         payments,
     })
+}
+
+fn wallet_network_status_label(status: &openagents_spark::NetworkStatusReport) -> &'static str {
+    match status.status {
+        NetworkStatus::Connected => "connected",
+        NetworkStatus::Disconnected => "disconnected",
+    }
 }
 
 fn ensure_wallet_mnemonic(path: &Path, create_if_missing: bool) -> Result<String> {
@@ -3929,13 +4033,6 @@ fn resolve_wallet_api_key(config_env: Option<&str>) -> Option<String> {
         return Some(value);
     }
     Some(DEFAULT_OPENAGENTS_SPARK_API_KEY.to_string())
-}
-
-fn wallet_network_status_label(status: &openagents_spark::NetworkStatusReport) -> &'static str {
-    match status.status {
-        NetworkStatus::Connected => "connected",
-        NetworkStatus::Disconnected => "disconnected",
-    }
 }
 
 fn read_env_nonempty(name: &str) -> Option<String> {
@@ -4687,6 +4784,33 @@ mod tests {
     }
 
     #[test]
+    fn wallet_snapshot_stale_respects_refresh_budget() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.wallet_status_refresh_seconds = 30;
+        let now_unix_ms = 1_000_000;
+
+        state.apply_wallet_snapshot(
+            &TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 500,
+                payments: Vec::new(),
+            },
+            now_unix_ms,
+        );
+
+        let healthy_stats = state.public_stats(&config, now_unix_ms.saturating_add(30_000));
+        assert_eq!(healthy_stats.degraded_reason, None);
+
+        let warning_stats = state.public_stats(&config, now_unix_ms.saturating_add(60_001));
+        assert_eq!(
+            warning_stats.degraded_reason.as_deref(),
+            Some("wallet_snapshot_stale:60001")
+        );
+    }
+
+    #[test]
     fn reason_metrics_break_out_skip_and_fail_reasons() {
         let mut state = TreasuryState::default();
         state.payout_records_by_key.insert(
@@ -4998,6 +5122,43 @@ mod tests {
             Some(config.wallet_storage_dir.display().to_string().as_str())
         );
         assert!(parsed_report.cutover_completed_at_unix_ms.is_some());
+    }
+
+    #[test]
+    fn treasury_state_load_preserves_paid_total_when_deserialize_fails() {
+        let work_dir = unique_temp_dir("state-recovery");
+        fs::create_dir_all(work_dir.as_path()).expect("work dir");
+        let state_path = work_dir.join("treasury-state.json");
+        fs::write(
+            state_path.as_path(),
+            r#"{
+  "payout_sats_paid_total": 139813,
+  "public_snapshot": {
+    "generated_at_unix_ms": 1775887507000,
+    "payout_sats_paid_total": 139821
+  },
+  "next_challenge_nonce": "oops"
+}
+"#,
+        )
+        .expect("state file");
+
+        let config = test_treasury_config();
+        let state = TreasuryState::new(state_path);
+        let stats = state.public_stats(&config, 1_775_887_507_001);
+
+        assert_eq!(state.payout_sats_paid_total, 139821);
+        assert_eq!(stats.payout_sats_paid_total, 139821);
+        assert_eq!(state.wallet_runtime_status.as_deref(), Some("error"));
+        assert!(
+            state
+                .wallet_last_error
+                .as_deref()
+                .is_some_and(|detail| detail.contains("treasury_state_deserialize_failed"))
+        );
+        assert_eq!(state.payout_loop_runtime_status.as_deref(), Some("error"));
+        assert_eq!(state.next_challenge_nonce, 1);
+        assert!(state.public_snapshot.is_none());
     }
 
     #[test]
