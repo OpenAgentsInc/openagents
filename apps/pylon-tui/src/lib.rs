@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use bottom_pane::{BottomPane, ComposerSubmission};
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
@@ -51,13 +51,66 @@ fn shell_accent() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
+fn success_accent() -> Style {
+    Style::default()
+        .fg(Color::Rgb(0xf1, 0xff, 0xf3))
+        .bg(Color::Rgb(0x12, 0x5f, 0x2d))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn warning_accent() -> Style {
+    Style::default()
+        .fg(Color::Rgb(0x20, 0x15, 0x00))
+        .bg(Color::Rgb(0xff, 0xcd, 0x6b))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn danger_accent() -> Style {
+    Style::default()
+        .fg(Color::Rgb(0xff, 0xf2, 0xee))
+        .bg(Color::Rgb(0x8c, 0x22, 0x22))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn muted_text() -> Style {
+    Style::default().fg(Color::Rgb(0x8b, 0xc7, 0xff))
+}
+
+fn emphasis_text() -> Style {
+    Style::default()
+        .fg(Color::Rgb(0xf8, 0xf4, 0xe3))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn panel_title_slash() -> Style {
+    Style::default().fg(Color::Rgb(0x9b, 0xd6, 0xff))
+}
+
+fn key_label(label: &str) -> Span<'static> {
+    Span::styled(format!("{label}: "), muted_text())
+}
+
+fn pulse_highlight_text() -> Style {
+    Style::default()
+        .fg(Color::Rgb(0xf8, 0xf4, 0xe3))
+        .bg(Color::Rgb(0x1c, 0x3b, 0x55))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn panel_title(title: impl Into<String>) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(" // ", panel_title_slash()),
+        Span::styled(title.into(), shell_border().add_modifier(Modifier::BOLD)),
+    ])
+}
+
 fn panel(title: &str, body: Text<'static>) -> Paragraph<'static> {
     Paragraph::new(body)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .padding(Padding::horizontal(1))
-                .title(format!("─ {title} "))
+                .title(panel_title(title))
                 .style(shell_border()),
         )
         .wrap(Wrap { trim: false })
@@ -110,16 +163,105 @@ struct OperatorPanelStats {
     runtime_error: Option<String>,
     backend_label: Option<String>,
     provider_presence_online: bool,
+    wallet_runtime_status: Option<String>,
     wallet_balance: Option<pylon::WalletBalanceSnapshot>,
     wallet_balance_live: bool,
     jobs_found_24h: u64,
     matching_jobs_24h: u64,
     jobs_processed_24h: u64,
     jobs_settled_24h: u64,
+    session_earnings_sats: u64,
+    settled_sats_24h: u64,
+    settled_sats_lifetime: u64,
+    total_earnings_sats: u64,
     awaiting_payment_jobs: u64,
     processing_jobs: u64,
     last_job_result: Option<String>,
+    last_provider_event_at_ms: Option<u64>,
+    recent_activity: Vec<String>,
     online_uptime_seconds: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct WalletSurfaceState {
+    runtime_status: Option<String>,
+    runtime_detail: Option<String>,
+    network: Option<String>,
+    balance: Option<pylon::WalletBalanceSnapshot>,
+    balance_live: bool,
+    spark_address: Option<String>,
+    bitcoin_address: Option<String>,
+    latest_invoice: Option<pylon::PylonWalletInvoiceRecord>,
+    recent_payments: Vec<pylon::PylonWalletPaymentRecord>,
+    identity_path: Option<PathBuf>,
+    last_error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StackerRank {
+    name: &'static str,
+    threshold_sats: u64,
+}
+
+const STACKER_RANKS: [StackerRank; 8] = [
+    StackerRank {
+        name: "Pleb",
+        threshold_sats: 0,
+    },
+    StackerRank {
+        name: "Drifter",
+        threshold_sats: 1_000,
+    },
+    StackerRank {
+        name: "Runner",
+        threshold_sats: 10_000,
+    },
+    StackerRank {
+        name: "Courier",
+        threshold_sats: 100_000,
+    },
+    StackerRank {
+        name: "Operator",
+        threshold_sats: 1_000_000,
+    },
+    StackerRank {
+        name: "Captain",
+        threshold_sats: 10_000_000,
+    },
+    StackerRank {
+        name: "Sovereign",
+        threshold_sats: 50_000_000,
+    },
+    StackerRank {
+        name: "King",
+        threshold_sats: 100_000_000,
+    },
+];
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum SidebarView {
+    #[default]
+    Operate,
+    Wallet,
+    Inspect,
+}
+
+impl SidebarView {
+    fn toggle(&mut self) {
+        *self = match self {
+            Self::Operate => Self::Wallet,
+            Self::Wallet => Self::Inspect,
+            Self::Inspect => Self::Operate,
+        };
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Operate => "operate",
+            Self::Wallet => "wallet",
+            Self::Inspect => "inspect",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -131,8 +273,8 @@ enum ProviderCommandInFlight {
 impl ProviderCommandInFlight {
     fn state_label(&self) -> &'static str {
         match self {
-            Self::Scan { .. } => "scan active",
-            Self::Run { .. } => "run active",
+            Self::Scan { .. } => "Scanning requests",
+            Self::Run { .. } => "Listening for work",
         }
     }
 
@@ -190,6 +332,7 @@ enum WorkerEvent {
         loaded: Option<LoadedState>,
         installed_gemma_models: BTreeMap<String, u64>,
         operator_stats: OperatorPanelStats,
+        wallet_surface: WalletSurfaceState,
         last_error: Option<String>,
         last_wallet_error: Option<String>,
         provider_presence_online: bool,
@@ -334,12 +477,19 @@ struct AppShell {
     installed_gemma_models: BTreeMap<String, u64>,
     gemma_downloads: BTreeMap<String, GemmaDownloadProgressState>,
     operator_stats: OperatorPanelStats,
+    wallet_surface: WalletSurfaceState,
     provider_command_in_flight: Option<ProviderCommandInFlight>,
+    sidebar_view: SidebarView,
     transcript_follow_latest: bool,
     transcript_scroll_y: u16,
     transcript_wrap_width: u16,
     transcript_viewport_height: u16,
     transcript_max_scroll_y: u16,
+    animation_started_at: Instant,
+    live_activity_pulse_until: Option<Instant>,
+    session_started_at_ms: u64,
+    latest_paid_moment: Option<(u64, Instant)>,
+    latest_rank_up_moment: Option<(String, String, Instant)>,
 }
 
 impl AppShell {
@@ -354,7 +504,7 @@ impl AppShell {
         transcript.push_entry(TranscriptEntry::new(
             TranscriptRole::System,
             "Shell Ready",
-            vec![String::from("Type a prompt. /help shows commands.")],
+            vec![String::from("Ask Gemma or type /help.")],
         ));
         Self {
             installed_gemma_models: installed_gemma_models(config_path.as_path()),
@@ -387,12 +537,19 @@ impl AppShell {
             pending_chat_prompt: None,
             gemma_downloads: BTreeMap::new(),
             operator_stats: OperatorPanelStats::default(),
+            wallet_surface: WalletSurfaceState::default(),
             provider_command_in_flight: None,
+            sidebar_view: SidebarView::Operate,
             transcript_follow_latest: true,
             transcript_scroll_y: 0,
             transcript_wrap_width: 0,
             transcript_viewport_height: 0,
             transcript_max_scroll_y: 0,
+            animation_started_at: Instant::now(),
+            live_activity_pulse_until: None,
+            session_started_at_ms: current_epoch_ms_u64(),
+            latest_paid_moment: None,
+            latest_rank_up_moment: None,
         }
     }
 
@@ -427,6 +584,7 @@ impl AppShell {
         }
 
         match key.code {
+            KeyCode::Tab => self.sidebar_view.toggle(),
             KeyCode::PageUp => self.scroll_transcript_up(10),
             KeyCode::PageDown => self.scroll_transcript_down(10),
             _ => {}
@@ -829,13 +987,45 @@ impl AppShell {
                 loaded,
                 installed_gemma_models,
                 operator_stats,
+                wallet_surface,
                 last_error,
                 last_wallet_error,
                 provider_presence_online,
             } => {
+                let previous_stats = self.operator_stats.clone();
+                let operator_stats =
+                    stabilize_operator_panel_stats(previous_stats.clone(), operator_stats);
+                let activity_changed =
+                    previous_stats.recent_activity != operator_stats.recent_activity;
+                let paid_delta_sats = operator_stats
+                    .session_earnings_sats
+                    .saturating_sub(previous_stats.session_earnings_sats);
+                if paid_delta_sats > 0 && self.last_refresh_at.is_some() {
+                    let until = Instant::now() + Duration::from_millis(3200);
+                    self.latest_paid_moment = Some((paid_delta_sats, until));
+                    self.live_activity_pulse_until = Some(until);
+                }
+                let previous_rank =
+                    stacker_rank_progress(previous_stats.total_earnings_sats).current.name;
+                let current_rank =
+                    stacker_rank_progress(operator_stats.total_earnings_sats).current.name;
+                if previous_rank != current_rank && self.last_refresh_at.is_some() {
+                    let until = Instant::now() + Duration::from_millis(4200);
+                    self.latest_rank_up_moment = Some((
+                        previous_rank.to_string(),
+                        current_rank.to_string(),
+                        until,
+                    ));
+                    self.live_activity_pulse_until = Some(until);
+                }
                 self.loaded = loaded;
                 self.installed_gemma_models = installed_gemma_models;
                 self.operator_stats = operator_stats;
+                self.wallet_surface = wallet_surface;
+                if activity_changed && !self.operator_stats.recent_activity.is_empty() {
+                    self.live_activity_pulse_until =
+                        Some(Instant::now() + Duration::from_millis(1800));
+                }
                 self.last_error = last_error;
                 self.last_wallet_error = last_wallet_error;
                 self.provider_presence_online = provider_presence_online;
@@ -848,6 +1038,26 @@ impl AppShell {
                     } else {
                         REFRESH_RATE
                     };
+                if self
+                    .live_activity_pulse_until
+                    .is_some_and(|until| Instant::now() >= until)
+                {
+                    self.live_activity_pulse_until = None;
+                }
+                if self
+                    .latest_paid_moment
+                    .as_ref()
+                    .is_some_and(|(_, until)| Instant::now() >= *until)
+                {
+                    self.latest_paid_moment = None;
+                }
+                if self
+                    .latest_rank_up_moment
+                    .as_ref()
+                    .is_some_and(|(_, _, until)| Instant::now() >= *until)
+                {
+                    self.latest_rank_up_moment = None;
+                }
             }
             WorkerEvent::StreamStarted(model) => {
                 self.active_chat_target = Some(model.clone());
@@ -1724,8 +1934,26 @@ impl AppShell {
     }
 
     fn handle_wallet_command(&mut self, args: String) {
+        let trimmed = args.trim();
+        if trimmed.is_empty() || trimmed == "show" {
+            self.push_system_lines("Wallet", self.wallet_home_transcript_lines());
+            return;
+        }
+        if trimmed == "receive" {
+            self.start_wallet_receive();
+            return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("withdraw") {
+            self.start_wallet_withdraw_alias(remainder.trim());
+            return;
+        }
+        if let Some(remainder) = trimmed.strip_prefix("recovery") {
+            self.handle_wallet_recovery_command(remainder.trim());
+            return;
+        }
+
         let mut argv = vec![String::from("wallet")];
-        if args.trim().is_empty() {
+        if trimmed.is_empty() {
             argv.push(String::from("status"));
         } else {
             argv.extend(args.split_whitespace().map(ToString::to_string));
@@ -1755,7 +1983,7 @@ impl AppShell {
                 }
             };
             let result = runtime.block_on(async move {
-                pylon::run_wallet_command(config_path.as_path(), &command).await
+                render_wallet_command_output(config_path.as_path(), &command).await
             });
             match result {
                 Ok(output) => {
@@ -1769,6 +1997,172 @@ impl AppShell {
             }
         });
         self.push_system_message("Wallet", "Running wallet command...");
+    }
+
+    fn wallet_home_transcript_lines(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "Status: {}",
+            self.wallet_surface
+                .runtime_status
+                .clone()
+                .unwrap_or_else(|| "warming up".to_string())
+        ));
+        if let Some(network) = self.wallet_surface.network.as_deref() {
+            lines.push(format!("Network: {network}"));
+        }
+        if let Some(balance) = self.wallet_surface.balance.as_ref() {
+            lines.push(format!("Total balance: {}", format_sats(balance.total_sats)));
+            lines.push(format!(
+                "Balance mix: {} Spark, {} Lightning, {} on-chain",
+                format_sats(balance.spark_sats),
+                format_sats(balance.lightning_sats),
+                format_sats(balance.onchain_sats)
+            ));
+        } else {
+            lines.push("Total balance: unavailable".to_string());
+        }
+        lines.push(String::new());
+        lines.push("Receive: /wallet receive".to_string());
+        lines.push("Create invoice: /wallet invoice <sats>".to_string());
+        lines.push("Withdraw: /wallet withdraw <lightning_invoice>".to_string());
+        lines.push("Recovery: /wallet recovery".to_string());
+        lines
+    }
+
+    fn start_wallet_receive(&mut self) {
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                let report = pylon::create_wallet_address_report(config_path.as_path()).await?;
+                Ok::<String, anyhow::Error>(render_wallet_receive_output(&report))
+            });
+            match result {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::WalletCommandFinished {
+                        title: "Wallet Receive".to_string(),
+                        output,
+                    });
+                }
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Wallet", "Refreshing receive addresses...");
+    }
+
+    fn start_wallet_withdraw_alias(&mut self, remainder: &str) {
+        if remainder.is_empty() {
+            self.push_system_lines(
+                "Wallet Withdraw",
+                vec![
+                    "Paste a Lightning invoice from your real wallet after the command.".to_string(),
+                    "Usage: /wallet withdraw <lightning_invoice> [--amount-sats <n>]".to_string(),
+                ],
+            );
+            return;
+        }
+        let mut argv = vec![String::from("wallet"), String::from("pay")];
+        argv.extend(remainder.split_whitespace().map(ToString::to_string));
+        let command = match pylon::parse_wallet_command(argv.as_slice(), 0) {
+            Ok(command) => command,
+            Err(error) => {
+                self.push_system_message("Wallet Error", error.to_string());
+                return;
+            }
+        };
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let error_tx = tx.clone();
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
+                        error: error.to_string(),
+                    });
+                    return;
+                }
+            };
+            let result = runtime.block_on(async move {
+                render_wallet_command_output(config_path.as_path(), &command).await
+            });
+            match result {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::WalletCommandFinished {
+                        title: "Wallet Withdraw".to_string(),
+                        output,
+                    });
+                }
+                Err(error) => {
+                    let _ = error_tx.send(WorkerEvent::WalletCommandFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Wallet", "Submitting Lightning withdrawal...");
+    }
+
+    fn handle_wallet_recovery_command(&mut self, remainder: &str) {
+        if remainder.is_empty() || remainder == "show" {
+            let mut lines = vec![
+                "Recovery phrase is hidden by default.".to_string(),
+                "It controls both this Spark wallet and this node identity.".to_string(),
+                "Run /wallet recovery reveal only in a private place you trust.".to_string(),
+            ];
+            if let Some(path) = self.wallet_surface.identity_path.as_ref() {
+                lines.push(format!("Stored at: {}", path.display()));
+            }
+            self.push_system_lines("Wallet Recovery", lines);
+            return;
+        }
+        if remainder != "reveal" {
+            self.push_system_message(
+                "Wallet Error",
+                "Usage: /wallet recovery [show|reveal]",
+            );
+            return;
+        }
+        let config_path = self.config_path.clone();
+        let tx = self.worker_tx.clone();
+        std::thread::spawn(move || {
+            let result = reveal_wallet_recovery_phrase(config_path.as_path());
+            match result {
+                Ok(output) => {
+                    let _ = tx.send(WorkerEvent::WalletCommandFinished {
+                        title: "Wallet Recovery".to_string(),
+                        output,
+                    });
+                }
+                Err(error) => {
+                    let _ = tx.send(WorkerEvent::WalletCommandFailed {
+                        error: error.to_string(),
+                    });
+                }
+            }
+        });
+        self.push_system_message("Wallet Recovery", "Revealing the local recovery phrase...");
     }
 
     fn handle_payout_command(&mut self, args: String) {
@@ -1924,6 +2318,7 @@ impl AppShell {
         let tx = self.worker_tx.clone();
         let session_id = self.provider_presence_session_id.clone();
         let provider_presence_online = self.provider_presence_online;
+        let session_started_at_ms = self.session_started_at_ms;
         let heartbeat_due = Instant::now() >= self.next_provider_presence_heartbeat_at;
         std::thread::spawn(move || {
             let installed_gemma_models = installed_gemma_models(config_path.as_path());
@@ -1937,6 +2332,7 @@ impl AppShell {
                         loaded: None,
                         installed_gemma_models,
                         operator_stats: OperatorPanelStats::default(),
+                        wallet_surface: WalletSurfaceState::default(),
                         last_error: Some(error.to_string()),
                         last_wallet_error: None,
                         provider_presence_online,
@@ -1947,6 +2343,20 @@ impl AppShell {
             let event = runtime.block_on(async move {
                 match pylon::ensure_local_setup(config_path.as_path()) {
                     Ok(_) => {
+                        let config = match pylon::load_config_or_default(config_path.as_path()) {
+                            Ok(config) => config,
+                            Err(error) => {
+                                return WorkerEvent::RefreshCompleted {
+                                    loaded: None,
+                                    installed_gemma_models,
+                                    operator_stats: OperatorPanelStats::default(),
+                                    wallet_surface: WalletSurfaceState::default(),
+                                    last_error: Some(error.to_string()),
+                                    last_wallet_error: None,
+                                    provider_presence_online,
+                                };
+                            }
+                        };
                         let (wallet_status, last_wallet_error) =
                             match pylon::load_wallet_balance_status_report(config_path.as_path())
                                 .await
@@ -1972,6 +2382,11 @@ impl AppShell {
                                         snapshot: status.snapshot.clone(),
                                         wallet_status: wallet_status.clone(),
                                     }),
+                                    wallet_surface: build_wallet_surface(
+                                        &config,
+                                        wallet_status.as_ref(),
+                                        &ledger,
+                                    ),
                                     installed_gemma_models,
                                     operator_stats: compute_operator_panel_stats(
                                         status.desired_mode,
@@ -1979,6 +2394,7 @@ impl AppShell {
                                         wallet_status.as_ref(),
                                         status.snapshot.as_ref(),
                                         &ledger,
+                                        session_started_at_ms,
                                     ),
                                     last_error: None,
                                     last_wallet_error,
@@ -2002,6 +2418,11 @@ impl AppShell {
                                         snapshot: None,
                                         wallet_status: wallet_status.clone(),
                                     }),
+                                    wallet_surface: build_wallet_surface(
+                                        &config,
+                                        wallet_status.as_ref(),
+                                        &ledger,
+                                    ),
                                     installed_gemma_models,
                                     operator_stats: compute_operator_panel_stats(
                                         ProviderDesiredMode::Offline,
@@ -2009,6 +2430,7 @@ impl AppShell {
                                         wallet_status.as_ref(),
                                         None,
                                         &ledger,
+                                        session_started_at_ms,
                                     ),
                                     last_error: Some(error.to_string()),
                                     last_wallet_error,
@@ -2028,15 +2450,21 @@ impl AppShell {
                         )
                         .await;
                         let ledger = pylon::load_ledger(config_path.as_path()).unwrap_or_default();
+                        let wallet_surface = match pylon::load_config_or_default(config_path.as_path()) {
+                            Ok(config) => build_wallet_surface(&config, None, &ledger),
+                            Err(_) => WalletSurfaceState::default(),
+                        };
                         WorkerEvent::RefreshCompleted {
                             loaded: None,
                             installed_gemma_models,
+                            wallet_surface,
                             operator_stats: compute_operator_panel_stats(
                                 ProviderDesiredMode::Offline,
                                 provider_presence_online,
                                 None,
                                 None,
                                 &ledger,
+                                session_started_at_ms,
                             ),
                             last_error: Some(error.to_string()),
                             last_wallet_error: None,
@@ -2120,6 +2548,11 @@ impl AppShell {
             .title(Line::from(vec![
                 Span::styled(" Pylon ", shell_accent()),
                 Span::styled(" transcript shell ", shell_border()),
+                Span::raw("  "),
+                Span::styled(
+                    format!("{} view", self.sidebar_view.label()),
+                    shell_accent(),
+                ),
             ]))
             .style(shell_border());
         let area = frame.area();
@@ -2127,7 +2560,7 @@ impl AppShell {
         frame.render_widget(shell, area);
 
         let vertical = Layout::vertical([
-            Constraint::Length(3),
+            Constraint::Length(self.header_height()),
             Constraint::Min(10),
             Constraint::Length(self.bottom_pane.height()),
             Constraint::Length(2),
@@ -2136,64 +2569,146 @@ impl AppShell {
         let middle = Layout::horizontal([Constraint::Percentage(67), Constraint::Percentage(33)])
             .split(vertical[1]);
         self.update_transcript_layout(middle[0]);
-        let models_height = (self.model_lines().len() as u16 + 2).clamp(10, 14);
-        let operator_height = (self.operator_lines().len() as u16 + 2).clamp(9, 12);
-        let right_column = Layout::vertical([
-            Constraint::Min(6),
-            Constraint::Length(models_height),
-            Constraint::Length(operator_height),
-        ])
-        .split(middle[1]);
 
         frame.render_widget(self.header_panel(), vertical[0]);
         frame.render_widget(self.transcript_panel(), middle[0]);
-        frame.render_widget(self.summary_panel(), right_column[0]);
-        frame.render_widget(self.models_panel(), right_column[1]);
-        frame.render_widget(self.operator_panel(), right_column[2]);
+        match self.sidebar_view {
+            SidebarView::Operate => {
+                let operator_height = (self.operator_lines().len() as u16 + 2).clamp(7, 9);
+                let wallet_card_height = (self.wallet_card_lines().len() as u16 + 2).clamp(7, 9);
+                let rank_height = (self.rank_lines().len() as u16 + 2).clamp(8, 10);
+                let node_height = (self.summary_lines().len() as u16 + 2).clamp(6, 8);
+                let right_column = Layout::vertical([
+                    Constraint::Length(operator_height),
+                    Constraint::Length(wallet_card_height),
+                    Constraint::Length(rank_height),
+                    Constraint::Length(node_height),
+                    Constraint::Min(0),
+                ])
+                .split(middle[1]);
+                frame.render_widget(self.operator_panel(), right_column[0]);
+                frame.render_widget(self.wallet_card_panel(), right_column[1]);
+                frame.render_widget(self.rank_panel(), right_column[2]);
+                frame.render_widget(self.summary_panel(), right_column[3]);
+            }
+            SidebarView::Wallet => {
+                let wallet_height = (self.wallet_overview_lines().len() as u16 + 2).clamp(7, 9);
+                let receive_height = (self.wallet_receive_lines().len() as u16 + 2).clamp(8, 11);
+                let move_height = (self.wallet_withdraw_lines().len() as u16 + 2).clamp(7, 10);
+                let recovery_height =
+                    (self.wallet_recovery_lines().len() as u16 + 2).clamp(7, 10);
+                let right_column = Layout::vertical([
+                    Constraint::Length(wallet_height),
+                    Constraint::Length(receive_height),
+                    Constraint::Length(move_height),
+                    Constraint::Min(recovery_height),
+                ])
+                .split(middle[1]);
+                frame.render_widget(self.wallet_overview_panel(), right_column[0]);
+                frame.render_widget(self.wallet_receive_panel(), right_column[1]);
+                frame.render_widget(self.wallet_withdraw_panel(), right_column[2]);
+                frame.render_widget(self.wallet_recovery_panel(), right_column[3]);
+            }
+            SidebarView::Inspect => {
+                let models_height = (self.model_lines().len() as u16 + 2).clamp(10, 15);
+                let summary_height = (self.summary_lines().len() as u16 + 2).clamp(6, 8);
+                let right_column = Layout::vertical([
+                    Constraint::Length(models_height),
+                    Constraint::Length(summary_height),
+                    Constraint::Min(8),
+                ])
+                .split(middle[1]);
+                frame.render_widget(self.models_panel(), right_column[0]);
+                frame.render_widget(self.summary_panel(), right_column[1]);
+                frame.render_widget(self.diagnostics_panel(), right_column[2]);
+            }
+        }
         self.bottom_pane.render(
             frame,
             vertical[2],
             shell_border(),
             shell_accent(),
-            Some("Type a prompt. /help shows commands. Enter submits. Ctrl+J inserts a newline."),
+            Some("Ask Gemma or type /help"),
         );
         frame.render_widget(self.footer_panel(), vertical[3]);
     }
 
     fn header_panel(&self) -> Paragraph<'static> {
-        let (operator_state, _) = self.operator_state_label_and_detail();
-        let mut spans = vec![Span::styled("Pylon", shell_accent())];
-        spans.push(Span::raw(format!("  {operator_state}")));
-        if let Some(refresh_at) = self.last_refresh_at {
-            spans.push(Span::raw(format!(
-                "  refreshed {} ago",
-                format_duration(refresh_at.elapsed())
-            )));
-        } else {
-            spans.push(Span::raw("  booting"));
-        }
-        if self.refresh_in_flight {
-            spans.push(Span::raw("  refreshing"));
-        }
-        if self.last_error.is_some() {
-            spans.push(Span::styled(
-                "  refresh error",
-                Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
-            ));
-        }
-        Paragraph::new(Line::from(spans))
+        Paragraph::new(Text::from(self.header_lines()))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .padding(Padding::horizontal(1))
-                    .title("─ Status ")
+                    .title(panel_title("Mission Control"))
                     .style(shell_border()),
             )
             .wrap(Wrap { trim: false })
     }
 
+    fn header_height(&self) -> u16 {
+        4
+    }
+
+    fn header_lines(&self) -> Vec<Line<'static>> {
+        let (operator_state, _) = self.operator_state_label_and_detail();
+        let animation_phase = self.animation_phase();
+        let animation_tick = self.animation_tick();
+
+        let mut top_spans = vec![
+            Span::styled("Pylon", shell_accent()),
+            Span::raw("  "),
+            Span::styled(operator_state.clone(), state_badge_style(&operator_state)),
+            Span::raw("  "),
+            Span::styled(self.hero_status_copy(), muted_text()),
+        ];
+        top_spans.extend(mission_control_signal_spans(
+            operator_state.as_str(),
+            animation_tick,
+        ));
+        let top_line = Line::from(top_spans);
+
+        let mut bottom_spans = Vec::new();
+        if let Some(refresh_at) = self.last_refresh_at {
+            bottom_spans.push(Span::styled(
+                format!("refresh {}", format_duration(refresh_at.elapsed())),
+                muted_text(),
+            ));
+        } else {
+            bottom_spans.push(Span::styled(
+                format!("booting{}", animated_boot_suffix(animation_phase)),
+                muted_text(),
+            ));
+        }
+        if self.refresh_in_flight {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(
+                format!("refreshing{}", animated_boot_suffix(animation_phase)),
+                muted_text(),
+            ));
+        }
+        if let Some((amount_sats, _)) = self.visible_paid_moment() {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(
+                format!("+{} landed", format_sats(amount_sats)),
+                success_accent(),
+            ));
+        } else if let Some((_, to_rank, _)) = self.visible_rank_up_moment() {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(format!("ascended to {to_rank}"), shell_accent()));
+        }
+        if self.last_error.is_some() {
+            bottom_spans.push(Span::raw("  "));
+            bottom_spans.push(Span::styled(
+                "refresh error",
+                Style::default().fg(Color::Rgb(0xff, 0x9b, 0x7a)),
+            ));
+        }
+
+        vec![top_line, Line::from(bottom_spans)]
+    }
+
     fn summary_panel(&self) -> Paragraph<'static> {
-        panel("System", Text::from(self.summary_lines()))
+        panel("Node", Text::from(self.summary_lines()))
     }
 
     fn models_panel(&self) -> Paragraph<'static> {
@@ -2201,7 +2716,35 @@ impl AppShell {
     }
 
     fn operator_panel(&self) -> Paragraph<'static> {
-        panel("Pylon Operator", Text::from(self.operator_lines()))
+        panel("Earnings", Text::from(self.operator_lines()))
+    }
+
+    fn wallet_overview_panel(&self) -> Paragraph<'static> {
+        panel("Wallet", Text::from(self.wallet_overview_lines()))
+    }
+
+    fn wallet_card_panel(&self) -> Paragraph<'static> {
+        panel("Wallet", Text::from(self.wallet_card_lines()))
+    }
+
+    fn wallet_receive_panel(&self) -> Paragraph<'static> {
+        panel("Receive", Text::from(self.wallet_receive_lines()))
+    }
+
+    fn wallet_withdraw_panel(&self) -> Paragraph<'static> {
+        panel("Withdraw", Text::from(self.wallet_withdraw_lines()))
+    }
+
+    fn wallet_recovery_panel(&self) -> Paragraph<'static> {
+        panel("Recovery", Text::from(self.wallet_recovery_lines()))
+    }
+
+    fn rank_panel(&self) -> Paragraph<'static> {
+        panel("Stacker Rank", Text::from(self.rank_lines()))
+    }
+
+    fn diagnostics_panel(&self) -> Paragraph<'static> {
+        panel("Diagnostics", Text::from(self.diagnostics_lines()))
     }
 
     fn transcript_panel(&self) -> Paragraph<'static> {
@@ -2211,27 +2754,154 @@ impl AppShell {
                 Block::default()
                     .borders(Borders::ALL)
                     .padding(Padding::horizontal(1))
-                    .title(format!("─ {} ", self.transcript_panel_title()))
+                    .title(panel_title(self.transcript_panel_title()))
                     .style(shell_border()),
             )
             .wrap(Wrap { trim: false })
     }
 
     fn footer_panel(&self) -> Paragraph<'static> {
-        Paragraph::new(Line::from(vec![
-            Span::styled(" Ctrl+C ", shell_accent()),
-            Span::raw("quit  "),
-            Span::styled(" PgUp/PgDn ", shell_accent()),
-            Span::raw("scroll  "),
-            Span::styled(" Enter ", shell_accent()),
-            Span::raw("submit  "),
-            Span::styled(" /download ", shell_accent()),
-            Span::raw("pull weights"),
-        ]))
+        let mut spans = Vec::new();
+        for (index, (key, label)) in self.footer_segments().into_iter().enumerate() {
+            if index > 0 {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(format!(" {key} "), shell_accent()));
+            spans.push(Span::raw(label));
+        }
+        Paragraph::new(Line::from(spans))
         .block(Block::default().style(shell_border()))
     }
 
+    fn footer_segments(&self) -> Vec<(&'static str, &'static str)> {
+        match self.sidebar_view {
+            SidebarView::Operate => vec![
+                ("Ctrl+C", "quit"),
+                ("Tab", "wallet"),
+                ("/provider run", "listen"),
+                ("/wallet receive", "cash in"),
+                ("PgUp/PgDn", "scroll"),
+            ],
+            SidebarView::Wallet => vec![
+                ("Ctrl+C", "quit"),
+                ("Tab", "inspect"),
+                ("/wallet receive", "addresses"),
+                ("/wallet invoice", "request"),
+                ("/wallet withdraw", "send out"),
+            ],
+            SidebarView::Inspect => vec![
+                ("Ctrl+C", "quit"),
+                ("Tab", "operate"),
+                ("PgUp/PgDn", "scroll"),
+                ("/wallet", "view"),
+                ("/help", "commands"),
+            ],
+        }
+    }
+
+    fn hero_status_copy(&self) -> String {
+        let (state_label, detail) = self.operator_state_label_and_detail();
+        match state_label.as_str() {
+            "Listening for work" => "Listening across relays for paid work".to_string(),
+            "Earning now" => "Local Gemma is actively working a paid request".to_string(),
+            "Waiting for payout" => "Work is done. Waiting for sats to settle".to_string(),
+            "Ready to earn" => "Standing by for the next paid match".to_string(),
+            "Preparing to earn" => detail.unwrap_or_else(|| "Booting local earnings lane".to_string()),
+            "Needs attention" => detail.unwrap_or_else(|| "A local runtime issue needs attention".to_string()),
+            _ => detail.unwrap_or(state_label),
+        }
+    }
+
+    fn total_earnings_label(&self) -> String {
+        if self.operator_stats.total_earnings_sats > 0 {
+            if self.operator_stats.wallet_balance_live
+                && matches!(
+                    self.operator_stats.wallet_runtime_status.as_deref(),
+                    Some("connected")
+                )
+            {
+                format_sats(self.operator_stats.total_earnings_sats)
+            } else {
+                format!("{} retained", format_sats(self.operator_stats.total_earnings_sats))
+            }
+        } else {
+            "unavailable".to_string()
+        }
+    }
+
+    fn visible_paid_moment(&self) -> Option<(u64, Instant)> {
+        self.latest_paid_moment
+            .filter(|(_, until)| Instant::now() < *until)
+    }
+
+    fn paid_moment_is_visible(&self) -> bool {
+        self.visible_paid_moment().is_some()
+    }
+
+    fn visible_rank_up_moment(&self) -> Option<(String, String, Instant)> {
+        self.latest_rank_up_moment
+            .as_ref()
+            .filter(|(_, _, until)| Instant::now() < *until)
+            .map(|(from, to, until)| (from.clone(), to.clone(), *until))
+    }
+
     fn summary_lines(&self) -> Vec<Line<'static>> {
+        let gemma = gemma4_status(self.loaded.as_ref());
+        let health_label = if self.last_error.is_some() {
+            "needs attention"
+        } else if gemma.loaded {
+            "healthy"
+        } else {
+            "warming up"
+        };
+        let lines = vec![
+            Line::from(vec![
+                key_label("Health"),
+                Span::styled(health_label, state_badge_style(health_label)),
+            ]),
+            Line::from(vec![
+                key_label("CPU"),
+                Span::raw(format!(
+                    "{}, {} usage",
+                    self.system_stats
+                        .cpu_brand
+                        .as_deref()
+                        .unwrap_or("unknown cpu"),
+                    self.system_stats
+                        .cpu_usage_percent
+                        .map(format_percent)
+                        .unwrap_or_else(|| "unknown".to_string())
+                )),
+            ]),
+            Line::from(vec![
+                key_label("Memory"),
+                Span::raw(format!(
+                    "{} / {}",
+                    self.system_stats
+                        .used_memory_bytes
+                        .map(format_byte_size)
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    self.system_stats
+                        .total_memory_bytes
+                        .map(format_byte_size)
+                        .unwrap_or_else(|| "unknown".to_string())
+                )),
+            ]),
+            Line::from(vec![
+                key_label("GPU"),
+                Span::raw(
+                    self.system_stats
+                        .gpu_summary
+                        .as_deref()
+                        .unwrap_or("not detected")
+                        .to_string(),
+                ),
+            ]),
+        ];
+        lines
+    }
+
+    fn diagnostics_lines(&self) -> Vec<Line<'static>> {
         let gemma = gemma4_status(self.loaded.as_ref());
         let mut lines = vec![
             Line::from(format!(
@@ -2251,10 +2921,7 @@ impl AppShell {
                     .as_deref()
                     .unwrap_or("unknown"),
             )),
-            Line::from(format!(
-                "gemma loaded: {}",
-                if gemma.loaded { "yes" } else { "no" }
-            )),
+            Line::from(format!("gemma loaded: {}", if gemma.loaded { "yes" } else { "no" })),
             Line::from(format!(
                 "models: {}",
                 comma_or_none(gemma.models.as_slice())
@@ -2339,22 +3006,17 @@ impl AppShell {
                     .as_deref()
                     .unwrap_or("unavailable")
             )),
-            Line::from(gemma.note),
         ];
         if let Some(power) = self.system_stats.power_summary.as_deref() {
-            lines.insert(
-                lines.len().saturating_sub(1),
-                Line::from(format!("power: {power}")),
-            );
+            lines.push(Line::from(format!("power: {power}")));
         }
         if let Some(draw) = self.system_stats.power_draw_summary.as_deref() {
-            lines.insert(
-                lines.len().saturating_sub(1),
-                Line::from(format!("draw: {draw}")),
-            );
+            lines.push(Line::from(format!("draw: {draw}")));
         }
         if let Some(error) = self.last_error.as_deref() {
             lines.push(Line::from(format!("refresh error: {error}")));
+        } else {
+            lines.push(Line::from(gemma.note));
         }
         lines
     }
@@ -2388,10 +3050,6 @@ impl AppShell {
                     spec.quantization,
                     download_progress_label(progress)
                 )));
-                lines.push(Line::from(format!(
-                    "  {}",
-                    download_progress_bar(progress, 12)
-                )));
                 continue;
             }
             if let Some(file_bytes) = installed_bytes {
@@ -2413,133 +3071,417 @@ impl AppShell {
     }
 
     fn operator_lines(&self) -> Vec<Line<'static>> {
-        let (state_label, state_detail) = self.operator_state_label_and_detail();
-        let loading_current_status = self.startup_status_is_loading();
-        let runtime_label = if loading_current_status {
-            "loading".to_string()
-        } else {
-            match self.operator_stats.runtime_status.as_deref() {
-                Some("online")
-                    if self.provider_command_in_flight.is_none()
-                        && self.operator_stats.processing_jobs == 0
-                        && self.operator_stats.awaiting_payment_jobs == 0 =>
-                {
-                    "ready".to_string()
-                }
-                Some(other) => other.to_string(),
-                None => self.operator_stats.desired_mode.label().to_string(),
-            }
-        };
-        let desired_mode_label = if loading_current_status {
-            "loading".to_string()
-        } else {
-            self.operator_stats.desired_mode.label().to_string()
-        };
-        let wallet_total = self
-            .operator_stats
-            .wallet_balance
-            .as_ref()
-            .map(|balance| {
-                if self.operator_stats.wallet_balance_live {
-                    format!("wallet: {} total", format_sats(balance.total_sats))
-                } else {
-                    format!(
-                        "wallet: {} total (retained)",
-                        format_sats(balance.total_sats)
-                    )
-                }
-            })
-            .unwrap_or_else(|| {
-                if self.last_wallet_error.is_none()
-                    && (self.refresh_in_flight || self.last_refresh_at.is_none())
-                {
-                    "wallet: pending".to_string()
-                } else {
-                    "wallet: unavailable".to_string()
-                }
-            });
-        let wallet_mix = self
-            .operator_stats
-            .wallet_balance
-            .as_ref()
-            .map(|balance| {
-                if self.operator_stats.wallet_balance_live {
-                    format!(
-                        "mix: spark {}  lightning {}  onchain {}",
-                        format_sats(balance.spark_sats),
-                        format_sats(balance.lightning_sats),
-                        format_sats(balance.onchain_sats)
-                    )
-                } else {
-                    "mix: retained total only".to_string()
-                }
-            })
-            .unwrap_or_else(|| {
-                if self.last_wallet_error.is_none()
-                    && (self.refresh_in_flight || self.last_refresh_at.is_none())
-                {
-                    "mix: pending".to_string()
-                } else {
-                    "mix: unavailable".to_string()
-                }
-            });
-        let last_job = self
-            .operator_stats
-            .last_job_result
-            .as_deref()
-            .unwrap_or("none");
-        let uptime = self
-            .operator_stats
-            .online_uptime_seconds
-            .map(format_uptime)
-            .unwrap_or_else(|| "0m".to_string());
-
+        let animation_phase = self.animation_phase();
+        let total_earnings = self.total_earnings_label();
         let mut lines = vec![
-            Line::from(format!(
-                "mode: {}  runtime: {}",
-                desired_mode_label,
-                runtime_label
-            )),
-            Line::from(wallet_total),
-            Line::from(wallet_mix),
-            Line::from(format!(
-                "24h found: {}  matching: {}",
-                format_u64_with_commas(self.operator_stats.jobs_found_24h),
-                format_u64_with_commas(self.operator_stats.matching_jobs_24h)
-            )),
-            Line::from(format!(
-                "24h processed: {}  settled: {}",
-                format_u64_with_commas(self.operator_stats.jobs_processed_24h),
-                format_u64_with_commas(self.operator_stats.jobs_settled_24h)
-            )),
-            Line::from(format!("last job: {last_job}  uptime: {uptime}")),
+            Line::from(vec![
+                key_label("Session stack"),
+                Span::styled(
+                    format_sats(self.operator_stats.session_earnings_sats),
+                    if self.paid_moment_is_visible() {
+                        pulse_highlight_text()
+                    } else {
+                        emphasis_text()
+                    },
+                ),
+                Span::styled(
+                    animated_stack_gain_suffix(animation_phase, self.paid_moment_is_visible()),
+                    success_accent(),
+                ),
+            ]),
+            Line::from(vec![
+                key_label("Lifetime stack"),
+                Span::styled(total_earnings, emphasis_text()),
+            ]),
+            Line::from(vec![
+                key_label("Active now"),
+                Span::raw(format!(
+                    "{} processing, {} awaiting payout",
+                    format_u64_with_commas(self.operator_stats.processing_jobs),
+                    format_u64_with_commas(self.operator_stats.awaiting_payment_jobs)
+                )),
+                Span::styled(
+                    animated_right_now_suffix(
+                        self.operator_stats.processing_jobs,
+                        self.operator_stats.awaiting_payment_jobs,
+                        animation_phase,
+                    ),
+                    if self.operator_stats.processing_jobs > 0 {
+                        shell_accent()
+                    } else {
+                        muted_text()
+                    },
+                ),
+            ]),
         ];
-        if let Some(backend_label) = self.operator_stats.backend_label.as_deref() {
-            lines.push(Line::from(format!("backend: {backend_label}")));
+        if let Some((amount_sats, _)) = self.visible_paid_moment() {
+            lines.push(Line::from(vec![
+                key_label("Fresh payout"),
+                Span::styled(format!("+{} just landed", format_sats(amount_sats)), success_accent()),
+            ]));
         }
-        if let Some(detail) = state_detail {
-            if state_label != "ready for jobs" {
-                lines.push(Line::from(format!("activity: {state_label}")));
-            }
-            lines.push(Line::from(format!("detail: {detail}")));
-        } else if let Some(wallet_error) = self.last_wallet_error.as_deref() {
+        if let Some(wallet_error) = self.last_wallet_error.as_deref() {
             if self.operator_stats.wallet_balance.is_none() {
-                lines.push(Line::from(format!("wallet error: {wallet_error}")));
+                lines.push(Line::from(vec![
+                    key_label("Wallet"),
+                    Span::raw(format!("Issue: {wallet_error}")),
+                ]));
             }
         }
         lines
     }
 
-    fn operator_state_label_and_detail(&self) -> (String, Option<String>) {
+    fn wallet_overview_lines(&self) -> Vec<Line<'static>> {
+        let wallet_status = self
+            .wallet_surface
+            .runtime_status
+            .as_deref()
+            .unwrap_or("warming up");
+        let wallet_status_label = wallet_status.to_string();
+        let balance = self
+            .wallet_surface
+            .balance
+            .as_ref()
+            .map(|balance| format_sats(balance.total_sats))
+            .unwrap_or_else(|| "unavailable".to_string());
+        let network = self
+            .wallet_surface
+            .network
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let mix = self
+            .wallet_surface
+            .balance
+            .as_ref()
+            .map(|balance| {
+                format!(
+                    "{} Spark, {} Lightning, {} on-chain",
+                    format_sats(balance.spark_sats),
+                    format_sats(balance.lightning_sats),
+                    format_sats(balance.onchain_sats)
+                )
+            })
+            .unwrap_or_else(|| "Balance mix appears after the next wallet refresh.".to_string());
+        let mut lines = vec![
+            Line::from(vec![
+                key_label("Status"),
+                Span::styled(wallet_status_label, state_badge_style(wallet_status)),
+            ]),
+            Line::from(vec![key_label("Network"), Span::raw(network)]),
+            Line::from(vec![
+                key_label("Total balance"),
+                Span::styled(balance, emphasis_text()),
+            ]),
+        ];
+        if let Some(last_paid) = self.latest_wallet_receive_summary() {
+            lines.push(Line::from(vec![key_label("Last paid"), Span::raw(last_paid)]));
+        }
+        lines.extend([
+            Line::from(vec![key_label("Balance mix"), Span::raw(mix)]),
+        ]);
+        if let Some(detail) = self.wallet_surface.runtime_detail.as_deref() {
+            lines.push(Line::from(vec![
+                key_label("Runtime"),
+                Span::raw(detail.to_string()),
+            ]));
+        } else if let Some(error) = self.wallet_surface.last_error.as_deref() {
+            lines.push(Line::from(vec![
+                key_label("Runtime"),
+                Span::raw(error.to_string()),
+            ]));
+        }
+        lines
+    }
+
+    fn wallet_card_lines(&self) -> Vec<Line<'static>> {
+        let wallet_status = self
+            .wallet_surface
+            .runtime_status
+            .as_deref()
+            .unwrap_or("warming up");
+        let total_balance = self
+            .wallet_surface
+            .balance
+            .as_ref()
+            .map(|balance| format_sats(balance.total_sats))
+            .unwrap_or_else(|| "unavailable".to_string());
+        let receive_hint = if self.wallet_surface.spark_address.is_some()
+            || self.wallet_surface.bitcoin_address.is_some()
+        {
+            "Spark + Bitcoin ready".to_string()
+        } else {
+            "/wallet receive".to_string()
+        };
+        let mut lines = vec![
+            Line::from(vec![
+                key_label("Status"),
+                Span::styled(wallet_status.to_string(), state_badge_style(wallet_status)),
+            ]),
+            Line::from(vec![
+                key_label("Total balance"),
+                Span::styled(total_balance, emphasis_text()),
+            ]),
+            Line::from(vec![key_label("Receive"), Span::raw(receive_hint)]),
+            Line::from(vec![
+                key_label("Withdraw"),
+                Span::raw("/wallet withdraw <lightning_invoice>"),
+            ]),
+        ];
+        if let Some(last_paid) = self.latest_wallet_receive_summary() {
+            lines.push(Line::from(vec![key_label("Last paid"), Span::raw(last_paid)]));
+        }
+        lines
+    }
+
+    fn wallet_receive_lines(&self) -> Vec<Line<'static>> {
+        let spark_address = self
+            .wallet_surface
+            .spark_address
+            .as_deref()
+            .map(abbreviate_wallet_value)
+            .unwrap_or_else(|| "Run /wallet receive to refresh addresses".to_string());
+        let bitcoin_address = self
+            .wallet_surface
+            .bitcoin_address
+            .as_deref()
+            .map(abbreviate_wallet_value)
+            .unwrap_or_else(|| "Run /wallet receive to refresh addresses".to_string());
+        let fresh_invoice = self
+            .wallet_surface
+            .latest_invoice
+            .as_ref()
+            .map(|invoice| format!("{} ready", format_sats(invoice.amount_sats)))
+            .unwrap_or_else(|| "Run /wallet invoice <sats> for a Lightning invoice".to_string());
+        vec![
+            Line::from(vec![key_label("Spark address"), Span::raw(spark_address)]),
+            Line::from(vec![
+                key_label("Bitcoin address"),
+                Span::raw(bitcoin_address),
+            ]),
+            Line::from(vec![key_label("Fresh invoice"), Span::raw(fresh_invoice)]),
+            Line::from("[TIP] /wallet receive shows full addresses in the transcript.".to_string()),
+        ]
+    }
+
+    fn wallet_withdraw_lines(&self) -> Vec<Line<'static>> {
+        let recent_flow = self
+            .wallet_surface
+            .recent_payments
+            .first()
+            .map(|payment| {
+                format!(
+                    "{} {} {} ago",
+                    payment.direction,
+                    format_sats(payment.amount_sats),
+                    format_elapsed_since_ms(payment.updated_at_ms, current_epoch_ms_u64())
+                )
+            })
+            .unwrap_or_else(|| "No retained wallet payments yet.".to_string());
+        vec![
+            Line::from(vec![
+                key_label("Send to wallet"),
+                Span::raw("/wallet withdraw <lightning_invoice>"),
+            ]),
+            Line::from(vec![
+                key_label("Direct pay"),
+                Span::raw("/wallet pay <lightning_invoice>"),
+            ]),
+            Line::from(vec![key_label("Recent flow"), Span::raw(recent_flow)]),
+            Line::from(
+                "[TIP] Paste a Lightning invoice from your real wallet to move sats out."
+                    .to_string(),
+            ),
+        ]
+    }
+
+    fn wallet_recovery_lines(&self) -> Vec<Line<'static>> {
+        let path = self
+            .wallet_surface
+            .identity_path
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "Waiting for local config".to_string());
+        vec![
+            Line::from(vec![key_label("Phrase"), Span::raw("Hidden by default")]),
+            Line::from(vec![key_label("Stored at"), Span::raw(path)]),
+            Line::from(vec![
+                key_label("Reveal"),
+                Span::raw("/wallet recovery reveal"),
+            ]),
+            Line::from(
+                "[WARN] The recovery phrase controls both this wallet and this node identity."
+                    .to_string(),
+            ),
+        ]
+    }
+
+    fn latest_wallet_receive_summary(&self) -> Option<String> {
+        self.wallet_surface
+            .recent_payments
+            .iter()
+            .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+            .filter(|payment| {
+                payment.status.eq_ignore_ascii_case("completed")
+                    || payment.status.eq_ignore_ascii_case("settled")
+            })
+            .max_by_key(|payment| payment.updated_at_ms)
+            .or_else(|| {
+                self.wallet_surface
+                    .recent_payments
+                    .iter()
+                    .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+                    .max_by_key(|payment| payment.updated_at_ms)
+            })
+            .map(|payment| {
+                format!(
+                    "{} {} ago",
+                    format_sats(payment.amount_sats),
+                    format_elapsed_since_ms(payment.updated_at_ms, current_epoch_ms_u64())
+                )
+            })
+    }
+
+    fn rank_lines(&self) -> Vec<Line<'static>> {
+        let progress = stacker_rank_progress(self.operator_stats.total_earnings_sats);
+        let animation_tick = self.animation_tick();
+        let mut lines = Vec::new();
+        let rank_up_visible = self.visible_rank_up_moment().is_some();
+        if let Some((from_rank, to_rank, _)) = self.visible_rank_up_moment() {
+            lines.push(Line::from(vec![
+                key_label("Ascension"),
+                Span::styled(format!("{from_rank} -> {to_rank}"), pulse_highlight_text()),
+            ]));
+        }
+        lines.extend([
+            Line::from(vec![
+                key_label("Stacker Status"),
+                Span::styled(progress.current.name, emphasis_text()),
+            ]),
+            Line::from(vec![
+                key_label("Lifetime earned"),
+                Span::styled(
+                    format_sats(self.operator_stats.total_earnings_sats),
+                    emphasis_text(),
+                ),
+            ]),
+        ]);
+
+        if let Some(next) = progress.next {
+            let sats_remaining = next
+                .threshold_sats
+                .saturating_sub(self.operator_stats.total_earnings_sats);
+            let mut progress_line = vec![
+                Span::styled(progress.current.name, muted_text()),
+                Span::raw("  "),
+            ];
+            progress_line.extend(render_rank_progress_spans(
+                progress.progress_ratio,
+                16,
+                animation_tick,
+                rank_up_visible,
+            ));
+            progress_line.extend([
+                Span::raw("  "),
+                Span::styled(next.name, muted_text()),
+            ]);
+            lines.push(Line::from(vec![
+                key_label("Next unlock"),
+                Span::raw(format!("{} in {}", next.name, format_sats(sats_remaining))),
+            ]));
+            lines.push(Line::from(progress_line));
+        } else {
+            lines.push(Line::from(vec![
+                key_label("Final rank"),
+                Span::raw("1 bitcoin stacked"),
+            ]));
+            let mut progress_line = vec![
+                Span::styled(progress.current.name, muted_text()),
+                Span::raw("  "),
+            ];
+            progress_line.extend(render_rank_progress_spans(
+                1.0,
+                16,
+                animation_tick,
+                rank_up_visible,
+            ));
+            progress_line.extend([
+                Span::raw("  "),
+                Span::styled(progress.current.name, muted_text()),
+            ]);
+            lines.push(Line::from(progress_line));
+            lines.push(Line::from(vec![
+                key_label("Crown"),
+                Span::raw("The full stack is online"),
+            ]));
+        }
+
+        lines
+    }
+
+    #[allow(dead_code)]
+    fn activity_lines(&self) -> Vec<Line<'static>> {
+        let animation_phase = self.animation_phase();
+        let mut lines = Vec::new();
+        if let Some((amount_sats, _)) = self.visible_paid_moment() {
+            lines.push(Line::from(Span::styled(
+                format!("[PAID] you just stacked {}", format_sats(amount_sats)),
+                pulse_highlight_text(),
+            )));
+        }
+        if let Some((from_rank, to_rank, _)) = self.visible_rank_up_moment() {
+            lines.push(Line::from(Span::styled(
+                format!("[RANK] ascended from {from_rank} to {to_rank}"),
+                pulse_highlight_text(),
+            )));
+        }
+        if !self.operator_stats.recent_activity.is_empty() {
+            lines.extend(self.operator_stats.recent_activity.iter().enumerate().map(
+                |(index, entry)| {
+                    let style = if index == 0 && self.activity_pulse_is_visible() {
+                        pulse_highlight_text()
+                    } else {
+                        Style::default()
+                    };
+                    Line::from(Span::styled(entry.clone(), style))
+                },
+            ));
+            return lines;
+        }
+
+        if let Some(lines) = self.startup_activity_lines() {
+            return lines;
+        }
+
         if let Some(command) = self.provider_command_in_flight.as_ref() {
-            return (command.state_label().to_string(), Some(command.detail()));
+            return vec![
+                Line::from(format!(
+                    "[LIVE] listening across relays {}",
+                    animated_ready_heartbeat(animation_phase)
+                )),
+                Line::from(format!("[LIVE] {}", command.detail())),
+                Line::from("[TIP] Keep Pylon open so matching jobs can land.".to_string()),
+            ];
         }
-        if self.startup_status_is_loading() {
-            return (
-                "loading current status".to_string(),
-                Some("waiting for the first retained status refresh".to_string()),
-            );
-        }
+
+        let quiet_detail = match self.operator_stats.last_provider_event_at_ms {
+            Some(at_ms) => format!(
+                "No new paid matches in {}.",
+                format_elapsed_since_ms(at_ms, current_epoch_ms_u64())
+            ),
+            None => "No paid matches yet.".to_string(),
+        };
+
+        vec![
+            Line::from(format!(
+                "[READY] standing by for paid work {}",
+                animated_ready_heartbeat(animation_phase)
+            )),
+            Line::from(format!("[MARKET] {quiet_detail}{}", animated_quiet_suffix(animation_phase))),
+            Line::from("[TIP] Run /provider run when you want this node actively listening.".to_string()),
+        ]
+    }
+
+    fn operator_state_label_and_detail(&self) -> (String, Option<String>) {
         if self.operator_stats.processing_jobs > 0 {
             let count = format_u64_with_commas(self.operator_stats.processing_jobs);
             let job_label = if self.operator_stats.processing_jobs == 1 {
@@ -2548,10 +3490,8 @@ impl AppShell {
                 "jobs"
             };
             return (
-                "processing local".to_string(),
-                Some(format!(
-                    "{count} retained provider {job_label} still in progress"
-                )),
+                "Earning now".to_string(),
+                Some(format!("{count} {job_label} in progress on this node")),
             );
         }
         if self.operator_stats.awaiting_payment_jobs > 0 {
@@ -2562,41 +3502,40 @@ impl AppShell {
                 "jobs are"
             };
             return (
-                "awaiting payment".to_string(),
-                Some(format!(
-                    "{count} paid provider {job_label} waiting for wallet settlement"
-                )),
+                "Waiting for payout".to_string(),
+                Some(format!("{count} completed {job_label} waiting for settlement")),
             );
+        }
+        if let Some(detail) = self.startup_detail() {
+            return ("Preparing to earn".to_string(), Some(detail));
+        }
+        if let Some(command) = self.provider_command_in_flight.as_ref() {
+            return (command.state_label().to_string(), Some(command.detail()));
         }
         match self.operator_stats.runtime_status.as_deref() {
             Some("online") if self.operator_stats.provider_presence_online => (
-                "ready for jobs".to_string(),
-                Some(
-                    "serve is online, Nexus heartbeat is live, and automatic intake passes are active"
-                        .to_string(),
-                ),
+                "Ready to earn".to_string(),
+                Some("Run /provider run to start listening for matching work.".to_string()),
             ),
             Some("online") => (
-                "bringing online".to_string(),
-                Some(
-                    "desired mode is online; waiting for the next provider heartbeat".to_string(),
-                ),
+                "Ready to earn".to_string(),
+                Some("Node is healthy. Finishing provider presence.".to_string()),
             ),
             Some("ready") => (
-                "local runtime ready".to_string(),
-                Some("local supply is visible, but the node is still offline".to_string()),
+                "Ready to earn".to_string(),
+                Some("Run /provider run to start listening for matching work.".to_string()),
             ),
-            Some("paused") => ("paused".to_string(), None),
+            Some("paused") => ("Paused".to_string(), None),
             Some("degraded") => (
-                "degraded".to_string(),
+                "Needs attention".to_string(),
                 self.operator_stats.runtime_error.clone(),
             ),
             Some("error") => (
-                "error".to_string(),
+                "Needs attention".to_string(),
                 self.operator_stats.runtime_error.clone(),
             ),
             Some("unconfigured") => (
-                "unconfigured".to_string(),
+                "Needs attention".to_string(),
                 self.operator_stats.runtime_error.clone(),
             ),
             Some(other) => (other.to_string(), self.operator_stats.runtime_error.clone()),
@@ -2611,14 +3550,70 @@ impl AppShell {
         self.last_refresh_at.is_none() && (self.refresh_in_flight || self.loaded.is_none())
     }
 
+    fn startup_detail(&self) -> Option<String> {
+        if self.last_refresh_at.is_none() && self.operator_stats.runtime_status.is_none() {
+            return Some("Starting local checks for Gemma, wallet, and node status.".to_string());
+        }
+        if self.refresh_in_flight
+            && self.loaded.is_none()
+            && self.operator_stats.runtime_status.is_none()
+        {
+            return Some("Loading node status and checking local Gemma supply.".to_string());
+        }
+        if self.refresh_in_flight && self.operator_stats.runtime_status.is_none() {
+            return Some("Refreshing runtime status and wallet state.".to_string());
+        }
+        None
+    }
+
+    #[allow(dead_code)]
+    fn startup_activity_lines(&self) -> Option<Vec<Line<'static>>> {
+        let spinner = animated_boot_spinner(self.animation_phase());
+        if self.last_refresh_at.is_none() && self.operator_stats.runtime_status.is_none() {
+            return Some(vec![
+                Line::from(format!("[LIVE] {spinner} checking local Pylon setup")),
+                Line::from(format!("[LIVE] {spinner} looking for local Gemma availability")),
+                Line::from("[WAIT] Opening the shell and preparing earnings state.".to_string()),
+            ]);
+        }
+        if self.refresh_in_flight
+            && self.loaded.is_none()
+            && self.operator_stats.runtime_status.is_none()
+        {
+            return Some(vec![
+                Line::from(format!("[LIVE] {spinner} loading node status")),
+                Line::from(format!("[LIVE] {spinner} checking wallet and runtime state")),
+                Line::from(
+                    "[WAIT] This usually clears as soon as the first refresh finishes."
+                        .to_string(),
+                ),
+            ]);
+        }
+        if self.refresh_in_flight && self.operator_stats.runtime_status.is_none() {
+            return Some(vec![
+                Line::from(format!("[LIVE] {spinner} refreshing provider readiness")),
+                Line::from(format!("[LIVE] {spinner} confirming local Gemma connectivity")),
+                Line::from("[WAIT] Still preparing this node to earn.".to_string()),
+            ]);
+        }
+        None
+    }
+
     fn transcript_body(&self) -> Text<'static> {
         if self.transcript.is_empty() {
             Text::from(vec![
-                Line::from("Submitted prompts stay here."),
-                Line::from("Live assistant output will stream here when chat is running."),
+                Line::from(vec![
+                    Span::styled("[system]", muted_text()),
+                    Span::raw(" "),
+                    Span::styled("Shell Ready", shell_accent()),
+                ]),
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("Ask Gemma or type /help.", emphasis_text()),
+                ]),
             ])
         } else {
-            self.transcript.as_text()
+            self.transcript.as_text_with_motion(self.animation_tick())
         }
     }
 
@@ -2684,6 +3679,277 @@ impl AppShell {
             .map(ToString::to_string)
             .map(|line| wrapped_row_count(line.as_str(), wrap_width))
             .sum()
+    }
+
+    fn animation_phase(&self) -> usize {
+        self.animation_tick() % 4
+    }
+
+    fn animation_tick(&self) -> usize {
+        (Instant::now()
+            .duration_since(self.animation_started_at)
+            .as_millis()
+            / 180) as usize
+    }
+
+    #[allow(dead_code)]
+    fn activity_pulse_is_visible(&self) -> bool {
+        let Some(until) = self.live_activity_pulse_until else {
+            return false;
+        };
+        if Instant::now() >= until {
+            return false;
+        }
+        self.animation_phase() % 2 == 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct StackerRankProgress {
+    current: StackerRank,
+    next: Option<StackerRank>,
+    progress_sats: u64,
+    segment_goal_sats: u64,
+    progress_ratio: f64,
+}
+
+fn stacker_rank_progress(lifetime_sats: u64) -> StackerRankProgress {
+    let mut current = STACKER_RANKS[0];
+    let mut next = None;
+    for (index, rank) in STACKER_RANKS.iter().enumerate() {
+        if lifetime_sats >= rank.threshold_sats {
+            current = *rank;
+            next = STACKER_RANKS.get(index + 1).copied();
+        } else {
+            break;
+        }
+    }
+
+    match next {
+        Some(next_rank) => {
+            let progress_sats = lifetime_sats.saturating_sub(current.threshold_sats);
+            let segment_goal_sats = next_rank.threshold_sats.saturating_sub(current.threshold_sats);
+            let progress_ratio = if segment_goal_sats == 0 {
+                1.0
+            } else {
+                (progress_sats as f64 / segment_goal_sats as f64).clamp(0.0, 1.0)
+            };
+            StackerRankProgress {
+                current,
+                next: Some(next_rank),
+                progress_sats,
+                segment_goal_sats,
+                progress_ratio,
+            }
+        }
+        None => StackerRankProgress {
+            current,
+            next: None,
+            progress_sats: lifetime_sats.saturating_sub(current.threshold_sats),
+            segment_goal_sats: 0,
+            progress_ratio: 1.0,
+        },
+    }
+}
+
+fn render_rank_progress_spans(
+    progress_ratio: f64,
+    width: usize,
+    tick: usize,
+    celebratory: bool,
+) -> Vec<Span<'static>> {
+    let width = width.max(5);
+    let ratio = progress_ratio.clamp(0.0, 1.0);
+    let marker_index = ((width.saturating_sub(1)) as f64 * ratio).round() as usize;
+    let glint_index = if celebratory {
+        let wave = [marker_index.saturating_sub(2), marker_index.saturating_sub(1), marker_index, (marker_index + 1).min(width - 1), (marker_index + 2).min(width - 1)];
+        wave[tick % wave.len()]
+    } else {
+        tick % width
+    };
+    let mut out = Vec::with_capacity(width);
+    for index in 0..width {
+        let span = if index == marker_index {
+            let marker = if celebratory && tick % 2 == 0 { "◎" } else { "◉" };
+            Span::styled(
+                marker,
+                if celebratory && tick % 2 == 0 {
+                    pulse_highlight_text()
+                } else {
+                    emphasis_text()
+                },
+            )
+        } else if index == glint_index {
+            Span::styled(
+                if index < marker_index { "─" } else { "╌" },
+                if celebratory {
+                    pulse_highlight_text()
+                } else {
+                    shell_accent()
+                },
+            )
+        } else if index < marker_index {
+            Span::styled("─", muted_text())
+        } else {
+            Span::styled("╌", shell_border())
+        };
+        out.push(span);
+    }
+    out
+}
+
+fn abbreviate_wallet_value(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= 26 {
+        return trimmed.to_string();
+    }
+    let prefix = trimmed.chars().take(14).collect::<String>();
+    let suffix = trimmed
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    format!("{prefix}...{suffix}")
+}
+
+fn title_case_status(value: &str) -> String {
+    value
+        .split(['_', ' '])
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| {
+            let mut chars = segment.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn animated_right_now_suffix(
+    processing_jobs: u64,
+    awaiting_payment_jobs: u64,
+    phase: usize,
+) -> &'static str {
+    if processing_jobs > 0 {
+        match phase % 4 {
+            0 => "  •",
+            1 => "  ••",
+            2 => "  •••",
+            _ => "  ◉",
+        }
+    } else if awaiting_payment_jobs > 0 {
+        match phase % 4 {
+            0 => "  ·",
+            1 => "  ··",
+            2 => "  ···",
+            _ => "  ◌",
+        }
+    } else {
+        ""
+    }
+}
+
+fn animated_stack_gain_suffix(phase: usize, active: bool) -> &'static str {
+    if !active {
+        return "";
+    }
+    match phase % 4 {
+        0 => "  ▁",
+        1 => "  ▃",
+        2 => "  ▆",
+        _ => "  █",
+    }
+}
+
+fn mission_control_signal_spans(state_label: &str, tick: usize) -> Vec<Span<'static>> {
+    let mut spans = vec![Span::raw("  ")];
+    match state_label {
+        "Ready to earn" => {
+            spans.push(Span::styled(animated_ready_heartbeat(tick), muted_text()));
+        }
+        "Listening for work" => {
+            for (index, glyph) in ["·", "·", "·", "·", "·"].into_iter().enumerate() {
+                let style = if index == tick % 5 {
+                    shell_accent()
+                } else {
+                    muted_text()
+                };
+                spans.push(Span::styled(glyph, style));
+            }
+        }
+        "Earning now" => {
+            spans.push(Span::styled(animated_active_work_pulse(tick), success_accent()));
+        }
+        "Waiting for payout" => {
+            spans.push(Span::styled(animated_payout_pulse(tick), warning_accent()));
+        }
+        "Preparing to earn" => {
+            spans.push(Span::styled(animated_boot_spinner(tick), muted_text()));
+        }
+        _ => {}
+    }
+    spans
+}
+
+fn animated_active_work_pulse(tick: usize) -> &'static str {
+    match tick % 4 {
+        0 => "•",
+        1 => "••",
+        2 => "•••",
+        _ => "◉",
+    }
+}
+
+fn animated_payout_pulse(tick: usize) -> &'static str {
+    match tick % 4 {
+        0 => "·",
+        1 => "··",
+        2 => "···",
+        _ => "◌",
+    }
+}
+
+#[allow(dead_code)]
+fn animated_boot_spinner(phase: usize) -> &'static str {
+    match phase % 4 {
+        0 => "◐",
+        1 => "◓",
+        2 => "◑",
+        _ => "◒",
+    }
+}
+
+#[allow(dead_code)]
+fn animated_ready_heartbeat(phase: usize) -> &'static str {
+    match phase % 4 {
+        0 => "•",
+        1 => "◦",
+        2 => "•",
+        _ => "◦",
+    }
+}
+
+#[allow(dead_code)]
+fn animated_quiet_suffix(phase: usize) -> &'static str {
+    match phase % 4 {
+        0 => " .",
+        1 => " ..",
+        2 => " ...",
+        _ => "",
+    }
+}
+
+fn animated_boot_suffix(phase: usize) -> &'static str {
+    match phase % 4 {
+        0 => " ◐",
+        1 => " ◓",
+        2 => " ◑",
+        _ => " ◒",
     }
 }
 
@@ -2893,6 +4159,7 @@ pub fn usage() -> &'static str {
     "Usage: pylon-tui [--config-path <path>]\n\
 Controls:\n\
   Ctrl+C   quit\n\
+  Tab      toggle between operate and inspect sidebars\n\
   PgUp/PgDn / wheel  scroll transcript\n\
   Enter    submit composer\n\
   Ctrl+J   insert newline\n\
@@ -2915,7 +4182,7 @@ Controls:\n\
   /job policy [show|auto|manual]  inspect or set buyer auto-pay policy\n\
   /payout [history|withdraw] ...  inspect provider earnings and run withdrawals\n\
   /relay [list|add|remove|refresh]  inspect or update configured relays\n\
-  /wallet [status|balance|address|invoice|pay|history]  run retained Spark wallet commands\n\
+  /wallet [show|receive|withdraw|recovery|status|balance|address|invoice|pay|history]  open the wallet surface or run retained Spark wallet commands\n\
   /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
 }
 
@@ -3089,6 +4356,7 @@ fn compute_operator_panel_stats(
     wallet_status: Option<&pylon::WalletStatusReport>,
     snapshot: Option<&ProviderPersistedSnapshot>,
     ledger: &pylon::PylonLedger,
+    session_started_at_ms: u64,
 ) -> OperatorPanelStats {
     compute_operator_panel_stats_at(
         desired_mode,
@@ -3096,8 +4364,49 @@ fn compute_operator_panel_stats(
         wallet_status,
         snapshot,
         ledger,
+        session_started_at_ms,
         current_epoch_ms_u64(),
     )
+}
+
+fn build_wallet_surface(
+    config: &pylon::PylonConfig,
+    wallet_status: Option<&pylon::WalletStatusReport>,
+    ledger: &pylon::PylonLedger,
+) -> WalletSurfaceState {
+    WalletSurfaceState {
+        runtime_status: wallet_status
+            .map(|report| report.runtime_status.clone())
+            .or_else(|| ledger.wallet.runtime_status.clone()),
+        runtime_detail: wallet_status
+            .and_then(|report| report.runtime_detail.clone())
+            .or_else(|| ledger.wallet.last_error.clone()),
+        network: wallet_status
+            .map(|report| report.runtime.network.clone())
+            .or_else(|| ledger.wallet.network.clone()),
+        balance: wallet_status
+            .map(|report| report.balance.clone())
+            .or_else(|| {
+                ledger
+                    .wallet
+                    .last_balance_sats
+                    .map(|total_sats| pylon::WalletBalanceSnapshot {
+                        total_sats,
+                        ..pylon::WalletBalanceSnapshot::default()
+                    })
+            }),
+        balance_live: wallet_status.is_some(),
+        spark_address: ledger.wallet.spark_address.clone(),
+        bitcoin_address: ledger.wallet.bitcoin_address.clone(),
+        latest_invoice: ledger.wallet.invoices.first().cloned(),
+        recent_payments: if let Some(report) = wallet_status {
+            report.recent_payments.clone()
+        } else {
+            ledger.wallet.payments.iter().take(5).cloned().collect()
+        },
+        identity_path: Some(config.identity_path.clone()),
+        last_error: ledger.wallet.last_error.clone(),
+    }
 }
 
 fn compute_operator_panel_stats_at(
@@ -3106,10 +4415,14 @@ fn compute_operator_panel_stats_at(
     wallet_status: Option<&pylon::WalletStatusReport>,
     snapshot: Option<&ProviderPersistedSnapshot>,
     ledger: &pylon::PylonLedger,
+    session_started_at_ms: u64,
     now_ms: u64,
 ) -> OperatorPanelStats {
     let since_ms = now_ms.saturating_sub(LOOKBACK_WINDOW_24H_MS);
     let wallet_balance_live = wallet_status.is_some_and(wallet_status_balance_is_authoritative);
+    let wallet_runtime_status = wallet_status
+        .map(|report| report.runtime_status.clone())
+        .or_else(|| ledger.wallet.runtime_status.clone());
     let wallet_balance = wallet_status
         .filter(|report| wallet_status_balance_is_authoritative(report))
         .map(|report| report.balance.clone())
@@ -3155,12 +4468,58 @@ fn compute_operator_panel_stats_at(
         .map(|settlement| settlement.job_id.as_str())
         .collect::<std::collections::BTreeSet<_>>()
         .len() as u64;
+    let session_earnings_sats = ledger
+        .wallet
+        .payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+        .filter(|payment| {
+            payment.status.eq_ignore_ascii_case("completed")
+                || payment.status.eq_ignore_ascii_case("settled")
+        })
+        .filter(|payment| payment.updated_at_ms >= session_started_at_ms)
+        .map(|payment| payment.amount_sats)
+        .sum::<u64>();
+    let settled_sats_24h = ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider")
+        .filter(|settlement| provider_settlement_counted_as_settled(settlement.status.as_str()))
+        .filter(|settlement| settlement.created_at_ms >= since_ms)
+        .map(|settlement| settlement.amount_msats / 1_000)
+        .sum::<u64>();
+    let settled_sats_lifetime = ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider")
+        .filter(|settlement| provider_settlement_counted_as_settled(settlement.status.as_str()))
+        .map(|settlement| settlement.amount_msats / 1_000)
+        .sum::<u64>();
+    let total_earnings_sats = wallet_balance
+        .as_ref()
+        .map(|balance| balance.total_sats)
+        .unwrap_or(settled_sats_lifetime);
     let last_job_result = snapshot
         .and_then(|value| value.earnings.as_ref())
         .map(|earnings| earnings.last_job_result.as_str())
         .filter(|status| !status.trim().is_empty() && *status != "none")
         .map(str::to_string)
         .or_else(|| latest_provider_job_status(ledger));
+    let last_provider_event_at_ms = ledger
+        .jobs
+        .iter()
+        .filter(|job| job.direction == "provider")
+        .map(|job| job.updated_at_ms)
+        .max()
+        .or_else(|| {
+            ledger
+                .settlements
+                .iter()
+                .filter(|settlement| settlement.direction == "provider")
+                .map(|settlement| settlement.updated_at_ms)
+                .max()
+        });
+    let recent_activity = recent_provider_activity(ledger, now_ms);
 
     OperatorPanelStats {
         desired_mode,
@@ -3170,16 +4529,222 @@ fn compute_operator_panel_stats_at(
             .map(|value| value.runtime.execution_backend_label.clone())
             .filter(|value| !value.trim().is_empty()),
         provider_presence_online,
+        wallet_runtime_status,
         wallet_balance,
         wallet_balance_live,
         jobs_found_24h,
         matching_jobs_24h,
         jobs_processed_24h,
         jobs_settled_24h,
+        session_earnings_sats,
+        settled_sats_24h,
+        settled_sats_lifetime,
+        total_earnings_sats,
         awaiting_payment_jobs,
         processing_jobs,
         last_job_result,
+        last_provider_event_at_ms,
+        recent_activity,
         online_uptime_seconds: snapshot.map(|value| value.runtime.online_uptime_seconds),
+    }
+}
+
+fn stabilize_operator_panel_stats(
+    previous: OperatorPanelStats,
+    mut current: OperatorPanelStats,
+) -> OperatorPanelStats {
+    if current.runtime_status.is_none() {
+        current.runtime_status = previous.runtime_status;
+        if current.runtime_error.is_none() {
+            current.runtime_error = previous.runtime_error;
+        }
+    }
+
+    let wallet_connected = matches!(current.wallet_runtime_status.as_deref(), Some("connected"));
+    if !wallet_connected && previous.wallet_balance.is_some() {
+        current.wallet_balance = previous.wallet_balance;
+        current.wallet_balance_live = false;
+        if current.wallet_runtime_status.is_none() {
+            current.wallet_runtime_status = previous.wallet_runtime_status;
+        }
+    }
+
+    current
+}
+
+async fn render_wallet_command_output(
+    config_path: &Path,
+    command: &pylon::WalletSubcommand,
+) -> Result<String> {
+    match command {
+        pylon::WalletSubcommand::Status { .. } => {
+            let report = pylon::load_wallet_status_report(config_path).await?;
+            Ok(render_wallet_status_output(&report))
+        }
+        pylon::WalletSubcommand::Balance { .. } => {
+            let report = pylon::load_wallet_status_report(config_path).await?;
+            Ok(render_wallet_status_output(&report))
+        }
+        pylon::WalletSubcommand::Address { .. } => {
+            let report = pylon::create_wallet_address_report(config_path).await?;
+            Ok(render_wallet_receive_output(&report))
+        }
+        pylon::WalletSubcommand::Invoice {
+            amount_sats,
+            description,
+            expiry_seconds,
+            ..
+        } => {
+            let report = pylon::create_wallet_invoice_report(
+                config_path,
+                *amount_sats,
+                description.clone(),
+                *expiry_seconds,
+            )
+            .await?;
+            Ok(render_wallet_invoice_output(&report))
+        }
+        pylon::WalletSubcommand::Pay {
+            payment_request,
+            amount_sats,
+            ..
+        } => {
+            let report =
+                pylon::pay_wallet_invoice_report(config_path, payment_request.as_str(), *amount_sats)
+                    .await?;
+            Ok(render_wallet_pay_output(&report))
+        }
+        pylon::WalletSubcommand::History { limit, .. } => {
+            let report = pylon::load_wallet_history_report(config_path, *limit).await?;
+            Ok(render_wallet_history_output(&report))
+        }
+    }
+}
+
+fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
+    let mut lines = vec![
+        format!("Status: {}", title_case_status(report.runtime_status.as_str())),
+        format!("Network: {}", report.runtime.network),
+        format!("Total balance: {}", format_sats(report.balance.total_sats)),
+        format!(
+            "Balance mix: {} Spark, {} Lightning, {} on-chain",
+            format_sats(report.balance.spark_sats),
+            format_sats(report.balance.lightning_sats),
+            format_sats(report.balance.onchain_sats)
+        ),
+    ];
+    if let Some(detail) = report.runtime_detail.as_deref() {
+        lines.push(format!("Runtime: {detail}"));
+    }
+    if !report.recent_payments.is_empty() {
+        lines.push(String::new());
+        lines.push("Recent payments:".to_string());
+        lines.extend(report.recent_payments.iter().take(5).map(|payment| {
+            format!(
+                "  {} {} {}",
+                title_case_status(payment.direction.as_str()),
+                format_sats(payment.amount_sats),
+                title_case_status(payment.status.as_str())
+            )
+        }));
+    }
+    lines.join("\n")
+}
+
+fn render_wallet_receive_output(report: &pylon::WalletAddressReport) -> String {
+    [
+        format!("Network: {}", report.runtime.network),
+        String::new(),
+        "Receive on Spark:".to_string(),
+        report.spark_address.clone(),
+        String::new(),
+        "Receive on Bitcoin:".to_string(),
+        report.bitcoin_address.clone(),
+        String::new(),
+        "Next: /wallet invoice <sats> to create a Lightning invoice.".to_string(),
+    ]
+    .join("\n")
+}
+
+fn render_wallet_invoice_output(report: &pylon::WalletInvoiceReport) -> String {
+    let mut lines = vec![
+        format!("Lightning invoice ready for {}", format_sats(report.invoice.amount_sats)),
+        format!("Network: {}", report.runtime.network),
+    ];
+    if let Some(description) = report.invoice.description.as_deref() {
+        lines.push(format!("Description: {description}"));
+    }
+    lines.push(String::new());
+    lines.push("Invoice:".to_string());
+    lines.push(report.invoice.payment_request.clone());
+    lines.join("\n")
+}
+
+fn render_wallet_pay_output(report: &pylon::WalletPayReport) -> String {
+    let mut lines = vec![
+        format!("Lightning withdrawal submitted on {}", report.runtime.network),
+        format!("Amount: {}", format_sats(report.payment.amount_sats)),
+        format!("Fees: {}", format_sats(report.payment.fees_sats)),
+        format!("Wallet balance: {}", format_sats(report.post_balance.total_sats)),
+    ];
+    if let Some(description) = report.payment.description.as_deref() {
+        lines.push(format!("Description: {description}"));
+    }
+    lines.join("\n")
+}
+
+fn render_wallet_history_output(report: &pylon::WalletHistoryReport) -> String {
+    let mut lines = vec![format!("Network: {}", report.runtime.network)];
+    if report.payments.is_empty() {
+        lines.push("History: none".to_string());
+        return lines.join("\n");
+    }
+    lines.push("Recent wallet payments:".to_string());
+    lines.extend(report.payments.iter().take(10).map(|payment| {
+        format!(
+            "  {} {} {}",
+            title_case_status(payment.direction.as_str()),
+            format_sats(payment.amount_sats),
+            title_case_status(payment.status.as_str())
+        )
+    }));
+    lines.join("\n")
+}
+
+fn reveal_wallet_recovery_phrase(config_path: &Path) -> Result<String> {
+    let config = pylon::load_config_or_default(config_path)?;
+    let mnemonic = std::fs::read_to_string(config.identity_path.as_path())
+        .with_context(|| {
+            format!(
+                "failed to read recovery phrase {}",
+                config.identity_path.display()
+            )
+        })?
+        .trim()
+        .to_string();
+    if mnemonic.is_empty() {
+        bail!(
+            "recovery phrase is empty at {}",
+            config.identity_path.display()
+        );
+    }
+    Ok([
+        "Recovery phrase".to_string(),
+        "Handle with care. This unlocks both your Spark wallet and your node identity."
+            .to_string(),
+        format!("Stored at: {}", config.identity_path.display()),
+        String::new(),
+        mnemonic,
+    ]
+    .join("\n"))
+}
+
+fn state_badge_style(label: &str) -> Style {
+    match label {
+        "Earning now" | "Ready to earn" | "Listening for work" | "healthy" => success_accent(),
+        "Waiting for payout" | "warming up" | "Connecting" => warning_accent(),
+        "Needs attention" => danger_accent(),
+        _ => shell_accent(),
     }
 }
 
@@ -3222,11 +4787,67 @@ fn latest_provider_job_status(ledger: &pylon::PylonLedger) -> Option<String> {
         .map(|job| job.status.clone())
 }
 
+fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<String> {
+    let mut entries = Vec::new();
+
+    for settlement in ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider")
+    {
+        let amount_sats = settlement.amount_msats / 1_000;
+        entries.push((
+            settlement.updated_at_ms,
+            format!(
+                "[PAID] stacked {} {} ago",
+                format_sats(amount_sats),
+                format_elapsed_since_ms(settlement.updated_at_ms, now_ms)
+            ),
+        ));
+    }
+
+    for job in ledger.jobs.iter().filter(|job| job.direction == "provider") {
+        if let Some(label) = provider_job_activity_label(job) {
+            entries.push((
+                job.updated_at_ms,
+                format!(
+                    "{label} {} ago",
+                    format_elapsed_since_ms(job.updated_at_ms, now_ms)
+                ),
+            ));
+        }
+    }
+
+    entries.sort_by(|left, right| right.0.cmp(&left.0));
+    entries
+        .into_iter()
+        .map(|(_, label)| label)
+        .take(3)
+        .collect()
+}
+
+fn provider_job_activity_label(job: &pylon::PylonLedgerJob) -> Option<String> {
+    match job.status.as_str() {
+        "accepted_local" => Some("[LIVE] matched a paid request".to_string()),
+        "processing_local" => Some("[LIVE] local Gemma is processing".to_string()),
+        "payment_required" => Some("[WAIT] result delivered, payout pending".to_string()),
+        "completed_local" => Some("[DONE] delivered a local result".to_string()),
+        "settled" => None,
+        "failed_local" => Some("[WARN] local run hit a failure".to_string()),
+        _ => None,
+    }
+}
+
 fn current_epoch_ms_u64() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn format_elapsed_since_ms(at_ms: u64, now_ms: u64) -> String {
+    let elapsed_ms = now_ms.saturating_sub(at_ms);
+    format_duration(Duration::from_millis(elapsed_ms))
 }
 
 fn local_chat_request_messages(
@@ -3676,19 +5297,6 @@ fn download_progress_label(progress: &GemmaDownloadProgressState) -> String {
     }
 }
 
-fn download_progress_bar(progress: &GemmaDownloadProgressState, width: usize) -> String {
-    let Some(total_bytes) = progress.total_bytes.filter(|value| *value > 0) else {
-        return "[............]".to_string();
-    };
-    let ratio = (progress.downloaded_bytes as f64 / total_bytes as f64).clamp(0.0, 1.0);
-    let filled = (ratio * width as f64).round() as usize;
-    format!(
-        "[{}{}]",
-        "#".repeat(filled.min(width)),
-        ".".repeat(width.saturating_sub(filled.min(width)))
-    )
-}
-
 fn relay_report_lines(report: &pylon::RelayReport) -> Vec<String> {
     let mut lines = vec![format!(
         "connect timeout: {}s  ledger: {}",
@@ -3805,15 +5413,19 @@ fn estimate_token_count(text: &str) -> usize {
 mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
-        LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, ProviderCommandInFlight, WorkerEvent,
-        active_chat_title, compute_operator_panel_stats_at, estimate_token_count,
-        local_chat_request_messages, max_transcript_scroll_y, parse_tui_buyer_job_history_request,
-        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
-        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
-        parse_tui_optional_limit, parse_tui_payout_history_request,
-        parse_tui_payout_withdraw_request, should_publish_provider_presence,
-        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
-        wrapped_row_count,
+        LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, ProviderCommandInFlight,
+        WalletSurfaceState, WorkerEvent, active_chat_title, animated_right_now_suffix,
+        animated_stack_gain_suffix, compute_operator_panel_stats_at, current_epoch_ms_u64,
+        estimate_token_count, local_chat_request_messages, max_transcript_scroll_y,
+        mission_control_signal_spans,
+        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
+        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
+        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
+        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
+        recent_provider_activity, render_rank_progress_spans, should_publish_provider_presence,
+        stacker_rank_progress,
+        stabilize_operator_panel_stats, summarize_chat_metrics, transcript_viewport_height,
+        transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use openagents_provider_substrate::{ProviderDesiredMode, ProviderPersistedSnapshot};
@@ -3863,12 +5475,14 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        assert!(summary.contains("host: rig  os: macOS 15  arch: arm64"));
-        assert!(summary.contains("uptime: 1h 1m  kernel: Darwin 24"));
-        assert!(summary.contains("cpu: Apple M4"));
-        assert!(summary.contains("memory: 8.0 GiB used / 16.0 GiB total"));
-        assert!(summary.contains("gpu: Apple GPU ready"));
-        assert!(summary.contains("No Gemma 4 weights are visible right now."));
+        assert!(summary.contains("Health: warming up"));
+        assert!(summary.contains("CPU: Apple M4, 42% usage"));
+        assert!(summary.contains("Memory: 8.0 GiB / 16.0 GiB"));
+        assert!(summary.contains("GPU: Apple GPU ready"));
+        assert!(!summary.contains("Gemma runtime:"));
+        assert!(!summary.contains("Cache:"));
+        assert!(!summary.contains("Network:"));
+        assert!(!summary.contains("Disk:"));
         assert!(!summary.contains("wallet:"));
     }
 
@@ -3882,6 +5496,7 @@ mod tests {
             runtime_error: None,
             backend_label: Some("local_gemma".to_string()),
             provider_presence_online: true,
+            wallet_runtime_status: Some("connected".to_string()),
             wallet_balance: Some(pylon::WalletBalanceSnapshot {
                 spark_sats: 21,
                 lightning_sats: 34,
@@ -3893,9 +5508,15 @@ mod tests {
             matching_jobs_24h: 3,
             jobs_processed_24h: 2,
             jobs_settled_24h: 1,
+            session_earnings_sats: 21,
+            settled_sats_24h: 21,
+            settled_sats_lifetime: 110,
+            total_earnings_sats: 110,
             awaiting_payment_jobs: 0,
             processing_jobs: 0,
             last_job_result: Some("settled".to_string()),
+            last_provider_event_at_ms: Some(1_762_700_500_000),
+            recent_activity: vec![String::from("settled 21 sats 6m ago")],
             online_uptime_seconds: Some(60),
         };
 
@@ -3906,52 +5527,114 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
-        assert!(sidebar.contains("mode: online  runtime: ready"));
-        assert!(sidebar.contains("wallet: 110 sats total"));
-        assert!(sidebar.contains("mix: spark 21 sats  lightning 34 sats  onchain 55 sats"));
-        assert!(sidebar.contains("24h found: 8  matching: 3"));
-        assert!(sidebar.contains("24h processed: 2  settled: 1"));
-        assert!(sidebar.contains("last job: settled  uptime: 1m"));
-        assert!(sidebar.contains("backend: local_gemma"));
-        assert!(sidebar.contains("automatic intake passes are active"));
+        assert!(sidebar.contains("Session stack: 21 sats"));
+        assert!(sidebar.contains("Lifetime stack: 110 sats"));
+        assert!(sidebar.contains("Active now: 0 processing, 0 awaiting payout"));
+        assert!(!sidebar.contains("Status:"));
+        assert!(!sidebar.contains("Mission:"));
+        assert!(!sidebar.contains("recent activity"));
+        assert!(!sidebar.contains("proof:"));
+        assert!(!sidebar.contains("last result:"));
+        assert!(!sidebar.contains("online for"));
+        assert!(!sidebar.contains("runtime:"));
+        assert!(!sidebar.contains("mode:"));
+        assert!(!sidebar.contains("provider:"));
     }
 
     #[test]
-    fn operator_panel_shows_pending_wallet_state_while_refreshing_without_balance() {
-        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
-        app.refresh_in_flight = true;
-
-        let sidebar = app
-            .operator_lines()
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        assert!(sidebar.contains("wallet: pending"));
-        assert!(sidebar.contains("mix: pending"));
+    fn right_now_suffix_only_animates_when_work_is_active() {
+        assert_eq!(animated_right_now_suffix(0, 0, 0), "");
+        assert_eq!(animated_right_now_suffix(1, 0, 0), "  •");
+        assert_eq!(animated_right_now_suffix(1, 0, 2), "  •••");
+        assert_eq!(animated_right_now_suffix(0, 1, 2), "  ···");
     }
 
     #[test]
-    fn operator_panel_shows_loading_state_before_first_refresh() {
-        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
-        app.refresh_in_flight = true;
-
-        let (state, detail) = app.operator_state_label_and_detail();
-        let sidebar = app
-            .operator_lines()
+    fn motion_helpers_match_shell_states() {
+        let ready = mission_control_signal_spans("Ready to earn", 0)
             .iter()
             .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
+            .collect::<String>();
+        let listening = mission_control_signal_spans("Listening for work", 1)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>();
+        assert!(ready.contains('•'));
+        assert!(listening.contains('·'));
+        assert!(animated_stack_gain_suffix(0, true).contains('▁'));
+        assert_eq!(animated_stack_gain_suffix(0, false), "");
+    }
 
-        assert_eq!(state, "loading current status");
-        assert!(
-            detail
-                .as_deref()
-                .is_some_and(|value| value.contains("first retained status refresh"))
-        );
-        assert!(sidebar.contains("mode: loading  runtime: loading"));
+    #[test]
+    fn rank_progress_rail_glints_and_marks_position() {
+        let spans = render_rank_progress_spans(0.4, 10, 3, true);
+        let rendered = spans.iter().map(ToString::to_string).collect::<String>();
+        assert!(rendered.contains('◉') || rendered.contains('◎'));
+        assert!(rendered.contains('─'));
+        assert!(rendered.contains('╌'));
+    }
+
+    #[test]
+    fn activity_pulse_appears_when_recent_activity_changes() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.handle_worker_event(WorkerEvent::RefreshCompleted {
+            loaded: None,
+            installed_gemma_models: Default::default(),
+            operator_stats: OperatorPanelStats {
+                recent_activity: vec![String::from("[LIVE] accepted a job 1s ago")],
+                ..OperatorPanelStats::default()
+            },
+            wallet_surface: WalletSurfaceState::default(),
+            last_error: None,
+            last_wallet_error: None,
+            provider_presence_online: false,
+        });
+
+        assert!(app.live_activity_pulse_until.is_some());
+    }
+
+    #[test]
+    fn paid_and_rank_moments_activate_after_refresh_growth() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.last_refresh_at = Some(Instant::now());
+        app.operator_stats.session_earnings_sats = 2;
+        app.operator_stats.total_earnings_sats = 900;
+
+        app.handle_worker_event(WorkerEvent::RefreshCompleted {
+            loaded: None,
+            installed_gemma_models: Default::default(),
+            operator_stats: OperatorPanelStats {
+                session_earnings_sats: 6,
+                total_earnings_sats: 1_200,
+                recent_activity: vec![String::from("[PAID] stacked 4 sats just now")],
+                ..OperatorPanelStats::default()
+            },
+            wallet_surface: WalletSurfaceState::default(),
+            last_error: None,
+            last_wallet_error: None,
+            provider_presence_online: true,
+        });
+
+        assert!(app.visible_paid_moment().is_some());
+        let rank_moment = app.visible_rank_up_moment().expect("rank-up moment");
+        assert_eq!(rank_moment.0, "Pleb");
+        assert_eq!(rank_moment.1, "Drifter");
+    }
+
+    #[test]
+    fn stacker_rank_progress_advances_through_tiers() {
+        let pleb = stacker_rank_progress(644);
+        assert_eq!(pleb.current.name, "Pleb");
+        assert_eq!(pleb.next.map(|rank| rank.name), Some("Drifter"));
+
+        let operator = stacker_rank_progress(1_250_000);
+        assert_eq!(operator.current.name, "Operator");
+        assert_eq!(operator.next.map(|rank| rank.name), Some("Captain"));
+
+        let king = stacker_rank_progress(100_000_000);
+        assert_eq!(king.current.name, "King");
+        assert!(king.next.is_none());
+        assert_eq!(king.progress_ratio, 1.0);
     }
 
     #[test]
@@ -3974,6 +5657,7 @@ mod tests {
             Some(&wallet_status),
             None,
             &ledger,
+            0,
             now_ms,
         );
 
@@ -4012,33 +5696,327 @@ mod tests {
     #[test]
     fn operator_panel_marks_run_activity_and_payment_waits_honestly() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
-        app.last_refresh_at = Some(Instant::now());
+        let (state, detail) = app.operator_state_label_and_detail();
+        assert_eq!(state, "Preparing to earn");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("Starting local checks"))
+        );
         app.operator_stats = OperatorPanelStats {
             desired_mode: ProviderDesiredMode::Online,
             runtime_status: Some("online".to_string()),
             awaiting_payment_jobs: 1,
+            wallet_runtime_status: Some("connected".to_string()),
             ..OperatorPanelStats::default()
         };
 
         let (state, detail) = app.operator_state_label_and_detail();
-        assert_eq!(state, "awaiting payment");
+        assert_eq!(state, "Waiting for payout");
         assert!(
             detail
                 .as_deref()
-                .is_some_and(|value| value.contains("waiting for wallet settlement"))
+                .is_some_and(|value| value.contains("waiting for settlement"))
         );
 
+        app.operator_stats.awaiting_payment_jobs = 0;
         app.provider_command_in_flight = Some(ProviderCommandInFlight::Run {
             started_at: Instant::now() - Duration::from_secs(2),
             seconds: 5,
         });
         let (state, detail) = app.operator_state_label_and_detail();
-        assert_eq!(state, "run active");
+        assert_eq!(state, "Listening for work");
         assert!(
             detail
                 .as_deref()
                 .is_some_and(|value| value.contains("running retained provider intake"))
         );
+
+        app.provider_command_in_flight = None;
+        app.operator_stats = OperatorPanelStats {
+            desired_mode: ProviderDesiredMode::Online,
+            runtime_status: Some("online".to_string()),
+            provider_presence_online: true,
+            wallet_runtime_status: Some("connected".to_string()),
+            ..OperatorPanelStats::default()
+        };
+        let (state, detail) = app.operator_state_label_and_detail();
+        assert_eq!(state, "Ready to earn");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("Run /provider run"))
+        );
+
+        app.operator_stats = OperatorPanelStats {
+            desired_mode: ProviderDesiredMode::Online,
+            runtime_status: Some("online".to_string()),
+            provider_presence_online: false,
+            wallet_runtime_status: Some("connected".to_string()),
+            ..OperatorPanelStats::default()
+        };
+        let (state, detail) = app.operator_state_label_and_detail();
+        assert_eq!(state, "Ready to earn");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("Finishing provider presence"))
+        );
+    }
+
+    #[test]
+    fn activity_panel_shows_recent_events_or_quiet_ready_state() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.operator_stats.recent_activity = vec![
+            String::from("[PAID] stacked 21 sats 6m ago"),
+            String::from("[LIVE] matched a paid request 8m ago"),
+        ];
+        let activity = app
+            .activity_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(activity.contains("[PAID] stacked 21 sats 6m ago"));
+        assert!(activity.contains("[LIVE] matched a paid request 8m ago"));
+
+        app.operator_stats.recent_activity.clear();
+        app.operator_stats.last_provider_event_at_ms = None;
+        app.last_refresh_at = None;
+        let quiet = app
+            .activity_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(quiet.contains("[LIVE]"));
+        assert!(quiet.contains("checking local Pylon setup"));
+        assert!(quiet.contains("looking for local Gemma availability"));
+        assert!(quiet.contains("preparing earnings state"));
+
+        app.last_refresh_at = Some(Instant::now());
+        app.operator_stats.runtime_status = Some("online".to_string());
+        let ready = app
+            .activity_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(ready.contains("[READY]"));
+        assert!(ready.contains("standing by for paid work"));
+        assert!(ready.contains("[MARKET]"));
+        assert!(ready.contains("No paid matches yet"));
+    }
+
+    #[test]
+    fn footer_hints_change_with_sidebar_view() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+
+        let operate = app.footer_segments();
+        assert!(operate.contains(&("/provider run", "listen")));
+        assert!(operate.contains(&("/wallet receive", "cash in")));
+
+        app.sidebar_view = super::SidebarView::Wallet;
+        let wallet = app.footer_segments();
+        assert!(wallet.contains(&("/wallet invoice", "request")));
+        assert!(wallet.contains(&("/wallet withdraw", "send out")));
+
+        app.sidebar_view = super::SidebarView::Inspect;
+        let inspect = app.footer_segments();
+        assert!(inspect.contains(&("/wallet", "view")));
+        assert!(inspect.contains(&("/help", "commands")));
+    }
+
+    #[test]
+    fn rank_panel_shows_progress_toward_next_tier() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.operator_stats.total_earnings_sats = 644;
+        let panel = app
+            .rank_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(panel.contains("Stacker Status: Pleb"));
+        assert!(panel.contains("Lifetime earned: 644 sats"));
+        assert!(panel.contains("Next unlock: Drifter in 356 sats"));
+        assert!(!panel.contains("Remaining:"));
+        assert!(!panel.contains("Track:"));
+        assert!(!panel.contains("Signal:"));
+        assert!(panel.contains("Pleb"));
+        assert!(panel.contains("Drifter"));
+        assert!(panel.contains("◉"));
+    }
+
+    #[test]
+    fn stabilize_operator_panel_stats_keeps_last_wallet_balance_during_disconnect() {
+        let previous = OperatorPanelStats {
+            wallet_runtime_status: Some("connected".to_string()),
+            wallet_balance_live: true,
+            wallet_balance: Some(pylon::WalletBalanceSnapshot {
+                total_sats: 628,
+                ..pylon::WalletBalanceSnapshot::default()
+            }),
+            runtime_status: Some("online".to_string()),
+            ..OperatorPanelStats::default()
+        };
+        let current = OperatorPanelStats {
+            wallet_runtime_status: Some("disconnected".to_string()),
+            wallet_balance_live: true,
+            wallet_balance: Some(pylon::WalletBalanceSnapshot::default()),
+            ..OperatorPanelStats::default()
+        };
+
+        let stabilized = stabilize_operator_panel_stats(previous, current);
+        assert_eq!(
+            stabilized.wallet_balance.as_ref().map(|balance| balance.total_sats),
+            Some(628)
+        );
+        assert!(!stabilized.wallet_balance_live);
+    }
+
+    #[test]
+    fn tab_toggles_sidebar_view() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        assert_eq!(app.sidebar_view, super::SidebarView::Operate);
+
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.sidebar_view, super::SidebarView::Wallet);
+
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.sidebar_view, super::SidebarView::Inspect);
+
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.sidebar_view, super::SidebarView::Operate);
+    }
+
+    #[test]
+    fn wallet_view_surfaces_addresses_and_recovery_gate() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.wallet_surface = WalletSurfaceState {
+            runtime_status: Some("connected".to_string()),
+            network: Some("mainnet".to_string()),
+            balance: Some(pylon::WalletBalanceSnapshot {
+                spark_sats: 664,
+                total_sats: 664,
+                ..pylon::WalletBalanceSnapshot::default()
+            }),
+            spark_address: Some(
+                "spark1pgss97gxzmrydeh2ypjkeu9jqeve8rfy9nzy2apkks836apnwyreqrlyrtjzcu"
+                    .to_string(),
+            ),
+            bitcoin_address: Some(
+                "bc1psxsk8uzdmcg4jq03p7hf0a99r469te0ew40w32yersvlzlr697nqh94nge"
+                    .to_string(),
+            ),
+            identity_path: Some(PathBuf::from("/tmp/pylon-test/identity.mnemonic")),
+            ..WalletSurfaceState::default()
+        };
+
+        let wallet = app
+            .wallet_overview_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(wallet.contains("Status:"));
+        assert!(wallet.contains("Total balance: 664 sats"));
+
+        let receive = app
+            .wallet_receive_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(receive.contains("Spark address:"));
+        assert!(receive.contains("spark1pgss97gx"));
+        assert!(receive.contains("Bitcoin address:"));
+
+        let recovery = app
+            .wallet_recovery_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(recovery.contains("Phrase: Hidden by default"));
+        assert!(recovery.contains("/wallet recovery reveal"));
+    }
+
+    #[test]
+    fn wallet_card_surfaces_balance_and_clear_actions() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.wallet_surface = WalletSurfaceState {
+            runtime_status: Some("connected".to_string()),
+            balance: Some(pylon::WalletBalanceSnapshot {
+                total_sats: 664,
+                ..pylon::WalletBalanceSnapshot::default()
+            }),
+            spark_address: Some("spark1example".to_string()),
+            bitcoin_address: Some("bc1example".to_string()),
+            recent_payments: vec![
+                pylon::PylonWalletPaymentRecord {
+                    payment_id: "pay-older".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 21,
+                    fees_sats: 0,
+                    method: "lightning".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: current_epoch_ms_u64().saturating_sub(120_000),
+                    updated_at_ms: current_epoch_ms_u64().saturating_sub(120_000),
+                },
+                pylon::PylonWalletPaymentRecord {
+                    payment_id: "pay-newer".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 34,
+                    fees_sats: 0,
+                    method: "lightning".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: current_epoch_ms_u64().saturating_sub(60_000),
+                    updated_at_ms: current_epoch_ms_u64().saturating_sub(60_000),
+                },
+            ],
+            ..WalletSurfaceState::default()
+        };
+
+        let card = app
+            .wallet_card_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(card.contains("Status:"));
+        assert!(card.contains("Total balance: 664 sats"));
+        assert!(card.contains("Receive: Spark + Bitcoin ready"));
+        assert!(card.contains("Withdraw: /wallet withdraw <lightning_invoice>"));
+        assert!(card.contains("Last paid: 34 sats"));
+    }
+
+    #[test]
+    fn recent_provider_activity_prefers_paid_settlements_over_duplicate_paid_job_labels() {
+        let now_ms = current_epoch_ms_u64();
+        let mut ledger = pylon::PylonLedger::default();
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-1".to_string(),
+            job_id: "job-1".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 7_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms.saturating_sub(2_000),
+            updated_at_ms: now_ms.saturating_sub(1_000),
+        });
+        let mut settled = pylon::PylonLedgerJob::new("job-1", "provider", 7_000, "settled");
+        settled.updated_at_ms = now_ms.saturating_sub(500);
+        ledger.jobs.push(settled);
+
+        let activity = recent_provider_activity(&ledger, now_ms).join("\n");
+        assert!(activity.contains("[PAID] stacked 7 sats"));
+        assert!(!activity.contains("completed a paid job"));
     }
 
     #[test]
@@ -4076,6 +6054,18 @@ mod tests {
             created_at_ms: now_ms - 600,
             updated_at_ms: now_ms - 400,
         });
+        ledger.wallet.payments.push(pylon::PylonWalletPaymentRecord {
+            payment_id: "payment-001".to_string(),
+            direction: "receive".to_string(),
+            status: "completed".to_string(),
+            amount_sats: 4,
+            fees_sats: 0,
+            method: "spark".to_string(),
+            description: None,
+            invoice: None,
+            created_at_ms: now_ms - 800,
+            updated_at_ms: now_ms - 700,
+        });
 
         let stats = compute_operator_panel_stats_at(
             ProviderDesiredMode::Online,
@@ -4083,6 +6073,7 @@ mod tests {
             None,
             None,
             &ledger,
+            now_ms - 1_000,
             now_ms,
         );
 
@@ -4090,9 +6081,20 @@ mod tests {
         assert_eq!(stats.matching_jobs_24h, 2);
         assert_eq!(stats.jobs_processed_24h, 1);
         assert_eq!(stats.jobs_settled_24h, 1);
+        assert_eq!(stats.session_earnings_sats, 4);
+        assert_eq!(stats.settled_sats_24h, 21);
+        assert_eq!(stats.settled_sats_lifetime, 21);
+        assert_eq!(stats.total_earnings_sats, 21);
         assert_eq!(stats.awaiting_payment_jobs, 1);
         assert_eq!(stats.processing_jobs, 0);
         assert_eq!(stats.last_job_result.as_deref(), Some("settled"));
+        assert_eq!(stats.last_provider_event_at_ms, Some(now_ms - 500));
+        assert!(
+            stats
+                .recent_activity
+                .iter()
+                .any(|entry| entry.contains("[PAID] stacked 21 sats"))
+        );
     }
 
     #[test]
@@ -4135,6 +6137,7 @@ mod tests {
             None,
             None,
             &ledger,
+            0,
             now_ms,
         );
 
