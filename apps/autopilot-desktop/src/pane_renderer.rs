@@ -18,8 +18,8 @@ use crate::app_state::{
     NetworkRequestsState, Nip90SentPaymentsPaneState, NostrIdentityPaneState, NostrSecretState,
     PaneKind, PaneLoadState, PanePaintTimingSample, PanePresentation, PayInvoicePaneInputs,
     PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker,
-    ProviderControlHudRuntimeState, ProviderControlPaneState, ProviderRuntimeState,
-    ProviderStatusPaneState, ReciprocalLoopState, RelayConnectionsPaneInputs,
+    ProviderControlHudRuntimeState, ProviderControlPaneState, ProviderDesiredMode,
+    ProviderRuntimeState, ProviderStatusPaneState, ReciprocalLoopState, RelayConnectionsPaneInputs,
     RelayConnectionsState, RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs,
     SettingsState, SidebarState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
     SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState, StarterJobStatus,
@@ -5073,19 +5073,35 @@ fn mission_control_earnings_amount_color(
     }
 }
 
-/// Short alert-band summary for the earnings scoreboard, derived from
-/// `source_tag` rather than the long `last_error` text so the Mission Control
-/// alert band can fit it. Returns `None` when the scoreboard is not in the
-/// Error state (the alert band uses other priorities in that case).
+/// Short alert-band summary for the earnings scoreboard. Returns one of two
+/// distinct messages so the alert band can communicate which Pylon failure
+/// mode the operator is in:
+///
+/// 1. **Authority unreachable** (`load_state == Error`) — the Pylon
+///    provider-admin store is missing or load failed. The summary is derived
+///    from `source_tag` rather than the long `last_error` text so the alert
+///    band can fit it.
+/// 2. **Provider configured offline** (`load_state == Ready` but
+///    `pylon_desired_mode != Some(Online)`) — Pylon is reachable and the
+///    snapshot loaded cleanly, but the operator has not flipped pylon online
+///    via the `pylon` TUI or `pylon provider run`. Pylon's NIP-90 runtime
+///    drops every incoming job request with `provider_not_online` in this
+///    state, so going online from autopilot earns nothing.
+///
+/// Returns `None` in all other cases (the alert band uses other priorities).
 fn mission_control_earnings_alert_summary(state: &EarningsScoreboardState) -> Option<String> {
-    if state.load_state != PaneLoadState::Error {
-        return None;
+    if state.load_state == PaneLoadState::Error {
+        if state.source_tag.starts_with("pylon.provider-admin") {
+            return Some("PYLON AUTHORITY UNAVAILABLE".to_string());
+        }
+        return Some("EARNINGS AUTHORITY UNAVAILABLE".to_string());
     }
-    if state.source_tag.starts_with("pylon.provider-admin") {
-        Some("PYLON AUTHORITY UNAVAILABLE".to_string())
-    } else {
-        Some("EARNINGS AUTHORITY UNAVAILABLE".to_string())
+    if state.load_state == PaneLoadState::Ready
+        && state.pylon_desired_mode != Some(ProviderDesiredMode::Online)
+    {
+        return Some("PYLON PROVIDER OFFLINE".to_string());
     }
+    None
 }
 
 fn mission_control_buy_mode_result_label(
@@ -11186,6 +11202,14 @@ pub(crate) fn mission_control_blocker_detail(
             .filter(|entry| !entry.is_empty())
             .map(ToString::to_string)
             .unwrap_or_else(|| blocker.detail().to_string()),
+        // The two Pylon blockers use short alert-band labels here so the
+        // PREFLIGHT line in `mission_control_alert_message` does not truncate
+        // the substrate's longer diagnostic strings (which remain available
+        // via `blocker.detail()` for `autopilotctl --json` and CLI surfaces).
+        // Mirrors how `GptOssUnavailable` and friends already swap in short
+        // forms above for the same display reason.
+        ProviderBlocker::PylonAuthorityUnavailable => "Pylon authority unreachable".to_string(),
+        ProviderBlocker::PylonProviderOffline => "Pylon desired_mode is offline".to_string(),
         _ => blocker.detail().to_string(),
     }
 }
